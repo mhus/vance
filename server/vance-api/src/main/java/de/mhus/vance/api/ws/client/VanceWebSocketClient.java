@@ -1,9 +1,5 @@
 package de.mhus.vance.api.ws.client;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import de.mhus.vance.api.ws.HandshakeHeaders;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import java.net.http.HttpClient;
@@ -11,6 +7,10 @@ import java.net.http.WebSocket;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.jspecify.annotations.Nullable;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * JDK-native WebSocket client speaking the Vance wire-protocol.
@@ -74,7 +74,7 @@ public class VanceWebSocketClient implements AutoCloseable {
         String json;
         try {
             json = objectMapper.writeValueAsString(envelope);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             CompletableFuture<Void> failed = new CompletableFuture<>();
             failed.completeExceptionally(e);
             return failed;
@@ -106,10 +106,9 @@ public class VanceWebSocketClient implements AutoCloseable {
     }
 
     private static ObjectMapper defaultObjectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.registerModule(new JavaTimeModule());
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        return mapper;
+        return JsonMapper.builder()
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .build();
     }
 
     private final class JdkListener implements WebSocket.Listener {

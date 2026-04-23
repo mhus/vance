@@ -2,12 +2,16 @@ package de.mhus.vance.brain.ws;
 
 import de.mhus.vance.api.ws.ClientType;
 import de.mhus.vance.api.ws.HandshakeHeaders;
+import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.jwt.VanceJwtClaims;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
@@ -15,25 +19,23 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 /**
  * Validates the HTTP upgrade request and bootstraps a {@link ClientSession}.
  *
- * Responsibilities (see {@code specification/websocket-protokoll.md} §2):
+ * <p>Authentication itself is handled one layer up by
+ * {@link AccessFilterBase} — if we get here, the bearer JWT has already been
+ * verified and the claims are sitting in the request attributes. This
+ * interceptor only deals with the WebSocket-specific headers:
  * <ul>
  *   <li>reject requests without {@code X-Vance-Client-Type} / {@code X-Vance-Client-Version} (HTTP 400)</li>
  *   <li>create or resume a {@link ClientSession} — resume failures map to 404/403</li>
  *   <li>attach the resolved session to the handshake attributes under {@link #ATTR_SESSION}</li>
  * </ul>
  *
- * Note: JWT signature verification is not yet wired in. For now the {@code Authorization}
- * bearer token (if present) is treated as an opaque user identifier so the full
- * connection flow can be exercised end-to-end. A real {@code JwtAuthenticator}
- * plugs in here once the JWT infrastructure lands.
+ * See {@code specification/websocket-protokoll.md} §2 for the wire contract.
  */
 @Component
 public class VanceHandshakeInterceptor implements HandshakeInterceptor {
 
     public static final String ATTR_SESSION = "vance.clientSession";
     public static final String ATTR_RESUMED = "vance.sessionResumed";
-
-    private static final String PLACEHOLDER_USER_ID = "usr_anonymous";
 
     private final ClientSessionRegistry registry;
 
@@ -47,6 +49,13 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
             ServerHttpResponse response,
             WebSocketHandler wsHandler,
             Map<String, Object> attributes) {
+
+        VanceJwtClaims claims = resolveClaims(request);
+        if (claims == null) {
+            // The access filter should have rejected already — defend in depth.
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
+            return false;
+        }
 
         String rawClientType = firstHeader(request, HandshakeHeaders.CLIENT_TYPE);
         String clientVersion = firstHeader(request, HandshakeHeaders.CLIENT_VERSION);
@@ -64,16 +73,15 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
             return false;
         }
 
-        String userId = resolveUserId(request);
         String requestedSessionId = firstHeader(request, HandshakeHeaders.SESSION_ID);
 
         ClientSessionRegistry.Result result;
         try {
             result = registry.createOrResume(
                     emptyToNull(requestedSessionId),
-                    userId,
-                    null,
-                    null,
+                    claims.username(),
+                    claims.username(),
+                    claims.tenantId(),
                     clientType,
                     clientVersion);
         } catch (ClientSessionRegistry.SessionNotFoundException e) {
@@ -102,19 +110,13 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
             @Nullable Exception exception) {
     }
 
-    private String resolveUserId(ServerHttpRequest request) {
-        String authorization = firstHeader(request, HandshakeHeaders.AUTHORIZATION);
-        if (authorization == null) {
-            return PLACEHOLDER_USER_ID;
+    private static @Nullable VanceJwtClaims resolveClaims(ServerHttpRequest request) {
+        if (!(request instanceof ServletServerHttpRequest servletRequest)) {
+            return null;
         }
-        if (!authorization.startsWith(HandshakeHeaders.BEARER_PREFIX)) {
-            return PLACEHOLDER_USER_ID;
-        }
-        String token = authorization.substring(HandshakeHeaders.BEARER_PREFIX.length()).trim();
-        if (token.isEmpty()) {
-            return PLACEHOLDER_USER_ID;
-        }
-        return "usr_" + Integer.toHexString(token.hashCode());
+        HttpServletRequest httpRequest = servletRequest.getServletRequest();
+        Object raw = httpRequest.getAttribute(AccessFilterBase.ATTR_CLAIMS);
+        return raw instanceof VanceJwtClaims claims ? claims : null;
     }
 
     private static @Nullable String firstHeader(ServerHttpRequest request, String name) {

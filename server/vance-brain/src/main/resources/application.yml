@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: vance-brain
+  mongodb:
+    uri: mongodb://root:example@localhost:27017/vance?authSource=admin
+    database: vance
+
+server:
+  port: 8080
+
+vance:
+  ws:
+    path: /brain/ws
+    serverVersion: 0.1.0
+    protocolVersion: 1
+    pingIntervalSeconds: 30
+    capabilities: []
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: always
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    de.mhus.vance: INFO

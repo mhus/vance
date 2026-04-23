@@ -32,6 +32,7 @@
         <langgraph4j.version>1.5.14</langgraph4j.version>
         <picocli.version>4.7.6</picocli.version>
         <jspecify.version>1.0.0</jspecify.version>
+        <jjwt.version>0.12.6</jjwt.version>
         <console-master.version>1.0.0-SNAPSHOT</console-master.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -74,6 +75,21 @@
                 <groupId>de.mhus</groupId>
                 <artifactId>console-master-core</artifactId>
                 <version>${console-master.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

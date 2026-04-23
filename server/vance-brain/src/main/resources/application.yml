@@ -11,6 +11,11 @@ server:
 vance:
   ws:
     path: /brain/*/ws
+  storage:
+    chunk-size: 524288            # 512 KB
+    cleanup-interval-ms: 900000   # 15 min
+  services:
+    storage-cleanup: true         # this brain instance runs the cleanup
     serverVersion: 0.1.0
     protocolVersion: 1
     pingIntervalSeconds: 30

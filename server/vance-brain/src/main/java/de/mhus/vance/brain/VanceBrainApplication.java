@@ -3,6 +3,7 @@ package de.mhus.vance.brain;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Entry point for the Vance Brain server.
@@ -16,6 +17,7 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
  */
 @SpringBootApplication(scanBasePackages = {"de.mhus.vance.brain", "de.mhus.vance.shared"})
 @EnableMongoRepositories(basePackages = "de.mhus.vance.shared")
+@EnableScheduling
 public class VanceBrainApplication {
 
     static void main(String[] args) {

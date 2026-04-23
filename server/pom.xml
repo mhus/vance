@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.9</version>
+        <version>4.0.6</version>
         <relativePath/>
     </parent>
 
@@ -17,16 +17,22 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>plugins</module>
+        <module>vance-api</module>
         <module>vance-shared</module>
         <module>vance-brain</module>
-        <module>vance-client-sdk</module>
         <module>vance-cli</module>
     </modules>
 
     <properties>
         <java.version>25</java.version>
         <lombok.version>1.18.42</lombok.version>
-        <spring.boot.version>3.5.9</spring.boot.version>
+        <spring.boot.version>4.0.6</spring.boot.version>
+        <langchain4j.version>1.0.0</langchain4j.version>
+        <langgraph4j.version>1.5.14</langgraph4j.version>
+        <picocli.version>4.7.6</picocli.version>
+        <jspecify.version>1.0.0</jspecify.version>
+        <console-master.version>1.0.0-SNAPSHOT</console-master.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
@@ -41,11 +47,33 @@
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>org.springframework.ai</groupId>
-                <artifactId>spring-ai-bom</artifactId>
-                <version>1.1.2</version>
+                <groupId>dev.langchain4j</groupId>
+                <artifactId>langchain4j-bom</artifactId>
+                <version>${langchain4j.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.bsc.langgraph4j</groupId>
+                <artifactId>langgraph4j-bom</artifactId>
+                <version>${langgraph4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>info.picocli</groupId>
+                <artifactId>picocli</artifactId>
+                <version>${picocli.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jspecify</groupId>
+                <artifactId>jspecify</artifactId>
+                <version>${jspecify.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.mhus</groupId>
+                <artifactId>console-master-core</artifactId>
+                <version>${console-master.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -56,6 +84,10 @@
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
         </dependency>
     </dependencies>
 

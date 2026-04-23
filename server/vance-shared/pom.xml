@@ -10,7 +10,48 @@
 
     <artifactId>vance-shared</artifactId>
     <name>vance-shared</name>
-    <description>Shared models, DTOs, and interfaces for Vance</description>
+    <description>Vance server-shared infrastructure — MongoDB document models, mappers, repositories, LLM factory, credential/quota services. Consumed by vance-brain and future server components (linker, scheduler, workers).</description>
     <packaging>jar</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.bsc.langgraph4j</groupId>
+            <artifactId>langgraph4j-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 
 </project>

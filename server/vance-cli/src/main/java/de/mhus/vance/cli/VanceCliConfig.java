@@ -24,7 +24,6 @@ public class VanceCliConfig {
     public static class Brain {
         private String httpBase = "http://localhost:8080";
         private String wsBase = "ws://localhost:8080";
-        private String wsPath = "/brain/ws";
     }
 
     @Data

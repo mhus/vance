@@ -50,7 +50,8 @@ public class ConnectCommand implements Runnable {
         }
         System.out.println("Minted JWT — expires " + Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
 
-        URI wsUri = URI.create(cfg.getBrain().getWsBase() + cfg.getBrain().getWsPath());
+        URI wsUri = URI.create(
+                cfg.getBrain().getWsBase() + "/brain/" + cfg.getAuth().getTenant() + "/ws");
         VanceWebSocketConfig wsConfig = VanceWebSocketConfig.builder()
                 .uri(wsUri)
                 .jwtToken(token.getToken())

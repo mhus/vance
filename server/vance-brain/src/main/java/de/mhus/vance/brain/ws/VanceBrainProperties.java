@@ -27,5 +27,5 @@ public class VanceBrainProperties {
     private List<String> capabilities = List.of();
 
     /** HTTP path the WebSocket is exposed on. */
-    private String path = "/brain/ws";
+    private String path = "/brain/*/ws";
 }

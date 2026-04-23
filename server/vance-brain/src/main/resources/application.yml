@@ -10,7 +10,7 @@ server:
 
 vance:
   ws:
-    path: /brain/ws
+    path: /brain/*/ws
     serverVersion: 0.1.0
     protocolVersion: 1
     pingIntervalSeconds: 30

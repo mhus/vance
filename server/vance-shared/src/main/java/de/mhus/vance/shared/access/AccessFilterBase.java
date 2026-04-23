@@ -57,9 +57,12 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
 
     /**
      * Hook for subclass-specific claim validation after signature has been verified.
-     * Default accepts everything.
+     * Gets the request so subclasses can cross-check against the target path
+     * (e.g. a tenant in the URL must match the tenant in the JWT).
+     *
+     * <p>Default accepts everything.
      */
-    protected boolean isClaimsAcceptable(VanceJwtClaims claims) {
+    protected boolean isClaimsAcceptable(VanceJwtClaims claims, HttpServletRequest request) {
         return true;
     }
 
@@ -105,7 +108,7 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
             log.debug("Bearer token did not pass JWT verification for {}", request.getRequestURI());
             return null;
         }
-        if (!isClaimsAcceptable(claims)) {
+        if (!isClaimsAcceptable(claims, request)) {
             log.debug("Claims rejected by subclass for {} (user='{}' tenant='{}')",
                     request.getRequestURI(), claims.username(), claims.tenantId());
             return null;

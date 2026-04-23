@@ -1,72 +1,49 @@
 package de.mhus.vance.brain.ws;
 
-import de.mhus.vance.api.ws.ClientType;
-import java.time.Instant;
-import java.util.concurrent.atomic.AtomicReference;
+import de.mhus.vance.shared.session.SessionDocument;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.web.socket.WebSocketSession;
 
 /**
- * Server-side representation of an authenticated client session.
+ * Per-connection binding living inside a single brain pod.
  *
- * A session survives individual WebSocket connections — the client may disconnect
- * and resume later via the {@code X-Vance-Session-Id} handshake header. Exactly one
- * {@link WebSocketSession} is bound at a time; a resume request while a connection
- * is still bound is rejected with HTTP 409 at the handshake layer.
+ * <p>Wraps the persistent {@link SessionDocument} together with this pod's
+ * {@code connectionId} (the UUID that won the atomic bind) and the local
+ * {@link WebSocketSession} reference once the HTTP upgrade has completed.
+ *
+ * <p>Cached fields on the document (userId, tenantId, clientType, clientVersion)
+ * are safe to read from memory — they don't change after creation. Anything
+ * that might race with another pod (bind state, lastActivityAt) must go through
+ * {@link de.mhus.vance.shared.session.SessionService}.
  */
+@RequiredArgsConstructor
 @Getter
 public class ClientSession {
 
-    private final String sessionId;
-    private final String userId;
-    private final @Nullable String displayName;
-    private final @Nullable String tenantId;
-    private final ClientType clientType;
-    private final String clientVersion;
-    private final Instant createdAt;
+    private final SessionDocument document;
+    private final String connectionId;
 
-    private final AtomicReference<@Nullable WebSocketSession> boundConnection = new AtomicReference<>();
+    private volatile @Nullable WebSocketSession webSocketSession;
 
-    private volatile Instant lastActivityAt;
-
-    public ClientSession(
-            String sessionId,
-            String userId,
-            @Nullable String displayName,
-            @Nullable String tenantId,
-            ClientType clientType,
-            String clientVersion,
-            Instant createdAt) {
-        this.sessionId = sessionId;
-        this.userId = userId;
-        this.displayName = displayName;
-        this.tenantId = tenantId;
-        this.clientType = clientType;
-        this.clientVersion = clientVersion;
-        this.createdAt = createdAt;
-        this.lastActivityAt = createdAt;
+    public String getSessionId() {
+        return document.getSessionId();
     }
 
-    public @Nullable WebSocketSession getBoundConnection() {
-        return boundConnection.get();
+    public String getUserId() {
+        return document.getUserId();
     }
 
-    /**
-     * Binds a new WebSocket connection. Returns {@code true} if the bind succeeded,
-     * {@code false} if another connection is still bound — callers must then reject
-     * the handshake with HTTP 409.
-     */
-    public boolean bindConnection(WebSocketSession connection) {
-        return boundConnection.compareAndSet(null, connection);
+    public @Nullable String getDisplayName() {
+        return document.getDisplayName();
     }
 
-    /** Releases the current connection if it matches. No-op otherwise. */
-    public void unbindConnection(WebSocketSession connection) {
-        boundConnection.compareAndSet(connection, null);
+    public String getTenantId() {
+        return document.getTenantId();
     }
 
-    public void touch() {
-        this.lastActivityAt = Instant.now();
+    public void attach(WebSocketSession webSocketSession) {
+        this.webSocketSession = webSocketSession;
     }
 }

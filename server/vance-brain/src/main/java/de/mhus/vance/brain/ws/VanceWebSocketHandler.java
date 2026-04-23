@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.ws;
 
-import tools.jackson.databind.ObjectMapper;
 import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.PingData;
@@ -8,6 +7,7 @@ import de.mhus.vance.api.ws.PongData;
 import de.mhus.vance.api.ws.ServerInfo;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.WelcomeData;
+import de.mhus.vance.shared.session.SessionService;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
@@ -18,43 +18,47 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Central dispatcher for incoming WebSocket frames.
  *
  * Frame flow (see {@code specification/websocket-protokoll.md} §2–§5):
  * <ol>
- *   <li>{@link #afterConnectionEstablished(WebSocketSession)} — bind the
- *       {@link ClientSession} that the handshake interceptor attached, send
- *       {@code welcome}</li>
- *   <li>{@link #handleTextMessage(WebSocketSession, TextMessage)} — parse the
- *       envelope, route by {@code type}</li>
- *   <li>{@link #afterConnectionClosed(WebSocketSession, CloseStatus)} — unbind
- *       the connection (the session itself lives on and can be resumed)</li>
+ *   <li>{@link #afterConnectionEstablished(WebSocketSession)} — attach the
+ *       {@link ClientSession} created by the handshake interceptor to the
+ *       local {@link WebSocketSession}, send {@code welcome}.</li>
+ *   <li>{@link #handleTextMessage(WebSocketSession, TextMessage)} — heartbeat
+ *       the persistent session, parse the envelope, route by {@code type}.
+ *       If the heartbeat shows that this pod lost the bind (another pod took
+ *       over, session was closed), drop the connection.</li>
+ *   <li>{@link #afterConnectionClosed(WebSocketSession, CloseStatus)} — release
+ *       the bind via {@link SessionService#unbind(String, String)} so the
+ *       session can be resumed later.</li>
  * </ol>
  */
 @Component
 public class VanceWebSocketHandler extends TextWebSocketHandler {
 
-    private final ClientSessionRegistry registry;
+    private final SessionService sessionService;
     private final VanceBrainProperties properties;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     @Autowired
     public VanceWebSocketHandler(
-            ClientSessionRegistry registry,
+            SessionService sessionService,
             VanceBrainProperties properties,
             ObjectMapper objectMapper) {
-        this(registry, properties, objectMapper, Clock.systemUTC());
+        this(sessionService, properties, objectMapper, Clock.systemUTC());
     }
 
     public VanceWebSocketHandler(
-            ClientSessionRegistry registry,
+            SessionService sessionService,
             VanceBrainProperties properties,
             ObjectMapper objectMapper,
             Clock clock) {
-        this.registry = registry;
+        this.sessionService = sessionService;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -63,12 +67,10 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession wsSession) throws Exception {
         ClientSession clientSession = resolveSession(wsSession);
-        boolean resumed = Boolean.TRUE.equals(wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_RESUMED));
+        boolean resumed = Boolean.TRUE.equals(
+                wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_RESUMED));
 
-        if (!clientSession.bindConnection(wsSession)) {
-            wsSession.close(CloseStatus.SERVER_ERROR.withReason("Session already bound"));
-            return;
-        }
+        clientSession.attach(wsSession);
 
         WelcomeData welcome = WelcomeData.builder()
                 .sessionId(clientSession.getSessionId())
@@ -90,7 +92,12 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession wsSession, TextMessage message) throws Exception {
         ClientSession clientSession = resolveSession(wsSession);
-        clientSession.touch();
+
+        if (!sessionService.heartbeat(clientSession.getSessionId(), clientSession.getConnectionId())) {
+            // Another pod took the session over, or it was closed. Drop this connection.
+            wsSession.close(CloseStatus.POLICY_VIOLATION.withReason("Session no longer bound"));
+            return;
+        }
 
         WebSocketEnvelope envelope;
         try {
@@ -112,7 +119,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession wsSession, CloseStatus status) {
         Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_SESSION);
         if (attr instanceof ClientSession clientSession) {
-            clientSession.unbindConnection(wsSession);
+            sessionService.unbind(clientSession.getSessionId(), clientSession.getConnectionId());
         }
     }
 
@@ -130,8 +137,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void handleLogout(WebSocketSession wsSession, ClientSession clientSession) throws IOException {
-        registry.remove(clientSession.getSessionId());
-        clientSession.unbindConnection(wsSession);
+        sessionService.close(clientSession.getSessionId());
         wsSession.close(CloseStatus.NORMAL);
     }
 

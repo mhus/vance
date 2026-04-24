@@ -24,9 +24,11 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 @Data
 public class VanceCliConfig {
 
+    private String profile = "dev";
     private Brain brain = new Brain();
     private Auth auth = new Auth();
     private Client client = new Client();
+    private Debug debug = new Debug();
 
     @Data
     public static class Brain {
@@ -44,6 +46,24 @@ public class VanceCliConfig {
     @Data
     public static class Client {
         private String version = "0.1.0";
+    }
+
+    /**
+     * Debug tooling. Intended for local development only — all endpoints are
+     * unauthenticated. The REST server is force-disabled whenever {@link
+     * VanceCliConfig#getProfile()} equals {@code "prod"}, regardless of the
+     * {@link Rest#isEnabled()} flag.
+     */
+    @Data
+    public static class Debug {
+        private Rest rest = new Rest();
+    }
+
+    @Data
+    public static class Rest {
+        private boolean enabled = false;
+        private String host = "127.0.0.1";
+        private int port = 8765;
     }
 
     /** Uses the resolution order documented on the class. */

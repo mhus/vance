@@ -1,0 +1,40 @@
+package de.mhus.vance.brain.thinkengine;
+
+import de.mhus.vance.brain.ai.AiModelService;
+import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+
+/**
+ * Per-call access surface handed to a {@link ThinkEngine}. Built fresh by
+ * {@link ThinkEngineService} for every lifecycle invocation — engines must
+ * not cache it.
+ *
+ * <p>v1 only exposes the pieces Zaphod actually consumes:
+ * {@link #process()}, {@link #aiModelService()}, {@link #settingService()},
+ * {@link #chatMessageService()}. The remaining pieces (event publisher,
+ * pending-queue drain, memory API, tool dispatcher, process orchestrator)
+ * will be added here as those subsystems arrive. The interface is kept
+ * intentionally thin so we don't pre-carve abstractions before the first
+ * user shapes them.
+ */
+public interface ThinkEngineContext {
+
+    /** The process this call is bound to. */
+    ThinkProcessDocument process();
+
+    /** Tenant id of the process's session — shortcut for the common lookup. */
+    String tenantId();
+
+    /** Session id the process belongs to ({@code SessionDocument.sessionId}). */
+    String sessionId();
+
+    /** Access to AI model instantiation. */
+    AiModelService aiModelService();
+
+    /** Typed-settings lookup with scope-aware helpers. */
+    SettingService settingService();
+
+    /** Read/write access to the persistent chat log of this process. */
+    ChatMessageService chatMessageService();
+}

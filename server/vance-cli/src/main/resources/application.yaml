@@ -1,4 +1,5 @@
 vance:
+  profile: dev
   brain:
     http-base: http://localhost:8080
     ws-base: ws://localhost:8080
@@ -8,3 +9,8 @@ vance:
     password: acme-rocket
   client:
     version: 0.1.0
+  debug:
+    rest:
+      enabled: true
+      host: 127.0.0.1
+      port: 8765

@@ -1,8 +1,5 @@
-package de.mhus.vance.brain.ai.anthropic;
+package de.mhus.vance.brain.ai;
 
-import de.mhus.vance.brain.ai.AiChat;
-import de.mhus.vance.brain.ai.AiChatException;
-import de.mhus.vance.brain.ai.AiChatOptions;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -19,23 +16,23 @@ import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Anthropic-specific {@link AiChat}. Holds the matched sync/streaming model
- * pair built by {@link AnthropicProvider}.
+ * Provider-agnostic {@link AiChat} wrapper. Holds a matched sync/streaming
+ * model pair produced by any {@link AiModelProvider} implementation.
  *
- * <p>{@link #ask(String)} uses the sync model — cheaper path when the caller
- * doesn't care about partial output. {@link #askStream} uses the streaming
- * model. Direct langchain4j access via {@link #chatModel()} /
- * {@link #streamingChatModel()} returns those same instances.
+ * <p>Everything in here talks to langchain4j's generic
+ * {@link ChatModel} / {@link StreamingChatModel} interfaces, so this class
+ * works unchanged for Anthropic, Gemini, OpenAI, etc. Provider-specific
+ * wiring (api-key format, model-builder quirks) stays in the provider bean.
  */
 @Slf4j
-class AnthropicChat implements AiChat {
+public class StandardAiChat implements AiChat {
 
     private final String name;
     private final ChatModel sync;
     private final StreamingChatModel streaming;
     private final AiChatOptions options;
 
-    AnthropicChat(String name, ChatModel sync, StreamingChatModel streaming, AiChatOptions options) {
+    public StandardAiChat(String name, ChatModel sync, StreamingChatModel streaming, AiChatOptions options) {
         this.name = name;
         this.sync = sync;
         this.streaming = streaming;
@@ -57,7 +54,7 @@ class AnthropicChat implements AiChat {
             return response.aiMessage().text();
         } catch (RuntimeException e) {
             throw new AiChatException(
-                    "Anthropic sync call failed for '" + name + "': " + e.getMessage(), e);
+                    "Sync call failed for '" + name + "': " + e.getMessage(), e);
         }
     }
 
@@ -105,13 +102,13 @@ class AnthropicChat implements AiChat {
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new AiChatException(
-                    "Anthropic stream failed for '" + name + "': " + cause.getMessage(), cause);
+                    "Stream failed for '" + name + "': " + cause.getMessage(), cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new AiChatException("Anthropic stream interrupted for '" + name + "'", e);
+            throw new AiChatException("Stream interrupted for '" + name + "'", e);
         } catch (RuntimeException e) {
             throw new AiChatException(
-                    "Anthropic stream failed for '" + name + "': " + e.getMessage(), e);
+                    "Stream failed for '" + name + "': " + e.getMessage(), e);
         }
     }
 

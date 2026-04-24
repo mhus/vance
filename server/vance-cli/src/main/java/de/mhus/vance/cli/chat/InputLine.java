@@ -51,7 +51,7 @@ public class InputLine extends Canvas implements EventHandler {
     }
 
     @Override
-    public void paint(Graphics graphics) {
+    public synchronized void paint(Graphics graphics) {
         graphics.clear();
         int w = getWidth();
         if (w <= 0) {
@@ -97,37 +97,61 @@ public class InputLine extends Canvas implements EventHandler {
             return;
         }
 
-        if (key.isSpecialKey()) {
-            switch (key.getSpecialKey()) {
-                case ENTER -> submit();
-                case BACKSPACE -> deleteBefore();
-                case DELETE -> deleteAt();
-                case ARROW_LEFT -> cursor = Math.max(0, cursor - 1);
-                case ARROW_RIGHT -> cursor = Math.min(buffer.length(), cursor + 1);
-                case HOME -> cursor = 0;
-                case END -> cursor = buffer.length();
-                case ARROW_UP -> walkHistory(-1);
-                case ARROW_DOWN -> walkHistory(1);
-                default -> {
-                    return; // let other keys bubble (e.g. TAB, F-keys)
-                }
+        // Handle ENTER specially so we can drop the monitor before invoking the
+        // submit callback — the callback may kick off network I/O and must not
+        // block paint/keypresses.
+        if (key.isSpecialKey() && key.getSpecialKey() == KeyEvent.SpecialKey.ENTER) {
+            String value;
+            Consumer<String> cb;
+            synchronized (this) {
+                value = takeBuffer();
+                cb = onSubmit;
             }
             key.consume();
+            if (cb != null) {
+                cb.accept(value);
+            }
             return;
         }
 
-        if (key.isCharacter() && !key.isHasCtrl() && !key.isHasAlt()) {
-            char ch = key.getCharacter();
-            if (ch >= 32 && ch != 127) {
-                buffer.insert(cursor, ch);
-                cursor++;
-                historyCursor = -1;
+        synchronized (this) {
+            if (key.isSpecialKey()) {
+                switch (key.getSpecialKey()) {
+                    case BACKSPACE -> deleteBefore();
+                    case DELETE -> deleteAt();
+                    case ARROW_LEFT -> cursor = Math.max(0, cursor - 1);
+                    case ARROW_RIGHT -> cursor = Math.min(buffer.length(), cursor + 1);
+                    case HOME -> cursor = 0;
+                    case END -> cursor = buffer.length();
+                    case ARROW_UP -> walkHistory(-1);
+                    case ARROW_DOWN -> walkHistory(1);
+                    default -> {
+                        return; // let other keys bubble (e.g. TAB, F-keys)
+                    }
+                }
                 key.consume();
+                return;
+            }
+
+            if (key.isCharacter() && !key.isHasCtrl() && !key.isHasAlt()) {
+                char ch = key.getCharacter();
+                if (ch >= 32 && ch != 127) {
+                    buffer.insert(cursor, ch);
+                    cursor++;
+                    historyCursor = -1;
+                    key.consume();
+                }
             }
         }
     }
 
-    private void submit() {
+    /**
+     * Drains the buffer and pushes the value onto the history ring. Must be
+     * called while holding the monitor — callers may invoke {@code onSubmit}
+     * outside the lock with the returned value, to avoid holding the monitor
+     * across network calls triggered from the submit handler.
+     */
+    private String takeBuffer() {
         String value = buffer.toString();
         buffer.setLength(0);
         cursor = 0;
@@ -137,10 +161,36 @@ public class InputLine extends Canvas implements EventHandler {
                 history.add(value);
             }
         }
-        Consumer<String> cb = onSubmit;
+        return value;
+    }
+
+    /**
+     * Programmatic injection — sets the buffer to {@code text} and, if
+     * {@code submit} is true, triggers the same code path as pressing ENTER.
+     * Intended for debug/automation hooks; safe to call from any thread.
+     */
+    public void inject(String text, boolean submit) {
+        String value;
+        Consumer<String> cb;
+        synchronized (this) {
+            buffer.setLength(0);
+            buffer.append(text);
+            cursor = buffer.length();
+            historyCursor = -1;
+            if (!submit) {
+                return;
+            }
+            value = takeBuffer();
+            cb = onSubmit;
+        }
         if (cb != null) {
             cb.accept(value);
         }
+    }
+
+    /** Current buffer content. Safe to call from any thread. */
+    public synchronized String currentText() {
+        return buffer.toString();
     }
 
     private void deleteBefore() {

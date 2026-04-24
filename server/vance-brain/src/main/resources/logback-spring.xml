@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Logback configuration for vance-brain.
+
+    - Console output: reuses Spring Boot's default console-appender include,
+      so the live stdout pattern stays aligned with other Boot-based modules.
+    - File output: one fixed file at ${LOG_FILE} (resolved from the Spring
+      property logging.file.name). append=false means it is truncated on
+      every JVM start — we want a fresh log per run, not a growing tail.
+-->
+<configuration>
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <springProperty scope="context" name="LOG_FILE" source="logging.file.name"
+                    defaultValue="vance-brain.log"/>
+
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>${LOG_FILE}</file>
+        <append>false</append>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>

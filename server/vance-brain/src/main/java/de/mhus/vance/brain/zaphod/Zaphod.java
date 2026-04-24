@@ -68,7 +68,8 @@ public class Zaphod implements ThinkEngine {
     private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_AI_PROVIDER = "ai.default.provider";
     private static final String SETTING_AI_MODEL = "ai.default.model";
-    private static final String SETTING_ANTHROPIC_API_KEY = "ai.provider.anthropic.apiKey";
+    /** Provider-specific API-key setting key, e.g. {@code ai.provider.gemini.apiKey}. */
+    private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     private static final String DEFAULT_PROVIDER = "anthropic";
     private static final String DEFAULT_MODEL = "claude-sonnet-4-5";
@@ -256,13 +257,15 @@ public class Zaphod implements ThinkEngine {
         String model = settings.getStringValue(
                 tenantId, SETTINGS_REF_TYPE, tenantId,
                 SETTING_AI_MODEL, DEFAULT_MODEL);
+        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
         String apiKey = settings.getDecryptedPassword(
                 tenantId, SETTINGS_REF_TYPE, tenantId,
-                SETTING_ANTHROPIC_API_KEY);
+                apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
-                    "No Anthropic API key configured for tenant '" + tenantId
-                            + "' at setting '" + SETTING_ANTHROPIC_API_KEY + "'");
+                    "No API key configured for provider '" + provider
+                            + "' (tenant='" + tenantId
+                            + "', setting='" + apiKeySetting + "')");
         }
         return new AiChatConfig(provider, model, apiKey);
     }

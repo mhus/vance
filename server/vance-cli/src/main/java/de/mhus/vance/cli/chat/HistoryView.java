@@ -46,6 +46,27 @@ public class HistoryView extends Canvas {
         }
     }
 
+    /** Returns an immutable snapshot of the current lines. Safe to call from any thread. */
+    public List<ChatLine> snapshot() {
+        synchronized (lock) {
+            return List.copyOf(lines);
+        }
+    }
+
+    /**
+     * Returns up to {@code limit} most-recent lines in insertion order
+     * (oldest first). Safe to call from any thread.
+     */
+    public List<ChatLine> tail(int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
+        synchronized (lock) {
+            int from = Math.max(0, lines.size() - limit);
+            return List.copyOf(lines.subList(from, lines.size()));
+        }
+    }
+
     @Override
     public void paint(Graphics graphics) {
         graphics.clear();

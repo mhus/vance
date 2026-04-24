@@ -18,14 +18,19 @@ import de.mhus.vance.cli.chat.commands.ConnectCommand;
 import de.mhus.vance.cli.chat.commands.DisconnectCommand;
 import de.mhus.vance.cli.chat.commands.HelpCommand;
 import de.mhus.vance.cli.chat.commands.PingCommand;
+import de.mhus.vance.cli.chat.commands.ProcessCreateCommand;
+import de.mhus.vance.cli.chat.commands.ProcessSteerCommand;
 import de.mhus.vance.cli.chat.commands.ProjectGroupListCommand;
 import de.mhus.vance.cli.chat.commands.ProjectListCommand;
 import de.mhus.vance.cli.chat.commands.QuitCommand;
 import de.mhus.vance.cli.chat.commands.SessionCreateCommand;
 import de.mhus.vance.cli.chat.commands.SessionListCommand;
 import de.mhus.vance.cli.chat.commands.SessionResumeCommand;
+import de.mhus.vance.cli.debug.DebugRestServer;
+import de.mhus.vance.cli.debug.DebugUiBridge;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
@@ -62,6 +67,12 @@ public class ChatCommand implements Runnable {
             description = "Path to an alternative config YAML. Overrides $VANCE_CLI_CONFIG.")
     private @Nullable Path configPath;
 
+    @Option(
+            names = "--debug",
+            description = "Force-enable the unauthenticated debug REST server, regardless of "
+                    + "the vance.debug.rest.enabled config flag.")
+    private boolean debugFlag;
+
     private final CountDownLatch quitLatch = new CountDownLatch(1);
     private final ObjectMapper mapper = JsonMapper.builder()
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
@@ -71,6 +82,7 @@ public class ChatCommand implements Runnable {
     private @Nullable ProcessLoop processLoop;
     private @Nullable ConnectionManager connection;
     private @Nullable ResponseRouter router;
+    private @Nullable DebugRestServer debugServer;
 
     @Override
     public void run() {
@@ -127,6 +139,8 @@ public class ChatCommand implements Runnable {
             hist.append(ChatLine.of(ChatLine.Level.INFO,
                     "Press Ctrl+Q or type /quit to exit. Type /help for commands."));
 
+            startDebugServerIfEnabled(cfg, hist, input, loop);
+
             loop.startAsync();
 
             if (!noConnect) {
@@ -142,6 +156,10 @@ public class ChatCommand implements Runnable {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
+                DebugRestServer ds = debugServer;
+                if (ds != null) {
+                    ds.stop();
+                }
                 conn.shutdown();
                 try {
                     loop.stop();
@@ -151,6 +169,63 @@ public class ChatCommand implements Runnable {
             }
         } catch (IOException e) {
             System.err.println("Failed to start chat UI: " + Errors.describe(e));
+        }
+    }
+
+    private void startDebugServerIfEnabled(VanceCliConfig cfg, HistoryView hist,
+            InputLine input, ProcessLoop loop) {
+        VanceCliConfig.Rest rest = cfg.getDebug().getRest();
+        boolean enabled = rest.isEnabled() || debugFlag;
+        if (!enabled) {
+            return;
+        }
+        DebugUiBridge bridge = new TuiBridge(hist, input, loop);
+        DebugRestServer server = new DebugRestServer(bridge, rest);
+        try {
+            server.start();
+            this.debugServer = server;
+            hist.append(ChatLine.of(ChatLine.Level.INFO,
+                    "debug REST listening on http://" + rest.getHost() + ":" + rest.getPort()));
+        } catch (IOException e) {
+            hist.append(ChatLine.of(ChatLine.Level.ERROR,
+                    "debug REST failed to start: " + Errors.describe(e)));
+        }
+    }
+
+    private static final class TuiBridge implements DebugUiBridge {
+        private final HistoryView history;
+        private final InputLine input;
+        private final ProcessLoop loop;
+
+        TuiBridge(HistoryView history, InputLine input, ProcessLoop loop) {
+            this.history = history;
+            this.input = input;
+            this.loop = loop;
+        }
+
+        @Override
+        public List<ChatLine> historySnapshot() {
+            return history.snapshot();
+        }
+
+        @Override
+        public List<ChatLine> historyTail(int limit) {
+            return history.tail(limit);
+        }
+
+        @Override
+        public String currentInput() {
+            return input.currentText();
+        }
+
+        @Override
+        public void injectInput(String text, boolean submit) {
+            input.inject(text, submit);
+        }
+
+        @Override
+        public void requestRedraw() {
+            loop.requestRedraw();
         }
     }
 
@@ -165,6 +240,8 @@ public class ChatCommand implements Runnable {
         registry.register(new SessionResumeCommand());
         registry.register(new ProjectListCommand());
         registry.register(new ProjectGroupListCommand());
+        registry.register(new ProcessCreateCommand());
+        registry.register(new ProcessSteerCommand());
         registry.register(new ClearCommand());
         registry.register(new QuitCommand());
         return registry;

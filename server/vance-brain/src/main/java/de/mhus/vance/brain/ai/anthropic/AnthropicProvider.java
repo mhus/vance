@@ -5,6 +5,7 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
+import de.mhus.vance.brain.ai.StandardAiChat;
 import dev.langchain4j.model.anthropic.AnthropicChatModel;
 import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel;
 import java.time.Duration;
@@ -65,7 +66,7 @@ public class AnthropicProvider implements AiModelProvider {
                     .build();
             log.debug("Built Anthropic chat pair: model='{}', maxTokens={}, temperature={}",
                     config.modelName(), maxTokens, options.getTemperature());
-            return new AnthropicChat(config.fullName(), sync, streaming, options);
+            return new StandardAiChat(config.fullName(), sync, streaming, options);
         } catch (RuntimeException e) {
             throw new AiChatException(
                     "Failed to build Anthropic chat for " + config.fullName(), e);

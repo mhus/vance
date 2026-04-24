@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ws.handlers;
 
+import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.thinkprocess.ProcessCreateRequest;
 import de.mhus.vance.api.thinkprocess.ProcessCreateResponse;
 import de.mhus.vance.api.ws.MessageType;
@@ -9,9 +10,12 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +26,9 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * Creates a think-process in the caller's bound session and kicks off its
- * lifecycle via {@link ThinkEngine#start}.
+ * lifecycle via {@link ThinkEngine#start}. Any chat messages the engine
+ * produced during startup (typically a greeting) are pushed to the client as
+ * {@link MessageType#CHAT_MESSAGE_APPENDED} notifications before the ack.
  */
 @Component
 @RequiredArgsConstructor
@@ -33,6 +39,7 @@ public class ProcessCreateHandler implements WsHandler {
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
+    private final ChatMessageService chatMessageService;
 
     @Override
     public String type() {
@@ -95,6 +102,15 @@ public class ProcessCreateHandler implements WsHandler {
             return;
         }
 
+        // Every message that landed during start() is by definition new to the
+        // client — push them all.
+        List<ChatMessageDocument> appended = chatMessageService.history(
+                tenantId, sessionId, created.getId());
+        for (ChatMessageDocument msg : appended) {
+            sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
+                    toDto(msg, request.getName()));
+        }
+
         ThinkProcessDocument refreshed = thinkProcessService.findById(created.getId())
                 .orElse(created);
         ProcessCreateResponse response = ProcessCreateResponse.builder()
@@ -104,6 +120,17 @@ public class ProcessCreateHandler implements WsHandler {
                 .status(refreshed.getStatus())
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.PROCESS_CREATE, response);
+    }
+
+    private static ChatMessageAppendedData toDto(ChatMessageDocument doc, String processName) {
+        return ChatMessageAppendedData.builder()
+                .chatMessageId(doc.getId())
+                .thinkProcessId(doc.getThinkProcessId())
+                .processName(processName)
+                .role(doc.getRole())
+                .content(doc.getContent())
+                .createdAt(doc.getCreatedAt())
+                .build();
     }
 
     private static boolean isBlank(@Nullable String s) {

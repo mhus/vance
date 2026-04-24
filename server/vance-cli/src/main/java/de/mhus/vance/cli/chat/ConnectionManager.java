@@ -10,43 +10,47 @@ import de.mhus.vance.cli.BrainAccessClient;
 import de.mhus.vance.cli.VanceCliConfig;
 import java.net.URI;
 import java.time.Instant;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Owns the full WebSocket lifecycle for a chat session: mints a JWT, opens the
- * socket, routes incoming frames to a {@link Listener}, and closes on demand.
+ * socket, routes incoming frames to registered {@link ConnectionLifecycleListener}s,
+ * and closes on demand. Session bind/unbind events go to
+ * {@link SessionLifecycleListener}s on top of the connection stream.
+ *
+ * <p>Multiple listeners can be attached at any time (services, UI views,
+ * metrics collectors). Registration order determines event order. The listener
+ * lists use {@link CopyOnWriteArrayList}, so firing during registration
+ * changes is safe.
  *
  * <p>The manager is reusable — after a {@link #disconnect(String)} the caller
  * can {@link #connect()} again. Credentials come from the initial
  * {@link VanceCliConfig} but can be overridden per-connect via
- * {@link #connect(String, String, String)}.
- *
- * <p>The connect path runs on a single-threaded executor so the UI thread is
- * never blocked on the 10-second login/handshake timeout.
+ * {@link #connect(String, String, String)}. The connect path runs on a
+ * single-threaded executor so no UI thread blocks on the 10-second
+ * login/handshake timeout.
  */
 public class ConnectionManager {
 
     public enum State { DISCONNECTED, CONNECTING, OPEN }
 
-    public interface Listener {
-        default void onStateChanged(State state) {}
-        default void onInfo(String text) {}
-        default void onSystem(String text) {}
-        default void onError(String text) {}
-        default void onReceived(WebSocketEnvelope envelope) {}
-    }
-
     private final VanceCliConfig baseConfig;
-    private final Listener listener;
     private final BrainAccessClient access = new BrainAccessClient();
+
+    private final List<ConnectionLifecycleListener> connectionListeners = new CopyOnWriteArrayList<>();
+    private final List<SessionLifecycleListener> sessionListeners = new CopyOnWriteArrayList<>();
 
     private final AtomicReference<State> state = new AtomicReference<>(State.DISCONNECTED);
     private final AtomicReference<@Nullable VanceWebSocketClient> clientRef = new AtomicReference<>();
     private final AtomicReference<Credentials> credentialsRef;
+    private final AtomicReference<@Nullable BoundSession> boundSessionRef = new AtomicReference<>();
 
     private final ExecutorService connectExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "vance-cli-connect");
@@ -54,11 +58,30 @@ public class ConnectionManager {
         return t;
     });
 
-    public ConnectionManager(VanceCliConfig baseConfig, Listener listener) {
+    public ConnectionManager(VanceCliConfig baseConfig) {
         this.baseConfig = baseConfig;
-        this.listener = listener;
         this.credentialsRef = new AtomicReference<>(Credentials.from(baseConfig));
     }
+
+    // Listener registration -----------------------------------------------
+
+    public void addConnectionListener(ConnectionLifecycleListener listener) {
+        connectionListeners.add(listener);
+    }
+
+    public void removeConnectionListener(ConnectionLifecycleListener listener) {
+        connectionListeners.remove(listener);
+    }
+
+    public void addSessionListener(SessionLifecycleListener listener) {
+        sessionListeners.add(listener);
+    }
+
+    public void removeSessionListener(SessionLifecycleListener listener) {
+        sessionListeners.remove(listener);
+    }
+
+    // State accessors -----------------------------------------------------
 
     public State state() {
         return state.get();
@@ -73,10 +96,36 @@ public class ConnectionManager {
         return credentialsRef.get();
     }
 
+    /**
+     * The session currently bound to the live WebSocket, if any. Cleared
+     * automatically when the state goes back to {@link State#DISCONNECTED}.
+     */
+    public @Nullable BoundSession boundSession() {
+        return boundSessionRef.get();
+    }
+
+    // Session bind lifecycle ---------------------------------------------
+
+    /** Called by {@code session-create} / {@code session-resume} after a successful reply. */
+    public void bindSession(String sessionId, String projectId) {
+        BoundSession next = new BoundSession(sessionId, projectId);
+        boundSessionRef.set(next);
+        fireSession(l -> l.onSessionBound(sessionId, projectId));
+    }
+
+    /** Called when the user or server releases the session. */
+    public void unbindSession() {
+        BoundSession previous = boundSessionRef.getAndSet(null);
+        if (previous != null) {
+            fireSession(SessionLifecycleListener::onSessionUnbound);
+        }
+    }
+
+    // Connect/disconnect -------------------------------------------------
+
     /** Kicks off a connect with the currently remembered credentials. */
     public void connect() {
-        Credentials c = credentialsRef.get();
-        doConnect(c);
+        doConnect(credentialsRef.get());
     }
 
     /** Kicks off a connect with fresh credentials; remembers them for next time. */
@@ -115,9 +164,11 @@ public class ConnectionManager {
         connectExecutor.shutdownNow();
     }
 
+    // Internals ----------------------------------------------------------
+
     private void doConnect(Credentials creds) {
         if (!state.compareAndSet(State.DISCONNECTED, State.CONNECTING)) {
-            listener.onError("Already connected or connecting — /disconnect first.");
+            fireError("Already connected or connecting — /disconnect first.");
             return;
         }
         notifyStateChanged();
@@ -133,11 +184,11 @@ public class ConnectionManager {
                     creds.username(),
                     creds.password());
         } catch (Exception e) {
-            listener.onError("Login failed: " + Errors.describe(e));
+            fireError("Login failed: " + Errors.describe(e));
             setState(State.DISCONNECTED);
             return;
         }
-        listener.onInfo("Minted JWT — expires "
+        fireInfo("Minted JWT — expires "
                 + Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
 
         URI wsUri = URI.create(
@@ -156,25 +207,25 @@ public class ConnectionManager {
             @Override
             public void onOpen() {
                 setState(State.OPEN);
-                listener.onSystem("WebSocket open — " + wsUri);
+                fireSystem("WebSocket open — " + wsUri);
             }
 
             @Override
             public void onMessage(WebSocketEnvelope envelope) {
-                listener.onReceived(envelope);
+                fireReceived(envelope);
             }
 
             @Override
             public void onClose(int statusCode, @Nullable String reason) {
                 clientRef.compareAndSet(selfRef.get(), null);
                 setState(State.DISCONNECTED);
-                listener.onSystem("WebSocket closed — " + statusCode
+                fireSystem("WebSocket closed — " + statusCode
                         + (reason == null || reason.isBlank() ? "" : " (" + reason + ")"));
             }
 
             @Override
             public void onError(Throwable error) {
-                listener.onError("WebSocket error: " + Errors.describe(error));
+                fireError("WebSocket error: " + Errors.describe(error));
             }
         });
         selfRef.set(client);
@@ -185,20 +236,57 @@ public class ConnectionManager {
         } catch (Exception e) {
             clientRef.compareAndSet(client, null);
             setState(State.DISCONNECTED);
-            listener.onError("Connect failed: " + Errors.describe(e));
+            fireError("Connect failed: " + Errors.describe(e));
         }
     }
 
     private void setState(State newState) {
         State previous = state.getAndSet(newState);
+        if (newState == State.DISCONNECTED) {
+            // No live socket → no bound session. Fire the unbind so status bar and
+            // other listeners see it, rather than silently nulling the ref.
+            unbindSession();
+        }
         if (previous != newState) {
             notifyStateChanged();
         }
     }
 
     private void notifyStateChanged() {
-        listener.onStateChanged(state.get());
+        fireConnection(l -> l.onStateChanged(state.get()));
     }
+
+    // Fan-out helpers ----------------------------------------------------
+
+    private void fireConnection(Consumer<ConnectionLifecycleListener> op) {
+        for (ConnectionLifecycleListener l : connectionListeners) {
+            op.accept(l);
+        }
+    }
+
+    private void fireSession(Consumer<SessionLifecycleListener> op) {
+        for (SessionLifecycleListener l : sessionListeners) {
+            op.accept(l);
+        }
+    }
+
+    private void fireInfo(String text) {
+        fireConnection(l -> l.onInfo(text));
+    }
+
+    private void fireSystem(String text) {
+        fireConnection(l -> l.onSystem(text));
+    }
+
+    private void fireError(String text) {
+        fireConnection(l -> l.onError(text));
+    }
+
+    private void fireReceived(WebSocketEnvelope envelope) {
+        fireConnection(l -> l.onReceived(envelope));
+    }
+
+    // Value types --------------------------------------------------------
 
     public record Credentials(String tenant, String username, String password) {
         static Credentials from(VanceCliConfig cfg) {
@@ -208,4 +296,7 @@ public class ConnectionManager {
                     cfg.getAuth().getPassword());
         }
     }
+
+    /** Reflects the bind the Brain issued via a successful {@code session.create} or {@code session.resume}. */
+    public record BoundSession(String sessionId, String projectId) {}
 }

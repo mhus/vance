@@ -57,6 +57,7 @@ public class SessionResumeCommand implements Command {
             ctx.error(name() + ": empty reply");
             return;
         }
+        ctx.connection().bindSession(resp.getSessionId(), resp.getProjectId());
         ctx.received("session resumed: " + resp.getSessionId()
                 + " (project=" + resp.getProjectId() + ")");
     }

@@ -65,16 +65,17 @@ public class SessionListCommand implements Command {
             ctx.received("no sessions");
             return;
         }
-        ctx.received(String.format("%-24s %-20s %-10s %-11s %s",
-                "SESSION", "PROJECT", "STATUS", "LAST SEEN", "NAME"));
+        // Session id goes last and stays untruncated so the user can copy it for /session-resume.
+        ctx.received(String.format("%-20s %-10s %-11s %-20s %s",
+                "PROJECT", "STATUS", "LAST SEEN", "NAME", "SESSION"));
         for (SessionSummary s : resp.getSessions()) {
-            ctx.received(String.format("%-24s %-20s %-10s %-11s %s%s",
-                    truncate(s.getSessionId(), 24),
+            String sessionCell = s.getSessionId() + (s.isBound() ? " (bound)" : "");
+            ctx.received(String.format("%-20s %-10s %-11s %-20s %s",
                     truncate(Objects.toString(s.getProjectId(), ""), 20),
                     truncate(Objects.toString(s.getStatus(), ""), 10),
                     TIME.format(Instant.ofEpochMilli(s.getLastActivityAt())),
-                    Objects.toString(s.getDisplayName(), ""),
-                    s.isBound() ? " (bound)" : ""));
+                    truncate(Objects.toString(s.getDisplayName(), ""), 20),
+                    sessionCell));
         }
     }
 

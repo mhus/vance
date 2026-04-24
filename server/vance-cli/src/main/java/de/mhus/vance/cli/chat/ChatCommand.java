@@ -100,7 +100,10 @@ public class ChatCommand implements Runnable {
                 loop.requestRedraw();
             });
 
-            ConnectionManager conn = new ConnectionManager(cfg, new HistoryListener(responseRouter));
+            ConnectionManager conn = new ConnectionManager(cfg);
+            HistoryListener historyListener = new HistoryListener(responseRouter);
+            conn.addConnectionListener(historyListener);
+            conn.addSessionListener(historyListener);
             this.connection = conn;
 
             StatusBar status = new StatusBar("Status", cfg, conn);
@@ -182,8 +185,9 @@ public class ChatCommand implements Runnable {
         }
     }
 
-    /** Bridges connection events into the history + status redraw. */
-    private final class HistoryListener implements ConnectionManager.Listener {
+    /** Bridges connection and session events into the history + status redraw. */
+    private final class HistoryListener
+            implements ConnectionLifecycleListener, SessionLifecycleListener {
         private final ResponseRouter router;
 
         HistoryListener(ResponseRouter router) {
@@ -226,6 +230,17 @@ public class ChatCommand implements Runnable {
             // Unmatched server-initiated message or late reply — log verbatim.
             appendAndRedraw(ChatLine.Level.RECEIVED,
                     envelope.getType() + " " + String.valueOf(envelope.getData()));
+        }
+
+        @Override
+        public void onSessionBound(String sessionId, String projectId) {
+            appendAndRedraw(ChatLine.Level.SYSTEM,
+                    "session bound — " + sessionId + " (project=" + projectId + ")");
+        }
+
+        @Override
+        public void onSessionUnbound() {
+            appendAndRedraw(ChatLine.Level.SYSTEM, "session unbound");
         }
     }
 
@@ -336,8 +351,13 @@ public class ChatCommand implements Runnable {
                 return;
             }
             ConnectionManager.Credentials creds = connection.credentials();
+            ConnectionManager.BoundSession bound = connection.boundSession();
             StringBuilder sb = new StringBuilder(" vance chat — ");
             sb.append(connection.state().name().toLowerCase());
+            if (bound != null) {
+                sb.append(" — project=").append(bound.projectId());
+                sb.append(" session=").append(bound.sessionId());
+            }
             sb.append(" — ").append(cfg.getBrain().getWsBase());
             sb.append(" — tenant=").append(creds.tenant());
             sb.append(" user=").append(creds.username());

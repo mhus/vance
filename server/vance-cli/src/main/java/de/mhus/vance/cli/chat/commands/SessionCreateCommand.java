@@ -57,6 +57,7 @@ public class SessionCreateCommand implements Command {
             ctx.error(name() + ": empty reply");
             return;
         }
+        ctx.connection().bindSession(resp.getSessionId(), resp.getProjectId());
         ctx.received("session created: " + resp.getSessionId()
                 + " (project=" + resp.getProjectId() + ") — bound to this connection");
     }

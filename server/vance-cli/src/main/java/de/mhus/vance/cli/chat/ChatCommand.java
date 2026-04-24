@@ -9,6 +9,9 @@ import com.consolemaster.Graphics;
 import com.consolemaster.PositionConstraint;
 import com.consolemaster.ProcessLoop;
 import com.consolemaster.ScreenCanvas;
+import de.mhus.vance.api.chat.ChatMessageAppendedData;
+import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.cli.VanceCliConfig;
 import de.mhus.vance.cli.chat.commands.ClearCommand;
@@ -21,6 +24,7 @@ import de.mhus.vance.cli.chat.commands.PingCommand;
 import de.mhus.vance.cli.chat.commands.ProcessCreateCommand;
 import de.mhus.vance.cli.chat.commands.ProcessSteerCommand;
 import de.mhus.vance.cli.chat.commands.ProjectGroupListCommand;
+import de.mhus.vance.cli.chat.commands.VerbosityCommand;
 import de.mhus.vance.cli.chat.commands.ProjectListCommand;
 import de.mhus.vance.cli.chat.commands.QuitCommand;
 import de.mhus.vance.cli.chat.commands.SessionCreateCommand;
@@ -73,6 +77,12 @@ public class ChatCommand implements Runnable {
                     + "the vance.debug.rest.enabled config flag.")
     private boolean debugFlag;
 
+    @Option(
+            names = "--verbosity",
+            description = "Initial verbosity level (0=chat only, 1=+status, 2=+wire trace). "
+                    + "Default: 1. Change at runtime with /verbosity.")
+    private int initialVerbosity = 1;
+
     private final CountDownLatch quitLatch = new CountDownLatch(1);
     private final ObjectMapper mapper = JsonMapper.builder()
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
@@ -91,6 +101,7 @@ public class ChatCommand implements Runnable {
         try {
             ScreenCanvas screen = new ScreenCanvas("ChatScreen", 60, 10);
             HistoryView hist = new HistoryView("History");
+            hist.setVerbosity(initialVerbosity);
             InputLine input = new InputLine("Input");
             this.history = hist;
 
@@ -243,6 +254,7 @@ public class ChatCommand implements Runnable {
         registry.register(new ProcessCreateCommand());
         registry.register(new ProcessSteerCommand());
         registry.register(new ClearCommand());
+        registry.register(new VerbosityCommand());
         registry.register(new QuitCommand());
         return registry;
     }
@@ -304,9 +316,36 @@ public class ChatCommand implements Runnable {
             if (router.tryDispatch(envelope)) {
                 return;
             }
+            // Server-initiated chat-message-appended gets rendered as a proper
+            // chat line so the conversation reads naturally. We still fall
+            // through to the verbatim RECEIVED log for anything else, which
+            // the user can reveal by raising verbosity.
+            if (MessageType.CHAT_MESSAGE_APPENDED.equals(envelope.getType())) {
+                renderChatMessage(envelope);
+                return;
+            }
             // Unmatched server-initiated message or late reply — log verbatim.
             appendAndRedraw(ChatLine.Level.RECEIVED,
                     envelope.getType() + " " + String.valueOf(envelope.getData()));
+        }
+
+        private void renderChatMessage(WebSocketEnvelope envelope) {
+            ChatMessageAppendedData data =
+                    mapper.convertValue(envelope.getData(), ChatMessageAppendedData.class);
+            if (data == null || data.getContent() == null) {
+                appendAndRedraw(ChatLine.Level.RECEIVED,
+                        envelope.getType() + " " + String.valueOf(envelope.getData()));
+                return;
+            }
+            ChatRole role = data.getRole();
+            String content = data.getContent();
+            switch (role == null ? ChatRole.SYSTEM : role) {
+                case USER -> appendAndRedraw(ChatLine.Level.CHAT_USER, "me: " + content);
+                case ASSISTANT -> appendAndRedraw(ChatLine.Level.CHAT_ASSISTANT,
+                        data.getProcessName() + ": " + content);
+                case SYSTEM -> appendAndRedraw(ChatLine.Level.CHAT_SYSTEM,
+                        "[" + data.getProcessName() + "] " + content);
+            }
         }
 
         @Override
@@ -381,6 +420,24 @@ public class ChatCommand implements Runnable {
             HistoryView h = history;
             if (h != null) {
                 h.clear();
+            }
+            ProcessLoop l = processLoop;
+            if (l != null) {
+                l.requestRedraw();
+            }
+        }
+
+        @Override
+        public int verbosity() {
+            HistoryView h = history;
+            return h == null ? 0 : h.verbosity();
+        }
+
+        @Override
+        public void setVerbosity(int level) {
+            HistoryView h = history;
+            if (h != null) {
+                h.setVerbosity(level);
             }
             ProcessLoop l = processLoop;
             if (l != null) {

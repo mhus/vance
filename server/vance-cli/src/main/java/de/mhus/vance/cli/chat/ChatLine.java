@@ -15,25 +15,35 @@ public record ChatLine(Instant timestamp, Level level, String text) {
             .withZone(ZoneId.systemDefault());
 
     public enum Level {
+        /**
+         * Real chat content from the local user (role=USER from the server's
+         * chat-message-appended notification). Always shown regardless of
+         * verbosity — the chat is the point of the tool.
+         */
+        CHAT_USER(AnsiColor.BRIGHT_YELLOW, ">", 0),
+        /** Chat reply from an assistant (role=ASSISTANT). Always shown. */
+        CHAT_ASSISTANT(AnsiColor.BRIGHT_WHITE, "<", 0),
+        /** In-chat system note (role=SYSTEM). Always shown. */
+        CHAT_SYSTEM(AnsiColor.BRIGHT_CYAN, "~", 0),
+        /** Error condition — always surfaced regardless of verbosity. */
+        ERROR(AnsiColor.BRIGHT_RED, "!!", 0),
         /** Informational note from the CLI itself (e.g. "connecting…"). */
-        INFO(AnsiColor.BRIGHT_BLACK, "··"),
+        INFO(AnsiColor.BRIGHT_BLACK, "··", 1),
         /** System / lifecycle event (connection open, closed). */
-        SYSTEM(AnsiColor.CYAN, "**"),
-        /** Message we sent to the Brain. */
-        SENT(AnsiColor.GREEN, "→"),
-        /** Message received from the Brain. */
-        RECEIVED(AnsiColor.BRIGHT_WHITE, "←"),
-        /** User input echo. */
-        USER(AnsiColor.YELLOW, ">"),
-        /** Error condition. */
-        ERROR(AnsiColor.BRIGHT_RED, "!!");
+        SYSTEM(AnsiColor.CYAN, "**", 1),
+        /** Message we sent to the Brain — wire-level trace. */
+        SENT(AnsiColor.GREEN, "→", 2),
+        /** Message received from the Brain — wire-level trace. */
+        RECEIVED(AnsiColor.WHITE, "←", 2);
 
         private final AnsiColor color;
         private final String prefix;
+        private final int minVerbosity;
 
-        Level(AnsiColor color, String prefix) {
+        Level(AnsiColor color, String prefix, int minVerbosity) {
             this.color = color;
             this.prefix = prefix;
+            this.minVerbosity = minVerbosity;
         }
 
         public AnsiColor color() {
@@ -42,6 +52,11 @@ public record ChatLine(Instant timestamp, Level level, String text) {
 
         public String prefix() {
             return prefix;
+        }
+
+        /** Minimum verbosity level at which lines of this category are rendered. */
+        public int minVerbosity() {
+            return minVerbosity;
         }
     }
 

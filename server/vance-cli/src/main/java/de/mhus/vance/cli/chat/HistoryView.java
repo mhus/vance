@@ -19,6 +19,7 @@ public class HistoryView extends Canvas {
     private final List<ChatLine> lines = new ArrayList<>();
     private final int capacity;
     private final Object lock = new Object();
+    private volatile int verbosity = 1;
 
     public HistoryView(String name) {
         this(name, DEFAULT_CAPACITY);
@@ -27,6 +28,21 @@ public class HistoryView extends Canvas {
     public HistoryView(String name, int capacity) {
         super(name, 1, 1);
         this.capacity = Math.max(16, capacity);
+    }
+
+    /**
+     * Current runtime verbosity threshold. Lines whose {@link ChatLine.Level
+     * #minVerbosity()} exceeds this value are hidden in {@link #paint}; the
+     * underlying history is kept so bumping the level later surfaces
+     * previously-hidden lines retroactively.
+     */
+    public int verbosity() {
+        return verbosity;
+    }
+
+    /** Safe to call from any thread. */
+    public void setVerbosity(int level) {
+        this.verbosity = Math.max(0, level);
     }
 
     /** Appends a line. Safe to call from any thread. */
@@ -81,10 +97,15 @@ public class HistoryView extends Canvas {
             snapshot = new ArrayList<>(lines);
         }
 
+        int v = verbosity;
+
         // Render from the bottom up so the newest line always sits on the last row.
         int row = h - 1;
         for (int i = snapshot.size() - 1; i >= 0 && row >= 0; i--) {
             ChatLine line = snapshot.get(i);
+            if (line.level().minVerbosity() > v) {
+                continue;
+            }
             List<String> wrapped = wrap(renderLine(line), w);
             for (int j = wrapped.size() - 1; j >= 0 && row >= 0; j--) {
                 graphics.drawStyledString(0, row, pad(wrapped.get(j), w),

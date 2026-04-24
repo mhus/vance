@@ -38,6 +38,15 @@ public interface CommandContext {
     /** Wipes the history panel. */
     void clearHistory();
 
+    /**
+     * Current runtime verbosity level (0=chat only, 1=+status, 2=+wire trace).
+     * Lines with a higher {@code minVerbosity} than this value are hidden.
+     */
+    int verbosity();
+
+    /** Set the runtime verbosity level. Clamped to {@code >= 0}. */
+    void setVerbosity(int level);
+
     /** Request a clean exit of the TUI. Must be safe to call repeatedly. */
     void quit();
 

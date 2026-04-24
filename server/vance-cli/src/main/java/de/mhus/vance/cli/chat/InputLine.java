@@ -40,6 +40,7 @@ public class InputLine extends Canvas implements EventHandler {
     private int cursor = 0;
 
     private @Nullable Consumer<String> onSubmit;
+    private @Nullable Consumer<String> onHistoryAdd;
 
     public InputLine(String name) {
         super(name, 1, 1);
@@ -48,6 +49,32 @@ public class InputLine extends Canvas implements EventHandler {
 
     public void setOnSubmit(Consumer<String> onSubmit) {
         this.onSubmit = onSubmit;
+    }
+
+    /**
+     * Register a callback invoked each time a new, non-empty, non-duplicate
+     * line is added to the ARROW_UP/DOWN history ring. Intended for
+     * persistence side-effects. Safe to call from any thread.
+     */
+    public synchronized void setOnHistoryAdd(@Nullable Consumer<String> onHistoryAdd) {
+        this.onHistoryAdd = onHistoryAdd;
+    }
+
+    /**
+     * Preload the ARROW_UP/DOWN history ring — typically with lines read from
+     * a persisted history file at startup. Duplicates of the last entry and
+     * empty lines are skipped. Does NOT fire {@link #setOnHistoryAdd}, so
+     * loaded lines are not written back out to the store.
+     */
+    public synchronized void setInitialHistory(List<String> entries) {
+        for (String e : entries) {
+            if (e == null || e.isEmpty()) {
+                continue;
+            }
+            if (history.isEmpty() || !history.get(history.size() - 1).equals(e)) {
+                history.add(e);
+            }
+        }
     }
 
     @Override
@@ -159,6 +186,10 @@ public class InputLine extends Canvas implements EventHandler {
         if (!value.isEmpty()) {
             if (history.isEmpty() || !history.get(history.size() - 1).equals(value)) {
                 history.add(value);
+                Consumer<String> hook = onHistoryAdd;
+                if (hook != null) {
+                    hook.accept(value);
+                }
             }
         }
         return value;

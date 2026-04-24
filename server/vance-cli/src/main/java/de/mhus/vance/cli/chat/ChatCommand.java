@@ -90,6 +90,17 @@ public class ChatCommand implements Runnable {
     private int initialVerbosity = 1;
 
     @Option(
+            names = "--history-file",
+            description = "Path to the persistent history file. Overrides vance.history.file. "
+                    + "Implies --history on.")
+    private @Nullable String historyFileOverride;
+
+    @Option(
+            names = "--no-history",
+            description = "Disable persistent history even if vance.history.enabled is true.")
+    private boolean noHistory;
+
+    @Option(
             names = "--no-bootstrap",
             description = "Skip auto session-bootstrap even if vance.bootstrap is set.")
     private boolean noBootstrap;
@@ -138,6 +149,8 @@ public class ChatCommand implements Runnable {
             hist.setVerbosity(initialVerbosity);
             InputLine input = new InputLine("Input");
             this.history = hist;
+
+            attachInputHistoryStore(cfg, hist, input);
 
             ProcessLoop loop = new ProcessLoop(screen);
             this.processLoop = loop;
@@ -219,6 +232,60 @@ public class ChatCommand implements Runnable {
         } catch (IOException e) {
             System.err.println("Failed to start chat UI: " + Errors.describe(e));
         }
+    }
+
+    /**
+     * Persistent input-history — preloads the ARROW_UP/DOWN ring from disk at
+     * startup and appends every subsequently-submitted line. We do NOT
+     * persist the full render history; replaying old CHAT / WIRE lines with
+     * their original timestamps just clutters the panel and obscures what's
+     * actually happening in the current session.
+     */
+    private void attachInputHistoryStore(VanceCliConfig cfg, HistoryView hist, InputLine input) {
+        Path resolved = resolveHistoryPath(cfg);
+        if (resolved == null) {
+            return;
+        }
+        HistoryStore store = new HistoryStore(resolved);
+        try {
+            List<String> loaded = store.load();
+            int max = cfg.getHistory().getMaxEntries();
+            int start = Math.max(0, loaded.size() - max);
+            input.setInitialHistory(loaded.subList(start, loaded.size()));
+            if (!loaded.isEmpty()) {
+                hist.append(ChatLine.of(ChatLine.Level.INFO,
+                        "loaded " + loaded.size() + " input-history entries from " + resolved));
+            }
+        } catch (IOException e) {
+            hist.append(ChatLine.of(ChatLine.Level.ERROR,
+                    "input-history load failed (" + resolved + "): " + Errors.describe(e)));
+        }
+        input.setOnHistoryAdd(store::append);
+    }
+
+    private @Nullable Path resolveHistoryPath(VanceCliConfig cfg) {
+        if (noHistory) {
+            return null;
+        }
+        if (historyFileOverride != null && !historyFileOverride.isBlank()) {
+            return Path.of(expandHome(historyFileOverride));
+        }
+        VanceCliConfig.History h = cfg.getHistory();
+        if (!h.isEnabled()) {
+            return null;
+        }
+        String fromCfg = h.getFile();
+        if (fromCfg != null && !fromCfg.isBlank()) {
+            return Path.of(expandHome(fromCfg));
+        }
+        return HistoryStore.defaultPathBesideConfig(cfg.getSourcePath());
+    }
+
+    private static String expandHome(String path) {
+        if (path.startsWith("~/")) {
+            return System.getProperty("user.home") + path.substring(1);
+        }
+        return path;
     }
 
     private void startDebugServerIfEnabled(VanceCliConfig cfg, HistoryView hist,
@@ -444,10 +511,13 @@ public class ChatCommand implements Runnable {
                 return;
             }
             // Server-initiated chat-message-appended gets rendered as a proper
-            // chat line so the conversation reads naturally. Everything else
-            // that wasn't claimed by a reply handler is raw wire trace — hide
-            // behind high verbosity.
+            // chat line so the conversation reads naturally. We also always
+            // emit the raw envelope as a WIRE line (hidden at low verbosity)
+            // so anyone debugging a rendering mismatch can compare the chat
+            // line to the unmapped payload without touching the code.
             if (MessageType.CHAT_MESSAGE_APPENDED.equals(envelope.getType())) {
+                appendAndRedraw(ChatLine.Level.WIRE,
+                        envelope.getType() + " " + String.valueOf(envelope.getData()));
                 renderChatMessage(envelope);
                 return;
             }
@@ -525,6 +595,11 @@ public class ChatCommand implements Runnable {
         @Override
         public void received(String text) {
             appendAndRedraw(ChatLine.Level.RECEIVED, text);
+        }
+
+        @Override
+        public void chatUser(String text) {
+            appendAndRedraw(ChatLine.Level.CHAT_USER, "me: " + text);
         }
 
         @Override

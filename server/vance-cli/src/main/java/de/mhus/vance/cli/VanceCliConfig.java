@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
@@ -30,7 +31,16 @@ public class VanceCliConfig {
     private Auth auth = new Auth();
     private Client client = new Client();
     private Debug debug = new Debug();
+    private History history = new History();
     private @Nullable Bootstrap bootstrap;
+
+    /**
+     * Path of the YAML file this config was loaded from. {@code null} when
+     * loaded from the classpath default. Populated by {@link #load(Path)};
+     * not serialized back out.
+     */
+    @JsonIgnore
+    private @Nullable Path sourcePath;
 
     @Data
     public static class Brain {
@@ -65,6 +75,24 @@ public class VanceCliConfig {
         private boolean enabled = false;
         private String host = "127.0.0.1";
         private int port = 8765;
+    }
+
+    /**
+     * Persistent input-history file — the list of lines the user has
+     * submitted, the same set that ARROW_UP / ARROW_DOWN walks. Plain text,
+     * one submitted line per file line (the {@code .bash_history} shape).
+     *
+     * <p>Default-path resolution when {@link #getFile()} is {@code null}:
+     * the config source path with the extension swapped for
+     * {@code .history}. When the config came from the classpath
+     * (no explicit {@code --config}), persistence is silently disabled —
+     * there is no obvious location to write to.
+     */
+    @Data
+    public static class History {
+        private boolean enabled = true;
+        private @Nullable String file;
+        private int maxEntries = 500;
     }
 
     /**
@@ -120,7 +148,9 @@ public class VanceCliConfig {
             throw new IllegalStateException("Config file not found: " + path);
         }
         try (InputStream in = Files.newInputStream(path)) {
-            return parse(in, path.toString());
+            VanceCliConfig cfg = parse(in, path.toString());
+            cfg.sourcePath = path.toAbsolutePath();
+            return cfg;
         }
     }
 
@@ -129,7 +159,9 @@ public class VanceCliConfig {
             if (in == null) {
                 throw new IllegalStateException("application.yaml not found on classpath");
             }
-            return parse(in, "classpath:/application.yaml");
+            VanceCliConfig cfg = parse(in, "classpath:/application.yaml");
+            cfg.sourcePath = null;
+            return cfg;
         }
     }
 

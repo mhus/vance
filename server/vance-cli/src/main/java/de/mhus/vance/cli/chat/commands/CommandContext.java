@@ -29,6 +29,16 @@ public interface CommandContext {
     /** Inbound-message line (white, leading "←"). For typed, pretty-printed replies. */
     void received(String text);
 
+    /**
+     * Local echo of a user chat turn — shown immediately as
+     * {@code "me: <text>"} in the history panel, without waiting for a
+     * server {@code chat-message-appended} notification. Mirrors the
+     * optimistic-UI pattern of mainstream chat clients (Slack, WhatsApp):
+     * the user sees what they typed instantly, the server reply arrives
+     * later as the assistant's turn.
+     */
+    void chatUser(String text);
+
     ConnectionManager connection();
 
     CommandRegistry registry();

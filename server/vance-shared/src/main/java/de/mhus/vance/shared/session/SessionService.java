@@ -139,6 +139,27 @@ public class SessionService {
     }
 
     /**
+     * Mass-release every session currently bound to {@code podIp}. Intended
+     * for a pod's own startup cleanup: if a previous instance of this pod
+     * crashed, its leftover bindings would block Auto-Resume; releasing
+     * them here makes the next connect pick them up cleanly.
+     *
+     * @return number of sessions that were released
+     */
+    public long unbindAllByPod(String podIp) {
+        Query query = new Query(Criteria.where(F_BOUND_POD_IP).is(podIp));
+        Update update = new Update()
+                .set(F_BOUND_CONNECTION, null)
+                .set(F_BOUND_POD_IP, null);
+        UpdateResult result = mongoTemplate.updateMulti(query, update, SessionDocument.class);
+        long n = result.getModifiedCount();
+        if (n > 0) {
+            log.info("Unbound {} stale session(s) previously bound to pod '{}'", n, podIp);
+        }
+        return n;
+    }
+
+    /**
      * Bumps {@link SessionDocument#getLastActivityAt()} — but only if this
      * connection still owns the lock. Returns {@code false} if the lock has
      * been lost (session closed, taken over, unbound) — the caller should

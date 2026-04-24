@@ -68,6 +68,9 @@ public class CommandRegistry {
                 ctx.error("process-steer command not registered.");
                 return;
             }
+            // Optimistic local echo — the user's turn shows up in the panel
+            // immediately, independent of the server notification loop.
+            ctx.chatUser(line);
             steer.execute(ctx, new String[] {active, line});
             return;
         }

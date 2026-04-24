@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.ws.handlers;
 
 import de.mhus.vance.api.chat.ChatMessageAppendedData;
+import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.ws.MessageType;
@@ -106,6 +107,12 @@ public class ProcessSteerHandler implements WsHandler {
         List<ChatMessageDocument> full = chatMessageService.history(
                 tenantId, sessionId, process.getId());
         for (ChatMessageDocument appended : full.subList(beforeSize, full.size())) {
+            // Skip USER echoes — the sending client already knows what it
+            // just typed and renders it locally; no point round-tripping it.
+            // ASSISTANT and SYSTEM turns are the only surprises worth pushing.
+            if (appended.getRole() == ChatRole.USER) {
+                continue;
+            }
             sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
                     toDto(appended, request.getProcessName()));
         }

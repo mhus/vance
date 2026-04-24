@@ -10,7 +10,7 @@
 
     <artifactId>vance-shared</artifactId>
     <name>vance-shared</name>
-    <description>Vance server-shared infrastructure — MongoDB document models, mappers, repositories, LLM factory, credential/quota services. Consumed by vance-brain and future server components (linker, scheduler, workers).</description>
+    <description>Vance server-shared infrastructure — MongoDB document models, mappers, repositories, credential/quota/settings/crypto services. AI-specific code (langchain4j, langgraph4j) lives in vance-brain. Consumed by vance-brain and future server components (linker, scheduler, workers).</description>
     <packaging>jar</packaging>
 
     <dependencies>
@@ -41,15 +41,6 @@
             <groupId>jakarta.servlet</groupId>
             <artifactId>jakarta.servlet-api</artifactId>
             <scope>provided</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.bsc.langgraph4j</groupId>
-            <artifactId>langgraph4j-core</artifactId>
         </dependency>
 
         <dependency>

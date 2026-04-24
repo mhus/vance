@@ -7,10 +7,11 @@
  * CLAUDE.md entity convention. Scope-cascade resolution (project falls back
  * to tenant, etc.) is not implemented here — callers compose that on top.
  *
- * <p>Values are stored as strings plus a {@link SettingType}. The
- * {@link SettingType#PASSWORD} type is encrypted at rest via
- * {@link de.mhus.vance.shared.crypto.AesEncryptionService} and never returned
- * in plaintext through generic read paths — use
+ * <p>Values are stored as strings plus a
+ * {@link de.mhus.vance.api.settings.SettingType}. The
+ * {@link de.mhus.vance.api.settings.SettingType#PASSWORD} type is encrypted
+ * at rest via {@link de.mhus.vance.shared.crypto.AesEncryptionService} and
+ * never returned in plaintext through generic read paths — use
  * {@link SettingService#getDecryptedPassword(String, String, String, String)}
  * explicitly.
  */

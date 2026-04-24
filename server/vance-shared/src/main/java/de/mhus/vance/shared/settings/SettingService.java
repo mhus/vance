@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.settings;
 
+import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
 import java.util.List;
 import java.util.Optional;

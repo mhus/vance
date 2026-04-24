@@ -1,0 +1,142 @@
+package de.mhus.vance.brain.ai.anthropic;
+
+import de.mhus.vance.brain.ai.AiChat;
+import de.mhus.vance.brain.ai.AiChatException;
+import de.mhus.vance.brain.ai.AiChatOptions;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Anthropic-specific {@link AiChat}. Holds the matched sync/streaming model
+ * pair built by {@link AnthropicProvider}.
+ *
+ * <p>{@link #ask(String)} uses the sync model — cheaper path when the caller
+ * doesn't care about partial output. {@link #askStream} uses the streaming
+ * model. Direct langchain4j access via {@link #chatModel()} /
+ * {@link #streamingChatModel()} returns those same instances.
+ */
+@Slf4j
+class AnthropicChat implements AiChat {
+
+    private final String name;
+    private final ChatModel sync;
+    private final StreamingChatModel streaming;
+    private final AiChatOptions options;
+
+    AnthropicChat(String name, ChatModel sync, StreamingChatModel streaming, AiChatOptions options) {
+        this.name = name;
+        this.sync = sync;
+        this.streaming = streaming;
+        this.options = options;
+    }
+
+    @Override
+    public String getName() {
+        return name;
+    }
+
+    @Override
+    public String ask(String question) {
+        if (question == null || question.isBlank()) {
+            throw new AiChatException("question is blank");
+        }
+        try {
+            ChatResponse response = sync.chat(buildRequest(question));
+            return response.aiMessage().text();
+        } catch (RuntimeException e) {
+            throw new AiChatException(
+                    "Anthropic sync call failed for '" + name + "': " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public String askStream(String question, Consumer<String> tokenConsumer) {
+        if (question == null || question.isBlank()) {
+            throw new AiChatException("question is blank");
+        }
+        if (tokenConsumer == null) {
+            throw new AiChatException("tokenConsumer is null");
+        }
+
+        ChatRequest request = buildRequest(question);
+        StringBuilder accumulator = new StringBuilder();
+        CompletableFuture<String> result = new CompletableFuture<>();
+
+        StreamingChatResponseHandler handler = new StreamingChatResponseHandler() {
+            @Override
+            public void onPartialResponse(String partial) {
+                if (partial == null || partial.isEmpty()) {
+                    return;
+                }
+                accumulator.append(partial);
+                try {
+                    tokenConsumer.accept(partial);
+                } catch (RuntimeException e) {
+                    log.warn("tokenConsumer threw for chat '{}': {}", name, e.toString());
+                }
+            }
+
+            @Override
+            public void onCompleteResponse(ChatResponse complete) {
+                result.complete(accumulator.toString());
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                result.completeExceptionally(error);
+            }
+        };
+
+        try {
+            streaming.chat(request, handler);
+            return result.get();
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new AiChatException(
+                    "Anthropic stream failed for '" + name + "': " + cause.getMessage(), cause);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AiChatException("Anthropic stream interrupted for '" + name + "'", e);
+        } catch (RuntimeException e) {
+            throw new AiChatException(
+                    "Anthropic stream failed for '" + name + "': " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public ChatModel chatModel() {
+        return sync;
+    }
+
+    @Override
+    public StreamingChatModel streamingChatModel() {
+        return streaming;
+    }
+
+    @Override
+    public boolean isAvailable() {
+        return sync != null && streaming != null;
+    }
+
+    private ChatRequest buildRequest(String question) {
+        List<ChatMessage> messages = new ArrayList<>();
+        String system = options.getSystemMessage();
+        if (system != null && !system.isBlank()) {
+            messages.add(SystemMessage.from(system));
+        }
+        messages.add(UserMessage.from(question));
+        return ChatRequest.builder().messages(messages).build();
+    }
+}

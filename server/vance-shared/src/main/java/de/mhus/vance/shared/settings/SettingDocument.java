@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.settings;
 
+import de.mhus.vance.api.settings.SettingType;
 import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

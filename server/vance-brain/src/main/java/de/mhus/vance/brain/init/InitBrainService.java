@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>Seed credentials (plaintext, stored hashed via BCrypt):
  * <ul>
+ *   <li>{@code marvin.acme} / {@code toon-boss} — future tenant admin</li>
  *   <li>{@code wile.coyote} / {@code acme-rocket}</li>
  *   <li>{@code road.runner} / {@code beep-beep}</li>
  * </ul>
@@ -47,6 +48,7 @@ public class InitBrainService {
     void init() {
         tenantService.ensure(ACME_TENANT, "Acme");
 
+        ensureUser(ACME_TENANT, "marvin.acme", "Marvin Acme", "marvin.acme@mhus.de", "toon-boss");
         ensureUser(ACME_TENANT, "wile.coyote", "Wile E. Coyote", "wile.e.coyote@mhus.de", "acme-rocket");
         ensureUser(ACME_TENANT, "road.runner", "Road Runner", "beep.beep@mhus.com", "beep-beep");
 

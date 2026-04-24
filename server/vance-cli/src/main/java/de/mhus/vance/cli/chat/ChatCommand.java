@@ -18,13 +18,22 @@ import de.mhus.vance.cli.chat.commands.ConnectCommand;
 import de.mhus.vance.cli.chat.commands.DisconnectCommand;
 import de.mhus.vance.cli.chat.commands.HelpCommand;
 import de.mhus.vance.cli.chat.commands.PingCommand;
+import de.mhus.vance.cli.chat.commands.ProjectGroupListCommand;
+import de.mhus.vance.cli.chat.commands.ProjectListCommand;
 import de.mhus.vance.cli.chat.commands.QuitCommand;
+import de.mhus.vance.cli.chat.commands.SessionCreateCommand;
+import de.mhus.vance.cli.chat.commands.SessionListCommand;
+import de.mhus.vance.cli.chat.commands.SessionResumeCommand;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * {@code vance chat} — interactive TUI connected to the Brain over WebSocket.
@@ -54,10 +63,14 @@ public class ChatCommand implements Runnable {
     private @Nullable Path configPath;
 
     private final CountDownLatch quitLatch = new CountDownLatch(1);
+    private final ObjectMapper mapper = JsonMapper.builder()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .build();
 
     private @Nullable HistoryView history;
     private @Nullable ProcessLoop processLoop;
     private @Nullable ConnectionManager connection;
+    private @Nullable ResponseRouter router;
 
     @Override
     public void run() {
@@ -72,7 +85,22 @@ public class ChatCommand implements Runnable {
             ProcessLoop loop = new ProcessLoop(screen);
             this.processLoop = loop;
 
-            ConnectionManager conn = new ConnectionManager(cfg, new HistoryListener());
+            ResponseRouter responseRouter = new ResponseRouter(
+                    id -> appendAndRedraw(ChatLine.Level.ERROR, "request timed out: " + id));
+            this.router = responseRouter;
+
+            // Force a redraw every frame + evict timed-out reply handlers. Without the
+            // forced redraw, requestRedraw() calls from non-UI threads (WebSocket
+            // callbacks) only become visible once the user hits a key, because
+            // ProcessLoop sleeps between ticks and does not wake on the needsRedraw
+            // flag. renderDifferences() is a no-op when nothing actually changed, so
+            // the cost is minimal.
+            loop.setUpdateCallback(() -> {
+                responseRouter.evictExpired();
+                loop.requestRedraw();
+            });
+
+            ConnectionManager conn = new ConnectionManager(cfg, new HistoryListener(responseRouter));
             this.connection = conn;
 
             StatusBar status = new StatusBar("Status", cfg, conn);
@@ -85,7 +113,7 @@ public class ChatCommand implements Runnable {
             screen.setContent(root);
 
             CommandRegistry registry = buildRegistry();
-            CommandContext ctx = new ChatContext(cfg, conn, registry);
+            CommandContext ctx = new ChatContext(cfg, conn, registry, responseRouter);
 
             input.setOnSubmit(value -> registry.execute(value, ctx));
             screen.requestFocus(input);
@@ -129,6 +157,11 @@ public class ChatCommand implements Runnable {
         registry.register(new ConnectCommand());
         registry.register(new DisconnectCommand());
         registry.register(new PingCommand());
+        registry.register(new SessionListCommand());
+        registry.register(new SessionCreateCommand());
+        registry.register(new SessionResumeCommand());
+        registry.register(new ProjectListCommand());
+        registry.register(new ProjectGroupListCommand());
         registry.register(new ClearCommand());
         registry.register(new QuitCommand());
         return registry;
@@ -151,8 +184,19 @@ public class ChatCommand implements Runnable {
 
     /** Bridges connection events into the history + status redraw. */
     private final class HistoryListener implements ConnectionManager.Listener {
+        private final ResponseRouter router;
+
+        HistoryListener(ResponseRouter router) {
+            this.router = router;
+        }
+
         @Override
         public void onStateChanged(ConnectionManager.State state) {
+            // Drop pending handlers on disconnect so reconnect starts clean without
+            // firing stale timeouts.
+            if (state == ConnectionManager.State.DISCONNECTED) {
+                router.clear();
+            }
             ProcessLoop l = processLoop;
             if (l != null) {
                 l.requestRedraw();
@@ -176,6 +220,10 @@ public class ChatCommand implements Runnable {
 
         @Override
         public void onReceived(WebSocketEnvelope envelope) {
+            if (router.tryDispatch(envelope)) {
+                return;
+            }
+            // Unmatched server-initiated message or late reply — log verbatim.
             appendAndRedraw(ChatLine.Level.RECEIVED,
                     envelope.getType() + " " + String.valueOf(envelope.getData()));
         }
@@ -186,11 +234,14 @@ public class ChatCommand implements Runnable {
         private final VanceCliConfig cfg;
         private final ConnectionManager conn;
         private final CommandRegistry registry;
+        private final ResponseRouter router;
 
-        ChatContext(VanceCliConfig cfg, ConnectionManager conn, CommandRegistry registry) {
+        ChatContext(VanceCliConfig cfg, ConnectionManager conn, CommandRegistry registry,
+                ResponseRouter router) {
             this.cfg = cfg;
             this.conn = conn;
             this.registry = registry;
+            this.router = router;
         }
 
         @Override
@@ -211,6 +262,11 @@ public class ChatCommand implements Runnable {
         @Override
         public void sent(String text) {
             appendAndRedraw(ChatLine.Level.SENT, text);
+        }
+
+        @Override
+        public void received(String text) {
+            appendAndRedraw(ChatLine.Level.RECEIVED, text);
         }
 
         @Override
@@ -243,6 +299,21 @@ public class ChatCommand implements Runnable {
         @Override
         public void quit() {
             ChatCommand.this.quit();
+        }
+
+        @Override
+        public void expectReply(String requestId, Consumer<WebSocketEnvelope> handler) {
+            router.expectReply(requestId, handler);
+        }
+
+        @Override
+        public void expectReply(String requestId, Consumer<WebSocketEnvelope> handler, long timeoutMs) {
+            router.expectReply(requestId, handler, timeoutMs);
+        }
+
+        @Override
+        public ObjectMapper mapper() {
+            return mapper;
         }
     }
 

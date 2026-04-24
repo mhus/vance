@@ -40,8 +40,8 @@ public class InitBrainService {
     void init() {
         tenantService.ensure(ACME_TENANT, "Acme");
 
-        ensureUser(ACME_TENANT, "wile.coyote", "Wile E. Coyote", "wile.e.coyote@acme.com", "acme-rocket");
-        ensureUser(ACME_TENANT, "road.runner", "Road Runner", "beep.beep@acme.com", "beep-beep");
+        ensureUser(ACME_TENANT, "wile.coyote", "Wile E. Coyote", "wile.e.coyote@mhus.de", "acme-rocket");
+        ensureUser(ACME_TENANT, "road.runner", "Road Runner", "beep.beep@mhus.com", "beep-beep");
     }
 
     private void ensureUser(String tenantId, String name, String title, @Nullable String email, String plainPassword) {

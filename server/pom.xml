@@ -17,7 +17,9 @@
     <packaging>pom</packaging>
 
     <modules>
+        <!--
         <module>plugins</module>
+        -->
         <module>vance-api</module>
         <module>vance-shared</module>
         <module>vance-brain</module>

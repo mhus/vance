@@ -12,6 +12,7 @@ import com.consolemaster.ScreenCanvas;
 import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.cli.VanceCliConfig;
 import de.mhus.vance.cli.chat.commands.ClearCommand;
@@ -27,15 +28,20 @@ import de.mhus.vance.cli.chat.commands.ProjectGroupListCommand;
 import de.mhus.vance.cli.chat.commands.VerbosityCommand;
 import de.mhus.vance.cli.chat.commands.ProjectListCommand;
 import de.mhus.vance.cli.chat.commands.QuitCommand;
+import de.mhus.vance.cli.chat.commands.SessionBootstrapCommand;
 import de.mhus.vance.cli.chat.commands.SessionCreateCommand;
 import de.mhus.vance.cli.chat.commands.SessionListCommand;
 import de.mhus.vance.cli.chat.commands.SessionResumeCommand;
 import de.mhus.vance.cli.debug.DebugRestServer;
 import de.mhus.vance.cli.debug.DebugUiBridge;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import picocli.CommandLine.Command;
@@ -83,6 +89,32 @@ public class ChatCommand implements Runnable {
                     + "Default: 1. Change at runtime with /verbosity.")
     private int initialVerbosity = 1;
 
+    @Option(
+            names = "--no-bootstrap",
+            description = "Skip auto session-bootstrap even if vance.bootstrap is set.")
+    private boolean noBootstrap;
+
+    @Option(
+            names = "--bootstrap-project",
+            description = "Override the bootstrap projectId.")
+    private @Nullable String bootstrapProjectOverride;
+
+    @Option(
+            names = "--bootstrap-session",
+            description = "Override the bootstrap sessionId (resume instead of create).")
+    private @Nullable String bootstrapSessionOverride;
+
+    @Option(
+            names = "--bootstrap-process",
+            description = "Process to spawn, as engine:name. Repeat for multiple. "
+                    + "Replaces any processes from config.")
+    private @Nullable List<String> bootstrapProcessOverrides;
+
+    @Option(
+            names = "--bootstrap-initial-message",
+            description = "Override the initialMessage sent to the first process.")
+    private @Nullable String bootstrapInitialMessageOverride;
+
     private final CountDownLatch quitLatch = new CountDownLatch(1);
     private final ObjectMapper mapper = JsonMapper.builder()
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
@@ -97,6 +129,8 @@ public class ChatCommand implements Runnable {
     @Override
     public void run() {
         VanceCliConfig cfg = VanceCliConfig.load(configPath);
+        applyBootstrapOverrides(cfg);
+        redirectStdioToLogFile();
 
         try {
             ScreenCanvas screen = new ScreenCanvas("ChatScreen", 60, 10);
@@ -140,6 +174,10 @@ public class ChatCommand implements Runnable {
 
             CommandRegistry registry = buildRegistry();
             CommandContext ctx = new ChatContext(cfg, conn, registry, responseRouter);
+
+            if (!noBootstrap) {
+                installAutoBootstrap(conn, registry, ctx);
+            }
 
             input.setOnSubmit(value -> registry.execute(value, ctx));
             screen.requestFocus(input);
@@ -240,6 +278,94 @@ public class ChatCommand implements Runnable {
         }
     }
 
+    /**
+     * Redirects only {@link System#err} to a log file before the TUI takes
+     * over the terminal. {@code System.out} stays on the TTY — the
+     * console-master writes its ANSI render frames there. Stack traces
+     * from {@code Throwable.printStackTrace()} default to stderr and land
+     * in the file where they can be read at leisure, instead of flickering
+     * under the next redraw. Best effort: a failure to open the file is
+     * silent.
+     */
+    private static void redirectStdioToLogFile() {
+        try {
+            Path log = Path.of("vance-cli.log");
+            PrintStream err = new PrintStream(
+                    new FileOutputStream(log.toFile(), true), true);
+            System.setErr(err);
+            err.println("--- vance-cli stderr redirected at " + java.time.Instant.now() + " ---");
+        } catch (IOException e) {
+            // Fall back to the default streams — can't do anything else here.
+        }
+    }
+
+    /**
+     * Applies {@code --bootstrap-*} CLI overrides to the loaded config in
+     * place so the rest of the startup (both {@link #installAutoBootstrap}
+     * and the user-triggered {@code /session-bootstrap}) sees a single
+     * merged view.
+     */
+    private void applyBootstrapOverrides(VanceCliConfig cfg) {
+        boolean hasAny = bootstrapProjectOverride != null
+                || bootstrapSessionOverride != null
+                || bootstrapInitialMessageOverride != null
+                || bootstrapProcessOverrides != null;
+        if (!hasAny) {
+            return;
+        }
+        VanceCliConfig.Bootstrap b = cfg.getBootstrap();
+        if (b == null) {
+            b = new VanceCliConfig.Bootstrap();
+            cfg.setBootstrap(b);
+        }
+        if (bootstrapProjectOverride != null) {
+            b.setProjectId(bootstrapProjectOverride);
+        }
+        if (bootstrapSessionOverride != null) {
+            b.setSessionId(bootstrapSessionOverride);
+        }
+        if (bootstrapInitialMessageOverride != null) {
+            b.setInitialMessage(bootstrapInitialMessageOverride);
+        }
+        if (bootstrapProcessOverrides != null) {
+            List<VanceCliConfig.Process> procs = new ArrayList<>();
+            for (String spec : bootstrapProcessOverrides) {
+                int colon = spec.indexOf(':');
+                if (colon <= 0 || colon == spec.length() - 1) {
+                    continue;
+                }
+                VanceCliConfig.Process p = new VanceCliConfig.Process();
+                p.setEngine(spec.substring(0, colon));
+                p.setName(spec.substring(colon + 1));
+                procs.add(p);
+            }
+            b.setProcesses(procs);
+        }
+    }
+
+    /**
+     * Registers a one-shot listener that fires {@code /session-bootstrap}
+     * the moment the {@code welcome} frame arrives after a successful
+     * handshake. Re-connects won't re-fire (the initial Welcome is the
+     * trigger). The listener itself is idempotent.
+     */
+    private static void installAutoBootstrap(
+            ConnectionManager conn, CommandRegistry registry, CommandContext ctx) {
+        AtomicBoolean fired = new AtomicBoolean(false);
+        conn.addConnectionListener(new ConnectionLifecycleListener() {
+            @Override
+            public void onReceived(WebSocketEnvelope envelope) {
+                if (!MessageType.WELCOME.equals(envelope.getType())) {
+                    return;
+                }
+                if (!fired.compareAndSet(false, true)) {
+                    return;
+                }
+                registry.execute("/session-bootstrap", ctx);
+            }
+        });
+    }
+
     private static CommandRegistry buildRegistry() {
         CommandRegistry registry = new CommandRegistry();
         registry.register(new HelpCommand());
@@ -251,6 +377,7 @@ public class ChatCommand implements Runnable {
         registry.register(new SessionResumeCommand());
         registry.register(new ProjectListCommand());
         registry.register(new ProjectGroupListCommand());
+        registry.register(new SessionBootstrapCommand());
         registry.register(new ProcessCreateCommand());
         registry.register(new ProcessSteerCommand());
         registry.register(new ClearCommand());
@@ -317,15 +444,14 @@ public class ChatCommand implements Runnable {
                 return;
             }
             // Server-initiated chat-message-appended gets rendered as a proper
-            // chat line so the conversation reads naturally. We still fall
-            // through to the verbatim RECEIVED log for anything else, which
-            // the user can reveal by raising verbosity.
+            // chat line so the conversation reads naturally. Everything else
+            // that wasn't claimed by a reply handler is raw wire trace — hide
+            // behind high verbosity.
             if (MessageType.CHAT_MESSAGE_APPENDED.equals(envelope.getType())) {
                 renderChatMessage(envelope);
                 return;
             }
-            // Unmatched server-initiated message or late reply — log verbatim.
-            appendAndRedraw(ChatLine.Level.RECEIVED,
+            appendAndRedraw(ChatLine.Level.WIRE,
                     envelope.getType() + " " + String.valueOf(envelope.getData()));
         }
 
@@ -333,7 +459,7 @@ public class ChatCommand implements Runnable {
             ChatMessageAppendedData data =
                     mapper.convertValue(envelope.getData(), ChatMessageAppendedData.class);
             if (data == null || data.getContent() == null) {
-                appendAndRedraw(ChatLine.Level.RECEIVED,
+                appendAndRedraw(ChatLine.Level.WIRE,
                         envelope.getType() + " " + String.valueOf(envelope.getData()));
                 return;
             }
@@ -366,6 +492,7 @@ public class ChatCommand implements Runnable {
         private final ConnectionManager conn;
         private final CommandRegistry registry;
         private final ResponseRouter router;
+        private volatile @Nullable String activeProcessName;
 
         ChatContext(VanceCliConfig cfg, ConnectionManager conn, CommandRegistry registry,
                 ResponseRouter router) {
@@ -425,6 +552,16 @@ public class ChatCommand implements Runnable {
             if (l != null) {
                 l.requestRedraw();
             }
+        }
+
+        @Override
+        public @Nullable String getActiveProcessName() {
+            return activeProcessName;
+        }
+
+        @Override
+        public void setActiveProcessName(@Nullable String name) {
+            this.activeProcessName = name;
         }
 
         @Override

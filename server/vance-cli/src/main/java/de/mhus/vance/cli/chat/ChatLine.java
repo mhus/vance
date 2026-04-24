@@ -31,10 +31,13 @@ public record ChatLine(Instant timestamp, Level level, String text) {
         INFO(AnsiColor.BRIGHT_BLACK, "··", 1),
         /** System / lifecycle event (connection open, closed). */
         SYSTEM(AnsiColor.CYAN, "**", 1),
+        /** Typed, user-facing reply to a slash command. Always shown — the
+         *  user asked for it, hiding it makes no sense. */
+        RECEIVED(AnsiColor.WHITE, "←", 0),
         /** Message we sent to the Brain — wire-level trace. */
         SENT(AnsiColor.GREEN, "→", 2),
-        /** Message received from the Brain — wire-level trace. */
-        RECEIVED(AnsiColor.WHITE, "←", 2);
+        /** Raw/unmapped inbound envelope — wire-level trace. */
+        WIRE(AnsiColor.BRIGHT_BLACK, "~>", 2);
 
         private final AnsiColor color;
         private final String prefix;

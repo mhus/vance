@@ -57,7 +57,18 @@ public class CommandRegistry {
             return;
         }
         if (!line.startsWith("/")) {
-            ctx.error("Free-text messages are not wired up yet. Type /help for commands.");
+            // Free-text input — route to the active process as a chat steer.
+            String active = ctx.getActiveProcessName();
+            if (active == null || active.isBlank()) {
+                ctx.error("No active process — /process-create or /session-bootstrap first.");
+                return;
+            }
+            Command steer = find("process-steer");
+            if (steer == null) {
+                ctx.error("process-steer command not registered.");
+                return;
+            }
+            steer.execute(ctx, new String[] {active, line});
             return;
         }
         String body = line.substring(1).trim();

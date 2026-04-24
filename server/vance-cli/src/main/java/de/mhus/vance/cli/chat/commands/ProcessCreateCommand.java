@@ -61,6 +61,12 @@ public class ProcessCreateCommand implements Command {
             ctx.error(name() + ": empty reply");
             return;
         }
+        // Make the newly-created process the target for free-text input,
+        // unless the user already has an active one (don't hijack on-demand
+        // spawns of secondary processes).
+        if (ctx.getActiveProcessName() == null) {
+            ctx.setActiveProcessName(resp.getName());
+        }
         ctx.received("process created: " + resp.getName()
                 + " (engine=" + resp.getEngine()
                 + ", id=" + resp.getThinkProcessId()

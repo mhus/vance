@@ -22,6 +22,9 @@ public final class MessageType {
     public static final String PROCESS_CREATE = "process-create";
     public static final String PROCESS_STEER = "process-steer";
 
+    /** Compound command: session create/resume + processes + optional initial message. */
+    public static final String SESSION_BOOTSTRAP = "session-bootstrap";
+
     /** Server-initiated notification: a chat message was appended to a process's log. */
     public static final String CHAT_MESSAGE_APPENDED = "chat-message-appended";
 

@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
@@ -28,6 +30,7 @@ public class VanceCliConfig {
     private Auth auth = new Auth();
     private Client client = new Client();
     private Debug debug = new Debug();
+    private @Nullable Bootstrap bootstrap;
 
     @Data
     public static class Brain {
@@ -62,6 +65,27 @@ public class VanceCliConfig {
         private boolean enabled = false;
         private String host = "127.0.0.1";
         private int port = 8765;
+    }
+
+    /**
+     * Startup payload for a {@code session-bootstrap} command sent once the
+     * WebSocket handshake is done. All fields are optional; their absence
+     * means "don't set this field in the request".
+     */
+    @Data
+    public static class Bootstrap {
+        private @Nullable String projectId;
+        private @Nullable String sessionId;
+        private List<Process> processes = new ArrayList<>();
+        private @Nullable String initialMessage;
+    }
+
+    @Data
+    public static class Process {
+        private String engine = "";
+        private String name = "";
+        private @Nullable String title;
+        private @Nullable String goal;
     }
 
     /** Uses the resolution order documented on the class. */

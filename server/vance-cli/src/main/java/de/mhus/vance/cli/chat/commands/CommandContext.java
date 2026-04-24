@@ -39,6 +39,18 @@ public interface CommandContext {
     void clearHistory();
 
     /**
+     * Name of the think-process that will receive free-text input (anything
+     * the user types without a leading {@code /}). Set by commands that
+     * bring a new chat-capable process online (e.g. session-bootstrap,
+     * process-create). {@code null} means there is no active process yet —
+     * free-text input falls back to the „not wired up" error.
+     */
+    @Nullable String getActiveProcessName();
+
+    /** Sets the active process; {@code null} to clear. */
+    void setActiveProcessName(@Nullable String name);
+
+    /**
      * Current runtime verbosity level (0=chat only, 1=+status, 2=+wire trace).
      * Lines with a higher {@code minVerbosity} than this value are hidden.
      */

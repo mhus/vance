@@ -56,14 +56,16 @@ public class HistoryView extends Canvas {
     }
 
     /**
-     * Replaces the last line if its level matches {@code level};
-     * otherwise appends. Use for progressively updating in-place
-     * lines like streaming previews. Safe to call from any thread.
+     * Replaces the most recent line at {@code level} — scanning
+     * backward so intervening diagnostic lines (e.g. WIRE traces)
+     * don't break the in-place update — or appends a new one if none
+     * exists. Safe to call from any thread.
      */
     public void replaceOrAppend(ChatLine.Level level, ChatLine line) {
         synchronized (lock) {
-            if (!lines.isEmpty() && lines.get(lines.size() - 1).level() == level) {
-                lines.set(lines.size() - 1, line);
+            int idx = lastIndexOfLevel(level);
+            if (idx >= 0) {
+                lines.set(idx, line);
                 return;
             }
             lines.add(line);
@@ -74,18 +76,25 @@ public class HistoryView extends Canvas {
     }
 
     /**
-     * Removes the last line if its level matches {@code level}. Returns
-     * {@code true} if a line was removed. Used to discard the
+     * Removes the most recent line at {@code level}. Returns
+     * {@code true} if one was removed. Scans backward so interleaved
+     * diagnostic lines don't hide the target. Used to discard the
      * streaming preview once the canonical message arrives.
      */
     public boolean removeLastIfLevel(ChatLine.Level level) {
         synchronized (lock) {
-            if (!lines.isEmpty() && lines.get(lines.size() - 1).level() == level) {
-                lines.remove(lines.size() - 1);
-                return true;
-            }
-            return false;
+            int idx = lastIndexOfLevel(level);
+            if (idx < 0) return false;
+            lines.remove(idx);
+            return true;
         }
+    }
+
+    private int lastIndexOfLevel(ChatLine.Level level) {
+        for (int i = lines.size() - 1; i >= 0; i--) {
+            if (lines.get(i).level() == level) return i;
+        }
+        return -1;
     }
 
     /** Drops all lines. Safe to call from any thread. */

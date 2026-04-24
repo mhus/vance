@@ -1,7 +1,7 @@
 spring:
   application:
     name: vance-brain
-  mongodb:
+  mongodb: # since spring 7: spring.mongodb.*
     uri: mongodb://root:example@localhost:27017/vance?authSource=admin
     database: vance
 
@@ -20,6 +20,8 @@ vance:
     protocolVersion: 1
     pingIntervalSeconds: 30
     capabilities: []
+  encryption:
+    password: ${VANCE_ENCRYPTION_PASSWORD:changeit}
 
 management:
   endpoint:

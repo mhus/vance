@@ -1,6 +1,9 @@
 package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.brain.ai.AiModelService;
+import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.brain.tools.ToolInvocationContext;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -13,7 +16,8 @@ record DefaultThinkEngineContext(
         ThinkProcessDocument process,
         AiModelService aiModelService,
         SettingService settingService,
-        ChatMessageService chatMessageService
+        ChatMessageService chatMessageService,
+        ToolDispatcher toolDispatcher
 ) implements ThinkEngineContext {
 
     @Override
@@ -24,5 +28,15 @@ record DefaultThinkEngineContext(
     @Override
     public String sessionId() {
         return process.getSessionId();
+    }
+
+    @Override
+    public ContextToolsApi tools() {
+        ToolInvocationContext scope = new ToolInvocationContext(
+                process.getTenantId(),
+                process.getSessionId(),
+                process.getId(),
+                null);
+        return new ContextToolsApi(toolDispatcher, scope);
     }
 }

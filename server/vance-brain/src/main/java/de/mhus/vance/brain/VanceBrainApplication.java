@@ -1,7 +1,9 @@
 package de.mhus.vance.brain;
 
+import de.mhus.vance.brain.tools.workspace.WorkspaceProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -17,6 +19,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication(scanBasePackages = {"de.mhus.vance.brain", "de.mhus.vance.shared"})
 @EnableMongoRepositories(basePackages = "de.mhus.vance.shared")
+@EnableConfigurationProperties(WorkspaceProperties.class)
 @EnableScheduling
 public class VanceBrainApplication {
 

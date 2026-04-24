@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.brain.ai.AiModelService;
+import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -37,4 +38,10 @@ public interface ThinkEngineContext {
 
     /** Read/write access to the persistent chat log of this process. */
     ChatMessageService chatMessageService();
+
+    /**
+     * Scope-bound tools API. Lists the tools visible to this process
+     * and dispatches invocations. Fresh per call — do not cache.
+     */
+    ContextToolsApi tools();
 }

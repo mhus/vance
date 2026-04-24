@@ -28,6 +28,15 @@ public final class MessageType {
     /** Server-initiated notification: a chat message was appended to a process's log. */
     public static final String CHAT_MESSAGE_APPENDED = "chat-message-appended";
 
+    /** Client → brain: declare the tools this connection exposes for the current session. */
+    public static final String CLIENT_TOOL_REGISTER = "client-tool-register";
+
+    /** Brain → client: invoke a client-registered tool. */
+    public static final String CLIENT_TOOL_INVOKE = "client-tool-invoke";
+
+    /** Client → brain: the result of a prior {@link #CLIENT_TOOL_INVOKE}. */
+    public static final String CLIENT_TOOL_RESULT = "client-tool-result";
+
     private MessageType() {
     }
 }

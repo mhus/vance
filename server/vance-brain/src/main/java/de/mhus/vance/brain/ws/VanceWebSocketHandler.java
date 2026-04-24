@@ -4,6 +4,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.ServerInfo;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.WelcomeData;
+import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.session.SessionService;
 import java.util.HashMap;
 import java.util.List;
@@ -42,6 +43,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     private final VanceBrainProperties properties;
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
+    private final ClientToolRegistry clientToolRegistry;
     private final Map<String, WsHandler> handlers;
 
     public VanceWebSocketHandler(
@@ -49,11 +51,13 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             VanceBrainProperties properties,
             ObjectMapper objectMapper,
             WebSocketSender sender,
+            ClientToolRegistry clientToolRegistry,
             List<WsHandler> handlers) {
         this.sessionService = sessionService;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.sender = sender;
+        this.clientToolRegistry = clientToolRegistry;
         this.handlers = indexHandlers(handlers);
     }
 
@@ -138,6 +142,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_CONNECTION);
         if (!(attr instanceof ConnectionContext ctx)) return;
         if (ctx.hasSession()) {
+            clientToolRegistry.unregister(ctx.getSessionId());
             sessionService.unbind(ctx.getSessionId(), ctx.getConnectionId());
         }
     }

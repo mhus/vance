@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.brain.ai.AiModelService;
+import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -31,12 +32,14 @@ public class ThinkEngineService {
     private final AiModelService aiModelService;
     private final SettingService settingService;
     private final ChatMessageService chatMessageService;
+    private final ToolDispatcher toolDispatcher;
 
     public ThinkEngineService(
             List<ThinkEngine> engineBeans,
             AiModelService aiModelService,
             SettingService settingService,
-            ChatMessageService chatMessageService) {
+            ChatMessageService chatMessageService,
+            ToolDispatcher toolDispatcher) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
                     throw new IllegalStateException(
@@ -46,6 +49,7 @@ public class ThinkEngineService {
         this.aiModelService = aiModelService;
         this.settingService = settingService;
         this.chatMessageService = chatMessageService;
+        this.toolDispatcher = toolDispatcher;
         log.info("Registered think-engines: {}", engines.keySet());
     }
 
@@ -78,7 +82,8 @@ public class ThinkEngineService {
      */
     public ThinkEngineContext newContext(ThinkProcessDocument process) {
         return new DefaultThinkEngineContext(
-                process, aiModelService, settingService, chatMessageService);
+                process, aiModelService, settingService, chatMessageService,
+                toolDispatcher);
     }
 
     // ─── Convenience dispatch ────────────────────────────────────────────

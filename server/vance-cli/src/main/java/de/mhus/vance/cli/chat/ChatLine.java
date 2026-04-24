@@ -23,6 +23,13 @@ public record ChatLine(Instant timestamp, Level level, String text) {
         CHAT_USER(AnsiColor.BRIGHT_YELLOW, ">", 0),
         /** Chat reply from an assistant (role=ASSISTANT). Always shown. */
         CHAT_ASSISTANT(AnsiColor.BRIGHT_WHITE, "<", 0),
+        /**
+         * Tentative streaming preview of an in-flight assistant reply.
+         * Mutates in place as chunks arrive and is replaced by the
+         * authoritative {@link #CHAT_ASSISTANT} line once the server
+         * commits the message.
+         */
+        CHAT_STREAM(AnsiColor.WHITE, "≈", 0),
         /** In-chat system note (role=SYSTEM). Always shown. */
         CHAT_SYSTEM(AnsiColor.BRIGHT_CYAN, "~", 0),
         /** Error condition — always surfaced regardless of verbosity. */

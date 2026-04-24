@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.brain.ai.AiModelService;
+import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -44,4 +45,12 @@ public interface ThinkEngineContext {
      * and dispatches invocations. Fresh per call — do not cache.
      */
     ContextToolsApi tools();
+
+    /**
+     * Sink for server-initiated notifications to the connected client
+     * (streaming chunks, progress updates). Optimistic delivery — if
+     * no client is listening, {@code publish} returns {@code false}
+     * and the engine should continue regardless.
+     */
+    ClientEventPublisher events();
 }

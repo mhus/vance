@@ -10,8 +10,8 @@ import com.consolemaster.PositionConstraint;
 import com.consolemaster.ProcessLoop;
 import com.consolemaster.ScreenCanvas;
 import de.mhus.vance.api.chat.ChatMessageAppendedData;
+import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
-import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.cli.VanceCliConfig;
@@ -32,6 +32,7 @@ import de.mhus.vance.cli.chat.commands.SessionBootstrapCommand;
 import de.mhus.vance.cli.chat.commands.SessionCreateCommand;
 import de.mhus.vance.cli.chat.commands.SessionListCommand;
 import de.mhus.vance.cli.chat.commands.SessionResumeCommand;
+import de.mhus.vance.cli.chat.commands.SessionUnbindCommand;
 import de.mhus.vance.cli.debug.DebugRestServer;
 import de.mhus.vance.cli.debug.DebugUiBridge;
 import java.io.FileOutputStream;
@@ -442,6 +443,7 @@ public class ChatCommand implements Runnable {
         registry.register(new SessionListCommand());
         registry.register(new SessionCreateCommand());
         registry.register(new SessionResumeCommand());
+        registry.register(new SessionUnbindCommand());
         registry.register(new ProjectListCommand());
         registry.register(new ProjectGroupListCommand());
         registry.register(new SessionBootstrapCommand());
@@ -468,10 +470,39 @@ public class ChatCommand implements Runnable {
         }
     }
 
+    /**
+     * Replaces the last line if it's already the given level, else appends.
+     * Used for streaming previews that mutate in place.
+     */
+    private void replaceOrAppendAndRedraw(ChatLine.Level level, String text) {
+        HistoryView h = history;
+        if (h != null) {
+            h.replaceOrAppend(level, ChatLine.of(level, text));
+        }
+        ProcessLoop l = processLoop;
+        if (l != null) {
+            l.requestRedraw();
+        }
+    }
+
+    /** Removes the last line if it's a streaming preview, then redraws. */
+    private void dropStreamPreviewAndRedraw() {
+        HistoryView h = history;
+        if (h != null) {
+            h.removeLastIfLevel(ChatLine.Level.CHAT_STREAM);
+        }
+        ProcessLoop l = processLoop;
+        if (l != null) {
+            l.requestRedraw();
+        }
+    }
+
     /** Bridges connection and session events into the history + status redraw. */
     private final class HistoryListener
             implements ConnectionLifecycleListener, SessionLifecycleListener {
         private final ResponseRouter router;
+        private final java.util.Map<String, StringBuilder> streamBuffers =
+                new java.util.concurrent.ConcurrentHashMap<>();
 
         HistoryListener(ResponseRouter router) {
             this.router = router;
@@ -521,8 +552,31 @@ public class ChatCommand implements Runnable {
                 renderChatMessage(envelope);
                 return;
             }
+            if (MessageType.CHAT_MESSAGE_STREAM_CHUNK.equals(envelope.getType())) {
+                appendAndRedraw(ChatLine.Level.WIRE,
+                        envelope.getType() + " " + String.valueOf(envelope.getData()));
+                renderStreamChunk(envelope);
+                return;
+            }
             appendAndRedraw(ChatLine.Level.WIRE,
                     envelope.getType() + " " + String.valueOf(envelope.getData()));
+        }
+
+        private void renderStreamChunk(WebSocketEnvelope envelope) {
+            ChatMessageChunkData data =
+                    mapper.convertValue(envelope.getData(), ChatMessageChunkData.class);
+            if (data == null || data.getChunk() == null || data.getThinkProcessId() == null) {
+                return;
+            }
+            StringBuilder buf = streamBuffers.computeIfAbsent(
+                    data.getThinkProcessId(), k -> new StringBuilder());
+            synchronized (buf) {
+                buf.append(data.getChunk());
+                String label = data.getProcessName() == null ? "?" : data.getProcessName();
+                replaceOrAppendAndRedraw(
+                        ChatLine.Level.CHAT_STREAM,
+                        label + ": " + buf);
+            }
         }
 
         private void renderChatMessage(WebSocketEnvelope envelope) {
@@ -535,6 +589,11 @@ public class ChatCommand implements Runnable {
             }
             ChatRole role = data.getRole();
             String content = data.getContent();
+            // Canonical commit supersedes any progressive preview for this process.
+            if (role == ChatRole.ASSISTANT && data.getThinkProcessId() != null) {
+                streamBuffers.remove(data.getThinkProcessId());
+                dropStreamPreviewAndRedraw();
+            }
             switch (role == null ? ChatRole.SYSTEM : role) {
                 case USER -> appendAndRedraw(ChatLine.Level.CHAT_USER, "me: " + content);
                 case ASSISTANT -> appendAndRedraw(ChatLine.Level.CHAT_ASSISTANT,

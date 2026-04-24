@@ -4,6 +4,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionCreateRequest;
 import de.mhus.vance.api.ws.SessionCreateResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
@@ -32,6 +33,7 @@ public class SessionCreateHandler implements WsHandler {
     private final WebSocketSender sender;
     private final SessionService sessionService;
     private final ProjectService projectService;
+    private final SessionConnectionRegistry connectionRegistry;
 
     @Override
     public String type() {
@@ -87,6 +89,7 @@ public class SessionCreateHandler implements WsHandler {
         }
 
         ctx.bindSession(created);
+        connectionRegistry.register(created.getSessionId(), wsSession);
         SessionCreateResponse response = SessionCreateResponse.builder()
                 .sessionId(created.getSessionId())
                 .projectId(created.getProjectId())

@@ -1,11 +1,16 @@
 package de.mhus.vance.brain.zaphod;
 
+import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
+import de.mhus.vance.brain.events.ChunkBatcher;
+import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -25,10 +30,13 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -37,24 +45,26 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Zaphod — two heads, no brain.
  *
- * <p>Minimal chat engine with tool support. Keeps a conversation log in
- * {@link ChatMessageService}, replays it as LLM history on every turn,
- * calls the model with primary tools advertised, loops over any
- * {@code toolExecutionRequests} the model emits, and persists the final
- * assistant text.
+ * <p>Minimal chat engine with tool support. Keeps a conversation log
+ * in {@link ChatMessageService}, replays it as LLM history on every
+ * turn, calls the model in streaming mode with primary tools
+ * advertised, batches text partials into chunks that the client sees
+ * in near-real-time, loops over any {@code toolExecutionRequests} the
+ * model emits, and persists the final assistant text as the
+ * authoritative record.
  *
  * <p><b>Persistence policy:</b> only the user's input and the model's
- * final text are written to the chat log. Intermediate tool calls and
- * results live only in the per-turn LC4J message list — they steer
- * <em>this</em> turn, not the next one. If the LLM needs to recall past
- * tool work, that belongs in memory, not in the chat log.
+ * final text are written to the chat log. Intermediate tool calls
+ * and results live only in the per-turn LC4J message list — they
+ * steer <em>this</em> turn, not the next one.
  *
- * <p><b>Streaming:</b> the tool-call loop uses the synchronous
- * {@link AiChat#chatModel()} because partial-token streaming with
- * interleaved tool-use blocks is provider-specific and fragile in
- * 1.0.0. Streaming of text-only responses can be reinstated once the
- * client surface has an event publisher; today's {@code tokenConsumer}
- * was trace-only anyway.
+ * <p><b>Streaming policy:</b> partial text tokens flow through a
+ * {@link ChunkBatcher} into {@link MessageType#CHAT_MESSAGE_STREAM_CHUNK}
+ * notifications. Tool-call arguments (streamed token-by-token by
+ * some providers, not by others) are ignored — we read the final
+ * {@link AiMessage#toolExecutionRequests} from {@code
+ * onCompleteResponse}, which langchain4j assembles for us regardless
+ * of provider.
  */
 @Component
 @RequiredArgsConstructor
@@ -62,7 +72,7 @@ import tools.jackson.databind.ObjectMapper;
 public class Zaphod implements ThinkEngine {
 
     public static final String NAME = "zaphod";
-    public static final String VERSION = "0.2.0";
+    public static final String VERSION = "0.3.0";
 
     public static final String GREETING = "Zaphod here. Ask me anything.";
 
@@ -87,6 +97,7 @@ public class Zaphod implements ThinkEngine {
 
     private final ThinkProcessService thinkProcessService;
     private final ObjectMapper objectMapper;
+    private final StreamingProperties streamingProperties;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -102,7 +113,7 @@ public class Zaphod implements ThinkEngine {
 
     @Override
     public String description() {
-        return "Minimal walking-skeleton chat engine with tool support.";
+        return "Minimal walking-skeleton chat engine with tool support and streaming.";
     }
 
     @Override
@@ -156,11 +167,6 @@ public class Zaphod implements ThinkEngine {
 
     // ──────────────────── One turn ────────────────────
 
-    /**
-     * Persists the user message, runs the tool-call loop until the LLM
-     * answers without further tool requests, and persists the final
-     * assistant text.
-     */
     private String runTurn(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
@@ -190,7 +196,7 @@ public class Zaphod implements ThinkEngine {
                 messages.add(toLangchain(msg));
             }
 
-            String finalText = runToolLoop(aiChat, toolSpecs, tools, messages, process.getId());
+            String finalText = runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process);
 
             chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -209,43 +215,110 @@ public class Zaphod implements ThinkEngine {
     }
 
     /**
-     * Tool-call loop. Sends the current message list to the model; if
-     * the reply carries {@code toolExecutionRequests}, invokes each one
-     * via the dispatcher, appends the assistant message and the result
-     * messages to the list, and re-asks. Stops on a tool-free reply or
-     * when {@link #MAX_TOOL_ITERATIONS} is hit.
+     * Tool-call loop in streaming mode. Each iteration drives the
+     * {@link AiChat#streamingChatModel()} and funnels text partials
+     * through a {@link ChunkBatcher} into the event publisher. When
+     * the response carries tool-execution-requests, dispatch them and
+     * loop. Otherwise return the accumulated text.
      */
     private String runToolLoop(
             AiChat aiChat,
             List<ToolSpecification> toolSpecs,
             ContextToolsApi tools,
             List<ChatMessage> messages,
-            String processId) {
+            ThinkEngineContext ctx,
+            ThinkProcessDocument process) {
+        StringBuilder finalText = new StringBuilder();
         for (int iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
             ChatRequest.Builder req = ChatRequest.builder().messages(messages);
             if (!toolSpecs.isEmpty()) {
                 req.toolSpecifications(toolSpecs);
             }
-            ChatResponse response;
-            try {
-                response = aiChat.chatModel().chat(req.build());
-            } catch (RuntimeException e) {
-                throw new AiChatException("Zaphod chat call failed: " + e.getMessage(), e);
-            }
-            AiMessage reply = response.aiMessage();
+
+            StreamResult streamed = streamOneIteration(aiChat, req.build(), ctx, process);
+            AiMessage reply = streamed.message;
+
             if (!reply.hasToolExecutionRequests()) {
                 String text = reply.text();
-                return text == null ? "" : text;
+                if (text != null) {
+                    finalText.append(text);
+                }
+                return finalText.toString();
             }
             messages.add(reply);
             for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
-                String result = invokeOne(tools, call, processId);
+                String result = invokeOne(tools, call, process.getId());
                 messages.add(ToolExecutionResultMessage.from(call, result));
             }
         }
         throw new AiChatException(
                 "Zaphod exceeded " + MAX_TOOL_ITERATIONS
                         + " tool iterations — aborting turn to avoid runaway.");
+    }
+
+    /**
+     * Runs a single streaming request and returns the complete
+     * assistant message along with the accumulated text. Text
+     * partials are chunk-batched and published as
+     * {@link MessageType#CHAT_MESSAGE_STREAM_CHUNK}.
+     */
+    private StreamResult streamOneIteration(
+            AiChat aiChat,
+            ChatRequest request,
+            ThinkEngineContext ctx,
+            ThinkProcessDocument process) {
+        CompletableFuture<ChatResponse> done = new CompletableFuture<>();
+        ClientEventPublisher events = ctx.events();
+        String sessionId = process.getSessionId();
+
+        ChunkBatcher batcher = new ChunkBatcher(
+                streamingProperties.getChunkCharThreshold(),
+                streamingProperties.getChunkFlushMs(),
+                chunk -> {
+                    ChatMessageChunkData data = ChatMessageChunkData.builder()
+                            .thinkProcessId(process.getId())
+                            .processName(process.getName())
+                            .role(ChatRole.ASSISTANT)
+                            .chunk(chunk)
+                            .build();
+                    events.publish(sessionId, MessageType.CHAT_MESSAGE_STREAM_CHUNK, data);
+                });
+
+        aiChat.streamingChatModel().chat(request, new StreamingChatResponseHandler() {
+            @Override
+            public void onPartialResponse(String partial) {
+                if (partial == null || partial.isEmpty()) return;
+                try {
+                    batcher.accept(partial);
+                } catch (RuntimeException e) {
+                    log.warn("Zaphod chunk-publish threw: {}", e.toString());
+                }
+            }
+
+            @Override
+            public void onCompleteResponse(ChatResponse complete) {
+                batcher.flush();
+                done.complete(complete);
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                batcher.flush();
+                done.completeExceptionally(error);
+            }
+        });
+
+        try {
+            ChatResponse response = done.get();
+            AiMessage reply = response.aiMessage();
+            return new StreamResult(reply, reply.text() == null ? "" : reply.text());
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new AiChatException("Zaphod streaming failed: " + cause.getMessage(), cause);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AiChatException("Zaphod streaming interrupted", e);
+        }
     }
 
     /**
@@ -297,6 +370,9 @@ public class Zaphod implements ThinkEngine {
     }
 
     // ──────────────────── Helpers ────────────────────
+
+    /** Reply message + its text, so callers don't call {@code text()} twice. */
+    private record StreamResult(AiMessage message, String text) {}
 
     private static ChatMessage toLangchain(ChatMessageDocument msg) {
         return switch (msg.getRole()) {

@@ -7,6 +7,7 @@ import de.mhus.vance.api.thinkprocess.SessionBootstrapRequest;
 import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -60,6 +61,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
     private final ChatMessageService chatMessageService;
+    private final SessionConnectionRegistry connectionRegistry;
 
     @Override
     public String type() {
@@ -134,6 +136,7 @@ public class SessionBootstrapHandler implements WsHandler {
             return;
         }
         ctx.bindSession(session);
+        connectionRegistry.register(session.getSessionId(), wsSession);
 
         // ── Processes: create + start (skip duplicates) ──────────────────
         List<BootstrappedProcess> created = new ArrayList<>();

@@ -4,6 +4,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionResumeRequest;
 import de.mhus.vance.api.ws.SessionResumeResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
@@ -29,6 +30,7 @@ public class SessionResumeHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final SessionService sessionService;
+    private final SessionConnectionRegistry connectionRegistry;
 
     @Override
     public String type() {
@@ -78,6 +80,7 @@ public class SessionResumeHandler implements WsHandler {
         }
 
         ctx.bindSession(doc);
+        connectionRegistry.register(doc.getSessionId(), wsSession);
         SessionResumeResponse response = SessionResumeResponse.builder()
                 .sessionId(doc.getSessionId())
                 .projectId(doc.getProjectId())

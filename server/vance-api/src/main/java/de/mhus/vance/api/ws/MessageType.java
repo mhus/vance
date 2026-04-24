@@ -15,6 +15,7 @@ public final class MessageType {
 
     public static final String SESSION_CREATE = "session-create";
     public static final String SESSION_RESUME = "session-resume";
+    public static final String SESSION_UNBIND = "session-unbind";
     public static final String SESSION_LIST = "session-list";
     public static final String PROJECT_LIST = "project-list";
     public static final String PROJECTGROUP_LIST = "projectgroup-list";
@@ -27,6 +28,13 @@ public final class MessageType {
 
     /** Server-initiated notification: a chat message was appended to a process's log. */
     public static final String CHAT_MESSAGE_APPENDED = "chat-message-appended";
+
+    /**
+     * Server-initiated notification: a progressive chunk of an assistant reply
+     * is available. The authoritative commit is still {@link #CHAT_MESSAGE_APPENDED} —
+     * clients treat chunks as optimistic rendering to be discarded on commit.
+     */
+    public static final String CHAT_MESSAGE_STREAM_CHUNK = "chat-message-stream-chunk";
 
     /** Client → brain: declare the tools this connection exposes for the current session. */
     public static final String CLIENT_TOOL_REGISTER = "client-tool-register";

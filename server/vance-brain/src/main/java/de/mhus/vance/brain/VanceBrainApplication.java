@@ -1,5 +1,6 @@
 package de.mhus.vance.brain;
 
+import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.tools.workspace.WorkspaceProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -19,7 +20,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication(scanBasePackages = {"de.mhus.vance.brain", "de.mhus.vance.shared"})
 @EnableMongoRepositories(basePackages = "de.mhus.vance.shared")
-@EnableConfigurationProperties(WorkspaceProperties.class)
+@EnableConfigurationProperties({WorkspaceProperties.class, ExecProperties.class})
 @EnableScheduling
 public class VanceBrainApplication {
 

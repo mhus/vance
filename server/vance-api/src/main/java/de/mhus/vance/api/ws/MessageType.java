@@ -13,6 +13,12 @@ public final class MessageType {
     public static final String LOGOUT = "logout";
     public static final String ERROR = "error";
 
+    public static final String SESSION_CREATE = "session.create";
+    public static final String SESSION_RESUME = "session.resume";
+    public static final String SESSION_LIST = "session.list";
+    public static final String PROJECT_LIST = "project.list";
+    public static final String PROJECTGROUP_LIST = "projectgroup.list";
+
     private MessageType() {
     }
 }

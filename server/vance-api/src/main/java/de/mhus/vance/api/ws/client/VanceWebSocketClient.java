@@ -55,10 +55,6 @@ public class VanceWebSocketClient implements AutoCloseable {
                         HandshakeHeaders.BEARER_PREFIX + config.getJwtToken())
                 .header(HandshakeHeaders.CLIENT_TYPE, config.getClientType().wireValue())
                 .header(HandshakeHeaders.CLIENT_VERSION, config.getClientVersion());
-        String resumeId = config.getSessionId();
-        if (resumeId != null) {
-            builder.header(HandshakeHeaders.SESSION_ID, resumeId);
-        }
         return builder.buildAsync(config.getUri(), new JdkListener())
                 .thenAccept(ws -> this.webSocket = ws);
     }

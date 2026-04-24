@@ -19,9 +19,6 @@ public final class HandshakeHeaders {
     /** {@code X-Vance-Client-Version} — SemVer of the client build. */
     public static final String CLIENT_VERSION = "X-Vance-Client-Version";
 
-    /** {@code X-Vance-Session-Id} — optional session-resume identifier. */
-    public static final String SESSION_ID = "X-Vance-Session-Id";
-
     private HandshakeHeaders() {
     }
 }

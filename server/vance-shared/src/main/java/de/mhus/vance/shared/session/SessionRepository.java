@@ -14,4 +14,7 @@ interface SessionRepository extends MongoRepository<SessionDocument, String> {
     Optional<SessionDocument> findBySessionId(String sessionId);
 
     List<SessionDocument> findByTenantIdAndUserId(String tenantId, String userId);
+
+    List<SessionDocument> findByTenantIdAndUserIdAndProjectId(
+            String tenantId, String userId, String projectId);
 }

@@ -52,16 +52,22 @@ public class SessionService {
         return repository.findByTenantIdAndUserId(tenantId, userId);
     }
 
+    public List<SessionDocument> listForUserAndProject(
+            String tenantId, String userId, String projectId) {
+        return repository.findByTenantIdAndUserIdAndProjectId(tenantId, userId, projectId);
+    }
+
     // ------------------------------------------------------------- creation
 
     /**
-     * Creates a new session in {@link SessionStatus#OPEN}. No connection is
-     * bound yet — call {@link #tryBind} immediately after if the caller is
-     * about to hold the connection.
+     * Creates a new session in {@link SessionStatus#OPEN}, scoped to
+     * {@code projectId}. No connection is bound yet — call {@link #tryBind}
+     * immediately after if the caller is about to hold the connection.
      */
     public SessionDocument create(
             String tenantId,
             String userId,
+            String projectId,
             @Nullable String displayName,
             ClientType clientType,
             String clientVersion) {
@@ -70,6 +76,7 @@ public class SessionService {
                 .sessionId(newSessionId())
                 .tenantId(tenantId)
                 .userId(userId)
+                .projectId(projectId)
                 .displayName(displayName)
                 .clientType(clientType)
                 .clientVersion(clientVersion)
@@ -80,8 +87,8 @@ public class SessionService {
                 .lastActivityAt(now)
                 .build();
         SessionDocument saved = repository.save(doc);
-        log.info("Created session sessionId='{}' tenant='{}' user='{}'",
-                saved.getSessionId(), saved.getTenantId(), saved.getUserId());
+        log.info("Created session sessionId='{}' tenant='{}' user='{}' project='{}'",
+                saved.getSessionId(), saved.getTenantId(), saved.getUserId(), saved.getProjectId());
         return saved;
     }
 

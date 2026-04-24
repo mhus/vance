@@ -9,8 +9,13 @@ import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Payload of the {@link MessageType#WELCOME} message — first frame the server sends
- * after a successful handshake.
+ * Payload of the {@link MessageType#WELCOME} message — first frame the server
+ * sends after a successful handshake.
+ *
+ * <p>The connection starts <em>without</em> a bound session. The client must
+ * drive one of {@link MessageType#SESSION_CREATE} / {@link MessageType#SESSION_RESUME}
+ * / {@link MessageType#SESSION_LIST} before any session-scoped command is
+ * accepted.
  */
 @Data
 @Builder
@@ -20,15 +25,11 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("ws")
 public class WelcomeData {
 
-    private String sessionId;
-
-    private boolean sessionResumed;
-
     private String userId;
 
     private @Nullable String displayName;
 
-    private @Nullable String tenantId;
+    private String tenantId;
 
     private ServerInfo server;
 }

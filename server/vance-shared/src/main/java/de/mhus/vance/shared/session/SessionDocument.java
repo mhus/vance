@@ -31,6 +31,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @CompoundIndexes({
         @CompoundIndex(name = "sessionId_idx", def = "{ 'sessionId': 1 }", unique = true),
         @CompoundIndex(name = "tenant_user_idx", def = "{ 'tenantId': 1, 'userId': 1 }"),
+        @CompoundIndex(name = "tenant_user_project_idx",
+                def = "{ 'tenantId': 1, 'userId': 1, 'projectId': 1 }"),
         @CompoundIndex(name = "status_activity_idx", def = "{ 'status': 1, 'lastActivityAt': 1 }")
 })
 @Data
@@ -49,6 +51,9 @@ public class SessionDocument {
 
     /** Owning user — {@code UserDocument.name}. */
     private String userId = "";
+
+    /** Project the session operates in — {@code ProjectDocument.name}. */
+    private String projectId = "";
 
     private @Nullable String displayName;
 

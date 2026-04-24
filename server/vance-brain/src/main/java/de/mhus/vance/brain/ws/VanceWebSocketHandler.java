@@ -1,18 +1,14 @@
 package de.mhus.vance.brain.ws;
 
-import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
-import de.mhus.vance.api.ws.PingData;
-import de.mhus.vance.api.ws.PongData;
 import de.mhus.vance.api.ws.ServerInfo;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.WelcomeData;
 import de.mhus.vance.shared.session.SessionService;
-import java.io.IOException;
-import java.time.Clock;
-import java.time.Instant;
-import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.annotation.Autowired;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -23,61 +19,67 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Central dispatcher for incoming WebSocket frames.
  *
- * Frame flow (see {@code specification/websocket-protokoll.md} §2–§5):
+ * <p>Frame flow (see {@code specification/websocket-protokoll.md} §2–§5):
  * <ol>
  *   <li>{@link #afterConnectionEstablished(WebSocketSession)} — attach the
- *       {@link ClientSession} created by the handshake interceptor to the
- *       local {@link WebSocketSession}, send {@code welcome}.</li>
+ *       session-less {@link ConnectionContext} created by the handshake
+ *       interceptor and send {@code welcome}.</li>
  *   <li>{@link #handleTextMessage(WebSocketSession, TextMessage)} — heartbeat
- *       the persistent session, parse the envelope, route by {@code type}.
- *       If the heartbeat shows that this pod lost the bind (another pod took
- *       over, session was closed), drop the connection.</li>
+ *       the bound session (if any), parse the envelope, look up the matching
+ *       {@link WsHandler}. If a bound session's heartbeat shows that this pod
+ *       lost the lease (another pod took over, session was closed), drop the
+ *       connection.</li>
  *   <li>{@link #afterConnectionClosed(WebSocketSession, CloseStatus)} — release
  *       the bind via {@link SessionService#unbind(String, String)} so the
  *       session can be resumed later.</li>
  * </ol>
  */
 @Component
+@Slf4j
 public class VanceWebSocketHandler extends TextWebSocketHandler {
 
     private final SessionService sessionService;
     private final VanceBrainProperties properties;
     private final ObjectMapper objectMapper;
-    private final Clock clock;
-
-    @Autowired
-    public VanceWebSocketHandler(
-            SessionService sessionService,
-            VanceBrainProperties properties,
-            ObjectMapper objectMapper) {
-        this(sessionService, properties, objectMapper, Clock.systemUTC());
-    }
+    private final WebSocketSender sender;
+    private final Map<String, WsHandler> handlers;
 
     public VanceWebSocketHandler(
             SessionService sessionService,
             VanceBrainProperties properties,
             ObjectMapper objectMapper,
-            Clock clock) {
+            WebSocketSender sender,
+            List<WsHandler> handlers) {
         this.sessionService = sessionService;
         this.properties = properties;
         this.objectMapper = objectMapper;
-        this.clock = clock;
+        this.sender = sender;
+        this.handlers = indexHandlers(handlers);
+    }
+
+    private static Map<String, WsHandler> indexHandlers(List<WsHandler> handlers) {
+        Map<String, WsHandler> index = new HashMap<>();
+        for (WsHandler handler : handlers) {
+            WsHandler previous = index.putIfAbsent(handler.type(), handler);
+            if (previous != null) {
+                throw new IllegalStateException(
+                        "Duplicate WsHandler for type '" + handler.type() + "': "
+                                + previous.getClass().getName() + " vs. "
+                                + handler.getClass().getName());
+            }
+        }
+        return Map.copyOf(index);
     }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession wsSession) throws Exception {
-        ClientSession clientSession = resolveSession(wsSession);
-        boolean resumed = Boolean.TRUE.equals(
-                wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_RESUMED));
-
-        clientSession.attach(wsSession);
+        ConnectionContext ctx = resolveContext(wsSession);
+        ctx.attach(wsSession);
 
         WelcomeData welcome = WelcomeData.builder()
-                .sessionId(clientSession.getSessionId())
-                .sessionResumed(resumed)
-                .userId(clientSession.getUserId())
-                .displayName(clientSession.getDisplayName())
-                .tenantId(clientSession.getTenantId())
+                .userId(ctx.getUserId())
+                .displayName(ctx.getDisplayName())
+                .tenantId(ctx.getTenantId())
                 .server(ServerInfo.builder()
                         .version(properties.getServerVersion())
                         .protocolVersion(properties.getProtocolVersion())
@@ -86,14 +88,15 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
                         .build())
                 .build();
 
-        send(wsSession, WebSocketEnvelope.notification(MessageType.WELCOME, welcome));
+        sender.sendNotification(wsSession, MessageType.WELCOME, welcome);
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession wsSession, TextMessage message) throws Exception {
-        ClientSession clientSession = resolveSession(wsSession);
+        ConnectionContext ctx = resolveContext(wsSession);
 
-        if (!sessionService.heartbeat(clientSession.getSessionId(), clientSession.getConnectionId())) {
+        if (ctx.hasSession()
+                && !sessionService.heartbeat(ctx.getSessionId(), ctx.getConnectionId())) {
             // Another pod took the session over, or it was closed. Drop this connection.
             wsSession.close(CloseStatus.POLICY_VIOLATION.withReason("Session no longer bound"));
             return;
@@ -103,63 +106,48 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         try {
             envelope = objectMapper.readValue(message.getPayload(), WebSocketEnvelope.class);
         } catch (Exception parseError) {
-            sendError(wsSession, null, 400, "Invalid message envelope: " + parseError.getMessage());
+            sender.sendError(wsSession, null, 400,
+                    "Invalid message envelope: " + parseError.getMessage());
             return;
         }
 
         String type = envelope.getType();
-        switch (type) {
-            case MessageType.PING -> handlePing(wsSession, envelope);
-            case MessageType.LOGOUT -> handleLogout(wsSession, clientSession);
-            default -> sendError(wsSession, envelope.getId(), 400, "Unknown message type: " + type);
+        WsHandler handler = handlers.get(type);
+        if (handler == null) {
+            sender.sendError(wsSession, envelope, 400, "Unknown message type: " + type);
+            return;
+        }
+        if (!handler.canExecute(ctx)) {
+            sender.sendError(wsSession, envelope, 403,
+                    ctx.hasSession()
+                            ? "Message type '" + type + "' not allowed in current state"
+                            : "Message type '" + type + "' requires a bound session");
+            return;
+        }
+
+        try {
+            handler.handle(ctx, wsSession, envelope);
+        } catch (RuntimeException e) {
+            log.warn("Handler for '{}' failed", type, e);
+            sender.sendError(wsSession, envelope, 500, e.getMessage());
         }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession wsSession, CloseStatus status) {
-        Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_SESSION);
-        if (attr instanceof ClientSession clientSession) {
-            sessionService.unbind(clientSession.getSessionId(), clientSession.getConnectionId());
+        Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_CONNECTION);
+        if (!(attr instanceof ConnectionContext ctx)) return;
+        if (ctx.hasSession()) {
+            sessionService.unbind(ctx.getSessionId(), ctx.getConnectionId());
         }
     }
 
-    private void handlePing(WebSocketSession wsSession, WebSocketEnvelope envelope) throws IOException {
-        PingData ping = objectMapper.convertValue(envelope.getData(), PingData.class);
-        PongData pong = PongData.builder()
-                .clientTimestamp(ping.getClientTimestamp())
-                .serverTimestamp(Instant.now(clock).toEpochMilli())
-                .build();
-        String replyTo = envelope.getId();
-        WebSocketEnvelope response = replyTo != null
-                ? WebSocketEnvelope.reply(replyTo, MessageType.PONG, pong)
-                : WebSocketEnvelope.notification(MessageType.PONG, pong);
-        send(wsSession, response);
-    }
-
-    private void handleLogout(WebSocketSession wsSession, ClientSession clientSession) throws IOException {
-        sessionService.close(clientSession.getSessionId());
-        wsSession.close(CloseStatus.NORMAL);
-    }
-
-    private void sendError(WebSocketSession wsSession, @Nullable String replyTo, int code, String message) throws IOException {
-        ErrorData data = ErrorData.builder().errorCode(code).errorMessage(message).build();
-        WebSocketEnvelope envelope = replyTo != null
-                ? WebSocketEnvelope.reply(replyTo, MessageType.ERROR, data)
-                : WebSocketEnvelope.notification(MessageType.ERROR, data);
-        send(wsSession, envelope);
-    }
-
-    private void send(WebSocketSession wsSession, WebSocketEnvelope envelope) throws IOException {
-        String json = objectMapper.writeValueAsString(envelope);
-        wsSession.sendMessage(new TextMessage(json));
-    }
-
-    private static ClientSession resolveSession(WebSocketSession wsSession) {
-        Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_SESSION);
-        if (!(attr instanceof ClientSession clientSession)) {
+    private static ConnectionContext resolveContext(WebSocketSession wsSession) {
+        Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_CONNECTION);
+        if (!(attr instanceof ConnectionContext ctx)) {
             throw new IllegalStateException(
-                    "No ClientSession attached — handshake interceptor did not run");
+                    "No ConnectionContext attached — handshake interceptor did not run");
         }
-        return clientSession;
+        return ctx;
     }
 }

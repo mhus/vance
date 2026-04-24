@@ -5,7 +5,6 @@ import java.net.URI;
 import java.time.Duration;
 import lombok.Builder;
 import lombok.Value;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Immutable connection parameters for {@link VanceWebSocketClient}.
@@ -25,9 +24,6 @@ public class VanceWebSocketConfig {
 
     /** SemVer of the client build — wire form sent via {@code X-Vance-Client-Version}. */
     String clientVersion;
-
-    /** Optional session-resume id; null means „create new session". */
-    @Nullable String sessionId;
 
     /** Handshake/connect timeout; default 10s if not set. */
     @Builder.Default

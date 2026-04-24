@@ -20,6 +20,7 @@ import de.mhus.vance.cli.chat.commands.HelpCommand;
 import de.mhus.vance.cli.chat.commands.PingCommand;
 import de.mhus.vance.cli.chat.commands.QuitCommand;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
 import org.jspecify.annotations.Nullable;
 import picocli.CommandLine.Command;
@@ -47,6 +48,11 @@ public class ChatCommand implements Runnable {
     @Option(names = "--no-connect", description = "Start the TUI without auto-connecting.")
     private boolean noConnect;
 
+    @Option(
+            names = {"--config", "-c"},
+            description = "Path to an alternative config YAML. Overrides $VANCE_CLI_CONFIG.")
+    private @Nullable Path configPath;
+
     private final CountDownLatch quitLatch = new CountDownLatch(1);
 
     private @Nullable HistoryView history;
@@ -55,7 +61,7 @@ public class ChatCommand implements Runnable {
 
     @Override
     public void run() {
-        VanceCliConfig cfg = VanceCliConfig.load();
+        VanceCliConfig cfg = VanceCliConfig.load(configPath);
 
         try {
             ScreenCanvas screen = new ScreenCanvas("ChatScreen", 60, 10);

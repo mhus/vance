@@ -2,13 +2,21 @@ package de.mhus.vance.cli;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import lombok.Data;
+import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Runtime config for the CLI, loaded from the {@code application.yaml} on the
- * classpath (fallback) or from {@code $VANCE_CLI_CONFIG} if set.
+ * Runtime config for the CLI.
+ *
+ * <p>Resolution order when a caller does not pass an explicit path:
+ * <ol>
+ *   <li>The {@code VANCE_CLI_CONFIG} environment variable, if set.</li>
+ *   <li>The {@code /application.yaml} bundled on the classpath.</li>
+ * </ol>
  *
  * <p>Shape mirrors the {@code vance:} namespace in the YAML. Only the
  * {@code vance:} subtree is bound — everything outside is ignored.
@@ -38,20 +46,58 @@ public class VanceCliConfig {
         private String version = "0.1.0";
     }
 
+    /** Uses the resolution order documented on the class. */
     public static VanceCliConfig load() {
+        return load(null);
+    }
+
+    /**
+     * Loads config from {@code explicit} if non-null; otherwise applies the
+     * resolution order on the class javadoc.
+     */
+    public static VanceCliConfig load(@Nullable Path explicit) {
+        Path path = explicit;
+        if (path == null) {
+            String env = System.getenv("VANCE_CLI_CONFIG");
+            if (env != null && !env.isBlank()) {
+                path = Path.of(env);
+            }
+        }
+        try {
+            if (path != null) {
+                return parseFromFile(path);
+            }
+            return parseFromClasspath();
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load config", e);
+        }
+    }
+
+    private static VanceCliConfig parseFromFile(Path path) throws IOException {
+        if (!Files.isRegularFile(path)) {
+            throw new IllegalStateException("Config file not found: " + path);
+        }
+        try (InputStream in = Files.newInputStream(path)) {
+            return parse(in, path.toString());
+        }
+    }
+
+    private static VanceCliConfig parseFromClasspath() throws IOException {
         try (InputStream in = VanceCliConfig.class.getResourceAsStream("/application.yaml")) {
             if (in == null) {
                 throw new IllegalStateException("application.yaml not found on classpath");
             }
-            YAMLMapper mapper = YAMLMapper.builder().build();
-            JsonNode root = mapper.readTree(in);
-            JsonNode vance = root.get("vance");
-            if (vance == null || vance.isNull()) {
-                throw new IllegalStateException("application.yaml: missing top-level 'vance' node");
-            }
-            return mapper.treeToValue(vance, VanceCliConfig.class);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to load application.yaml", e);
+            return parse(in, "classpath:/application.yaml");
         }
+    }
+
+    private static VanceCliConfig parse(InputStream in, String source) throws IOException {
+        YAMLMapper mapper = YAMLMapper.builder().build();
+        JsonNode root = mapper.readTree(in);
+        JsonNode vance = root.get("vance");
+        if (vance == null || vance.isNull()) {
+            throw new IllegalStateException(source + ": missing top-level 'vance' node");
+        }
+        return mapper.treeToValue(vance, VanceCliConfig.class);
     }
 }

@@ -14,14 +14,14 @@ import tools.jackson.databind.json.JsonMapper;
  * Thin HTTP helper that mints a JWT against
  * {@code POST /brain/{tenant}/access/{username}}.
  */
-class BrainAccessClient {
+public class BrainAccessClient {
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final ObjectMapper mapper = JsonMapper.builder().build();
 
-    AccessTokenResponse mint(String httpBase, String tenant, String username, String password) throws Exception {
+    public AccessTokenResponse mint(String httpBase, String tenant, String username, String password) throws Exception {
         String url = httpBase + "/brain/" + tenant + "/access/" + username;
         String body = mapper.writeValueAsString(
                 AccessTokenRequest.builder().password(password).build());

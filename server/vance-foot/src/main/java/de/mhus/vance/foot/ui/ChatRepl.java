@@ -4,11 +4,14 @@ import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.command.CommandService;
+import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jline.reader.EndOfFileException;
@@ -39,6 +42,8 @@ public class ChatRepl {
     private final SessionService sessions;
     private final ConnectionService connection;
     private final StatusBar statusBar;
+    private final PromptGate promptGate;
+    private final FootConfig config;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -49,13 +54,17 @@ public class ChatRepl {
                     InterfaceService interfaceService,
                     SessionService sessions,
                     ConnectionService connection,
-                    StatusBar statusBar) {
+                    StatusBar statusBar,
+                    PromptGate promptGate,
+                    FootConfig config) {
         this.commandService = commandService;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
         this.sessions = sessions;
         this.connection = connection;
         this.statusBar = statusBar;
+        this.promptGate = promptGate;
+        this.config = config;
     }
 
     /** Allows {@code /quit} (or shutdown hooks) to exit the loop cleanly. */
@@ -80,16 +89,26 @@ public class ChatRepl {
         chatTerminal.attach(t);
         interfaceService.registerJlineTerminal(t);
 
-        LineReader r = LineReaderBuilder.builder()
+        LineReaderBuilder builder = LineReaderBuilder.builder()
                 .terminal(t)
                 .history(new DefaultHistory())
-                .appName("vance-foot")
-                .build();
+                .appName("vance-foot");
+        Path historyFile = resolveHistoryFile();
+        if (historyFile != null) {
+            int max = Math.max(1, config.getHistory().getMaxEntries());
+            builder.variable(LineReader.HISTORY_FILE, historyFile);
+            builder.variable(LineReader.HISTORY_SIZE, max);
+            builder.variable(LineReader.HISTORY_FILE_SIZE, max);
+        }
+        LineReader r = builder.build();
         this.reader = r;
         chatTerminal.attachReader(r);
         statusBar.attach(t);
 
         chatTerminal.info("Vance Foot — type /help for commands, Ctrl-D to exit.");
+        if (historyFile != null) {
+            chatTerminal.verbose("input history: " + historyFile);
+        }
 
         while (!stopRequested.get()) {
             String line;
@@ -103,12 +122,58 @@ public class ChatRepl {
             if (line == null || line.isBlank()) {
                 continue;
             }
-            if (line.startsWith("/")) {
-                commandService.execute(line);
-            } else {
-                handleChat(line);
+            // Mark the terminal exclusive while the REPL is processing the
+            // line — chunk handlers and other async sinks may write directly
+            // during this window. Outside it (during the readLine above) they
+            // must go through printAbove to keep the prompt intact.
+            promptGate.enterExclusive();
+            try {
+                if (line.startsWith("/")) {
+                    commandService.execute(line);
+                } else {
+                    handleChat(line);
+                }
+            } finally {
+                promptGate.exitExclusive();
             }
         }
+    }
+
+    /**
+     * Resolves the history file path or returns {@code null} when persistence
+     * is disabled. Defaults to {@code ~/.vance/foot-history}; an explicit
+     * {@code vance.history.file} value overrides, with leading {@code ~/}
+     * expanded against {@code user.home}. Best-effort: any IO trouble
+     * (e.g. unwritable parent) silently disables persistence so the REPL
+     * still starts.
+     */
+    private @Nullable Path resolveHistoryFile() {
+        FootConfig.History h = config.getHistory();
+        if (!h.isEnabled()) {
+            return null;
+        }
+        String home = System.getProperty("user.home");
+        String configured = h.getFile();
+        Path path;
+        if (configured == null || configured.isBlank()) {
+            if (home == null || home.isBlank()) {
+                return null;
+            }
+            path = Path.of(home, ".vance", "foot-history");
+        } else if (configured.startsWith("~/") && home != null && !home.isBlank()) {
+            path = Path.of(home, configured.substring(2));
+        } else {
+            path = Path.of(configured);
+        }
+        try {
+            Path parent = path.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+        } catch (IOException e) {
+            return null;
+        }
+        return path;
     }
 
     private String prompt() {
@@ -150,6 +215,14 @@ public class ChatRepl {
 
     @PreDestroy
     void shutdown() {
+        LineReader r = reader;
+        if (r != null) {
+            try {
+                r.getHistory().save();
+            } catch (IOException ignored) {
+                // best-effort: HISTORY_INCREMENTAL already saved per-line
+            }
+        }
         statusBar.detach();
         chatTerminal.attachReader(null);
         chatTerminal.attach(null);

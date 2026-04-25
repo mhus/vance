@@ -19,6 +19,7 @@ public class FootConfig {
     private Auth auth = new Auth();
     private Client client = new Client();
     private Debug debug = new Debug();
+    private History history = new History();
     private Bootstrap bootstrap = new Bootstrap();
 
     @Data
@@ -49,6 +50,21 @@ public class FootConfig {
         private boolean enabled = false;
         private String host = "127.0.0.1";
         private int port = 8766;
+    }
+
+    /**
+     * Persistent input-history file — the list of lines the user has
+     * submitted, the same set that ARROW_UP / ARROW_DOWN walks. Plain text,
+     * one submitted line per file line (the {@code .bash_history} shape).
+     *
+     * <p>Default path when {@link #file} is {@code null}: {@code ~/.vance/foot-history}.
+     * A leading {@code ~/} in {@link #file} is expanded against {@code user.home}.
+     */
+    @Data
+    public static class History {
+        private boolean enabled = true;
+        private @Nullable String file;
+        private int maxEntries = 500;
     }
 
     /**

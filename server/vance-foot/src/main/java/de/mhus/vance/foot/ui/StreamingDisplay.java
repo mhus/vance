@@ -7,58 +7,69 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * Renders chat-streaming chunks directly into the terminal scrollback,
- * delta-by-delta — the assistant's reply grows in place where it will
- * eventually live, with no preview-vs-canonical duality.
+ * Renders chat-streaming chunks. Two modes, picked per chunk based on
+ * {@link PromptGate}:
  *
- * <p>Two events drive it:
  * <ul>
- *   <li>{@link #onChunk} — write the delta. The first chunk for a
- *       process emits the header prefix; subsequent chunks just
- *       append the delta. No newline mid-stream.</li>
- *   <li>{@link #onCommit} — terminate the line with a newline (if any
- *       chunks were seen for this process) and forget the per-process
- *       state. Returns whether anything was streamed, so the caller
- *       (the {@code chat-message-appended} handler) can decide
- *       whether to also emit the canonical full text — clients that
- *       already streamed skip it; non-streaming clients emit it.</li>
+ *   <li><b>Exclusive</b> (REPL is processing input, no active prompt) —
+ *       the chunk goes straight into the scrollback as a delta. The
+ *       assistant's reply grows in place where it will eventually live;
+ *       {@code chat-message-appended} just terminates the line with a
+ *       newline.</li>
+ *   <li><b>Out-of-band</b> (the user is at the prompt) — chunks are
+ *       buffered per process. On commit the full assembled text is
+ *       flushed via {@link ChatTerminal#info(String)}, which goes
+ *       through {@code LineReader.printAbove} and so doesn't corrupt
+ *       the prompt. Streaming visibility is lost in this mode (the
+ *       reply appears as one line at the end), but the prompt the
+ *       user is editing stays intact — that trade-off is the right
+ *       one here.</li>
  * </ul>
  *
- * <p>Direct terminal writes are only safe between {@code readLine}
- * iterations. The current REPL holds the read between user-Enter and
- * the steer-reply, and the brain ships chunks + commit before the
- * reply, so the window is exactly where it needs to be. If we ever
- * stream while the prompt is active, this needs LineReader-aware
- * coordination.
+ * <p>The mode is decided per-chunk; if the gate flips mid-turn (rare —
+ * REPL flow is sequential) earlier output stays where it landed.
  */
 @Component
 public class StreamingDisplay {
 
     private final ChatTerminal terminal;
+    private final PromptGate promptGate;
     private final Map<String, ProcessStream> streams = new ConcurrentHashMap<>();
 
-    public StreamingDisplay(ChatTerminal terminal) {
+    public StreamingDisplay(ChatTerminal terminal, PromptGate promptGate) {
         this.terminal = terminal;
+        this.promptGate = promptGate;
     }
 
-    /** Append a delta to the per-process scrollback line. */
-    public void onChunk(String processId, @Nullable String processName, ChatRole role, String chunk) {
+    /** Append a delta to the per-process stream. */
+    public void onChunk(
+            String processId,
+            @Nullable String processName,
+            @Nullable ChatRole role,
+            String chunk) {
         if (processId == null || chunk == null || chunk.isEmpty()) return;
         ProcessStream state = streams.computeIfAbsent(
-                processId, k -> new ProcessStream());
+                processId, k -> new ProcessStream(processName, role));
         synchronized (state) {
-            if (!state.headerEmitted) {
-                terminal.streamRaw(header(processName, role));
-                state.headerEmitted = true;
+            if (processName != null) state.processName = processName;
+            if (role != null) state.role = role;
+            if (promptGate.isExclusive()) {
+                if (!state.headerEmitted) {
+                    terminal.streamRaw(header(state.processName, state.role));
+                    state.headerEmitted = true;
+                }
+                terminal.streamRaw(chunk);
+            } else {
+                // Prompt is active — must not write raw to the terminal.
+                state.buffered.append(chunk);
             }
-            terminal.streamRaw(chunk);
         }
     }
 
     /**
-     * Closes the streaming line for a process. Returns {@code true} if
-     * any chunk was streamed for this process — caller should suppress
-     * its canonical render in that case to avoid duplication.
+     * Closes the stream for a process. Returns {@code true} when this
+     * call rendered the assistant's content already — caller should
+     * suppress the canonical commit render to avoid duplication.
      */
     public boolean onCommit(String processId) {
         if (processId == null) return false;
@@ -66,7 +77,15 @@ public class StreamingDisplay {
         if (state == null) return false;
         synchronized (state) {
             if (state.headerEmitted) {
+                // Streamed inline while exclusive — close the line.
                 terminal.streamRaw("\n");
+                return true;
+            }
+            if (state.buffered.length() > 0) {
+                // Out-of-band stream — flush the assembled text via
+                // printAbove so the prompt redraws cleanly below.
+                terminal.info(header(state.processName, state.role)
+                        + state.buffered);
                 return true;
             }
             return false;
@@ -79,8 +98,16 @@ public class StreamingDisplay {
         return "[" + name + " · " + roleStr + "] ";
     }
 
-    /** Per-process scrollback line state. */
+    /** Per-process accumulation state. */
     private static final class ProcessStream {
+        @Nullable String processName;
+        @Nullable ChatRole role;
         boolean headerEmitted = false;
+        final StringBuilder buffered = new StringBuilder();
+
+        ProcessStream(@Nullable String processName, @Nullable ChatRole role) {
+            this.processName = processName;
+            this.role = role;
+        }
     }
 }

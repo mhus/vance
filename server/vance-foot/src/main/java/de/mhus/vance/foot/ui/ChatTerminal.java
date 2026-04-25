@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jline.reader.LineReader;
 import org.jline.terminal.Terminal;
+import org.jline.utils.InfoCmp;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -132,6 +133,23 @@ public class ChatTerminal {
     private PrintWriter writer() {
         Terminal t = jlineTerminal.get();
         return t != null ? t.writer() : stdoutWriter;
+    }
+
+    /**
+     * Wipes the recorded buffer and, if a JLine terminal is attached, clears
+     * the visible screen with the {@code clear_screen} terminfo capability.
+     * Called by {@code /clear}; safe to invoke between {@code readLine} cycles
+     * because the next readLine repaints the prompt fresh.
+     */
+    public void clearScreen() {
+        synchronized (bufferLock) {
+            buffer.clear();
+        }
+        Terminal t = jlineTerminal.get();
+        if (t != null) {
+            t.puts(InfoCmp.Capability.clear_screen);
+            t.flush();
+        }
     }
 
     /**

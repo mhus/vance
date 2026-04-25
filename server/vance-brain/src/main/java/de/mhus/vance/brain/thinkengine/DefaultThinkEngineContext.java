@@ -10,11 +10,14 @@ import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 
 /**
- * Straightforward {@link ThinkEngineContext} — carries the process and wired
- * services. Created per lifecycle call by {@link ThinkEngineService}.
+ * Straightforward {@link ThinkEngineContext} — carries the process and
+ * wired services. Created per lifecycle call by
+ * {@link ThinkEngineService}; {@code projectId} is resolved by the
+ * service via the session lookup and threaded in here.
  */
 record DefaultThinkEngineContext(
         ThinkProcessDocument process,
+        String projectId,
         AiModelService aiModelService,
         SettingService settingService,
         ChatMessageService chatMessageService,
@@ -36,6 +39,7 @@ record DefaultThinkEngineContext(
     public ContextToolsApi tools() {
         ToolInvocationContext scope = new ToolInvocationContext(
                 process.getTenantId(),
+                projectId,
                 process.getSessionId(),
                 process.getId(),
                 null);

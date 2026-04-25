@@ -75,7 +75,7 @@ public class ExecRunTool implements Tool {
             waitMs = n.longValue();
         }
         try {
-            ExecJob job = execManager.submit(ctx.sessionId(), command);
+            ExecJob job = execManager.submit(ctx.projectId(), command);
             execManager.waitFor(job, waitMs);
             return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());
         } catch (ExecException e) {

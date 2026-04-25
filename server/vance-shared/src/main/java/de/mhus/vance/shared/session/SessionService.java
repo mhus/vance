@@ -36,7 +36,6 @@ public class SessionService {
     private static final String F_SESSION_ID = "sessionId";
     private static final String F_STATUS = "status";
     private static final String F_BOUND_CONNECTION = "boundConnectionId";
-    private static final String F_BOUND_POD_IP = "boundPodIp";
     private static final String F_LAST_ACTIVITY = "lastActivityAt";
 
     private final SessionRepository repository;
@@ -81,7 +80,6 @@ public class SessionService {
                 .clientType(clientType)
                 .clientVersion(clientVersion)
                 .boundConnectionId(null)
-                .boundPodIp(null)
                 .status(SessionStatus.OPEN)
                 .createdAt(now)
                 .lastActivityAt(now)
@@ -99,22 +97,24 @@ public class SessionService {
      * if the session is {@link SessionStatus#OPEN} and no other connection is
      * currently bound.
      *
+     * <p>Pod-affinity is no longer tracked here — it lives on the session's
+     * project. Callers should ensure the project is claimed by this pod
+     * before invoking {@code tryBind}.
+     *
      * @return {@code true} if the caller now owns the lock, {@code false} if
      *         the session is closed, missing, or already held by someone else.
      */
-    public boolean tryBind(String sessionId, String connectionId, String podIp) {
+    public boolean tryBind(String sessionId, String connectionId) {
         Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
                 .and(F_STATUS).is(SessionStatus.OPEN)
                 .and(F_BOUND_CONNECTION).isNull());
         Update update = new Update()
                 .set(F_BOUND_CONNECTION, connectionId)
-                .set(F_BOUND_POD_IP, podIp)
                 .set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         boolean bound = result.getModifiedCount() == 1;
         if (bound) {
-            log.debug("Bound session '{}' to connection '{}' on pod '{}'",
-                    sessionId, connectionId, podIp);
+            log.debug("Bound session '{}' to connection '{}'", sessionId, connectionId);
         } else {
             log.debug("Bind rejected for session '{}' — no matching OPEN/unbound record", sessionId);
         }
@@ -130,7 +130,6 @@ public class SessionService {
                 .and(F_BOUND_CONNECTION).is(connectionId));
         Update update = new Update()
                 .set(F_BOUND_CONNECTION, null)
-                .set(F_BOUND_POD_IP, null)
                 .set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         if (result.getModifiedCount() == 1) {
@@ -139,22 +138,23 @@ public class SessionService {
     }
 
     /**
-     * Mass-release every session currently bound to {@code podIp}. Intended
-     * for a pod's own startup cleanup: if a previous instance of this pod
-     * crashed, its leftover bindings would block Auto-Resume; releasing
-     * them here makes the next connect pick them up cleanly.
+     * Mass-release the {@code boundConnectionId} for every session whose
+     * {@code projectId} is in {@code projectIds}. Used by the project
+     * startup-reclaimer when a pod takes over its own projects on
+     * restart — pre-restart connections are gone, the bookkeeping isn't.
      *
      * @return number of sessions that were released
      */
-    public long unbindAllByPod(String podIp) {
-        Query query = new Query(Criteria.where(F_BOUND_POD_IP).is(podIp));
-        Update update = new Update()
-                .set(F_BOUND_CONNECTION, null)
-                .set(F_BOUND_POD_IP, null);
+    public long unbindAllForProjects(java.util.Collection<String> projectIds) {
+        if (projectIds == null || projectIds.isEmpty()) return 0;
+        Query query = new Query(Criteria.where("projectId").in(projectIds)
+                .and(F_BOUND_CONNECTION).ne(null));
+        Update update = new Update().set(F_BOUND_CONNECTION, null);
         UpdateResult result = mongoTemplate.updateMulti(query, update, SessionDocument.class);
         long n = result.getModifiedCount();
         if (n > 0) {
-            log.info("Unbound {} stale session(s) previously bound to pod '{}'", n, podIp);
+            log.info("Reclaimed {} stale session binding(s) for {} project(s)",
+                    n, projectIds.size());
         }
         return n;
     }
@@ -184,7 +184,6 @@ public class SessionService {
         Update update = new Update()
                 .set(F_STATUS, SessionStatus.CLOSED)
                 .set(F_BOUND_CONNECTION, null)
-                .set(F_BOUND_POD_IP, null)
                 .set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         if (result.getModifiedCount() == 1) {

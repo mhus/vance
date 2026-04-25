@@ -42,7 +42,7 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public String description() {
-        return "Create or overwrite a text file in the session workspace. "
+        return "Create or overwrite a text file in the project workspace. "
                 + "Use relative paths; parent directories are created "
                 + "automatically.";
     }
@@ -65,7 +65,7 @@ public class WorkspaceWriteTool implements Tool {
             throw new ToolException("'content' is required");
         }
         try {
-            Path written = workspace.write(ctx.sessionId(), path, content);
+            Path written = workspace.write(ctx.projectId(), path, content);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
             out.put("absolutePath", written.toString());

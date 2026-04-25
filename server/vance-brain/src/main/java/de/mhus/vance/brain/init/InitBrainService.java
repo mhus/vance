@@ -43,6 +43,7 @@ public class InitBrainService {
     private final ProjectGroupService projectGroupService;
     private final ProjectService projectService;
     private final TeamService teamService;
+    private final InitSettingsLoader initSettingsLoader;
 
     @PostConstruct
     void init() {
@@ -70,6 +71,10 @@ public class InitBrainService {
         ensureTeam(ACME_TENANT, "rd-propulsion", "R&D & Propulsion", List.of("wile.coyote"));
         ensureTeam(ACME_TENANT, "field-testing-qa", "Field Testing & Quality Assurance",
                 List.of("wile.coyote", "road.runner"));
+
+        // LLM keys, provider/model defaults, etc. — loaded from a
+        // gitignored YAML so a Mongo wipe doesn't lose them.
+        initSettingsLoader.loadIfPresent();
     }
 
     private void ensureUser(String tenantId, String name, String title, @Nullable String email, String plainPassword) {

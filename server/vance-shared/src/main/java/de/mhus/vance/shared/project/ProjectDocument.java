@@ -52,6 +52,15 @@ public class ProjectDocument {
 
     private boolean enabled = true;
 
+    /** Pod-affinity lifecycle. PENDING until first claim, ACTIVE once owned. */
+    private ProjectStatus status = ProjectStatus.PENDING;
+
+    /** IP of the pod currently owning the project, or {@code null} when unclaimed. */
+    private @Nullable String podIp;
+
+    /** When the current pod last refreshed its claim — used for stale-detection later. */
+    private @Nullable Instant claimedAt;
+
     @CreatedDate
     private @Nullable Instant createdAt;
 }

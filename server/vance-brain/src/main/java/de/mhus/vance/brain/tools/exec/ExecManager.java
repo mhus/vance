@@ -28,11 +28,13 @@ import org.springframework.stereotype.Service;
 
 /**
  * Runs shell commands in background virtual threads with live output
- * persistence. Jobs are scoped per session: the outer index is
- * {@code sessionId}, the inner is {@code jobId}, so one session
- * cannot see another's jobs by stumbling on an id.
+ * persistence. Jobs are scoped per <em>project</em>: the outer index
+ * is {@code projectId}, the inner is {@code jobId}, so one project
+ * cannot see another's jobs by stumbling on an id, while sessions in
+ * the same project share their job view (a long build started in one
+ * session is visible to the next session in the same project).
  *
- * <p>Working directory is the caller session's workspace root, so
+ * <p>Working directory is the caller project's workspace root, so
  * {@code git clone …} lands where {@code workspace_*} can read it.
  *
  * <p>Output flows two ways on purpose: line-by-line into a log file
@@ -58,10 +60,10 @@ public class ExecManager {
      * immediately; the caller can observe progress via {@link #waitFor}
      * or later {@link #get} calls.
      */
-    public ExecJob submit(String sessionId, String command) {
-        requireSession(sessionId);
+    public ExecJob submit(String projectId, String command) {
+        requireProject(projectId);
         String jobId = UUID.randomUUID().toString().substring(0, 8);
-        Path jobDir = jobDir(sessionId, jobId);
+        Path jobDir = jobDir(projectId, jobId);
         try {
             Files.createDirectories(jobDir);
         } catch (IOException e) {
@@ -69,11 +71,11 @@ public class ExecManager {
                     "Cannot create exec job dir: " + e.getMessage(), e);
         }
         ExecJob job = new ExecJob(
-                jobId, sessionId, command,
+                jobId, projectId, command,
                 jobDir.resolve("stdout.log"),
                 jobDir.resolve("stderr.log"));
-        indexJob(sessionId, job);
-        Path cwd = workspaceService.sessionRoot(sessionId);
+        indexJob(projectId, job);
+        Path cwd = workspaceService.projectRoot(projectId);
         workers.submit(() -> runJob(job, cwd));
         return job;
     }
@@ -92,22 +94,22 @@ public class ExecManager {
         return job;
     }
 
-    /** Look up a job by session + id. */
-    public Optional<ExecJob> get(String sessionId, String jobId) {
-        Map<String, ExecJob> perSession = jobs.get(sessionId);
-        if (perSession == null) return Optional.empty();
-        return Optional.ofNullable(perSession.get(jobId));
+    /** Look up a job by project + id. */
+    public Optional<ExecJob> get(String projectId, String jobId) {
+        Map<String, ExecJob> perProject = jobs.get(projectId);
+        if (perProject == null) return Optional.empty();
+        return Optional.ofNullable(perProject.get(jobId));
     }
 
-    /** All jobs for a session, insertion-ordered (oldest first). */
-    public Collection<ExecJob> listBySession(String sessionId) {
-        Map<String, ExecJob> perSession = jobs.get(sessionId);
-        return perSession == null ? java.util.List.of() : perSession.values();
+    /** All jobs for a project, insertion-ordered (oldest first). */
+    public Collection<ExecJob> listByProject(String projectId) {
+        Map<String, ExecJob> perProject = jobs.get(projectId);
+        return perProject == null ? java.util.List.of() : perProject.values();
     }
 
     /** Force-kill a still-running job. Returns {@code false} if already terminal. */
-    public boolean kill(String sessionId, String jobId) {
-        ExecJob job = get(sessionId, jobId).orElse(null);
+    public boolean kill(String projectId, String jobId) {
+        ExecJob job = get(projectId, jobId).orElse(null);
         if (job == null || job.isTerminal()) return false;
         Process p = job.process();
         if (p == null) return false;
@@ -115,6 +117,27 @@ public class ExecManager {
         job.status(ExecJob.Status.KILLED);
         job.finishedAt(Instant.now());
         return true;
+    }
+
+    /**
+     * Force-kills every running job for a project — used by
+     * {@code ProjectManagerService.archive(...)} once that lands.
+     */
+    public int killAllForProject(String projectId) {
+        Map<String, ExecJob> perProject = jobs.get(projectId);
+        if (perProject == null) return 0;
+        int killed = 0;
+        synchronized (perProject) {
+            for (ExecJob j : perProject.values()) {
+                if (!j.isTerminal() && j.process() != null) {
+                    j.process().destroyForcibly();
+                    j.status(ExecJob.Status.KILLED);
+                    j.finishedAt(Instant.now());
+                    killed++;
+                }
+            }
+        }
+        return killed;
     }
 
     // ──────────────────── Runner ────────────────────
@@ -193,36 +216,36 @@ public class ExecManager {
 
     // ──────────────────── Indexing ────────────────────
 
-    private void indexJob(String sessionId, ExecJob job) {
-        Map<String, ExecJob> perSession = jobs.computeIfAbsent(
-                sessionId, k -> java.util.Collections.synchronizedMap(new LinkedHashMap<>()));
-        synchronized (perSession) {
-            perSession.put(job.id(), job);
-            int cap = properties.getMaxJobsPerSession();
-            if (perSession.size() > cap) {
+    private void indexJob(String projectId, ExecJob job) {
+        Map<String, ExecJob> perProject = jobs.computeIfAbsent(
+                projectId, k -> java.util.Collections.synchronizedMap(new LinkedHashMap<>()));
+        synchronized (perProject) {
+            perProject.put(job.id(), job);
+            int cap = properties.getMaxJobsPerProject();
+            if (perProject.size() > cap) {
                 // Drop the oldest terminal job to stay under cap.
                 String victim = null;
-                for (Map.Entry<String, ExecJob> e : perSession.entrySet()) {
+                for (Map.Entry<String, ExecJob> e : perProject.entrySet()) {
                     if (e.getValue().isTerminal()) {
                         victim = e.getKey();
                         break;
                     }
                 }
                 if (victim != null) {
-                    perSession.remove(victim);
+                    perProject.remove(victim);
                 }
             }
         }
     }
 
-    private Path jobDir(String sessionId, String jobId) {
+    private Path jobDir(String projectId, String jobId) {
         return Path.of(properties.getBaseDir()).toAbsolutePath().normalize()
-                .resolve(sessionId).resolve(jobId);
+                .resolve(projectId).resolve(jobId);
     }
 
-    private static void requireSession(@Nullable String sessionId) {
-        if (sessionId == null || sessionId.isBlank()) {
-            throw new ExecException("Exec tools require a session scope");
+    private static void requireProject(@Nullable String projectId) {
+        if (projectId == null || projectId.isBlank()) {
+            throw new ExecException("Exec tools require a project scope");
         }
     }
 
@@ -232,8 +255,8 @@ public class ExecManager {
 
     @PreDestroy
     void shutdown() {
-        for (Map<String, ExecJob> perSession : jobs.values()) {
-            for (ExecJob j : perSession.values()) {
+        for (Map<String, ExecJob> perProject : jobs.values()) {
+            for (ExecJob j : perProject.values()) {
                 if (!j.isTerminal() && j.process() != null) {
                     j.process().destroyForcibly();
                 }

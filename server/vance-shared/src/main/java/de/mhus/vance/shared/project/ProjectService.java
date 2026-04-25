@@ -1,11 +1,18 @@
 package de.mhus.vance.shared.project;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
@@ -16,7 +23,15 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class ProjectService {
 
+    /** Field names — kept here so atomic queries don't drift. */
+    private static final String F_TENANT = "tenantId";
+    private static final String F_NAME = "name";
+    private static final String F_STATUS = "status";
+    private static final String F_POD_IP = "podIp";
+    private static final String F_CLAIMED_AT = "claimedAt";
+
     private final ProjectRepository repository;
+    private final MongoTemplate mongoTemplate;
 
     public Optional<ProjectDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
@@ -68,8 +83,69 @@ public class ProjectService {
         return saved;
     }
 
+    /**
+     * Atomically claims {@code (tenantId, name)} for {@code podIp}: sets the
+     * status to {@link ProjectStatus#ACTIVE}, refreshes {@code podIp} and
+     * {@code claimedAt}. Idempotent on the same pod, takes-over from another
+     * pod (with a warning logged by the caller). Refuses to claim ARCHIVED
+     * projects.
+     *
+     * @return the post-update document
+     * @throws ProjectNotFoundException if the project does not exist
+     * @throws ProjectArchivedException if the project is ARCHIVED
+     */
+    public ProjectDocument claim(String tenantId, String name, String podIp) {
+        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new ProjectNotFoundException(
+                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (current.getStatus() == ProjectStatus.ARCHIVED) {
+            throw new ProjectArchivedException(
+                    "Project '" + name + "' is ARCHIVED — cannot claim");
+        }
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Update update = new Update()
+                .set(F_STATUS, ProjectStatus.ACTIVE)
+                .set(F_POD_IP, podIp)
+                .set(F_CLAIMED_AT, Instant.now());
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(true),
+                ProjectDocument.class);
+        if (updated == null) {
+            // Lost a race with delete? Re-throw.
+            throw new ProjectNotFoundException(
+                    "Project '" + name + "' disappeared during claim");
+        }
+        if (current.getStatus() == ProjectStatus.PENDING) {
+            log.info("Project '{}' claimed by pod '{}' (PENDING → ACTIVE)", name, podIp);
+        } else if (!Objects.equals(current.getPodIp(), podIp)) {
+            log.warn("Project '{}' taken over by pod '{}' from previous owner '{}'",
+                    name, podIp, current.getPodIp());
+        }
+        return updated;
+    }
+
+    /** Lists ACTIVE projects whose {@code podIp} matches — for startup reclaim. */
+    public List<ProjectDocument> findActiveByPod(String podIp) {
+        Query query = new Query(Criteria.where(F_STATUS).is(ProjectStatus.ACTIVE)
+                .and(F_POD_IP).is(podIp));
+        return mongoTemplate.find(query, ProjectDocument.class);
+    }
+
     public static class ProjectAlreadyExistsException extends RuntimeException {
         public ProjectAlreadyExistsException(String message) {
+            super(message);
+        }
+    }
+
+    public static class ProjectNotFoundException extends RuntimeException {
+        public ProjectNotFoundException(String message) {
+            super(message);
+        }
+    }
+
+    public static class ProjectArchivedException extends RuntimeException {
+        public ProjectArchivedException(String message) {
             super(message);
         }
     }

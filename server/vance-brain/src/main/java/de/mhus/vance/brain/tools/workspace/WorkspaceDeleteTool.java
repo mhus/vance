@@ -10,7 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Deletes a file from the session workspace. Returns {@code deleted:
+ * Deletes a file from the project workspace. Returns {@code deleted:
  * false} instead of failing if the file isn't there — idempotent calls
  * shouldn't surface as errors to the LLM.
  */
@@ -35,7 +35,7 @@ public class WorkspaceDeleteTool implements Tool {
 
     @Override
     public String description() {
-        return "Delete a file from the session workspace. Safe to call on a "
+        return "Delete a file from the project workspace. Safe to call on a "
                 + "path that doesn't exist — returns deleted=false.";
     }
 
@@ -56,7 +56,7 @@ public class WorkspaceDeleteTool implements Tool {
             throw new ToolException("'path' is required and must be a non-empty string");
         }
         try {
-            boolean deleted = workspace.delete(ctx.sessionId(), path);
+            boolean deleted = workspace.delete(ctx.projectId(), path);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
             out.put("deleted", deleted);

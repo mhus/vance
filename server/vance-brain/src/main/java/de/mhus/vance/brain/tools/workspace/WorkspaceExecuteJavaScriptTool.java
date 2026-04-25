@@ -14,7 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Reads a {@code .js} file from the session workspace and evaluates
+ * Reads a {@code .js} file from the project workspace and evaluates
  * it with {@link JsEngine}. Pairs with {@code workspace_write} so the
  * LLM can iteratively develop and re-run scripts.
  */
@@ -42,7 +42,7 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
     @Override
     public String description() {
         return "Execute a JavaScript file previously written to the "
-                + "session workspace. Returns the value of the last "
+                + "project workspace. Returns the value of the last "
                 + "expression as a string.";
     }
 
@@ -63,7 +63,7 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
             throw new ToolException("'path' is required and must be a non-empty string");
         }
         try {
-            Path file = workspace.readablePath(ctx.sessionId(), path);
+            Path file = workspace.readablePath(ctx.projectId(), path);
             String code = Files.readString(file, StandardCharsets.UTF_8);
             String result = jsEngine.eval(code);
             Map<String, Object> out = new LinkedHashMap<>();

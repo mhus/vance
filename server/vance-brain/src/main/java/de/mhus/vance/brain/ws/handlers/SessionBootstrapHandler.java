@@ -8,6 +8,7 @@ import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -58,6 +59,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final WebSocketSender sender;
     private final SessionService sessionService;
     private final ProjectService projectService;
+    private final ProjectManagerService projectManager;
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
     private final ChatMessageService chatMessageService;
@@ -264,7 +266,14 @@ public class SessionBootstrapHandler implements WsHandler {
                 .toList();
         for (SessionDocument candidate : candidates) {
             if (sessionService.tryBind(
-                    candidate.getSessionId(), ctx.getConnectionId(), ctx.getPodIp())) {
+                    candidate.getSessionId(), ctx.getConnectionId())) {
+                try {
+                    projectManager.claimForLocalPod(
+                            candidate.getTenantId(), candidate.getProjectId());
+                } catch (RuntimeException claimFailed) {
+                    sessionService.unbind(candidate.getSessionId(), ctx.getConnectionId());
+                    throw claimFailed;
+                }
                 return Optional.of(candidate);
             }
         }
@@ -294,6 +303,7 @@ public class SessionBootstrapHandler implements WsHandler {
                     "Project '" + projectId + "' not found");
             return Optional.empty();
         }
+        projectManager.claimForLocalPod(ctx.getTenantId(), projectId);
         SessionDocument fresh = sessionService.create(
                 ctx.getTenantId(),
                 ctx.getUserId(),
@@ -302,7 +312,7 @@ public class SessionBootstrapHandler implements WsHandler {
                 ctx.getClientType(),
                 ctx.getClientVersion());
         boolean bound = sessionService.tryBind(
-                fresh.getSessionId(), ctx.getConnectionId(), ctx.getPodIp());
+                fresh.getSessionId(), ctx.getConnectionId());
         if (!bound) {
             log.warn("Freshly created session '{}' failed to bind", fresh.getSessionId());
             sender.sendError(wsSession, envelope, 500,
@@ -328,8 +338,9 @@ public class SessionBootstrapHandler implements WsHandler {
                     "Session '" + request.getSessionId() + "' belongs to another user");
             return Optional.empty();
         }
+        projectManager.claimForLocalPod(doc.getTenantId(), doc.getProjectId());
         boolean bound = sessionService.tryBind(
-                doc.getSessionId(), ctx.getConnectionId(), ctx.getPodIp());
+                doc.getSessionId(), ctx.getConnectionId());
         if (!bound) {
             sender.sendError(wsSession, envelope, 409,
                     "Session '" + doc.getSessionId() + "' is already bound to another connection");

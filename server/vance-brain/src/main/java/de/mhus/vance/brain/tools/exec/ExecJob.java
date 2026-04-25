@@ -15,7 +15,7 @@ final class ExecJob {
     enum Status { RUNNING, COMPLETED, FAILED, KILLED, ORPHANED }
 
     private final String id;
-    private final String sessionId;
+    private final String projectId;
     private final String command;
     private final Path stdoutFile;
     private final Path stderrFile;
@@ -29,9 +29,9 @@ final class ExecJob {
     private volatile @Nullable Instant finishedAt;
     private volatile @Nullable Process process;
 
-    ExecJob(String id, String sessionId, String command, Path stdoutFile, Path stderrFile) {
+    ExecJob(String id, String projectId, String command, Path stdoutFile, Path stderrFile) {
         this.id = id;
-        this.sessionId = sessionId;
+        this.projectId = projectId;
         this.command = command;
         this.stdoutFile = stdoutFile;
         this.stderrFile = stderrFile;
@@ -39,7 +39,7 @@ final class ExecJob {
     }
 
     String id() { return id; }
-    String sessionId() { return sessionId; }
+    String projectId() { return projectId; }
     String command() { return command; }
     Path stdoutFile() { return stdoutFile; }
     Path stderrFile() { return stderrFile; }

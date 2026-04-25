@@ -5,6 +5,7 @@ import de.mhus.vance.api.ws.SessionCreateRequest;
 import de.mhus.vance.api.ws.SessionCreateResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
@@ -33,6 +34,7 @@ public class SessionCreateHandler implements WsHandler {
     private final WebSocketSender sender;
     private final SessionService sessionService;
     private final ProjectService projectService;
+    private final ProjectManagerService projectManager;
     private final SessionConnectionRegistry connectionRegistry;
 
     @Override
@@ -67,17 +69,19 @@ public class SessionCreateHandler implements WsHandler {
                     "Project '" + request.getProjectId() + "' not found");
             return;
         }
+        ProjectDocument claimed = projectManager.claimForLocalPod(
+                ctx.getTenantId(), project.get().getName());
 
         SessionDocument created = sessionService.create(
                 ctx.getTenantId(),
                 ctx.getUserId(),
-                project.get().getName(),
+                claimed.getName(),
                 ctx.getDisplayName(),
                 ctx.getClientType(),
                 ctx.getClientVersion());
 
         boolean bound = sessionService.tryBind(
-                created.getSessionId(), ctx.getConnectionId(), ctx.getPodIp());
+                created.getSessionId(), ctx.getConnectionId());
         if (!bound) {
             // Freshly created — nobody else could have bound it. If this ever
             // happens, surface the problem and leave the session in Mongo for

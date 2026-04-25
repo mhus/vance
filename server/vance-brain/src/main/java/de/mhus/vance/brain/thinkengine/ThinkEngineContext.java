@@ -31,6 +31,13 @@ public interface ThinkEngineContext {
     /** Session id the process belongs to ({@code SessionDocument.sessionId}). */
     String sessionId();
 
+    /**
+     * Project id the session lives under ({@code ProjectDocument.name}).
+     * Resolved once per context build via the session lookup; cached for
+     * the lifetime of the call.
+     */
+    String projectId();
+
     /** Access to AI model instantiation. */
     AiModelService aiModelService();
 

@@ -10,7 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Lists all files currently in the session workspace (recursive).
+ * Lists all files currently in the project workspace (recursive).
  * Returns relative paths, sorted. Directories are not included.
  */
 @Component
@@ -31,7 +31,7 @@ public class WorkspaceListTool implements Tool {
 
     @Override
     public String description() {
-        return "List files in the session workspace (recursive). Returns "
+        return "List files in the project workspace (recursive). Returns "
                 + "relative paths.";
     }
 
@@ -48,7 +48,7 @@ public class WorkspaceListTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         try {
-            List<String> files = workspace.list(ctx.sessionId());
+            List<String> files = workspace.list(ctx.projectId());
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("files", files);
             out.put("count", files.size());

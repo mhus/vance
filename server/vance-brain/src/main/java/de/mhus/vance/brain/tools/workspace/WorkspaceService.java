@@ -13,13 +13,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * Manages the per-session workspace: resolves relative paths into the
- * session's sub-directory, enforces the one cheap sandbox rule
+ * Manages the per-project workspace: resolves relative paths into the
+ * project's sub-directory, enforces the one cheap sandbox rule
  * ({@code resolve().normalize().startsWith(root)}), and exposes
  * read/write/list/delete operations over UTF-8 text.
  *
- * <p>Lazily creates the session directory on first write — listing or
- * reading an untouched session returns empty / not-found rather than
+ * <p>Scoped by {@code projectId} so that all sessions in the same
+ * project share the same workspace — a {@code git clone} done from one
+ * session is visible to the next, and project-level pod-affinity keeps
+ * a project's files on a single pod.
+ *
+ * <p>Lazily creates the project directory on first write — listing or
+ * reading an untouched project returns empty / not-found rather than
  * allocating a directory.
  *
  * <p>Nothing here does I/O on behalf of the think-engine control plane;
@@ -33,16 +38,16 @@ public class WorkspaceService {
 
     private final WorkspaceProperties properties;
 
-    /** Absolute path to a session's workspace directory. Created on demand. */
-    public Path sessionRoot(String sessionId) {
-        requireSession(sessionId);
+    /** Absolute path to a project's workspace directory. Created on demand. */
+    public Path projectRoot(String projectId) {
+        requireProject(projectId);
         Path root = Path.of(properties.getBaseDir()).toAbsolutePath()
-                .normalize().resolve(sessionId).normalize();
+                .normalize().resolve(projectId).normalize();
         try {
             Files.createDirectories(root);
         } catch (IOException e) {
             throw new WorkspaceException(
-                    "Cannot create workspace for session: " + e.getMessage(), e);
+                    "Cannot create workspace for project: " + e.getMessage(), e);
         }
         return root;
     }
@@ -51,8 +56,8 @@ public class WorkspaceService {
      * Writes {@code content} to {@code relativePath}, creating parent
      * directories as needed. Overwrites if the file already exists.
      */
-    public Path write(String sessionId, String relativePath, String content) {
-        Path resolved = resolve(sessionId, relativePath);
+    public Path write(String projectId, String relativePath, String content) {
+        Path resolved = resolve(projectId, relativePath);
         try {
             if (resolved.getParent() != null) {
                 Files.createDirectories(resolved.getParent());
@@ -72,8 +77,8 @@ public class WorkspaceService {
      * characters; the caller decides how to surface a truncation marker.
      * {@code maxChars <= 0} means unlimited.
      */
-    public ReadResult read(String sessionId, String relativePath, int maxChars) {
-        Path resolved = resolve(sessionId, relativePath);
+    public ReadResult read(String projectId, String relativePath, int maxChars) {
+        Path resolved = resolve(projectId, relativePath);
         if (!Files.exists(resolved)) {
             throw new WorkspaceException("Not found: " + relativePath);
         }
@@ -92,17 +97,17 @@ public class WorkspaceService {
     }
 
     /** Relative path → absolute. Reports "file not found" to the caller. */
-    public Path readablePath(String sessionId, String relativePath) {
-        Path resolved = resolve(sessionId, relativePath);
+    public Path readablePath(String projectId, String relativePath) {
+        Path resolved = resolve(projectId, relativePath);
         if (!Files.isRegularFile(resolved)) {
             throw new WorkspaceException("Not a regular file: " + relativePath);
         }
         return resolved;
     }
 
-    /** Recursive file list, sorted, paths relative to the session root. */
-    public List<String> list(String sessionId) {
-        Path root = sessionRoot(sessionId);
+    /** Recursive file list, sorted, paths relative to the project root. */
+    public List<String> list(String projectId) {
+        Path root = projectRoot(projectId);
         try (Stream<Path> s = Files.walk(root)) {
             return s.filter(Files::isRegularFile)
                     .map(root::relativize)
@@ -115,8 +120,8 @@ public class WorkspaceService {
     }
 
     /** Deletes a file. Returns {@code false} if it wasn't there to begin with. */
-    public boolean delete(String sessionId, String relativePath) {
-        Path resolved = resolve(sessionId, relativePath);
+    public boolean delete(String projectId, String relativePath) {
+        Path resolved = resolve(projectId, relativePath);
         try {
             if (Files.isDirectory(resolved)) {
                 throw new WorkspaceException(
@@ -129,13 +134,14 @@ public class WorkspaceService {
     }
 
     /**
-     * Wipes an entire session's workspace. Intended for session close /
-     * admin cleanup — not exposed as a tool.
+     * Wipes an entire project's workspace. Intended for project archive /
+     * admin cleanup — not exposed as a tool. Called by ProjectManagerService
+     * once project archive lands.
      */
-    public void deleteAll(String sessionId) {
-        requireSession(sessionId);
+    public void deleteAll(String projectId) {
+        requireProject(projectId);
         Path root = Path.of(properties.getBaseDir()).toAbsolutePath()
-                .normalize().resolve(sessionId).normalize();
+                .normalize().resolve(projectId).normalize();
         if (!Files.exists(root)) return;
         try (Stream<Path> s = Files.walk(root)) {
             s.sorted(Comparator.reverseOrder()).forEach(p -> {
@@ -146,23 +152,23 @@ public class WorkspaceService {
                 }
             });
         } catch (IOException e) {
-            log.warn("Workspace walk failed for session {}: {}", sessionId, e.toString());
+            log.warn("Workspace walk failed for project {}: {}", projectId, e.toString());
         }
     }
 
     /**
-     * Resolves {@code relativePath} against the session root and checks
+     * Resolves {@code relativePath} against the project root and checks
      * it stays inside. Throws {@link WorkspaceException} on escape
      * attempts or null/empty paths.
      */
-    Path resolve(String sessionId, String relativePath) {
+    Path resolve(String projectId, String relativePath) {
         if (relativePath == null || relativePath.isBlank()) {
             throw new WorkspaceException("Path is required");
         }
         if (relativePath.indexOf('\0') >= 0) {
             throw new WorkspaceException("Path contains NUL byte");
         }
-        Path root = sessionRoot(sessionId);
+        Path root = projectRoot(projectId);
         Path resolved = root.resolve(relativePath).normalize();
         if (!resolved.startsWith(root)) {
             throw new WorkspaceException(
@@ -171,10 +177,10 @@ public class WorkspaceService {
         return resolved;
     }
 
-    private static void requireSession(String sessionId) {
-        if (sessionId == null || sessionId.isBlank()) {
+    private static void requireProject(String projectId) {
+        if (projectId == null || projectId.isBlank()) {
             throw new WorkspaceException(
-                    "Workspace tools require a session scope");
+                    "Workspace tools require a project scope");
         }
     }
 

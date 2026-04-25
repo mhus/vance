@@ -4,6 +4,8 @@ import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.List;
@@ -35,6 +37,7 @@ public class ThinkEngineService {
     private final ChatMessageService chatMessageService;
     private final ToolDispatcher toolDispatcher;
     private final ClientEventPublisher eventPublisher;
+    private final SessionService sessionService;
 
     public ThinkEngineService(
             List<ThinkEngine> engineBeans,
@@ -42,7 +45,8 @@ public class ThinkEngineService {
             SettingService settingService,
             ChatMessageService chatMessageService,
             ToolDispatcher toolDispatcher,
-            ClientEventPublisher eventPublisher) {
+            ClientEventPublisher eventPublisher,
+            SessionService sessionService) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
                     throw new IllegalStateException(
@@ -54,6 +58,7 @@ public class ThinkEngineService {
         this.chatMessageService = chatMessageService;
         this.toolDispatcher = toolDispatcher;
         this.eventPublisher = eventPublisher;
+        this.sessionService = sessionService;
         log.info("Registered think-engines: {}", engines.keySet());
     }
 
@@ -85,8 +90,15 @@ public class ThinkEngineService {
      * context instance per lifecycle call — never cached.
      */
     public ThinkEngineContext newContext(ThinkProcessDocument process) {
+        String projectId = sessionService.findBySessionId(process.getSessionId())
+                .map(SessionDocument::getProjectId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Process '" + process.getId()
+                                + "' references missing session '"
+                                + process.getSessionId() + "'"));
         return new DefaultThinkEngineContext(
-                process, aiModelService, settingService, chatMessageService,
+                process, projectId,
+                aiModelService, settingService, chatMessageService,
                 toolDispatcher, eventPublisher);
     }
 

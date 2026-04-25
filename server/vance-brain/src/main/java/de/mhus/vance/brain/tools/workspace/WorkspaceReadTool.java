@@ -10,7 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Reads a UTF-8 text file from the session workspace. Truncates at
+ * Reads a UTF-8 text file from the project workspace. Truncates at
  * {@link WorkspaceProperties#getDefaultReadCharCap()} by default — the
  * result carries a {@code truncated} flag so the LLM can decide whether
  * to raise the cap via {@code maxChars}.
@@ -42,7 +42,7 @@ public class WorkspaceReadTool implements Tool {
 
     @Override
     public String description() {
-        return "Read a text file from the session workspace. Returns the "
+        return "Read a text file from the project workspace. Returns the "
                 + "file content; if the file is longer than the cap, only "
                 + "the prefix is returned and 'truncated' is true.";
     }
@@ -66,7 +66,7 @@ public class WorkspaceReadTool implements Tool {
             cap = n.intValue();
         }
         try {
-            WorkspaceService.ReadResult r = workspace.read(ctx.sessionId(), path, cap);
+            WorkspaceService.ReadResult r = workspace.read(ctx.projectId(), path, cap);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
             out.put("content", r.text());

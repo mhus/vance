@@ -1,6 +1,7 @@
 package de.mhus.vance.brain;
 
 import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.init.InitSettingsProperties;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.tools.workspace.WorkspaceProperties;
 import org.springframework.boot.SpringApplication;
@@ -24,7 +25,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({
         WorkspaceProperties.class,
         ExecProperties.class,
-        StreamingProperties.class})
+        StreamingProperties.class,
+        InitSettingsProperties.class})
 @EnableScheduling
 public class VanceBrainApplication {
 

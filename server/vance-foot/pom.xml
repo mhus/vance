@@ -70,6 +70,16 @@
                     <mainClass>de.mhus.vance.foot.VanceFootApplication</mainClass>
                 </configuration>
             </plugin>
+            <!-- Lets debug scripts run via `mvn exec:java -Dexec.args="..."`
+                 like vance-cli does, without forking a JVM (which can break
+                 JLine's TTY detection and the status bar). -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>de.mhus.vance.foot.VanceFootApplication</mainClass>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

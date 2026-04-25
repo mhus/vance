@@ -114,6 +114,21 @@ public class ChatTerminal {
         w.flush();
     }
 
+    /**
+     * Writes {@code text} verbatim to the terminal — no level check, no
+     * newline, no JLine {@code printAbove}. Intended for chat streaming:
+     * the chunk-handler emits each delta with this method while the REPL
+     * is blocked on the brain's steer-reply. Calling it while
+     * {@code readLine} is actively waiting for input will corrupt the
+     * prompt, so streaming consumers must coordinate with the REPL.
+     */
+    public void streamRaw(String text) {
+        if (text == null || text.isEmpty()) return;
+        PrintWriter w = writer();
+        w.print(text);
+        w.flush();
+    }
+
     private PrintWriter writer() {
         Terminal t = jlineTerminal.get();
         return t != null ? t.writer() : stdoutWriter;

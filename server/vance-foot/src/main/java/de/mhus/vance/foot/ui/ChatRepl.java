@@ -38,6 +38,7 @@ public class ChatRepl {
     private final InterfaceService interfaceService;
     private final SessionService sessions;
     private final ConnectionService connection;
+    private final StatusBar statusBar;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -47,12 +48,14 @@ public class ChatRepl {
                     ChatTerminal chatTerminal,
                     InterfaceService interfaceService,
                     SessionService sessions,
-                    ConnectionService connection) {
+                    ConnectionService connection,
+                    StatusBar statusBar) {
         this.commandService = commandService;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
         this.sessions = sessions;
         this.connection = connection;
+        this.statusBar = statusBar;
     }
 
     /** Allows {@code /quit} (or shutdown hooks) to exit the loop cleanly. */
@@ -84,6 +87,7 @@ public class ChatRepl {
                 .build();
         this.reader = r;
         chatTerminal.attachReader(r);
+        statusBar.attach(t);
 
         chatTerminal.info("Vance Foot — type /help for commands, Ctrl-D to exit.");
 
@@ -146,6 +150,7 @@ public class ChatRepl {
 
     @PreDestroy
     void shutdown() {
+        statusBar.detach();
         chatTerminal.attachReader(null);
         chatTerminal.attach(null);
         interfaceService.clearJlineTerminal();

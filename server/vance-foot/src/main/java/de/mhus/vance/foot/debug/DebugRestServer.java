@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpServer;
 import de.mhus.vance.foot.command.CommandService;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
+import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.InterfaceService;
 import jakarta.annotation.PostConstruct;
@@ -49,6 +50,7 @@ public final class DebugRestServer {
     private final CommandService commandService;
     private final ConnectionService connectionService;
     private final InterfaceService interfaceService;
+    private final SessionService sessionService;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     private @Nullable HttpServer server;
@@ -57,12 +59,14 @@ public final class DebugRestServer {
                            ChatTerminal terminal,
                            CommandService commandService,
                            ConnectionService connectionService,
-                           InterfaceService interfaceService) {
+                           InterfaceService interfaceService,
+                           SessionService sessionService) {
         this.config = config;
         this.terminal = terminal;
         this.commandService = commandService;
         this.connectionService = connectionService;
         this.interfaceService = interfaceService;
+        this.sessionService = sessionService;
     }
 
     @PostConstruct
@@ -107,6 +111,15 @@ public final class DebugRestServer {
             body.put("connectionOpen", connectionService.isOpen());
             body.put("verbosity", terminal.threshold().name());
             body.put("uiMode", interfaceService.mode().name());
+            SessionService.BoundSession bound = sessionService.current();
+            if (bound != null) {
+                Map<String, String> sessionMap = new LinkedHashMap<>();
+                sessionMap.put("sessionId", bound.sessionId());
+                sessionMap.put("projectId", bound.projectId());
+                body.put("session", sessionMap);
+            } else {
+                body.put("session", null);
+            }
             writeJson(exchange, 200, body);
         }
     }

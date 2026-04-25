@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import org.jline.reader.LineReader;
 import org.jline.terminal.Terminal;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -35,6 +36,7 @@ public class ChatTerminal {
 
     private final AtomicReference<Verbosity> threshold = new AtomicReference<>(Verbosity.INFO);
     private final AtomicReference<@Nullable Terminal> jlineTerminal = new AtomicReference<>();
+    private final AtomicReference<@Nullable LineReader> jlineReader = new AtomicReference<>();
     private final PrintWriter stdoutWriter = new PrintWriter(System.out, true);
     private final Deque<Line> buffer = new ArrayDeque<>(BUFFER_LIMIT);
     private final Object bufferLock = new Object();
@@ -55,14 +57,22 @@ public class ChatTerminal {
         jlineTerminal.set(terminal);
     }
 
+    /**
+     * Attach the active {@link LineReader}. While set, async output goes
+     * through {@link LineReader#printAbove(String)} so it appears above the
+     * prompt without garbling the line currently being edited. Pass
+     * {@code null} on shutdown.
+     */
+    public void attachReader(@Nullable LineReader reader) {
+        jlineReader.set(reader);
+    }
+
     public void println(Verbosity level, String message) {
         if (!threshold.get().shows(level)) {
             return;
         }
         record(level, message);
-        PrintWriter w = writer();
-        w.println(message);
-        w.flush();
+        emit(message);
     }
 
     public void println(Verbosity level, String format, @Nullable Object... args) {
@@ -71,9 +81,7 @@ public class ChatTerminal {
         }
         String formatted = String.format(format, args);
         record(level, formatted);
-        PrintWriter w = writer();
-        w.println(formatted);
-        w.flush();
+        emit(formatted);
     }
 
     public void error(String message) {
@@ -90,6 +98,20 @@ public class ChatTerminal {
 
     public void debug(String message) {
         println(Verbosity.DEBUG, message);
+    }
+
+    private void emit(String line) {
+        LineReader r = jlineReader.get();
+        if (r != null) {
+            // printAbove is the JLine primitive for async output: pushes the
+            // line above the prompt and redraws the prompt below, regardless
+            // of whether readLine is currently blocked or between iterations.
+            r.printAbove(line);
+            return;
+        }
+        PrintWriter w = writer();
+        w.println(line);
+        w.flush();
     }
 
     private PrintWriter writer() {

@@ -3,11 +3,14 @@ package de.mhus.vance.foot.connection;
 import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.api.ws.ClientType;
+import de.mhus.vance.api.ws.ErrorData;
+import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.client.VanceWebSocketClient;
 import de.mhus.vance.api.ws.client.VanceWebSocketClientListener;
 import de.mhus.vance.api.ws.client.VanceWebSocketConfig;
 import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.Verbosity;
 import jakarta.annotation.PreDestroy;
@@ -16,7 +19,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -40,6 +46,7 @@ public class ConnectionService {
     private final FootConfig config;
     private final MessageDispatcher dispatcher;
     private final ChatTerminal terminal;
+    private final SessionService sessions;
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -48,11 +55,16 @@ public class ConnectionService {
 
     private final AtomicReference<State> state = new AtomicReference<>(State.DISCONNECTED);
     private final AtomicReference<@Nullable VanceWebSocketClient> clientRef = new AtomicReference<>();
+    private final AtomicLong requestCounter = new AtomicLong();
 
-    public ConnectionService(FootConfig config, MessageDispatcher dispatcher, ChatTerminal terminal) {
+    public ConnectionService(FootConfig config,
+                             MessageDispatcher dispatcher,
+                             ChatTerminal terminal,
+                             SessionService sessions) {
         this.config = config;
         this.dispatcher = dispatcher;
         this.terminal = terminal;
+        this.sessions = sessions;
     }
 
     public State state() {
@@ -103,6 +115,7 @@ public class ConnectionService {
     public void disconnect(String reason) {
         VanceWebSocketClient client = clientRef.getAndSet(null);
         state.set(State.DISCONNECTED);
+        sessions.clear();
         if (client != null && client.isOpen()) {
             client.close(1000, reason);
             terminal.info("Disconnected — " + reason);
@@ -121,6 +134,49 @@ public class ConnectionService {
         }
         c.send(envelope);
         return true;
+    }
+
+    /**
+     * Sends a request and waits synchronously for the matching reply. The
+     * id is generated here so callers do not have to. {@code error} replies
+     * surface as {@link BrainException}; transport problems surface as
+     * {@link IllegalStateException} (not connected) or {@link TimeoutException}
+     * (no reply within {@code timeout}).
+     */
+    public <T> T request(String type, @Nullable Object payload, Class<T> replyType, Duration timeout)
+            throws BrainException, TimeoutException, InterruptedException {
+        if (!isOpen()) {
+            throw new IllegalStateException("Not connected — /connect first.");
+        }
+        String id = type + "_" + requestCounter.incrementAndGet();
+        CompletableFuture<WebSocketEnvelope> future = new CompletableFuture<>();
+        dispatcher.registerPendingReply(id, future);
+
+        if (!send(WebSocketEnvelope.request(id, type, payload))) {
+            dispatcher.cancelPendingReply(id);
+            throw new IllegalStateException("Send failed — connection dropped between check and send.");
+        }
+        terminal.println(Verbosity.DEBUG, "→ %s (id=%s)", type, id);
+
+        WebSocketEnvelope reply;
+        try {
+            reply = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            dispatcher.cancelPendingReply(id);
+            throw e;
+        } catch (java.util.concurrent.ExecutionException e) {
+            // Pending future failed via failAllPending(...) on disconnect.
+            Throwable cause = e.getCause();
+            throw new IllegalStateException(cause == null ? "Request failed" : cause.getMessage(), cause);
+        }
+        terminal.println(Verbosity.DEBUG, "← %s (replyTo=%s)", reply.getType(), reply.getReplyTo());
+
+        if (MessageType.ERROR.equals(reply.getType())) {
+            ErrorData err = json.convertValue(reply.getData(), ErrorData.class);
+            throw new BrainException(err.getErrorCode(),
+                    err.getErrorMessage() == null ? "(no message)" : err.getErrorMessage());
+        }
+        return json.convertValue(reply.getData(), replyType);
     }
 
     @PreDestroy
@@ -164,6 +220,9 @@ public class ConnectionService {
         public void onClose(int statusCode, @Nullable String reason) {
             clientRef.set(null);
             state.set(State.DISCONNECTED);
+            sessions.clear();
+            dispatcher.failAllPending(new IllegalStateException(
+                    "Connection closed (" + statusCode + ")"));
             terminal.info("WebSocket closed: " + statusCode
                     + (reason == null || reason.isBlank() ? "" : " (" + reason + ")"));
         }

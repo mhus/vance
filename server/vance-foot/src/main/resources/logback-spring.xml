@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!--
+        REPL output goes through ChatTerminal to System.out / JLine writer.
+        Application log lives in vance-foot.log so it does not interleave with
+        the chat surface. Console appender stays for WARN/ERROR so users still
+        see boot-time problems before the REPL takes over.
+    -->
+    <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>vance-foot.log</file>
+        <append>true</append>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>WARN</level>
+        </filter>
+        <encoder>
+            <pattern>%-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="WARN">
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="CONSOLE"/>
+    </root>
+    <logger name="de.mhus.vance" level="INFO"/>
+</configuration>

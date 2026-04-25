@@ -17,7 +17,13 @@ import picocli.CommandLine.Spec;
         name = "vance-foot",
         mixinStandardHelpOptions = true,
         version = "vance-foot 0.1.0",
-        description = "Spring-based CLI client for the Vance Brain.",
+        description = {
+                "Spring-based CLI client for the Vance Brain.",
+                "",
+                "Spring config override (intercepted before Picocli):",
+                "  --config <path>  / -c <path>   merge YAML on top of defaults",
+                "  may be passed multiple times; later wins on key collisions",
+        },
         subcommands = {ChatRunCommand.class, DaemonCommand.class})
 public class VanceFootCommand implements Runnable {
 

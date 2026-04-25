@@ -5,6 +5,8 @@ import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.api.ws.ClientType;
 import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.api.ws.PingData;
+import de.mhus.vance.api.ws.PongData;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.client.VanceWebSocketClient;
 import de.mhus.vance.api.ws.client.VanceWebSocketClientListener;
@@ -20,6 +22,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -55,6 +59,7 @@ public class ConnectionService {
 
     private final AtomicReference<State> state = new AtomicReference<>(State.DISCONNECTED);
     private final AtomicReference<@Nullable VanceWebSocketClient> clientRef = new AtomicReference<>();
+    private final AtomicReference<@Nullable ScheduledExecutorService> keepAliveRef = new AtomicReference<>();
     private final AtomicLong requestCounter = new AtomicLong();
 
     public ConnectionService(FootConfig config,
@@ -115,10 +120,65 @@ public class ConnectionService {
     public void disconnect(String reason) {
         VanceWebSocketClient client = clientRef.getAndSet(null);
         state.set(State.DISCONNECTED);
+        stopKeepAlive();
         sessions.clear();
         if (client != null && client.isOpen()) {
             client.close(1000, reason);
             terminal.info("Disconnected — " + reason);
+        }
+    }
+
+    /**
+     * Starts the keep-alive ping loop. Called by {@code WelcomeHandler} once
+     * the Brain announces its expected interval. The scheduler is single-threaded
+     * and daemon so it does not block JVM shutdown.
+     *
+     * <p>Each tick sends a {@code ping} via {@link #request} on the same
+     * thread. That blocks the scheduler thread up to the request timeout —
+     * fine, the next tick is gated on the previous returning anyway, and
+     * a hung Brain is exactly the case where we want to know.
+     */
+    public void startKeepAlive(int intervalSeconds) {
+        stopKeepAlive();
+        if (intervalSeconds <= 0) {
+            return;
+        }
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "vance-foot-keepalive");
+            t.setDaemon(true);
+            return t;
+        });
+        scheduler.scheduleWithFixedDelay(this::sendKeepAlivePing,
+                intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
+        keepAliveRef.set(scheduler);
+        terminal.println(Verbosity.DEBUG, "Keep-alive scheduled every %ds", intervalSeconds);
+    }
+
+    /** Stops the keep-alive loop. Safe to call multiple times. */
+    public void stopKeepAlive() {
+        ScheduledExecutorService previous = keepAliveRef.getAndSet(null);
+        if (previous != null) {
+            previous.shutdownNow();
+        }
+    }
+
+    private void sendKeepAlivePing() {
+        if (!isOpen()) {
+            return;
+        }
+        long sent = System.currentTimeMillis();
+        try {
+            PongData pong = request(
+                    MessageType.PING,
+                    PingData.builder().clientTimestamp(sent).build(),
+                    PongData.class,
+                    Duration.ofSeconds(10));
+            long rtt = System.currentTimeMillis() - sent;
+            long oneWay = pong.getServerTimestamp() - pong.getClientTimestamp();
+            terminal.println(Verbosity.DEBUG,
+                    "ping rtt=%dms one-way=%dms", rtt, oneWay);
+        } catch (Exception e) {
+            terminal.println(Verbosity.WARN, "ping failed: %s", e.getMessage());
         }
     }
 
@@ -220,6 +280,7 @@ public class ConnectionService {
         public void onClose(int statusCode, @Nullable String reason) {
             clientRef.set(null);
             state.set(State.DISCONNECTED);
+            stopKeepAlive();
             sessions.clear();
             dispatcher.failAllPending(new IllegalStateException(
                     "Connection closed (" + statusCode + ")"));

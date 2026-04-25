@@ -1,6 +1,7 @@
 package de.mhus.vance.foot.cli;
 
 import de.mhus.vance.foot.connection.ConnectionService;
+import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.ui.ChatRepl;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import java.util.concurrent.Callable;
@@ -24,6 +25,10 @@ public class ChatRunCommand implements Callable<Integer> {
             description = "Open the WebSocket connection on startup.")
     boolean autoConnect;
 
+    @Option(names = "--no-bootstrap",
+            description = "Skip the auto-bootstrap from vance.bootstrap config after welcome.")
+    boolean noBootstrap;
+
     private final ChatRepl repl;
     private final ConnectionService connection;
     private final ChatTerminal terminal;
@@ -36,6 +41,9 @@ public class ChatRunCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
+        if (noBootstrap) {
+            System.setProperty(AutoBootstrapService.SKIP_PROPERTY, "true");
+        }
         if (autoConnect) {
             try {
                 connection.connect();

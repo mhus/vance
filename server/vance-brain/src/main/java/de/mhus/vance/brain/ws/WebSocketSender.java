@@ -59,9 +59,20 @@ public class WebSocketSender {
         send(wsSession, WebSocketEnvelope.notification(type, data));
     }
 
-    /** Low-level write. Handlers normally use one of the shaped helpers above. */
+    /**
+     * Low-level write. Handlers normally use one of the shaped helpers above.
+     *
+     * <p>{@link WebSocketSession#sendMessage} is not thread-safe per Spring's
+     * contract; with async engine dispatch (steer worker thread, langchain4j
+     * streaming-callback threads, the WS receive thread) several writers can
+     * race on the same session and produce interleaved frames. The
+     * synchronisation below serialises every outbound frame per session,
+     * which is the cheap, correct fix for the few KHz of writes we see.
+     */
     public void send(WebSocketSession wsSession, WebSocketEnvelope envelope) throws IOException {
         String json = objectMapper.writeValueAsString(envelope);
-        wsSession.sendMessage(new TextMessage(json));
+        synchronized (wsSession) {
+            wsSession.sendMessage(new TextMessage(json));
+        }
     }
 }

@@ -15,11 +15,13 @@ import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import lombok.RequiredArgsConstructor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -27,18 +29,26 @@ import org.springframework.web.socket.WebSocketSession;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Delivers a user chat message to a named think-process, runs the engine's
- * {@code steer} synchronously, and pushes every chat message appended
+ * Delivers a user chat message to a named think-process, runs the
+ * engine's {@code steer}, and pushes every chat message appended
  * during the turn back to the client as
  * {@link MessageType#CHAT_MESSAGE_APPENDED} notifications.
  *
- * <p>v1 is synchronous on purpose — the lane scheduler hasn't landed yet.
- * This keeps the path end-to-end testable today: the client sees the ack,
- * then one or more appended-message notifications arrive as the engine
- * persists them.
+ * <p><b>Async dispatch:</b> the engine call runs on a virtual-thread
+ * executor, not on the WebSocket receive thread. Spring serialises
+ * inbound frames per session, so a synchronous engine call would
+ * <em>block</em> the receive thread — and any message the engine is
+ * waiting for (e.g. a {@code client-tool-result} during a client-tool
+ * loop) would queue behind the very thread waiting for it. Self-lock,
+ * timeouts, no-pending warnings. Dispatching to a separate executor
+ * keeps the receive thread idle so reply frames can land in time.
+ *
+ * <p>The steer-reply ({@code process-steer} ack) is sent from the
+ * worker once the engine completes — the foot's
+ * {@code connection.request} blocks until that arrives, so timing-wise
+ * the experience is identical to the synchronous path it replaces.
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class ProcessSteerHandler implements WsHandler {
 
@@ -47,6 +57,21 @@ public class ProcessSteerHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
     private final ChatMessageService chatMessageService;
+    private final ExecutorService steerExecutor =
+            Executors.newVirtualThreadPerTaskExecutor();
+
+    public ProcessSteerHandler(
+            ObjectMapper objectMapper,
+            WebSocketSender sender,
+            ThinkProcessService thinkProcessService,
+            ThinkEngineService thinkEngineService,
+            ChatMessageService chatMessageService) {
+        this.objectMapper = objectMapper;
+        this.sender = sender;
+        this.thinkProcessService = thinkProcessService;
+        this.thinkEngineService = thinkEngineService;
+        this.chatMessageService = chatMessageService;
+    }
 
     @Override
     public String type() {
@@ -85,7 +110,8 @@ public class ProcessSteerHandler implements WsHandler {
         }
         ThinkProcessDocument process = processOpt.get();
 
-        // Snapshot history size so we can emit only the newly-appended messages.
+        // Snapshot before any engine work — must read on the receive thread
+        // because subsequent inbound frames need to flow concurrently.
         int beforeSize = chatMessageService.history(
                 tenantId, sessionId, process.getId()).size();
 
@@ -94,35 +120,66 @@ public class ProcessSteerHandler implements WsHandler {
                 request.getIdempotencyKey(),
                 ctx.getUserId(),
                 request.getContent());
+
+        // Hand the engine work off and free the receive thread.
+        steerExecutor.submit(() -> runSteerAsync(
+                wsSession, envelope, process, request, userInput,
+                tenantId, sessionId, beforeSize));
+    }
+
+    /**
+     * Engine + push + reply, executed off the WS receive thread. All
+     * outbound writes go through {@link WebSocketSender}, which
+     * serialises sends per session — so a streaming chunk fired from
+     * a langchain4j callback thread can't interleave with the appended
+     * notifications produced here.
+     */
+    private void runSteerAsync(
+            WebSocketSession wsSession,
+            WebSocketEnvelope envelope,
+            ThinkProcessDocument process,
+            ProcessSteerRequest request,
+            SteerMessage.UserChatInput userInput,
+            String tenantId,
+            String sessionId,
+            int beforeSize) {
         try {
             thinkEngineService.steer(process, userInput);
         } catch (RuntimeException e) {
             log.error("Engine steer failed for process id='{}' engine='{}'",
                     process.getId(), process.getThinkEngine(), e);
-            sender.sendError(wsSession, envelope, 500, "Engine steer failed: " + e.getMessage());
+            try {
+                sender.sendError(wsSession, envelope, 500,
+                        "Engine steer failed: " + e.getMessage());
+            } catch (IOException sendErr) {
+                log.warn("Failed to send error reply: {}", sendErr.toString());
+            }
             return;
         }
 
-        ThinkProcessDocument refreshed = thinkProcessService.findById(process.getId()).orElse(process);
-        List<ChatMessageDocument> full = chatMessageService.history(
-                tenantId, sessionId, process.getId());
-        for (ChatMessageDocument appended : full.subList(beforeSize, full.size())) {
-            // Skip USER echoes — the sending client already knows what it
-            // just typed and renders it locally; no point round-tripping it.
-            // ASSISTANT and SYSTEM turns are the only surprises worth pushing.
-            if (appended.getRole() == ChatRole.USER) {
-                continue;
+        try {
+            ThinkProcessDocument refreshed = thinkProcessService.findById(process.getId())
+                    .orElse(process);
+            List<ChatMessageDocument> full = chatMessageService.history(
+                    tenantId, sessionId, process.getId());
+            for (ChatMessageDocument appended : full.subList(beforeSize, full.size())) {
+                // Skip USER echoes — the sending client already knows what it
+                // just typed and renders it locally.
+                if (appended.getRole() == ChatRole.USER) {
+                    continue;
+                }
+                sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
+                        toDto(appended, request.getProcessName()));
             }
-            sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
-                    toDto(appended, request.getProcessName()));
+            ProcessSteerResponse response = ProcessSteerResponse.builder()
+                    .thinkProcessId(refreshed.getId())
+                    .processName(refreshed.getName())
+                    .status(refreshed.getStatus())
+                    .build();
+            sender.sendReply(wsSession, envelope, MessageType.PROCESS_STEER, response);
+        } catch (IOException sendErr) {
+            log.warn("Failed to ship steer follow-up frames: {}", sendErr.toString());
         }
-
-        ProcessSteerResponse response = ProcessSteerResponse.builder()
-                .thinkProcessId(refreshed.getId())
-                .processName(refreshed.getName())
-                .status(refreshed.getStatus())
-                .build();
-        sender.sendReply(wsSession, envelope, MessageType.PROCESS_STEER, response);
     }
 
     private static ChatMessageAppendedData toDto(ChatMessageDocument doc, String processName) {
@@ -138,5 +195,10 @@ public class ProcessSteerHandler implements WsHandler {
 
     private static boolean isBlank(@Nullable String s) {
         return s == null || s.isBlank();
+    }
+
+    @PreDestroy
+    void shutdown() {
+        steerExecutor.shutdownNow();
     }
 }

@@ -59,8 +59,14 @@ public class ClientToolResultHandler implements WsHandler {
                 response.getResult(),
                 response.getError()).isPresent();
         if (!matched) {
-            log.debug("Dropping late client-tool-result correlationId='{}'",
+            // INFO not DEBUG: a late result is exactly the "ghost reply
+            // after timeout / disconnect" signal we want surfaced.
+            log.info("client-tool-result: no pending for correlation='{}' (late or unknown)",
                     response.getCorrelationId());
+        } else {
+            log.info("client-tool-result: matched correlation='{}'{}",
+                    response.getCorrelationId(),
+                    response.getError() == null ? "" : " error='" + response.getError() + "'");
         }
     }
 }

@@ -101,6 +101,13 @@ public class ChatRepl {
             builder.variable(LineReader.HISTORY_FILE_SIZE, max);
         }
         LineReader r = builder.build();
+        // Bracketed paste keeps a multi-line clipboard paste from being
+        // submitted as several separate Enter presses — the terminal wraps
+        // the paste in special escape sequences and JLine collects the
+        // whole block as one input. Default-on in JLine 3.x but some
+        // terminals (older IntelliJ) need it pinned explicitly to not
+        // accidentally disable it via fallback mode.
+        r.setOpt(LineReader.Option.BRACKETED_PASTE);
         this.reader = r;
         chatTerminal.attachReader(r);
         statusBar.attach(t);

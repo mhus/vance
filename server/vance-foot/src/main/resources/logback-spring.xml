@@ -8,7 +8,9 @@
     -->
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
         <file>vance-foot.log</file>
-        <append>true</append>
+        <!-- Truncate on every JVM start: the "current run's log" is the
+             interesting one; persistent history is the user's job. -->
+        <append>false</append>
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
         </encoder>

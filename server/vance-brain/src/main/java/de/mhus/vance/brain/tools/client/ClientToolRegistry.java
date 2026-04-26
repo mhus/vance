@@ -1,6 +1,9 @@
 package de.mhus.vance.brain.tools.client;
 
 import de.mhus.vance.api.tools.ToolSpec;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -9,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -89,7 +93,8 @@ public class ClientToolRegistry {
     /** Allocates a new correlation id and a future to wait on. */
     public Pending beginInvocation(String sessionId, String toolName) {
         String id = "ct-" + correlationSeq.incrementAndGet();
-        Pending p = new Pending(id, sessionId, toolName, new CompletableFuture<>());
+        Pending p = new Pending(id, sessionId, toolName,
+                new CompletableFuture<>(), Instant.now());
         pending.put(id, p);
         return p;
     }
@@ -117,6 +122,41 @@ public class ClientToolRegistry {
         }
     }
 
+    /**
+     * Periodic sweep that surfaces leaks: pending invocations older
+     * than {@link #STALE_AFTER} are completed exceptionally and
+     * logged WARN. Under healthy operation
+     * {@link #completeInvocation} or {@link #cancel} fire well
+     * before this — anything that lingers points at a missing
+     * cleanup path (cancel never invoked, exception path
+     * short-circuited, etc.) and we want it visible.
+     */
+    @Scheduled(fixedDelayString = "PT30S")
+    void sweepStale() {
+        Instant deadline = Instant.now().minus(STALE_AFTER);
+        List<Pending> stale = new ArrayList<>();
+        for (Pending p : pending.values()) {
+            if (p.createdAt.isBefore(deadline)) {
+                stale.add(p);
+            }
+        }
+        for (Pending p : stale) {
+            Pending removed = pending.remove(p.correlationId);
+            if (removed == null) continue;
+            long ageMs = Duration.between(removed.createdAt, Instant.now()).toMillis();
+            log.warn("ClientToolRegistry leak: pending '{}' tool='{}' session='{}' "
+                            + "older than {} (age {} ms) — completing exceptionally",
+                    removed.correlationId, removed.toolName, removed.sessionId,
+                    STALE_AFTER, ageMs);
+            removed.future.completeExceptionally(
+                    new ClientToolFailureException(
+                            "Stale pending swept after " + STALE_AFTER));
+        }
+    }
+
+    /** Pendings older than this are considered leaked and swept. */
+    private static final Duration STALE_AFTER = Duration.ofMinutes(2);
+
     /** Per-session routing data. Package-private so the source can read it. */
     public record Entry(
             String connectionId,
@@ -128,5 +168,6 @@ public class ClientToolRegistry {
             String correlationId,
             String sessionId,
             String toolName,
-            CompletableFuture<Map<String, Object>> future) {}
+            CompletableFuture<Map<String, Object>> future,
+            Instant createdAt) {}
 }

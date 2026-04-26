@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.session;
 
+import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.ui.StatusBar;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
@@ -18,9 +19,11 @@ import org.springframework.stereotype.Service;
  * users do not have to type the process name on every line.
  *
  * <p>Mutations notify the {@link StatusBar} so the bottom-pinned status
- * line repaints. The dependency is resolved lazily via {@link ObjectProvider}
- * so we don't fight Spring on construction order with the StatusBar that
- * itself reads from this service.
+ * line repaints, and the {@link ClientToolService} so client-side tool
+ * registrations are pushed to the brain after each (re-)bind. Both
+ * dependencies are resolved lazily via {@link ObjectProvider} to avoid
+ * fighting Spring on construction order with services that themselves
+ * read from this one.
  */
 @Service
 public class SessionService {
@@ -28,9 +31,13 @@ public class SessionService {
     private final AtomicReference<@Nullable BoundSession> current = new AtomicReference<>();
     private final AtomicReference<@Nullable String> activeProcess = new AtomicReference<>();
     private final ObjectProvider<StatusBar> statusBar;
+    private final ObjectProvider<ClientToolService> clientToolService;
 
-    public SessionService(ObjectProvider<StatusBar> statusBar) {
+    public SessionService(
+            ObjectProvider<StatusBar> statusBar,
+            ObjectProvider<ClientToolService> clientToolService) {
         this.statusBar = statusBar;
+        this.clientToolService = clientToolService;
     }
 
     public @Nullable BoundSession current() {
@@ -40,6 +47,7 @@ public class SessionService {
     public void bind(String sessionId, String projectId) {
         current.set(new BoundSession(sessionId, projectId));
         notifyStatusBar();
+        notifyClientTools();
     }
 
     public void clear() {
@@ -61,6 +69,13 @@ public class SessionService {
         StatusBar bar = statusBar.getIfAvailable();
         if (bar != null) {
             bar.refresh();
+        }
+    }
+
+    private void notifyClientTools() {
+        ClientToolService cts = clientToolService.getIfAvailable();
+        if (cts != null) {
+            cts.registerAll();
         }
     }
 

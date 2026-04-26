@@ -3,7 +3,9 @@ package de.mhus.vance.shared.thinkprocess;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -67,6 +69,19 @@ public class ThinkProcessDocument {
 
     /** Optional goal for batch-style engines; reactive engines leave this null. */
     private @Nullable String goal;
+
+    /**
+     * Engine-specific runtime parameters set at create-time.
+     * Examples: {@code "model": "claude-haiku-4-5"},
+     * {@code "validation": true}, {@code "maxIterations": 8}.
+     *
+     * <p>Schema is engine-defined — each engine reads only the keys
+     * it knows about and ignores the rest. Default empty map so an
+     * engine that doesn't declare any params still gets a non-null
+     * collection at runtime.
+     */
+    @Builder.Default
+    private Map<String, Object> engineParams = new LinkedHashMap<>();
 
     /**
      * Mongo id of the orchestrator process that spawned this one.

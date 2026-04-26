@@ -4,7 +4,9 @@ import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,13 +51,13 @@ public class ThinkProcessService {
             @Nullable String title,
             @Nullable String goal) {
         return create(tenantId, sessionId, name, thinkEngine,
-                thinkEngineVersion, title, goal, /*parentProcessId*/ null);
+                thinkEngineVersion, title, goal,
+                /*parentProcessId*/ null, /*engineParams*/ null);
     }
 
     /**
-     * Same as {@link #create(String, String, String, String, String, String, String)},
-     * but also records the orchestrator that spawned this process —
-     * see {@link ThinkProcessDocument#getParentProcessId()}.
+     * Variant that records the orchestrator parent — see
+     * {@link ThinkProcessDocument#getParentProcessId()}.
      */
     public ThinkProcessDocument create(
             String tenantId,
@@ -66,11 +68,33 @@ public class ThinkProcessService {
             @Nullable String title,
             @Nullable String goal,
             @Nullable String parentProcessId) {
+        return create(tenantId, sessionId, name, thinkEngine,
+                thinkEngineVersion, title, goal, parentProcessId,
+                /*engineParams*/ null);
+    }
+
+    /**
+     * Full create — also stores engine-specific runtime parameters
+     * (model override, validation flag, etc.). The map's schema is
+     * defined per-engine; pass {@code null} to record an empty map.
+     */
+    public ThinkProcessDocument create(
+            String tenantId,
+            String sessionId,
+            String name,
+            String thinkEngine,
+            @Nullable String thinkEngineVersion,
+            @Nullable String title,
+            @Nullable String goal,
+            @Nullable String parentProcessId,
+            @Nullable Map<String, Object> engineParams) {
         if (repository.existsByTenantIdAndSessionIdAndName(tenantId, sessionId, name)) {
             throw new ThinkProcessAlreadyExistsException(
                     "Think-process '" + name + "' already exists in session '"
                             + sessionId + "' (tenant='" + tenantId + "')");
         }
+        Map<String, Object> params = engineParams == null
+                ? new LinkedHashMap<>() : new LinkedHashMap<>(engineParams);
         ThinkProcessDocument doc = ThinkProcessDocument.builder()
                 .tenantId(tenantId)
                 .sessionId(sessionId)
@@ -80,11 +104,13 @@ public class ThinkProcessService {
                 .thinkEngineVersion(thinkEngineVersion)
                 .goal(goal)
                 .parentProcessId(parentProcessId)
+                .engineParams(params)
                 .status(ThinkProcessStatus.READY)
                 .build();
         ThinkProcessDocument saved = repository.save(doc);
-        log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}'",
-                tenantId, sessionId, name, thinkEngine, saved.getId(), parentProcessId);
+        log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' params={}",
+                tenantId, sessionId, name, thinkEngine, saved.getId(), parentProcessId,
+                params.isEmpty() ? "{}" : params.keySet());
         return saved;
     }
 

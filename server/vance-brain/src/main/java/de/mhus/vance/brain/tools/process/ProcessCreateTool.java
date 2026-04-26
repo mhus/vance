@@ -39,7 +39,13 @@ public class ProcessCreateTool implements Tool {
                             "description", "Optional human-readable title."),
                     "goal", Map.of(
                             "type", "string",
-                            "description", "Optional one-line goal the engine should pursue.")),
+                            "description", "Optional one-line goal the engine should pursue."),
+                    "params", Map.of(
+                            "type", "object",
+                            "description", "Engine-specific runtime parameters "
+                                    + "(model override, validation flag, max iterations, …). "
+                                    + "Schema is engine-defined; unknown keys are ignored.",
+                            "additionalProperties", true)),
             "required", List.of("name", "engine"));
 
     private final ThinkProcessService thinkProcessService;
@@ -90,6 +96,7 @@ public class ProcessCreateTool implements Tool {
         String engineName = stringOrThrow(params, "engine");
         String title = optString(params, "title");
         String goal = optString(params, "goal");
+        Map<String, Object> engineParams = optMap(params, "params");
 
         ThinkEngine engine = thinkEngineServiceProvider.getObject().resolve(engineName)
                 .orElseThrow(() -> new ToolException(
@@ -101,7 +108,8 @@ public class ProcessCreateTool implements Tool {
             fresh = thinkProcessService.create(
                     ctx.tenantId(), sessionId, name,
                     engine.name(), engine.version(), title, goal,
-                    /*parentProcessId*/ ctx.processId());
+                    /*parentProcessId*/ ctx.processId(),
+                    engineParams);
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
             throw new ToolException(e.getMessage());
         }
@@ -133,5 +141,20 @@ public class ProcessCreateTool implements Tool {
     private static String optString(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         return raw instanceof String s && !s.isBlank() ? s : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> optMap(Map<String, Object> params, String key) {
+        Object raw = params == null ? null : params.get(key);
+        if (raw instanceof Map<?, ?> m) {
+            // The LLM may emit numeric keys or non-string keys in odd cases;
+            // coerce to String keys defensively.
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                out.put(String.valueOf(e.getKey()), e.getValue());
+            }
+            return out;
+        }
+        return null;
     }
 }

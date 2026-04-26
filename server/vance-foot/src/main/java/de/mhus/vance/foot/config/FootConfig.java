@@ -1,7 +1,9 @@
 package de.mhus.vance.foot.config;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -90,6 +92,13 @@ public class FootConfig {
         private String name = "";
         private @Nullable String title;
         private @Nullable String goal;
+
+        /**
+         * Engine-specific runtime parameters — see
+         * {@code de.mhus.vance.api.thinkprocess.ProcessSpec#getParams()}.
+         * Empty map = engine defaults.
+         */
+        private Map<String, Object> params = new LinkedHashMap<>();
     }
 }
 

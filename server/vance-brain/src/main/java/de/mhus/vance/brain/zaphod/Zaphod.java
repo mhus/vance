@@ -44,8 +44,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -110,8 +112,55 @@ public class Zaphod implements ThinkEngine {
                     + "tool call in the same response. Don't end a turn "
                     + "with words of intent and no tool call.";
 
-    /** Hard cap on tool-call iterations per turn — a broken model can loop. */
+    /** Hard cap on tool-call iterations per turn — a broken model can loop.
+     *  Per-process override via {@code params.maxIterations}. */
     private static final int MAX_TOOL_ITERATIONS = 8;
+
+    // ──────────────────── Validation heuristic ────────────────────
+    // Opt-in via params.validation == true. Two checks:
+    //   1. intent-without-action — same as Arthur's
+    //   2. reply-too-brief-after-data-fetch — Zaphod-specific, catches
+    //      "OK, I see the files." after a substantial tool result
+    //
+    // Both inject a corrective SystemMessage and let the model retry,
+    // bounded by MAX_VALIDATION_CORRECTIONS.
+
+    private static final List<Pattern> INTENT_PATTERNS = List.of(
+            Pattern.compile("(?im)(^|[.!?]\\s+|\\b)(I'?ll|I will|I'?m going to|Let me)\\s+\\w+"),
+            Pattern.compile(
+                    "(?im)(^|[.!?]\\s+|\\b)"
+                            + "(Ich (werde|weise|frage|sage|prüfe|lese|starte|beauftrage)"
+                            + "|Lass mich|Soll ich|Okay,?\\s+ich (werde|weise|prüfe|frage))"
+                            + "\\b"),
+            Pattern.compile(
+                    "(?im)(^|[.!?]\\s+|\\b)"
+                            + "(I'?ll (now |just )?(ask|tell|check|fetch|read|run|call|invoke)"
+                            + "|Let me (now |just )?(ask|tell|check|fetch|read|run|call|invoke))"
+                            + "\\b"));
+
+    /** Tool result size (chars) above which we expect the data to be
+     *  reflected in the reply. */
+    private static final int TOOL_DATA_THRESHOLD = 500;
+
+    /** Reply size (chars) below which we suspect the data wasn't relayed. */
+    private static final int REPLY_BRIEF_THRESHOLD = 200;
+
+    private static final int MAX_VALIDATION_CORRECTIONS = 2;
+
+    private static final String INTENT_CORRECTION_TEMPLATE =
+            "VALIDATION CHECK: your previous response said you would do "
+                    + "something ('%s') but emitted no tool call. Either "
+                    + "emit the tool call now, or rephrase as a direct "
+                    + "answer / question without promising future action. "
+                    + "Do not repeat the same intent-without-action sentence.";
+
+    private static final String DATA_RELAY_CORRECTION_TEMPLATE =
+            "VALIDATION CHECK: this turn's tools returned %d characters of "
+                    + "data, but your reply has only %d. The caller cannot see "
+                    + "tool results — only your reply text. Re-issue the "
+                    + "reply with the actual data pasted in: file lists, file "
+                    + "contents, command output, etc., as appropriate. If the "
+                    + "tool returned irrelevant data, say so plainly.";
 
     private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_AI_PROVIDER = "ai.default.provider";
@@ -257,7 +306,15 @@ public class Zaphod implements ThinkEngine {
                 }
             }
 
-            String finalText = runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process);
+            int maxIters = paramInt(process, "maxIterations", MAX_TOOL_ITERATIONS);
+            boolean validation = paramBool(process, "validation", false);
+            if (validation) {
+                log.info("Zaphod.turn id='{}' validation=on maxIters={}",
+                        process.getId(), maxIters);
+            }
+            String finalText = runToolLoop(
+                    aiChat, toolSpecs, tools, messages, ctx, process,
+                    maxIters, validation);
 
             chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -288,9 +345,13 @@ public class Zaphod implements ThinkEngine {
             ContextToolsApi tools,
             List<ChatMessage> messages,
             ThinkEngineContext ctx,
-            ThinkProcessDocument process) {
+            ThinkProcessDocument process,
+            int maxIters,
+            boolean validation) {
         StringBuilder finalText = new StringBuilder();
-        for (int iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
+        int corrections = 0;
+        int toolDataChars = 0;
+        for (int iter = 0; iter < maxIters; iter++) {
             ChatRequest.Builder req = ChatRequest.builder().messages(messages);
             if (!toolSpecs.isEmpty()) {
                 req.toolSpecifications(toolSpecs);
@@ -301,20 +362,70 @@ public class Zaphod implements ThinkEngine {
 
             if (!reply.hasToolExecutionRequests()) {
                 String text = reply.text();
+                if (validation && corrections < MAX_VALIDATION_CORRECTIONS) {
+                    String intent = matchIntent(text);
+                    if (intent != null) {
+                        log.info(
+                                "Zaphod id='{}' validation: intent-without-action (\"{}\"), correcting ({}/{})",
+                                process.getId(), intent,
+                                corrections + 1, MAX_VALIDATION_CORRECTIONS);
+                        messages.add(reply);
+                        messages.add(SystemMessage.from(
+                                String.format(INTENT_CORRECTION_TEMPLATE, intent)));
+                        corrections++;
+                        continue;
+                    }
+                    int replyLen = text == null ? 0 : text.length();
+                    if (toolDataChars >= TOOL_DATA_THRESHOLD
+                            && replyLen <= REPLY_BRIEF_THRESHOLD) {
+                        log.info(
+                                "Zaphod id='{}' validation: data-relay-gap (toolData={}, reply={}), correcting ({}/{})",
+                                process.getId(), toolDataChars, replyLen,
+                                corrections + 1, MAX_VALIDATION_CORRECTIONS);
+                        messages.add(reply);
+                        messages.add(SystemMessage.from(
+                                String.format(DATA_RELAY_CORRECTION_TEMPLATE,
+                                        toolDataChars, replyLen)));
+                        corrections++;
+                        continue;
+                    }
+                }
                 if (text != null) {
                     finalText.append(text);
+                }
+                if (validation && corrections > 0) {
+                    log.info("Zaphod id='{}' validation: completed after {} correction(s)",
+                            process.getId(), corrections);
                 }
                 return finalText.toString();
             }
             messages.add(reply);
             for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
                 String result = invokeOne(tools, call, process.getId());
+                if (result != null) toolDataChars += result.length();
                 messages.add(ToolExecutionResultMessage.from(call, result));
             }
         }
         throw new AiChatException(
-                "Zaphod exceeded " + MAX_TOOL_ITERATIONS
+                "Zaphod exceeded " + maxIters
                         + " tool iterations — aborting turn to avoid runaway.");
+    }
+
+    /**
+     * Returns the matched intent fragment, or {@code null} when the
+     * text doesn't look like a future-tense announcement.
+     */
+    private static @Nullable String matchIntent(@Nullable String text) {
+        if (text == null || text.isBlank()) return null;
+        for (Pattern p : INTENT_PATTERNS) {
+            var m = p.matcher(text);
+            if (m.find()) {
+                int start = m.start();
+                int end = Math.min(text.length(), start + 60);
+                return text.substring(start, end).trim();
+            }
+        }
+        return null;
     }
 
     /**
@@ -491,12 +602,15 @@ public class Zaphod implements ThinkEngine {
     private static AiChatConfig resolveAiConfig(
             ThinkProcessDocument process, SettingService settings) {
         String tenantId = process.getTenantId();
-        String provider = settings.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                SETTING_AI_PROVIDER, DEFAULT_PROVIDER);
-        String model = settings.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                SETTING_AI_MODEL, DEFAULT_MODEL);
+        // Per-process params override the tenant default.
+        String provider = paramString(process, "provider",
+                settings.getStringValue(
+                        tenantId, SETTINGS_REF_TYPE, tenantId,
+                        SETTING_AI_PROVIDER, DEFAULT_PROVIDER));
+        String model = paramString(process, "model",
+                settings.getStringValue(
+                        tenantId, SETTINGS_REF_TYPE, tenantId,
+                        SETTING_AI_MODEL, DEFAULT_MODEL));
         String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
         String apiKey = settings.getDecryptedPassword(
                 tenantId, SETTINGS_REF_TYPE, tenantId,
@@ -508,5 +622,37 @@ public class Zaphod implements ThinkEngine {
                             + "', setting='" + apiKeySetting + "')");
         }
         return new AiChatConfig(provider, model, apiKey);
+    }
+
+    // ──────────────────── engineParams helpers ────────────────────
+
+    private static @Nullable Object param(ThinkProcessDocument process, String key) {
+        Map<String, Object> p = process.getEngineParams();
+        return p == null ? null : p.get(key);
+    }
+
+    private static String paramString(
+            ThinkProcessDocument process, String key, String fallback) {
+        Object v = param(process, key);
+        return v instanceof String s && !s.isBlank() ? s : fallback;
+    }
+
+    private static int paramInt(
+            ThinkProcessDocument process, String key, int fallback) {
+        Object v = param(process, key);
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof String s) {
+            try { return Integer.parseInt(s.trim()); }
+            catch (NumberFormatException e) { return fallback; }
+        }
+        return fallback;
+    }
+
+    private static boolean paramBool(
+            ThinkProcessDocument process, String key, boolean fallback) {
+        Object v = param(process, key);
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) return Boolean.parseBoolean(s.trim());
+        return fallback;
     }
 }

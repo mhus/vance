@@ -3,6 +3,7 @@ package de.mhus.vance.api.thinkprocess;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import jakarta.validation.constraints.NotBlank;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -34,4 +35,10 @@ public class ProcessCreateRequest {
     private @Nullable String title;
 
     private @Nullable String goal;
+
+    /**
+     * Engine-specific runtime parameters — see
+     * {@link ProcessSpec#getParams()}.
+     */
+    private @Nullable Map<String, Object> params;
 }

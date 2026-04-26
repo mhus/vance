@@ -205,7 +205,9 @@ public class SessionBootstrapHandler implements WsHandler {
                         engine.name(),
                         engine.version(),
                         spec.getTitle(),
-                        spec.getGoal());
+                        spec.getGoal(),
+                        /*parentProcessId*/ null,
+                        spec.getParams());
             } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
                 // Extremely rare race with a concurrent bootstrap — treat as skip.
                 Optional<ThinkProcessDocument> raced = thinkProcessService

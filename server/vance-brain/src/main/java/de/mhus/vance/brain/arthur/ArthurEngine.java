@@ -41,8 +41,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -99,6 +101,49 @@ public class ArthurEngine implements ThinkEngine {
 
     private static final String DEFAULT_PROVIDER = "anthropic";
     private static final String DEFAULT_MODEL = "claude-sonnet-4-5";
+
+    // ──────────────────── Validation heuristic ────────────────────
+    // Opt-in via params.validation == true. Detects "intent-without-
+    // action" — replies that announce a step ("Okay, ich weise an...",
+    // "I'll check...") without emitting a tool call. The model gets
+    // one or two corrective re-prompts before we accept whatever
+    // text came in.
+
+    /**
+     * Future-tense / intent markers that should be paired with a tool
+     * call. Anchored at start-of-message or at a sentence boundary so
+     * we don't fire on incidental occurrences in the middle of an
+     * actual answer.
+     */
+    private static final List<Pattern> INTENT_PATTERNS = List.of(
+            // English
+            Pattern.compile("(?im)(^|[.!?]\\s+|\\b)(I'?ll|I will|I'?m going to|Let me)\\s+\\w+"),
+            // German
+            Pattern.compile(
+                    "(?im)(^|[.!?]\\s+|\\b)"
+                            + "(Ich (werde|weise|frage|sage|prüfe|lese|starte|beauftrage)"
+                            + "|Lass mich|Soll ich|Okay,?\\s+ich (werde|weise|prüfe|frage))"
+                            + "\\b"),
+            // Action narration
+            Pattern.compile(
+                    "(?im)(^|[.!?]\\s+|\\b)"
+                            + "(I'?ll (now |just )?(ask|tell|check|fetch|read|run|call|spawn|create|stop|steer)"
+                            + "|Let me (now |just )?(ask|tell|check|fetch|read|run|call|spawn|create|stop|steer))"
+                            + "\\b"));
+
+    private static final String VALIDATION_CORRECTION_TEMPLATE =
+            "VALIDATION CHECK: your previous response said you would do "
+                    + "something ('%s') but emitted no tool call. The user is "
+                    + "now waiting for an action that will never happen.\n\n"
+                    + "Pick one and emit it in your NEXT response:\n"
+                    + "  (a) The corresponding tool call (process_create / "
+                    + "process_steer / process_stop / process_list / "
+                    + "process_status / docs_list / docs_read).\n"
+                    + "  (b) A direct question to the user — without "
+                    + "promising future action.\n\n"
+                    + "Do NOT repeat the same intent-without-action sentence.";
+
+    private static final int MAX_VALIDATION_CORRECTIONS = 2;
 
     private final ThinkProcessService thinkProcessService;
     private final ObjectMapper objectMapper;
@@ -230,10 +275,16 @@ public class ArthurEngine implements ThinkEngine {
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
 
             List<ChatMessage> messages = buildPromptMessages(process, chatLog, inbox);
-            log.debug("Arthur.turn id='{}' inbox={} historyMsgs={}",
-                    process.getId(), inbox.size(), messages.size());
+            int maxIters = paramInt(process, "maxIterations",
+                    arthurProperties.getMaxToolIterations());
+            boolean validation = paramBool(process, "validation", false);
+            log.debug("Arthur.turn id='{}' inbox={} historyMsgs={} model={} maxIters={} validation={}",
+                    process.getId(), inbox.size(), messages.size(),
+                    config.modelName(), maxIters, validation);
 
-            String finalText = runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process);
+            String finalText = runToolLoop(
+                    aiChat, toolSpecs, tools, messages, ctx, process,
+                    maxIters, validation);
 
             chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -263,9 +314,11 @@ public class ArthurEngine implements ThinkEngine {
             ContextToolsApi tools,
             List<ChatMessage> messages,
             ThinkEngineContext ctx,
-            ThinkProcessDocument process) {
+            ThinkProcessDocument process,
+            int maxIters,
+            boolean validation) {
         StringBuilder finalText = new StringBuilder();
-        int maxIters = arthurProperties.getMaxToolIterations();
+        int corrections = 0;
         for (int iter = 0; iter < maxIters; iter++) {
             ChatRequest.Builder req = ChatRequest.builder().messages(messages);
             if (!toolSpecs.isEmpty()) {
@@ -275,8 +328,25 @@ public class ArthurEngine implements ThinkEngine {
 
             if (!reply.hasToolExecutionRequests()) {
                 String text = reply.text();
+                String matchedIntent = (validation && corrections < MAX_VALIDATION_CORRECTIONS)
+                        ? matchIntent(text) : null;
+                if (matchedIntent != null) {
+                    log.info(
+                            "Arthur id='{}' validation: intent-without-action detected (\"{}\"), correcting ({}/{})",
+                            process.getId(), matchedIntent,
+                            corrections + 1, MAX_VALIDATION_CORRECTIONS);
+                    messages.add(reply);
+                    messages.add(SystemMessage.from(
+                            String.format(VALIDATION_CORRECTION_TEMPLATE, matchedIntent)));
+                    corrections++;
+                    continue;
+                }
                 if (text != null) {
                     finalText.append(text);
+                }
+                if (validation && corrections > 0) {
+                    log.info("Arthur id='{}' validation: completed after {} correction(s)",
+                            process.getId(), corrections);
                 }
                 return finalText.toString();
             }
@@ -289,6 +359,25 @@ public class ArthurEngine implements ThinkEngine {
         throw new AiChatException(
                 "Arthur exceeded " + maxIters
                         + " tool iterations — aborting turn to avoid runaway.");
+    }
+
+    /**
+     * Returns the first matching intent fragment, or {@code null} when
+     * the text doesn't look like a future-tense announcement. The
+     * snippet is short enough to drop into the corrective prompt so
+     * the model sees what triggered the check.
+     */
+    private static @Nullable String matchIntent(@Nullable String text) {
+        if (text == null || text.isBlank()) return null;
+        for (Pattern p : INTENT_PATTERNS) {
+            var m = p.matcher(text);
+            if (m.find()) {
+                int start = m.start();
+                int end = Math.min(text.length(), start + 60);
+                return text.substring(start, end).trim();
+            }
+        }
+        return null;
     }
 
     private AiMessage streamOneIteration(
@@ -550,12 +639,17 @@ public class ArthurEngine implements ThinkEngine {
     private static AiChatConfig resolveAiConfig(
             ThinkProcessDocument process, SettingService settings) {
         String tenantId = process.getTenantId();
-        String provider = settings.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                SETTING_AI_PROVIDER, DEFAULT_PROVIDER);
-        String model = settings.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                SETTING_AI_MODEL, DEFAULT_MODEL);
+        // Per-process override beats per-tenant default. The setting is
+        // a fallback: clients that don't pass `params.model` get the
+        // tenant default; clients that do override one process at a time.
+        String provider = paramString(process, "provider",
+                settings.getStringValue(
+                        tenantId, SETTINGS_REF_TYPE, tenantId,
+                        SETTING_AI_PROVIDER, DEFAULT_PROVIDER));
+        String model = paramString(process, "model",
+                settings.getStringValue(
+                        tenantId, SETTINGS_REF_TYPE, tenantId,
+                        SETTING_AI_MODEL, DEFAULT_MODEL));
         String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
         String apiKey = settings.getDecryptedPassword(
                 tenantId, SETTINGS_REF_TYPE, tenantId,
@@ -567,5 +661,37 @@ public class ArthurEngine implements ThinkEngine {
                             + "', setting='" + apiKeySetting + "')");
         }
         return new AiChatConfig(provider, model, apiKey);
+    }
+
+    // ──────────────────── engineParams helpers ────────────────────
+
+    private static @Nullable Object param(ThinkProcessDocument process, String key) {
+        Map<String, Object> p = process.getEngineParams();
+        return p == null ? null : p.get(key);
+    }
+
+    private static String paramString(
+            ThinkProcessDocument process, String key, String fallback) {
+        Object v = param(process, key);
+        return v instanceof String s && !s.isBlank() ? s : fallback;
+    }
+
+    private static int paramInt(
+            ThinkProcessDocument process, String key, int fallback) {
+        Object v = param(process, key);
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof String s) {
+            try { return Integer.parseInt(s.trim()); }
+            catch (NumberFormatException e) { return fallback; }
+        }
+        return fallback;
+    }
+
+    private static boolean paramBool(
+            ThinkProcessDocument process, String key, boolean fallback) {
+        Object v = param(process, key);
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) return Boolean.parseBoolean(s.trim());
+        return fallback;
     }
 }

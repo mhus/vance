@@ -3,6 +3,7 @@ package de.mhus.vance.api.thinkprocess;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import jakarta.validation.constraints.NotBlank;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -30,4 +31,12 @@ public class ProcessSpec {
     private @Nullable String title;
 
     private @Nullable String goal;
+
+    /**
+     * Engine-specific runtime parameters. Schema is engine-defined —
+     * see e.g. {@code ArthurEngine}'s recognised keys
+     * ({@code model}, {@code maxIterations}, {@code validation}).
+     * {@code null} or absent → engine defaults.
+     */
+    private @Nullable Map<String, Object> params;
 }

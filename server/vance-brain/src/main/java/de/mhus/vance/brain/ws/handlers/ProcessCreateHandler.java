@@ -86,7 +86,9 @@ public class ProcessCreateHandler implements WsHandler {
                     engine.name(),
                     engine.version(),
                     request.getTitle(),
-                    request.getGoal());
+                    request.getGoal(),
+                    /*parentProcessId*/ null,
+                    request.getParams());
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
             sender.sendError(wsSession, envelope, 409, e.getMessage());
             return;

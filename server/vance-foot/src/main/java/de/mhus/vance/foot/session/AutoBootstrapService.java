@@ -120,6 +120,8 @@ public class AutoBootstrapService {
                     .name(p.getName().isBlank() ? p.getEngine() : p.getName())
                     .title(p.getTitle())
                     .goal(p.getGoal())
+                    .params(p.getParams() == null || p.getParams().isEmpty()
+                            ? null : p.getParams())
                     .build());
         }
         SessionBootstrapRequest req = SessionBootstrapRequest.builder()

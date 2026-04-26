@@ -10,6 +10,7 @@ import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Straightforward {@link ThinkEngineContext} — carries the process and
@@ -26,7 +27,8 @@ record DefaultThinkEngineContext(
         ToolDispatcher toolDispatcher,
         ClientEventPublisher eventPublisher,
         ThinkProcessService thinkProcessService,
-        ProcessEventEmitter processEventEmitter
+        ProcessEventEmitter processEventEmitter,
+        Set<String> allowedTools
 ) implements ThinkEngineContext {
 
     @Override
@@ -47,7 +49,7 @@ record DefaultThinkEngineContext(
                 process.getSessionId(),
                 process.getId(),
                 null);
-        return new ContextToolsApi(toolDispatcher, scope);
+        return new ContextToolsApi(toolDispatcher, scope, allowedTools);
     }
 
     @Override

@@ -7,7 +7,6 @@ import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -17,10 +16,11 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * The single point that knows how to deliver an inbox message to a
- * think-process's lane: append to the persistent queue, then schedule
- * a drain that calls {@link ThinkEngineService#steer} once per
- * decoded message.
+ * The single point that knows how to deliver inbox traffic to a
+ * think-process's lane: append a {@link PendingMessageDocument} to
+ * the persistent queue, then schedule a lane-turn that lets the
+ * engine drain the queue itself via
+ * {@link ThinkEngineContext#drainPending()}.
  *
  * <p>Used by:
  * <ul>
@@ -29,18 +29,15 @@ import org.springframework.stereotype.Component;
  *   <li>{@code DefaultProcessOrchestrator} — engine-driven
  *       {@code notifyParent} calls.</li>
  *   <li>{@code ProcessSteerHandler} — directly via
- *       {@link #drainAndDeliver(String)} from inside its own lane
- *       task, so the same drain-loop semantics apply on the
- *       client-driven path.</li>
+ *       {@link #runTurnNow(String)} from inside its own lane task,
+ *       so the same flow applies on the client-driven path.</li>
  * </ul>
  *
- * <p><b>Drain-loop / Auto-Wakeup.</b> {@link #drainAndDeliver}
- * keeps re-draining the queue until it's empty. Messages that arrive
- * while {@code engine.steer} is running fall into the freshly-emptied
- * queue and are picked up by the next loop iteration in the same
- * lane-turn — the formal "schedule another turn" pattern from the
- * spec collapses to "stay in this turn until empty," which holds the
- * lane briefly longer but avoids re-submission overhead.
+ * <p><b>Drain-loop / Auto-Wakeup.</b> The engine's
+ * {@link ThinkEngine#runTurn} default keeps re-draining until the
+ * queue stays empty across a full pass — messages that arrive during
+ * {@code steer} fall into the freshly-emptied queue and are picked
+ * up by the next loop iteration in the same lane-turn.
  *
  * <p>{@link ObjectProvider} for {@link ThinkEngineService} because
  * the latter wires through {@code ToolDispatcher → ServerToolSource
@@ -84,55 +81,40 @@ public class ProcessEventEmitter {
                     parentProcessId, sourceProcessId, type);
             return false;
         }
-        scheduleDrain(parentProcessId);
+        scheduleTurn(parentProcessId);
         return true;
     }
 
     /**
-     * Submits a drain-and-deliver task on the process's own lane —
-     * the thread that picks it up will see a serialized view of any
+     * Submits a {@code runTurn} on the process's own lane — the
+     * thread that picks it up will see a serialised view of any
      * other lane work for that process.
      */
-    public void scheduleDrain(String processId) {
+    public void scheduleTurn(String processId) {
         laneScheduler.submit(processId, () -> {
-            drainAndDeliver(processId);
+            runTurnNow(processId);
             return null;
         });
     }
 
     /**
-     * Drains the process's pending queue and dispatches each message
-     * to {@link ThinkEngineService#steer}, looping until the queue
-     * stays empty across a full pass. Must run on the process's lane
-     * — the caller is responsible for that, either by calling this
-     * inside a {@code laneScheduler.submit} block or via
-     * {@link #scheduleDrain(String)}.
+     * Invokes the engine's {@link ThinkEngine#runTurn} immediately —
+     * the engine drains the persistent inbox itself. Must run on
+     * the process's lane (caller's responsibility — typically inside
+     * a {@code laneScheduler.submit} block or via
+     * {@link #scheduleTurn(String)}).
      */
-    public void drainAndDeliver(String processId) {
+    public void runTurnNow(String processId) {
         Optional<ThinkProcessDocument> processOpt = thinkProcessService.findById(processId);
         if (processOpt.isEmpty()) {
-            log.warn("drainAndDeliver: process gone id='{}'", processId);
+            log.warn("runTurnNow: process gone id='{}'", processId);
             return;
         }
         ThinkProcessDocument process = processOpt.get();
-        ThinkEngineService engine = thinkEngineServiceProvider.getObject();
-
-        while (true) {
-            List<PendingMessageDocument> drained = thinkProcessService.drainPending(processId);
-            if (drained.isEmpty()) {
-                return;
-            }
-            for (PendingMessageDocument d : drained) {
-                try {
-                    engine.steer(process, SteerMessageCodec.toMessage(d));
-                } catch (RuntimeException re) {
-                    log.warn("Drain steer failed id='{}' type={} : {}",
-                            processId, d.getType(), re.toString());
-                }
-            }
-            // Refresh after a full pass — engine work may have updated status,
-            // and the next steer should see the latest snapshot.
-            process = thinkProcessService.findById(processId).orElse(process);
+        try {
+            thinkEngineServiceProvider.getObject().runTurn(process);
+        } catch (RuntimeException re) {
+            log.warn("runTurn failed id='{}': {}", processId, re.toString(), re);
         }
     }
 }

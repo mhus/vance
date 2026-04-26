@@ -37,6 +37,7 @@ public class SessionService {
     private static final String F_STATUS = "status";
     private static final String F_BOUND_CONNECTION = "boundConnectionId";
     private static final String F_LAST_ACTIVITY = "lastActivityAt";
+    private static final String F_CHAT_PROCESS_ID = "chatProcessId";
 
     private final SessionRepository repository;
     private final MongoTemplate mongoTemplate;
@@ -171,6 +172,31 @@ public class SessionService {
         Update update = new Update().set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         return result.getModifiedCount() == 1;
+    }
+
+    /**
+     * Atomically links a freshly-spawned chat-process to the session.
+     * Succeeds only if the session currently has no
+     * {@code chatProcessId} — protects against double-bootstrap on
+     * a concurrent session-create + session-bootstrap race.
+     *
+     * @return {@code true} if the session was updated; {@code false}
+     *         when the session is missing or already has a chat
+     *         process linked
+     */
+    public boolean setChatProcessId(String sessionId, String chatProcessId) {
+        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                .andOperator(new Criteria().orOperator(
+                        Criteria.where(F_CHAT_PROCESS_ID).isNull(),
+                        Criteria.where(F_CHAT_PROCESS_ID).exists(false))));
+        Update update = new Update().set(F_CHAT_PROCESS_ID, chatProcessId);
+        UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
+        boolean ok = result.getModifiedCount() == 1;
+        if (ok) {
+            log.debug("Linked chatProcessId='{}' to session='{}'",
+                    chatProcessId, sessionId);
+        }
+        return ok;
     }
 
     // --------------------------------------------------------- lifecycle end

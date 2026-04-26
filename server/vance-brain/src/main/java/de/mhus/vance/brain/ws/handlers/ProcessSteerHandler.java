@@ -41,10 +41,12 @@ import tools.jackson.databind.ObjectMapper;
  *       immediately so further inbound frames (notably
  *       {@code client-tool-result}) can flow in concurrently.</li>
  *   <li><i>Lane thread</i> — call
- *       {@link ProcessEventEmitter#drainAndDeliver} which loops
- *       {@code drainPending → engine.steer} until the queue stays
- *       empty. After the drain, ship every chat message that landed
- *       since the snapshot as a
+ *       {@link ProcessEventEmitter#runTurnNow} which drives the
+ *       engine's {@code runTurn}; the engine drains the inbox itself
+ *       (default impl loops drain-then-{@code steer} until empty,
+ *       orchestrators like Arthur fold the whole inbox into one LLM
+ *       round-trip). After the turn, ship every chat message that
+ *       landed since the snapshot as a
  *       {@link MessageType#CHAT_MESSAGE_APPENDED} notification, then
  *       send the {@code process-steer} ack.</li>
  * </ol>
@@ -165,7 +167,7 @@ public class ProcessSteerHandler implements WsHandler {
             String sessionId,
             int beforeSize) {
         try {
-            eventEmitter.drainAndDeliver(processId);
+            eventEmitter.runTurnNow(processId);
         } catch (RuntimeException e) {
             log.error("Steer drain failed id='{}': {}", processId, e.toString(), e);
             try {

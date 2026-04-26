@@ -71,6 +71,18 @@ public class SessionDocument {
 
     private SessionStatus status = SessionStatus.OPEN;
 
+    /**
+     * Mongo id of the auto-spawned session-chat think-process —
+     * exists 1:1 with the session for its lifetime, engine taken
+     * from the {@code session.defaultChatEngine} setting at
+     * create-time. {@code null} only between session-create and
+     * the first {@code SessionChatBootstrapper.ensureChatProcess}
+     * call (or for sessions created before the bootstrapper
+     * existed). Driven through {@link SessionService#setChatProcessId}
+     * so a race can't link two chat-processes.
+     */
+    private @Nullable String chatProcessId;
+
     private Instant createdAt = Instant.EPOCH;
 
     /**

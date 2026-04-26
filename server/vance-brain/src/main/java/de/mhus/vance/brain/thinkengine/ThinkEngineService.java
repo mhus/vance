@@ -94,7 +94,9 @@ public class ThinkEngineService {
 
     /**
      * Builds a fresh {@link ThinkEngineContext} for the given process. One
-     * context instance per lifecycle call — never cached.
+     * context instance per lifecycle call — never cached. The context is
+     * pre-bound to the engine's declared {@code allowedTools()} set, so
+     * the {@code ContextToolsApi} the engine sees is automatically scoped.
      */
     public ThinkEngineContext newContext(ThinkProcessDocument process) {
         String projectId = sessionService.findBySessionId(process.getSessionId())
@@ -103,17 +105,18 @@ public class ThinkEngineService {
                         "Process '" + process.getId()
                                 + "' references missing session '"
                                 + process.getSessionId() + "'"));
+        ThinkEngine engine = resolveForProcess(process);
         return new DefaultThinkEngineContext(
                 process, projectId,
                 aiModelService, settingService, chatMessageService,
                 toolDispatcher, eventPublisher,
-                thinkProcessService, processEventEmitter);
+                thinkProcessService, processEventEmitter,
+                engine.allowedTools());
     }
 
     // ─── Convenience dispatch ────────────────────────────────────────────
     // Short-circuits the three-step (resolve, newContext, invoke) pattern
-    // callers would otherwise repeat. Will later move behind the lane
-    // scheduler once that exists — callers keep this API.
+    // callers would otherwise repeat.
 
     public void start(ThinkProcessDocument process) {
         resolveForProcess(process).start(process, newContext(process));
@@ -129,6 +132,15 @@ public class ThinkEngineService {
 
     public void steer(ThinkProcessDocument process, SteerMessage message) {
         resolveForProcess(process).steer(process, newContext(process), message);
+    }
+
+    /**
+     * Triggers a fresh lane-turn. Used by the runtime ({@code
+     * ProcessEventEmitter}) when the process has new work in its
+     * persistent inbox — the engine drains and runs.
+     */
+    public void runTurn(ThinkProcessDocument process) {
+        resolveForProcess(process).runTurn(process, newContext(process));
     }
 
     public void stop(ThinkProcessDocument process) {

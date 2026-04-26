@@ -4,44 +4,67 @@ import de.mhus.vance.api.tools.ToolSpec;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Per-call tools surface exposed to a think-engine through {@code
- * ThinkEngineContext.tools()}. Wraps the {@link ToolDispatcher} with a
- * pre-bound {@link ToolInvocationContext} so engines don't have to
- * re-build the scope on every call.
+ * Per-call tools surface exposed to a think-engine through
+ * {@code ThinkEngineContext.tools()}. Wraps the {@link ToolDispatcher}
+ * with a pre-bound {@link ToolInvocationContext} so engines don't have
+ * to re-build the scope on every call.
+ *
+ * <p><b>Allow-list filter.</b> If the calling engine declared an
+ * {@code allowedTools()} set, every read here projects through that
+ * set and {@link #invoke} rejects unknown names — the engine cannot
+ * see or call tools outside its declared pool. An empty allow-set
+ * means "no restriction" (Zaphod-style: see everything).
  */
 public final class ContextToolsApi {
 
     private final ToolDispatcher dispatcher;
     private final ToolInvocationContext ctx;
+    private final Set<String> allowed;
 
     public ContextToolsApi(ToolDispatcher dispatcher, ToolInvocationContext ctx) {
+        this(dispatcher, ctx, Set.of());
+    }
+
+    public ContextToolsApi(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> allowed) {
         this.dispatcher = dispatcher;
         this.ctx = ctx;
+        this.allowed = allowed == null ? Set.of() : Set.copyOf(allowed);
     }
 
-    /** All tools visible in this scope. */
+    /** All tools visible in this scope (after the engine's allow-filter). */
     public List<ToolSpec> listAll() {
-        return ToolDispatcher.specs(dispatcher.resolveAll(ctx));
+        return ToolDispatcher.specs(filter(dispatcher.resolveAll(ctx)));
     }
 
-    /** Primary tools — what the LLM sees every turn. */
+    /** Primary tools — what the LLM sees every turn (after the allow-filter). */
     public List<ToolSpec> listPrimary() {
-        return ToolDispatcher.specs(dispatcher.resolvePrimary(ctx));
+        return ToolDispatcher.specs(filter(dispatcher.resolvePrimary(ctx)));
     }
 
-    /** Invoke by name. Unknown tool or failure → {@link ToolException}. */
+    /**
+     * Invoke by name. Unknown tool, denied tool, or failure
+     * → {@link ToolException}.
+     */
     public Map<String, Object> invoke(String name, Map<String, Object> params) {
+        if (!isAllowed(name)) {
+            throw new ToolException(
+                    "Tool '" + name + "' is not in this engine's allowed tool-pool");
+        }
         return dispatcher.invoke(name, params, ctx);
     }
 
     /**
-     * Primary tools projected to langchain4j {@link ToolSpecification}s —
-     * ready to drop into a {@code ChatRequest.builder().toolSpecifications(...)}.
+     * Primary tools projected to langchain4j {@link ToolSpecification}s
+     * — ready to drop into {@code ChatRequest.builder().toolSpecifications(...)}.
      */
     public List<ToolSpecification> primaryAsLc4j() {
-        return dispatcher.resolvePrimary(ctx).stream()
+        return filter(dispatcher.resolvePrimary(ctx)).stream()
                 .map(r -> ToolSpecification.builder()
                         .name(r.tool().name())
                         .description(r.tool().description())
@@ -58,5 +81,21 @@ public final class ContextToolsApi {
     /** Escape hatch: underlying dispatcher for resolve-then-invoke patterns. */
     public ToolDispatcher dispatcher() {
         return dispatcher;
+    }
+
+    /** The allow-set this surface was built with. Empty → unrestricted. */
+    public Set<String> allowed() {
+        return allowed;
+    }
+
+    private boolean isAllowed(String toolName) {
+        return allowed.isEmpty() || allowed.contains(toolName);
+    }
+
+    private List<ToolDispatcher.Resolved> filter(List<ToolDispatcher.Resolved> resolved) {
+        if (allowed.isEmpty()) return resolved;
+        return resolved.stream()
+                .filter(r -> allowed.contains(r.tool().name()))
+                .toList();
     }
 }

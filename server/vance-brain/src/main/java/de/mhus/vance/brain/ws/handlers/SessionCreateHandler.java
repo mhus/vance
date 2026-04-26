@@ -1,19 +1,25 @@
 package de.mhus.vance.brain.ws.handlers;
 
+import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.SessionCreateRequest;
 import de.mhus.vance.api.ws.SessionCreateResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.project.ProjectManagerService;
+import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +42,8 @@ public class SessionCreateHandler implements WsHandler {
     private final ProjectService projectService;
     private final ProjectManagerService projectManager;
     private final SessionConnectionRegistry connectionRegistry;
+    private final SessionChatBootstrapper chatBootstrapper;
+    private final ChatMessageService chatMessageService;
 
     @Override
     public String type() {
@@ -94,11 +102,49 @@ public class SessionCreateHandler implements WsHandler {
 
         ctx.bindSession(created);
         connectionRegistry.register(created.getSessionId(), wsSession);
+
+        // Auto-spawn the session-chat think-process. Greeting is pushed
+        // as chat-message-appended frames before the response so the
+        // client renders it when the success ack arrives.
+        ThinkProcessDocument chatProcess = null;
+        try {
+            chatProcess = chatBootstrapper.ensureChatProcess(created).orElse(null);
+            if (chatProcess != null) {
+                pushAppendedMessages(wsSession, chatProcess);
+            }
+        } catch (RuntimeException e) {
+            log.error("Chat-process bootstrap failed for session '{}'",
+                    created.getSessionId(), e);
+            // Session itself is fine — let the client connect; it just
+            // won't have a default chat target. The chatProcessId fields
+            // stay null in the response.
+        }
+
         SessionCreateResponse response = SessionCreateResponse.builder()
                 .sessionId(created.getSessionId())
                 .projectId(created.getProjectId())
+                .chatProcessId(chatProcess == null ? null : chatProcess.getId())
+                .chatProcessName(chatProcess == null ? null : chatProcess.getName())
+                .chatEngine(chatProcess == null ? null : chatProcess.getThinkEngine())
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.SESSION_CREATE, response);
+    }
+
+    private void pushAppendedMessages(
+            WebSocketSession wsSession, ThinkProcessDocument process) throws IOException {
+        List<ChatMessageDocument> full = chatMessageService.history(
+                process.getTenantId(), process.getSessionId(), process.getId());
+        for (ChatMessageDocument appended : full) {
+            sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
+                    ChatMessageAppendedData.builder()
+                            .chatMessageId(appended.getId())
+                            .thinkProcessId(appended.getThinkProcessId())
+                            .processName(process.getName())
+                            .role(appended.getRole())
+                            .content(appended.getContent())
+                            .createdAt(appended.getCreatedAt())
+                            .build());
+        }
     }
 
     private static boolean isBlank(@org.jspecify.annotations.Nullable String s) {

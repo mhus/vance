@@ -85,14 +85,18 @@ public class AutoBootstrapService {
             return;
         }
         FootConfig.Bootstrap b = config.getBootstrap();
-        if (b == null || b.getProcesses() == null || b.getProcesses().isEmpty()) {
-            terminal.verbose("Auto-bootstrap skipped (no vance.bootstrap.processes in config).");
+        if (b == null) {
+            terminal.verbose("Auto-bootstrap skipped (no vance.bootstrap in config).");
             return;
         }
         if (b.getProjectId() == null && b.getSessionId() == null) {
-            terminal.error("vance.bootstrap has processes but no projectId or sessionId — bootstrap skipped.");
+            terminal.verbose(
+                    "Auto-bootstrap skipped (no projectId or sessionId in vance.bootstrap).");
             return;
         }
+        // Empty `processes` is fine — the brain auto-spawns the session-chat
+        // (Arthur) on its own. Explicit entries here add worker processes
+        // alongside the chat orchestrator.
         if (!inFlight.compareAndSet(false, true)) {
             terminal.verbose("Auto-bootstrap already in flight — ignoring duplicate trigger.");
             return;
@@ -107,8 +111,10 @@ public class AutoBootstrapService {
     }
 
     private void runBootstrap(FootConfig.Bootstrap b) {
-        List<ProcessSpec> specs = new ArrayList<>(b.getProcesses().size());
-        for (FootConfig.BootstrapProcess p : b.getProcesses()) {
+        List<FootConfig.BootstrapProcess> configured = b.getProcesses() == null
+                ? List.of() : b.getProcesses();
+        List<ProcessSpec> specs = new ArrayList<>(configured.size());
+        for (FootConfig.BootstrapProcess p : configured) {
             specs.add(ProcessSpec.builder()
                     .engine(p.getEngine())
                     .name(p.getName().isBlank() ? p.getEngine() : p.getName())
@@ -145,6 +151,10 @@ public class AutoBootstrapService {
         sessions.bind(response.getSessionId(), response.getProjectId());
         terminal.info((response.isSessionCreated() ? "Bootstrap → session created: " : "Bootstrap → session resumed: ")
                 + response.getSessionId() + " (project=" + response.getProjectId() + ")");
+        if (response.getChatProcessName() != null) {
+            terminal.info("  ° session chat: " + response.getChatProcessName()
+                    + " (engine=" + response.getChatEngine() + ")");
+        }
         for (BootstrappedProcess p : response.getProcessesCreated()) {
             terminal.info("  + process created: " + p.getName()
                     + " (engine=" + p.getEngine() + ", status=" + p.getStatus() + ")");
@@ -154,7 +164,15 @@ public class AutoBootstrapService {
                     + " (engine=" + p.getEngine() + ")");
         }
 
+        // Active-process priority:
+        //   1. explicit initialMessage target — the user is mid-conversation with it
+        //   2. session-chat orchestrator (Arthur) — typing chats with the orchestrator
+        //   3. first explicit worker the user listed
+        //   4. first skipped (resume case) — keeps idempotent re-bootstrap stable
         @Nullable String active = response.getSteeredProcessName();
+        if (active == null && response.getChatProcessName() != null) {
+            active = response.getChatProcessName();
+        }
         if (active == null && !response.getProcessesCreated().isEmpty()) {
             active = response.getProcessesCreated().get(0).getName();
         } else if (active == null && !response.getProcessesSkipped().isEmpty()) {

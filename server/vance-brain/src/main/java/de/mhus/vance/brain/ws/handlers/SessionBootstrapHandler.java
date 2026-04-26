@@ -9,6 +9,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.project.ProjectManagerService;
+import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -64,6 +65,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final ThinkEngineService thinkEngineService;
     private final ChatMessageService chatMessageService;
     private final SessionConnectionRegistry connectionRegistry;
+    private final SessionChatBootstrapper chatBootstrapper;
 
     @Override
     public String type() {
@@ -139,6 +141,28 @@ public class SessionBootstrapHandler implements WsHandler {
         }
         ctx.bindSession(session);
         connectionRegistry.register(session.getSessionId(), wsSession);
+
+        // ── Auto-spawn the session-chat process ──────────────────────────
+        // Idempotent: re-bootstrap of an existing session adopts the chat
+        // process that's already there. Failure here doesn't fail the whole
+        // bootstrap — log and leave chatProcessId null in the response.
+        ThinkProcessDocument chatProcess = null;
+        try {
+            chatProcess = chatBootstrapper.ensureChatProcess(session).orElse(null);
+            if (chatProcess != null) {
+                // Push only the new greeting messages. For a re-bootstrap of
+                // an existing session, history is non-empty but already on
+                // the client — we replay nothing here. Resume frames are
+                // out-of-scope for this handler; the dedicated session-resume
+                // path handles them.
+                if (sessionCreated) {
+                    pushAppendedMessages(wsSession, chatProcess, chatProcess.getName(), 0);
+                }
+            }
+        } catch (RuntimeException e) {
+            log.error("Chat-process bootstrap failed for session '{}'",
+                    session.getSessionId(), e);
+        }
 
         // ── Processes: create + start (skip duplicates) ──────────────────
         List<BootstrappedProcess> created = new ArrayList<>();
@@ -238,6 +262,9 @@ public class SessionBootstrapHandler implements WsHandler {
                 .processesCreated(created)
                 .processesSkipped(skipped)
                 .steeredProcessName(steeredProcessName)
+                .chatProcessId(chatProcess == null ? null : chatProcess.getId())
+                .chatProcessName(chatProcess == null ? null : chatProcess.getName())
+                .chatEngine(chatProcess == null ? null : chatProcess.getThinkEngine())
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.SESSION_BOOTSTRAP, response);
     }

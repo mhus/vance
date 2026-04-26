@@ -46,4 +46,18 @@ public class SessionBootstrapResponse {
 
     /** Name of the process {@code initialMessage} was steered to, if any. */
     private @Nullable String steeredProcessName;
+
+    /**
+     * Mongo id of the session-chat think-process auto-spawned for
+     * this session. {@code null} only if the chat engine is
+     * misconfigured.
+     */
+    private @Nullable String chatProcessId;
+
+    /** Process name behind {@link #chatProcessId} — the value the
+     *  client uses for {@code process-steer.processName}. */
+    private @Nullable String chatProcessName;
+
+    /** Engine name behind {@link #chatProcessId}, e.g. {@code "arthur"}. */
+    private @Nullable String chatEngine;
 }

@@ -40,16 +40,29 @@ public class MemoryService {
     }
 
     /**
-     * Marks {@code oldId} as replaced by {@code newId}. Idempotent on
-     * already-superseded entries. The replacement record is expected
-     * to already be persisted.
+     * Marks {@code oldId} as replaced by {@code newId} (which must
+     * already be persisted). Idempotent on already-superseded entries.
      */
     public Optional<MemoryDocument> supersede(String oldId, String newId) {
-        Optional<MemoryDocument> opt = repository.findById(oldId);
+        return markSuperseded(oldId, newId);
+    }
+
+    /**
+     * Marks {@code id} as superseded with no replacement — the
+     * scratchpad-style "delete" path. The record stays in the
+     * database, audit-readable, but the {@code activeBy*} queries
+     * stop returning it.
+     */
+    public Optional<MemoryDocument> markDeleted(String id) {
+        return markSuperseded(id, null);
+    }
+
+    private Optional<MemoryDocument> markSuperseded(String id, @org.jspecify.annotations.Nullable String newId) {
+        Optional<MemoryDocument> opt = repository.findById(id);
         if (opt.isEmpty()) return opt;
         MemoryDocument doc = opt.get();
-        if (doc.getSupersededByMemoryId() != null) {
-            return opt; // already superseded — leave the original timestamp.
+        if (doc.getSupersededAt() != null) {
+            return opt; // already superseded — leave timestamps alone.
         }
         doc.setSupersededByMemoryId(newId);
         doc.setSupersededAt(Instant.now());
@@ -77,8 +90,22 @@ public class MemoryService {
     public List<MemoryDocument> activeByProcessAndKind(
             String tenantId, String thinkProcessId, MemoryKind kind) {
         return repository
-                .findByTenantIdAndThinkProcessIdAndKindAndSupersededByMemoryIdIsNull(
+                .findByTenantIdAndThinkProcessIdAndKindAndSupersededAtIsNull(
                         tenantId, thinkProcessId, kind, BY_CREATED);
+    }
+
+    /**
+     * Active entries for a {@code (process, kind, title)} triple — the
+     * scratchpad named-slot lookup. Returns the most-recent active
+     * entry first; usually there's at most one but the list shape lets
+     * callers detect a write-write race if it ever happens.
+     */
+    public List<MemoryDocument> activeByProcessKindAndTitle(
+            String tenantId, String thinkProcessId, MemoryKind kind, String title) {
+        return repository
+                .findByTenantIdAndThinkProcessIdAndKindAndTitleAndSupersededAtIsNull(
+                        tenantId, thinkProcessId, kind, title,
+                        Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 
     public List<MemoryDocument> listBySessionAndKind(

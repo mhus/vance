@@ -16,8 +16,12 @@ interface MemoryRepository extends MongoRepository<MemoryDocument, String> {
     List<MemoryDocument> findByTenantIdAndThinkProcessIdAndKind(
             String tenantId, String thinkProcessId, MemoryKind kind, Sort sort);
 
-    List<MemoryDocument> findByTenantIdAndThinkProcessIdAndKindAndSupersededByMemoryIdIsNull(
+    List<MemoryDocument> findByTenantIdAndThinkProcessIdAndKindAndSupersededAtIsNull(
             String tenantId, String thinkProcessId, MemoryKind kind, Sort sort);
+
+    /** Active entries of one kind+title — used for scratchpad named-slot lookup. */
+    List<MemoryDocument> findByTenantIdAndThinkProcessIdAndKindAndTitleAndSupersededAtIsNull(
+            String tenantId, String thinkProcessId, MemoryKind kind, String title, Sort sort);
 
     List<MemoryDocument> findByTenantIdAndSessionIdAndKind(
             String tenantId, String sessionId, MemoryKind kind, Sort sort);

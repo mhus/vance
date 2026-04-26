@@ -6,6 +6,7 @@ import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.ws.ConnectionContext;
@@ -15,13 +16,10 @@ import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -57,20 +55,21 @@ public class ProcessSteerHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
     private final ChatMessageService chatMessageService;
-    private final ExecutorService steerExecutor =
-            Executors.newVirtualThreadPerTaskExecutor();
+    private final LaneScheduler laneScheduler;
 
     public ProcessSteerHandler(
             ObjectMapper objectMapper,
             WebSocketSender sender,
             ThinkProcessService thinkProcessService,
             ThinkEngineService thinkEngineService,
-            ChatMessageService chatMessageService) {
+            ChatMessageService chatMessageService,
+            LaneScheduler laneScheduler) {
         this.objectMapper = objectMapper;
         this.sender = sender;
         this.thinkProcessService = thinkProcessService;
         this.thinkEngineService = thinkEngineService;
         this.chatMessageService = chatMessageService;
+        this.laneScheduler = laneScheduler;
     }
 
     @Override
@@ -121,8 +120,11 @@ public class ProcessSteerHandler implements WsHandler {
                 ctx.getUserId(),
                 request.getContent());
 
-        // Hand the engine work off and free the receive thread.
-        steerExecutor.submit(() -> runSteerAsync(
+        // Hand the engine work off and free the receive thread. The
+        // LaneScheduler serialises submissions on this process id, so two
+        // concurrent steer messages targeting the same process can't race
+        // on the engine's mutable state.
+        laneScheduler.submit(process.getId(), () -> runSteerAsync(
                 wsSession, envelope, process, request, userInput,
                 tenantId, sessionId, beforeSize));
     }
@@ -195,10 +197,5 @@ public class ProcessSteerHandler implements WsHandler {
 
     private static boolean isBlank(@Nullable String s) {
         return s == null || s.isBlank();
-    }
-
-    @PreDestroy
-    void shutdown() {
-        steerExecutor.shutdownNow();
     }
 }

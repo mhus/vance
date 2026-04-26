@@ -22,6 +22,7 @@ public final class MessageType {
 
     public static final String PROCESS_CREATE = "process-create";
     public static final String PROCESS_STEER = "process-steer";
+    public static final String PROCESS_LIST = "process-list";
 
     /** Manual memory compaction trigger for a think-process. */
     public static final String PROCESS_COMPACT = "process-compact";

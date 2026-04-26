@@ -23,6 +23,9 @@ public final class MessageType {
     public static final String PROCESS_CREATE = "process-create";
     public static final String PROCESS_STEER = "process-steer";
 
+    /** Manual memory compaction trigger for a think-process. */
+    public static final String PROCESS_COMPACT = "process-compact";
+
     /** Compound command: session create/resume + processes + optional initial message. */
     public static final String SESSION_BOOTSTRAP = "session-bootstrap";
 

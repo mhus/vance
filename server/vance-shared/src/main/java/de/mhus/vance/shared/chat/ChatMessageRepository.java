@@ -13,6 +13,10 @@ interface ChatMessageRepository extends MongoRepository<ChatMessageDocument, Str
     List<ChatMessageDocument> findByTenantIdAndSessionIdAndThinkProcessId(
             String tenantId, String sessionId, String thinkProcessId, Sort sort);
 
+    /** Active history — messages not yet rolled into a memory compaction. */
+    List<ChatMessageDocument> findByTenantIdAndSessionIdAndThinkProcessIdAndArchivedInMemoryIdIsNull(
+            String tenantId, String sessionId, String thinkProcessId, Sort sort);
+
     long deleteByTenantIdAndSessionIdAndThinkProcessId(
             String tenantId, String sessionId, String thinkProcessId);
 

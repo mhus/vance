@@ -48,6 +48,14 @@ public class ChatMessageDocument {
 
     private String content = "";
 
+    /**
+     * Set when the message has been rolled into a memory compaction
+     * ({@code MemoryDocument.id}). Replay paths skip these so the LLM
+     * sees the compacted summary instead of the originals; the
+     * originals stay in Mongo, audit-readable.
+     */
+    private @Nullable String archivedInMemoryId;
+
     @CreatedDate
     private @Nullable Instant createdAt;
 }

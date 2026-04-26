@@ -8,9 +8,13 @@ import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
+import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.memory.CompactionResult;
+import de.mhus.vance.brain.memory.MemoryCompactionService;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -18,6 +22,9 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.memory.MemoryDocument;
+import de.mhus.vance.shared.memory.MemoryKind;
+import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -98,6 +105,10 @@ public class Zaphod implements ThinkEngine {
     private final ThinkProcessService thinkProcessService;
     private final ObjectMapper objectMapper;
     private final StreamingProperties streamingProperties;
+    private final ModelCatalog modelCatalog;
+    private final ZaphodProperties zaphodProperties;
+    private final MemoryService memoryService;
+    private final MemoryCompactionService memoryCompactionService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -188,12 +199,42 @@ public class Zaphod implements ThinkEngine {
                     config, AiChatOptions.builder().build());
             ContextToolsApi tools = ctx.tools();
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
+            ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                    config.provider(), config.modelName());
 
-            List<ChatMessage> messages = new ArrayList<>();
-            messages.add(SystemMessage.from(SYSTEM_PROMPT));
-            for (ChatMessageDocument msg : chatLog.history(
-                    process.getTenantId(), process.getSessionId(), process.getId())) {
-                messages.add(toLangchain(msg));
+            List<ChatMessage> messages = buildPromptMessages(process, chatLog);
+            int estimatedTokens = estimateTokens(messages);
+            int triggerTokens = modelInfo.compactionTriggerTokens(
+                    zaphodProperties.getCompactionTriggerRatio());
+            log.debug("Zaphod.turn id='{}' model={}/{} ctx={} trigger={} est={}",
+                    process.getId(),
+                    modelInfo.provider(), modelInfo.modelName(),
+                    modelInfo.contextWindowTokens(),
+                    triggerTokens,
+                    estimatedTokens);
+            if (estimatedTokens >= triggerTokens) {
+                log.info("Zaphod.turn id='{}' triggering compaction (est {} >= trigger {})",
+                        process.getId(), estimatedTokens, triggerTokens);
+                try {
+                    CompactionResult result = memoryCompactionService.compact(process, config);
+                    if (result.compacted()) {
+                        log.info("Zaphod.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
+                                process.getId(),
+                                result.messagesCompacted(),
+                                result.summaryChars(),
+                                result.memoryId());
+                        // Rebuild the prompt: the active-history shrunk and a
+                        // new ARCHIVED_CHAT memory pinned the summary at top.
+                        messages = buildPromptMessages(process, chatLog);
+                    } else {
+                        log.info("Zaphod.turn id='{}' compaction skipped: {}",
+                                process.getId(), result.reason());
+                    }
+                } catch (RuntimeException e) {
+                    // Best-effort: don't crash the user's turn if compaction fails.
+                    log.warn("Zaphod.turn id='{}' compaction failed: {}",
+                            process.getId(), e.toString());
+                }
             }
 
             String finalText = runToolLoop(aiChat, toolSpecs, tools, messages, ctx, process);
@@ -380,6 +421,51 @@ public class Zaphod implements ThinkEngine {
             case ASSISTANT -> AiMessage.from(msg.getContent());
             case SYSTEM -> SystemMessage.from(msg.getContent());
         };
+    }
+
+    /**
+     * Builds the prompt-message list for one turn: base system prompt,
+     * pinned compaction summary (if any), then active chat history.
+     * Re-callable so {@code runTurn} can rebuild after a mid-turn
+     * compaction.
+     */
+    private List<ChatMessage> buildPromptMessages(
+            ThinkProcessDocument process, ChatMessageService chatLog) {
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(SystemMessage.from(SYSTEM_PROMPT));
+        for (MemoryDocument m : memoryService.activeByProcessAndKind(
+                process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {
+            messages.add(SystemMessage.from(
+                    "[Conversation summary from earlier turns]\n" + m.getContent()));
+        }
+        for (ChatMessageDocument msg : chatLog.activeHistory(
+                process.getTenantId(), process.getSessionId(), process.getId())) {
+            messages.add(toLangchain(msg));
+        }
+        return messages;
+    }
+
+    /**
+     * Cheap, provider-agnostic token estimator: ≈ 4 chars per token for
+     * English-ish text. Conservative enough as a compaction trigger; the
+     * proper tokenizer per provider is a future refinement once the
+     * compaction loop demands precision.
+     */
+    private static int estimateTokens(List<ChatMessage> messages) {
+        long chars = 0;
+        for (ChatMessage m : messages) {
+            String text = textOf(m);
+            if (text != null) chars += text.length();
+        }
+        return (int) Math.min(Integer.MAX_VALUE, chars / 4 + messages.size() * 4L);
+    }
+
+    private static String textOf(ChatMessage m) {
+        if (m instanceof UserMessage u) return u.singleText();
+        if (m instanceof AiMessage a) return a.text();
+        if (m instanceof SystemMessage s) return s.text();
+        if (m instanceof ToolExecutionResultMessage t) return t.text();
+        return m.toString();
     }
 
     private static AiChatConfig resolveAiConfig(

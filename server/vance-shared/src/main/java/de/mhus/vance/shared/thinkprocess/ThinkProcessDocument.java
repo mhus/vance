@@ -2,6 +2,8 @@ package de.mhus.vance.shared.thinkprocess;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -65,6 +67,28 @@ public class ThinkProcessDocument {
 
     /** Optional goal for batch-style engines; reactive engines leave this null. */
     private @Nullable String goal;
+
+    /**
+     * Mongo id of the orchestrator process that spawned this one.
+     * {@code null} for top-level processes (e.g. the session's chat).
+     * Used to route life-cycle {@code ProcessEvent}s back to the parent
+     * via the pending queue + Auto-Wakeup.
+     */
+    private @Nullable String parentProcessId;
+
+    /**
+     * Persistent inbox: messages that arrived while the process was
+     * not in a lane-turn (or that arrived while it was running and
+     * must wait for the next one). Drained atomically by
+     * {@code ThinkProcessService.drainPending(...)} at the start of
+     * each turn.
+     *
+     * <p>Default to a mutable list so {@code $push} doesn't have to
+     * upsert on first use — a freshly-created process simply has an
+     * empty queue.
+     */
+    @Builder.Default
+    private List<PendingMessageDocument> pendingMessages = new ArrayList<>();
 
     private ThinkProcessStatus status = ThinkProcessStatus.READY;
 

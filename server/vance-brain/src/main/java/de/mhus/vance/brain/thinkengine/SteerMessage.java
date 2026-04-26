@@ -1,6 +1,9 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import java.time.Instant;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -9,13 +12,15 @@ import org.jspecify.annotations.Nullable;
  * async tool result, a direct client command — funnels into this sealed
  * hierarchy so engines can pattern-match exhaustively.
  *
- * <p>v1 ships only {@link UserChatInput}. {@code ProcessEvent},
- * {@code ToolResult}, and {@code ExternalCommand} will be added as the
- * corresponding features land (process orchestration, tool dispatch,
- * external commands).
+ * <p>The persistent form lives in
+ * {@code de.mhus.vance.shared.thinkprocess.PendingMessageDocument}; see
+ * {@code SteerMessageCodec} for the bidirectional translation.
  */
 public sealed interface SteerMessage
-        permits SteerMessage.UserChatInput {
+        permits SteerMessage.UserChatInput,
+                SteerMessage.ProcessEvent,
+                SteerMessage.ToolResult,
+                SteerMessage.ExternalCommand {
 
     /** When the message was produced. */
     Instant at();
@@ -28,7 +33,9 @@ public sealed interface SteerMessage
      *
      * @param at              timestamp when the client sent the message
      * @param idempotencyKey  optional, for client retries
-     * @param fromUser        {@code UserDocument.name} of the sender
+     * @param fromUser        {@code UserDocument.name} of the sender, or
+     *                        {@code "process:<id>"} when an orchestrator
+     *                        steers a child via a tool call
      * @param content         the typed text
      */
     record UserChatInput(
@@ -36,5 +43,52 @@ public sealed interface SteerMessage
             @Nullable String idempotencyKey,
             String fromUser,
             String content) implements SteerMessage {
+    }
+
+    /**
+     * A sibling or child process reports a life-cycle / progress event.
+     * Routed automatically by the brain when a process changes status
+     * (terminal transitions) or when an engine pushes an explicit
+     * summary.
+     *
+     * @param sourceProcessId Mongo id of the emitting process
+     * @param type            event flavor — see {@link ProcessEventType}
+     * @param humanSummary    short text suitable for direct LLM consumption
+     * @param payload         optional structured side-channel data
+     */
+    record ProcessEvent(
+            Instant at,
+            @Nullable String idempotencyKey,
+            String sourceProcessId,
+            ProcessEventType type,
+            @Nullable String humanSummary,
+            @Nullable Map<String, Object> payload) implements SteerMessage {
+    }
+
+    /**
+     * Result of an asynchronously-dispatched tool call. The matching
+     * call is identified by {@link #toolCallId()}; engines map this
+     * back to a previously-emitted tool-use block.
+     */
+    record ToolResult(
+            Instant at,
+            @Nullable String idempotencyKey,
+            String toolCallId,
+            String toolName,
+            ToolCallStatus status,
+            @Nullable Object result,
+            @Nullable String error) implements SteerMessage {
+    }
+
+    /**
+     * High-level command from the client (UI button, slash-command).
+     * The engine decides how to react — sometimes by skipping the LLM
+     * entirely.
+     */
+    record ExternalCommand(
+            Instant at,
+            @Nullable String idempotencyKey,
+            String command,
+            Map<String, Object> params) implements SteerMessage {
     }
 }

@@ -100,7 +100,8 @@ public class ProcessCreateTool implements Tool {
         try {
             fresh = thinkProcessService.create(
                     ctx.tenantId(), sessionId, name,
-                    engine.name(), engine.version(), title, goal);
+                    engine.name(), engine.version(), title, goal,
+                    /*parentProcessId*/ ctx.processId());
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
             throw new ToolException(e.getMessage());
         }

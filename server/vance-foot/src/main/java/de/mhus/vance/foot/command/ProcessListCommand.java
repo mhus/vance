@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.command;
 
+import de.mhus.vance.api.thinkprocess.ProcessListRequest;
 import de.mhus.vance.api.thinkprocess.ProcessListResponse;
 import de.mhus.vance.api.thinkprocess.ProcessSummary;
 import de.mhus.vance.api.ws.MessageType;
@@ -11,8 +12,9 @@ import java.util.Objects;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code /process-list} — lists every think-process in the bound
- * session with status and engine.
+ * {@code /process-list [--all]} — lists the live think-processes in
+ * the bound session. Terminated processes (STOPPED / DONE / STALE)
+ * are hidden by default — pass {@code --all} to include them.
  */
 @Component
 public class ProcessListCommand implements SlashCommand {
@@ -32,22 +34,37 @@ public class ProcessListCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "List every think-process in the current session.";
+        return "List live think-processes in the current session "
+                + "(--all also shows terminated ones).";
     }
 
     @Override
     public void execute(List<String> args) throws Exception {
-        if (!args.isEmpty()) {
-            terminal.error("Usage: /process-list");
-            return;
+        boolean includeTerminated = false;
+        for (String arg : args) {
+            if ("--all".equals(arg) || "-a".equals(arg)) {
+                includeTerminated = true;
+            } else {
+                terminal.error("Usage: /process-list [--all]");
+                return;
+            }
         }
+
         ProcessListResponse response = connection.request(
                 MessageType.PROCESS_LIST,
-                null,
+                ProcessListRequest.builder()
+                        .includeTerminated(includeTerminated)
+                        .build(),
                 ProcessListResponse.class,
                 Duration.ofSeconds(10));
         if (response.getProcesses() == null || response.getProcesses().isEmpty()) {
-            terminal.info("No processes in this session.");
+            if (response.getHiddenTerminated() != null) {
+                terminal.info("No live processes — "
+                        + response.getHiddenTerminated()
+                        + " terminated (use /process-list --all to see).");
+            } else {
+                terminal.info("No processes in this session.");
+            }
             return;
         }
         terminal.info(String.format("%-20s %-12s %-20s %s",
@@ -59,6 +76,10 @@ public class ProcessListCommand implements SlashCommand {
                     truncate(p.getThinkEngine() + (p.getThinkEngineVersion() == null
                             ? "" : "@" + p.getThinkEngineVersion()), 20),
                     truncate(Objects.toString(p.getGoal(), ""), 60)));
+        }
+        if (response.getHiddenTerminated() != null) {
+            terminal.info("(" + response.getHiddenTerminated()
+                    + " terminated hidden — /process-list --all to see)");
         }
     }
 

@@ -358,6 +358,8 @@ public class ArthurEngine implements ThinkEngine {
                     processId, call.name(), e.getMessage());
             return errorJson("Invalid tool arguments: " + e.getMessage());
         }
+        log.info("Arthur id='{}' tool_use {}({})",
+                processId, call.name(), summarizeArgs(params));
         try {
             Map<String, Object> result = tools.invoke(call.name(), params);
             return objectMapper.writeValueAsString(result);
@@ -378,6 +380,26 @@ public class ArthurEngine implements ThinkEngine {
             return Map.of();
         }
         return objectMapper.readValue(raw, Map.class);
+    }
+
+    /**
+     * One-line projection of tool args for the log — keeps secrets and
+     * giant payloads out without losing the "what was called with what"
+     * signal that makes hangs diagnosable.
+     */
+    private static String summarizeArgs(Map<String, Object> params) {
+        if (params == null || params.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, Object> e : params.entrySet()) {
+            if (!first) sb.append(", ");
+            first = false;
+            sb.append(e.getKey()).append("=");
+            String v = String.valueOf(e.getValue());
+            if (v.length() > 80) v = v.substring(0, 77) + "...";
+            sb.append(v.replace("\n", "\\n"));
+        }
+        return sb.toString();
     }
 
     private String errorJson(String message) {

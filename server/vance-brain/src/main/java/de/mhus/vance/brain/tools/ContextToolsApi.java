@@ -17,6 +17,15 @@ import java.util.Set;
  * set and {@link #invoke} rejects unknown names — the engine cannot
  * see or call tools outside its declared pool. An empty allow-set
  * means "no restriction" (Zaphod-style: see everything).
+ *
+ * <p><b>Primary-vs-secondary collapse for restricted engines.</b>
+ * The per-tool {@code primary} flag exists so the LLM doesn't get
+ * flooded with every tool the dispatcher knows. A restricted engine
+ * has already curated its pool to the few tools the LLM actually
+ * needs, so the per-tool flag becomes noise. When {@link #allowed}
+ * is non-empty, every allowed tool is treated as primary — the LLM
+ * sees the full declared pool every turn, and there's no
+ * find-tools-then-invoke dance for tools the engine itself opted into.
  */
 public final class ContextToolsApi {
 
@@ -42,9 +51,13 @@ public final class ContextToolsApi {
         return ToolDispatcher.specs(filter(dispatcher.resolveAll(ctx)));
     }
 
-    /** Primary tools — what the LLM sees every turn (after the allow-filter). */
+    /**
+     * Primary tools — what the LLM sees every turn (after the
+     * allow-filter). For restricted engines, the per-tool primary
+     * flag is ignored: the LLM gets the full allowed pool.
+     */
     public List<ToolSpec> listPrimary() {
-        return ToolDispatcher.specs(filter(dispatcher.resolvePrimary(ctx)));
+        return ToolDispatcher.specs(primaryResolved());
     }
 
     /**
@@ -64,7 +77,7 @@ public final class ContextToolsApi {
      * — ready to drop into {@code ChatRequest.builder().toolSpecifications(...)}.
      */
     public List<ToolSpecification> primaryAsLc4j() {
-        return filter(dispatcher.resolvePrimary(ctx)).stream()
+        return primaryResolved().stream()
                 .map(r -> ToolSpecification.builder()
                         .name(r.tool().name())
                         .description(r.tool().description())
@@ -97,5 +110,22 @@ public final class ContextToolsApi {
         return resolved.stream()
                 .filter(r -> allowed.contains(r.tool().name()))
                 .toList();
+    }
+
+    /**
+     * Resolves what the LLM should see this turn:
+     * <ul>
+     *   <li><i>Restricted engine</i> — every allowed tool, regardless
+     *       of its per-tool {@code primary} flag.</li>
+     *   <li><i>Unrestricted engine</i> — only tools whose own
+     *       {@code primary()} returns {@code true}, the original
+     *       Zaphod default.</li>
+     * </ul>
+     */
+    private List<ToolDispatcher.Resolved> primaryResolved() {
+        if (allowed.isEmpty()) {
+            return dispatcher.resolvePrimary(ctx);
+        }
+        return filter(dispatcher.resolveAll(ctx));
     }
 }

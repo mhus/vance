@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.process;
 
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
@@ -23,7 +24,12 @@ public class ProcessListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
-            "properties", Map.of(),
+            "properties", Map.of(
+                    "includeTerminated", Map.of(
+                            "type", "boolean",
+                            "description", "Include processes in terminal states "
+                                    + "(STOPPED, DONE, STALE). Default false — those are "
+                                    + "audit-only and clutter the live view.")),
             "required", List.of());
 
     private final ThinkProcessService thinkProcessService;
@@ -55,10 +61,18 @@ public class ProcessListTool implements Tool {
         if (sessionId == null) {
             throw new ToolException("process_list requires a session scope");
         }
+        boolean includeTerminated = params != null
+                && Boolean.TRUE.equals(params.get("includeTerminated"));
+
         List<ThinkProcessDocument> docs = thinkProcessService.findBySession(
                 ctx.tenantId(), sessionId);
         List<Map<String, Object>> rows = new ArrayList<>(docs.size());
+        int hidden = 0;
         for (ThinkProcessDocument doc : docs) {
+            if (!includeTerminated && isTerminated(doc.getStatus())) {
+                hidden++;
+                continue;
+            }
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("name", doc.getName());
             row.put("status", doc.getStatus() == null ? null : doc.getStatus().name());
@@ -74,6 +88,15 @@ public class ProcessListTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("processes", rows);
         out.put("count", rows.size());
+        if (!includeTerminated && hidden > 0) {
+            out.put("hiddenTerminated", hidden);
+        }
         return out;
+    }
+
+    private static boolean isTerminated(ThinkProcessStatus s) {
+        return s == ThinkProcessStatus.STOPPED
+                || s == ThinkProcessStatus.DONE
+                || s == ThinkProcessStatus.STALE;
     }
 }

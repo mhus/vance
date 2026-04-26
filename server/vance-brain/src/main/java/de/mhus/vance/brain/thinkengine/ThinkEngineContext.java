@@ -6,19 +6,15 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import java.util.List;
 
 /**
  * Per-call access surface handed to a {@link ThinkEngine}. Built fresh by
  * {@link ThinkEngineService} for every lifecycle invocation — engines must
  * not cache it.
  *
- * <p>v1 only exposes the pieces Zaphod actually consumes:
- * {@link #process()}, {@link #aiModelService()}, {@link #settingService()},
- * {@link #chatMessageService()}. The remaining pieces (event publisher,
- * pending-queue drain, memory API, tool dispatcher, process orchestrator)
- * will be added here as those subsystems arrive. The interface is kept
- * intentionally thin so we don't pre-carve abstractions before the first
- * user shapes them.
+ * <p>The interface is kept intentionally thin — methods are added here
+ * as engines actually need them, not pre-carved.
  */
 public interface ThinkEngineContext {
 
@@ -60,4 +56,23 @@ public interface ThinkEngineContext {
      * and the engine should continue regardless.
      */
     ClientEventPublisher events();
+
+    /**
+     * Atomically reads and clears this process's pending inbox.
+     * Returns the messages in arrival order; never {@code null}.
+     *
+     * <p>An engine that handles all queued events in one turn calls
+     * this at the top of {@code steer} / {@code resume} and folds
+     * everything into a single LLM round-trip. The persistence form
+     * is translated by {@code SteerMessageCodec} so engines see only
+     * the sealed {@link SteerMessage} hierarchy.
+     */
+    List<SteerMessage> drainPending();
+
+    /**
+     * Sibling-process control surface — orchestrators (Arthur,
+     * deep-think) reach for their session-mates and notify their
+     * parent through this API.
+     */
+    ProcessOrchestrator processes();
 }

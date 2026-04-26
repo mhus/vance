@@ -8,6 +8,8 @@ import de.mhus.vance.brain.tools.ToolInvocationContext;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.util.List;
 
 /**
  * Straightforward {@link ThinkEngineContext} — carries the process and
@@ -22,7 +24,9 @@ record DefaultThinkEngineContext(
         SettingService settingService,
         ChatMessageService chatMessageService,
         ToolDispatcher toolDispatcher,
-        ClientEventPublisher eventPublisher
+        ClientEventPublisher eventPublisher,
+        ThinkProcessService thinkProcessService,
+        ProcessEventEmitter processEventEmitter
 ) implements ThinkEngineContext {
 
     @Override
@@ -49,5 +53,17 @@ record DefaultThinkEngineContext(
     @Override
     public ClientEventPublisher events() {
         return eventPublisher;
+    }
+
+    @Override
+    public List<SteerMessage> drainPending() {
+        return SteerMessageCodec.toMessages(
+                thinkProcessService.drainPending(process.getId()));
+    }
+
+    @Override
+    public ProcessOrchestrator processes() {
+        return new DefaultProcessOrchestrator(
+                process, thinkProcessService, processEventEmitter);
     }
 }

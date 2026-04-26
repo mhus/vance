@@ -2,113 +2,57 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.brain.scheduling.LaneScheduler;
-import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
-import de.mhus.vance.shared.thinkprocess.PendingMessageType;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Routes life-cycle events from a child think-process back to its
- * parent (orchestrator) — the server-side half of the
- * Coordinator/Worker-Pattern (see {@code arthur-engine.md} §3.5).
+ * Maps life-cycle status transitions of a child process to a
+ * {@code PROCESS_EVENT} on its parent's pending queue. The actual
+ * appending + lane-wakeup is delegated to {@link ProcessEventEmitter}
+ * so this class stays focused on the filter rules.
  *
- * <p>Two things happen on a status transition that the parent cares
- * about:
- * <ol>
- *   <li>A {@link PendingMessageType#PROCESS_EVENT} is appended to the
- *       parent's persistent inbox so it survives crashes.</li>
- *   <li>A wakeup task is queued on the parent's lane: it drains the
- *       inbox and feeds each queued message to the parent engine via
- *       {@link ThinkEngineService#steer(ThinkProcessDocument, SteerMessage)}.</li>
- * </ol>
- *
- * <p>The wakeup uses {@link ObjectProvider} for {@link ThinkEngineService}
- * because the latter wires through {@code ToolDispatcher → ServerToolSource
- * → process tools → ThinkEngineService}, and adding a direct dep here would
- * close the cycle.
- *
- * <p>Filtering: only transitions that are <em>materially different</em>
- * for the parent get propagated. Suppressing the SAME-status update or
- * intermediate {@code RUNNING} flips keeps the parent's inbox clean and
- * its lane idle.
+ * <p>Filter:
+ * <ul>
+ *   <li>Skip top-level processes (no {@code parentProcessId}).</li>
+ *   <li>Skip status repaints — same prior and new status.</li>
+ *   <li>Skip intermediate transitions ({@code READY/RUNNING/PAUSED/SUSPENDED})
+ *       — they're internal lane state, not something the parent needs
+ *       to be woken for.</li>
+ * </ul>
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class ParentNotificationListener {
 
-    private final ThinkProcessService thinkProcessService;
-    private final LaneScheduler laneScheduler;
-    private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    private final ProcessEventEmitter eventEmitter;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
         String parentId = event.parentProcessId();
         if (parentId == null) {
-            return; // top-level process — nobody to notify
+            return;
         }
         if (event.priorStatus() == event.newStatus()) {
-            return; // pure heartbeat — no transition
+            return;
         }
         ProcessEventType eventType = mapStatus(event.newStatus());
         if (eventType == null) {
-            return; // intermediate (READY/RUNNING/PAUSED/SUSPENDED) — no parent ping
+            return;
         }
-
-        PendingMessageDocument doc = PendingMessageDocument.builder()
-                .type(PendingMessageType.PROCESS_EVENT)
-                .at(Instant.now())
-                .sourceProcessId(event.processId())
-                .eventType(eventType)
-                .content(humanSummary(event.processId(), event.newStatus()))
-                .build();
-
-        boolean appended = thinkProcessService.appendPending(parentId, doc);
-        if (!appended) {
-            log.warn("Parent notify dropped — parent process not found id='{}' (child='{}', event={})",
+        boolean queued = eventEmitter.notifyParent(
+                parentId,
+                event.processId(),
+                eventType,
+                humanSummary(event.processId(), event.newStatus()),
+                /*payload*/ null);
+        if (queued) {
+            log.info("Parent notify queued parent='{}' child='{}' event={}",
                     parentId, event.processId(), eventType);
-            return;
-        }
-        log.info("Parent notify queued parent='{}' child='{}' event={}",
-                parentId, event.processId(), eventType);
-
-        laneScheduler.submit(parentId, () -> {
-            wakeup(parentId);
-            return null;
-        });
-    }
-
-    /** Drains the parent's inbox on its lane and delivers each message to the engine. */
-    private void wakeup(String parentId) {
-        Optional<ThinkProcessDocument> parent = thinkProcessService.findById(parentId);
-        if (parent.isEmpty()) {
-            log.warn("Wakeup skipped — parent gone id='{}'", parentId);
-            return;
-        }
-        List<PendingMessageDocument> drained = thinkProcessService.drainPending(parentId);
-        if (drained.isEmpty()) {
-            // Another wakeup beat us to the drain — fine, nothing to do.
-            return;
-        }
-        ThinkEngineService engineService = thinkEngineServiceProvider.getObject();
-        for (PendingMessageDocument d : drained) {
-            try {
-                engineService.steer(parent.get(), SteerMessageCodec.toMessage(d));
-            } catch (RuntimeException re) {
-                log.warn("Parent wakeup steer failed parent='{}' type={} : {}",
-                        parentId, d.getType(), re.toString());
-            }
         }
     }
 

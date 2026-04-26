@@ -8,6 +8,7 @@ import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,6 +39,8 @@ public class ThinkEngineService {
     private final ToolDispatcher toolDispatcher;
     private final ClientEventPublisher eventPublisher;
     private final SessionService sessionService;
+    private final ThinkProcessService thinkProcessService;
+    private final ProcessEventEmitter processEventEmitter;
 
     public ThinkEngineService(
             List<ThinkEngine> engineBeans,
@@ -46,7 +49,9 @@ public class ThinkEngineService {
             ChatMessageService chatMessageService,
             ToolDispatcher toolDispatcher,
             ClientEventPublisher eventPublisher,
-            SessionService sessionService) {
+            SessionService sessionService,
+            ThinkProcessService thinkProcessService,
+            ProcessEventEmitter processEventEmitter) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
                     throw new IllegalStateException(
@@ -59,6 +64,8 @@ public class ThinkEngineService {
         this.toolDispatcher = toolDispatcher;
         this.eventPublisher = eventPublisher;
         this.sessionService = sessionService;
+        this.thinkProcessService = thinkProcessService;
+        this.processEventEmitter = processEventEmitter;
         log.info("Registered think-engines: {}", engines.keySet());
     }
 
@@ -99,7 +106,8 @@ public class ThinkEngineService {
         return new DefaultThinkEngineContext(
                 process, projectId,
                 aiModelService, settingService, chatMessageService,
-                toolDispatcher, eventPublisher);
+                toolDispatcher, eventPublisher,
+                thinkProcessService, processEventEmitter);
     }
 
     // ─── Convenience dispatch ────────────────────────────────────────────

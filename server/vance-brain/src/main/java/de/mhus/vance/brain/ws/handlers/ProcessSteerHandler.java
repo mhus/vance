@@ -7,13 +7,15 @@ import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
-import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
@@ -27,24 +29,39 @@ import org.springframework.web.socket.WebSocketSession;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Delivers a user chat message to a named think-process, runs the
- * engine's {@code steer}, and pushes every chat message appended
- * during the turn back to the client as
- * {@link MessageType#CHAT_MESSAGE_APPENDED} notifications.
+ * Inbound user chat → durable inbox → lane-drained engine work.
  *
- * <p><b>Async dispatch:</b> the engine call runs on a virtual-thread
- * executor, not on the WebSocket receive thread. Spring serialises
- * inbound frames per session, so a synchronous engine call would
- * <em>block</em> the receive thread — and any message the engine is
- * waiting for (e.g. a {@code client-tool-result} during a client-tool
- * loop) would queue behind the very thread waiting for it. Self-lock,
- * timeouts, no-pending warnings. Dispatching to a separate executor
- * keeps the receive thread idle so reply frames can land in time.
+ * <p><b>Two phases.</b>
+ * <ol>
+ *   <li><i>Receive thread</i> — validate, look up the process,
+ *       atomically append a {@code USER_CHAT_INPUT}
+ *       {@link PendingMessageDocument} to its pending queue, snapshot
+ *       the chat-history size for later notification diffing, and
+ *       submit a drain task on the process's lane. Returns
+ *       immediately so further inbound frames (notably
+ *       {@code client-tool-result}) can flow in concurrently.</li>
+ *   <li><i>Lane thread</i> — call
+ *       {@link ProcessEventEmitter#drainAndDeliver} which loops
+ *       {@code drainPending → engine.steer} until the queue stays
+ *       empty. After the drain, ship every chat message that landed
+ *       since the snapshot as a
+ *       {@link MessageType#CHAT_MESSAGE_APPENDED} notification, then
+ *       send the {@code process-steer} ack.</li>
+ * </ol>
  *
- * <p>The steer-reply ({@code process-steer} ack) is sent from the
- * worker once the engine completes — the foot's
- * {@code connection.request} blocks until that arrives, so timing-wise
- * the experience is identical to the synchronous path it replaces.
+ * <p><b>Why a queue.</b> The handler used to call
+ * {@code engine.steer} directly inside the lane task. Routing through
+ * the queue:
+ * <ul>
+ *   <li>survives crashes — a steer that arrived right before a brain
+ *       restart is replayed on resume;</li>
+ *   <li>unifies the path with parent-wakeup and engine-driven
+ *       {@code notifyParent} — one drain-loop, no per-source
+ *       branches;</li>
+ *   <li>makes Auto-Wakeup free — messages that arrive during
+ *       {@code engine.steer} fall into the freshly-emptied queue and
+ *       are picked up by the next loop pass, no manual rescheduling.</li>
+ * </ul>
  */
 @Component
 @Slf4j
@@ -53,23 +70,23 @@ public class ProcessSteerHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
-    private final ThinkEngineService thinkEngineService;
     private final ChatMessageService chatMessageService;
     private final LaneScheduler laneScheduler;
+    private final ProcessEventEmitter eventEmitter;
 
     public ProcessSteerHandler(
             ObjectMapper objectMapper,
             WebSocketSender sender,
             ThinkProcessService thinkProcessService,
-            ThinkEngineService thinkEngineService,
             ChatMessageService chatMessageService,
-            LaneScheduler laneScheduler) {
+            LaneScheduler laneScheduler,
+            ProcessEventEmitter eventEmitter) {
         this.objectMapper = objectMapper;
         this.sender = sender;
         this.thinkProcessService = thinkProcessService;
-        this.thinkEngineService = thinkEngineService;
         this.chatMessageService = chatMessageService;
         this.laneScheduler = laneScheduler;
+        this.eventEmitter = eventEmitter;
     }
 
     @Override
@@ -108,48 +125,49 @@ public class ProcessSteerHandler implements WsHandler {
             return;
         }
         ThinkProcessDocument process = processOpt.get();
-
-        // Snapshot before any engine work — must read on the receive thread
-        // because subsequent inbound frames need to flow concurrently.
-        int beforeSize = chatMessageService.history(
-                tenantId, sessionId, process.getId()).size();
+        String processId = process.getId();
 
         SteerMessage.UserChatInput userInput = new SteerMessage.UserChatInput(
                 Instant.now(),
                 request.getIdempotencyKey(),
                 ctx.getUserId(),
                 request.getContent());
+        PendingMessageDocument doc = SteerMessageCodec.toDocument(userInput);
 
-        // Hand the engine work off and free the receive thread. The
-        // LaneScheduler serialises submissions on this process id, so two
-        // concurrent steer messages targeting the same process can't race
-        // on the engine's mutable state.
-        laneScheduler.submit(process.getId(), () -> runSteerAsync(
-                wsSession, envelope, process, request, userInput,
+        if (!thinkProcessService.appendPending(processId, doc)) {
+            sender.sendError(wsSession, envelope, 404,
+                    "Think-process '" + request.getProcessName() + "' disappeared before steer");
+            return;
+        }
+
+        // Snapshot before lane work so the appended-notification diff
+        // doesn't include messages that already lived in the log.
+        int beforeSize = chatMessageService.history(
+                tenantId, sessionId, processId).size();
+
+        laneScheduler.submit(processId, () -> runLaneTurn(
+                wsSession, envelope, processId, request.getProcessName(),
                 tenantId, sessionId, beforeSize));
     }
 
     /**
-     * Engine + push + reply, executed off the WS receive thread. All
-     * outbound writes go through {@link WebSocketSender}, which
-     * serialises sends per session — so a streaming chunk fired from
-     * a langchain4j callback thread can't interleave with the appended
-     * notifications produced here.
+     * Drain the inbox, then ship the chat-message-appended diff and
+     * the {@code process-steer} ack. Runs on the process's lane —
+     * {@link LaneScheduler} guarantees serial ordering across
+     * concurrent steers targeting the same process.
      */
-    private void runSteerAsync(
+    private void runLaneTurn(
             WebSocketSession wsSession,
             WebSocketEnvelope envelope,
-            ThinkProcessDocument process,
-            ProcessSteerRequest request,
-            SteerMessage.UserChatInput userInput,
+            String processId,
+            String processName,
             String tenantId,
             String sessionId,
             int beforeSize) {
         try {
-            thinkEngineService.steer(process, userInput);
+            eventEmitter.drainAndDeliver(processId);
         } catch (RuntimeException e) {
-            log.error("Engine steer failed for process id='{}' engine='{}'",
-                    process.getId(), process.getThinkEngine(), e);
+            log.error("Steer drain failed id='{}': {}", processId, e.toString(), e);
             try {
                 sender.sendError(wsSession, envelope, 500,
                         "Engine steer failed: " + e.getMessage());
@@ -160,23 +178,22 @@ public class ProcessSteerHandler implements WsHandler {
         }
 
         try {
-            ThinkProcessDocument refreshed = thinkProcessService.findById(process.getId())
-                    .orElse(process);
+            ThinkProcessDocument refreshed = thinkProcessService.findById(processId)
+                    .orElse(null);
             List<ChatMessageDocument> full = chatMessageService.history(
-                    tenantId, sessionId, process.getId());
+                    tenantId, sessionId, processId);
             for (ChatMessageDocument appended : full.subList(beforeSize, full.size())) {
-                // Skip USER echoes — the sending client already knows what it
-                // just typed and renders it locally.
                 if (appended.getRole() == ChatRole.USER) {
+                    // Sender's own echo — client renders locally.
                     continue;
                 }
                 sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
-                        toDto(appended, request.getProcessName()));
+                        toDto(appended, processName));
             }
             ProcessSteerResponse response = ProcessSteerResponse.builder()
-                    .thinkProcessId(refreshed.getId())
-                    .processName(refreshed.getName())
-                    .status(refreshed.getStatus())
+                    .thinkProcessId(processId)
+                    .processName(processName)
+                    .status(refreshed == null ? null : refreshed.getStatus())
                     .build();
             sender.sendReply(wsSession, envelope, MessageType.PROCESS_STEER, response);
         } catch (IOException sendErr) {

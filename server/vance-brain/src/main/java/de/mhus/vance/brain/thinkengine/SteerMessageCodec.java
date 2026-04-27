@@ -1,5 +1,8 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.inbox.AnswerOutcome;
+import de.mhus.vance.api.inbox.AnswerPayload;
+import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
@@ -68,6 +71,13 @@ public final class SteerMessageCodec {
                     .command(c.command())
                     .payload(c.params())
                     .build();
+
+            case SteerMessage.InboxAnswer ia -> b
+                    .type(PendingMessageType.INBOX_ANSWER)
+                    .inboxItemId(ia.inboxItemId())
+                    .inboxItemType(ia.itemType())
+                    .inboxAnswer(ia.answer())
+                    .build();
         };
     }
 
@@ -105,6 +115,18 @@ public final class SteerMessageCodec {
                     at, idem,
                     nullToEmpty(d.getCommand()),
                     d.getPayload() == null ? Collections.emptyMap() : d.getPayload());
+
+            case INBOX_ANSWER -> new SteerMessage.InboxAnswer(
+                    at, idem,
+                    nullToEmpty(d.getInboxItemId()),
+                    d.getInboxItemType() == null
+                            ? InboxItemType.OUTPUT_TEXT : d.getInboxItemType(),
+                    d.getInboxAnswer() == null
+                            ? AnswerPayload.builder()
+                                    .outcome(AnswerOutcome.UNDECIDABLE)
+                                    .reason("Persistent inbox answer was missing")
+                                    .build()
+                            : d.getInboxAnswer());
         };
     }
 

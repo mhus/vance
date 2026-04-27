@@ -13,5 +13,7 @@ public enum PendingMessageType {
     /** Result of an asynchronously-dispatched tool call. */
     TOOL_RESULT,
     /** A high-level command from the client (UI button, slash-command). */
-    EXTERNAL_COMMAND
+    EXTERNAL_COMMAND,
+    /** An inbox item this process was blocked on has been answered. */
+    INBOX_ANSWER
 }

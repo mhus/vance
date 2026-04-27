@@ -6,6 +6,7 @@ import de.mhus.vance.api.ws.SessionCreateRequest;
 import de.mhus.vance.api.ws.SessionCreateResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.ws.ConnectionContext;
@@ -44,6 +45,7 @@ public class SessionCreateHandler implements WsHandler {
     private final SessionConnectionRegistry connectionRegistry;
     private final SessionChatBootstrapper chatBootstrapper;
     private final ChatMessageService chatMessageService;
+    private final InboxPendingSummaryPusher inboxSummaryPusher;
 
     @Override
     public String type() {
@@ -102,6 +104,10 @@ public class SessionCreateHandler implements WsHandler {
 
         ctx.bindSession(created);
         connectionRegistry.register(created.getSessionId(), wsSession);
+
+        // Heads-up: any pending inbox items? Pushed before other frames
+        // so the client UI can render the counter early.
+        inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
 
         // Auto-spawn the session-chat think-process. Greeting is pushed
         // as chat-message-appended frames before the response so the

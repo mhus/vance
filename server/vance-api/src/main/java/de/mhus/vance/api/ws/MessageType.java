@@ -49,6 +49,35 @@ public final class MessageType {
     /** Client → brain: the result of a prior {@link #CLIENT_TOOL_INVOKE}. */
     public static final String CLIENT_TOOL_RESULT = "client-tool-result";
 
+    // ─── User-Interaction (Inbox) Subsystem ──────────────────────
+
+    /** Client → brain: list inbox items for the bound user/session. */
+    public static final String INBOX_LIST = "inbox-list";
+
+    /** Client → brain: fetch one item by id. */
+    public static final String INBOX_ITEM = "inbox-item";
+
+    /** Client → brain: submit an answer for a PENDING item. */
+    public static final String INBOX_ANSWER = "inbox-answer";
+
+    /** Client → brain: delegate an item to another user. */
+    public static final String INBOX_DELEGATE = "inbox-delegate";
+
+    /** Client → brain: archive an item (move out of live view). */
+    public static final String INBOX_ARCHIVE = "inbox-archive";
+
+    /** Client → brain: dismiss a pending item without a substantive answer. */
+    public static final String INBOX_DISMISS = "inbox-dismiss";
+
+    /** Brain → client: a new item has been created for the receiving user. */
+    public static final String INBOX_ITEM_ADDED = "inbox-item-added";
+
+    /** Brain → client: an item's status / assignment changed. */
+    public static final String INBOX_ITEM_UPDATED = "inbox-item-updated";
+
+    /** Brain → client (welcome-time): summary of pending items waiting. */
+    public static final String INBOX_PENDING_SUMMARY = "inbox-pending-summary";
+
     private MessageType() {
     }
 }

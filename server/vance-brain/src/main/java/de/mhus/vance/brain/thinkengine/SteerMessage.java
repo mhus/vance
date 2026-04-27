@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.inbox.AnswerPayload;
+import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import java.time.Instant;
@@ -20,7 +22,8 @@ public sealed interface SteerMessage
         permits SteerMessage.UserChatInput,
                 SteerMessage.ProcessEvent,
                 SteerMessage.ToolResult,
-                SteerMessage.ExternalCommand {
+                SteerMessage.ExternalCommand,
+                SteerMessage.InboxAnswer {
 
     /** When the message was produced. */
     Instant at();
@@ -90,5 +93,24 @@ public sealed interface SteerMessage
             @Nullable String idempotencyKey,
             String command,
             Map<String, Object> params) implements SteerMessage {
+    }
+
+    /**
+     * The user (or an auto-resolver) answered an inbox item that
+     * this process was blocked on. Routed by the brain-side
+     * {@code InboxAnsweredListener}.
+     *
+     * @param inboxItemId Mongo id of the answered item
+     * @param itemType    type of the original ask (helps the engine
+     *                    pick the right handler branch)
+     * @param answer      three-state payload (DECIDED + value, or
+     *                    INSUFFICIENT_INFO/UNDECIDABLE + reason)
+     */
+    record InboxAnswer(
+            Instant at,
+            @Nullable String idempotencyKey,
+            String inboxItemId,
+            InboxItemType itemType,
+            AnswerPayload answer) implements SteerMessage {
     }
 }

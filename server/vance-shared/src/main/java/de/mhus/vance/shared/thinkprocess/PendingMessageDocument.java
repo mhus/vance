@@ -1,5 +1,7 @@
 package de.mhus.vance.shared.thinkprocess;
 
+import de.mhus.vance.api.inbox.AnswerPayload;
+import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import java.time.Instant;
@@ -67,6 +69,11 @@ public class PendingMessageDocument {
     // ─── EXTERNAL_COMMAND ────────────────────────────────────────
     /** Command verb, e.g. {@code "approve"}, {@code "cancel"}. */
     private @Nullable String command;
+
+    // ─── INBOX_ANSWER ────────────────────────────────────────────
+    private @Nullable String inboxItemId;
+    private @Nullable InboxItemType inboxItemType;
+    private @Nullable AnswerPayload inboxAnswer;
 
     // ─── Shared payload ──────────────────────────────────────────
     /**

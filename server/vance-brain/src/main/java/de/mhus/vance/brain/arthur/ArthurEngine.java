@@ -625,6 +625,23 @@ public class ArthurEngine implements ThinkEngine {
                         .append("</external-command>");
                 yield sb.toString();
             }
+            case SteerMessage.InboxAnswer ia -> {
+                StringBuilder sb = new StringBuilder();
+                sb.append("<inbox-answer itemId=\"")
+                        .append(escapeAttr(ia.inboxItemId()))
+                        .append("\" type=\"")
+                        .append(ia.itemType().name().toLowerCase())
+                        .append("\" outcome=\"")
+                        .append(ia.answer().getOutcome().name().toLowerCase())
+                        .append("\">");
+                if (ia.answer().getReason() != null) {
+                    sb.append("reason: ").append(escapeText(ia.answer().getReason()));
+                } else if (ia.answer().getValue() != null) {
+                    sb.append(escapeText(String.valueOf(ia.answer().getValue())));
+                }
+                sb.append("</inbox-answer>");
+                yield sb.toString();
+            }
         };
     }
 

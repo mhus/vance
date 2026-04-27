@@ -8,6 +8,7 @@ import de.mhus.vance.api.thinkprocess.SessionBootstrapResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
@@ -69,6 +70,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final SessionConnectionRegistry connectionRegistry;
     private final SessionChatBootstrapper chatBootstrapper;
     private final RecipeResolver recipeResolver;
+    private final InboxPendingSummaryPusher inboxSummaryPusher;
 
     @Override
     public String type() {
@@ -144,6 +146,7 @@ public class SessionBootstrapHandler implements WsHandler {
         }
         ctx.bindSession(session);
         connectionRegistry.register(session.getSessionId(), wsSession);
+        inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
 
         // ── Auto-spawn the session-chat process ──────────────────────────
         // Idempotent: re-bootstrap of an existing session adopts the chat

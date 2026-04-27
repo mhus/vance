@@ -210,7 +210,7 @@ public class ChatRepl {
                             .content(line)
                             .build(),
                     ProcessSteerResponse.class,
-                    Duration.ofSeconds(30));
+                    Duration.ofSeconds(120));
             chatTerminal.verbose("→ steered " + response.getProcessName()
                     + " (status=" + response.getStatus() + ")");
         } catch (BrainException e) {

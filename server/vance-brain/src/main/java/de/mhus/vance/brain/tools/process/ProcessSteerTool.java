@@ -1,8 +1,12 @@
 package de.mhus.vance.brain.tools.process;
 
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
+import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
@@ -54,16 +58,19 @@ public class ProcessSteerTool implements Tool {
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final ChatMessageService chatMessageService;
     private final LaneScheduler laneScheduler;
+    private final ProcessEventEmitter eventEmitter;
 
     public ProcessSteerTool(
             ThinkProcessService thinkProcessService,
             ObjectProvider<ThinkEngineService> thinkEngineServiceProvider,
             ChatMessageService chatMessageService,
-            LaneScheduler laneScheduler) {
+            LaneScheduler laneScheduler,
+            ProcessEventEmitter eventEmitter) {
         this.thinkProcessService = thinkProcessService;
         this.thinkEngineServiceProvider = thinkEngineServiceProvider;
         this.chatMessageService = chatMessageService;
         this.laneScheduler = laneScheduler;
+        this.eventEmitter = eventEmitter;
     }
 
     @Override
@@ -120,17 +127,36 @@ public class ProcessSteerTool implements Tool {
                         : "process:" + ctx.processId(),
                 content);
 
-        try {
-            // Different lane → no deadlock with the current tool's lane.
-            laneScheduler.submit(target.getId(),
-                    () -> thinkEngineServiceProvider.getObject().steer(target, message)).get();
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new ToolException("Interrupted waiting for target steer");
-        } catch (ExecutionException ee) {
-            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-            throw new ToolException(
-                    "Target steer failed: " + cause.getMessage(), cause);
+        ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
+                .resolveForProcess(target);
+        if (targetEngine.asyncSteer()) {
+            // Async target (Marvin & co.): queue + wake without
+            // blocking on the lane. The orchestrator will see the
+            // outcome later via ProcessEvent.
+            thinkProcessService.appendPending(target.getId(),
+                    PendingMessageDocument.builder()
+                            .type(PendingMessageType.USER_CHAT_INPUT)
+                            .at(java.time.Instant.now())
+                            .fromUser(ctx.processId() == null
+                                    ? null : "process:" + ctx.processId())
+                            .content(content)
+                            .build());
+            eventEmitter.scheduleTurn(target.getId());
+            log.info("process_steer async-queued name='{}' target={} engine='{}'",
+                    name, target.getId(), targetEngine.name());
+        } else {
+            try {
+                // Different lane → no deadlock with the current tool's lane.
+                laneScheduler.submit(target.getId(),
+                        () -> thinkEngineServiceProvider.getObject().steer(target, message)).get();
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new ToolException("Interrupted waiting for target steer");
+            } catch (ExecutionException ee) {
+                Throwable cause = ee.getCause() == null ? ee : ee.getCause();
+                throw new ToolException(
+                        "Target steer failed: " + cause.getMessage(), cause);
+            }
         }
 
         ThinkProcessDocument refreshed = thinkProcessService.findById(target.getId())

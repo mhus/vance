@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolException;
@@ -34,6 +35,22 @@ public interface ThinkEngine {
 
     /** SemVer used for resume-compat checks. */
     String version();
+
+    /**
+     * {@code true} for engines that don't produce a synchronous
+     * reply per {@code steer} call. {@code process_steer}-style
+     * orchestration tools should not block on these: they queue the
+     * input and return immediately (the orchestrator will receive
+     * progress / completion via {@code ProcessEvent}s).
+     *
+     * <p>Default {@code false} for chat-style engines (Arthur,
+     * Zaphod) — those produce a reply per turn and the synchronous
+     * {@code .get()} on their lane is the right behavior.
+     * Tree-runner engines like Marvin override to {@code true}.
+     */
+    default boolean asyncSteer() {
+        return false;
+    }
 
     /**
      * Restrict the engine's view of the global tool registry to a
@@ -95,4 +112,32 @@ public interface ThinkEngine {
 
     /** Final stop. Process becomes {@code STOPPED}. */
     void stop(ThinkProcessDocument process, ThinkEngineContext context);
+
+    /**
+     * Build the report this engine sends to its parent process when
+     * a life-cycle transition fires (DONE / FAILED / STOPPED /
+     * BLOCKED). The runtime ({@link ParentNotificationListener})
+     * calls this whenever a parent exists and renders the result
+     * into the {@code ProcessEvent} that lands in the parent's
+     * pending queue.
+     *
+     * <p>Default produces a minimal generic line — useful for
+     * reactive engines like Arthur and Zaphod whose final reply
+     * already lives in the chat log and gets read separately.
+     * Engines that synthesize a substantive result of their own
+     * (Marvin's tree-AGGREGATE, Vogon's phase-synthesis) override
+     * this to ship the actual content up to the parent — saves the
+     * parent from having to dig into the child's storage.
+     *
+     * <p>The {@code parentProcessId} of the calling process can be
+     * {@code null} (top-level run); engines should not branch on
+     * that here — the listener will just skip emitting if there's
+     * no parent.
+     */
+    default ParentReport summarizeForParent(
+            ThinkProcessDocument process, ProcessEventType eventType) {
+        return ParentReport.of(
+                "Child process " + process.getId()
+                        + " status=" + eventType.name().toLowerCase());
+    }
 }

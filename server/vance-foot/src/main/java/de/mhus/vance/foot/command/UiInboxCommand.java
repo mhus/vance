@@ -17,10 +17,13 @@ import com.googlecode.lanterna.gui2.dialogs.MessageDialog;
 import com.googlecode.lanterna.gui2.dialogs.MessageDialogBuilder;
 import com.googlecode.lanterna.gui2.dialogs.MessageDialogButton;
 import com.googlecode.lanterna.gui2.dialogs.TextInputDialog;
+import de.mhus.vance.api.inbox.AnswerOutcome;
+import de.mhus.vance.api.inbox.InboxAnswerRequest;
 import de.mhus.vance.api.inbox.InboxDelegateRequest;
 import de.mhus.vance.api.inbox.InboxItemDto;
 import de.mhus.vance.api.inbox.InboxItemIdRequest;
 import de.mhus.vance.api.inbox.InboxItemStatus;
+import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.inbox.InboxListRequest;
 import de.mhus.vance.api.inbox.InboxListResponse;
 import de.mhus.vance.api.ws.MessageType;
@@ -42,11 +45,12 @@ import org.springframework.stereotype.Component;
  * dialog with action buttons (archive / dismiss / delegate) on click. The
  * list refreshes after every successful action.
  *
- * <p>Answering questions ({@code INBOX_ANSWER}) is intentionally left out of
- * v1: the answer payload is type-specific (a typed {@code Map<String,
- * Object>}) and a generic text-input dialog cannot capture that safely. The
- * existing {@code /inbox show <id>} command stays the read path while
- * answer support lands as a follow-up etappe.
+ * <p>Answering follows the same type-specific shape Marvin reads back as
+ * {@code artifacts.userAnswer}: {@code FEEDBACK} / {@code OUTPUT_TEXT}
+ * collect a single line into {@code {"text": …}}, {@code DECISION}
+ * collects a Yes/No into {@code {"decision": …}}, {@code APPROVAL} into
+ * {@code {"approved": …}}. Other types fall back to a hint that points at
+ * {@code /inbox answer --value <json>}.
  */
 @Component
 public class UiInboxCommand implements SlashCommand {
@@ -242,6 +246,14 @@ public class UiInboxCommand implements SlashCommand {
             Panel buttons = new Panel();
             buttons.setLayoutManager(new LinearLayout(Direction.HORIZONTAL));
             boolean editable = item.getStatus() == InboxItemStatus.PENDING;
+            boolean canAnswer = editable && item.isRequiresAction();
+            if (canAnswer) {
+                buttons.addComponent(new Button("Answer…", this::answer));
+                buttons.addComponent(new Button("Insuff. info…",
+                        () -> declineWithReason(AnswerOutcome.INSUFFICIENT_INFO)));
+                buttons.addComponent(new Button("Undecidable…",
+                        () -> declineWithReason(AnswerOutcome.UNDECIDABLE)));
+            }
             if (editable) {
                 buttons.addComponent(new Button("Archive", this::archive));
                 buttons.addComponent(new Button("Dismiss", this::dismiss));
@@ -276,6 +288,88 @@ public class UiInboxCommand implements SlashCommand {
                 }
             }
             return sb.toString();
+        }
+
+        private void answer() {
+            Map<String, Object> value = collectAnswerValue(item.getType());
+            if (value == null) return;
+            InboxAnswerRequest req = InboxAnswerRequest.builder()
+                    .itemId(item.getId())
+                    .outcome(AnswerOutcome.DECIDED)
+                    .value(value)
+                    .build();
+            performAction("Answer",
+                    () -> connection.request(MessageType.INBOX_ANSWER, req,
+                            Void.class, WS_TIMEOUT));
+        }
+
+        /**
+         * Type-specific answer-value collector. The keys mirror what the
+         * {@code /inbox} CLI's {@code --text} shorthand produces and what
+         * Marvin's worker prompts look for inside {@code userAnswer}.
+         * Returns {@code null} when the user cancels or the type has no UI
+         * collector yet.
+         */
+        private @Nullable Map<String, Object> collectAnswerValue(InboxItemType type) {
+            WindowBasedTextGUI gui = window.getTextGUI();
+            switch (type) {
+                case FEEDBACK, OUTPUT_TEXT -> {
+                    String text = TextInputDialog.showDialog(gui,
+                            "Answer", "Your reply:", "");
+                    if (text == null || text.isBlank()) return null;
+                    return Map.of("text", text);
+                }
+                case DECISION -> {
+                    MessageDialogButton choice = new MessageDialogBuilder()
+                            .setTitle("Decision")
+                            .setText("Decide:")
+                            .addButton(MessageDialogButton.Yes)
+                            .addButton(MessageDialogButton.No)
+                            .addButton(MessageDialogButton.Cancel)
+                            .build()
+                            .showDialog(gui);
+                    if (choice == MessageDialogButton.Yes) return Map.of("decision", true);
+                    if (choice == MessageDialogButton.No) return Map.of("decision", false);
+                    return null;
+                }
+                case APPROVAL -> {
+                    MessageDialogButton choice = new MessageDialogBuilder()
+                            .setTitle("Approval")
+                            .setText("Approve?")
+                            .addButton(MessageDialogButton.Yes)
+                            .addButton(MessageDialogButton.No)
+                            .addButton(MessageDialogButton.Cancel)
+                            .build()
+                            .showDialog(gui);
+                    if (choice == MessageDialogButton.Yes) return Map.of("approved", true);
+                    if (choice == MessageDialogButton.No) return Map.of("approved", false);
+                    return null;
+                }
+                default -> {
+                    MessageDialog.showMessageDialog(gui,
+                            "Not supported in UI",
+                            "Type " + type + " has no UI form yet — use\n"
+                                    + "/inbox answer " + item.getId() + " --value <json>",
+                            MessageDialogButton.OK);
+                    return null;
+                }
+            }
+        }
+
+        private void declineWithReason(AnswerOutcome outcome) {
+            String reason = TextInputDialog.showDialog(window.getTextGUI(),
+                    outcome == AnswerOutcome.INSUFFICIENT_INFO ? "Insufficient info" : "Undecidable",
+                    "Reason (Esc / empty cancels):",
+                    "");
+            if (reason == null || reason.isBlank()) return;
+            InboxAnswerRequest req = InboxAnswerRequest.builder()
+                    .itemId(item.getId())
+                    .outcome(outcome)
+                    .reason(reason)
+                    .build();
+            performAction(outcome.name(),
+                    () -> connection.request(MessageType.INBOX_ANSWER, req,
+                            Void.class, WS_TIMEOUT));
         }
 
         private void archive() {

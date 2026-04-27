@@ -2,10 +2,14 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +34,13 @@ import org.springframework.stereotype.Component;
 public class ParentNotificationListener {
 
     private final ProcessEventEmitter eventEmitter;
+    private final ThinkProcessService thinkProcessService;
+    /**
+     * Lazy because {@code ThinkEngineService} pulls in tools/recipes
+     * which transitively reach this listener — direct dependency
+     * would close the bean-graph cycle.
+     */
+    private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -44,15 +55,43 @@ public class ParentNotificationListener {
         if (eventType == null) {
             return;
         }
+        ParentReport report = buildReport(event.processId(), eventType, event.newStatus());
         boolean queued = eventEmitter.notifyParent(
                 parentId,
                 event.processId(),
                 eventType,
-                humanSummary(event.processId(), event.newStatus()),
-                /*payload*/ null);
+                report.humanSummary(),
+                report.payload());
         if (queued) {
             log.info("Parent notify queued parent='{}' child='{}' event={}",
                     parentId, event.processId(), eventType);
+        }
+    }
+
+    /**
+     * Asks the child's engine for its parent-report. Falls back to
+     * a generic "child status" line if the engine throws or the
+     * process row is gone — never let a hook failure swallow the
+     * parent-notification.
+     */
+    private ParentReport buildReport(
+            String childProcessId,
+            ProcessEventType eventType,
+            ThinkProcessStatus newStatus) {
+        Optional<ThinkProcessDocument> processOpt =
+                thinkProcessService.findById(childProcessId);
+        if (processOpt.isEmpty()) {
+            return ParentReport.of(genericSummary(childProcessId, newStatus));
+        }
+        ThinkProcessDocument process = processOpt.get();
+        try {
+            ThinkEngine engine = thinkEngineServiceProvider.getObject()
+                    .resolveForProcess(process);
+            return engine.summarizeForParent(process, eventType);
+        } catch (RuntimeException e) {
+            log.warn("summarizeForParent failed for child='{}' engine='{}': {}",
+                    childProcessId, process.getThinkEngine(), e.toString());
+            return ParentReport.of(genericSummary(childProcessId, newStatus));
         }
     }
 
@@ -66,7 +105,7 @@ public class ParentNotificationListener {
         };
     }
 
-    private static String humanSummary(String childProcessId, ThinkProcessStatus status) {
+    private static String genericSummary(String childProcessId, ThinkProcessStatus status) {
         return "Child process " + childProcessId + " status=" + status.name().toLowerCase();
     }
 }

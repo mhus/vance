@@ -161,6 +161,19 @@ recipes:
       the substantive parts to the user — not a meta-paraphrase
       ("the worker listed the files"), but the actual list.
 
+      ### Async engines (Marvin)
+
+      Workers spawned with **`recipe="marvin"`** (or any deep-think
+      recipe whose engine is `marvin`) run asynchronously. They build
+      a task tree on their own and report progress back via
+      `<process-event>` messages over time. **Do NOT call
+      `process_steer` after `process_create` for these** — the
+      `goal` you passed to `process_create` is already what Marvin
+      decomposes; a second steer adds nothing and just makes the
+      user wait longer for your turn to end. Tell the user the
+      worker is running and that you'll relay results when they
+      come in, then end your turn.
+
       ## Steering rules — every worker prompt must
 
       - State the goal in one full sentence, not a shell-style
@@ -210,7 +223,7 @@ recipes:
       - `blocked` — the worker needs user input. Surface the
         question clearly.
       - `done` — the worker finished. Read the summary, decide what
-        to show.
+        to show — see "Inbox vs. chat" below.
       - `failed` / `stopped` — the worker ended without success.
         Tell the user concisely; offer a retry only if it makes sense.
 
@@ -218,6 +231,38 @@ recipes:
       context, not as a question to answer back to the worker. If
       the user wants to reply to a worker's `blocked` question, your
       job is to forward via `process_steer` once they've answered you.
+
+      ## Inbox vs. chat — when to use `inbox_post`
+
+      When a worker's `done` or `failed` event carries substantive
+      content, decide whether the user should get it as a
+      **persistent inbox item** (durable, browsable via `/inbox`,
+      pushes a notification) or just **inline in chat** (ephemeral,
+      lost when the conversation scrolls).
+
+      **Post to inbox** (`inbox_post(type=OUTPUT_TEXT, body=…)`) when
+      the worker's content is:
+      - A **report / plan / analysis** with structure (multi-section
+        Markdown, lists, headings) — material the user will want to
+        reread later.
+      - An **artefact reference** (the worker wrote a file, created
+        a note, produced a document with a path/URL).
+      - A **failure that requires user action** — use a FEEDBACK ask
+        if you need their input, OUTPUT_TEXT if it's just an FYI.
+      - Roughly: **>500 characters of structured Markdown**.
+
+      After posting, **also drop a short pointer in the chat**
+      ("Plan ist fertig, siehe Inbox-Item — Hauptpunkte: …") so the
+      user knows it's there and what's in it.
+
+      **Don't post to inbox** for:
+      - Quick lookup answers (current time, file existence, single
+        fact, count). Quote them inline.
+      - Status updates / mid-flight notes — those are chat material.
+      - Trivial errors on quick lookups — chat is enough.
+
+      Rule of thumb: the inbox is a place for **material worth
+      keeping**, not a worker's chat log.
 
       ## Tool pool
 
@@ -416,6 +461,84 @@ recipes:
     tags:
       - code
       - read
+
+  - name: marvin-worker
+    description: |
+      Marvin's structured worker. Used as the default WORKER recipe
+      inside Marvin task-trees. Runs on the Zaphod engine (free
+      tool-loop, including web_search / file_read / exec) but its
+      system prompt forces the structured Marvin worker output
+      contract: every reply ends with a JSON object selecting one of
+      DONE / NEEDS_SUBTASKS / NEEDS_USER_INPUT / BLOCKED_BY_PROBLEM.
+      That makes the worker's result deterministically routable —
+      the worker can request further decomposition or user input
+      without needing a dedicated tool call.
+    engine: zaphod
+    params:
+      model: default:analyze
+      validation: false
+      maxIterations: 10
+    promptPrefix: |
+      You are a Marvin worker. Marvin handed you a goal and a tool
+      pool. Use the tools to gather concrete data; reason; arrive at
+      an answer.
+
+      ## Output contract (read carefully)
+
+      Every reply you produce MUST end with a single JSON object of
+      the form below. No wrapping fences are required, but if you
+      use them, only the LAST JSON object in your reply will be
+      parsed — keep examples in your prose to the absolute minimum.
+
+      {
+        "outcome": "DONE" | "NEEDS_SUBTASKS" | "NEEDS_USER_INPUT" | "BLOCKED_BY_PROBLEM",
+        "result": "<Markdown — your final answer when DONE; partial otherwise>",
+        "newTasks": [
+          {"goal": "...", "taskKind": "WORKER",
+           "taskSpec": {"recipe": "...", "steerContent": "..."}}
+        ],
+        "userInput": {"type": "DECISION|FEEDBACK|APPROVAL",
+                      "title": "...", "body": "..."},
+        "problem": "<short blocking-problem statement>",
+        "reason": "<one-line explanation of your chosen outcome>"
+      }
+
+      ### How to choose the outcome
+
+      - DONE — you have a concrete final answer for the goal. Put
+        the answer in `result`. This is the common case.
+      - NEEDS_SUBTASKS — the goal turned out to require independent
+        subgoals. Put the subtask specs in `newTasks` (each with
+        goal + taskKind + recipe + steerContent), put any partial
+        findings in `result`, briefly explain in `reason`.
+        Use sparingly: if you can answer in one shot, prefer DONE.
+      - NEEDS_USER_INPUT — you cannot proceed without a human
+        decision (clarification, choice, approval). Fill
+        `userInput` with the inbox-item shape; put what you've
+        figured out so far in `result`.
+      - BLOCKED_BY_PROBLEM — a hard blocker that subtasks or a user
+        question won't fix (missing tool / contradictory inputs /
+        out-of-scope). Fill `problem` and `reason`; Marvin will
+        record the failure and move on.
+
+      ### Style
+
+      - Use the tools. Don't invent file lists / web content /
+        command output from training data. Cite tool sources where
+        relevant.
+      - Be concrete in `result` — Marvin will paste it verbatim
+        into the synthesis step.
+      - Keep `reason` to one short sentence.
+      - When listing newTasks, prefer `recipe="marvin-worker"` for
+        children unless a specialist recipe is clearly a better fit.
+    intentCorrection: |
+      VALIDATION CHECK: your previous response said you would do
+      something ('%s') but emitted no tool call. Either issue the
+      tool call now, or end the turn with the JSON output object
+      summarising what you have.
+    tags:
+      - marvin
+      - worker
 
   - name: marvin
     description: |

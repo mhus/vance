@@ -1,14 +1,14 @@
-package de.mhus.vance.brain.zaphod;
+package de.mhus.vance.brain.ford;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * {@code vance.zaphod.*} — tunables for the Zaphod chat engine.
+ * {@code vance.ford.*} — tunables for the Ford chat engine.
  */
 @Data
-@ConfigurationProperties(prefix = "vance.zaphod")
-public class ZaphodProperties {
+@ConfigurationProperties(prefix = "vance.ford")
+public class FordProperties {
 
     /**
      * Fraction of the model's context window at which memory compaction

@@ -1,6 +1,6 @@
 # Token-window metadata for known AI models. Used by ModelCatalog to
 # decide when to compact a chat (default trigger: 90% of contextWindow,
-# see vance.zaphod.compactionTriggerRatio) and to size the request's
+# see vance.ford.compactionTriggerRatio) and to size the request's
 # max-output-tokens.
 #
 # Format:

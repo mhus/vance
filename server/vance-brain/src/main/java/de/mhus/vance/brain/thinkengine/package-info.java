@@ -9,7 +9,7 @@
  * state themselves.
  *
  * <p>The {@link ThinkEngineContext} API starts small: it exposes the
- * primitives Zaphod needs ({@code llm()}, {@code settings()}) and stubs the
+ * primitives Ford needs ({@code llm()}, {@code settings()}) and stubs the
  * rest ({@code chat()}, {@code events()}, {@code drainPending()},
  * {@code memory()}, {@code tools()}, {@code processes()}). Those sub-APIs
  * land when the corresponding bricks are in place.

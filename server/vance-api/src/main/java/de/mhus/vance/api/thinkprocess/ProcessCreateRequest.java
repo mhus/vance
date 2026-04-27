@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  * Body of {@code process-create} — client spawns a think-process in its
  * currently bound session.
  *
- * <p>The {@code engine} is the registry name (e.g. {@code "zaphod"}).
+ * <p>The {@code engine} is the registry name (e.g. {@code "ford"}).
  * {@code name} is the process's identifier within the session; it must be
  * unique per session.
  */

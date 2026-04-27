@@ -44,7 +44,7 @@ public interface ThinkEngine {
      * progress / completion via {@code ProcessEvent}s).
      *
      * <p>Default {@code false} for chat-style engines (Arthur,
-     * Zaphod) — those produce a reply per turn and the synchronous
+     * Ford) — those produce a reply per turn and the synchronous
      * {@code .get()} on their lane is the right behavior.
      * Tree-runner engines like Marvin override to {@code true}.
      */
@@ -58,7 +58,7 @@ public interface ThinkEngine {
      *
      * <p>Returning an <em>empty</em> set means "no restriction" — the
      * engine sees every tool the {@link ToolDispatcher} resolves in
-     * its scope (the Zaphod default). Returning a non-empty set
+     * its scope (the Ford default). Returning a non-empty set
      * filters every {@link ContextToolsApi} read and rejects
      * out-of-set {@link ContextToolsApi#invoke invoke} calls with a
      * {@link ToolException}.
@@ -94,7 +94,7 @@ public interface ThinkEngine {
      * and process every queued message in this turn.
      *
      * <p>The default implementation is the per-message-{@code steer}
-     * fallback used by simple engines like Zaphod: drain, hand each
+     * fallback used by simple engines like Ford: drain, hand each
      * message to {@link #steer}, repeat until the queue stays empty
      * across a full pass (Auto-Wakeup). Engines that benefit from a
      * single LLM round-trip per turn (Arthur and other orchestrators)
@@ -122,7 +122,7 @@ public interface ThinkEngine {
      * pending queue.
      *
      * <p>Default produces a minimal generic line — useful for
-     * reactive engines like Arthur and Zaphod whose final reply
+     * reactive engines like Arthur and Ford whose final reply
      * already lives in the chat log and gets read separately.
      * Engines that synthesize a substantive result of their own
      * (Marvin's tree-AGGREGATE, Vogon's phase-synthesis) override

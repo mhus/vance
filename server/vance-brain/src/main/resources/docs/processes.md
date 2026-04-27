@@ -8,7 +8,7 @@ more sub-processes doing focused background work.
 ## Spawning
 
 ```text
-process_create name=researcher engine=zaphod goal="Summarise design docs"
+process_create name=researcher engine=ford goal="Summarise design docs"
 ```
 
 The new process starts in `READY` and immediately writes its greeting
@@ -44,7 +44,7 @@ parallel work:
 
 A long-lived sub-process that the user (or you) keeps consulting:
 
-1. `process_create name=lawyer engine=zaphod goal="Read all licence files"`.
+1. `process_create name=lawyer engine=ford goal="Read all licence files"`.
 2. Steer it once with the bulk reading task.
 3. From now on, every legal question goes there via `process_steer`.
 
@@ -53,7 +53,7 @@ A long-lived sub-process that the user (or you) keeps consulting:
 Spawn a process to do something slow while you continue the user
 conversation:
 
-1. `process_create name=indexer engine=zaphod goal="Build a RAG over /docs"`.
+1. `process_create name=indexer engine=ford goal="Build a RAG over /docs"`.
 2. Steer it once: `"Walk /docs, ingest each into rag_create+add_workspace_file."`.
 3. Carry on talking to the user. Later, query the resulting RAG.
 

@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.zaphod;
+package de.mhus.vance.brain.ford;
 
 import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
@@ -55,7 +55,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Zaphod — two heads, no brain.
+ * Ford — two heads, no brain.
  *
  * <p>Minimal chat engine with tool support. Keeps a conversation log
  * in {@link ChatMessageService}, replays it as LLM history on every
@@ -81,21 +81,21 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class Zaphod implements ThinkEngine {
+public class Ford implements ThinkEngine {
 
-    public static final String NAME = "zaphod";
+    public static final String NAME = "ford";
     public static final String VERSION = "0.3.0";
 
-    public static final String GREETING = "Zaphod here. Ask me anything.";
+    public static final String GREETING = "Ford here. Ask me anything.";
 
     /**
      * Bare-minimum fallback when no recipe override is in play —
-     * normally never used because the bundled {@code zaphod} (and
+     * normally never used because the bundled {@code ford} (and
      * specialised) recipes always supply the real prompt. Kept tiny
      * on purpose.
      */
     private static final String SYSTEM_PROMPT =
-            "You are Zaphod, a generalist Vance worker. Use tools to "
+            "You are Ford, a generalist Vance worker. Use tools to "
                     + "gather concrete data; paste the relevant data into "
                     + "your reply. Don't invent content from training.";
 
@@ -106,7 +106,7 @@ public class Zaphod implements ThinkEngine {
     // ──────────────────── Validation heuristic ────────────────────
     // Opt-in via params.validation == true. Two checks:
     //   1. intent-without-action — same as Arthur's
-    //   2. reply-too-brief-after-data-fetch — Zaphod-specific, catches
+    //   2. reply-too-brief-after-data-fetch — Ford-specific, catches
     //      "OK, I see the files." after a substantial tool result
     //
     // Both inject a corrective SystemMessage and let the model retry,
@@ -155,7 +155,7 @@ public class Zaphod implements ThinkEngine {
     private final ObjectMapper objectMapper;
     private final StreamingProperties streamingProperties;
     private final ModelCatalog modelCatalog;
-    private final ZaphodProperties zaphodProperties;
+    private final FordProperties fordProperties;
     private final MemoryService memoryService;
     private final MemoryCompactionService memoryCompactionService;
     private final AiModelResolver aiModelResolver;
@@ -169,7 +169,7 @@ public class Zaphod implements ThinkEngine {
 
     @Override
     public String title() {
-        return "Zaphod (Minimal Chat)";
+        return "Ford (Minimal Chat)";
     }
 
     @Override
@@ -186,7 +186,7 @@ public class Zaphod implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("Zaphod.start tenant='{}' session='{}' id='{}'",
+        log.info("Ford.start tenant='{}' session='{}' id='{}'",
                 process.getTenantId(), process.getSessionId(), process.getId());
         ctx.chatMessageService().append(ChatMessageDocument.builder()
                 .tenantId(process.getTenantId())
@@ -200,20 +200,20 @@ public class Zaphod implements ThinkEngine {
 
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.debug("Zaphod.resume id='{}'", process.getId());
+        log.debug("Ford.resume id='{}'", process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
     }
 
     @Override
     public void suspend(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.debug("Zaphod.suspend id='{}'", process.getId());
+        log.debug("Ford.suspend id='{}'", process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
     }
 
     @Override
     public void steer(ThinkProcessDocument process, ThinkEngineContext ctx, SteerMessage message) {
         if (!(message instanceof SteerMessage.UserChatInput userInput)) {
-            log.warn("Zaphod.steer received unexpected message type '{}' for id='{}' — ignoring",
+            log.warn("Ford.steer received unexpected message type '{}' for id='{}' — ignoring",
                     message.getClass().getSimpleName(), process.getId());
             return;
         }
@@ -222,7 +222,7 @@ public class Zaphod implements ThinkEngine {
 
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("Zaphod.stop id='{}'", process.getId());
+        log.info("Ford.stop id='{}'", process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STOPPED);
     }
 
@@ -261,20 +261,20 @@ public class Zaphod implements ThinkEngine {
             List<ChatMessage> messages = buildPromptMessages(process, chatLog, effectiveSize);
             int estimatedTokens = estimateTokens(messages);
             int triggerTokens = modelInfo.compactionTriggerTokens(
-                    zaphodProperties.getCompactionTriggerRatio());
-            log.debug("Zaphod.turn id='{}' model={}/{} ctx={} trigger={} est={}",
+                    fordProperties.getCompactionTriggerRatio());
+            log.debug("Ford.turn id='{}' model={}/{} ctx={} trigger={} est={}",
                     process.getId(),
                     modelInfo.provider(), modelInfo.modelName(),
                     modelInfo.contextWindowTokens(),
                     triggerTokens,
                     estimatedTokens);
             if (estimatedTokens >= triggerTokens) {
-                log.info("Zaphod.turn id='{}' triggering compaction (est {} >= trigger {})",
+                log.info("Ford.turn id='{}' triggering compaction (est {} >= trigger {})",
                         process.getId(), estimatedTokens, triggerTokens);
                 try {
                     CompactionResult result = memoryCompactionService.compact(process, config);
                     if (result.compacted()) {
-                        log.info("Zaphod.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
+                        log.info("Ford.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
                                 process.getId(),
                                 result.messagesCompacted(),
                                 result.summaryChars(),
@@ -283,12 +283,12 @@ public class Zaphod implements ThinkEngine {
                         // new ARCHIVED_CHAT memory pinned the summary at top.
                         messages = buildPromptMessages(process, chatLog, effectiveSize);
                     } else {
-                        log.info("Zaphod.turn id='{}' compaction skipped: {}",
+                        log.info("Ford.turn id='{}' compaction skipped: {}",
                                 process.getId(), result.reason());
                     }
                 } catch (RuntimeException e) {
                     // Best-effort: don't crash the user's turn if compaction fails.
-                    log.warn("Zaphod.turn id='{}' compaction failed: {}",
+                    log.warn("Ford.turn id='{}' compaction failed: {}",
                             process.getId(), e.toString());
                 }
             }
@@ -296,7 +296,7 @@ public class Zaphod implements ThinkEngine {
             int maxIters = paramInt(process, "maxIterations", MAX_TOOL_ITERATIONS);
             boolean validation = paramBool(process, "validation", false);
             if (validation) {
-                log.info("Zaphod.turn id='{}' validation=on maxIters={}",
+                log.info("Ford.turn id='{}' validation=on maxIters={}",
                         process.getId(), maxIters);
             }
             String finalText = runToolLoop(
@@ -312,7 +312,7 @@ public class Zaphod implements ThinkEngine {
                     .build());
 
             String preview = finalText.length() > 120 ? finalText.substring(0, 120) + "…" : finalText;
-            log.info("Zaphod.steer id='{}' -> '{}'", process.getId(), preview);
+            log.info("Ford.steer id='{}' -> '{}'", process.getId(), preview);
             return finalText;
         } finally {
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
@@ -356,7 +356,7 @@ public class Zaphod implements ThinkEngine {
                                 process.getIntentCorrectionOverride(),
                                 INTENT_CORRECTION_TEMPLATE);
                         log.info(
-                                "Zaphod id='{}' validation: intent-without-action (\"{}\"), correcting ({}/{})",
+                                "Ford id='{}' validation: intent-without-action (\"{}\"), correcting ({}/{})",
                                 process.getId(), intent,
                                 corrections + 1, MAX_VALIDATION_CORRECTIONS);
                         messages.add(reply);
@@ -371,7 +371,7 @@ public class Zaphod implements ThinkEngine {
                                 process.getDataRelayCorrectionOverride(),
                                 DATA_RELAY_CORRECTION_TEMPLATE);
                         log.info(
-                                "Zaphod id='{}' validation: data-relay-gap (toolData={}, reply={}), correcting ({}/{})",
+                                "Ford id='{}' validation: data-relay-gap (toolData={}, reply={}), correcting ({}/{})",
                                 process.getId(), toolDataChars, replyLen,
                                 corrections + 1, MAX_VALIDATION_CORRECTIONS);
                         messages.add(reply);
@@ -385,7 +385,7 @@ public class Zaphod implements ThinkEngine {
                     finalText.append(text);
                 }
                 if (validation && corrections > 0) {
-                    log.info("Zaphod id='{}' validation: completed after {} correction(s)",
+                    log.info("Ford id='{}' validation: completed after {} correction(s)",
                             process.getId(), corrections);
                 }
                 return finalText.toString();
@@ -398,7 +398,7 @@ public class Zaphod implements ThinkEngine {
             }
         }
         throw new AiChatException(
-                "Zaphod exceeded " + maxIters
+                "Ford exceeded " + maxIters
                         + " tool iterations — aborting turn to avoid runaway.");
     }
 
@@ -454,7 +454,7 @@ public class Zaphod implements ThinkEngine {
                 try {
                     batcher.accept(partial);
                 } catch (RuntimeException e) {
-                    log.warn("Zaphod chunk-publish threw: {}", e.toString());
+                    log.warn("Ford chunk-publish threw: {}", e.toString());
                 }
             }
 
@@ -477,10 +477,10 @@ public class Zaphod implements ThinkEngine {
             return new StreamResult(reply, reply.text() == null ? "" : reply.text());
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new AiChatException("Zaphod streaming failed: " + cause.getMessage(), cause);
+            throw new AiChatException("Ford streaming failed: " + cause.getMessage(), cause);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new AiChatException("Zaphod streaming interrupted", e);
+            throw new AiChatException("Ford streaming interrupted", e);
         }
     }
 
@@ -496,7 +496,7 @@ public class Zaphod implements ThinkEngine {
         try {
             params = parseArgs(call.arguments());
         } catch (RuntimeException e) {
-            log.warn("Zaphod id='{}' tool='{}' bad arguments: {}",
+            log.warn("Ford id='{}' tool='{}' bad arguments: {}",
                     processId, call.name(), e.getMessage());
             return errorJson("Invalid tool arguments: " + e.getMessage());
         }
@@ -504,11 +504,11 @@ public class Zaphod implements ThinkEngine {
             Map<String, Object> result = tools.invoke(call.name(), params);
             return objectMapper.writeValueAsString(result);
         } catch (ToolException e) {
-            log.info("Zaphod id='{}' tool='{}' returned error: {}",
+            log.info("Ford id='{}' tool='{}' returned error: {}",
                     processId, call.name(), e.getMessage());
             return errorJson(e.getMessage());
         } catch (RuntimeException e) {
-            log.warn("Zaphod id='{}' tool='{}' unexpected failure: {}",
+            log.warn("Ford id='{}' tool='{}' unexpected failure: {}",
                     processId, call.name(), e.toString());
             return errorJson("Tool failed: " + e.getMessage());
         }
@@ -651,7 +651,7 @@ public class Zaphod implements ThinkEngine {
         try {
             return String.format(template, args);
         } catch (RuntimeException e) {
-            log.warn("Zaphod: validator template format failed ({}), using template verbatim",
+            log.warn("Ford: validator template format failed ({}), using template verbatim",
                     e.toString());
             return template;
         }

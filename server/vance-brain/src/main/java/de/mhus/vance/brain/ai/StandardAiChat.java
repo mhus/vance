@@ -35,7 +35,7 @@ public class StandardAiChat implements AiChat {
     public StandardAiChat(String name, ChatModel sync, StreamingChatModel streaming, AiChatOptions options) {
         this.name = name;
         // Wrap with trace-logging proxies up-front so every engine
-        // (Arthur/Zaphod/Marvin/...) and every caller (engines,
+        // (Arthur/Ford/Marvin/...) and every caller (engines,
         // memory-compaction, future tools) gets the same input/output
         // trace under logger {@code de.mhus.vance.brain.ai.trace}.
         // The wrappers are zero-cost when trace is disabled.

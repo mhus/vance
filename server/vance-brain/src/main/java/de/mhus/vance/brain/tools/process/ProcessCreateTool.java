@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  *       {@code params} merge on top (per-key overrides) unless the
  *       recipe is locked.</li>
  *   <li><b>Direct-engine path</b> — caller provides {@code engine}
- *       (e.g. {@code "zaphod"}). No recipe lookup; just
+ *       (e.g. {@code "ford"}). No recipe lookup; just
  *       caller-supplied {@code params} as-is.</li>
  * </ul>
  *
@@ -58,7 +58,7 @@ public class ProcessCreateTool implements Tool {
                     "engine", Map.of(
                             "type", "string",
                             "description", "Direct-engine path: engine name "
-                                    + "(e.g. 'zaphod'). Ignored if `recipe` is set."),
+                                    + "(e.g. 'ford'). Ignored if `recipe` is set."),
                     "title", Map.of(
                             "type", "string",
                             "description", "Optional human-readable title."),

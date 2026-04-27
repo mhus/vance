@@ -29,7 +29,7 @@ import org.yaml.snakeyaml.Yaml;
  * recipes:
  *   - name: analyze
  *     description: ...
- *     engine: zaphod
+ *     engine: ford
  *     params:
  *       model: claude-sonnet-4-5
  *     promptPrefix: ...

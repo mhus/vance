@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
  * Entry point for langgraph4j-based agent flows.
  *
  * <p>v1 is a deliberate placeholder: the {@code langgraph4j} dependency is
- * wired, the bean exists, but no concrete graph is shipped yet. Zaphod
+ * wired, the bean exists, but no concrete graph is shipped yet. Ford
  * operates as a single-turn chat and does not use graphs. Concrete graph
  * factories will land here when Arthur needs orchestration and DeepThink
  * gets its task-tree execution.

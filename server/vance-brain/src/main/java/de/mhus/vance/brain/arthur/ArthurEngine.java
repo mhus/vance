@@ -327,7 +327,7 @@ public class ArthurEngine implements ThinkEngine {
     }
 
     /**
-     * Tool-call loop in streaming mode. Same shape as Zaphod's: each
+     * Tool-call loop in streaming mode. Same shape as Ford's: each
      * iteration drives the streaming model, captures partials into
      * a chunk-batcher, and dispatches any tool-execution requests
      * the model returned. The loop exits when the model returns no
@@ -714,7 +714,7 @@ public class ArthurEngine implements ThinkEngine {
         return trimmed;
     }
 
-    // ──────────────────── Config resolve (mirrors Zaphod) ────────────────────
+    // ──────────────────── Config resolve (mirrors Ford) ────────────────────
 
     private static AiChatConfig resolveAiConfig(
             ThinkProcessDocument process,

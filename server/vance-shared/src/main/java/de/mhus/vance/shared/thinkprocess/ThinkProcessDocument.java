@@ -63,7 +63,7 @@ public class ThinkProcessDocument {
     /** Optional display name for UI. */
     private @Nullable String title;
 
-    /** Engine name from the registry, e.g. {@code "zaphod"}, {@code "arthur"}, {@code "deep-think"}. */
+    /** Engine name from the registry, e.g. {@code "ford"}, {@code "arthur"}, {@code "deep-think"}. */
     private String thinkEngine = "";
 
     /** Engine version at creation time — for resume compatibility checks. */

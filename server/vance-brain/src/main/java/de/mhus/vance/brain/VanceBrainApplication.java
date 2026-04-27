@@ -6,7 +6,7 @@ import de.mhus.vance.brain.init.InitSettingsProperties;
 import de.mhus.vance.brain.marvin.MarvinProperties;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.tools.workspace.WorkspaceProperties;
-import de.mhus.vance.brain.zaphod.ZaphodProperties;
+import de.mhus.vance.brain.ford.FordProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -30,7 +30,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         ExecProperties.class,
         StreamingProperties.class,
         InitSettingsProperties.class,
-        ZaphodProperties.class,
+        FordProperties.class,
         ArthurProperties.class,
         MarvinProperties.class})
 @EnableScheduling

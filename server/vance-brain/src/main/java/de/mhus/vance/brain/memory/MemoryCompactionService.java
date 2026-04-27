@@ -5,7 +5,7 @@ import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
-import de.mhus.vance.brain.zaphod.ZaphodProperties;
+import de.mhus.vance.brain.ford.FordProperties;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
@@ -85,7 +85,7 @@ public class MemoryCompactionService {
     private final AiModelService aiModelService;
     private final SessionService sessionService;
     private final SettingService settingService;
-    private final ZaphodProperties properties;
+    private final FordProperties properties;
 
     /**
      * Compacts older history of {@code process}. Resolves the

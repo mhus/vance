@@ -27,12 +27,12 @@ import org.springframework.stereotype.Component;
  *
  * <p>Examples:
  * <ul>
- *   <li>{@code /session-bootstrap instant-hole zaphod} —
- *       new session in instant-hole with one zaphod process</li>
- *   <li>{@code /session-bootstrap instant-hole zaphod marvin -- Hallo Bots} —
+ *   <li>{@code /session-bootstrap instant-hole ford} —
+ *       new session in instant-hole with one ford process</li>
+ *   <li>{@code /session-bootstrap instant-hole ford marvin -- Hallo Bots} —
  *       new session, two processes, initial message steered to the first</li>
- *   <li>{@code /session-bootstrap @sess_xyz zaphod:bot1} —
- *       resume session, ensure a bot1 (engine zaphod) exists</li>
+ *   <li>{@code /session-bootstrap @sess_xyz ford:bot1} —
+ *       resume session, ensure a bot1 (engine ford) exists</li>
  * </ul>
  *
  * <p>The active process is set automatically — to the steered process if an

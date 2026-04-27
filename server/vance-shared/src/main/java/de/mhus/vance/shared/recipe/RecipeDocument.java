@@ -59,7 +59,7 @@ public class RecipeDocument {
 
     private String description = "";
 
-    /** Engine-name from the registry, e.g. {@code "zaphod"}. */
+    /** Engine-name from the registry, e.g. {@code "ford"}. */
     private String engine = "";
 
     /**
@@ -95,7 +95,7 @@ public class RecipeDocument {
     private @Nullable String intentCorrection;
 
     /**
-     * Override for the data-relay-gap validator message (Zaphod-only
+     * Override for the data-relay-gap validator message (Ford-only
      * today). Same semantics as {@link #intentCorrection}.
      */
     private @Nullable String dataRelayCorrection;

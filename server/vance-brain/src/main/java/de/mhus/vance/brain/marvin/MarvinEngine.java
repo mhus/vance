@@ -210,7 +210,7 @@ public class MarvinEngine implements ThinkEngine {
     @Override
     public String description() {
         return "Methodical deep-think engine. Builds a dynamic task-tree, "
-                + "delegates work to Zaphod-style workers, asks the user via "
+                + "delegates work to Ford-style workers, asks the user via "
                 + "the inbox when needed, and synthesizes the results back.";
     }
 
@@ -851,7 +851,7 @@ public class MarvinEngine implements ThinkEngine {
      * read the structured reply, parse, route, stop the worker.
      * Marvin's lane is held for the worker's full duration — that's
      * intentional, because v1 sequential-children require it and
-     * because the worker engines (Zaphod) don't reach a terminal
+     * because the worker engines (Ford) don't reach a terminal
      * status on their own (they go RUNNING → READY after each turn,
      * which {@code ParentNotificationListener} silences). Driving
      * the worker explicitly removes the dependency on a DONE event.
@@ -1181,7 +1181,7 @@ public class MarvinEngine implements ThinkEngine {
         return nodeService.listAll(process.getId()).size() > properties.getMaxTreeNodes();
     }
 
-    // ──────────────────── Config resolve (mirrors Zaphod) ────────────────────
+    // ──────────────────── Config resolve (mirrors Ford) ────────────────────
 
     private static AiChatConfig resolveAiConfig(
             ThinkProcessDocument process,

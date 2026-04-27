@@ -2,7 +2,7 @@
 
 Vance is a "think tool" — a brain server with pluggable engines that
 chat with the user, drive tools, and persist their work. You (the LLM)
-are running inside one of those engines (currently usually `zaphod`).
+are running inside one of those engines (currently usually `ford`).
 
 ## Scope hierarchy
 

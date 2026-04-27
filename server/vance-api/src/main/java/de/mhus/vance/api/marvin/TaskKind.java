@@ -14,7 +14,7 @@ public enum TaskKind {
     PLAN,
 
     /**
-     * Spawns a Zaphod (or other-engine) worker via a recipe. The
+     * Spawns a Ford (or other-engine) worker via a recipe. The
      * task-spec carries the recipe name and the initial steer
      * message. Asynchronous wait-point — Marvin parks the node in
      * RUNNING until the worker reports DONE/FAILED via the parent

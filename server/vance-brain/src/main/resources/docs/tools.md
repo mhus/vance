@@ -61,6 +61,6 @@ Use these when the user asks about *their* files, not project files.
 
 - `process_list` — siblings in the current session.
 - `process_status name=…` — one process detail.
-- `process_create name=… engine=zaphod [goal=…]` — spawn a sub-process.
+- `process_create name=… engine=ford [goal=…]` — spawn a sub-process.
 - `process_steer name=… content=…` — drive another process. See
   `processes` doc.

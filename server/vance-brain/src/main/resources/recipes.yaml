@@ -13,7 +13,7 @@
 #
 # Recipe naming convention:
 #   - `default`            — fallback when neither recipe nor engine is given.
-#   - `<engine>` (e.g. `arthur`, `zaphod`) — the engine's default behaviour.
+#   - `<engine>` (e.g. `arthur`, `ford`) — the engine's default behaviour.
 #                            Auto-applied when a process is spawned with
 #                            `engine="<X>"` but no `recipe`. ALL engine prompts
 #                            and validator templates live here, NOT in source.
@@ -36,9 +36,9 @@ recipes:
   - name: default
     description: |
       Generalist worker fallback — used when a process is spawned
-      without recipe AND without engine. Conservative defaults: zaphod
+      without recipe AND without engine. Conservative defaults: ford
       with a basic 'helpful assistant' prompt and validation on.
-    engine: zaphod
+    engine: ford
     params:
       model: default:analyze
       validation: true
@@ -329,19 +329,19 @@ recipes:
       - chat
       - orchestrator
 
-  - name: zaphod
+  - name: ford
     description: |
-      Generalist Zaphod-engine default. Auto-applied when a process
-      is spawned with `engine="zaphod"` but no specific recipe.
+      Generalist Ford-engine default. Auto-applied when a process
+      is spawned with `engine="ford"` but no specific recipe.
       Specialised recipes (analyze, web-research, code-read…) sit on
       top of this — pick the most specific one when applicable.
-    engine: zaphod
+    engine: ford
     params:
       model: default:analyze
       validation: false
       maxIterations: 8
     promptPrefix: |
-      You are a minimal Zaphod assistant in a Vance session.
+      You are a minimal Ford assistant in a Vance session.
       Keep answers short and helpful. Tools are available — call
       them when they help, and use `find_tools` / `describe_tool`
       to discover the non-primary ones before invoking them via
@@ -367,7 +367,7 @@ recipes:
       response. Don't end a turn with words of intent and no tool
       call.
     promptPrefixSmall: |
-      You are a Zaphod worker. Use tools to get concrete data;
+      You are a Ford worker. Use tools to get concrete data;
       paste the actual data into your reply text.
 
       For each step:
@@ -400,7 +400,7 @@ recipes:
       Cheap one-shot fact retrieval. Use when one tool call with a
       short answer suffices — file existence, current date, single
       shell command.
-    engine: zaphod
+    engine: ford
     params:
       model: default:fast
       validation: true
@@ -417,7 +417,7 @@ recipes:
     description: |
       Substantive analysis with multiple tool calls. Reads files,
       inspects state, returns findings with cited evidence.
-    engine: zaphod
+    engine: ford
     params:
       model: default:analyze
       validation: true
@@ -444,7 +444,7 @@ recipes:
   - name: web-research
     description: |
       Multi-source web research with summarisation.
-    engine: zaphod
+    engine: ford
     params:
       model: default:web
       validation: true
@@ -462,7 +462,7 @@ recipes:
     description: |
       Read-only codebase inspection. Reads files, follows references,
       summarises structure and call sites.
-    engine: zaphod
+    engine: ford
     params:
       model: default:code
       validation: true
@@ -485,7 +485,7 @@ recipes:
       Vogon-driven sequential plan: planning → implementation → review.
       User approval gates between phases. Use this when a request
       genuinely needs phased execution with checkpoints, not when a
-      single Marvin/Zaphod worker would suffice.
+      single Marvin/Ford worker would suffice.
     engine: vogon
     params:
       strategy: waterfall
@@ -504,7 +504,7 @@ recipes:
   - name: marvin-worker
     description: |
       Marvin's structured worker. Used as the default WORKER recipe
-      inside Marvin task-trees. Runs on the Zaphod engine (free
+      inside Marvin task-trees. Runs on the Ford engine (free
       tool-loop, including web_search / file_read / exec) but its
       system prompt forces the structured Marvin worker output
       contract: every reply ends with a JSON object selecting one of
@@ -512,7 +512,7 @@ recipes:
       That makes the worker's result deterministically routable —
       the worker can request further decomposition or user input
       without needing a dedicated tool call.
-    engine: zaphod
+    engine: ford
     params:
       model: default:analyze
       validation: false
@@ -585,7 +585,7 @@ recipes:
       benefits from decomposition, sub-task delegation, and synthesis.
       Builds a dynamic task-tree on the fly: PLAN nodes call back to
       the LLM to break a goal into subtasks, WORKER nodes spawn
-      Zaphod-style worker recipes, USER_INPUT nodes ask the user via
+      Ford-style worker recipes, USER_INPUT nodes ask the user via
       the inbox, AGGREGATE nodes collect children-artifacts into a
       summary. Auto-applied when a process is spawned with
       `engine="marvin"` but no specific recipe.

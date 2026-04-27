@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 public class ProcessSpec {
 
     /**
-     * Engine name from the registry (e.g. {@code "zaphod"}). One of
+     * Engine name from the registry (e.g. {@code "ford"}). One of
      * {@code engine} or {@link #recipe} must be set; if both are set,
      * {@code recipe} wins and {@code engine} is treated as advisory.
      */

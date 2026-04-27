@@ -89,7 +89,7 @@ public class FootConfig {
     @Data
     public static class BootstrapProcess {
         /**
-         * Engine name (e.g. {@code "zaphod"}) — one of {@code engine}
+         * Engine name (e.g. {@code "ford"}) — one of {@code engine}
          * or {@link #recipe} must be set. If both, {@code recipe}
          * wins.
          */

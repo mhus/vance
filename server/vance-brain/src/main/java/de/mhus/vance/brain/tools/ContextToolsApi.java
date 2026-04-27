@@ -16,7 +16,7 @@ import java.util.Set;
  * {@code allowedTools()} set, every read here projects through that
  * set and {@link #invoke} rejects unknown names — the engine cannot
  * see or call tools outside its declared pool. An empty allow-set
- * means "no restriction" (Zaphod-style: see everything).
+ * means "no restriction" (Ford-style: see everything).
  *
  * <p><b>Primary-vs-secondary collapse for restricted engines.</b>
  * The per-tool {@code primary} flag exists so the LLM doesn't get
@@ -119,7 +119,7 @@ public final class ContextToolsApi {
      *       of its per-tool {@code primary} flag.</li>
      *   <li><i>Unrestricted engine</i> — only tools whose own
      *       {@code primary()} returns {@code true}, the original
-     *       Zaphod default.</li>
+     *       Ford default.</li>
      * </ul>
      */
     private List<ToolDispatcher.Resolved> primaryResolved() {

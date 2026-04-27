@@ -4,6 +4,13 @@
 # project-scoped overrides live in the `recipes` MongoDB collection and
 # are consulted before this file at resolve-time.
 #
+# Model selection uses ALIASES (`default:fast`, `default:analyze`, …),
+# not concrete provider:model strings. Aliases resolve via the tenant's
+# `ai.alias.<namespace>.<key>` settings; if no alias is configured, the
+# resolver falls back to `ai.default.provider` + `ai.default.model`.
+# Tenants change which model is used for "fast" or "analyze" by editing
+# settings — without recompiling this file. See AiModelResolver.
+#
 # See specification/recipes.md for the full schema.
 
 recipes:
@@ -14,7 +21,7 @@ recipes:
       answer suffices — file existence, current date, single shell command.
     engine: zaphod
     params:
-      model: claude-haiku-4-5
+      model: default:fast
       validation: true
       maxIterations: 3
     promptPrefix: |
@@ -31,7 +38,7 @@ recipes:
       state, returns findings with cited evidence.
     engine: zaphod
     params:
-      model: claude-sonnet-4-5
+      model: default:analyze
       validation: true
       maxIterations: 10
     promptPrefix: |
@@ -48,7 +55,7 @@ recipes:
       Multi-source web research with summarisation.
     engine: zaphod
     params:
-      model: claude-sonnet-4-5
+      model: default:web
       validation: true
       maxIterations: 12
     promptPrefix: |
@@ -66,7 +73,7 @@ recipes:
       summarises structure and call sites.
     engine: zaphod
     params:
-      model: claude-sonnet-4-5
+      model: default:code
       validation: true
       maxIterations: 10
     promptPrefix: |

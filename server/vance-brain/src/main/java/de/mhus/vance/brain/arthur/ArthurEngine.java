@@ -8,6 +8,7 @@ import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
+import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -100,12 +101,7 @@ public class ArthurEngine implements ThinkEngine {
             "docs_read");
 
     private static final String SETTINGS_REF_TYPE = "tenant";
-    private static final String SETTING_AI_PROVIDER = "ai.default.provider";
-    private static final String SETTING_AI_MODEL = "ai.default.model";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
-
-    private static final String DEFAULT_PROVIDER = "anthropic";
-    private static final String DEFAULT_MODEL = "claude-sonnet-4-5";
 
     // ──────────────────── Validation heuristic ────────────────────
     // Opt-in via params.validation == true. Detects "intent-without-
@@ -155,6 +151,7 @@ public class ArthurEngine implements ThinkEngine {
     private final StreamingProperties streamingProperties;
     private final ArthurProperties arthurProperties;
     private final BundledRecipeRegistry bundledRecipeRegistry;
+    private final AiModelResolver aiModelResolver;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -274,7 +271,8 @@ public class ArthurEngine implements ThinkEngine {
                 }
             }
 
-            AiChatConfig config = resolveAiConfig(process, ctx.settingService());
+            AiChatConfig config = resolveAiConfig(
+                    process, ctx.settingService(), aiModelResolver);
             AiChat aiChat = ctx.aiModelService().createChat(
                     config, AiChatOptions.builder().build());
             ContextToolsApi tools = ctx.tools();
@@ -676,30 +674,44 @@ public class ArthurEngine implements ThinkEngine {
     // ──────────────────── Config resolve (mirrors Zaphod) ────────────────────
 
     private static AiChatConfig resolveAiConfig(
-            ThinkProcessDocument process, SettingService settings) {
+            ThinkProcessDocument process,
+            SettingService settings,
+            AiModelResolver modelResolver) {
         String tenantId = process.getTenantId();
-        // Per-process override beats per-tenant default. The setting is
-        // a fallback: clients that don't pass `params.model` get the
-        // tenant default; clients that do override one process at a time.
-        String provider = paramString(process, "provider",
-                settings.getStringValue(
-                        tenantId, SETTINGS_REF_TYPE, tenantId,
-                        SETTING_AI_PROVIDER, DEFAULT_PROVIDER));
-        String model = paramString(process, "model",
-                settings.getStringValue(
-                        tenantId, SETTINGS_REF_TYPE, tenantId,
-                        SETTING_AI_MODEL, DEFAULT_MODEL));
-        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
+        // params.model wins (recipe alias or direct provider:model).
+        // params.provider is honoured for backward-compat: if it's
+        // set and params.model contains no colon, we synthesise
+        // "<provider>:<model>". Otherwise we fall through to the
+        // resolver's own default-handling.
+        String paramModel = paramString(process, "model", null);
+        String paramProvider = paramString(process, "provider", null);
+        String spec;
+        if (paramModel != null && paramModel.contains(":")) {
+            spec = paramModel;
+        } else if (paramModel != null && paramProvider != null) {
+            spec = paramProvider + ":" + paramModel;
+        } else if (paramModel != null) {
+            // Bare model name with no colon and no separate provider —
+            // assume it's an alias key in the default namespace, which
+            // also covers the legacy "claude-sonnet-4-5" style by
+            // routing through the alias map.
+            spec = "default:" + paramModel;
+        } else {
+            spec = null; // resolver picks tenant default
+        }
+        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(spec, tenantId);
+
+        String apiKeySetting = String.format(
+                SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
         String apiKey = settings.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                apiKeySetting);
+                tenantId, SETTINGS_REF_TYPE, tenantId, apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
-                    "No API key configured for provider '" + provider
+                    "No API key configured for provider '" + resolved.provider()
                             + "' (tenant='" + tenantId
                             + "', setting='" + apiKeySetting + "')");
         }
-        return new AiChatConfig(provider, model, apiKey);
+        return new AiChatConfig(resolved.provider(), resolved.modelName(), apiKey);
     }
 
     // ──────────────────── engineParams helpers ────────────────────
@@ -709,8 +721,8 @@ public class ArthurEngine implements ThinkEngine {
         return p == null ? null : p.get(key);
     }
 
-    private static String paramString(
-            ThinkProcessDocument process, String key, String fallback) {
+    private static @Nullable String paramString(
+            ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
     }

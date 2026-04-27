@@ -8,6 +8,7 @@ import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
+import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.events.ChunkBatcher;
@@ -164,13 +165,8 @@ public class Zaphod implements ThinkEngine {
                     + "tool returned irrelevant data, say so plainly.";
 
     private static final String SETTINGS_REF_TYPE = "tenant";
-    private static final String SETTING_AI_PROVIDER = "ai.default.provider";
-    private static final String SETTING_AI_MODEL = "ai.default.model";
     /** Provider-specific API-key setting key, e.g. {@code ai.provider.gemini.apiKey}. */
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
-
-    private static final String DEFAULT_PROVIDER = "anthropic";
-    private static final String DEFAULT_MODEL = "claude-sonnet-4-5";
 
     private final ThinkProcessService thinkProcessService;
     private final ObjectMapper objectMapper;
@@ -179,6 +175,7 @@ public class Zaphod implements ThinkEngine {
     private final ZaphodProperties zaphodProperties;
     private final MemoryService memoryService;
     private final MemoryCompactionService memoryCompactionService;
+    private final AiModelResolver aiModelResolver;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -264,7 +261,8 @@ public class Zaphod implements ThinkEngine {
                     .content(userInput)
                     .build());
 
-            AiChatConfig config = resolveAiConfig(process, ctx.settingService());
+            AiChatConfig config = resolveAiConfig(
+                    process, ctx.settingService(), aiModelResolver);
             AiChat aiChat = ctx.aiModelService().createChat(
                     config, AiChatOptions.builder().build());
             ContextToolsApi tools = ctx.tools();
@@ -601,28 +599,35 @@ public class Zaphod implements ThinkEngine {
     }
 
     private static AiChatConfig resolveAiConfig(
-            ThinkProcessDocument process, SettingService settings) {
+            ThinkProcessDocument process,
+            SettingService settings,
+            AiModelResolver modelResolver) {
         String tenantId = process.getTenantId();
-        // Per-process params override the tenant default.
-        String provider = paramString(process, "provider",
-                settings.getStringValue(
-                        tenantId, SETTINGS_REF_TYPE, tenantId,
-                        SETTING_AI_PROVIDER, DEFAULT_PROVIDER));
-        String model = paramString(process, "model",
-                settings.getStringValue(
-                        tenantId, SETTINGS_REF_TYPE, tenantId,
-                        SETTING_AI_MODEL, DEFAULT_MODEL));
-        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
+        String paramModel = paramString(process, "model", null);
+        String paramProvider = paramString(process, "provider", null);
+        String spec;
+        if (paramModel != null && paramModel.contains(":")) {
+            spec = paramModel;
+        } else if (paramModel != null && paramProvider != null) {
+            spec = paramProvider + ":" + paramModel;
+        } else if (paramModel != null) {
+            spec = "default:" + paramModel;
+        } else {
+            spec = null;
+        }
+        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(spec, tenantId);
+
+        String apiKeySetting = String.format(
+                SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
         String apiKey = settings.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                apiKeySetting);
+                tenantId, SETTINGS_REF_TYPE, tenantId, apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
-                    "No API key configured for provider '" + provider
+                    "No API key configured for provider '" + resolved.provider()
                             + "' (tenant='" + tenantId
                             + "', setting='" + apiKeySetting + "')");
         }
-        return new AiChatConfig(provider, model, apiKey);
+        return new AiChatConfig(resolved.provider(), resolved.modelName(), apiKey);
     }
 
     // ──────────────────── engineParams helpers ────────────────────
@@ -632,8 +637,8 @@ public class Zaphod implements ThinkEngine {
         return p == null ? null : p.get(key);
     }
 
-    private static String paramString(
-            ThinkProcessDocument process, String key, String fallback) {
+    private static @Nullable String paramString(
+            ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
     }

@@ -15,7 +15,8 @@ public record ModelInfo(
         String provider,
         String modelName,
         int contextWindowTokens,
-        int defaultMaxOutputTokens) {
+        int defaultMaxOutputTokens,
+        ModelSize size) {
 
     /** Tokens at which compaction should fire, given a trigger ratio. */
     public int compactionTriggerTokens(double ratio) {

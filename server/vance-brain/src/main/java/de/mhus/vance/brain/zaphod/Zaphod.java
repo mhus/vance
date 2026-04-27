@@ -11,6 +11,7 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -87,32 +88,16 @@ public class Zaphod implements ThinkEngine {
 
     public static final String GREETING = "Zaphod here. Ask me anything.";
 
+    /**
+     * Bare-minimum fallback when no recipe override is in play —
+     * normally never used because the bundled {@code zaphod} (and
+     * specialised) recipes always supply the real prompt. Kept tiny
+     * on purpose.
+     */
     private static final String SYSTEM_PROMPT =
-            "You are a minimal assistant in a Vance test session. "
-                    + "Keep answers short and helpful. "
-                    + "Tools are available — call them when they help, "
-                    + "and use find_tools / describe_tool to discover the "
-                    + "non-primary ones before invoking them via invoke_tool. "
-                    + "When a tool returns concrete data the user (or a "
-                    + "calling orchestrator) is asking for — file lists, "
-                    + "file contents, command output, search results — "
-                    + "include the actual data in your reply text. Do not "
-                    + "summarise it as 'done' or 'I see the files'; paste "
-                    + "the relevant content. The reply text is the only "
-                    + "channel callers can read; tool results are invisible "
-                    + "to them otherwise.\n\n"
-                    + "Hard rule: if the user asks about a SPECIFIC file, "
-                    + "directory, project, or system state, USE A TOOL to "
-                    + "read it — never answer from training data with a "
-                    + "generic 'a typical Maven project looks like...'. If "
-                    + "you don't have the right tool, say so plainly. "
-                    + "Inventing plausible-looking content from training "
-                    + "data is the worst failure mode here — the caller "
-                    + "will pass it on as fact.\n\n"
-                    + "Hard rule: if you state an intent to act ('I'll "
-                    + "read the file', 'let me check'), you MUST emit the "
-                    + "tool call in the same response. Don't end a turn "
-                    + "with words of intent and no tool call.";
+            "You are Zaphod, a generalist Vance worker. Use tools to "
+                    + "gather concrete data; paste the relevant data into "
+                    + "your reply. Don't invent content from training.";
 
     /** Hard cap on tool-call iterations per turn — a broken model can loop.
      *  Per-process override via {@code params.maxIterations}. */
@@ -149,20 +134,18 @@ public class Zaphod implements ThinkEngine {
 
     private static final int MAX_VALIDATION_CORRECTIONS = 2;
 
+    /**
+     * One-line fallbacks used only when the spawning recipe didn't
+     * override the validator messages. Recipes carry the rich
+     * version; keep these minimal.
+     */
     private static final String INTENT_CORRECTION_TEMPLATE =
-            "VALIDATION CHECK: your previous response said you would do "
-                    + "something ('%s') but emitted no tool call. Either "
-                    + "emit the tool call now, or rephrase as a direct "
-                    + "answer / question without promising future action. "
-                    + "Do not repeat the same intent-without-action sentence.";
+            "VALIDATION CHECK: stated intent ('%s') without a tool "
+                    + "call — emit the tool now or answer plainly.";
 
     private static final String DATA_RELAY_CORRECTION_TEMPLATE =
-            "VALIDATION CHECK: this turn's tools returned %d characters of "
-                    + "data, but your reply has only %d. The caller cannot see "
-                    + "tool results — only your reply text. Re-issue the "
-                    + "reply with the actual data pasted in: file lists, file "
-                    + "contents, command output, etc., as appropriate. If the "
-                    + "tool returned irrelevant data, say so plainly.";
+            "VALIDATION CHECK: tools returned %d chars, your reply has "
+                    + "%d — paste the actual data into the reply text.";
 
     private static final String SETTINGS_REF_TYPE = "tenant";
     /** Provider-specific API-key setting key, e.g. {@code ai.provider.gemini.apiKey}. */
@@ -270,7 +253,7 @@ public class Zaphod implements ThinkEngine {
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     config.provider(), config.modelName());
 
-            List<ChatMessage> messages = buildPromptMessages(process, chatLog);
+            List<ChatMessage> messages = buildPromptMessages(process, chatLog, modelInfo.size());
             int estimatedTokens = estimateTokens(messages);
             int triggerTokens = modelInfo.compactionTriggerTokens(
                     zaphodProperties.getCompactionTriggerRatio());
@@ -293,7 +276,7 @@ public class Zaphod implements ThinkEngine {
                                 result.memoryId());
                         // Rebuild the prompt: the active-history shrunk and a
                         // new ARCHIVED_CHAT memory pinned the summary at top.
-                        messages = buildPromptMessages(process, chatLog);
+                        messages = buildPromptMessages(process, chatLog, modelInfo.size());
                     } else {
                         log.info("Zaphod.turn id='{}' compaction skipped: {}",
                                 process.getId(), result.reason());
@@ -364,27 +347,31 @@ public class Zaphod implements ThinkEngine {
                 if (validation && corrections < MAX_VALIDATION_CORRECTIONS) {
                     String intent = matchIntent(text);
                     if (intent != null) {
+                        String template = nonBlankOr(
+                                process.getIntentCorrectionOverride(),
+                                INTENT_CORRECTION_TEMPLATE);
                         log.info(
                                 "Zaphod id='{}' validation: intent-without-action (\"{}\"), correcting ({}/{})",
                                 process.getId(), intent,
                                 corrections + 1, MAX_VALIDATION_CORRECTIONS);
                         messages.add(reply);
-                        messages.add(SystemMessage.from(
-                                String.format(INTENT_CORRECTION_TEMPLATE, intent)));
+                        messages.add(SystemMessage.from(formatSafe(template, intent)));
                         corrections++;
                         continue;
                     }
                     int replyLen = text == null ? 0 : text.length();
                     if (toolDataChars >= TOOL_DATA_THRESHOLD
                             && replyLen <= REPLY_BRIEF_THRESHOLD) {
+                        String template = nonBlankOr(
+                                process.getDataRelayCorrectionOverride(),
+                                DATA_RELAY_CORRECTION_TEMPLATE);
                         log.info(
                                 "Zaphod id='{}' validation: data-relay-gap (toolData={}, reply={}), correcting ({}/{})",
                                 process.getId(), toolDataChars, replyLen,
                                 corrections + 1, MAX_VALIDATION_CORRECTIONS);
                         messages.add(reply);
                         messages.add(SystemMessage.from(
-                                String.format(DATA_RELAY_CORRECTION_TEMPLATE,
-                                        toolDataChars, replyLen)));
+                                formatSafe(template, toolDataChars, replyLen)));
                         corrections++;
                         continue;
                     }
@@ -560,9 +547,11 @@ public class Zaphod implements ThinkEngine {
      * compaction.
      */
     private List<ChatMessage> buildPromptMessages(
-            ThinkProcessDocument process, ChatMessageService chatLog) {
+            ThinkProcessDocument process, ChatMessageService chatLog,
+            ModelSize modelSize) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(SystemPrompts.compose(process, SYSTEM_PROMPT)));
+        messages.add(SystemMessage.from(
+                SystemPrompts.compose(process, SYSTEM_PROMPT, modelSize)));
         for (MemoryDocument m : memoryService.activeByProcessAndKind(
                 process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {
             messages.add(SystemMessage.from(
@@ -641,6 +630,26 @@ public class Zaphod implements ThinkEngine {
             ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
+    }
+
+    private static String nonBlankOr(@Nullable String candidate, String fallback) {
+        return candidate != null && !candidate.isBlank() ? candidate : fallback;
+    }
+
+    /**
+     * {@link String#format} that survives recipe-supplied templates
+     * with the wrong placeholder count. A misconfigured override
+     * shouldn't crash the turn; we log and fall back to a literal
+     * concat instead.
+     */
+    private static String formatSafe(String template, Object... args) {
+        try {
+            return String.format(template, args);
+        } catch (RuntimeException e) {
+            log.warn("Zaphod: validator template format failed ({}), using template verbatim",
+                    e.toString());
+            return template;
+        }
     }
 
     private static int paramInt(

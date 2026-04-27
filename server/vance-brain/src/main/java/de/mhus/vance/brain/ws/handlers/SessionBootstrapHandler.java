@@ -180,14 +180,6 @@ public class SessionBootstrapHandler implements WsHandler {
                         "process spec needs name");
                 return;
             }
-            boolean specHasRecipe = !isBlank(spec.getRecipe());
-            boolean specHasEngine = !isBlank(spec.getEngine());
-            if (!specHasRecipe && !specHasEngine) {
-                sender.sendError(wsSession, envelope, 400,
-                        "process spec '" + spec.getName()
-                                + "' needs either recipe or engine");
-                return;
-            }
             Optional<ThinkProcessDocument> existing = thinkProcessService
                     .findByName(session.getTenantId(), session.getSessionId(), spec.getName());
             if (existing.isPresent()) {
@@ -199,25 +191,34 @@ public class SessionBootstrapHandler implements WsHandler {
                 continue;
             }
 
+            Optional<AppliedRecipe> appliedOpt;
+            try {
+                appliedOpt = recipeResolver.applyDefaulting(
+                        session.getTenantId(),
+                        session.getProjectId(),
+                        spec.getRecipe(),
+                        spec.getEngine(),
+                        spec.getParams());
+            } catch (RecipeResolver.UnknownRecipeException e) {
+                sender.sendError(wsSession, envelope, 404, e.getMessage());
+                return;
+            } catch (RecipeResolver.UnknownEngineException e) {
+                sender.sendError(wsSession, envelope, 404, e.getMessage());
+                return;
+            }
+            AppliedRecipe applied = appliedOpt.orElse(null);
+
             ThinkEngine engine;
-            AppliedRecipe applied = null;
-            if (specHasRecipe) {
-                try {
-                    applied = recipeResolver.apply(
-                            session.getTenantId(),
-                            session.getProjectId(),
-                            spec.getRecipe(),
-                            spec.getParams());
-                } catch (RecipeResolver.UnknownRecipeException e) {
-                    sender.sendError(wsSession, envelope, 404, e.getMessage());
-                    return;
-                } catch (RecipeResolver.UnknownEngineException e) {
-                    sender.sendError(wsSession, envelope, 404, e.getMessage());
+            if (applied != null) {
+                engine = thinkEngineService.resolve(applied.engine()).orElseThrow();
+            } else {
+                // Engine-direct fallback (no recipe matched the engine name).
+                if (isBlank(spec.getEngine())) {
+                    sender.sendError(wsSession, envelope, 400,
+                            "process spec '" + spec.getName()
+                                    + "' needs either recipe or engine");
                     return;
                 }
-                engine = thinkEngineService.resolve(applied.engine())
-                        .orElseThrow();
-            } else {
                 Optional<ThinkEngine> engineOpt = thinkEngineService.resolve(spec.getEngine());
                 if (engineOpt.isEmpty()) {
                     sender.sendError(wsSession, envelope, 404,
@@ -243,7 +244,10 @@ public class SessionBootstrapHandler implements WsHandler {
                             applied.params(),
                             applied.name(),
                             applied.promptOverride(),
+                            applied.promptOverrideSmall(),
                             applied.promptMode(),
+                            applied.intentCorrection(),
+                            applied.dataRelayCorrection(),
                             applied.effectiveAllowedTools());
                 } else {
                     fresh = thinkProcessService.create(

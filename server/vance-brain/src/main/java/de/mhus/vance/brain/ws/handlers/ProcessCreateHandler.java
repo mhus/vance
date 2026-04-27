@@ -68,14 +68,7 @@ public class ProcessCreateHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 400, "name is required");
             return;
         }
-        boolean hasRecipe = !isBlank(request.getRecipe());
-        boolean hasEngine = !isBlank(request.getEngine());
-        if (!hasRecipe && !hasEngine) {
-            sender.sendError(wsSession, envelope, 400,
-                    "process-create requires either recipe or engine");
-            return;
-        }
-        if (hasRecipe && hasEngine) {
+        if (!isBlank(request.getRecipe()) && !isBlank(request.getEngine())) {
             log.info("process-create payload has both recipe='{}' and engine='{}' — recipe wins",
                     request.getRecipe(), request.getEngine());
         }
@@ -90,18 +83,28 @@ public class ProcessCreateHandler implements WsHandler {
                 .map(SessionDocument::getProjectId)
                 .orElse(null);
 
+        java.util.Optional<AppliedRecipe> applied;
+        try {
+            applied = recipeResolver.applyDefaulting(
+                    tenantId, projectId,
+                    request.getRecipe(), request.getEngine(), request.getParams());
+        } catch (RecipeResolver.UnknownRecipeException e) {
+            sender.sendError(wsSession, envelope, 404, e.getMessage());
+            return;
+        } catch (RecipeResolver.UnknownEngineException e) {
+            sender.sendError(wsSession, envelope, 404, e.getMessage());
+            return;
+        }
+
         ThinkProcessDocument created;
         try {
-            created = hasRecipe
-                    ? createFromRecipe(request, tenantId, sessionId, projectId)
+            created = applied.isPresent()
+                    ? createFromRecipeApplied(request, tenantId, sessionId, applied.get())
                     : createFromEngine(request, tenantId, sessionId);
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
             sender.sendError(wsSession, envelope, 409, e.getMessage());
             return;
         } catch (UnknownEngineWsException e) {
-            sender.sendError(wsSession, envelope, 404, e.getMessage());
-            return;
-        } catch (UnknownRecipeWsException e) {
             sender.sendError(wsSession, envelope, 404, e.getMessage());
             return;
         }
@@ -134,18 +137,9 @@ public class ProcessCreateHandler implements WsHandler {
         sender.sendReply(wsSession, envelope, MessageType.PROCESS_CREATE, response);
     }
 
-    private ThinkProcessDocument createFromRecipe(
+    private ThinkProcessDocument createFromRecipeApplied(
             ProcessCreateRequest request, String tenantId, String sessionId,
-            @Nullable String projectId) {
-        AppliedRecipe applied;
-        try {
-            applied = recipeResolver.apply(
-                    tenantId, projectId, request.getRecipe(), request.getParams());
-        } catch (RecipeResolver.UnknownRecipeException ure) {
-            throw new UnknownRecipeWsException(ure.getMessage());
-        } catch (RecipeResolver.UnknownEngineException uee) {
-            throw new UnknownEngineWsException(uee.getMessage());
-        }
+            AppliedRecipe applied) {
         ThinkEngine engine = thinkEngineService.resolve(applied.engine())
                 .orElseThrow(() -> new UnknownEngineWsException(
                         "Recipe '" + applied.name() + "' references unknown engine '"
@@ -158,7 +152,10 @@ public class ProcessCreateHandler implements WsHandler {
                 applied.params(),
                 applied.name(),
                 applied.promptOverride(),
+                applied.promptOverrideSmall(),
                 applied.promptMode(),
+                applied.intentCorrection(),
+                applied.dataRelayCorrection(),
                 applied.effectiveAllowedTools());
     }
 
@@ -193,8 +190,5 @@ public class ProcessCreateHandler implements WsHandler {
 
     private static class UnknownEngineWsException extends RuntimeException {
         UnknownEngineWsException(String message) { super(message); }
-    }
-    private static class UnknownRecipeWsException extends RuntimeException {
-        UnknownRecipeWsException(String message) { super(message); }
     }
 }

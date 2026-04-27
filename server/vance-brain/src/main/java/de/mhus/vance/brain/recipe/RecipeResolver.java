@@ -61,7 +61,10 @@ public class RecipeResolver {
                     d.getEngine(),
                     d.getParams() == null ? Map.of() : d.getParams(),
                     d.getPromptPrefix(),
+                    d.getPromptPrefixSmall(),
                     d.getPromptMode() == null ? PromptMode.APPEND : d.getPromptMode(),
+                    d.getIntentCorrection(),
+                    d.getDataRelayCorrection(),
                     d.getAllowedToolsAdd() == null ? List.of() : d.getAllowedToolsAdd(),
                     d.getAllowedToolsRemove() == null ? List.of() : d.getAllowedToolsRemove(),
                     d.isLocked(),
@@ -75,7 +78,10 @@ public class RecipeResolver {
                 b.engine(),
                 b.params(),
                 b.promptPrefix(),
+                b.promptPrefixSmall(),
                 b.promptMode(),
+                b.intentCorrection(),
+                b.dataRelayCorrection(),
                 b.allowedToolsAdd(),
                 b.allowedToolsRemove(),
                 b.locked(),
@@ -134,7 +140,10 @@ public class RecipeResolver {
                 r.engine(),
                 mergedParams,
                 r.promptPrefix(),
+                r.promptPrefixSmall(),
                 r.promptMode(),
+                r.intentCorrection(),
+                r.dataRelayCorrection(),
                 effectiveAllowed,
                 r.source(),
                 List.copyOf(overriddenKeys));
@@ -163,6 +172,49 @@ public class RecipeResolver {
             return null;
         }
         return Set.copyOf(effective);
+    }
+
+    /**
+     * Applies the spawn-cascade for a {@code process_create}-style
+     * call where the caller may have given a recipe, an engine, or
+     * neither:
+     *
+     * <ol>
+     *   <li>If {@code recipeName} is set → resolve it (error if
+     *       missing).</li>
+     *   <li>Else if {@code engineName} is set → try to resolve a
+     *       recipe with that name. If found, use it. If not,
+     *       returns empty so the caller can take the engine-direct
+     *       fallback (no recipe overrides applied).</li>
+     *   <li>Else → resolve recipe {@code "default"} (error if
+     *       missing — the bundled YAML must contain it).</li>
+     * </ol>
+     *
+     * <p>This puts the entire defaulting policy in one place; the
+     * three create-paths (tool, handler, bootstrap, plus the
+     * session-chat bootstrapper) all call it.
+     *
+     * @return the applied recipe, or {@link Optional#empty()} only
+     *         when {@code engineName} is set and no matching recipe
+     *         exists. Other "missing recipe" cases throw.
+     */
+    public Optional<AppliedRecipe> applyDefaulting(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String recipeName,
+            @Nullable String engineName,
+            @Nullable Map<String, Object> callerParams) {
+        if (recipeName != null && !recipeName.isBlank()) {
+            return Optional.of(apply(tenantId, projectId, recipeName, callerParams));
+        }
+        if (engineName != null && !engineName.isBlank()) {
+            // Engine-direct path with auto-recipe-by-engine-name.
+            if (resolve(tenantId, projectId, engineName).isPresent()) {
+                return Optional.of(apply(tenantId, projectId, engineName, callerParams));
+            }
+            return Optional.empty(); // caller falls back to engine-direct
+        }
+        return Optional.of(apply(tenantId, projectId, "default", callerParams));
     }
 
     public static class UnknownRecipeException extends RuntimeException {

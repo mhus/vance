@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.session;
 
+import de.mhus.vance.brain.recipe.AppliedRecipe;
+import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -46,6 +48,7 @@ public class SessionChatBootstrapper {
     private final SessionService sessionService;
     private final SettingService settingService;
     private final LaneScheduler laneScheduler;
+    private final RecipeResolver recipeResolver;
 
     /**
      * Returns the session's chat-process, creating + starting it on
@@ -82,22 +85,58 @@ public class SessionChatBootstrapper {
         String engineName = settingService.getStringValue(
                 session.getTenantId(), SETTINGS_REF_TYPE, session.getTenantId(),
                 SETTING_DEFAULT_CHAT_ENGINE, DEFAULT_CHAT_ENGINE);
-        ThinkEngine engine = thinkEngineService.resolve(engineName)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Configured chat engine '" + engineName
-                                + "' is not registered — known: "
-                                + thinkEngineService.listEngines()));
+
+        // Auto-apply the engine-named recipe (e.g. "arthur") so the
+        // chat-process inherits the engine's default prompt and
+        // validator templates from recipes.yaml — same path the LLM
+        // takes when it spawns a worker via process_create.
+        AppliedRecipe applied = recipeResolver.applyDefaulting(
+                session.getTenantId(),
+                /*projectId*/ session.getProjectId(),
+                /*recipeName*/ null,
+                engineName,
+                /*callerParams*/ null).orElse(null);
+        ThinkEngine engine;
+        if (applied != null) {
+            engine = thinkEngineService.resolve(applied.engine())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Recipe '" + applied.name()
+                                    + "' references unknown engine '"
+                                    + applied.engine() + "'"));
+        } else {
+            engine = thinkEngineService.resolve(engineName)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Configured chat engine '" + engineName
+                                    + "' is not registered — known: "
+                                    + thinkEngineService.listEngines()));
+        }
 
         ThinkProcessDocument fresh;
         try {
-            fresh = thinkProcessService.create(
-                    session.getTenantId(),
-                    session.getSessionId(),
-                    CHAT_PROCESS_NAME,
-                    engine.name(),
-                    engine.version(),
-                    /*title*/ "Session Chat",
-                    /*goal*/  null);
+            fresh = applied != null
+                    ? thinkProcessService.create(
+                            session.getTenantId(),
+                            session.getSessionId(),
+                            CHAT_PROCESS_NAME,
+                            engine.name(), engine.version(),
+                            /*title*/ "Session Chat",
+                            /*goal*/  null,
+                            /*parentProcessId*/ null,
+                            applied.params(),
+                            applied.name(),
+                            applied.promptOverride(),
+                            applied.promptOverrideSmall(),
+                            applied.promptMode(),
+                            applied.intentCorrection(),
+                            applied.dataRelayCorrection(),
+                            applied.effectiveAllowedTools())
+                    : thinkProcessService.create(
+                            session.getTenantId(),
+                            session.getSessionId(),
+                            CHAT_PROCESS_NAME,
+                            engine.name(), engine.version(),
+                            /*title*/ "Session Chat",
+                            /*goal*/  null);
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException race) {
             // Lost the race against a concurrent bootstrapper — adopt their result.
             ThinkProcessDocument adopted = thinkProcessService.findByName(

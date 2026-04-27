@@ -12,6 +12,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
@@ -126,20 +127,27 @@ public class ProcessCreateTool implements Tool {
         String goal = optString(params, "goal");
         Map<String, Object> callerParams = optMap(params, "params");
 
-        if (recipeName == null && engineName == null) {
-            throw new ToolException(
-                    "process_create requires either 'recipe' or 'engine'");
-        }
         if (recipeName != null && engineName != null) {
             log.info("process_create called with both recipe='{}' and engine='{}' — recipe wins",
                     recipeName, engineName);
         }
 
+        Optional<AppliedRecipe> applied;
+        try {
+            applied = recipeResolver.applyDefaulting(
+                    ctx.tenantId(), ctx.projectId(),
+                    recipeName, engineName, callerParams);
+        } catch (RecipeResolver.UnknownRecipeException ure) {
+            throw new ToolException(ure.getMessage());
+        } catch (RecipeResolver.UnknownEngineException uee) {
+            throw new ToolException(uee.getMessage());
+        }
+
         ThinkProcessDocument fresh;
         try {
-            if (recipeName != null) {
-                fresh = createFromRecipe(
-                        ctx, sessionId, name, recipeName, title, goal, callerParams);
+            if (applied.isPresent()) {
+                fresh = createFromRecipeApplied(
+                        ctx, sessionId, name, title, goal, applied.get());
             } else {
                 fresh = createFromEngine(
                         ctx, sessionId, name, engineName, title, goal, callerParams);
@@ -168,19 +176,9 @@ public class ProcessCreateTool implements Tool {
         return out;
     }
 
-    private ThinkProcessDocument createFromRecipe(
+    private ThinkProcessDocument createFromRecipeApplied(
             ToolInvocationContext ctx, String sessionId, String name,
-            String recipeName, String title, String goal,
-            Map<String, Object> callerParams) {
-        AppliedRecipe applied;
-        try {
-            applied = recipeResolver.apply(
-                    ctx.tenantId(), ctx.projectId(), recipeName, callerParams);
-        } catch (RecipeResolver.UnknownRecipeException ure) {
-            throw new ToolException(ure.getMessage());
-        } catch (RecipeResolver.UnknownEngineException uee) {
-            throw new ToolException(uee.getMessage());
-        }
+            String title, String goal, AppliedRecipe applied) {
         ThinkEngine engine = thinkEngineServiceProvider.getObject().resolve(applied.engine())
                 .orElseThrow(() -> new ToolException(
                         "Recipe '" + applied.name() + "' references unknown engine '"
@@ -192,7 +190,10 @@ public class ProcessCreateTool implements Tool {
                 applied.params(),
                 applied.name(),
                 applied.promptOverride(),
+                applied.promptOverrideSmall(),
                 applied.promptMode(),
+                applied.intentCorrection(),
+                applied.dataRelayCorrection(),
                 applied.effectiveAllowedTools());
     }
 

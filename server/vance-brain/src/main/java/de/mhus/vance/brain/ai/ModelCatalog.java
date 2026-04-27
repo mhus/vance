@@ -31,7 +31,7 @@ public class ModelCatalog {
 
     private static final String RESOURCE = "ai-models.yaml";
     private static final ModelInfo FALLBACK_TEMPLATE = new ModelInfo(
-            "?", "?", 8192, 4096);
+            "?", "?", 8192, 4096, ModelSize.LARGE);
 
     private final Map<String, ModelInfo> byKey = new ConcurrentHashMap<>();
 
@@ -56,7 +56,8 @@ public class ModelCatalog {
                     provider == null ? "?" : provider,
                     modelName == null ? "?" : modelName,
                     FALLBACK_TEMPLATE.contextWindowTokens(),
-                    FALLBACK_TEMPLATE.defaultMaxOutputTokens());
+                    FALLBACK_TEMPLATE.defaultMaxOutputTokens(),
+                    FALLBACK_TEMPLATE.size());
         });
     }
 
@@ -101,7 +102,8 @@ public class ModelCatalog {
                         FALLBACK_TEMPLATE.contextWindowTokens());
                 int out = readInt(spec.get("defaultMaxOutputTokens"),
                         FALLBACK_TEMPLATE.defaultMaxOutputTokens());
-                ModelInfo info = new ModelInfo(provider, modelName, ctx, out);
+                ModelSize size = readSize(spec.get("size"), provider, modelName);
+                ModelInfo info = new ModelInfo(provider, modelName, ctx, out, size);
                 byKey.put(key(provider, modelName), info);
                 loaded++;
             }
@@ -119,6 +121,18 @@ public class ModelCatalog {
             }
         }
         return fallback;
+    }
+
+    private static ModelSize readSize(Object raw, String provider, String modelName) {
+        if (raw == null) return ModelSize.LARGE;
+        if (!(raw instanceof String s)) return ModelSize.LARGE;
+        try {
+            return ModelSize.valueOf(s.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("ModelCatalog: '{}/{}' has unknown size '{}' — defaulting to LARGE",
+                    provider, modelName, s);
+            return ModelSize.LARGE;
+        }
     }
 
     private static String key(String provider, String modelName) {

@@ -73,8 +73,32 @@ public class RecipeDocument {
     /** Optional system-prompt fragment carried into the spawned process. */
     private @Nullable String promptPrefix;
 
+    /**
+     * Optional prompt variant for {@code SMALL} models (Haiku-class,
+     * Flash-class). When the recipe is resolved to a small model
+     * (per {@code ModelInfo.size}), the engine uses this string
+     * instead of {@link #promptPrefix}. {@code null} means "use
+     * {@link #promptPrefix} for all sizes" — the single-prompt
+     * default.
+     */
+    private @Nullable String promptPrefixSmall;
+
     @Builder.Default
     private PromptMode promptMode = PromptMode.APPEND;
+
+    /**
+     * Override for the engine's "intent-without-action" validator
+     * message. Used when the validator fires and the engine wants to
+     * inject a corrective {@code SystemMessage}. {@code null} keeps
+     * the engine's hardcoded default.
+     */
+    private @Nullable String intentCorrection;
+
+    /**
+     * Override for the data-relay-gap validator message (Zaphod-only
+     * today). Same semantics as {@link #intentCorrection}.
+     */
+    private @Nullable String dataRelayCorrection;
 
     /** Tools added to the engine's allowed-set. */
     @Builder.Default

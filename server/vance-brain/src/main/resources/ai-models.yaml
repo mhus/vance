@@ -8,6 +8,8 @@
 #     <modelName>:
 #       contextWindowTokens: <int>     # combined input + output budget
 #       defaultMaxOutputTokens: <int>  # cap on a single response
+#       size: SMALL|LARGE              # capability class — drives
+#                                      # prompt-variant selection in recipes
 #
 # Adjust freely; this file is committed (no secrets here).
 
@@ -15,20 +17,26 @@ anthropic:
   claude-sonnet-4-5:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
+    size: LARGE
   claude-opus-4:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
+    size: LARGE
   claude-haiku-4-5:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
+    size: SMALL
 
 gemini:
   gemini-2.5-flash:
     contextWindowTokens: 1048576
     defaultMaxOutputTokens: 8192
+    size: SMALL
   gemini-2.5-pro:
     contextWindowTokens: 2097152
     defaultMaxOutputTokens: 8192
+    size: LARGE
   gemini-2.0-flash:
     contextWindowTokens: 1048576
     defaultMaxOutputTokens: 8192
+    size: SMALL

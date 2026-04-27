@@ -9,6 +9,9 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelResolver;
+import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
+import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -35,9 +38,6 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,7 +49,6 @@ import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -83,11 +82,24 @@ public class ArthurEngine implements ThinkEngine {
     public static final String GREETING =
             "Hi, I'm Arthur. What are we working on?";
 
-    private static final String SYSTEM_PROMPT_RESOURCE =
-            "prompts/arthur-system-prompt.md";
+    /**
+     * Bare-minimum fallback when no recipe override is in play —
+     * basically never used in production because the bundled
+     * {@code arthur} recipe always supplies the real prompt. Kept
+     * tiny on purpose so a misconfigured spawn still produces a
+     * coherent (if generic) bot rather than an unprompted LLM.
+     */
+    private static final String ENGINE_FALLBACK_PROMPT =
+            "You are Arthur, the chat agent of a Vance session. "
+                    + "Delegate operational work to workers via process_create; "
+                    + "synthesise their replies for the user.";
 
-    /** Loaded once at first call — the prompt file is bundled in the JAR. */
-    private static volatile String cachedSystemPrompt;
+    /**
+     * Cached final system prompt (engine-default base + bundled-recipe
+     * catalog). Composed once after first turn since bundled-recipe
+     * state doesn't change without a brain restart.
+     */
+    private static volatile String cachedFallbackPrompt;
 
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "process_create",
@@ -132,17 +144,15 @@ public class ArthurEngine implements ThinkEngine {
                             + "|Let me (now |just )?(ask|tell|check|fetch|read|run|call|spawn|create|stop|steer))"
                             + "\\b"));
 
+    /**
+     * One-line fallback used only when the spawning recipe didn't
+     * override the validator message. Recipes carry the rich
+     * version; keep this minimal.
+     */
     private static final String VALIDATION_CORRECTION_TEMPLATE =
-            "VALIDATION CHECK: your previous response said you would do "
-                    + "something ('%s') but emitted no tool call. The user is "
-                    + "now waiting for an action that will never happen.\n\n"
-                    + "Pick one and emit it in your NEXT response:\n"
-                    + "  (a) The corresponding tool call (process_create / "
-                    + "process_steer / process_stop / process_list / "
-                    + "process_status / docs_list / docs_read).\n"
-                    + "  (b) A direct question to the user — without "
-                    + "promising future action.\n\n"
-                    + "Do NOT repeat the same intent-without-action sentence.";
+            "VALIDATION CHECK: your previous response stated intent "
+                    + "('%s') but emitted no tool call — emit it now or "
+                    + "ask the user a direct question.";
 
     private static final int MAX_VALIDATION_CORRECTIONS = 2;
 
@@ -152,6 +162,7 @@ public class ArthurEngine implements ThinkEngine {
     private final ArthurProperties arthurProperties;
     private final BundledRecipeRegistry bundledRecipeRegistry;
     private final AiModelResolver aiModelResolver;
+    private final ModelCatalog modelCatalog;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -277,8 +288,11 @@ public class ArthurEngine implements ThinkEngine {
                     config, AiChatOptions.builder().build());
             ContextToolsApi tools = ctx.tools();
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
+            ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                    config.provider(), config.modelName());
 
-            List<ChatMessage> messages = buildPromptMessages(process, chatLog, inbox);
+            List<ChatMessage> messages = buildPromptMessages(
+                    process, chatLog, inbox, modelInfo.size());
             int maxIters = paramInt(process, "maxIterations",
                     arthurProperties.getMaxToolIterations());
             boolean validation = paramBool(process, "validation", false);
@@ -335,13 +349,15 @@ public class ArthurEngine implements ThinkEngine {
                 String matchedIntent = (validation && corrections < MAX_VALIDATION_CORRECTIONS)
                         ? matchIntent(text) : null;
                 if (matchedIntent != null) {
+                    String template = nonBlankOr(
+                            process.getIntentCorrectionOverride(),
+                            VALIDATION_CORRECTION_TEMPLATE);
                     log.info(
                             "Arthur id='{}' validation: intent-without-action detected (\"{}\"), correcting ({}/{})",
                             process.getId(), matchedIntent,
                             corrections + 1, MAX_VALIDATION_CORRECTIONS);
                     messages.add(reply);
-                    messages.add(SystemMessage.from(
-                            String.format(VALIDATION_CORRECTION_TEMPLATE, matchedIntent)));
+                    messages.add(SystemMessage.from(formatSafe(template, matchedIntent)));
                     corrections++;
                     continue;
                 }
@@ -516,9 +532,12 @@ public class ArthurEngine implements ThinkEngine {
     private List<ChatMessage> buildPromptMessages(
             ThinkProcessDocument process,
             ChatMessageService chatLog,
-            List<SteerMessage> inbox) {
+            List<SteerMessage> inbox,
+            ModelSize modelSize) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(SystemPrompts.compose(process, systemPrompt())));
+        String base = SystemPrompts.compose(process, engineDefaultPrompt(), modelSize);
+        String withCatalog = base + recipeCatalogCached();
+        messages.add(SystemMessage.from(withCatalog));
 
         // Active history (ARCHIVED_CHAT compaction-aware once we wire
         // memoryService — for v1 just use full active history).
@@ -623,29 +642,29 @@ public class ArthurEngine implements ThinkEngine {
     }
 
     /**
-     * Lazy-loads the bundled prompt file plus the bundled-recipe
-     * catalog section. Cached after the first hit — bundled state
-     * doesn't change without a brain restart.
+     * Engine-default base — used by {@link SystemPrompts#compose}
+     * when the process has no recipe override (rare; the bundled
+     * {@code arthur} recipe normally supplies the rich content).
+     * Recipe content always wins via APPEND/OVERWRITE; the
+     * bundled-recipe catalog is appended <em>after</em> compose so it
+     * sits at the end of the system prompt regardless.
      */
-    private String systemPrompt() {
-        String cached = cachedSystemPrompt;
+    private static String engineDefaultPrompt() {
+        return ENGINE_FALLBACK_PROMPT;
+    }
+
+    /** Cached version of {@link #buildRecipeCatalogSection()}. */
+    private String recipeCatalogCached() {
+        String cached = cachedFallbackPrompt;
         if (cached != null) return cached;
-        try {
-            byte[] bytes = new ClassPathResource(SYSTEM_PROMPT_RESOURCE)
-                    .getInputStream().readAllBytes();
-            String base = new String(bytes, StandardCharsets.UTF_8);
-            String composed = base + buildRecipeCatalogSection();
-            cachedSystemPrompt = composed;
-            return composed;
-        } catch (IOException ioe) {
-            throw new UncheckedIOException(
-                    "Arthur system-prompt resource missing: " + SYSTEM_PROMPT_RESOURCE, ioe);
-        }
+        String composed = buildRecipeCatalogSection();
+        cachedFallbackPrompt = composed;
+        return composed;
     }
 
     /**
      * Builds the bullet-list of bundled recipes that gets appended to
-     * the static prompt. Tenant- and project-scoped recipes are NOT
+     * the system prompt. Tenant- and project-scoped recipes are NOT
      * embedded here — they're discoverable via {@code recipe_list}
      * at runtime instead.
      */
@@ -725,6 +744,21 @@ public class ArthurEngine implements ThinkEngine {
             ThinkProcessDocument process, String key, @Nullable String fallback) {
         Object v = param(process, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
+    }
+
+    private static String nonBlankOr(@Nullable String candidate, String fallback) {
+        return candidate != null && !candidate.isBlank() ? candidate : fallback;
+    }
+
+    /** {@link String#format} that survives misformatted templates. */
+    private static String formatSafe(String template, Object... args) {
+        try {
+            return String.format(template, args);
+        } catch (RuntimeException e) {
+            log.warn("Arthur: validator template format failed ({}), using verbatim",
+                    e.toString());
+            return template;
+        }
     }
 
     private static int paramInt(

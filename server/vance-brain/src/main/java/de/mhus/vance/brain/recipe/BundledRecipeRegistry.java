@@ -141,7 +141,10 @@ public class BundledRecipeRegistry {
         }
 
         String promptPrefix = stringOrNull(spec.get("promptPrefix"));
+        String promptPrefixSmall = stringOrNull(spec.get("promptPrefixSmall"));
         PromptMode promptMode = parsePromptMode(spec.get("promptMode"), name);
+        String intentCorrection = stringOrNull(spec.get("intentCorrection"));
+        String dataRelayCorrection = stringOrNull(spec.get("dataRelayCorrection"));
 
         List<String> add = stringList(spec.get("allowedToolsAdd"), name, "allowedToolsAdd");
         List<String> remove = stringList(spec.get("allowedToolsRemove"), name, "allowedToolsRemove");
@@ -151,7 +154,9 @@ public class BundledRecipeRegistry {
 
         return new BundledRecipe(
                 name, description, engine, params,
-                promptPrefix, promptMode, add, remove, locked, tags);
+                promptPrefix, promptPrefixSmall, promptMode,
+                intentCorrection, dataRelayCorrection,
+                add, remove, locked, tags);
     }
 
     private static String requireNonBlankString(Map<String, Object> spec, String key, int index) {

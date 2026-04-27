@@ -23,7 +23,10 @@ public record AppliedRecipe(
         String engine,
         Map<String, Object> params,
         @Nullable String promptOverride,
+        @Nullable String promptOverrideSmall,
         PromptMode promptMode,
+        @Nullable String intentCorrection,
+        @Nullable String dataRelayCorrection,
         @Nullable Set<String> effectiveAllowedTools,
         RecipeSource source,
         List<String> overriddenParamKeys) {

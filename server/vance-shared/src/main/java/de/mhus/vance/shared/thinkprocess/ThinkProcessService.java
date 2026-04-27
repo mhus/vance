@@ -101,7 +101,7 @@ public class ThinkProcessService {
     }
 
     /**
-     * Full create — accepts recipe-derived fields too. Used by the
+     * Mid create — accepts recipe-derived fields. Used by the
      * recipe-aware spawn paths after {@code RecipeResolver.apply}.
      */
     public ThinkProcessDocument create(
@@ -117,6 +117,36 @@ public class ThinkProcessService {
             @Nullable String recipeName,
             @Nullable String promptOverride,
             @Nullable PromptMode promptMode,
+            @Nullable Set<String> allowedToolsOverride) {
+        return create(tenantId, sessionId, name, thinkEngine,
+                thinkEngineVersion, title, goal, parentProcessId,
+                engineParams, recipeName,
+                promptOverride, /*promptOverrideSmall*/ null, promptMode,
+                /*intentCorrectionOverride*/ null,
+                /*dataRelayCorrectionOverride*/ null,
+                allowedToolsOverride);
+    }
+
+    /**
+     * Full create — also accepts the size-aware prompt variant and
+     * the per-recipe validator overrides.
+     */
+    public ThinkProcessDocument create(
+            String tenantId,
+            String sessionId,
+            String name,
+            String thinkEngine,
+            @Nullable String thinkEngineVersion,
+            @Nullable String title,
+            @Nullable String goal,
+            @Nullable String parentProcessId,
+            @Nullable Map<String, Object> engineParams,
+            @Nullable String recipeName,
+            @Nullable String promptOverride,
+            @Nullable String promptOverrideSmall,
+            @Nullable PromptMode promptMode,
+            @Nullable String intentCorrectionOverride,
+            @Nullable String dataRelayCorrectionOverride,
             @Nullable Set<String> allowedToolsOverride) {
         if (repository.existsByTenantIdAndSessionIdAndName(tenantId, sessionId, name)) {
             throw new ThinkProcessAlreadyExistsException(
@@ -139,7 +169,10 @@ public class ThinkProcessService {
                 .engineParams(params)
                 .recipeName(recipeName)
                 .promptOverride(promptOverride)
+                .promptOverrideSmall(promptOverrideSmall)
                 .promptMode(promptMode == null ? PromptMode.APPEND : promptMode)
+                .intentCorrectionOverride(intentCorrectionOverride)
+                .dataRelayCorrectionOverride(dataRelayCorrectionOverride)
                 .allowedToolsOverride(allowed)
                 .status(ThinkProcessStatus.READY)
                 .build();

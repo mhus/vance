@@ -99,8 +99,31 @@ public class ThinkProcessDocument {
      */
     private @Nullable String promptOverride;
 
+    /**
+     * Recipe's small-model variant of {@link #promptOverride}. The
+     * engine picks this when the resolved AI model has
+     * {@code ModelSize.SMALL}; otherwise it falls back to
+     * {@link #promptOverride}. {@code null} means "use the
+     * default-size prompt for all models" — the recipe shipped just
+     * one variant.
+     */
+    private @Nullable String promptOverrideSmall;
+
     @Builder.Default
     private PromptMode promptMode = PromptMode.APPEND;
+
+    /**
+     * Recipe's override for the engine's "intent-without-action"
+     * validator message. {@code null} keeps the engine's hardcoded
+     * default.
+     */
+    private @Nullable String intentCorrectionOverride;
+
+    /**
+     * Recipe's override for the data-relay-gap validator message.
+     * {@code null} keeps the engine's hardcoded default.
+     */
+    private @Nullable String dataRelayCorrectionOverride;
 
     /**
      * Effective allowed-tools set computed from the engine's default

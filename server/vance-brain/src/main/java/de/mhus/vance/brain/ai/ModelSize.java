@@ -23,5 +23,32 @@ package de.mhus.vance.brain.ai;
  */
 public enum ModelSize {
     SMALL,
-    LARGE
+    LARGE;
+
+    /**
+     * Parses a user-supplied size string for the {@code params.modelSize}
+     * recipe / process-spec field. Recognised values (case-insensitive):
+     *
+     * <ul>
+     *   <li>{@code "SMALL"} / {@code "LARGE"} — explicit override.</li>
+     *   <li>{@code "AUTO"}, {@code null}, blank, or unknown → returns
+     *       {@code fallback}, which is normally the size taken from
+     *       {@code ModelCatalog} for the resolved model. {@code AUTO} is
+     *       the documented default value; the silent-fallback for
+     *       unknown values keeps a typo from breaking a turn.</li>
+     * </ul>
+     */
+    public static ModelSize parseOrAuto(@org.jspecify.annotations.Nullable String input,
+                                        ModelSize fallback) {
+        if (input == null) return fallback;
+        String trimmed = input.trim();
+        if (trimmed.isEmpty() || trimmed.equalsIgnoreCase("AUTO")) {
+            return fallback;
+        }
+        try {
+            return valueOf(trimmed.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
+    }
 }

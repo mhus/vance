@@ -253,7 +253,12 @@ public class Zaphod implements ThinkEngine {
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     config.provider(), config.modelName());
 
-            List<ChatMessage> messages = buildPromptMessages(process, chatLog, modelInfo.size());
+            // params.modelSize: SMALL/LARGE force the prompt variant
+            // independently of the catalog; AUTO/missing falls back
+            // to the catalog's classification.
+            ModelSize effectiveSize = ModelSize.parseOrAuto(
+                    paramString(process, "modelSize", null), modelInfo.size());
+            List<ChatMessage> messages = buildPromptMessages(process, chatLog, effectiveSize);
             int estimatedTokens = estimateTokens(messages);
             int triggerTokens = modelInfo.compactionTriggerTokens(
                     zaphodProperties.getCompactionTriggerRatio());
@@ -276,7 +281,7 @@ public class Zaphod implements ThinkEngine {
                                 result.memoryId());
                         // Rebuild the prompt: the active-history shrunk and a
                         // new ARCHIVED_CHAT memory pinned the summary at top.
-                        messages = buildPromptMessages(process, chatLog, modelInfo.size());
+                        messages = buildPromptMessages(process, chatLog, effectiveSize);
                     } else {
                         log.info("Zaphod.turn id='{}' compaction skipped: {}",
                                 process.getId(), result.reason());

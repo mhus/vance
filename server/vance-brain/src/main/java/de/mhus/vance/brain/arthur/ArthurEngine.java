@@ -290,9 +290,14 @@ public class ArthurEngine implements ThinkEngine {
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     config.provider(), config.modelName());
+            // params.modelSize: SMALL/LARGE force the prompt variant
+            // independently of the catalog; AUTO/missing falls back
+            // to the catalog's classification.
+            ModelSize effectiveSize = ModelSize.parseOrAuto(
+                    paramString(process, "modelSize", null), modelInfo.size());
 
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, inbox, modelInfo.size());
+                    process, chatLog, inbox, effectiveSize);
             int maxIters = paramInt(process, "maxIterations",
                     arthurProperties.getMaxToolIterations());
             boolean validation = paramBool(process, "validation", false);

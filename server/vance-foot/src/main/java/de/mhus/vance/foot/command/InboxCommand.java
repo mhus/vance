@@ -28,10 +28,16 @@ import tools.jackson.databind.json.JsonMapper;
  * <ul>
  *   <li>{@code /inbox [--all]} — list (PENDING by default).</li>
  *   <li>{@code /inbox show <id>} — render one item in detail.</li>
- *   <li>{@code /inbox answer <id> [--outcome ...] [--text <words...> | --value <json>] [--reason ...]}
+ *   <li>{@code /inbox answer <id> [--outcome ...] [--text <words...> | --value <json>
+ *       | --approve | --disapprove | --yes | --no | --cancel] [--reason ...]}
  *       — submit an answer. {@code --text} is shorthand for
- *       {@code --value {"text": "<words>"}}, which is the FEEDBACK
- *       convention.</li>
+ *       {@code --value {"text": "<words>"}} (FEEDBACK convention);
+ *       {@code --approve}/{@code --disapprove} produce
+ *       {@code {"approved": true|false}} (APPROVAL); {@code --yes}/{@code --no}
+ *       produce {@code {"decision": true|false}} (DECISION);
+ *       {@code --cancel} produces {@code {"cancelled": true}}. All shorthands
+ *       imply {@code DECIDED} and are mutually exclusive with each other and
+ *       with {@code --value}/{@code --text}.</li>
  *   <li>{@code /inbox archive <id>} / {@code /inbox dismiss <id>} —
  *       archive or dismiss without an answer.</li>
  *   <li>{@code /inbox delegate <id> <toUserId> [note...]} — forward.</li>
@@ -48,6 +54,18 @@ public class InboxCommand implements SlashCommand {
 
     private static final Duration WS_TIMEOUT = Duration.ofSeconds(10);
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+
+    /**
+     * One-flag shortcuts for the most common DECIDED answer shapes. Keep in
+     * sync with the convention keys consumed by Marvin / Arthur worker
+     * prompts (text / approved / decision / cancelled).
+     */
+    private static final Map<String, Map<String, Object>> ANSWER_SHORTCUTS = Map.of(
+            "--approve", Map.of("approved", true),
+            "--disapprove", Map.of("approved", false),
+            "--yes", Map.of("decision", true),
+            "--no", Map.of("decision", false),
+            "--cancel", Map.of("cancelled", true));
 
     private final ConnectionService connection;
     private final ChatTerminal terminal;
@@ -96,8 +114,11 @@ public class InboxCommand implements SlashCommand {
         terminal.info("Usage:");
         terminal.info("  /inbox [--all]");
         terminal.info("  /inbox show <id>");
-        terminal.info("  /inbox answer <id> [--outcome DECIDED|INSUFFICIENT_INFO|UNDECIDABLE]"
-                + " [--text <words...> | --value <json>] [--reason <text...>]");
+        terminal.info("  /inbox answer <id> [--outcome DECIDED|INSUFFICIENT_INFO|UNDECIDABLE]");
+        terminal.info("                     [--text <words...> | --value <json>");
+        terminal.info("                      | --approve | --disapprove");
+        terminal.info("                      | --yes | --no | --cancel]");
+        terminal.info("                     [--reason <text...>]");
         terminal.info("  /inbox archive  <id>");
         terminal.info("  /inbox dismiss  <id>");
         terminal.info("  /inbox delegate <id> <toUserId> [note...]");
@@ -205,7 +226,9 @@ public class InboxCommand implements SlashCommand {
     private void answer(List<String> rest) throws Exception {
         if (rest.isEmpty()) {
             terminal.error("Usage: /inbox answer <id> [--outcome DECIDED|INSUFFICIENT_INFO|UNDECIDABLE]"
-                    + " [--text <words...> | --value <json>] [--reason <text...>]");
+                    + " [--text <words...> | --value <json>"
+                    + " | --approve | --disapprove | --yes | --no | --cancel]"
+                    + " [--reason <text...>]");
             return;
         }
         String id = rest.get(0);
@@ -286,8 +309,18 @@ public class InboxCommand implements SlashCommand {
                     i = end;
                 }
                 default -> {
-                    terminal.error("Unknown flag: " + arg);
-                    return;
+                    Map<String, Object> shortcut = ANSWER_SHORTCUTS.get(arg);
+                    if (shortcut == null) {
+                        terminal.error("Unknown flag: " + arg);
+                        return;
+                    }
+                    if (valueJson != null) {
+                        terminal.error(arg + " conflicts with a previously set "
+                                + "--value/--text/shortcut");
+                        return;
+                    }
+                    valueJson = json.writeValueAsString(shortcut);
+                    i += 1;
                 }
             }
         }

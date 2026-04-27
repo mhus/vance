@@ -207,6 +207,24 @@ public class ThinkProcessService {
     // ────────────────── Mutations ──────────────────
 
     /**
+     * Atomically replaces the {@code engineParams} map. Used by
+     * stateful engines (Vogon's strategyState, future Marvin run-state)
+     * that need to persist their internal mutable state on every
+     * advance. The whole map is replaced — callers should read,
+     * modify, and pass the full map.
+     *
+     * @return {@code true} if the row exists and was updated
+     */
+    public boolean replaceEngineParams(String id, Map<String, Object> engineParams) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("engineParams",
+                engineParams == null ? new LinkedHashMap<>() : engineParams);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
      * Atomically sets {@code status} on the process with the given Mongo id.
      * Returns {@code true} if the row exists, {@code false} if the id is
      * unknown.

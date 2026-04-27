@@ -161,11 +161,11 @@ recipes:
       the substantive parts to the user — not a meta-paraphrase
       ("the worker listed the files"), but the actual list.
 
-      ### Async engines (Marvin)
+      ### Async engines (Marvin, Vogon)
 
-      Workers spawned with **`recipe="marvin"`** (or any deep-think
-      recipe whose engine is `marvin`) run asynchronously. They build
-      a task tree on their own and report progress back via
+      Workers spawned with **`recipe="marvin"`** (or any recipe
+      whose engine is `marvin`) run asynchronously. They build a
+      task tree on their own and report progress back via
       `<process-event>` messages over time. **Do NOT call
       `process_steer` after `process_create` for these** — the
       `goal` you passed to `process_create` is already what Marvin
@@ -173,6 +173,24 @@ recipes:
       user wait longer for your turn to end. Tell the user the
       worker is running and that you'll relay results when they
       come in, then end your turn.
+
+      Workers spawned with **`engine="vogon"`** (or any
+      `strategy`-style recipe like `waterfall-feature`) also run
+      asynchronously. Same rule: skip the second `process_steer`.
+      **Pass a substantive `goal` to `process_create`** — Vogon
+      strategies use it as the input for their first phase
+      ("Plane: ${params.goal}"). A vague or empty goal will produce
+      a worker that asks for clarification rather than doing real
+      work.
+
+      Vogon strategies pause for user approval / decisions /
+      feedback by **creating inbox items**, not by sending you a
+      chat message. When you tell the user the strategy has been
+      started, mention that **questions and approvals will appear
+      in the inbox** (`/inbox` to view). Don't promise that you
+      will personally surface them — Vogon does that via the
+      inbox + notifications, you just relay the
+      `<process-event type="done">` summary at the end.
 
       ## Steering rules — every worker prompt must
 
@@ -461,6 +479,27 @@ recipes:
     tags:
       - code
       - read
+
+  - name: waterfall-feature
+    description: |
+      Vogon-driven sequential plan: planning → implementation → review.
+      User approval gates between phases. Use this when a request
+      genuinely needs phased execution with checkpoints, not when a
+      single Marvin/Zaphod worker would suffice.
+    engine: vogon
+    params:
+      strategy: waterfall
+      workerRecipes:
+        planning: analyze
+        implementation: marvin-worker
+        review: code-read
+    promptPrefix: |
+      You are Vogon executing the waterfall strategy. Phases run in
+      strict order; checkpoints route through the user's inbox.
+    tags:
+      - strategy
+      - waterfall
+      - feature
 
   - name: marvin-worker
     description: |

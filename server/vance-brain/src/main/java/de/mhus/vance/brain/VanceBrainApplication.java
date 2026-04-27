@@ -3,6 +3,7 @@ package de.mhus.vance.brain;
 import de.mhus.vance.brain.arthur.ArthurProperties;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.init.InitSettingsProperties;
+import de.mhus.vance.brain.marvin.MarvinProperties;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.tools.workspace.WorkspaceProperties;
 import de.mhus.vance.brain.zaphod.ZaphodProperties;
@@ -30,7 +31,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         StreamingProperties.class,
         InitSettingsProperties.class,
         ZaphodProperties.class,
-        ArthurProperties.class})
+        ArthurProperties.class,
+        MarvinProperties.class})
 @EnableScheduling
 public class VanceBrainApplication {
 

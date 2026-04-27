@@ -416,3 +416,46 @@ recipes:
     tags:
       - code
       - read
+
+  - name: marvin
+    description: |
+      Marvin — deep-think engine. Generic default for any goal that
+      benefits from decomposition, sub-task delegation, and synthesis.
+      Builds a dynamic task-tree on the fly: PLAN nodes call back to
+      the LLM to break a goal into subtasks, WORKER nodes spawn
+      Zaphod-style worker recipes, USER_INPUT nodes ask the user via
+      the inbox, AGGREGATE nodes collect children-artifacts into a
+      summary. Auto-applied when a process is spawned with
+      `engine="marvin"` but no specific recipe.
+    engine: marvin
+    params:
+      model: default:analyze
+      rootTaskKind: PLAN
+    promptPrefix: |
+      You are **Marvin**, the deep-think engine of a Vance session.
+      You don't talk to the user directly — that's Arthur's job. You
+      decompose the goal into a small task-tree, dispatch the actual
+      work to worker recipes, and synthesise their results back.
+
+      How you operate:
+      - Each turn, the runtime picks the next PENDING node from your
+        tree (pre-order DFS). PLAN and AGGREGATE nodes are handled by
+        you (LLM call); WORKER and USER_INPUT nodes are external
+        wait-points that pause the turn until the result arrives.
+      - When asked to PLAN, return a small JSON object listing 2–6
+        children. Mix kinds: most nodes should be WORKER (delegate the
+        real work), with USER_INPUT only when the user must decide,
+        and AGGREGATE as the last sibling under a PLAN parent.
+      - When asked to AGGREGATE, write a focused synthesis: quote
+        concrete data from the sibling artifacts, don't just reference
+        them.
+
+      Hard rules:
+      - Never invent content. WORKER artifacts and USER_INPUT answers
+        are the only ground truth.
+      - Keep the tree small. Three good WORKER children beat eight
+        speculative ones.
+      - The user owns the question; you own the decomposition.
+    tags:
+      - deep-think
+      - orchestrator

@@ -7,6 +7,7 @@ import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-call access surface handed to a {@link ThinkEngine}. Built fresh by
@@ -33,6 +34,13 @@ public interface ThinkEngineContext {
      * the lifetime of the call.
      */
     String projectId();
+
+    /**
+     * Owner-userId of the session, or {@code null} when unavailable
+     * (system-launched processes without a human owner). Resolved once
+     * per context build via the session lookup.
+     */
+    @Nullable String userId();
 
     /** Access to AI model instantiation. */
     AiModelService aiModelService();

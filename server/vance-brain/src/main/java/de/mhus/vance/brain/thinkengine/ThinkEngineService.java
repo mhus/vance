@@ -99,12 +99,13 @@ public class ThinkEngineService {
      * the {@code ContextToolsApi} the engine sees is automatically scoped.
      */
     public ThinkEngineContext newContext(ThinkProcessDocument process) {
-        String projectId = sessionService.findBySessionId(process.getSessionId())
-                .map(SessionDocument::getProjectId)
+        SessionDocument session = sessionService.findBySessionId(process.getSessionId())
                 .orElseThrow(() -> new IllegalStateException(
                         "Process '" + process.getId()
                                 + "' references missing session '"
                                 + process.getSessionId() + "'"));
+        String projectId = session.getProjectId();
+        String userId = session.getUserId();
         ThinkEngine engine = resolveForProcess(process);
         // Recipe-applied override beats engine default. Empty allow-set
         // is intentionally restrictive ("this process may invoke no
@@ -114,7 +115,7 @@ public class ThinkEngineService {
                 ? process.getAllowedToolsOverride()
                 : engine.allowedTools();
         return new DefaultThinkEngineContext(
-                process, projectId,
+                process, projectId, userId,
                 aiModelService, settingService, chatMessageService,
                 toolDispatcher, eventPublisher,
                 thinkProcessService, processEventEmitter,

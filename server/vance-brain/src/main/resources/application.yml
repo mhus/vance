@@ -38,4 +38,4 @@ logging:
   file:
     name: vance-brain.log
   level:
-    de.mhus.vance: INFO
+    de.mhus.vance: TRACE

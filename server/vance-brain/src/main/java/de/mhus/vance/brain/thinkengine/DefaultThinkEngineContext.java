@@ -11,6 +11,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Straightforward {@link ThinkEngineContext} — carries the process and
@@ -21,6 +22,7 @@ import java.util.Set;
 record DefaultThinkEngineContext(
         ThinkProcessDocument process,
         String projectId,
+        @Nullable String userId,
         AiModelService aiModelService,
         SettingService settingService,
         ChatMessageService chatMessageService,
@@ -48,7 +50,7 @@ record DefaultThinkEngineContext(
                 projectId,
                 process.getSessionId(),
                 process.getId(),
-                null);
+                userId);
         return new ContextToolsApi(toolDispatcher, scope, allowedTools);
     }
 

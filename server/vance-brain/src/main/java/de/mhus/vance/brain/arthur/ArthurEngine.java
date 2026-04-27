@@ -102,6 +102,7 @@ public class ArthurEngine implements ThinkEngine {
     private static volatile String cachedFallbackPrompt;
 
     private static final Set<String> ALLOWED_TOOLS = Set.of(
+            "whoami",
             "process_create",
             "process_steer",
             "process_stop",
@@ -110,7 +111,8 @@ public class ArthurEngine implements ThinkEngine {
             "recipe_list",
             "recipe_describe",
             "docs_list",
-            "docs_read");
+            "docs_read",
+            "inbox_post");
 
     private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";

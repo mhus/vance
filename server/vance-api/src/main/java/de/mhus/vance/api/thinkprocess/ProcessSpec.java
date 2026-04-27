@@ -22,8 +22,18 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("thinkprocess")
 public class ProcessSpec {
 
-    @NotBlank
-    private String engine;
+    /**
+     * Engine name from the registry (e.g. {@code "zaphod"}). One of
+     * {@code engine} or {@link #recipe} must be set; if both are set,
+     * {@code recipe} wins and {@code engine} is treated as advisory.
+     */
+    private @Nullable String engine;
+
+    /**
+     * Recipe name for resolution via the recipe cascade. Preferred
+     * over {@link #engine} — Arthur's default delegation path.
+     */
+    private @Nullable String recipe;
 
     @NotBlank
     private String name;

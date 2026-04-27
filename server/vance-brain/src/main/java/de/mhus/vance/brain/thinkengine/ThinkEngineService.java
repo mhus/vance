@@ -106,12 +106,19 @@ public class ThinkEngineService {
                                 + "' references missing session '"
                                 + process.getSessionId() + "'"));
         ThinkEngine engine = resolveForProcess(process);
+        // Recipe-applied override beats engine default. Empty allow-set
+        // is intentionally restrictive ("this process may invoke no
+        // tools") and must be honoured rather than collapsed to "use
+        // engine default".
+        java.util.Set<String> allowed = process.getAllowedToolsOverride() != null
+                ? process.getAllowedToolsOverride()
+                : engine.allowedTools();
         return new DefaultThinkEngineContext(
                 process, projectId,
                 aiModelService, settingService, chatMessageService,
                 toolDispatcher, eventPublisher,
                 thinkProcessService, processEventEmitter,
-                engine.allowedTools());
+                allowed);
     }
 
     // ─── Convenience dispatch ────────────────────────────────────────────

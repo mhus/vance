@@ -1,11 +1,13 @@
 package de.mhus.vance.shared.thinkprocess;
 
+import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -82,6 +84,33 @@ public class ThinkProcessDocument {
      */
     @Builder.Default
     private Map<String, Object> engineParams = new LinkedHashMap<>();
+
+    /**
+     * Recipe name this process was spawned from, or {@code null} for
+     * direct {@code engine}-spawns. Audit only — engines do not act
+     * on this field.
+     */
+    private @Nullable String recipeName;
+
+    /**
+     * Recipe-derived system-prompt fragment. Engines blend this with
+     * their built-in prompt according to {@link #promptMode}.
+     * {@code null} means "no recipe override".
+     */
+    private @Nullable String promptOverride;
+
+    @Builder.Default
+    private PromptMode promptMode = PromptMode.APPEND;
+
+    /**
+     * Effective allowed-tools set computed from the engine's default
+     * plus the recipe's add/remove lists at spawn time. {@code null}
+     * means "no override — use the engine default", which is the
+     * normal case for processes that weren't spawned from a recipe.
+     * An empty <em>non-null</em> set is intentionally restrictive
+     * ("this process may invoke no tools").
+     */
+    private @Nullable Set<String> allowedToolsOverride;
 
     /**
      * Mongo id of the orchestrator process that spawned this one.

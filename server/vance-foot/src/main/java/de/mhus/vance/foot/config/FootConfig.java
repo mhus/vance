@@ -88,7 +88,17 @@ public class FootConfig {
 
     @Data
     public static class BootstrapProcess {
+        /**
+         * Engine name (e.g. {@code "zaphod"}) — one of {@code engine}
+         * or {@link #recipe} must be set. If both, {@code recipe}
+         * wins.
+         */
         private String engine = "";
+
+        /** Recipe name for the recipe cascade. Preferred over
+         *  {@link #engine}. */
+        private @Nullable String recipe;
+
         private String name = "";
         private @Nullable String title;
         private @Nullable String goal;

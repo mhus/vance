@@ -9,6 +9,8 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.project.ProjectManagerService;
+import de.mhus.vance.brain.recipe.AppliedRecipe;
+import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -66,6 +68,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final ChatMessageService chatMessageService;
     private final SessionConnectionRegistry connectionRegistry;
     private final SessionChatBootstrapper chatBootstrapper;
+    private final RecipeResolver recipeResolver;
 
     @Override
     public String type() {
@@ -172,9 +175,17 @@ public class SessionBootstrapHandler implements WsHandler {
         ThinkProcessDocument firstProcess = null;
 
         for (ProcessSpec spec : processes) {
-            if (spec == null || isBlank(spec.getEngine()) || isBlank(spec.getName())) {
+            if (spec == null || isBlank(spec.getName())) {
                 sender.sendError(wsSession, envelope, 400,
-                        "process spec needs engine and name");
+                        "process spec needs name");
+                return;
+            }
+            boolean specHasRecipe = !isBlank(spec.getRecipe());
+            boolean specHasEngine = !isBlank(spec.getEngine());
+            if (!specHasRecipe && !specHasEngine) {
+                sender.sendError(wsSession, envelope, 400,
+                        "process spec '" + spec.getName()
+                                + "' needs either recipe or engine");
                 return;
             }
             Optional<ThinkProcessDocument> existing = thinkProcessService
@@ -187,27 +198,65 @@ public class SessionBootstrapHandler implements WsHandler {
                 }
                 continue;
             }
-            Optional<ThinkEngine> engineOpt = thinkEngineService.resolve(spec.getEngine());
-            if (engineOpt.isEmpty()) {
-                sender.sendError(wsSession, envelope, 404,
-                        "Unknown think-engine '" + spec.getEngine()
-                                + "' — registered: " + thinkEngineService.listEngines());
-                return;
+
+            ThinkEngine engine;
+            AppliedRecipe applied = null;
+            if (specHasRecipe) {
+                try {
+                    applied = recipeResolver.apply(
+                            session.getTenantId(),
+                            session.getProjectId(),
+                            spec.getRecipe(),
+                            spec.getParams());
+                } catch (RecipeResolver.UnknownRecipeException e) {
+                    sender.sendError(wsSession, envelope, 404, e.getMessage());
+                    return;
+                } catch (RecipeResolver.UnknownEngineException e) {
+                    sender.sendError(wsSession, envelope, 404, e.getMessage());
+                    return;
+                }
+                engine = thinkEngineService.resolve(applied.engine())
+                        .orElseThrow();
+            } else {
+                Optional<ThinkEngine> engineOpt = thinkEngineService.resolve(spec.getEngine());
+                if (engineOpt.isEmpty()) {
+                    sender.sendError(wsSession, envelope, 404,
+                            "Unknown think-engine '" + spec.getEngine()
+                                    + "' — registered: " + thinkEngineService.listEngines());
+                    return;
+                }
+                engine = engineOpt.get();
             }
-            ThinkEngine engine = engineOpt.get();
 
             ThinkProcessDocument fresh;
             try {
-                fresh = thinkProcessService.create(
-                        session.getTenantId(),
-                        session.getSessionId(),
-                        spec.getName(),
-                        engine.name(),
-                        engine.version(),
-                        spec.getTitle(),
-                        spec.getGoal(),
-                        /*parentProcessId*/ null,
-                        spec.getParams());
+                if (applied != null) {
+                    fresh = thinkProcessService.create(
+                            session.getTenantId(),
+                            session.getSessionId(),
+                            spec.getName(),
+                            engine.name(),
+                            engine.version(),
+                            spec.getTitle(),
+                            spec.getGoal(),
+                            /*parentProcessId*/ null,
+                            applied.params(),
+                            applied.name(),
+                            applied.promptOverride(),
+                            applied.promptMode(),
+                            applied.effectiveAllowedTools());
+                } else {
+                    fresh = thinkProcessService.create(
+                            session.getTenantId(),
+                            session.getSessionId(),
+                            spec.getName(),
+                            engine.name(),
+                            engine.version(),
+                            spec.getTitle(),
+                            spec.getGoal(),
+                            /*parentProcessId*/ null,
+                            spec.getParams());
+                }
             } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
                 // Extremely rare race with a concurrent bootstrap — treat as skip.
                 Optional<ThinkProcessDocument> raced = thinkProcessService

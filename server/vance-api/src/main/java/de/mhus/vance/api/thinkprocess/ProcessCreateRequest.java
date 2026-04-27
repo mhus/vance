@@ -10,6 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
+
 /**
  * Body of {@code process-create} — client spawns a think-process in its
  * currently bound session.
@@ -26,8 +27,15 @@ import org.jspecify.annotations.Nullable;
 @GenerateTypeScript("thinkprocess")
 public class ProcessCreateRequest {
 
-    @NotBlank
-    private String engine;
+    /**
+     * Engine name from the registry. One of {@code engine} or
+     * {@link #recipe} must be set; if both are set, {@code recipe}
+     * wins.
+     */
+    private @Nullable String engine;
+
+    /** Recipe name for resolution via the recipe cascade. */
+    private @Nullable String recipe;
 
     @NotBlank
     private String name;

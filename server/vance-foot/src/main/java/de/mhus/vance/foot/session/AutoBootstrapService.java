@@ -115,9 +115,17 @@ public class AutoBootstrapService {
                 ? List.of() : b.getProcesses();
         List<ProcessSpec> specs = new ArrayList<>(configured.size());
         for (FootConfig.BootstrapProcess p : configured) {
+            String engine = p.getEngine() == null || p.getEngine().isBlank()
+                    ? null : p.getEngine();
+            String recipe = p.getRecipe() == null || p.getRecipe().isBlank()
+                    ? null : p.getRecipe();
+            String defaultName = recipe != null ? recipe
+                    : (engine != null ? engine : "process");
             specs.add(ProcessSpec.builder()
-                    .engine(p.getEngine())
-                    .name(p.getName().isBlank() ? p.getEngine() : p.getName())
+                    .engine(engine)
+                    .recipe(recipe)
+                    .name(p.getName() == null || p.getName().isBlank()
+                            ? defaultName : p.getName())
                     .title(p.getTitle())
                     .goal(p.getGoal())
                     .params(p.getParams() == null || p.getParams().isEmpty()

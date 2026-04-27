@@ -11,7 +11,10 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.recipe.BundledRecipe;
+import de.mhus.vance.brain.recipe.BundledRecipeRegistry;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
+import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
@@ -91,6 +94,8 @@ public class ArthurEngine implements ThinkEngine {
             "process_stop",
             "process_list",
             "process_status",
+            "recipe_list",
+            "recipe_describe",
             "docs_list",
             "docs_read");
 
@@ -149,6 +154,7 @@ public class ArthurEngine implements ThinkEngine {
     private final ObjectMapper objectMapper;
     private final StreamingProperties streamingProperties;
     private final ArthurProperties arthurProperties;
+    private final BundledRecipeRegistry bundledRecipeRegistry;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -514,7 +520,7 @@ public class ArthurEngine implements ThinkEngine {
             ChatMessageService chatLog,
             List<SteerMessage> inbox) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(systemPrompt()));
+        messages.add(SystemMessage.from(SystemPrompts.compose(process, systemPrompt())));
 
         // Active history (ARCHIVED_CHAT compaction-aware once we wire
         // memoryService — for v1 just use full active history).
@@ -618,20 +624,53 @@ public class ArthurEngine implements ThinkEngine {
         };
     }
 
-    /** Lazy-loads the bundled prompt file. Cached after the first hit. */
-    private static String systemPrompt() {
+    /**
+     * Lazy-loads the bundled prompt file plus the bundled-recipe
+     * catalog section. Cached after the first hit — bundled state
+     * doesn't change without a brain restart.
+     */
+    private String systemPrompt() {
         String cached = cachedSystemPrompt;
         if (cached != null) return cached;
         try {
             byte[] bytes = new ClassPathResource(SYSTEM_PROMPT_RESOURCE)
                     .getInputStream().readAllBytes();
-            String loaded = new String(bytes, StandardCharsets.UTF_8);
-            cachedSystemPrompt = loaded;
-            return loaded;
+            String base = new String(bytes, StandardCharsets.UTF_8);
+            String composed = base + buildRecipeCatalogSection();
+            cachedSystemPrompt = composed;
+            return composed;
         } catch (IOException ioe) {
             throw new UncheckedIOException(
                     "Arthur system-prompt resource missing: " + SYSTEM_PROMPT_RESOURCE, ioe);
         }
+    }
+
+    /**
+     * Builds the bullet-list of bundled recipes that gets appended to
+     * the static prompt. Tenant- and project-scoped recipes are NOT
+     * embedded here — they're discoverable via {@code recipe_list}
+     * at runtime instead.
+     */
+    private String buildRecipeCatalogSection() {
+        if (bundledRecipeRegistry.size() == 0) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n## Available worker recipes\n\n")
+                .append("These bundled recipes are always present. Tenant- or "
+                        + "project-specific recipes may also exist — call "
+                        + "`recipe_list` at runtime to see the complete catalog.\n\n");
+        for (BundledRecipe r : bundledRecipeRegistry.all()) {
+            sb.append("- `").append(r.name()).append("` — ")
+                    .append(oneLine(r.description())).append("\n");
+        }
+        return sb.toString();
+    }
+
+    private static String oneLine(String s) {
+        if (s == null) return "";
+        String trimmed = s.trim().replace("\n", " ").replaceAll("\\s+", " ");
+        return trimmed;
     }
 
     // ──────────────────── Config resolve (mirrors Zaphod) ────────────────────

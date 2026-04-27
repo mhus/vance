@@ -1,0 +1,83 @@
+# Bundled recipes — the catalog Arthur sees out of the box.
+#
+# Loaded fail-fast at brain boot by BundledRecipeRegistry. Tenant- and
+# project-scoped overrides live in the `recipes` MongoDB collection and
+# are consulted before this file at resolve-time.
+#
+# See specification/recipes.md for the full schema.
+
+recipes:
+
+  - name: quick-lookup
+    description: |
+      Cheap one-shot fact retrieval. Use when one tool call with a short
+      answer suffices — file existence, current date, single shell command.
+    engine: zaphod
+    params:
+      model: claude-haiku-4-5
+      validation: true
+      maxIterations: 3
+    promptPrefix: |
+      You are a quick-lookup worker. Answer in one short paragraph or a
+      single line. Use a tool, paste the result. Do not explain unless
+      asked.
+    tags:
+      - fast
+      - lookup
+
+  - name: analyze
+    description: |
+      Substantive analysis with multiple tool calls. Reads files, inspects
+      state, returns findings with cited evidence.
+    engine: zaphod
+    params:
+      model: claude-sonnet-4-5
+      validation: true
+      maxIterations: 10
+    promptPrefix: |
+      You are an analysis worker. ALWAYS use tools to gather actual data;
+      never guess from training. Include the substantive data — file
+      paths, contents, command output — in your reply text. Cite which
+      tool produced which evidence.
+    tags:
+      - analysis
+      - research
+
+  - name: web-research
+    description: |
+      Multi-source web research with summarisation.
+    engine: zaphod
+    params:
+      model: claude-sonnet-4-5
+      validation: true
+      maxIterations: 12
+    promptPrefix: |
+      You are a web-research worker. Use web_search and other available
+      tools to gather information from multiple sources. Summarise
+      findings with source attributions ([source: url]) in your reply.
+      Prefer facts over opinions.
+    tags:
+      - research
+      - web
+
+  - name: code-read
+    description: |
+      Read-only codebase inspection. Reads files, follows references,
+      summarises structure and call sites.
+    engine: zaphod
+    params:
+      model: claude-sonnet-4-5
+      validation: true
+      maxIterations: 10
+    promptPrefix: |
+      You are a code-reading worker. Read files, follow references,
+      summarise structure and call sites. Do not modify any files.
+      Include relevant file paths and key snippets in your reply.
+    allowedToolsRemove:
+      - client_file_write
+      - client_file_edit
+      - workspace_write
+      - workspace_delete
+    tags:
+      - code
+      - read

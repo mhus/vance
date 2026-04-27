@@ -1,13 +1,16 @@
 package de.mhus.vance.shared.thinkprocess;
 
 import com.mongodb.client.result.UpdateResult;
+import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -74,7 +77,7 @@ public class ThinkProcessService {
     }
 
     /**
-     * Full create — also stores engine-specific runtime parameters
+     * Mid create — also stores engine-specific runtime parameters
      * (model override, validation flag, etc.). The map's schema is
      * defined per-engine; pass {@code null} to record an empty map.
      */
@@ -88,6 +91,33 @@ public class ThinkProcessService {
             @Nullable String goal,
             @Nullable String parentProcessId,
             @Nullable Map<String, Object> engineParams) {
+        return create(tenantId, sessionId, name, thinkEngine,
+                thinkEngineVersion, title, goal, parentProcessId,
+                engineParams,
+                /*recipeName*/ null,
+                /*promptOverride*/ null,
+                /*promptMode*/ null,
+                /*allowedToolsOverride*/ null);
+    }
+
+    /**
+     * Full create — accepts recipe-derived fields too. Used by the
+     * recipe-aware spawn paths after {@code RecipeResolver.apply}.
+     */
+    public ThinkProcessDocument create(
+            String tenantId,
+            String sessionId,
+            String name,
+            String thinkEngine,
+            @Nullable String thinkEngineVersion,
+            @Nullable String title,
+            @Nullable String goal,
+            @Nullable String parentProcessId,
+            @Nullable Map<String, Object> engineParams,
+            @Nullable String recipeName,
+            @Nullable String promptOverride,
+            @Nullable PromptMode promptMode,
+            @Nullable Set<String> allowedToolsOverride) {
         if (repository.existsByTenantIdAndSessionIdAndName(tenantId, sessionId, name)) {
             throw new ThinkProcessAlreadyExistsException(
                     "Think-process '" + name + "' already exists in session '"
@@ -95,6 +125,8 @@ public class ThinkProcessService {
         }
         Map<String, Object> params = engineParams == null
                 ? new LinkedHashMap<>() : new LinkedHashMap<>(engineParams);
+        Set<String> allowed = allowedToolsOverride == null
+                ? null : new LinkedHashSet<>(allowedToolsOverride);
         ThinkProcessDocument doc = ThinkProcessDocument.builder()
                 .tenantId(tenantId)
                 .sessionId(sessionId)
@@ -105,11 +137,16 @@ public class ThinkProcessService {
                 .goal(goal)
                 .parentProcessId(parentProcessId)
                 .engineParams(params)
+                .recipeName(recipeName)
+                .promptOverride(promptOverride)
+                .promptMode(promptMode == null ? PromptMode.APPEND : promptMode)
+                .allowedToolsOverride(allowed)
                 .status(ThinkProcessStatus.READY)
                 .build();
         ThinkProcessDocument saved = repository.save(doc);
-        log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' params={}",
+        log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' recipe='{}' params={}",
                 tenantId, sessionId, name, thinkEngine, saved.getId(), parentProcessId,
+                recipeName,
                 params.isEmpty() ? "{}" : params.keySet());
         return saved;
     }

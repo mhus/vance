@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.tools.process;
 
+import de.mhus.vance.brain.recipe.AppliedRecipe;
+import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.tools.Tool;
@@ -10,19 +12,36 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * Spawns a new think-process inside the current session. Useful when
- * the engine wants a sub-agent: e.g. start a parallel "researcher"
- * process while the orchestrator keeps talking with the user.
+ * Spawns a new think-process inside the current session. Two paths:
+ *
+ * <ul>
+ *   <li><b>Recipe path</b> — caller provides {@code recipe} (e.g.
+ *       {@code "analyze"}). The {@link RecipeResolver} cascades
+ *       project → tenant → bundled, returns engine name + default
+ *       params + prompt-prefix + tool adjustments. Caller's
+ *       {@code params} merge on top (per-key overrides) unless the
+ *       recipe is locked.</li>
+ *   <li><b>Direct-engine path</b> — caller provides {@code engine}
+ *       (e.g. {@code "zaphod"}). No recipe lookup; just
+ *       caller-supplied {@code params} as-is.</li>
+ * </ul>
+ *
+ * <p>If both {@code recipe} and {@code engine} are set, {@code recipe}
+ * wins and {@code engine} is logged-and-ignored — easier to reason
+ * about than failing.
  *
  * <p>The new process is started immediately ({@code engine.start})
- * and arrives in {@link de.mhus.vance.api.thinkprocess.ThinkProcessStatus#READY}.
- * Drive it via {@code process_steer}.
+ * and arrives in
+ * {@link de.mhus.vance.api.thinkprocess.ThinkProcessStatus#READY}.
+ * Drive it via {@code process_steer}; stop it via {@code process_stop}.
  */
 @Component
+@Slf4j
 public class ProcessCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
@@ -31,9 +50,14 @@ public class ProcessCreateTool implements Tool {
                     "name", Map.of(
                             "type", "string",
                             "description", "Stable process name, unique per session."),
+                    "recipe", Map.of(
+                            "type", "string",
+                            "description", "Preferred — recipe name for cascade resolution. "
+                                    + "Use `recipe_list` to see available recipes."),
                     "engine", Map.of(
                             "type", "string",
-                            "description", "Engine name, e.g. 'zaphod'."),
+                            "description", "Direct-engine path: engine name "
+                                    + "(e.g. 'zaphod'). Ignored if `recipe` is set."),
                     "title", Map.of(
                             "type", "string",
                             "description", "Optional human-readable title."),
@@ -43,10 +67,10 @@ public class ProcessCreateTool implements Tool {
                     "params", Map.of(
                             "type", "object",
                             "description", "Engine-specific runtime parameters "
-                                    + "(model override, validation flag, max iterations, …). "
-                                    + "Schema is engine-defined; unknown keys are ignored.",
+                                    + "(model, validation, maxIterations, …). With a recipe, "
+                                    + "these override the recipe's defaults per-key.",
                             "additionalProperties", true)),
-            "required", List.of("name", "engine"));
+            "required", List.of("name"));
 
     private final ThinkProcessService thinkProcessService;
     /**
@@ -56,12 +80,15 @@ public class ProcessCreateTool implements Tool {
      * first use, by which time the singleton is built.
      */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    private final RecipeResolver recipeResolver;
 
     public ProcessCreateTool(
             ThinkProcessService thinkProcessService,
-            ObjectProvider<ThinkEngineService> thinkEngineServiceProvider) {
+            ObjectProvider<ThinkEngineService> thinkEngineServiceProvider,
+            RecipeResolver recipeResolver) {
         this.thinkProcessService = thinkProcessService;
         this.thinkEngineServiceProvider = thinkEngineServiceProvider;
+        this.recipeResolver = recipeResolver;
     }
 
     @Override
@@ -72,8 +99,8 @@ public class ProcessCreateTool implements Tool {
     @Override
     public String description() {
         return "Create a new think-process in the current session and "
-                + "start its engine. Returns the new process's name and "
-                + "status.";
+                + "start its engine. Pick a recipe name (preferred) or an "
+                + "engine name. Returns the new process's name and status.";
     }
 
     @Override
@@ -93,26 +120,34 @@ public class ProcessCreateTool implements Tool {
             throw new ToolException("process_create requires a session scope");
         }
         String name = stringOrThrow(params, "name");
-        String engineName = stringOrThrow(params, "engine");
+        String recipeName = optString(params, "recipe");
+        String engineName = optString(params, "engine");
         String title = optString(params, "title");
         String goal = optString(params, "goal");
-        Map<String, Object> engineParams = optMap(params, "params");
+        Map<String, Object> callerParams = optMap(params, "params");
 
-        ThinkEngine engine = thinkEngineServiceProvider.getObject().resolve(engineName)
-                .orElseThrow(() -> new ToolException(
-                        "Unknown engine '" + engineName + "' — known: "
-                                + thinkEngineServiceProvider.getObject().listEngines()));
+        if (recipeName == null && engineName == null) {
+            throw new ToolException(
+                    "process_create requires either 'recipe' or 'engine'");
+        }
+        if (recipeName != null && engineName != null) {
+            log.info("process_create called with both recipe='{}' and engine='{}' — recipe wins",
+                    recipeName, engineName);
+        }
 
         ThinkProcessDocument fresh;
         try {
-            fresh = thinkProcessService.create(
-                    ctx.tenantId(), sessionId, name,
-                    engine.name(), engine.version(), title, goal,
-                    /*parentProcessId*/ ctx.processId(),
-                    engineParams);
+            if (recipeName != null) {
+                fresh = createFromRecipe(
+                        ctx, sessionId, name, recipeName, title, goal, callerParams);
+            } else {
+                fresh = createFromEngine(
+                        ctx, sessionId, name, engineName, title, goal, callerParams);
+            }
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException e) {
             throw new ToolException(e.getMessage());
         }
+
         try {
             thinkEngineServiceProvider.getObject().start(fresh);
         } catch (RuntimeException e) {
@@ -127,7 +162,53 @@ public class ProcessCreateTool implements Tool {
         out.put("status", refreshed.getStatus() == null ? null : refreshed.getStatus().name());
         out.put("engine", refreshed.getThinkEngine());
         out.put("engineVersion", refreshed.getThinkEngineVersion());
+        if (refreshed.getRecipeName() != null) {
+            out.put("recipe", refreshed.getRecipeName());
+        }
         return out;
+    }
+
+    private ThinkProcessDocument createFromRecipe(
+            ToolInvocationContext ctx, String sessionId, String name,
+            String recipeName, String title, String goal,
+            Map<String, Object> callerParams) {
+        AppliedRecipe applied;
+        try {
+            applied = recipeResolver.apply(
+                    ctx.tenantId(), ctx.projectId(), recipeName, callerParams);
+        } catch (RecipeResolver.UnknownRecipeException ure) {
+            throw new ToolException(ure.getMessage());
+        } catch (RecipeResolver.UnknownEngineException uee) {
+            throw new ToolException(uee.getMessage());
+        }
+        ThinkEngine engine = thinkEngineServiceProvider.getObject().resolve(applied.engine())
+                .orElseThrow(() -> new ToolException(
+                        "Recipe '" + applied.name() + "' references unknown engine '"
+                                + applied.engine() + "'"));
+        return thinkProcessService.create(
+                ctx.tenantId(), sessionId, name,
+                engine.name(), engine.version(), title, goal,
+                /*parentProcessId*/ ctx.processId(),
+                applied.params(),
+                applied.name(),
+                applied.promptOverride(),
+                applied.promptMode(),
+                applied.effectiveAllowedTools());
+    }
+
+    private ThinkProcessDocument createFromEngine(
+            ToolInvocationContext ctx, String sessionId, String name,
+            String engineName, String title, String goal,
+            Map<String, Object> callerParams) {
+        ThinkEngine engine = thinkEngineServiceProvider.getObject().resolve(engineName)
+                .orElseThrow(() -> new ToolException(
+                        "Unknown engine '" + engineName + "' — known: "
+                                + thinkEngineServiceProvider.getObject().listEngines()));
+        return thinkProcessService.create(
+                ctx.tenantId(), sessionId, name,
+                engine.name(), engine.version(), title, goal,
+                /*parentProcessId*/ ctx.processId(),
+                callerParams);
     }
 
     private static String stringOrThrow(Map<String, Object> params, String key) {
@@ -143,13 +224,10 @@ public class ProcessCreateTool implements Tool {
         return raw instanceof String s && !s.isBlank() ? s : null;
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> optMap(Map<String, Object> params, String key) {
         Object raw = params == null ? null : params.get(key);
         if (raw instanceof Map<?, ?> m) {
-            // The LLM may emit numeric keys or non-string keys in odd cases;
-            // coerce to String keys defensively.
-            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            Map<String, Object> out = new LinkedHashMap<>();
             for (Map.Entry<?, ?> e : m.entrySet()) {
                 out.put(String.valueOf(e.getKey()), e.getValue());
             }

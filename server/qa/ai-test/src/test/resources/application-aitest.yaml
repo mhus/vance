@@ -1,0 +1,39 @@
+# Brain config for the ai-test profile. Loaded by @SpringBootTest in the
+# qa/ai-test module. The Mongo URI is overridden at runtime by MongoFixture
+# (the testcontainer port is fixed but the username/database can change).
+
+spring:
+  mongodb:
+    database: vance-aitest
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+server:
+  # Fixed but non-default — brain default is 8080.
+  port: 18080
+
+vance:
+  ws:
+    path: /brain/*/ws
+  storage:
+    chunk-size: 524288
+    cleanup-interval-ms: 900000
+  services:
+    storage-cleanup: true
+    serverVersion: 0.1.0
+    protocolVersion: 1
+    pingIntervalSeconds: 30
+    capabilities: []
+  encryption:
+    password: aitest-encryption
+
+logging:
+  file:
+    # Relative to surefire's working directory (the ai-test module dir).
+    name: target/ai-test/brain.log
+  level:
+    root: WARN
+    de.mhus.vance: DEBUG

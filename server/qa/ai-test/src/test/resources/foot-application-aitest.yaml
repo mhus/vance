@@ -1,0 +1,35 @@
+# Foot config for the ai-test profile. Copied into target/ai-test/ by the
+# test harness and passed to the foot subprocess as
+# `--spring.config.additional-location=...` so it sits on top of foot's
+# bundled application.yaml. The subprocess runs in the daemon command
+# (no REPL), driven entirely via the debug REST endpoint.
+
+vance:
+  brain:
+    # Brain runs in the test JVM on the fixed ai-test port.
+    http-base: http://localhost:18080
+    ws-base: ws://localhost:18080
+  auth:
+    tenant: acme
+    username: wile.coyote
+    password: acme-rocket
+  client:
+    version: 0.1.0-aitest
+  debug:
+    rest:
+      enabled: true
+      host: 127.0.0.1
+      # Fixed but non-default — foot default is 8766.
+      port: 18766
+  history:
+    # Test runs touch no user state — keep the foot-history file out of $HOME.
+    enabled: false
+
+# Logging is routed entirely through the test-only logback config
+# (foot-logback-aitest.xml) passed via -Dlogging.config — see FootProcess.
+# Leaving the levels here keeps the override visible if a future test wants
+# to switch back to property-based configuration.
+logging:
+  level:
+    root: WARN
+    de.mhus.vance: DEBUG

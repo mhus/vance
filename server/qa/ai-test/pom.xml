@@ -1,0 +1,89 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.mhus.vance</groupId>
+        <artifactId>vance</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>ai-test</artifactId>
+    <name>ai-test</name>
+    <description>End-to-end tests that boot brain (in-process) and foot (subprocess) against a fresh Mongo testcontainer. Drives the system through the foot debug REST endpoint. Used by Claude / other LLM agents to iterate on implementation and prompts.</description>
+    <packaging>jar</packaging>
+
+    <properties>
+        <testcontainers.version>1.21.3</testcontainers.version>
+    </properties>
+
+    <dependencies>
+        <!-- Brain runs in-process inside the test JVM via @SpringBootTest. -->
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-brain</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Foot is exec'd as a subprocess from its built jar. We declare the
+             dependency so `mvn -pl qa/ai-test -am` builds vance-foot first; the
+             executable jar is consumed by ProcessBuilder, not on the classpath. -->
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-foot</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mongodb</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <vance.foot.jar>${project.basedir}/../../vance-foot/target/vance-foot.jar</vance.foot.jar>
+                        <vance.aitest.workdir>${project.build.directory}/ai-test</vance.aitest.workdir>
+                        <vance.confidential.dir>${project.basedir}/../../../../../confidential</vance.confidential.dir>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

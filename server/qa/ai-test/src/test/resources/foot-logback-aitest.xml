@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Test-only logback config for the foot subprocess. Routes ALL output
+    through stdout so the surrounding ProcessBuilder can capture
+    everything (logs + ChatTerminal prints + JVM warnings) into the
+    single fixed file `foot.log` in the subprocess working directory.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="WARN">
+        <appender-ref ref="STDOUT"/>
+    </root>
+    <logger name="de.mhus.vance" level="DEBUG"/>
+</configuration>

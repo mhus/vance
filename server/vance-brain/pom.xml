@@ -80,6 +80,12 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>de.mhus.vance.brain.VanceBrainApplication</mainClass>
+                    <!-- Keep the regular jar as a normal library so other
+                         Maven modules (qa/ai-test) can depend on brain's
+                         classes. The executable jar lands at
+                         vance-brain-<v>-exec.jar — `mvn spring-boot:run`
+                         is unaffected. -->
+                    <classifier>exec</classifier>
                 </configuration>
             </plugin>
         </plugins>

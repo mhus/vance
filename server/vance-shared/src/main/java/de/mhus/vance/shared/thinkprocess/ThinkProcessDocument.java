@@ -2,6 +2,7 @@ package de.mhus.vance.shared.thinkprocess;
 
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -156,6 +157,18 @@ public class ThinkProcessDocument {
      */
     @Builder.Default
     private List<PendingMessageDocument> pendingMessages = new ArrayList<>();
+
+    /**
+     * Skills currently active on this process. Activations come from
+     * three sources: the spawning recipe ({@code fromRecipe=true}),
+     * Arthur's auto-trigger detection (implicit), and explicit user
+     * commands via {@code /skill <name>}. Sticky by default;
+     * {@code oneShot} entries are removed after the next lane-turn.
+     *
+     * <p>See {@code specification/skills.md}.
+     */
+    @Builder.Default
+    private List<ActiveSkillRefEmbedded> activeSkills = new ArrayList<>();
 
     private ThinkProcessStatus status = ThinkProcessStatus.READY;
 

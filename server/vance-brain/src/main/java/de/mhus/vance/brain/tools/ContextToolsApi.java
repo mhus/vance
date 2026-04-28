@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools;
 
 import de.mhus.vance.api.tools.ToolSpec;
 import dev.langchain4j.agent.tool.ToolSpecification;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -99,6 +100,29 @@ public final class ContextToolsApi {
     /** The allow-set this surface was built with. Empty → unrestricted. */
     public Set<String> allowed() {
         return allowed;
+    }
+
+    /**
+     * Returns a new {@link ContextToolsApi} whose allow-set is the
+     * union of this one's plus {@code extra}. Used by the lane-turn
+     * pipeline to expose skill-required tools without mutating the
+     * persisted {@code allowedToolsOverride} on the process.
+     *
+     * <p>If this surface is unrestricted (empty allow-set), it is
+     * returned as-is — adding tools to "see everything" is a no-op.
+     * If {@code extra} is null/empty, the surface is also returned
+     * as-is.
+     */
+    public ContextToolsApi withAdditional(Set<String> extra) {
+        if (allowed.isEmpty() || extra == null || extra.isEmpty()) {
+            return this;
+        }
+        Set<String> merged = new LinkedHashSet<>(allowed);
+        merged.addAll(extra);
+        if (merged.size() == allowed.size()) {
+            return this;
+        }
+        return new ContextToolsApi(dispatcher, ctx, merged);
     }
 
     private boolean isAllowed(String toolName) {

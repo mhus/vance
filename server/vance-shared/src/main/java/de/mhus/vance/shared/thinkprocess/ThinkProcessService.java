@@ -3,6 +3,7 @@ package de.mhus.vance.shared.thinkprocess;
 import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -219,6 +220,22 @@ public class ThinkProcessService {
         Query query = new Query(Criteria.where("_id").is(id));
         Update update = new Update().set("engineParams",
                 engineParams == null ? new LinkedHashMap<>() : engineParams);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
+     * Atomically replaces the {@code activeSkills} list. Used by the
+     * skill-steer pipeline (activate/clear) and by the engine itself
+     * after draining one-shot skills at end-of-turn.
+     *
+     * @return {@code true} if the row exists and was updated
+     */
+    public boolean replaceActiveSkills(String id, List<ActiveSkillRefEmbedded> activeSkills) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("activeSkills",
+                activeSkills == null ? new ArrayList<>() : activeSkills);
         UpdateResult result = mongoTemplate.updateFirst(
                 query, update, ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;

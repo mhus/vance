@@ -27,6 +27,14 @@ public final class MessageType {
     /** Manual memory compaction trigger for a think-process. */
     public static final String PROCESS_COMPACT = "process-compact";
 
+    /**
+     * Activate / deactivate / list skills on a think-process.
+     * Out-of-band steering signal — does not trigger an LLM turn,
+     * only mutates the process's {@code activeSkills} list (or returns
+     * a list view). See {@code specification/skills.md} §6.
+     */
+    public static final String PROCESS_SKILL = "process-skill";
+
     /** Compound command: session create/resume + processes + optional initial message. */
     public static final String SESSION_BOOTSTRAP = "session-bootstrap";
 

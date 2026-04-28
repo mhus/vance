@@ -17,6 +17,11 @@ import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.memory.CompactionResult;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
+import de.mhus.vance.brain.skill.ResolvedSkill;
+import de.mhus.vance.brain.skill.SkillPromptComposer;
+import de.mhus.vance.brain.skill.SkillResolver;
+import de.mhus.vance.brain.skill.SkillScopeContext;
+import de.mhus.vance.brain.skill.UnknownSkillException;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -28,7 +33,10 @@ import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryKind;
 import de.mhus.vance.shared.memory.MemoryService;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
+import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -159,6 +167,9 @@ public class Ford implements ThinkEngine {
     private final MemoryService memoryService;
     private final MemoryCompactionService memoryCompactionService;
     private final AiModelResolver aiModelResolver;
+    private final SkillResolver skillResolver;
+    private final SkillPromptComposer skillPromptComposer;
+    private final SessionService sessionService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -248,7 +259,12 @@ public class Ford implements ThinkEngine {
                     process, ctx.settingService(), aiModelResolver);
             AiChat aiChat = ctx.aiModelService().createChat(
                     config, AiChatOptions.builder().build());
-            ContextToolsApi tools = ctx.tools();
+
+            List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
+            String skillSection = skillPromptComposer.compose(activeSkills);
+
+            ContextToolsApi tools = ctx.tools()
+                    .withAdditional(skillPromptComposer.mergedTools(activeSkills));
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     config.provider(), config.modelName());
@@ -258,7 +274,8 @@ public class Ford implements ThinkEngine {
             // to the catalog's classification.
             ModelSize effectiveSize = ModelSize.parseOrAuto(
                     paramString(process, "modelSize", null), modelInfo.size());
-            List<ChatMessage> messages = buildPromptMessages(process, chatLog, effectiveSize);
+            List<ChatMessage> messages = buildPromptMessages(
+                    process, chatLog, effectiveSize, skillSection);
             int estimatedTokens = estimateTokens(messages);
             int triggerTokens = modelInfo.compactionTriggerTokens(
                     fordProperties.getCompactionTriggerRatio());
@@ -281,7 +298,8 @@ public class Ford implements ThinkEngine {
                                 result.memoryId());
                         // Rebuild the prompt: the active-history shrunk and a
                         // new ARCHIVED_CHAT memory pinned the summary at top.
-                        messages = buildPromptMessages(process, chatLog, effectiveSize);
+                        messages = buildPromptMessages(
+                                process, chatLog, effectiveSize, skillSection);
                     } else {
                         log.info("Ford.turn id='{}' compaction skipped: {}",
                                 process.getId(), result.reason());
@@ -315,8 +333,64 @@ public class Ford implements ThinkEngine {
             log.info("Ford.steer id='{}' -> '{}'", process.getId(), preview);
             return finalText;
         } finally {
+            // Drain one-shot skills before the next turn — they only
+            // ever apply to the turn that activated them.
+            dropOneShotSkills(process);
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
         }
+    }
+
+    /**
+     * Resolves the process's persisted {@link ActiveSkillRefEmbedded}s
+     * into ready-to-use {@link ResolvedSkill}s through the user/project/
+     * tenant/bundled cascade. Skills that no longer resolve (e.g. a
+     * user deleted their private skill mid-session) are skipped with a
+     * warning rather than failing the turn.
+     */
+    private List<ResolvedSkill> resolveActiveSkills(ThinkProcessDocument process) {
+        List<ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active == null || active.isEmpty()) {
+            return List.of();
+        }
+        SkillScopeContext scope = scopeFor(process);
+        List<ResolvedSkill> out = new ArrayList<>(active.size());
+        for (ActiveSkillRefEmbedded ref : active) {
+            try {
+                skillResolver.resolve(scope, ref.getName())
+                        .ifPresentOrElse(out::add, () -> log.warn(
+                                "Ford id='{}' active skill '{}' no longer resolves — skipping",
+                                process.getId(), ref.getName()));
+            } catch (UnknownSkillException e) {
+                log.warn("Ford id='{}' active skill '{}' unknown — skipping",
+                        process.getId(), ref.getName());
+            }
+        }
+        return out;
+    }
+
+    private SkillScopeContext scopeFor(ThinkProcessDocument process) {
+        SessionDocument session = sessionService.findBySessionId(process.getSessionId())
+                .orElse(null);
+        String userId = session != null && !session.getUserId().isBlank()
+                ? session.getUserId() : null;
+        String projectId = session != null && !session.getProjectId().isBlank()
+                ? session.getProjectId() : null;
+        return SkillScopeContext.of(process.getTenantId(), userId, projectId);
+    }
+
+    private void dropOneShotSkills(ThinkProcessDocument process) {
+        List<ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active == null || active.isEmpty()) return;
+        boolean anyOneShot = active.stream().anyMatch(ActiveSkillRefEmbedded::isOneShot);
+        if (!anyOneShot) return;
+        List<ActiveSkillRefEmbedded> kept = new ArrayList<>(active.size());
+        for (ActiveSkillRefEmbedded ref : active) {
+            if (!ref.isOneShot()) {
+                kept.add(ref);
+            }
+        }
+        process.setActiveSkills(kept);
+        thinkProcessService.replaceActiveSkills(process.getId(), kept);
     }
 
     /**
@@ -547,16 +621,24 @@ public class Ford implements ThinkEngine {
 
     /**
      * Builds the prompt-message list for one turn: base system prompt,
-     * pinned compaction summary (if any), then active chat history.
-     * Re-callable so {@code runTurn} can rebuild after a mid-turn
-     * compaction.
+     * optional skill-section, pinned compaction summary (if any), then
+     * active chat history. Re-callable so {@code runTurn} can rebuild
+     * after a mid-turn compaction.
+     *
+     * @param skillSection composed skill block from
+     *        {@link SkillPromptComposer#compose}, or {@code null} when
+     *        no skills are active. Appended as a separate
+     *        {@link SystemMessage} after the engine-default prompt.
      */
     private List<ChatMessage> buildPromptMessages(
             ThinkProcessDocument process, ChatMessageService chatLog,
-            ModelSize modelSize) {
+            ModelSize modelSize, @Nullable String skillSection) {
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(
                 SystemPrompts.compose(process, SYSTEM_PROMPT, modelSize)));
+        if (skillSection != null && !skillSection.isBlank()) {
+            messages.add(SystemMessage.from(skillSection));
+        }
         for (MemoryDocument m : memoryService.activeByProcessAndKind(
                 process.getTenantId(), process.getId(), MemoryKind.ARCHIVED_CHAT)) {
             messages.add(SystemMessage.from(

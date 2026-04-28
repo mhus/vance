@@ -2,7 +2,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { EditorShell, MarkdownView, VAlert, VButton, VCard, VEmptyState, VInput, VModal, VSelect, VTextarea, } from '@/components';
 import { useInbox } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
-import { getUsername } from '@vance/shared';
+import { getUsername, setDocumentDraft } from '@vance/shared';
 import { AnswerOutcome, Criticality, InboxItemStatus, InboxItemType, } from '@vance/generated';
 const inbox = useInbox();
 const teamsState = useTeams();
@@ -171,6 +171,48 @@ async function unarchiveItem() {
     finally {
         submitting.value = false;
     }
+}
+/**
+ * Hand the current item over to the document editor as a fresh
+ * draft. The Document editor reads the draft on mount (one-shot)
+ * and opens its create-modal prefilled with title / path / content
+ * — see specification/web-ui.md §… (Inbox → Document handoff).
+ */
+async function toDocument() {
+    const sel = inbox.selected.value;
+    if (!sel)
+        return;
+    const ts = sel.createdAt
+        ? new Date(sel.createdAt).toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
+    // Slug for the suggested file path. Keep it conservative — the
+    // user can edit before saving.
+    const slug = (sel.title || sel.id || 'inbox-item')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60) || 'inbox-item';
+    setDocumentDraft({
+        title: sel.title ?? '',
+        path: `inbox/${ts}-${slug}.md`,
+        content: sel.body ?? '',
+        mimeType: 'text/markdown',
+        source: `Inbox item «${sel.title ?? '(no title)'}» from ${sel.originatorUserId}`,
+    });
+    // Archive the item — once it's been promoted to a document, it's
+    // no longer pending in the inbox. Skip if already archived.
+    if (sel.id && sel.status !== InboxItemStatus.ARCHIVED) {
+        submitting.value = true;
+        try {
+            await inbox.archive(sel.id);
+        }
+        finally {
+            submitting.value = false;
+        }
+    }
+    // Same-tab navigation — the Document editor mounts fresh and
+    // consumes the draft on its first onMounted.
+    window.location.href = '/document-editor.html?createDraft=1';
 }
 async function dismissItem() {
     const sel = inbox.selected.value;
@@ -745,57 +787,55 @@ else {
         let __VLS_86;
         let __VLS_87;
         const __VLS_88 = {
-            onClick: (__VLS_ctx.openDelegateModal)
+            onClick: (__VLS_ctx.toDocument)
         };
         __VLS_84.slots.default;
         var __VLS_84;
+        const __VLS_89 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            disabled: (__VLS_ctx.submitting),
+        }));
+        const __VLS_91 = __VLS_90({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            disabled: (__VLS_ctx.submitting),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_90));
+        let __VLS_93;
+        let __VLS_94;
+        let __VLS_95;
+        const __VLS_96 = {
+            onClick: (__VLS_ctx.openDelegateModal)
+        };
+        __VLS_92.slots.default;
+        var __VLS_92;
         if (__VLS_ctx.inbox.selected.value.status !== __VLS_ctx.InboxItemStatus.DISMISSED) {
-            const __VLS_89 = {}.VButton;
-            /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-            // @ts-ignore
-            const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
-                ...{ 'onClick': {} },
-                variant: "ghost",
-                disabled: (__VLS_ctx.submitting),
-            }));
-            const __VLS_91 = __VLS_90({
-                ...{ 'onClick': {} },
-                variant: "ghost",
-                disabled: (__VLS_ctx.submitting),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_90));
-            let __VLS_93;
-            let __VLS_94;
-            let __VLS_95;
-            const __VLS_96 = {
-                onClick: (__VLS_ctx.dismissItem)
-            };
-            __VLS_92.slots.default;
-            var __VLS_92;
-        }
-        if (__VLS_ctx.inbox.selected.value.status === __VLS_ctx.InboxItemStatus.ARCHIVED) {
             const __VLS_97 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
             const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
                 ...{ 'onClick': {} },
-                variant: "primary",
-                loading: (__VLS_ctx.submitting),
+                variant: "ghost",
+                disabled: (__VLS_ctx.submitting),
             }));
             const __VLS_99 = __VLS_98({
                 ...{ 'onClick': {} },
-                variant: "primary",
-                loading: (__VLS_ctx.submitting),
+                variant: "ghost",
+                disabled: (__VLS_ctx.submitting),
             }, ...__VLS_functionalComponentArgsRest(__VLS_98));
             let __VLS_101;
             let __VLS_102;
             let __VLS_103;
             const __VLS_104 = {
-                onClick: (__VLS_ctx.unarchiveItem)
+                onClick: (__VLS_ctx.dismissItem)
             };
             __VLS_100.slots.default;
             var __VLS_100;
         }
-        else {
+        if (__VLS_ctx.inbox.selected.value.status === __VLS_ctx.InboxItemStatus.ARCHIVED) {
             const __VLS_105 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
@@ -813,114 +853,137 @@ else {
             let __VLS_110;
             let __VLS_111;
             const __VLS_112 = {
-                onClick: (__VLS_ctx.archiveItem)
+                onClick: (__VLS_ctx.unarchiveItem)
             };
             __VLS_108.slots.default;
             var __VLS_108;
         }
+        else {
+            const __VLS_113 = {}.VButton;
+            /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+            // @ts-ignore
+            const __VLS_114 = __VLS_asFunctionalComponent(__VLS_113, new __VLS_113({
+                ...{ 'onClick': {} },
+                variant: "primary",
+                loading: (__VLS_ctx.submitting),
+            }));
+            const __VLS_115 = __VLS_114({
+                ...{ 'onClick': {} },
+                variant: "primary",
+                loading: (__VLS_ctx.submitting),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_114));
+            let __VLS_117;
+            let __VLS_118;
+            let __VLS_119;
+            const __VLS_120 = {
+                onClick: (__VLS_ctx.archiveItem)
+            };
+            __VLS_116.slots.default;
+            var __VLS_116;
+        }
     }
     var __VLS_20;
 }
-const __VLS_113 = {}.VModal;
+const __VLS_121 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_114 = __VLS_asFunctionalComponent(__VLS_113, new __VLS_113({
+const __VLS_122 = __VLS_asFunctionalComponent(__VLS_121, new __VLS_121({
     modelValue: (__VLS_ctx.delegateOpen),
     title: "Delegate to teammate",
     closeOnBackdrop: (!__VLS_ctx.delegating),
 }));
-const __VLS_115 = __VLS_114({
+const __VLS_123 = __VLS_122({
     modelValue: (__VLS_ctx.delegateOpen),
     title: "Delegate to teammate",
     closeOnBackdrop: (!__VLS_ctx.delegating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_114));
-__VLS_116.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_122));
+__VLS_124.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
     ...{ class: "text-sm opacity-80 mb-3" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex flex-col gap-3" },
 });
-const __VLS_117 = {}.VSelect;
+const __VLS_125 = {}.VSelect;
 /** @type {[typeof __VLS_components.VSelect, ]} */ ;
 // @ts-ignore
-const __VLS_118 = __VLS_asFunctionalComponent(__VLS_117, new __VLS_117({
+const __VLS_126 = __VLS_asFunctionalComponent(__VLS_125, new __VLS_125({
     modelValue: (__VLS_ctx.delegateTarget),
     options: (__VLS_ctx.delegateOptions),
     label: "Recipient",
     disabled: (__VLS_ctx.delegating || __VLS_ctx.delegateOptions.length === 0),
 }));
-const __VLS_119 = __VLS_118({
+const __VLS_127 = __VLS_126({
     modelValue: (__VLS_ctx.delegateTarget),
     options: (__VLS_ctx.delegateOptions),
     label: "Recipient",
     disabled: (__VLS_ctx.delegating || __VLS_ctx.delegateOptions.length === 0),
-}, ...__VLS_functionalComponentArgsRest(__VLS_118));
-const __VLS_121 = {}.VTextarea;
+}, ...__VLS_functionalComponentArgsRest(__VLS_126));
+const __VLS_129 = {}.VTextarea;
 /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
 // @ts-ignore
-const __VLS_122 = __VLS_asFunctionalComponent(__VLS_121, new __VLS_121({
+const __VLS_130 = __VLS_asFunctionalComponent(__VLS_129, new __VLS_129({
     modelValue: (__VLS_ctx.delegateNote),
     label: "Note (optional)",
     rows: (3),
     disabled: (__VLS_ctx.delegating),
 }));
-const __VLS_123 = __VLS_122({
+const __VLS_131 = __VLS_130({
     modelValue: (__VLS_ctx.delegateNote),
     label: "Note (optional)",
     rows: (3),
     disabled: (__VLS_ctx.delegating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_122));
+}, ...__VLS_functionalComponentArgsRest(__VLS_130));
 {
-    const { actions: __VLS_thisSlot } = __VLS_116.slots;
-    const __VLS_125 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_126 = __VLS_asFunctionalComponent(__VLS_125, new __VLS_125({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        disabled: (__VLS_ctx.delegating),
-    }));
-    const __VLS_127 = __VLS_126({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        disabled: (__VLS_ctx.delegating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_126));
-    let __VLS_129;
-    let __VLS_130;
-    let __VLS_131;
-    const __VLS_132 = {
-        onClick: (...[$event]) => {
-            __VLS_ctx.delegateOpen = false;
-        }
-    };
-    __VLS_128.slots.default;
-    var __VLS_128;
+    const { actions: __VLS_thisSlot } = __VLS_124.slots;
     const __VLS_133 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
     const __VLS_134 = __VLS_asFunctionalComponent(__VLS_133, new __VLS_133({
         ...{ 'onClick': {} },
-        variant: "primary",
-        loading: (__VLS_ctx.delegating),
-        disabled: (!__VLS_ctx.delegateTarget || __VLS_ctx.delegateOptions.length === 0),
+        variant: "ghost",
+        disabled: (__VLS_ctx.delegating),
     }));
     const __VLS_135 = __VLS_134({
         ...{ 'onClick': {} },
-        variant: "primary",
-        loading: (__VLS_ctx.delegating),
-        disabled: (!__VLS_ctx.delegateTarget || __VLS_ctx.delegateOptions.length === 0),
+        variant: "ghost",
+        disabled: (__VLS_ctx.delegating),
     }, ...__VLS_functionalComponentArgsRest(__VLS_134));
     let __VLS_137;
     let __VLS_138;
     let __VLS_139;
     const __VLS_140 = {
-        onClick: (__VLS_ctx.confirmDelegate)
+        onClick: (...[$event]) => {
+            __VLS_ctx.delegateOpen = false;
+        }
     };
     __VLS_136.slots.default;
     var __VLS_136;
+    const __VLS_141 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_142 = __VLS_asFunctionalComponent(__VLS_141, new __VLS_141({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        loading: (__VLS_ctx.delegating),
+        disabled: (!__VLS_ctx.delegateTarget || __VLS_ctx.delegateOptions.length === 0),
+    }));
+    const __VLS_143 = __VLS_142({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        loading: (__VLS_ctx.delegating),
+        disabled: (!__VLS_ctx.delegateTarget || __VLS_ctx.delegateOptions.length === 0),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_142));
+    let __VLS_145;
+    let __VLS_146;
+    let __VLS_147;
+    const __VLS_148 = {
+        onClick: (__VLS_ctx.confirmDelegate)
+    };
+    __VLS_144.slots.default;
+    var __VLS_144;
 }
-var __VLS_116;
+var __VLS_124;
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['inbox-grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['inbox-sidebar']} */ ;
@@ -1073,6 +1136,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             submitUndecidable: submitUndecidable,
             archiveItem: archiveItem,
             unarchiveItem: unarchiveItem,
+            toDocument: toDocument,
             dismissItem: dismissItem,
             delegateOpen: delegateOpen,
             delegateTarget: delegateTarget,

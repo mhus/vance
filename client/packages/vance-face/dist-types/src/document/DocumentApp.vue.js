@@ -2,7 +2,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { EditorShell, VAlert, VBackButton, VButton, VCard, VDataList, VEmptyState, VFileInput, VInput, VModal, VPagination, VSelect, CodeEditor, } from '@/components';
 import { useDocuments } from '@/composables/useDocuments';
 import { useTenantProjects } from '@/composables/useTenantProjects';
-import { documentContentUrl } from '@vance/shared';
+import { consumeDocumentDraft, documentContentUrl } from '@vance/shared';
 import DocumentPreview from './DocumentPreview.vue';
 const PAGE_SIZE = 20;
 const projectsState = useTenantProjects();
@@ -72,6 +72,24 @@ onMounted(async () => {
     if (queryDoc) {
         await docsState.loadOne(queryDoc);
         fillEditor();
+    }
+    // One-shot draft handed over by another editor (Inbox "To
+    // Document"). Read-and-clear via consumeDocumentDraft so a refresh
+    // doesn't re-trigger the prefill. Requires a project to be selected
+    // — without one, the draft is silently dropped (rare; the user
+    // can re-trigger from the Inbox after picking a project).
+    if (params.get('createDraft') === '1') {
+        const draft = consumeDocumentDraft();
+        // Strip the URL-flag so a refresh starts clean.
+        syncQueryParam('createDraft', null);
+        if (draft && selectedProjectId.value) {
+            openCreateModal({
+                title: draft.title,
+                path: draft.path,
+                content: draft.content,
+                mimeType: draft.mimeType,
+            });
+        }
     }
 });
 watch(selectedProjectId, async (next) => {
@@ -157,13 +175,13 @@ function backToList() {
 function downloadUrl(doc) {
     return documentContentUrl(doc.id, true);
 }
-function openCreateModal() {
+function openCreateModal(prefill) {
     createMode.value = 'inline';
-    createPath.value = '';
-    createTitle.value = '';
+    createPath.value = prefill?.path ?? '';
+    createTitle.value = prefill?.title ?? '';
     createTagsRaw.value = '';
-    createMime.value = 'text/markdown';
-    createContent.value = '';
+    createMime.value = prefill?.mimeType ?? 'text/markdown';
+    createContent.value = prefill?.content ?? '';
     createFiles.value = [];
     createError.value = null;
     uploadProgress.value = [];
@@ -809,7 +827,15 @@ else {
     let __VLS_97;
     let __VLS_98;
     const __VLS_99 = {
-        onClick: (__VLS_ctx.openCreateModal)
+        onClick: (...[$event]) => {
+            if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                return;
+            if (!!(!__VLS_ctx.selectedProjectId))
+                return;
+            if (!!(__VLS_ctx.docsState.selected.value))
+                return;
+            __VLS_ctx.openCreateModal();
+        }
     };
     __VLS_95.slots.default;
     var __VLS_95;
@@ -860,7 +886,17 @@ else {
             let __VLS_113;
             let __VLS_114;
             const __VLS_115 = {
-                onClick: (__VLS_ctx.openCreateModal)
+                onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                        return;
+                    if (!!(!__VLS_ctx.selectedProjectId))
+                        return;
+                    if (!!(__VLS_ctx.docsState.selected.value))
+                        return;
+                    if (!(!__VLS_ctx.docsState.loading.value && __VLS_ctx.docsState.items.value.length === 0))
+                        return;
+                    __VLS_ctx.openCreateModal();
+                }
             };
             __VLS_111.slots.default;
             var __VLS_111;

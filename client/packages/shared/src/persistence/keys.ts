@@ -7,6 +7,9 @@ export const StorageKeys = {
   tenantId: 'vance.tenantId',
   username: 'vance.username',
   activeSessionId: 'vance.activeSessionId',
+  /** One-shot draft handed across editors (e.g. Inbox → Document
+   *  "create from message"). See `documentDraft.ts`. */
+  documentDraft: 'vance.documentDraft',
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];

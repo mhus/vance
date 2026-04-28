@@ -14,7 +14,7 @@ import {
 } from '@/components';
 import { useInbox, type AssignedToFilter, type InboxFilter } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
-import { getUsername } from '@vance/shared';
+import { getUsername, setDocumentDraft } from '@vance/shared';
 import {
   AnswerOutcome,
   Criticality,
@@ -199,6 +199,47 @@ async function unarchiveItem(): Promise<void> {
   } finally {
     submitting.value = false;
   }
+}
+
+/**
+ * Hand the current item over to the document editor as a fresh
+ * draft. The Document editor reads the draft on mount (one-shot)
+ * and opens its create-modal prefilled with title / path / content
+ * — see specification/web-ui.md §… (Inbox → Document handoff).
+ */
+async function toDocument(): Promise<void> {
+  const sel = inbox.selected.value;
+  if (!sel) return;
+  const ts = sel.createdAt
+    ? new Date(sel.createdAt).toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+  // Slug for the suggested file path. Keep it conservative — the
+  // user can edit before saving.
+  const slug = (sel.title || sel.id || 'inbox-item')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'inbox-item';
+  setDocumentDraft({
+    title: sel.title ?? '',
+    path: `inbox/${ts}-${slug}.md`,
+    content: sel.body ?? '',
+    mimeType: 'text/markdown',
+    source: `Inbox item «${sel.title ?? '(no title)'}» from ${sel.originatorUserId}`,
+  });
+  // Archive the item — once it's been promoted to a document, it's
+  // no longer pending in the inbox. Skip if already archived.
+  if (sel.id && sel.status !== InboxItemStatus.ARCHIVED) {
+    submitting.value = true;
+    try {
+      await inbox.archive(sel.id);
+    } finally {
+      submitting.value = false;
+    }
+  }
+  // Same-tab navigation — the Document editor mounts fresh and
+  // consumes the draft on its first onMounted.
+  window.location.href = '/document-editor.html?createDraft=1';
 }
 
 async function dismissItem(): Promise<void> {
@@ -475,6 +516,11 @@ const breadcrumbs = computed<string[]>(() => {
 
               <span class="grow" />
 
+              <VButton
+                variant="ghost"
+                :disabled="submitting"
+                @click="toDocument"
+              >To Document</VButton>
               <VButton
                 variant="ghost"
                 :disabled="submitting"

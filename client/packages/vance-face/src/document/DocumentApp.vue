@@ -17,7 +17,7 @@ import {
 } from '@/components';
 import { useDocuments } from '@/composables/useDocuments';
 import { useTenantProjects } from '@/composables/useTenantProjects';
-import { documentContentUrl } from '@vance/shared';
+import { consumeDocumentDraft, documentContentUrl } from '@vance/shared';
 import DocumentPreview from './DocumentPreview.vue';
 import type {
   DocumentSummary,
@@ -114,6 +114,24 @@ onMounted(async () => {
     await docsState.loadOne(queryDoc);
     fillEditor();
   }
+  // One-shot draft handed over by another editor (Inbox "To
+  // Document"). Read-and-clear via consumeDocumentDraft so a refresh
+  // doesn't re-trigger the prefill. Requires a project to be selected
+  // — without one, the draft is silently dropped (rare; the user
+  // can re-trigger from the Inbox after picking a project).
+  if (params.get('createDraft') === '1') {
+    const draft = consumeDocumentDraft();
+    // Strip the URL-flag so a refresh starts clean.
+    syncQueryParam('createDraft', null);
+    if (draft && selectedProjectId.value) {
+      openCreateModal({
+        title: draft.title,
+        path: draft.path,
+        content: draft.content,
+        mimeType: draft.mimeType,
+      });
+    }
+  }
 });
 
 watch(selectedProjectId, async (next) => {
@@ -204,13 +222,20 @@ function downloadUrl(doc: { id: string }): string {
   return documentContentUrl(doc.id, true);
 }
 
-function openCreateModal(): void {
+interface CreateModalPrefill {
+  title?: string;
+  path?: string;
+  content?: string;
+  mimeType?: string;
+}
+
+function openCreateModal(prefill?: CreateModalPrefill): void {
   createMode.value = 'inline';
-  createPath.value = '';
-  createTitle.value = '';
+  createPath.value = prefill?.path ?? '';
+  createTitle.value = prefill?.title ?? '';
   createTagsRaw.value = '';
-  createMime.value = 'text/markdown';
-  createContent.value = '';
+  createMime.value = prefill?.mimeType ?? 'text/markdown';
+  createContent.value = prefill?.content ?? '';
   createFiles.value = [];
   createError.value = null;
   uploadProgress.value = [];
@@ -565,7 +590,7 @@ const formatBytes = (n: number): string => {
             class="btn btn-ghost btn-sm"
             @click="applyPathFilter('', true)"
           >Clear filter</button>
-          <VButton variant="primary" size="sm" @click="openCreateModal">+ New document</VButton>
+          <VButton variant="primary" size="sm" @click="openCreateModal()">+ New document</VButton>
         </div>
 
         <VAlert v-if="docsState.error.value" variant="error" class="mb-4">
@@ -578,7 +603,7 @@ const formatBytes = (n: number): string => {
           body="This project has no documents yet."
         >
           <template #action>
-            <VButton variant="primary" @click="openCreateModal">Create first document</VButton>
+            <VButton variant="primary" @click="openCreateModal()">Create first document</VButton>
           </template>
         </VEmptyState>
 

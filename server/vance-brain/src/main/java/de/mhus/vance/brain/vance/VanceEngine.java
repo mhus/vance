@@ -51,15 +51,75 @@ public class VanceEngine implements ThinkEngine {
             "Hi, I'm Vance. What can I take off your plate?";
 
     /**
-     * Phase-2 tool cut. The {@code organizational} category arrives in
-     * phase 3; for now Vance has access only to recipe discovery and
-     * docs — enough to compile and run, not enough to actually create
-     * projects yet.
+     * Vance's tool cut. Wider than originally specced — Vance is
+     * Jarvis-like: she can do small things herself (search the web,
+     * compute, recall notes) and only delegates the bigger work to
+     * worker projects. The tool set spans four groups:
+     *
+     * <ul>
+     *   <li><b>Identity / discovery</b>: {@code whoami},
+     *       {@code current_time}, {@code find_tools},
+     *       {@code describe_tool}, {@code invoke_tool} —
+     *       so Vance can introspect what she has.</li>
+     *   <li><b>Quick research / compute</b>: {@code web_search},
+     *       {@code web_fetch}, {@code execute_javascript} —
+     *       enough for a one-shot answer without spawning a worker.</li>
+     *   <li><b>Personal memory</b>: {@code scratchpad_get/set/list/delete}
+     *       — Vance's own note-pad for things the user wants
+     *       remembered between sessions.</li>
+     *   <li><b>Organizational</b>: {@code project_list},
+     *       {@code recipe_list}, {@code recipe_describe},
+     *       {@code docs_list}, {@code docs_read} —
+     *       inventory of the user's projects + worker recipes
+     *       + Vance docs. {@code project_create},
+     *       {@code process_create}, {@code process_steer},
+     *       {@code process_observe}, {@code peer_notify}
+     *       arrive later in phase 3.</li>
+     * </ul>
+     *
+     * <p>What's deliberately absent: {@code workspace_*} (file I/O is
+     * worker concern), {@code exec_run} (shell commands —
+     * worker concern), {@code rag_*} (worker memory, not hub
+     * memory), {@code workspace_execute_javascript}
+     * ({@code execute_javascript} is enough for hub-side compute).
      */
     private static final Set<String> ALLOWED_TOOLS = Set.of(
+            // Identity / discovery
             "whoami",
+            "current_time",
+            "find_tools",
+            "describe_tool",
+            "invoke_tool",
+            // Quick research / compute
+            "web_search",
+            "web_fetch",
+            "execute_javascript",
+            // Personal memory
+            "scratchpad_get",
+            "scratchpad_set",
+            "scratchpad_list",
+            "scratchpad_delete",
+            // Project organisation
+            "project_list",
+            "project_switch",
+            "project_current",
             "recipe_list",
             "recipe_describe",
+            // Documents (within active project)
+            "doc_list",
+            "doc_find",
+            "doc_read",
+            "doc_create_text",
+            "doc_import_url",
+            // Teams
+            "team_list",
+            "team_describe",
+            // Inbox — for posting findings / outputs to the user
+            "inbox_post",
+            // Vance hub-specific docs (separate from general Brain docs)
+            "vance_docs_list",
+            "vance_docs_read",
+            // General Brain docs (workers, RAG, internals)
             "docs_list",
             "docs_read");
 

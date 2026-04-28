@@ -8,6 +8,7 @@ import {
   VEmptyState,
   VInput,
   VSelect,
+  type Crumb,
 } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import {
@@ -20,6 +21,7 @@ import {
 } from '@/composables/useInsights';
 import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem, { type MarvinTreeNode } from './MarvinTreeItem.vue';
+import SessionTimelineTab from './SessionTimelineTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -180,12 +182,21 @@ const sessionProcessesForTab = computed<ThinkProcessInsightsDto[]>(() => {
 const isMarvin = computed(() =>
   (selectedProcess.value?.thinkEngine ?? '').toLowerCase() === 'marvin');
 
-const breadcrumbs = computed<string[]>(() => {
+const breadcrumbs = computed<Crumb[]>(() => {
   const sel = selection.value;
   if (!sel) return [];
   if (sel.kind === 'session') return [`Session: ${sel.id}`];
   const p = selectedProcess.value;
-  return p ? [`Session: ${p.sessionId}`, `Process: ${p.name}`] : ['Process'];
+  if (!p) return ['Process'];
+  // When a process is selected, the session crumb navigates back to the
+  // session view — the most common "go up one level" gesture.
+  return [
+    {
+      text: `Session: ${p.sessionId}`,
+      onClick: () => { selection.value = { kind: 'session', id: p.sessionId }; },
+    },
+    `Process: ${p.name}`,
+  ];
 });
 
 const combinedError = computed<string | null>(() =>
@@ -348,6 +359,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               :class="{ 'tab--active': activeTab === 'processes' }"
               @click="activeTab = 'processes'"
             >Processes ({{ sessionProcessesForTab.length }})</button>
+            <button
+              class="tab"
+              :class="{ 'tab--active': activeTab === 'timeline' }"
+              @click="activeTab = 'timeline'"
+            >Timeline</button>
           </div>
 
           <VCard v-if="activeTab === 'overview'" :title="`Session ${selectedSession.sessionId}`">
@@ -398,6 +414,12 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               </li>
             </ul>
           </VCard>
+
+          <SessionTimelineTab
+            v-if="activeTab === 'timeline'"
+            :processes="sessionProcessesForTab"
+            @select-process="clickProcessByMongoId"
+          />
         </template>
       </template>
 

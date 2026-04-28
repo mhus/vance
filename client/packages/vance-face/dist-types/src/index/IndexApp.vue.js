@@ -347,6 +347,31 @@ else {
     }, ...__VLS_functionalComponentArgsRest(__VLS_53));
     __VLS_55.slots.default;
     var __VLS_55;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+        ...{ class: "flex items-center justify-between gap-4" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "font-semibold" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "text-sm opacity-70" },
+    });
+    const __VLS_56 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+        variant: "primary",
+        size: "sm",
+        href: "/users.html",
+    }));
+    const __VLS_58 = __VLS_57({
+        variant: "primary",
+        size: "sm",
+        href: "/users.html",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+    __VLS_59.slots.default;
+    var __VLS_59;
     var __VLS_31;
     var __VLS_27;
 }
@@ -377,6 +402,13 @@ else {
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-between']} */ ;

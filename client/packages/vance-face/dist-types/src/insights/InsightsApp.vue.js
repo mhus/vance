@@ -4,6 +4,7 @@ import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useInsightsSessions, useSessionProcesses, useProcessDetail, useProcessChat, useProcessMemory, useMarvinTree, } from '@/composables/useInsights';
 import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem from './MarvinTreeItem.vue';
+import SessionTimelineTab from './SessionTimelineTab.vue';
 import { ChatRole, } from '@vance/generated';
 const tenantProjects = useTenantProjects();
 const sessionsState = useInsightsSessions();
@@ -141,7 +142,17 @@ const breadcrumbs = computed(() => {
     if (sel.kind === 'session')
         return [`Session: ${sel.id}`];
     const p = selectedProcess.value;
-    return p ? [`Session: ${p.sessionId}`, `Process: ${p.name}`] : ['Process'];
+    if (!p)
+        return ['Process'];
+    // When a process is selected, the session crumb navigates back to the
+    // session view — the most common "go up one level" gesture.
+    return [
+        {
+            text: `Session: ${p.sessionId}`,
+            onClick: () => { selection.value = { kind: 'session', id: p.sessionId }; },
+        },
+        `Process: ${p.name}`,
+    ];
 });
 const combinedError = computed(() => sessionsState.error.value
     || processesState.error.value
@@ -450,6 +461,19 @@ else if (__VLS_ctx.selection.kind === 'session') {
             ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'processes' }) },
         });
         (__VLS_ctx.sessionProcessesForTab.length);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.selection))
+                        return;
+                    if (!(__VLS_ctx.selection.kind === 'session'))
+                        return;
+                    if (!!(!__VLS_ctx.selectedSession))
+                        return;
+                    __VLS_ctx.activeTab = 'timeline';
+                } },
+            ...{ class: "tab" },
+            ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'timeline' }) },
+        });
         if (__VLS_ctx.activeTab === 'overview') {
             const __VLS_37 = {}.VCard;
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
@@ -602,6 +626,25 @@ else if (__VLS_ctx.selection.kind === 'session') {
             }
             var __VLS_44;
         }
+        if (__VLS_ctx.activeTab === 'timeline') {
+            /** @type {[typeof SessionTimelineTab, ]} */ ;
+            // @ts-ignore
+            const __VLS_45 = __VLS_asFunctionalComponent(SessionTimelineTab, new SessionTimelineTab({
+                ...{ 'onSelectProcess': {} },
+                processes: (__VLS_ctx.sessionProcessesForTab),
+            }));
+            const __VLS_46 = __VLS_45({
+                ...{ 'onSelectProcess': {} },
+                processes: (__VLS_ctx.sessionProcessesForTab),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_45));
+            let __VLS_48;
+            let __VLS_49;
+            let __VLS_50;
+            const __VLS_51 = {
+                onSelectProcess: (__VLS_ctx.clickProcessByMongoId)
+            };
+            var __VLS_47;
+        }
     }
 }
 else if (__VLS_ctx.selection.kind === 'process') {
@@ -679,16 +722,16 @@ else if (__VLS_ctx.selection.kind === 'process') {
             });
         }
         if (__VLS_ctx.activeTab === 'overview') {
-            const __VLS_45 = {}.VCard;
+            const __VLS_52 = {}.VCard;
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
-            const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+            const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
                 title: (`Process ${__VLS_ctx.selectedProcess.name}`),
             }));
-            const __VLS_47 = __VLS_46({
+            const __VLS_54 = __VLS_53({
                 title: (`Process ${__VLS_ctx.selectedProcess.name}`),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_46));
-            __VLS_48.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+            __VLS_55.slots.default;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
                 ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm" },
             });
@@ -766,32 +809,32 @@ else if (__VLS_ctx.selection.kind === 'process') {
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.updatedAt));
-            var __VLS_48;
-            const __VLS_49 = {}.VCard;
+            var __VLS_55;
+            const __VLS_56 = {}.VCard;
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
-            const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
+            const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
                 title: "Engine params",
             }));
-            const __VLS_51 = __VLS_50({
+            const __VLS_58 = __VLS_57({
                 title: "Engine params",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_50));
-            __VLS_52.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+            __VLS_59.slots.default;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
                 ...{ class: "json-block" },
             });
             (__VLS_ctx.asJson(__VLS_ctx.selectedProcess.engineParams));
-            var __VLS_52;
-            const __VLS_53 = {}.VCard;
+            var __VLS_59;
+            const __VLS_60 = {}.VCard;
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
-            const __VLS_54 = __VLS_asFunctionalComponent(__VLS_53, new __VLS_53({
+            const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
                 title: "Active skills",
             }));
-            const __VLS_55 = __VLS_54({
+            const __VLS_62 = __VLS_61({
                 title: "Active skills",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_54));
-            __VLS_56.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+            __VLS_63.slots.default;
             if (__VLS_ctx.selectedProcess.activeSkills.length === 0) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "opacity-70" },
@@ -822,17 +865,17 @@ else if (__VLS_ctx.selection.kind === 'process') {
                     }
                 }
             }
-            var __VLS_56;
-            const __VLS_57 = {}.VCard;
+            var __VLS_63;
+            const __VLS_64 = {}.VCard;
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
-            const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({
+            const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
                 title: "Pending queue",
             }));
-            const __VLS_59 = __VLS_58({
+            const __VLS_66 = __VLS_65({
                 title: "Pending queue",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_58));
-            __VLS_60.slots.default;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+            __VLS_67.slots.default;
             if (__VLS_ctx.selectedProcess.pendingMessages.length === 0) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "opacity-70" },
@@ -864,7 +907,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
                     (__VLS_ctx.asJson(m.payload));
                 }
             }
-            var __VLS_60;
+            var __VLS_67;
         }
         else if (__VLS_ctx.activeTab === 'chat') {
             if (__VLS_ctx.chatState.loading.value) {
@@ -873,17 +916,17 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 });
             }
             else if (__VLS_ctx.chatState.messages.value.length === 0) {
-                const __VLS_61 = {}.VEmptyState;
+                const __VLS_68 = {}.VEmptyState;
                 /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                 // @ts-ignore
-                const __VLS_62 = __VLS_asFunctionalComponent(__VLS_61, new __VLS_61({
+                const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
                     headline: "No messages",
                     body: "This process has no chat history.",
                 }));
-                const __VLS_63 = __VLS_62({
+                const __VLS_70 = __VLS_69({
                     headline: "No messages",
                     body: "This process has no chat history.",
-                }, ...__VLS_functionalComponentArgsRest(__VLS_62));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_69));
             }
             else {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
@@ -915,15 +958,15 @@ else if (__VLS_ctx.selection.kind === 'process') {
                         });
                         (m.archivedInMemoryId);
                     }
-                    const __VLS_65 = {}.MarkdownView;
+                    const __VLS_72 = {}.MarkdownView;
                     /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
                     // @ts-ignore
-                    const __VLS_66 = __VLS_asFunctionalComponent(__VLS_65, new __VLS_65({
+                    const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
                         source: (m.content),
                     }));
-                    const __VLS_67 = __VLS_66({
+                    const __VLS_74 = __VLS_73({
                         source: (m.content),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_66));
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_73));
                 }
             }
         }
@@ -934,35 +977,35 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 });
             }
             else if (__VLS_ctx.memoryState.entries.value.length === 0) {
-                const __VLS_69 = {}.VEmptyState;
+                const __VLS_76 = {}.VEmptyState;
                 /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                 // @ts-ignore
-                const __VLS_70 = __VLS_asFunctionalComponent(__VLS_69, new __VLS_69({
+                const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
                     headline: "No memory",
                     body: "No engine-side memory entries are scoped to this process.",
                 }));
-                const __VLS_71 = __VLS_70({
+                const __VLS_78 = __VLS_77({
                     headline: "No memory",
                     body: "No engine-side memory entries are scoped to this process.",
-                }, ...__VLS_functionalComponentArgsRest(__VLS_70));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_77));
             }
             else {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "flex flex-col gap-3" },
                 });
                 for (const [m] of __VLS_getVForSourceType((__VLS_ctx.memoryState.entries.value))) {
-                    const __VLS_73 = {}.VCard;
+                    const __VLS_80 = {}.VCard;
                     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                     // @ts-ignore
-                    const __VLS_74 = __VLS_asFunctionalComponent(__VLS_73, new __VLS_73({
+                    const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
                         key: (m.id),
                         title: (m.title || m.kind),
                     }));
-                    const __VLS_75 = __VLS_74({
+                    const __VLS_82 = __VLS_81({
                         key: (m.id),
                         title: (m.title || m.kind),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_74));
-                    __VLS_76.slots.default;
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_81));
+                    __VLS_83.slots.default;
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "text-xs opacity-60 mb-2 flex flex-wrap gap-x-3 gap-y-1" },
                     });
@@ -980,15 +1023,15 @@ else if (__VLS_ctx.selection.kind === 'process') {
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
                         (m.sourceRefs.length);
                     }
-                    const __VLS_77 = {}.MarkdownView;
+                    const __VLS_84 = {}.MarkdownView;
                     /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
                     // @ts-ignore
-                    const __VLS_78 = __VLS_asFunctionalComponent(__VLS_77, new __VLS_77({
+                    const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
                         source: (m.content),
                     }));
-                    const __VLS_79 = __VLS_78({
+                    const __VLS_86 = __VLS_85({
                         source: (m.content),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_78));
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_85));
                     if (Object.keys(m.metadata).length > 0) {
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.details, __VLS_intrinsicElements.details)({
                             ...{ class: "mt-3" },
@@ -1001,7 +1044,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
                         });
                         (__VLS_ctx.asJson(m.metadata));
                     }
-                    var __VLS_76;
+                    var __VLS_83;
                 }
             }
         }
@@ -1012,29 +1055,29 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 });
             }
             else if (__VLS_ctx.treeState.nodes.value.length === 0) {
-                const __VLS_81 = {}.VEmptyState;
+                const __VLS_88 = {}.VEmptyState;
                 /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                 // @ts-ignore
-                const __VLS_82 = __VLS_asFunctionalComponent(__VLS_81, new __VLS_81({
+                const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
                     headline: "Empty tree",
                     body: "No nodes have been planned yet.",
                 }));
-                const __VLS_83 = __VLS_82({
+                const __VLS_90 = __VLS_89({
                     headline: "Empty tree",
                     body: "No nodes have been planned yet.",
-                }, ...__VLS_functionalComponentArgsRest(__VLS_82));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_89));
             }
             else {
-                const __VLS_85 = {}.VCard;
+                const __VLS_92 = {}.VCard;
                 /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                 // @ts-ignore
-                const __VLS_86 = __VLS_asFunctionalComponent(__VLS_85, new __VLS_85({
+                const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
                     title: "Marvin tree",
                 }));
-                const __VLS_87 = __VLS_86({
+                const __VLS_94 = __VLS_93({
                     title: "Marvin tree",
-                }, ...__VLS_functionalComponentArgsRest(__VLS_86));
-                __VLS_88.slots.default;
+                }, ...__VLS_functionalComponentArgsRest(__VLS_93));
+                __VLS_95.slots.default;
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
                     ...{ class: "marvin-tree" },
                 });
@@ -1044,23 +1087,23 @@ else if (__VLS_ctx.selection.kind === 'process') {
                     });
                     /** @type {[typeof MarvinTreeItem, ]} */ ;
                     // @ts-ignore
-                    const __VLS_89 = __VLS_asFunctionalComponent(MarvinTreeItem, new MarvinTreeItem({
+                    const __VLS_96 = __VLS_asFunctionalComponent(MarvinTreeItem, new MarvinTreeItem({
                         ...{ 'onSelectProcess': {} },
                         node: (root),
                     }));
-                    const __VLS_90 = __VLS_89({
+                    const __VLS_97 = __VLS_96({
                         ...{ 'onSelectProcess': {} },
                         node: (root),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_89));
-                    let __VLS_92;
-                    let __VLS_93;
-                    let __VLS_94;
-                    const __VLS_95 = {
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_96));
+                    let __VLS_99;
+                    let __VLS_100;
+                    let __VLS_101;
+                    const __VLS_102 = {
                         onSelectProcess: (__VLS_ctx.clickProcessByMongoId)
                     };
-                    var __VLS_91;
+                    var __VLS_98;
                 }
-                var __VLS_88;
+                var __VLS_95;
             }
         }
     }
@@ -1090,15 +1133,15 @@ else if (__VLS_ctx.selection.kind === 'process') {
         });
     }
     else {
-        const __VLS_96 = {}.MarkdownView;
+        const __VLS_103 = {}.MarkdownView;
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
-        const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
+        const __VLS_104 = __VLS_asFunctionalComponent(__VLS_103, new __VLS_103({
             source: (__VLS_ctx.help.content.value),
         }));
-        const __VLS_98 = __VLS_97({
+        const __VLS_105 = __VLS_104({
             source: (__VLS_ctx.help.content.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_97));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_104));
     }
 }
 var __VLS_3;
@@ -1155,6 +1198,8 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['max-w-5xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab-bar']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
@@ -1321,6 +1366,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VInput: VInput,
             VSelect: VSelect,
             MarvinTreeItem: MarvinTreeItem,
+            SessionTimelineTab: SessionTimelineTab,
             ChatRole: ChatRole,
             sessionsState: sessionsState,
             chatState: chatState,

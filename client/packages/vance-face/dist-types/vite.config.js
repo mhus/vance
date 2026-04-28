@@ -11,6 +11,7 @@ const editorEntries = {
     recipes: resolve(__dirname, 'recipes.html'),
     skills: resolve(__dirname, 'skills.html'),
     insights: resolve(__dirname, 'insights.html'),
+    users: resolve(__dirname, 'users.html'),
 };
 export default defineConfig({
     plugins: [vue()],

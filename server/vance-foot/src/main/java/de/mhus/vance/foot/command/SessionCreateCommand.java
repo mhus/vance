@@ -56,5 +56,16 @@ public class SessionCreateCommand implements SlashCommand {
         sessions.bind(response.getSessionId(), response.getProjectId());
         terminal.info("Session created: " + response.getSessionId()
                 + " (project=" + response.getProjectId() + ")");
+
+        // Auto-pick the brain-bootstrapped chat-process as active so
+        // free-text input from the REPL routes there immediately —
+        // mirrors what /session-bootstrap does, but for the simpler
+        // single-arg /session-create entry point.
+        String chatProcessName = response.getChatProcessName();
+        if (chatProcessName != null && !chatProcessName.isBlank()) {
+            sessions.setActiveProcess(chatProcessName);
+            terminal.info("Active process: " + chatProcessName
+                    + " (engine=" + response.getChatEngine() + ")");
+        }
     }
 }

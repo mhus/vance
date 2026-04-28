@@ -14,6 +14,7 @@ import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -46,6 +47,7 @@ public class SessionCreateHandler implements WsHandler {
     private final SessionChatBootstrapper chatBootstrapper;
     private final ChatMessageService chatMessageService;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
+    private final HomeBootstrapService homeBootstrapService;
 
     @Override
     public String type() {
@@ -72,8 +74,12 @@ public class SessionCreateHandler implements WsHandler {
             return;
         }
 
-        Optional<ProjectDocument> project =
-                projectService.findByTenantAndName(ctx.getTenantId(), request.getProjectId());
+        // Lazy Hub-provisioning: a session-create against an unknown
+        // _user_<login> project where <login> is a real user triggers
+        // the Hub bootstrap on the spot. Robustness against logins
+        // that didn't go through the AccessController bootstrap path.
+        Optional<ProjectDocument> project = homeBootstrapService.resolveOrAutoProvision(
+                ctx.getTenantId(), request.getProjectId());
         if (project.isEmpty()) {
             sender.sendError(wsSession, envelope, 404,
                     "Project '" + request.getProjectId() + "' not found");

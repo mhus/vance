@@ -21,6 +21,7 @@ import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -71,6 +72,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private final SessionChatBootstrapper chatBootstrapper;
     private final RecipeResolver recipeResolver;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
+    private final HomeBootstrapService homeBootstrapService;
 
     @Override
     public String type() {
@@ -383,7 +385,8 @@ public class SessionBootstrapHandler implements WsHandler {
             projectId = all.get(0).getName();
             log.info("session-bootstrap: defaulted projectId to '{}' (tenant='{}')",
                     projectId, ctx.getTenantId());
-        } else if (projectService.findByTenantAndName(ctx.getTenantId(), projectId).isEmpty()) {
+        } else if (homeBootstrapService.resolveOrAutoProvision(
+                ctx.getTenantId(), projectId).isEmpty()) {
             sender.sendError(wsSession, envelope, 404,
                     "Project '" + projectId + "' not found");
             return Optional.empty();

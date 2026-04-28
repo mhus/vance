@@ -169,12 +169,24 @@ public class MarvinEngine implements ThinkEngine {
     /** Hard cap on JSON-format-correction re-prompts per worker. */
     private static final int MAX_OUTPUT_CORRECTIONS = 2;
 
+    /**
+     * Marvin's tool cut for PLAN / AGGREGATE turns. Discovery + a
+     * narrow set of "look it up before deciding" tools so a PLAN
+     * isn't built from training-data guesses about a topic Marvin
+     * has never heard of. The actual heavy work still happens in
+     * spawned WORKER nodes (Ford recipes); these tools are for
+     * orientation only.
+     */
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "whoami",
+            "current_time",
             "recipe_list",
             "recipe_describe",
             "docs_list",
-            "docs_read");
+            "docs_read",
+            "web_search",
+            "web_fetch",
+            "execute_javascript");
 
     private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";

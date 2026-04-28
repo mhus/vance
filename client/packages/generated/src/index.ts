@@ -67,5 +67,13 @@ export * from './teams/TeamSummary';
 export * from './tenant/TenantDto';
 export * from './tenant/TenantUpdateRequest';
 
+export * from './users/TeamCreateRequest';
+export * from './users/TeamDto';
+export * from './users/TeamUpdateRequest';
+export * from './users/UserCreateRequest';
+export * from './users/UserDto';
+export * from './users/UserPasswordRequest';
+export * from './users/UserUpdateRequest';
+
 export * from './ws/ProjectGroupSummary';
 export * from './ws/ProjectSummary';

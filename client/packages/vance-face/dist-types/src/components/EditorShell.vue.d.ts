@@ -1,8 +1,18 @@
+/**
+ * A breadcrumb segment. Either a plain string label (immutable, no
+ * navigation) or an object with an {@code onClick} handler that turns
+ * the segment into a button — used to navigate back to a parent view
+ * (e.g. from a process detail back to the owning session).
+ */
+export type Crumb = string | {
+    text: string;
+    onClick?: () => void;
+};
 interface Props {
     /** Page title shown in the topbar. */
     title: string;
     /** Breadcrumb segments left-to-right (e.g. `['Project foo', 'Session bar']`). */
-    breadcrumbs?: string[];
+    breadcrumbs?: Crumb[];
     /**
      * Connection-state dot in the topbar. Only chat-editor sets this; REST-only
      * editors omit the prop and the dot is hidden.
@@ -25,7 +35,7 @@ type __VLS_Slots = {} & {
     'right-panel'?: (props: typeof __VLS_7) => any;
 };
 declare const __VLS_component: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<Props> & Readonly<{}>, {
-    breadcrumbs: string[];
+    breadcrumbs: Crumb[];
     wideRightPanel: boolean;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 declare const _default: __VLS_WithSlots<typeof __VLS_component, __VLS_Slots>;

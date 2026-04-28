@@ -5,6 +5,8 @@ import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
 import java.util.LinkedHashMap;
@@ -73,10 +75,22 @@ public class InboxPostTool implements Tool {
                             "description", "Type-specific structured payload "
                                     + "(options for DECISION, schema for STRUCTURE_EDIT, "
                                     + "url for OUTPUT_IMAGE, default for LOW auto-answer, ...).",
-                            "additionalProperties", true)),
+                            "additionalProperties", true),
+                    "documentRef", Map.of(
+                            "type", "object",
+                            "description", "Optional reference to a document the "
+                                    + "item is about. Validated against DocumentService; "
+                                    + "the resolved ref lands in payload.documentRef "
+                                    + "as {projectId, documentId, path, title}. "
+                                    + "Identify the doc by id or by (projectId, path).",
+                            "properties", Map.of(
+                                    "id", Map.of("type", "string"),
+                                    "projectId", Map.of("type", "string"),
+                                    "path", Map.of("type", "string")))),
             "required", List.of("targetUserId", "type", "title"));
 
     private final InboxItemService inboxItemService;
+    private final DocumentService documentService;
 
     @Override
     public String name() {
@@ -113,6 +127,11 @@ public class InboxPostTool implements Tool {
         Criticality criticality = parseCriticality(optString(params, "criticality"));
         List<String> tags = optStringList(params, "tags");
         Map<String, Object> payload = optMap(params, "payload");
+        Map<String, Object> resolvedDocRef = resolveDocumentRef(params, ctx);
+        if (resolvedDocRef != null) {
+            if (payload == null) payload = new LinkedHashMap<>();
+            payload.put("documentRef", resolvedDocRef);
+        }
 
         InboxItemDocument toCreate = InboxItemDocument.builder()
                 .tenantId(tenantId)
@@ -150,6 +169,54 @@ public class InboxPostTool implements Tool {
             case APPROVAL, DECISION, FEEDBACK, ORDERING, STRUCTURE_EDIT -> true;
             case OUTPUT_TEXT, OUTPUT_IMAGE, OUTPUT_DOCUMENT -> false;
         };
+    }
+
+    /**
+     * Looks up the document referenced by the {@code documentRef} param
+     * and returns a normalized ref map suitable for {@code payload.documentRef}.
+     * Returns {@code null} when no documentRef was passed.
+     */
+    private @org.jspecify.annotations.Nullable Map<String, Object> resolveDocumentRef(
+            Map<String, Object> params, ToolInvocationContext ctx) {
+        if (params == null) return null;
+        Object rawRef = params.get("documentRef");
+        if (!(rawRef instanceof Map<?, ?> refMap) || refMap.isEmpty()) {
+            return null;
+        }
+        Object rawId = refMap.get("id");
+        Object rawProjectId = refMap.get("projectId");
+        Object rawPath = refMap.get("path");
+        String id = rawId instanceof String s && !s.isBlank() ? s.trim() : null;
+        String projectId = rawProjectId instanceof String s && !s.isBlank() ? s.trim() : null;
+        String path = rawPath instanceof String s && !s.isBlank() ? s.trim() : null;
+
+        DocumentDocument doc;
+        if (id != null) {
+            doc = documentService.findById(id)
+                    .orElseThrow(() -> new ToolException(
+                            "documentRef.id '" + id + "' not found"));
+            if (!ctx.tenantId().equals(doc.getTenantId())) {
+                throw new ToolException(
+                        "documentRef.id '" + id + "' not in your tenant");
+            }
+        } else if (projectId != null && path != null) {
+            doc = documentService.findByPath(ctx.tenantId(), projectId, path)
+                    .orElseThrow(() -> new ToolException(
+                            "documentRef '" + projectId + "/" + path
+                                    + "' not found"));
+        } else {
+            throw new ToolException(
+                    "documentRef requires either 'id' or both "
+                            + "'projectId' and 'path'");
+        }
+
+        Map<String, Object> ref = new LinkedHashMap<>();
+        ref.put("documentId", doc.getId());
+        ref.put("projectId", doc.getProjectId());
+        ref.put("path", doc.getPath());
+        if (doc.getTitle() != null) ref.put("title", doc.getTitle());
+        if (doc.getMimeType() != null) ref.put("mimeType", doc.getMimeType());
+        return ref;
     }
 
     private static InboxItemType parseType(String raw) {

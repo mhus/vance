@@ -60,9 +60,70 @@ public class UserService {
         return saved;
     }
 
-    /** Thrown by {@link #create(String, String, String, String)} on a duplicate. */
+    /**
+     * Patches mutable fields. {@code name} and {@code tenantId} are
+     * immutable; password is set separately via {@link #setPasswordHash}.
+     * {@code null} fields mean "leave as is".
+     *
+     * @throws UserNotFoundException if the user does not exist
+     */
+    public UserDocument update(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            @Nullable String email,
+            @Nullable UserStatus status) {
+        UserDocument user = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new UserNotFoundException(
+                        "User '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (title != null) {
+            user.setTitle(title);
+        }
+        if (email != null) {
+            user.setEmail(email);
+        }
+        if (status != null) {
+            user.setStatus(status);
+        }
+        UserDocument saved = repository.save(user);
+        log.info("Updated user tenantId='{}' name='{}' status={}",
+                saved.getTenantId(), saved.getName(), saved.getStatus());
+        return saved;
+    }
+
+    /** Replaces the user's password hash. Caller hashes; service stores. */
+    public UserDocument setPasswordHash(String tenantId, String name, String passwordHash) {
+        UserDocument user = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new UserNotFoundException(
+                        "User '" + name + "' not found in tenant '" + tenantId + "'"));
+        user.setPasswordHash(passwordHash);
+        UserDocument saved = repository.save(user);
+        log.info("Reset password tenantId='{}' name='{}'", saved.getTenantId(), saved.getName());
+        return saved;
+    }
+
+    /**
+     * Hard-deletes a user. Memberships in teams are left untouched —
+     * callers concerned about referential integrity should clean those
+     * up via {@code TeamService.removeMember} before / after.
+     */
+    public void delete(String tenantId, String name) {
+        UserDocument user = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new UserNotFoundException(
+                        "User '" + name + "' not found in tenant '" + tenantId + "'"));
+        repository.delete(user);
+        log.info("Deleted user tenantId='{}' name='{}'", tenantId, name);
+    }
+
+    /** Thrown by {@link #create(String, String, String, String, String)} on a duplicate. */
     public static class UserAlreadyExistsException extends RuntimeException {
         public UserAlreadyExistsException(String message) {
+            super(message);
+        }
+    }
+
+    public static class UserNotFoundException extends RuntimeException {
+        public UserNotFoundException(String message) {
             super(message);
         }
     }

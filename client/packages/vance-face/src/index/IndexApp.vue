@@ -168,6 +168,16 @@ function readNextParam(): string | null {
             </div>
             <VButton variant="primary" size="sm" href="/insights.html">Open</VButton>
           </li>
+          <li class="flex items-center justify-between gap-4">
+            <div>
+              <div class="font-semibold">Users &amp; Teams</div>
+              <div class="text-sm opacity-70">
+                Manage tenant users (create, password reset, status)
+                and teams (members, enabled flag).
+              </div>
+            </div>
+            <VButton variant="primary" size="sm" href="/users.html">Open</VButton>
+          </li>
         </ul>
       </VCard>
     </div>

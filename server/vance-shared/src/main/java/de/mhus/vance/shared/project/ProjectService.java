@@ -23,6 +23,13 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class ProjectService {
 
+    /**
+     * Reserved name prefix for {@link ProjectKind#SYSTEM} projects.
+     * Regular user projects may not start with this prefix — see
+     * {@link #create(String, String, String, String, List, ProjectKind)}.
+     */
+    public static final String SYSTEM_NAME_PREFIX = "_";
+
     /** Field names — kept here so atomic queries don't drift. */
     private static final String F_TENANT = "tenantId";
     private static final String F_NAME = "name";
@@ -85,6 +92,12 @@ public class ProjectService {
             @Nullable String projectGroupId,
             @Nullable List<String> teamIds,
             ProjectKind kind) {
+        if (kind == ProjectKind.NORMAL && name.startsWith(SYSTEM_NAME_PREFIX)) {
+            throw new ReservedProjectNameException(
+                    "Project name '" + name + "' starts with the reserved '"
+                            + SYSTEM_NAME_PREFIX + "' prefix — only SYSTEM projects "
+                            + "may use that prefix");
+        }
         if (repository.existsByTenantIdAndName(tenantId, name)) {
             throw new ProjectAlreadyExistsException(
                     "Project '" + name + "' already exists in tenant '" + tenantId + "'");
@@ -247,6 +260,12 @@ public class ProjectService {
 
     public static class SystemProjectProtectedException extends RuntimeException {
         public SystemProjectProtectedException(String message) {
+            super(message);
+        }
+    }
+
+    public static class ReservedProjectNameException extends RuntimeException {
+        public ReservedProjectNameException(String message) {
             super(message);
         }
     }

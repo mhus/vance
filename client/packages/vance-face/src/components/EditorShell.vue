@@ -2,11 +2,19 @@
 import { computed } from 'vue';
 import { clearAuth, getTenantId, getUsername } from '@vance/shared';
 
+/**
+ * A breadcrumb segment. Either a plain string label (immutable, no
+ * navigation) or an object with an {@code onClick} handler that turns
+ * the segment into a button — used to navigate back to a parent view
+ * (e.g. from a process detail back to the owning session).
+ */
+export type Crumb = string | { text: string; onClick?: () => void };
+
 interface Props {
   /** Page title shown in the topbar. */
   title: string;
   /** Breadcrumb segments left-to-right (e.g. `['Project foo', 'Session bar']`). */
-  breadcrumbs?: string[];
+  breadcrumbs?: Crumb[];
   /**
    * Connection-state dot in the topbar. Only chat-editor sets this; REST-only
    * editors omit the prop and the dot is hidden.
@@ -23,6 +31,13 @@ withDefaults(defineProps<Props>(), {
   breadcrumbs: () => [],
   wideRightPanel: false,
 });
+
+function crumbText(c: Crumb): string {
+  return typeof c === 'string' ? c : c.text;
+}
+function crumbOnClick(c: Crumb): (() => void) | null {
+  return typeof c === 'string' ? null : (c.onClick ?? null);
+}
 
 const tenantId = computed<string | null>(() => getTenantId());
 const username = computed<string | null>(() => getUsername());
@@ -48,7 +63,13 @@ function logout(): void {
         <span v-if="breadcrumbs.length" class="opacity-50">·</span>
         <span class="opacity-70 truncate">
           <template v-for="(crumb, idx) in breadcrumbs" :key="idx">
-            <span>{{ crumb }}</span>
+            <button
+              v-if="crumbOnClick(crumb)"
+              type="button"
+              class="crumb-link"
+              @click="crumbOnClick(crumb)?.()"
+            >{{ crumbText(crumb) }}</button>
+            <span v-else>{{ crumbText(crumb) }}</span>
             <span v-if="idx < breadcrumbs.length - 1" class="mx-1 opacity-40">›</span>
           </template>
         </span>
@@ -114,3 +135,18 @@ function logout(): void {
     </div>
   </div>
 </template>
+
+<style scoped>
+.crumb-link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font-size: inherit;
+}
+.crumb-link:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
+</style>

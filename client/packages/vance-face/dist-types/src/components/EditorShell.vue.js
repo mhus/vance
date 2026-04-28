@@ -4,6 +4,12 @@ const __VLS_props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     wideRightPanel: false,
 });
+function crumbText(c) {
+    return typeof c === 'string' ? c : c.text;
+}
+function crumbOnClick(c) {
+    return typeof c === 'string' ? null : (c.onClick ?? null);
+}
 const tenantId = computed(() => getTenantId());
 const username = computed(() => getUsername());
 function logout() {
@@ -18,6 +24,9 @@ const __VLS_withDefaultsArg = (function (t) { return t; })({
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['crumb-link']} */ ;
+// CSS variable injection 
+// CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "min-h-screen flex flex-col bg-base-200" },
 });
@@ -46,8 +55,22 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 });
 for (const [crumb, idx] of __VLS_getVForSourceType((__VLS_ctx.breadcrumbs))) {
     (idx);
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-    (crumb);
+    if (__VLS_ctx.crumbOnClick(crumb)) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.crumbOnClick(crumb)))
+                        return;
+                    __VLS_ctx.crumbOnClick(crumb)?.();
+                } },
+            type: "button",
+            ...{ class: "crumb-link" },
+        });
+        (__VLS_ctx.crumbText(crumb));
+    }
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        (__VLS_ctx.crumbText(crumb));
+    }
     if (idx < __VLS_ctx.breadcrumbs.length - 1) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "mx-1 opacity-40" },
@@ -145,6 +168,7 @@ if (__VLS_ctx.$slots['right-panel']) {
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['crumb-link']} */ ;
 /** @type {__VLS_StyleScopedClasses['mx-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-40']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-none']} */ ;
@@ -197,6 +221,8 @@ var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
+            crumbText: crumbText,
+            crumbOnClick: crumbOnClick,
             tenantId: tenantId,
             username: username,
             logout: logout,

@@ -62,8 +62,51 @@ public class TeamService {
         return saved;
     }
 
+    /**
+     * Patches mutable fields. {@code name} and {@code tenantId} are
+     * immutable. {@code null} fields mean "leave as is"; {@code members}
+     * replaces the list wholesale when non-null.
+     */
+    public TeamDocument update(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            @Nullable Boolean enabled,
+            @Nullable List<String> members) {
+        TeamDocument team = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new TeamNotFoundException(
+                        "Team '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (title != null) {
+            team.setTitle(title);
+        }
+        if (enabled != null) {
+            team.setEnabled(enabled);
+        }
+        if (members != null) {
+            team.setMembers(new ArrayList<>(members));
+        }
+        TeamDocument saved = repository.save(team);
+        log.info("Updated team tenantId='{}' name='{}' enabled={} members={}",
+                saved.getTenantId(), saved.getName(), saved.isEnabled(), saved.getMembers().size());
+        return saved;
+    }
+
+    public void delete(String tenantId, String name) {
+        TeamDocument team = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new TeamNotFoundException(
+                        "Team '" + name + "' not found in tenant '" + tenantId + "'"));
+        repository.delete(team);
+        log.info("Deleted team tenantId='{}' name='{}'", tenantId, name);
+    }
+
     public static class TeamAlreadyExistsException extends RuntimeException {
         public TeamAlreadyExistsException(String message) {
+            super(message);
+        }
+    }
+
+    public static class TeamNotFoundException extends RuntimeException {
+        public TeamNotFoundException(String message) {
             super(message);
         }
     }

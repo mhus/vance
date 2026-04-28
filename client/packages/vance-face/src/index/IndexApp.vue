@@ -138,6 +138,16 @@ function readNextParam(): string | null {
             </div>
             <VButton variant="primary" size="sm" href="/scopes.html">Open</VButton>
           </li>
+          <li class="flex items-center justify-between gap-4">
+            <div>
+              <div class="font-semibold">Recipes</div>
+              <div class="text-sm opacity-70">
+                Inspect bundled recipes and override them at tenant or
+                project scope. Edited as YAML.
+              </div>
+            </div>
+            <VButton variant="primary" size="sm" href="/recipes.html">Open</VButton>
+          </li>
         </ul>
       </VCard>
     </div>

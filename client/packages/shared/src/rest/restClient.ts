@@ -98,6 +98,41 @@ async function parseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * GET a tenant-scoped resource as plain text. Same auth + 401-refresh
+ * behaviour as {@link brainFetch}, but returns the raw response body as
+ * a string (e.g. for markdown / HTML help content). Returns
+ * {@code null} on 404 — many help-style routes treat "not present" as
+ * a normal outcome rather than an error.
+ */
+export async function brainFetchText(path: string): Promise<string | null> {
+  const tenant = getTenantId();
+  if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
+
+  const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
+  const response = await doFetch(url, 'GET', {});
+
+  if (response.status === 404) return null;
+
+  if (response.status === 401) {
+    const refreshed = await refreshToken();
+    if (refreshed) {
+      const retry = await doFetch(url, 'GET', {});
+      if (retry.status === 404) return null;
+      if (retry.ok) return retry.text();
+    }
+    clearAuth();
+    redirectToLogin();
+    return new Promise<string | null>(() => {});
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new RestError(response.status, path, text || response.statusText);
+  }
+  return response.text();
+}
+
 function redirectToLogin(): void {
   const next = encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
   window.location.href = `/index.html?next=${next}`;

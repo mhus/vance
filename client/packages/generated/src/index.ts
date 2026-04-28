@@ -31,6 +31,12 @@ export * from './projects/ProjectGroupUpdateRequest';
 export * from './projects/ProjectUpdateRequest';
 export * from './projects/TenantProjectsResponse';
 
+export * from './recipes/RecipeDto';
+export * from './recipes/RecipeSource';
+export * from './recipes/RecipeWriteRequest';
+
+export * from './thinkprocess/PromptMode';
+
 export * from './settings/SettingDto';
 export * from './settings/SettingType';
 export * from './settings/SettingWriteRequest';

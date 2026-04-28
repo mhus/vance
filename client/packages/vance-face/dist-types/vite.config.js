@@ -8,6 +8,7 @@ const editorEntries = {
     document: resolve(__dirname, 'document-editor.html'),
     inbox: resolve(__dirname, 'inbox.html'),
     scopes: resolve(__dirname, 'scopes.html'),
+    recipes: resolve(__dirname, 'recipes.html'),
 };
 export default defineConfig({
     plugins: [vue()],

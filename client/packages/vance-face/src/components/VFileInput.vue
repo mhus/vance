@@ -2,10 +2,16 @@
 import { ref } from 'vue';
 
 interface Props {
-  modelValue: File | null;
+  /**
+   * Currently picked files. Always an array — single-mode just keeps it
+   * 1-element. Empty array means nothing picked yet.
+   */
+  modelValue: File[];
   label?: string;
   /** Comma-separated MIME types or extensions, e.g. `"image/*,.pdf"`. */
   accept?: string;
+  /** Allow multiple files via the picker and via drop. */
+  multiple?: boolean;
   help?: string;
   error?: string;
   required?: boolean;
@@ -13,19 +19,48 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  multiple: false,
   required: false,
   disabled: false,
 });
 
-const emit = defineEmits<{ (e: 'update:modelValue', file: File | null): void }>();
+const emit = defineEmits<{ (e: 'update:modelValue', files: File[]): void }>();
 
 const inputRef = ref<HTMLInputElement | null>(null);
 const dragActive = ref(false);
 
+function setFiles(picked: FileList | File[] | null): void {
+  if (!picked) {
+    emit('update:modelValue', []);
+    return;
+  }
+  const incoming = Array.from(picked);
+  if (!props.multiple) {
+    emit('update:modelValue', incoming.slice(0, 1));
+    return;
+  }
+  // Multi-mode: append to existing selection so subsequent drops or picker
+  // re-opens stack rather than replace. Dedupe by name + size + lastModified
+  // so dragging the same file twice doesn't show twice.
+  const merged = props.modelValue.slice();
+  const fingerprint = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
+  const seen = new Set(merged.map(fingerprint));
+  for (const f of incoming) {
+    const key = fingerprint(f);
+    if (!seen.has(key)) {
+      merged.push(f);
+      seen.add(key);
+    }
+  }
+  emit('update:modelValue', merged);
+}
+
 function onChange(event: Event): void {
   const input = event.target as HTMLInputElement;
-  const file = input.files && input.files.length > 0 ? input.files[0] : null;
-  emit('update:modelValue', file);
+  setFiles(input.files);
+  // Reset so the same file picked twice in a row still fires `change` —
+  // matters in multi-mode where "add more" opens the picker again.
+  input.value = '';
 }
 
 function onDragEnter(event: DragEvent): void {
@@ -53,15 +88,19 @@ function onDrop(event: DragEvent): void {
   event.preventDefault();
   dragActive.value = false;
   if (props.disabled) return;
-  const files = event.dataTransfer?.files;
-  if (!files || files.length === 0) return;
-  // Single-file component — take the first dropped item and ignore the rest.
-  emit('update:modelValue', files[0]);
+  setFiles(event.dataTransfer?.files ?? null);
 }
 
-function clear(): void {
-  emit('update:modelValue', null);
+function clearAll(): void {
+  emit('update:modelValue', []);
   if (inputRef.value) inputRef.value.value = '';
+}
+
+function removeAt(index: number): void {
+  const next = props.modelValue.slice();
+  next.splice(index, 1);
+  emit('update:modelValue', next);
+  if (next.length === 0 && inputRef.value) inputRef.value.value = '';
 }
 
 function formatSize(bytes: number): string {
@@ -80,7 +119,7 @@ function formatSize(bytes: number): string {
     <label
       :class="[
         'flex flex-col items-center justify-center text-center',
-        'border-2 border-dashed rounded-lg px-6 py-8 transition-colors',
+        'border-2 border-dashed rounded-lg px-6 py-6 transition-colors',
         disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
         dragActive
           ? 'border-primary bg-primary/10'
@@ -97,32 +136,55 @@ function formatSize(bytes: number): string {
         type="file"
         class="hidden"
         :accept="accept"
+        :multiple="multiple"
         :required="required"
         :disabled="disabled"
         @change="onChange"
       />
 
-      <template v-if="modelValue">
-        <span class="text-2xl mb-2" aria-hidden="true">📄</span>
-        <span class="font-mono text-sm break-all">{{ modelValue.name }}</span>
-        <span class="text-xs opacity-60 mt-1">{{ formatSize(modelValue.size) }}</span>
-        <button
-          type="button"
-          class="btn btn-ghost btn-xs mt-3"
-          :disabled="disabled"
-          @click.stop.prevent="clear"
-        >Remove</button>
-      </template>
-
-      <template v-else>
+      <template v-if="modelValue.length === 0">
         <span class="text-2xl mb-2 opacity-60" aria-hidden="true">⬆</span>
         <span class="text-sm">
-          Drop a file here, or
+          {{ multiple ? 'Drop files here, or' : 'Drop a file here, or' }}
           <span class="link link-primary">browse</span>
         </span>
         <span v-if="accept" class="text-xs opacity-60 mt-1">
           Accepted: {{ accept }}
         </span>
+      </template>
+
+      <template v-else>
+        <ul class="w-full flex flex-col gap-1.5 text-left">
+          <li
+            v-for="(file, idx) in modelValue"
+            :key="`${file.name}-${idx}`"
+            class="flex items-center gap-2 text-sm"
+          >
+            <span aria-hidden="true">📄</span>
+            <span class="font-mono truncate flex-1">{{ file.name }}</span>
+            <span class="text-xs opacity-60 shrink-0">{{ formatSize(file.size) }}</span>
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs"
+              :disabled="disabled"
+              aria-label="Remove file"
+              @click.stop.prevent="removeAt(idx)"
+            >✕</button>
+          </li>
+        </ul>
+        <div class="mt-3 text-xs opacity-70">
+          <template v-if="multiple">
+            {{ modelValue.length }} file{{ modelValue.length === 1 ? '' : 's' }} ready —
+            <span class="link link-primary">add more</span>
+            ·
+          </template>
+          <button
+            type="button"
+            class="link link-error"
+            :disabled="disabled"
+            @click.stop.prevent="clearAll"
+          >clear</button>
+        </div>
       </template>
     </label>
 

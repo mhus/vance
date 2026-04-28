@@ -17,9 +17,10 @@ const createTitle = ref('');
 const createTagsRaw = ref('');
 const createMime = ref('text/markdown');
 const createContent = ref('');
-const createFile = ref(null);
+const createFiles = ref([]);
 const createError = ref(null);
 const creating = ref(false);
+const uploadProgress = ref([]);
 const createMimeOptions = [
     { value: 'text/markdown', label: 'Markdown (.md)' },
     { value: 'text/plain', label: 'Plain text (.txt)' },
@@ -102,19 +103,22 @@ function openCreateModal() {
     createTagsRaw.value = '';
     createMime.value = 'text/markdown';
     createContent.value = '';
-    createFile.value = null;
+    createFiles.value = [];
     createError.value = null;
+    uploadProgress.value = [];
     showCreateModal.value = true;
 }
 function setCreateMode(mode) {
     createMode.value = mode;
     createError.value = null;
+    uploadProgress.value = [];
 }
-watch(createFile, (file) => {
-    // Auto-fill path with the file's name when the user hasn't typed one yet.
-    // Lets them just pick a file and hit Upload for the simple case.
-    if (file && !createPath.value.trim()) {
-        createPath.value = file.name;
+// Auto-fill the optional path override when exactly one file is picked and
+// the user hasn't typed anything. With multiple files, path-override would
+// have to apply per-file (it doesn't), so we leave it blank.
+watch(createFiles, (files) => {
+    if (files.length === 1 && !createPath.value.trim()) {
+        createPath.value = files[0].name;
     }
 });
 async function submitCreate() {
@@ -127,7 +131,6 @@ async function submitCreate() {
             .split(',')
             .map((t) => t.trim())
             .filter((t) => t.length > 0);
-        let created = null;
         if (createMode.value === 'inline') {
             if (!createPath.value.trim()) {
                 createError.value = 'Path is required.';
@@ -137,33 +140,75 @@ async function submitCreate() {
                 createError.value = 'Content is required.';
                 return;
             }
-            created = await docsState.create(selectedProjectId.value, {
+            const created = await docsState.create(selectedProjectId.value, {
                 path: createPath.value.trim(),
                 title: createTitle.value.trim() || undefined,
                 tags: tags.length > 0 ? tags : undefined,
                 mimeType: createMime.value,
                 inlineText: createContent.value,
             });
-        }
-        else {
-            if (!createFile.value) {
-                createError.value = 'Pick a file to upload.';
-                return;
+            if (created) {
+                showCreateModal.value = false;
+                await docsState.loadOne(created.id);
+                fillEditor();
             }
-            created = await docsState.upload(selectedProjectId.value, {
-                file: createFile.value,
+            else if (docsState.error.value) {
+                createError.value = docsState.error.value;
+            }
+            return;
+        }
+        // Upload mode — one or many files.
+        const files = createFiles.value;
+        if (files.length === 0) {
+            createError.value = 'Pick at least one file.';
+            return;
+        }
+        if (files.length === 1) {
+            const created = await docsState.upload(selectedProjectId.value, {
+                file: files[0],
                 path: createPath.value.trim() || undefined,
                 title: createTitle.value.trim() || undefined,
                 tags: tags.length > 0 ? tags : undefined,
             });
+            if (created) {
+                showCreateModal.value = false;
+                await docsState.loadOne(created.id);
+                fillEditor();
+            }
+            else if (docsState.error.value) {
+                createError.value = docsState.error.value;
+            }
+            return;
         }
-        if (created) {
+        // Multi-upload: sequential — keeps server load predictable and lets the
+        // user see per-file progress. Each file gets its own slot in
+        // `uploadProgress`; failures don't abort the rest.
+        uploadProgress.value = files.map((f) => ({
+            fileName: f.name,
+            status: 'pending',
+        }));
+        let okCount = 0;
+        for (let i = 0; i < files.length; i++) {
+            uploadProgress.value[i].status = 'uploading';
+            const created = await docsState.upload(selectedProjectId.value, {
+                file: files[i],
+                tags: tags.length > 0 ? tags : undefined,
+            });
+            if (created) {
+                uploadProgress.value[i].status = 'ok';
+                okCount++;
+            }
+            else {
+                uploadProgress.value[i].status = 'error';
+                uploadProgress.value[i].message = docsState.error.value ?? 'Upload failed.';
+            }
+        }
+        if (okCount === files.length) {
+            // All good — close modal and refresh the list.
             showCreateModal.value = false;
-            await docsState.loadOne(created.id);
-            fillEditor();
         }
-        else if (docsState.error.value) {
-            createError.value = docsState.error.value;
+        else {
+            createError.value = `${files.length - okCount} of ${files.length} files failed. See list below.`;
         }
     }
     finally {
@@ -807,49 +852,53 @@ else {
     /** @type {[typeof __VLS_components.VFileInput, ]} */ ;
     // @ts-ignore
     const __VLS_150 = __VLS_asFunctionalComponent(__VLS_149, new __VLS_149({
-        modelValue: (__VLS_ctx.createFile),
-        label: "File",
+        modelValue: (__VLS_ctx.createFiles),
+        label: "Files",
+        multiple: true,
         disabled: (__VLS_ctx.creating),
-        help: "Pick any file. Path defaults to the file name; the server picks inline vs. storage automatically.",
+        help: "Drop one or more files. Server picks inline vs. storage automatically per file.",
     }));
     const __VLS_151 = __VLS_150({
-        modelValue: (__VLS_ctx.createFile),
-        label: "File",
+        modelValue: (__VLS_ctx.createFiles),
+        label: "Files",
+        multiple: true,
         disabled: (__VLS_ctx.creating),
-        help: "Pick any file. Path defaults to the file name; the server picks inline vs. storage automatically.",
+        help: "Drop one or more files. Server picks inline vs. storage automatically per file.",
     }, ...__VLS_functionalComponentArgsRest(__VLS_150));
-    const __VLS_153 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_154 = __VLS_asFunctionalComponent(__VLS_153, new __VLS_153({
-        modelValue: (__VLS_ctx.createPath),
-        label: "Path",
-        placeholder: "(defaults to file name)",
-        disabled: (__VLS_ctx.creating),
-        help: "Override the destination path inside the project. Optional.",
-    }));
-    const __VLS_155 = __VLS_154({
-        modelValue: (__VLS_ctx.createPath),
-        label: "Path",
-        placeholder: "(defaults to file name)",
-        disabled: (__VLS_ctx.creating),
-        help: "Override the destination path inside the project. Optional.",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_154));
-    const __VLS_157 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_158 = __VLS_asFunctionalComponent(__VLS_157, new __VLS_157({
-        modelValue: (__VLS_ctx.createTitle),
-        label: "Title",
-        placeholder: "Optional display title",
-        disabled: (__VLS_ctx.creating),
-    }));
-    const __VLS_159 = __VLS_158({
-        modelValue: (__VLS_ctx.createTitle),
-        label: "Title",
-        placeholder: "Optional display title",
-        disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_158));
+    if (__VLS_ctx.createFiles.length <= 1) {
+        const __VLS_153 = {}.VInput;
+        /** @type {[typeof __VLS_components.VInput, ]} */ ;
+        // @ts-ignore
+        const __VLS_154 = __VLS_asFunctionalComponent(__VLS_153, new __VLS_153({
+            modelValue: (__VLS_ctx.createPath),
+            label: "Path",
+            placeholder: "(defaults to file name)",
+            disabled: (__VLS_ctx.creating),
+            help: "Override the destination path inside the project. Optional.",
+        }));
+        const __VLS_155 = __VLS_154({
+            modelValue: (__VLS_ctx.createPath),
+            label: "Path",
+            placeholder: "(defaults to file name)",
+            disabled: (__VLS_ctx.creating),
+            help: "Override the destination path inside the project. Optional.",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_154));
+        const __VLS_157 = {}.VInput;
+        /** @type {[typeof __VLS_components.VInput, ]} */ ;
+        // @ts-ignore
+        const __VLS_158 = __VLS_asFunctionalComponent(__VLS_157, new __VLS_157({
+            modelValue: (__VLS_ctx.createTitle),
+            label: "Title",
+            placeholder: "Optional display title",
+            disabled: (__VLS_ctx.creating),
+        }));
+        const __VLS_159 = __VLS_158({
+            modelValue: (__VLS_ctx.createTitle),
+            label: "Title",
+            placeholder: "Optional display title",
+            disabled: (__VLS_ctx.creating),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_158));
+    }
     const __VLS_161 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
@@ -858,15 +907,53 @@ else {
         label: "Tags",
         placeholder: "comma, separated, tags",
         disabled: (__VLS_ctx.creating),
-        help: "Optional, separated by commas.",
+        help: (__VLS_ctx.createFiles.length > 1
+            ? 'Applied to every uploaded file.'
+            : 'Optional, separated by commas.'),
     }));
     const __VLS_163 = __VLS_162({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: "Tags",
         placeholder: "comma, separated, tags",
         disabled: (__VLS_ctx.creating),
-        help: "Optional, separated by commas.",
+        help: (__VLS_ctx.createFiles.length > 1
+            ? 'Applied to every uploaded file.'
+            : 'Optional, separated by commas.'),
     }, ...__VLS_functionalComponentArgsRest(__VLS_162));
+    if (__VLS_ctx.uploadProgress.length > 0) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+            ...{ class: "flex flex-col gap-1.5 text-sm border border-base-300 rounded-md p-3 bg-base-200" },
+        });
+        for (const [item] of __VLS_getVForSourceType((__VLS_ctx.uploadProgress))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                key: (item.fileName),
+                ...{ class: "flex items-center gap-2" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "font-mono w-4 text-center" },
+                'aria-hidden': "true",
+            });
+            if (item.status === 'pending') {
+            }
+            else if (item.status === 'uploading') {
+            }
+            else if (item.status === 'ok') {
+            }
+            else {
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "font-mono text-xs truncate flex-1" },
+            });
+            (item.fileName);
+            if (item.message) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "text-xs text-error truncate" },
+                    title: (item.message),
+                });
+                (item.message);
+            }
+        }
+    }
 }
 {
     const { actions: __VLS_thisSlot } = __VLS_108.slots;
@@ -975,6 +1062,28 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-md']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-error']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -1006,9 +1115,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             createTagsRaw: createTagsRaw,
             createMime: createMime,
             createContent: createContent,
-            createFile: createFile,
+            createFiles: createFiles,
             createError: createError,
             creating: creating,
+            uploadProgress: uploadProgress,
             createMimeOptions: createMimeOptions,
             projectOptions: projectOptions,
             changePage: changePage,

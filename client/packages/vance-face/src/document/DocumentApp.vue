@@ -46,9 +46,20 @@ const createTitle = ref('');
 const createTagsRaw = ref('');
 const createMime = ref('text/markdown');
 const createContent = ref('');
-const createFile = ref<File | null>(null);
+const createFiles = ref<File[]>([]);
 const createError = ref<string | null>(null);
 const creating = ref(false);
+
+// Per-file upload outcome shown beneath the picker. Only populated while a
+// multi-upload is running and after it finishes — kept until the user closes
+// or reopens the modal.
+type UploadStatus = 'pending' | 'uploading' | 'ok' | 'error';
+interface UploadProgressItem {
+  fileName: string;
+  status: UploadStatus;
+  message?: string;
+}
+const uploadProgress = ref<UploadProgressItem[]>([]);
 
 const createMimeOptions = [
   { value: 'text/markdown', label: 'Markdown (.md)' },
@@ -140,21 +151,24 @@ function openCreateModal(): void {
   createTagsRaw.value = '';
   createMime.value = 'text/markdown';
   createContent.value = '';
-  createFile.value = null;
+  createFiles.value = [];
   createError.value = null;
+  uploadProgress.value = [];
   showCreateModal.value = true;
 }
 
 function setCreateMode(mode: CreateMode): void {
   createMode.value = mode;
   createError.value = null;
+  uploadProgress.value = [];
 }
 
-watch(createFile, (file) => {
-  // Auto-fill path with the file's name when the user hasn't typed one yet.
-  // Lets them just pick a file and hit Upload for the simple case.
-  if (file && !createPath.value.trim()) {
-    createPath.value = file.name;
+// Auto-fill the optional path override when exactly one file is picked and
+// the user hasn't typed anything. With multiple files, path-override would
+// have to apply per-file (it doesn't), so we leave it blank.
+watch(createFiles, (files) => {
+  if (files.length === 1 && !createPath.value.trim()) {
+    createPath.value = files[0].name;
   }
 });
 
@@ -168,34 +182,76 @@ async function submitCreate(): Promise<void> {
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
-    let created: { id: string } | null = null;
-
     if (createMode.value === 'inline') {
       if (!createPath.value.trim()) { createError.value = 'Path is required.'; return; }
       if (!createContent.value) { createError.value = 'Content is required.'; return; }
-      created = await docsState.create(selectedProjectId.value, {
+      const created = await docsState.create(selectedProjectId.value, {
         path: createPath.value.trim(),
         title: createTitle.value.trim() || undefined,
         tags: tags.length > 0 ? tags : undefined,
         mimeType: createMime.value,
         inlineText: createContent.value,
       });
-    } else {
-      if (!createFile.value) { createError.value = 'Pick a file to upload.'; return; }
-      created = await docsState.upload(selectedProjectId.value, {
-        file: createFile.value,
+      if (created) {
+        showCreateModal.value = false;
+        await docsState.loadOne(created.id);
+        fillEditor();
+      } else if (docsState.error.value) {
+        createError.value = docsState.error.value;
+      }
+      return;
+    }
+
+    // Upload mode — one or many files.
+    const files = createFiles.value;
+    if (files.length === 0) { createError.value = 'Pick at least one file.'; return; }
+
+    if (files.length === 1) {
+      const created = await docsState.upload(selectedProjectId.value, {
+        file: files[0],
         path: createPath.value.trim() || undefined,
         title: createTitle.value.trim() || undefined,
         tags: tags.length > 0 ? tags : undefined,
       });
+      if (created) {
+        showCreateModal.value = false;
+        await docsState.loadOne(created.id);
+        fillEditor();
+      } else if (docsState.error.value) {
+        createError.value = docsState.error.value;
+      }
+      return;
     }
 
-    if (created) {
+    // Multi-upload: sequential — keeps server load predictable and lets the
+    // user see per-file progress. Each file gets its own slot in
+    // `uploadProgress`; failures don't abort the rest.
+    uploadProgress.value = files.map((f) => ({
+      fileName: f.name,
+      status: 'pending' as UploadStatus,
+    }));
+
+    let okCount = 0;
+    for (let i = 0; i < files.length; i++) {
+      uploadProgress.value[i].status = 'uploading';
+      const created = await docsState.upload(selectedProjectId.value, {
+        file: files[i],
+        tags: tags.length > 0 ? tags : undefined,
+      });
+      if (created) {
+        uploadProgress.value[i].status = 'ok';
+        okCount++;
+      } else {
+        uploadProgress.value[i].status = 'error';
+        uploadProgress.value[i].message = docsState.error.value ?? 'Upload failed.';
+      }
+    }
+
+    if (okCount === files.length) {
+      // All good — close modal and refresh the list.
       showCreateModal.value = false;
-      await docsState.loadOne(created.id);
-      fillEditor();
-    } else if (docsState.error.value) {
-      createError.value = docsState.error.value;
+    } else {
+      createError.value = `${files.length - okCount} of ${files.length} files failed. See list below.`;
     }
   } finally {
     creating.value = false;
@@ -447,31 +503,67 @@ const formatBytes = (n: number): string => {
 
         <template v-else>
           <VFileInput
-            v-model="createFile"
-            label="File"
+            v-model="createFiles"
+            label="Files"
+            multiple
             :disabled="creating"
-            help="Pick any file. Path defaults to the file name; the server picks inline vs. storage automatically."
+            help="Drop one or more files. Server picks inline vs. storage automatically per file."
           />
-          <VInput
-            v-model="createPath"
-            label="Path"
-            placeholder="(defaults to file name)"
-            :disabled="creating"
-            help="Override the destination path inside the project. Optional."
-          />
-          <VInput
-            v-model="createTitle"
-            label="Title"
-            placeholder="Optional display title"
-            :disabled="creating"
-          />
+
+          <!-- Path and title only make sense for a single file — they would
+               apply ambiguously to a batch. With multiple files, each file's
+               name becomes its path and the server-side `createdBy` is set
+               from the JWT. -->
+          <template v-if="createFiles.length <= 1">
+            <VInput
+              v-model="createPath"
+              label="Path"
+              placeholder="(defaults to file name)"
+              :disabled="creating"
+              help="Override the destination path inside the project. Optional."
+            />
+            <VInput
+              v-model="createTitle"
+              label="Title"
+              placeholder="Optional display title"
+              :disabled="creating"
+            />
+          </template>
+
           <VInput
             v-model="createTagsRaw"
             label="Tags"
             placeholder="comma, separated, tags"
             :disabled="creating"
-            help="Optional, separated by commas."
+            :help="createFiles.length > 1
+              ? 'Applied to every uploaded file.'
+              : 'Optional, separated by commas.'"
           />
+
+          <!-- Per-file progress — only populated during/after a multi-upload. -->
+          <ul
+            v-if="uploadProgress.length > 0"
+            class="flex flex-col gap-1.5 text-sm border border-base-300 rounded-md p-3 bg-base-200"
+          >
+            <li
+              v-for="item in uploadProgress"
+              :key="item.fileName"
+              class="flex items-center gap-2"
+            >
+              <span class="font-mono w-4 text-center" aria-hidden="true">
+                <template v-if="item.status === 'pending'">·</template>
+                <template v-else-if="item.status === 'uploading'">…</template>
+                <template v-else-if="item.status === 'ok'">✓</template>
+                <template v-else>✕</template>
+              </span>
+              <span class="font-mono text-xs truncate flex-1">{{ item.fileName }}</span>
+              <span
+                v-if="item.message"
+                class="text-xs text-error truncate"
+                :title="item.message"
+              >{{ item.message }}</span>
+            </li>
+          </ul>
         </template>
       </form>
 

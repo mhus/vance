@@ -37,7 +37,7 @@ public class StorageCleanupScheduler {
             List<StorageDelete> toDelete = storageDeleteRepository
                     .findByDeletedAtLessThanEqual(new Date());
             if (toDelete.isEmpty()) {
-                log.debug("No storage deletions scheduled");
+                // log.debug("No storage deletions scheduled");
                 return;
             }
             int deleted = 0;

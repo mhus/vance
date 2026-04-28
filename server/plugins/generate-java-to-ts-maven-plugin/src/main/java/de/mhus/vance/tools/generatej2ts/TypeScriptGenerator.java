@@ -70,8 +70,14 @@ public class TypeScriptGenerator {
                 tt.getEnumValues().addAll(jm.getEnumConstants());
             } else {
                 tt.setKind(TypeScriptKind.INTERFACE);
-                // Build set of followed referenced type names (SimpleNames)
+                // `followed` drives inner-enum inlining and is gated on the
+                // explicit @TypeScript(follow=true) marker on a field.
+                // `referenced` is broader: it collects every cross-class type
+                // reference and is used to emit auto-imports — that runs
+                // unconditionally so each generated .ts file is self-contained
+                // for tooling that type-checks files in isolation.
                 List<String> followed = new ArrayList<>();
+                List<String> referenced = new ArrayList<>();
                 for (JavaFieldModel f : jm.getFields()) {
                     if (f == null) continue;
                     if (f.isIgnored()) continue;
@@ -90,8 +96,14 @@ public class TypeScriptGenerator {
                     tf.setDescription(f.getDescription());
                     tt.getFields().add(tf);
 
+                    // Auto-import scanner: read identifiers off the *resolved
+                    // TS type*, not the raw Java type — `Map<Criticality, …>`
+                    // becomes `Record<string, …>` so `Criticality` no longer
+                    // appears and we must not generate a phantom import.
+                    for (String r : extractTsTypeReferences(tsType)) {
+                        if (!referenced.contains(r)) referenced.add(r);
+                    }
                     if (f.isFollow()) {
-                        // füge alle referenzierten Simple-Type-Namen hinzu
                         for (String r : f.getReferencedTypes()) {
                             if (r != null && !r.isBlank() && !followed.contains(r)) followed.add(r);
                         }
@@ -120,21 +132,22 @@ public class TypeScriptGenerator {
                 // Default-Imports aus Konfiguration hinzufügen (nur für Interfaces)
                 addDefaultImports(tt);
 
-                // Auto-Importe für gefolgte Typen (Top-Level: Enums und Interfaces) hinzufügen
-                if (!followed.isEmpty()) {
-                    for (String name : followed) {
-                        JavaClassModel target = bySimpleName.get(name);
-                        if (target == null) continue;
-                        // Skip types already emitted as nested enums in this file
-                        boolean isNestedEnum = tt.getNestedEnums().stream()
-                                .anyMatch(ne -> ne.getName().equals(name));
-                        if (isNestedEnum) continue;
-                        String importSymbol = resolveTargetTsName(target);
-                        String relPath = buildRelativeImportPath(tt.getSubfolder(), target.getGenerateSubfolder(),
-                                resolveTargetBaseFileName(target, importSymbol));
-                        String line = "import { " + importSymbol + " } from '" + relPath + "'";
-                        tt.getImports().add(ensureSemicolon(line));
-                    }
+                // Auto-imports for every cross-class type reference that is
+                // actually present in the model. Types that aren't in the
+                // model (foreign types like JsonNode) are silently skipped —
+                // the user is expected to add a @TypeScriptImport for those.
+                for (String name : referenced) {
+                    if (name.equals(tt.getName())) continue; // self-reference
+                    JavaClassModel target = bySimpleName.get(name);
+                    if (target == null) continue;
+                    boolean isNestedEnum = tt.getNestedEnums().stream()
+                            .anyMatch(ne -> ne.getName().equals(name));
+                    if (isNestedEnum) continue;
+                    String importSymbol = resolveTargetTsName(target);
+                    String relPath = buildRelativeImportPath(tt.getSubfolder(), target.getGenerateSubfolder(),
+                            resolveTargetBaseFileName(target, importSymbol));
+                    String line = "import { " + importSymbol + " } from '" + relPath + "'";
+                    tt.getImports().add(ensureSemicolon(line));
                 }
             }
 
@@ -394,6 +407,39 @@ public class TypeScriptGenerator {
         }
         return null;
     }
+
+    /**
+     * Pull the user-defined type identifiers out of a resolved TypeScript type
+     * string. Strips Array suffixes, generic punctuation, and TypeScript
+     * builtins so only references that need an {@code import} remain.
+     */
+    static java.util.Set<String> extractTsTypeReferences(String tsType) {
+        java.util.LinkedHashSet<String> refs = new java.util.LinkedHashSet<>();
+        if (tsType == null || tsType.isBlank()) return refs;
+
+        String s = tsType.replace("[]", " ");
+        s = s.replace('<', ' ').replace('>', ' ').replace(',', ' ').replace('|', ' ').replace('&', ' ');
+
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("[A-Za-z_][A-Za-z0-9_]*").matcher(s);
+        while (m.find()) {
+            String id = m.group();
+            if (TS_BUILTINS.contains(id)) continue;
+            // user types are conventionally PascalCase — primitives like
+            // `string`/`number` are already filtered via TS_BUILTINS, but the
+            // case check guards against quirky lowercase names sneaking in.
+            if (!Character.isUpperCase(id.charAt(0))) continue;
+            refs.add(id);
+        }
+        return refs;
+    }
+
+    /** TypeScript builtins that never need an import. */
+    private static final java.util.Set<String> TS_BUILTINS = java.util.Set.of(
+            "string", "number", "boolean", "any", "unknown", "void", "null", "undefined", "never",
+            "Date", "Array", "ReadonlyArray", "Record", "Map", "Set", "Promise", "Partial",
+            "Required", "Pick", "Omit", "Exclude", "Extract", "NonNullable", "ReturnType",
+            "InstanceType", "Awaited", "Readonly", "Object"
+    );
 
     private static String[] splitTopLevel(String s) {
         // Teilt Generic-Argumente auf oberster Ebene, z. B. "Map<String, List<Foo>>" → ["String", "List<Foo>"]

@@ -24,4 +24,33 @@
         </dependency>
     </dependencies>
 
+    <build>
+        <plugins>
+            <!--
+              Generates TypeScript interfaces from @GenerateTypeScript-annotated DTOs in
+              this module and writes them straight into the Web-UI workspace at
+              repos/vance/client/packages/generated/src/. The hand-maintained index.ts
+              there re-exports them. See specification/web-ui.md §8.1.
+            -->
+            <plugin>
+                <groupId>de.mhus.vance</groupId>
+                <artifactId>generate-java-to-ts-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-ts-dtos</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <inputDirectory>${project.basedir}/src/main/java</inputDirectory>
+                            <outputDirectory>${project.basedir}/../../client/packages/generated/src</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
 </project>

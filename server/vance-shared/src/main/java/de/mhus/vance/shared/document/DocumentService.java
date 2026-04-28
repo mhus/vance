@@ -16,6 +16,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 /**
@@ -53,6 +56,20 @@ public class DocumentService {
     /** All {@link DocumentStatus#ACTIVE} documents in the project. */
     public List<DocumentDocument> listByProject(String tenantId, String projectId) {
         return repository.findByTenantIdAndProjectIdAndStatus(tenantId, projectId, DocumentStatus.ACTIVE);
+    }
+
+    /**
+     * Page through {@link DocumentStatus#ACTIVE} documents in the project,
+     * sorted by {@code path} ascending so the order is deterministic across
+     * pages. {@code page} is zero-based.
+     */
+    public Page<DocumentDocument> listByProjectPaged(
+            String tenantId, String projectId, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(1, Math.min(size, 200));
+        PageRequest pageable = PageRequest.of(safePage, safeSize, Sort.by("path").ascending());
+        return repository.findByTenantIdAndProjectIdAndStatus(
+                tenantId, projectId, DocumentStatus.ACTIVE, pageable);
     }
 
     /** All {@link DocumentStatus#ACTIVE} documents in the project that carry {@code tag}. */
@@ -167,6 +184,61 @@ public class DocumentService {
                     doc.getId(), sid);
         }
         return InputStream.nullInputStream();
+    }
+
+    /**
+     * Apply a partial update. Each parameter is independently optional —
+     * pass {@code null} to leave that field untouched.
+     *
+     * <p>{@code newInlineText} is only honoured for documents that already
+     * live inline (i.e. {@link DocumentDocument#getInlineText()} is non-null)
+     * and only when the new text fits within {@code vance.document.inline-threshold}.
+     * Storage-backed documents are read-only in v1.
+     *
+     * @return the updated document
+     * @throws IllegalArgumentException if the document is unknown or the update
+     *         is rejected (storage-backed content, oversize inline text)
+     */
+    public DocumentDocument update(
+            String id,
+            @Nullable String newTitle,
+            @Nullable List<String> newTags,
+            @Nullable String newInlineText) {
+
+        DocumentDocument doc = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+
+        if (newTitle != null) doc.setTitle(newTitle);
+        if (newTags != null) doc.setTags(new ArrayList<>(newTags));
+
+        if (newInlineText != null) {
+            if (doc.getInlineText() == null) {
+                throw new IllegalArgumentException(
+                        "Document id='" + id + "' is storage-backed and cannot be edited inline");
+            }
+            byte[] bytes = newInlineText.getBytes(StandardCharsets.UTF_8);
+            if (bytes.length > inlineThreshold) {
+                throw new IllegalArgumentException(
+                        "New inline content exceeds the inline threshold ("
+                                + bytes.length + " > " + inlineThreshold + " bytes)");
+            }
+            doc.setInlineText(newInlineText);
+            doc.setSize(bytes.length);
+        }
+
+        DocumentDocument saved = repository.save(doc);
+        log.info("Updated document tenantId='{}' projectId='{}' id='{}' fields={}",
+                saved.getTenantId(), saved.getProjectId(), saved.getId(),
+                describeChanges(newTitle, newTags, newInlineText));
+        return saved;
+    }
+
+    private static String describeChanges(@Nullable String title, @Nullable List<String> tags, @Nullable String inlineText) {
+        StringBuilder sb = new StringBuilder("[");
+        if (title != null) sb.append("title");
+        if (tags != null) { if (sb.length() > 1) sb.append(','); sb.append("tags"); }
+        if (inlineText != null) { if (sb.length() > 1) sb.append(','); sb.append("inlineText"); }
+        return sb.append(']').toString();
     }
 
     /**

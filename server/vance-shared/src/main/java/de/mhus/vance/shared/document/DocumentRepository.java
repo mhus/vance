@@ -2,6 +2,8 @@ package de.mhus.vance.shared.document;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 /**
@@ -18,6 +20,9 @@ interface DocumentRepository extends MongoRepository<DocumentDocument, String> {
 
     List<DocumentDocument> findByTenantIdAndProjectIdAndStatus(
             String tenantId, String projectId, DocumentStatus status);
+
+    Page<DocumentDocument> findByTenantIdAndProjectIdAndStatus(
+            String tenantId, String projectId, DocumentStatus status, Pageable pageable);
 
     List<DocumentDocument> findByTenantIdAndProjectIdAndTagsContainingAndStatus(
             String tenantId, String projectId, String tag, DocumentStatus status);

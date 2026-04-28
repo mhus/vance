@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.init;
 
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
@@ -43,6 +44,7 @@ public class InitBrainService {
     private final ProjectGroupService projectGroupService;
     private final ProjectService projectService;
     private final TeamService teamService;
+    private final DocumentService documentService;
     private final InitSettingsLoader initSettingsLoader;
 
     @PostConstruct
@@ -72,9 +74,66 @@ public class InitBrainService {
         ensureTeam(ACME_TENANT, "field-testing-qa", "Field Testing & Quality Assurance",
                 List.of("wile.coyote", "road.runner"));
 
+        seedInstantHoleDocuments();
+
         // LLM keys, provider/model defaults, etc. — loaded from a
         // gitignored YAML so a Mongo wipe doesn't lose them.
         initSettingsLoader.loadIfPresent();
+    }
+
+    /**
+     * Drops two demo documents into the {@code instant-hole} project so the
+     * Web-UI document editor has something to show on a fresh database. Both
+     * are inline-text and well under the 4 KB threshold.
+     */
+    private void seedInstantHoleDocuments() {
+        ensureDocument(ACME_TENANT, "instant-hole", "notes/welcome.md",
+                "Welcome to Instant Hole",
+                "text/markdown",
+                List.of("welcome", "demo"),
+                """
+                # Welcome to the Instant Hole project
+
+                You are looking at a seeded demo document — feel free to edit
+                or delete it.
+
+                ## What lives here?
+
+                - Field reports from the canyon
+                - Specs for hole-deployment tooling
+                - Lessons learned (mostly by Mr. Coyote)
+
+                ## Try it out
+
+                1. Open the **+ New document** dialog from this list.
+                2. Either type Markdown directly or upload a file.
+                3. Inline-stored documents (≤ 4 KB) are editable here; larger
+                   files are stored out-of-band and read-only in v1.
+                """,
+                "marvin.acme");
+
+        ensureDocument(ACME_TENANT, "instant-hole", "specs/deployment-checklist.md",
+                "Deployment checklist",
+                "text/markdown",
+                List.of("spec", "checklist"),
+                """
+                # Instant Hole — deployment checklist
+
+                Before painting a hole on a flat surface, verify:
+
+                - [ ] Surface is at least 80% flat
+                - [ ] Brush is fully loaded with Acme™ Hole Paint
+                - [ ] No bystanders within the projected fall radius
+                - [ ] Emergency parachute is accessible (operator only)
+                - [ ] Field report template is open in this editor
+
+                After deployment:
+
+                - [ ] Confirm hole permeability
+                - [ ] Photograph for the field report
+                - [ ] Forward report to R&D Propulsion (`rd-propulsion` team)
+                """,
+                "wile.coyote");
     }
 
     private void ensureUser(String tenantId, String name, String title, @Nullable String email, String plainPassword) {
@@ -104,5 +163,29 @@ public class InitBrainService {
             return;
         }
         teamService.create(tenantId, name, title, members);
+    }
+
+    private void ensureDocument(
+            String tenantId,
+            String projectId,
+            String path,
+            String title,
+            String mimeType,
+            List<String> tags,
+            String body,
+            String createdBy) {
+        if (documentService.findByPath(tenantId, projectId, path).isPresent()) {
+            return;
+        }
+        byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        documentService.create(
+                tenantId,
+                projectId,
+                path,
+                title,
+                tags,
+                mimeType,
+                new java.io.ByteArrayInputStream(bytes),
+                createdBy);
     }
 }

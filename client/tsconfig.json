@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/generated" },
+    { "path": "./packages/shared" },
+    { "path": "./packages/vance-face" }
+  ]
+}

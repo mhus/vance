@@ -2,11 +2,14 @@ package de.mhus.vance.brain.access;
 
 import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
+import de.mhus.vance.api.access.RefreshTokenResponse;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Duration;
 import java.time.Instant;
@@ -86,6 +89,45 @@ public class AccessController {
 
         log.info("Issued JWT tenant='{}' user='{}' expiresAt={}", tenant, username, expiresAt);
         return ResponseEntity.ok(AccessTokenResponse.builder()
+                .token(token)
+                .expiresAtTimestamp(expiresAt.toEpochMilli())
+                .build());
+    }
+
+    /**
+     * Re-mint a JWT in exchange for a still-valid one.
+     *
+     * <p>{@code POST /brain/{tenant}/refresh} — caller authenticates with their
+     * current bearer token (validated by {@link BrainAccessFilter}). On success
+     * a fresh token with a new {@link #TOKEN_LIFETIME} is issued for the same
+     * user/tenant.
+     *
+     * <p>Re-checks that the user is still {@link UserStatus#ACTIVE} — a token
+     * issued before the user was deactivated must not be refreshable.
+     */
+    @PostMapping("/brain/{tenant}/refresh")
+    public ResponseEntity<RefreshTokenResponse> refreshToken(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest request) {
+
+        String username = (String) request.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        if (username == null) {
+            // The filter would have rejected the request before reaching here, so
+            // this branch is defensive only.
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Optional<UserDocument> userOpt = userService.findByTenantAndName(tenant, username);
+        if (userOpt.isEmpty() || userOpt.get().getStatus() != UserStatus.ACTIVE) {
+            log.debug("Refresh rejected: user inactive or missing tenant='{}' name='{}'", tenant, username);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Instant expiresAt = Instant.now().plus(TOKEN_LIFETIME);
+        String token = jwtService.createToken(tenant, username, expiresAt);
+
+        log.info("Refreshed JWT tenant='{}' user='{}' expiresAt={}", tenant, username, expiresAt);
+        return ResponseEntity.ok(RefreshTokenResponse.builder()
                 .token(token)
                 .expiresAtTimestamp(expiresAt.toEpochMilli())
                 .build());

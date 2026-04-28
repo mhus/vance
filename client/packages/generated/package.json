@@ -1,0 +1,21 @@
+{
+  "name": "@vance/generated",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TypeScript interfaces generated from vance-api Java DTOs by generate-java-to-ts-maven-plugin. Do not edit individual *.ts files — they are overwritten by the Maven build.",
+  "license": "FSL-1.1-Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  }
+}

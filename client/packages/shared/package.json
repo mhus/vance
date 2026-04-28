@@ -1,0 +1,36 @@
+{
+  "name": "@vance/shared",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vance client-side library: auth, REST client, WebSocket connection, persistence. Framework-agnostic — no Vue, no Tailwind, no DaisyUI.",
+  "license": "FSL-1.1-Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js"
+    },
+    "./rest": {
+      "types": "./dist/rest/index.d.ts",
+      "import": "./dist/rest/index.js"
+    },
+    "./persistence": {
+      "types": "./dist/persistence/index.d.ts",
+      "import": "./dist/persistence/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@vance/generated": "workspace:*"
+  }
+}

@@ -121,6 +121,11 @@ public class JavaAstParser {
                     boolean isFinal = fd.isFinal();
                     f.setStaticFinal(isStatic && isFinal);
                     v.getInitializer().ifPresent(init -> f.setInitializer(init.toString()));
+                    // @Nullable on either the field or the type counts as optional —
+                    // matches JSpecify's semantics (`@Nullable T foo;` → `foo?: T;`).
+                    if (hasNullableAnnotation(fd, t)) {
+                        f.setOptional(true);
+                    }
                     // analyze annotations on the field
                     for (AnnotationExpr an : fd.getAnnotations()) {
                         String n = simpleName(an.getNameAsString());
@@ -138,7 +143,10 @@ public class JavaAstParser {
                             getStringAttribute(an, "importPath").ifPresent(f::setImportPath);
                             getStringAttribute(an, "importAs").ifPresent(f::setImportAs);
                             f.setIgnored(getBooleanAttribute(an, "ignore").orElse(false));
-                            f.setOptional(getBooleanAttribute(an, "optional").orElse(false));
+                            // explicit @TypeScript(optional=true) wins over auto-detection
+                            if (getBooleanAttribute(an, "optional").orElse(false)) {
+                                f.setOptional(true);
+                            }
                             getStringAttribute(an, "description").ifPresent(f::setDescription);
                         }
                     }
@@ -180,6 +188,9 @@ public class JavaAstParser {
                     f.setName(p.getNameAsString());
                     Type t = p.getType();
                     f.setJavaType(t.asString());
+                    if (hasNullableAnnotation(p, t)) {
+                        f.setOptional(true);
+                    }
                     // analyze annotations on the component (same as field)
                     for (AnnotationExpr an : p.getAnnotations()) {
                         String n = simpleName(an.getNameAsString());
@@ -193,7 +204,9 @@ public class JavaAstParser {
                             getStringAttribute(an, "importPath").ifPresent(f::setImportPath);
                             getStringAttribute(an, "importAs").ifPresent(f::setImportAs);
                             f.setIgnored(getBooleanAttribute(an, "ignore").orElse(false));
-                            f.setOptional(getBooleanAttribute(an, "optional").orElse(false));
+                            if (getBooleanAttribute(an, "optional").orElse(false)) {
+                                f.setOptional(true);
+                            }
                             getStringAttribute(an, "description").ifPresent(f::setDescription);
                         }
                     }
@@ -323,6 +336,30 @@ public class JavaAstParser {
     private static String simpleName(String name) {
         int i = name.lastIndexOf('.');
         return i >= 0 ? name.substring(i + 1) : name;
+    }
+
+    /**
+     * Whether the field carries a {@code @Nullable} marker, either as a field
+     * annotation ({@code @Nullable private String foo;}) or as a type
+     * annotation ({@code private @Nullable String foo;}). We accept any
+     * annotation whose simple name is {@code Nullable} — JSpecify, JetBrains,
+     * Spring, Checker Framework all use the same name and the same
+     * "may-be-null" semantics.
+     */
+    private static boolean hasNullableAnnotation(FieldDeclaration fd, Type type) {
+        return hasNullableAnnotation(fd.getAnnotations()) || hasNullableAnnotation(type.getAnnotations());
+    }
+
+    /** Same as {@link #hasNullableAnnotation(FieldDeclaration, Type)} but for record components. */
+    private static boolean hasNullableAnnotation(Parameter p, Type type) {
+        return hasNullableAnnotation(p.getAnnotations()) || hasNullableAnnotation(type.getAnnotations());
+    }
+
+    private static boolean hasNullableAnnotation(NodeList<AnnotationExpr> annotations) {
+        for (AnnotationExpr an : annotations) {
+            if ("Nullable".equals(simpleName(an.getNameAsString()))) return true;
+        }
+        return false;
     }
 
     private static String stripQuotes(String s) {

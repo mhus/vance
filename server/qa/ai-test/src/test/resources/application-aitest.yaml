@@ -29,6 +29,12 @@ vance:
     capabilities: []
   encryption:
     password: aitest-encryption
+  # Workspace + exec output go under the test's target dir so re-runs
+  # start clean and the test can inspect/assert on file presence.
+  workspace:
+    baseDir: target/ai-test/workspace
+  exec:
+    baseDir: target/ai-test/exec
 
 logging:
   file:

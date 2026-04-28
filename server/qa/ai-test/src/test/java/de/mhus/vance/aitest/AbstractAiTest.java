@@ -4,9 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.mongodb.client.model.Filters;
 import de.mhus.vance.brain.VanceBrainApplication;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.AfterAll;
@@ -57,9 +62,41 @@ abstract class AbstractAiTest {
 
     @DynamicPropertySource
     static void mongoProperties(DynamicPropertyRegistry registry) {
+        // Wipe the ai-test working dir BEFORE Spring boots — brain's logback
+        // opens target/ai-test/brain.log during context init, and removing
+        // a file out from under an open FileAppender would orphan its writes.
+        // Running this in @DynamicPropertySource (which fires before context
+        // load) keeps every run on a clean slate without that race.
+        wipeAiTestDir();
         MongoFixture.start();
         registry.add("spring.mongodb.uri", MongoFixture::uri);
         registry.add("spring.mongodb.database", () -> MongoFixture.DATABASE);
+    }
+
+    /**
+     * Recursively deletes {@code <surefire-cwd>/target/ai-test/} so the
+     * next run starts clean. Best-effort — silent on missing dir; rethrows
+     * other IO errors so a permission problem fails fast instead of leaving
+     * a hybrid state behind.
+     */
+    static void wipeAiTestDir() {
+        Path dir = Path.of("target", "ai-test").toAbsolutePath();
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            Files.delete(p);
+                        } catch (IOException e) {
+                            throw new RuntimeException(
+                                    "ai-test cleanup failed at " + p, e);
+                        }
+                    });
+        } catch (IOException e) {
+            throw new RuntimeException("ai-test cleanup walk failed", e);
+        }
     }
 
     @BeforeAll

@@ -8,6 +8,11 @@ interface Props {
      * editors omit the prop and the dot is hidden.
      */
     connectionState?: 'connected' | 'connecting' | 'disconnected';
+    /**
+     * Doubles the default width of the right panel (320px → 640px). Use for
+     * editors whose right panel hosts forms (e.g. settings editor).
+     */
+    wideRightPanel?: boolean;
 }
 declare var __VLS_1: {}, __VLS_3: {}, __VLS_5: {}, __VLS_7: {};
 type __VLS_Slots = {} & {
@@ -21,6 +26,7 @@ type __VLS_Slots = {} & {
 };
 declare const __VLS_component: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<Props> & Readonly<{}>, {
     breadcrumbs: string[];
+    wideRightPanel: boolean;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 declare const _default: __VLS_WithSlots<typeof __VLS_component, __VLS_Slots>;
 export default _default;

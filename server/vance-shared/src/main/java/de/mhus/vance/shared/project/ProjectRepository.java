@@ -18,5 +18,7 @@ interface ProjectRepository extends MongoRepository<ProjectDocument, String> {
 
     List<ProjectDocument> findByTenantIdAndProjectGroupId(String tenantId, String projectGroupId);
 
+    boolean existsByTenantIdAndProjectGroupId(String tenantId, String projectGroupId);
+
     List<ProjectDocument> findByTenantIdAndTeamIdsContaining(String tenantId, String teamId);
 }

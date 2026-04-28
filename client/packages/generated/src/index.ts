@@ -24,10 +24,22 @@ export * from './inbox/InboxListResponse';
 export * from './inbox/InboxTagsResponse';
 export * from './inbox/ResolvedBy';
 
+export * from './projects/ProjectCreateRequest';
+export * from './projects/ProjectDto';
+export * from './projects/ProjectGroupCreateRequest';
+export * from './projects/ProjectGroupUpdateRequest';
+export * from './projects/ProjectUpdateRequest';
 export * from './projects/TenantProjectsResponse';
+
+export * from './settings/SettingDto';
+export * from './settings/SettingType';
+export * from './settings/SettingWriteRequest';
 
 export * from './teams/TeamListResponse';
 export * from './teams/TeamSummary';
+
+export * from './tenant/TenantDto';
+export * from './tenant/TenantUpdateRequest';
 
 export * from './ws/ProjectGroupSummary';
 export * from './ws/ProjectSummary';

@@ -46,6 +46,28 @@ public class TenantService {
     }
 
     /**
+     * Patches mutable fields of an existing tenant. {@code name} is immutable;
+     * a {@code null} {@code title}/{@code enabled} means "leave as is".
+     *
+     * @throws TenantNotFoundException if the tenant does not exist
+     */
+    public TenantDocument update(String name, @Nullable String title, @Nullable Boolean enabled) {
+        TenantDocument tenant = repository.findByName(name)
+                .orElseThrow(() -> new TenantNotFoundException(
+                        "Tenant '" + name + "' not found"));
+        if (title != null) {
+            tenant.setTitle(title);
+        }
+        if (enabled != null) {
+            tenant.setEnabled(enabled);
+        }
+        TenantDocument saved = repository.save(tenant);
+        log.info("Updated tenant name='{}' title='{}' enabled={}",
+                saved.getName(), saved.getTitle(), saved.isEnabled());
+        return saved;
+    }
+
+    /**
      * Creates the tenant (if missing) and its JWT signing key (if missing).
      * Returns the persisted tenant.
      */
@@ -76,5 +98,11 @@ public class TenantService {
         }
         String keyId = keyService.createAndStoreEcKeyPair(tenant.getName(), KeyPurpose.JWT_SIGNING);
         log.info("Bootstrapped JWT signing key tenant='{}' keyId='{}'", tenant.getName(), keyId);
+    }
+
+    public static class TenantNotFoundException extends RuntimeException {
+        public TenantNotFoundException(String message) {
+            super(message);
+        }
     }
 }

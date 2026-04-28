@@ -2,6 +2,7 @@ import { computed } from 'vue';
 import { clearAuth, getTenantId, getUsername } from '@vance/shared';
 const __VLS_props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
+    wideRightPanel: false,
 });
 const tenantId = computed(() => getTenantId());
 const username = computed(() => getUsername());
@@ -12,6 +13,7 @@ function logout() {
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
     breadcrumbs: () => [],
+    wideRightPanel: false,
 });
 const __VLS_ctx = {};
 let __VLS_components;
@@ -110,7 +112,10 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.main, __VLS_intrinsicElements.
 var __VLS_4 = {};
 if (__VLS_ctx.$slots['right-panel']) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
-        ...{ class: "w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto" },
+        ...{ class: ([
+                'shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto',
+                __VLS_ctx.wideRightPanel ? 'w-[40rem]' : 'w-80',
+            ]) },
     });
     var __VLS_6 = {};
 }
@@ -181,7 +186,6 @@ if (__VLS_ctx.$slots['right-panel']) {
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
-/** @type {__VLS_StyleScopedClasses['w-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-l']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;

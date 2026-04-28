@@ -12,10 +12,16 @@ interface Props {
    * editors omit the prop and the dot is hidden.
    */
   connectionState?: 'connected' | 'connecting' | 'disconnected';
+  /**
+   * Doubles the default width of the right panel (320px → 640px). Use for
+   * editors whose right panel hosts forms (e.g. settings editor).
+   */
+  wideRightPanel?: boolean;
 }
 
 withDefaults(defineProps<Props>(), {
   breadcrumbs: () => [],
+  wideRightPanel: false,
 });
 
 const tenantId = computed<string | null>(() => getTenantId());
@@ -98,7 +104,10 @@ function logout(): void {
 
       <aside
         v-if="$slots['right-panel']"
-        class="w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto"
+        :class="[
+          'shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto',
+          wideRightPanel ? 'w-[40rem]' : 'w-80',
+        ]"
       >
         <slot name="right-panel" />
       </aside>

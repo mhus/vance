@@ -49,6 +49,10 @@ public class ProjectService {
         return repository.findByTenantIdAndProjectGroupId(tenantId, projectGroupId);
     }
 
+    public boolean existsByGroup(String tenantId, String projectGroupId) {
+        return repository.existsByTenantIdAndProjectGroupId(tenantId, projectGroupId);
+    }
+
     public List<ProjectDocument> byTeam(String tenantId, String teamId) {
         return repository.findByTenantIdAndTeamIdsContaining(tenantId, teamId);
     }
@@ -122,6 +126,69 @@ public class ProjectService {
             log.warn("Project '{}' taken over by pod '{}' from previous owner '{}'",
                     name, podIp, current.getPodIp());
         }
+        return updated;
+    }
+
+    /**
+     * Patches mutable fields. {@code name} and {@code tenantId} are immutable.
+     * Pass {@code null} to leave a field untouched. To clear the project-group
+     * assignment use {@code clearProjectGroup=true}.
+     *
+     * @throws ProjectNotFoundException if the project does not exist
+     */
+    public ProjectDocument update(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            @Nullable Boolean enabled,
+            @Nullable String projectGroupId,
+            boolean clearProjectGroup,
+            @Nullable List<String> teamIds) {
+        ProjectDocument project = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new ProjectNotFoundException(
+                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (title != null) {
+            project.setTitle(title);
+        }
+        if (enabled != null) {
+            project.setEnabled(enabled);
+        }
+        if (clearProjectGroup) {
+            project.setProjectGroupId(null);
+        } else if (projectGroupId != null) {
+            project.setProjectGroupId(projectGroupId);
+        }
+        if (teamIds != null) {
+            project.setTeamIds(new ArrayList<>(teamIds));
+        }
+        ProjectDocument saved = repository.save(project);
+        log.info("Updated project tenantId='{}' name='{}' title='{}' enabled={} groupId='{}'",
+                saved.getTenantId(), saved.getName(), saved.getTitle(),
+                saved.isEnabled(), saved.getProjectGroupId());
+        return saved;
+    }
+
+    /**
+     * Archives a project: status to {@link ProjectStatus#ARCHIVED} and
+     * {@code projectGroupId} replaced by {@code archivedGroupId}. Idempotent.
+     *
+     * @throws ProjectNotFoundException if the project does not exist
+     */
+    public ProjectDocument archive(String tenantId, String name, String archivedGroupId) {
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Update update = new Update()
+                .set(F_STATUS, ProjectStatus.ARCHIVED)
+                .set("projectGroupId", archivedGroupId);
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(true),
+                ProjectDocument.class);
+        if (updated == null) {
+            throw new ProjectNotFoundException(
+                    "Project '" + name + "' not found in tenant '" + tenantId + "'");
+        }
+        log.info("Archived project tenantId='{}' name='{}' → group='{}'",
+                tenantId, name, archivedGroupId);
         return updated;
     }
 

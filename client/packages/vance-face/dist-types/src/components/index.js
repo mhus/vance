@@ -11,6 +11,7 @@ export { default as VAlert } from './VAlert.vue';
 export { default as VBackButton } from './VBackButton.vue';
 export { default as VButton } from './VButton.vue';
 export { default as VCard } from './VCard.vue';
+export { default as VCheckbox } from './VCheckbox.vue';
 export { default as VDataList } from './VDataList.vue';
 export { default as VEmptyState } from './VEmptyState.vue';
 export { default as VFileInput } from './VFileInput.vue';

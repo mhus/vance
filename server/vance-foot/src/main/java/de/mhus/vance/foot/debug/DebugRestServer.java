@@ -3,6 +3,7 @@ package de.mhus.vance.foot.debug;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import de.mhus.vance.foot.command.ChatInputService;
 import de.mhus.vance.foot.command.CommandService;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
@@ -37,9 +38,22 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>{@code GET  /debug/state} — connection state, verbosity, UI mode.</li>
  *   <li>{@code GET  /debug/output?limit=N} — last N captured terminal lines.</li>
  *   <li>{@code POST /debug/command} body {@code {"line":"/connect"}} — invokes
- *       a slash command directly through {@link CommandService}, bypassing the
- *       JLine REPL. Returns {@code {"matched": true|false}}.</li>
+ *       a slash command directly through {@link CommandService}. The line is
+ *       auto-prefixed with {@code /} if missing — chat content is rejected
+ *       here. Returns {@code {"line":"...","matched":true|false}}.</li>
+ *   <li>{@code POST /debug/input} body {@code {"line":"/connect"}} or
+ *       {@code {"line":"hello there"}} — full REPL replica. Slash → command,
+ *       anything else → chat. Returns
+ *       {@code {"kind":"COMMAND|CHAT","line":"...","ok":true|false,"error":...}}.</li>
+ *   <li>{@code POST /debug/chat} body {@code {"line":"hello there"}} —
+ *       sends the line as chat content unconditionally (no slash routing),
+ *       routing it through the active think-process via
+ *       {@link ChatInputService}. Same response shape as {@code /debug/input}
+ *       but {@code kind} is always {@code CHAT}.</li>
  * </ul>
+ *
+ * <p>Together these endpoints make Foot fully remote-controllable: every
+ * action a human can do at the JLine prompt is reachable via HTTP.
  */
 @Component
 @ConditionalOnProperty(prefix = "vance.debug.rest", name = "enabled", havingValue = "true")
@@ -48,6 +62,7 @@ public final class DebugRestServer {
     private final FootConfig config;
     private final ChatTerminal terminal;
     private final CommandService commandService;
+    private final ChatInputService chatInputService;
     private final ConnectionService connectionService;
     private final InterfaceService interfaceService;
     private final SessionService sessionService;
@@ -58,12 +73,14 @@ public final class DebugRestServer {
     public DebugRestServer(FootConfig config,
                            ChatTerminal terminal,
                            CommandService commandService,
+                           ChatInputService chatInputService,
                            ConnectionService connectionService,
                            InterfaceService interfaceService,
                            SessionService sessionService) {
         this.config = config;
         this.terminal = terminal;
         this.commandService = commandService;
+        this.chatInputService = chatInputService;
         this.connectionService = connectionService;
         this.interfaceService = interfaceService;
         this.sessionService = sessionService;
@@ -80,6 +97,8 @@ public final class DebugRestServer {
         s.createContext("/debug/state", new StateHandler());
         s.createContext("/debug/output", new OutputHandler());
         s.createContext("/debug/command", new CommandHandler());
+        s.createContext("/debug/input", new InputHandler());
+        s.createContext("/debug/chat", new ChatHandler());
         s.setExecutor(Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "vance-foot-debug-http");
             t.setDaemon(true);
@@ -147,24 +166,8 @@ public final class DebugRestServer {
     private final class CommandHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                writeJson(exchange, 405, Map.of("error", "method not allowed"));
-                return;
-            }
-            CommandRequest req;
-            try (InputStream body = exchange.getRequestBody()) {
-                byte[] raw = body.readAllBytes();
-                if (raw.length == 0) {
-                    writeJson(exchange, 400, Map.of("error", "empty body"));
-                    return;
-                }
-                req = json.readValue(raw, CommandRequest.class);
-            } catch (Exception e) {
-                writeJson(exchange, 400, Map.of("error", "invalid json: " + e.getMessage()));
-                return;
-            }
-            if (req.line == null || req.line.isBlank()) {
-                writeJson(exchange, 400, Map.of("error", "field 'line' is required"));
+            CommandRequest req = readCommandRequest(exchange);
+            if (req == null) {
                 return;
             }
             String line = req.line.trim();
@@ -174,6 +177,80 @@ public final class DebugRestServer {
             boolean matched = commandService.execute(line);
             writeJson(exchange, 200, Map.of("line", line, "matched", matched));
         }
+    }
+
+    /**
+     * REPL replica: slash → command, anything else → chat. Mirrors what the
+     * JLine prompt does, dispatched through the same {@link ChatInputService}
+     * so behavior stays identical between human input and HTTP automation.
+     */
+    private final class InputHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            CommandRequest req = readCommandRequest(exchange);
+            if (req == null) {
+                return;
+            }
+            ChatInputService.InputResult result = chatInputService.submit(req.line);
+            writeJson(exchange, 200, toJson(result));
+        }
+    }
+
+    /**
+     * Chat-only path: never routes through {@link CommandService} even if the
+     * line starts with {@code /}. Useful for tests that want to feed literal
+     * chat content (including slashes) to the active think-process.
+     */
+    private final class ChatHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            CommandRequest req = readCommandRequest(exchange);
+            if (req == null) {
+                return;
+            }
+            ChatInputService.InputResult result =
+                    chatInputService.sendChat(req.line, ChatInputService.DEFAULT_CHAT_TIMEOUT);
+            writeJson(exchange, 200, toJson(result));
+        }
+    }
+
+    private @Nullable CommandRequest readCommandRequest(HttpExchange exchange) throws IOException {
+        if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            writeJson(exchange, 405, Map.of("error", "method not allowed"));
+            return null;
+        }
+        CommandRequest req;
+        try (InputStream body = exchange.getRequestBody()) {
+            byte[] raw = body.readAllBytes();
+            if (raw.length == 0) {
+                writeJson(exchange, 400, Map.of("error", "empty body"));
+                return null;
+            }
+            req = json.readValue(raw, CommandRequest.class);
+        } catch (Exception e) {
+            writeJson(exchange, 400, Map.of("error", "invalid json: " + e.getMessage()));
+            return null;
+        }
+        if (req.line == null || req.line.isBlank()) {
+            writeJson(exchange, 400, Map.of("error", "field 'line' is required"));
+            return null;
+        }
+        return req;
+    }
+
+    private static Map<String, Object> toJson(ChatInputService.InputResult result) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("kind", result.kind().name());
+        body.put("line", result.line());
+        body.put("ok", result.ok());
+        body.put("error", result.error());
+        // Backwards-compat alias so callers used to {/debug/command}.matched
+        // can read the same field on the new endpoints — non-null only on
+        // command results.
+        if (result.kind() == ChatInputService.InputKind.COMMAND) {
+            body.put("matched", result.ok());
+        }
+        return body;
     }
 
     private static int parseLimit(@Nullable String query, int fallback) {

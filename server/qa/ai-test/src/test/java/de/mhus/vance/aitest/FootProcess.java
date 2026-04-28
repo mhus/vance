@@ -139,21 +139,45 @@ public final class FootProcess {
     }
 
     public CommandResult command(String line) throws IOException, InterruptedException {
+        Map<String, Object> parsed = postLine("/debug/command", line, Duration.ofSeconds(30));
+        return new CommandResult(
+                String.valueOf(parsed.getOrDefault("line", "")),
+                Boolean.TRUE.equals(parsed.get("matched")));
+    }
+
+    /**
+     * REPL replica — slash → command, anything else → chat. Same code path
+     * a human keypress would take, exposed over HTTP for full remote
+     * control.
+     */
+    public InputResult input(String line) throws IOException, InterruptedException {
+        Map<String, Object> parsed = postLine("/debug/input", line, Duration.ofSeconds(150));
+        return InputResult.from(parsed);
+    }
+
+    /**
+     * Send {@code line} as chat content unconditionally — bypasses slash
+     * routing. Targets {@code POST /debug/chat}.
+     */
+    public InputResult chat(String line) throws IOException, InterruptedException {
+        Map<String, Object> parsed = postLine("/debug/chat", line, Duration.ofSeconds(150));
+        return InputResult.from(parsed);
+    }
+
+    private Map<String, Object> postLine(String path, String line, Duration timeout)
+            throws IOException, InterruptedException {
         String body = json.writeValueAsString(Map.of("line", line));
         HttpResponse<String> r = http.send(
-                HttpRequest.newBuilder(URI.create(DEBUG_BASE + "/debug/command"))
-                        .timeout(Duration.ofSeconds(30))
+                HttpRequest.newBuilder(URI.create(DEBUG_BASE + path))
+                        .timeout(timeout)
                         .POST(HttpRequest.BodyPublishers.ofString(body))
                         .header("Content-Type", "application/json")
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         if (r.statusCode() != 200) {
-            throw new IOException("/debug/command returned HTTP " + r.statusCode() + ": " + r.body());
+            throw new IOException(path + " returned HTTP " + r.statusCode() + ": " + r.body());
         }
-        Map<String, Object> parsed = json.readValue(r.body(), Map.class);
-        return new CommandResult(
-                String.valueOf(parsed.getOrDefault("line", "")),
-                Boolean.TRUE.equals(parsed.get("matched")));
+        return json.readValue(r.body(), Map.class);
     }
 
     public List<String> tailOutput(int limit) throws IOException, InterruptedException {
@@ -249,4 +273,16 @@ public final class FootProcess {
     }
 
     public record CommandResult(String line, boolean matched) {}
+
+    /** Result of a {@code /debug/input} or {@code /debug/chat} call. */
+    public record InputResult(String kind, String line, boolean ok, @Nullable String error) {
+        static InputResult from(Map<String, Object> body) {
+            Object errObj = body.get("error");
+            return new InputResult(
+                    String.valueOf(body.getOrDefault("kind", "")),
+                    String.valueOf(body.getOrDefault("line", "")),
+                    Boolean.TRUE.equals(body.get("ok")),
+                    errObj == null ? null : errObj.toString());
+        }
+    }
 }

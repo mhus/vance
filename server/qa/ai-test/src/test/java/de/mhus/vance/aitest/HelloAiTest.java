@@ -97,15 +97,17 @@ class HelloAiTest {
                 .as("foot WebSocket should reach connectionOpen=true within 30s")
                 .isTrue();
 
-        // 2. Send 'Hello'. The debug endpoint auto-prefixes a leading slash,
-        //    so 'Hello' arrives at the dispatcher as '/Hello'. There is no
-        //    matching command — matched=false — but the request still round-
-        //    trips, which is enough to prove the input pipeline is alive.
-        //    Future iterations of this test can extend foot's debug surface
-        //    with a chat-input endpoint and assert against brain-side state.
-        FootProcess.CommandResult helloRes = foot.command("Hello");
-        assertThat(helloRes.line()).isEqualTo("/Hello");
-        assertThat(helloRes.matched()).isFalse();
+        // 2. Send 'Hello' through the chat path (no slash routing). The test
+        //    has not bootstrapped a session, so ChatInputService rejects with
+        //    'No bound session ...' — but the request goes all the way through
+        //    the same code path the human REPL uses, so {ok,error} reflect
+        //    the real state. A follow-up test that bootstraps a session and
+        //    a process will see ok=true and brain-side chat_messages > 0.
+        FootProcess.InputResult helloRes = foot.chat("Hello");
+        assertThat(helloRes.kind()).isEqualTo("CHAT");
+        assertThat(helloRes.line()).isEqualTo("Hello");
+        assertThat(helloRes.ok()).isFalse();
+        assertThat(helloRes.error()).contains("No bound session");
 
         // 3. Verify InitBrainService seed data exists in Mongo.
         long tenants = mongo.getCollection("tenants").countDocuments();

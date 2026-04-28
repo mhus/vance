@@ -1,18 +1,12 @@
 package de.mhus.vance.foot.ui;
 
-import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
-import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
-import de.mhus.vance.api.ws.MessageType;
-import de.mhus.vance.foot.command.CommandService;
+import de.mhus.vance.foot.command.ChatInputService;
 import de.mhus.vance.foot.config.FootConfig;
-import de.mhus.vance.foot.connection.BrainException;
-import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
@@ -25,45 +19,38 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * The JLine 3 REPL — default UI surface. Reads lines, routes leading-slash
- * input to {@link CommandService}, treats everything else as chat input.
+ * The JLine 3 REPL — default UI surface. Reads lines and forwards each one
+ * to {@link ChatInputService}, which routes leading-slash input to the
+ * command dispatcher and everything else to the brain as chat content.
  *
- * <p>Chat forwarding to the Brain is not yet implemented — for now chat lines
- * are echoed back through {@link ChatTerminal} so the loop is observable. The
- * real path goes through a {@code ChatService} that we add when the first
- * end-to-end Brain roundtrip is wired up.
+ * <p>The same {@link ChatInputService} backs the debug REST endpoints, so
+ * remote-controlled flows hit the exact same code path as keyboard input.
  */
 @Component
 public class ChatRepl {
 
-    private final CommandService commandService;
+    private final ChatInputService input;
     private final ChatTerminal chatTerminal;
     private final InterfaceService interfaceService;
     private final SessionService sessions;
-    private final ConnectionService connection;
     private final StatusBar statusBar;
-    private final PromptGate promptGate;
     private final FootConfig config;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
     private @Nullable LineReader reader;
 
-    public ChatRepl(CommandService commandService,
+    public ChatRepl(ChatInputService input,
                     ChatTerminal chatTerminal,
                     InterfaceService interfaceService,
                     SessionService sessions,
-                    ConnectionService connection,
                     StatusBar statusBar,
-                    PromptGate promptGate,
                     FootConfig config) {
-        this.commandService = commandService;
+        this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
         this.sessions = sessions;
-        this.connection = connection;
         this.statusBar = statusBar;
-        this.promptGate = promptGate;
         this.config = config;
     }
 
@@ -129,20 +116,10 @@ public class ChatRepl {
             if (line == null || line.isBlank()) {
                 continue;
             }
-            // Mark the terminal exclusive while the REPL is processing the
-            // line — chunk handlers and other async sinks may write directly
-            // during this window. Outside it (during the readLine above) they
-            // must go through printAbove to keep the prompt intact.
-            promptGate.enterExclusive();
-            try {
-                if (line.startsWith("/")) {
-                    commandService.execute(line);
-                } else {
-                    handleChat(line);
-                }
-            } finally {
-                promptGate.exitExclusive();
-            }
+            // ChatInputService flips the PromptGate exclusive while the input
+            // is being processed, so async streaming sinks can write directly
+            // during this window without corrupting an active prompt.
+            input.submit(line);
         }
     }
 
@@ -189,35 +166,6 @@ public class ChatRepl {
             return "vance> ";
         }
         return "vance(" + bound.sessionId() + ")> ";
-    }
-
-    private void handleChat(String line) {
-        if (sessions.current() == null) {
-            chatTerminal.error("No bound session — /connect, then /session-resume or /session-create.");
-            return;
-        }
-        String process = sessions.activeProcess();
-        if (process == null) {
-            chatTerminal.error("No active process — /process <name> first, "
-                    + "or use /process-steer <name> <message>.");
-            return;
-        }
-        try {
-            ProcessSteerResponse response = connection.request(
-                    MessageType.PROCESS_STEER,
-                    ProcessSteerRequest.builder()
-                            .processName(process)
-                            .content(line)
-                            .build(),
-                    ProcessSteerResponse.class,
-                    Duration.ofSeconds(120));
-            chatTerminal.verbose("→ steered " + response.getProcessName()
-                    + " (status=" + response.getStatus() + ")");
-        } catch (BrainException e) {
-            chatTerminal.error(e.getMessage());
-        } catch (Exception e) {
-            chatTerminal.error("Steer failed: " + e.getMessage());
-        }
     }
 
     @PreDestroy

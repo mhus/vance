@@ -148,6 +148,16 @@ function readNextParam(): string | null {
             </div>
             <VButton variant="primary" size="sm" href="/recipes.html">Open</VButton>
           </li>
+          <li class="flex items-center justify-between gap-4">
+            <div>
+              <div class="font-semibold">Skills</div>
+              <div class="text-sm opacity-70">
+                Manage skills at tenant, project or user scope —
+                triggers, prompt extensions, reference docs, tools.
+              </div>
+            </div>
+            <VButton variant="primary" size="sm" href="/skills.html">Open</VButton>
+          </li>
         </ul>
       </VCard>
     </div>

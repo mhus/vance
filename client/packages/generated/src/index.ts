@@ -35,6 +35,14 @@ export * from './recipes/RecipeDto';
 export * from './recipes/RecipeSource';
 export * from './recipes/RecipeWriteRequest';
 
+export * from './skills/SkillDto';
+export * from './skills/SkillReferenceDocDto';
+export * from './skills/SkillReferenceDocLoadMode';
+export * from './skills/SkillScope';
+export * from './skills/SkillTriggerDto';
+export * from './skills/SkillTriggerType';
+export * from './skills/SkillWriteRequest';
+
 export * from './thinkprocess/PromptMode';
 
 export * from './settings/SettingDto';

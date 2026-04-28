@@ -5,6 +5,7 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -69,6 +70,23 @@ public interface ThinkEngine {
      */
     default Set<String> allowedTools() {
         return Set.of();
+    }
+
+    /**
+     * Returns engine-owned default configuration that bypasses the
+     * recipe system. When present, spawners (notably the
+     * {@code SessionChatBootstrapper}) skip recipe resolution and
+     * create the {@link ThinkProcessDocument} directly from the
+     * bundled fields. Used by hub engines like Vance whose persona
+     * and engine-level mechanics aren't config-bar via recipes.
+     *
+     * <p>Default {@link Optional#empty()} preserves the existing
+     * recipe-driven path for Arthur, Ford, Marvin, Vogon, Zaphod.
+     *
+     * <p>See {@code specification/vance-engine.md} §1.2.
+     */
+    default Optional<EngineBundledConfig> bundledConfig() {
+        return Optional.empty();
     }
 
     // ─── Lifecycle ──────────────────────────────────────────────────────

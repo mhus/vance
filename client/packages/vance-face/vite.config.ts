@@ -11,6 +11,7 @@ const editorEntries = {
   scopes: resolve(__dirname, 'scopes.html'),
   recipes: resolve(__dirname, 'recipes.html'),
   skills: resolve(__dirname, 'skills.html'),
+  insights: resolve(__dirname, 'insights.html'),
 };
 
 export default defineConfig({

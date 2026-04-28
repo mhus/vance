@@ -460,6 +460,9 @@ public class MarvinEngine implements ThinkEngine {
             case SteerMessage.ExternalCommand ec ->
                     log.info("Marvin id='{}' external command '{}' — not yet routed in v1",
                             process.getId(), ec.command());
+            case SteerMessage.PeerEvent pe ->
+                    log.debug("Marvin id='{}' ignoring PeerEvent type='{}' (hub-only)",
+                            process.getId(), pe.type());
         }
     }
 

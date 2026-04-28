@@ -2,6 +2,7 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import java.time.Instant;
@@ -23,7 +24,8 @@ public sealed interface SteerMessage
                 SteerMessage.ProcessEvent,
                 SteerMessage.ToolResult,
                 SteerMessage.ExternalCommand,
-                SteerMessage.InboxAnswer {
+                SteerMessage.InboxAnswer,
+                SteerMessage.PeerEvent {
 
     /** When the message was produced. */
     Instant at();
@@ -112,5 +114,30 @@ public sealed interface SteerMessage
             String inboxItemId,
             InboxItemType itemType,
             AnswerPayload answer) implements SteerMessage {
+    }
+
+    /**
+     * A peer hub-process of the same user reports a relevant action
+     * (project created, worker spawned, status changed). Hub-only —
+     * regular worker engines never receive this. See
+     * {@code specification/vance-engine.md} §5.3.
+     *
+     * @param sourceVanceProcessId Mongo id of the emitting hub-process
+     * @param userId               {@code UserDocument.name} that owns
+     *                             both peer hubs
+     * @param type                 event flavor — see {@link PeerEventType}
+     * @param humanSummary         one-line text suitable for direct LLM
+     *                             consumption
+     * @param payload              optional structured side-channel data
+     *                             (e.g. project name, process id)
+     */
+    record PeerEvent(
+            Instant at,
+            @Nullable String idempotencyKey,
+            String sourceVanceProcessId,
+            String userId,
+            PeerEventType type,
+            String humanSummary,
+            @Nullable Map<String, Object> payload) implements SteerMessage {
     }
 }

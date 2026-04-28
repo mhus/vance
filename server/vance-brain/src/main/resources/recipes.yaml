@@ -329,6 +329,13 @@ recipes:
       - chat
       - orchestrator
 
+  # Note: Vance does NOT have a recipe entry. Vance is a hub-engine
+  # whose persona, tool-cut, and params are owned by the engine class
+  # directly (see VanceEngine.bundledConfig()) — not by recipe config.
+  # This is deliberate: Vance has engine-level mechanics (Activity-Log,
+  # Peer-Events, Cross-Project-Spawn) that are not config-bar. See
+  # specification/vance-engine.md §1.2.
+
   - name: ford
     description: |
       Generalist Ford-engine default. Auto-applied when a process

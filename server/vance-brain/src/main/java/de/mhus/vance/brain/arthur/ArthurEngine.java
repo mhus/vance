@@ -644,6 +644,7 @@ public class ArthurEngine implements ThinkEngine {
                 sb.append("</inbox-answer>");
                 yield sb.toString();
             }
+            case SteerMessage.PeerEvent pe -> null; // hub-only — Arthur ignores
         };
     }
 

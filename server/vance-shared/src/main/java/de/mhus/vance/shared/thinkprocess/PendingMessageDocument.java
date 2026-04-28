@@ -2,6 +2,7 @@ package de.mhus.vance.shared.thinkprocess;
 
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import java.time.Instant;
@@ -75,6 +76,15 @@ public class PendingMessageDocument {
     private @Nullable InboxItemType inboxItemType;
     private @Nullable AnswerPayload inboxAnswer;
 
+    // ─── PEER_EVENT ──────────────────────────────────────────────
+    /** {@code ThinkProcessDocument.id} of the emitting hub-process. */
+    private @Nullable String sourceVanceProcessId;
+
+    /** {@code UserDocument.name} — both peer hubs belong to the same user. */
+    private @Nullable String peerUserId;
+
+    private @Nullable PeerEventType peerEventType;
+
     // ─── Shared payload ──────────────────────────────────────────
     /**
      * Generic structured data.
@@ -83,6 +93,8 @@ public class PendingMessageDocument {
      *   <li>{@code PROCESS_EVENT}: arbitrary key/value progress info.</li>
      *   <li>{@code TOOL_RESULT}: the tool's return value (when {@code SUCCESS}).</li>
      *   <li>{@code EXTERNAL_COMMAND}: command parameters.</li>
+     *   <li>{@code PEER_EVENT}: structured side-channel data — e.g. project name,
+     *       process id, status — alongside {@link #content} as a human summary.</li>
      * </ul>
      */
     private @Nullable Map<String, Object> payload;

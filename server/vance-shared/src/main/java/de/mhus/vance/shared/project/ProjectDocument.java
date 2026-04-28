@@ -52,6 +52,13 @@ public class ProjectDocument {
 
     private boolean enabled = true;
 
+    /**
+     * Classification of the project. {@link ProjectKind#NORMAL} for user projects,
+     * {@link ProjectKind#SYSTEM} for hidden/protected projects such as the per-user
+     * Vance Hub (see {@code specification/vance-engine.md} §2).
+     */
+    private ProjectKind kind = ProjectKind.NORMAL;
+
     /** Pod-affinity lifecycle. PENDING until first claim, ACTIVE once owned. */
     private ProjectStatus status = ProjectStatus.PENDING;
 

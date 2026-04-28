@@ -57,6 +57,16 @@ public class SessionService {
         return repository.findByTenantIdAndUserIdAndProjectId(tenantId, userId, projectId);
     }
 
+    /** Admin-style cross-user listing — used by the insights inspector. */
+    public List<SessionDocument> listForTenant(String tenantId) {
+        return repository.findByTenantId(tenantId);
+    }
+
+    /** Admin-style cross-user listing scoped to a project. */
+    public List<SessionDocument> listForProject(String tenantId, String projectId) {
+        return repository.findByTenantIdAndProjectId(tenantId, projectId);
+    }
+
     // ------------------------------------------------------------- creation
 
     /**

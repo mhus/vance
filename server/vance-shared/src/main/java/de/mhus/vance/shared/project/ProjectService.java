@@ -58,8 +58,23 @@ public class ProjectService {
     }
 
     /**
+     * Creates a {@link ProjectKind#NORMAL} project — see
+     * {@link #create(String, String, String, String, List, ProjectKind)}.
+     */
+    public ProjectDocument create(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            @Nullable String projectGroupId,
+            @Nullable List<String> teamIds) {
+        return create(tenantId, name, title, projectGroupId, teamIds, ProjectKind.NORMAL);
+    }
+
+    /**
      * Creates a project inside {@code tenantId}. {@code projectGroupId} is
-     * optional; {@code teamIds} may be empty. Throws
+     * optional; {@code teamIds} may be empty. {@code kind} is immutable after
+     * creation — use {@link ProjectKind#SYSTEM} for hub/system projects (see
+     * {@code specification/vance-engine.md} §2). Throws
      * {@link ProjectAlreadyExistsException} if a project with the same
      * {@code name} already lives in that tenant.
      */
@@ -68,7 +83,8 @@ public class ProjectService {
             String name,
             @Nullable String title,
             @Nullable String projectGroupId,
-            @Nullable List<String> teamIds) {
+            @Nullable List<String> teamIds,
+            ProjectKind kind) {
         if (repository.existsByTenantIdAndName(tenantId, name)) {
             throw new ProjectAlreadyExistsException(
                     "Project '" + name + "' already exists in tenant '" + tenantId + "'");
@@ -80,10 +96,11 @@ public class ProjectService {
                 .projectGroupId(projectGroupId)
                 .teamIds(teamIds == null ? new ArrayList<>() : new ArrayList<>(teamIds))
                 .enabled(true)
+                .kind(kind)
                 .build();
         ProjectDocument saved = repository.save(project);
-        log.info("Created project tenantId='{}' name='{}' id='{}'",
-                saved.getTenantId(), saved.getName(), saved.getId());
+        log.info("Created project tenantId='{}' name='{}' kind={} id='{}'",
+                saved.getTenantId(), saved.getName(), saved.getKind(), saved.getId());
         return saved;
     }
 
@@ -172,9 +189,20 @@ public class ProjectService {
      * Archives a project: status to {@link ProjectStatus#ARCHIVED} and
      * {@code projectGroupId} replaced by {@code archivedGroupId}. Idempotent.
      *
+     * <p>Refuses to archive {@link ProjectKind#SYSTEM} projects — those host
+     * infrastructure such as the per-user Vance Hub and must not disappear.
+     *
      * @throws ProjectNotFoundException if the project does not exist
+     * @throws SystemProjectProtectedException if the project is SYSTEM
      */
     public ProjectDocument archive(String tenantId, String name, String archivedGroupId) {
+        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new ProjectNotFoundException(
+                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (current.getKind() == ProjectKind.SYSTEM) {
+            throw new SystemProjectProtectedException(
+                    "Project '" + name + "' is SYSTEM — cannot archive");
+        }
         Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
         Update update = new Update()
                 .set(F_STATUS, ProjectStatus.ARCHIVED)
@@ -185,7 +213,7 @@ public class ProjectService {
                 ProjectDocument.class);
         if (updated == null) {
             throw new ProjectNotFoundException(
-                    "Project '" + name + "' not found in tenant '" + tenantId + "'");
+                    "Project '" + name + "' disappeared during archive");
         }
         log.info("Archived project tenantId='{}' name='{}' → group='{}'",
                 tenantId, name, archivedGroupId);
@@ -213,6 +241,12 @@ public class ProjectService {
 
     public static class ProjectArchivedException extends RuntimeException {
         public ProjectArchivedException(String message) {
+            super(message);
+        }
+    }
+
+    public static class SystemProjectProtectedException extends RuntimeException {
+        public SystemProjectProtectedException(String message) {
             super(message);
         }
     }

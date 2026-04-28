@@ -4,6 +4,7 @@ import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.api.access.RefreshTokenResponse;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.user.UserDocument;
@@ -54,6 +55,7 @@ public class AccessController {
     private final JwtService jwtService;
     private final UserService userService;
     private final PasswordService passwordService;
+    private final HomeBootstrapService homeBootstrapService;
 
     @PostMapping("/brain/{tenant}/access/{username}")
     public ResponseEntity<AccessTokenResponse> createToken(
@@ -83,6 +85,14 @@ public class AccessController {
             log.debug("Login rejected: bad password tenant='{}' name='{}'", tenant, username);
             return unauthorized();
         }
+
+        // First-login Hub bootstrap: ensures the per-user vance-<login>
+        // SYSTEM project (and the tenant-level Home group) exist before
+        // the client opens a hub session. Idempotent — a no-op on
+        // every subsequent login. Failure logs and re-throws; we'd
+        // rather block the login than mint a token for a user whose
+        // hub can't be opened.
+        homeBootstrapService.ensureHome(tenant, username);
 
         Instant expiresAt = Instant.now().plus(TOKEN_LIFETIME);
         String token = jwtService.createToken(tenant, username, expiresAt);

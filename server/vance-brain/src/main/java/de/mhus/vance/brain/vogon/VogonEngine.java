@@ -530,6 +530,9 @@ public class VogonEngine implements ThinkEngine {
             case SteerMessage.ExternalCommand ec ->
                     log.info("Vogon id='{}' external command '{}' — not yet routed",
                             process.getId(), ec.command());
+            case SteerMessage.PeerEvent pe ->
+                    log.debug("Vogon id='{}' ignoring peer event type='{}' (hub-only)",
+                            process.getId(), pe.type());
         }
     }
 

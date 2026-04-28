@@ -322,6 +322,31 @@ else {
     }, ...__VLS_functionalComponentArgsRest(__VLS_49));
     __VLS_51.slots.default;
     var __VLS_51;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+        ...{ class: "flex items-center justify-between gap-4" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "font-semibold" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "text-sm opacity-70" },
+    });
+    const __VLS_52 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
+        variant: "primary",
+        size: "sm",
+        href: "/insights.html",
+    }));
+    const __VLS_54 = __VLS_53({
+        variant: "primary",
+        size: "sm",
+        href: "/insights.html",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+    __VLS_55.slots.default;
+    var __VLS_55;
     var __VLS_31;
     var __VLS_27;
 }
@@ -352,6 +377,13 @@ else {
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-between']} */ ;

@@ -3,6 +3,7 @@ package de.mhus.vance.brain.thinkengine;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
@@ -78,6 +79,15 @@ public final class SteerMessageCodec {
                     .inboxItemType(ia.itemType())
                     .inboxAnswer(ia.answer())
                     .build();
+
+            case SteerMessage.PeerEvent pe -> b
+                    .type(PendingMessageType.PEER_EVENT)
+                    .sourceVanceProcessId(pe.sourceVanceProcessId())
+                    .peerUserId(pe.userId())
+                    .peerEventType(pe.type())
+                    .content(pe.humanSummary())
+                    .payload(pe.payload())
+                    .build();
         };
     }
 
@@ -127,6 +137,14 @@ public final class SteerMessageCodec {
                                     .reason("Persistent inbox answer was missing")
                                     .build()
                             : d.getInboxAnswer());
+
+            case PEER_EVENT -> new SteerMessage.PeerEvent(
+                    at, idem,
+                    nullToEmpty(d.getSourceVanceProcessId()),
+                    nullToEmpty(d.getPeerUserId()),
+                    d.getPeerEventType() == null ? PeerEventType.NOTE : d.getPeerEventType(),
+                    nullToEmpty(d.getContent()),
+                    d.getPayload());
         };
     }
 

@@ -3,8 +3,11 @@ package de.mhus.vance.brain.session;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.thinkengine.EngineBundledConfig;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.shared.project.ProjectKind;
+import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -41,6 +44,7 @@ public class SessionChatBootstrapper {
 
     private static final String SETTING_DEFAULT_CHAT_ENGINE = "session.defaultChatEngine";
     private static final String DEFAULT_CHAT_ENGINE = "arthur";
+    private static final String HUB_CHAT_ENGINE = "vance";
     private static final String SETTINGS_REF_TYPE = "tenant";
 
     private final ThinkProcessService thinkProcessService;
@@ -49,6 +53,7 @@ public class SessionChatBootstrapper {
     private final SettingService settingService;
     private final LaneScheduler laneScheduler;
     private final RecipeResolver recipeResolver;
+    private final ProjectService projectService;
 
     /**
      * Returns the session's chat-process, creating + starting it on
@@ -82,61 +87,99 @@ public class SessionChatBootstrapper {
             return existing;
         }
 
-        String engineName = settingService.getStringValue(
-                session.getTenantId(), SETTINGS_REF_TYPE, session.getTenantId(),
-                SETTING_DEFAULT_CHAT_ENGINE, DEFAULT_CHAT_ENGINE);
-
-        // Auto-apply the engine-named recipe (e.g. "arthur") so the
-        // chat-process inherits the engine's default prompt and
-        // validator templates from recipes.yaml — same path the LLM
-        // takes when it spawns a worker via process_create.
-        AppliedRecipe applied = recipeResolver.applyDefaulting(
-                session.getTenantId(),
-                /*projectId*/ session.getProjectId(),
-                /*recipeName*/ null,
-                engineName,
-                /*callerParams*/ null).orElse(null);
-        ThinkEngine engine;
-        if (applied != null) {
-            engine = thinkEngineService.resolve(applied.engine())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Recipe '" + applied.name()
-                                    + "' references unknown engine '"
-                                    + applied.engine() + "'"));
+        // Hub-chat sessions live inside SYSTEM-kind projects (see
+        // specification/vance-engine.md §2). They always run the
+        // 'vance' engine, regardless of the tenant default — the
+        // default applies to regular chat sessions only.
+        String engineName;
+        if (isHubProject(session.getTenantId(), session.getProjectId())) {
+            engineName = HUB_CHAT_ENGINE;
         } else {
-            engine = thinkEngineService.resolve(engineName)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Configured chat engine '" + engineName
-                                    + "' is not registered — known: "
-                                    + thinkEngineService.listEngines()));
+            engineName = settingService.getStringValue(
+                    session.getTenantId(), SETTINGS_REF_TYPE, session.getTenantId(),
+                    SETTING_DEFAULT_CHAT_ENGINE, DEFAULT_CHAT_ENGINE);
+        }
+
+        // Engines that ship their own bundled config (Vance, future
+        // hub recipes) bypass recipe resolution — their persona and
+        // params live in code, not in recipes.yaml. See
+        // specification/vance-engine.md §1.2.
+        ThinkEngine engine = thinkEngineService.resolve(engineName)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Configured chat engine '" + engineName
+                                + "' is not registered — known: "
+                                + thinkEngineService.listEngines()));
+        Optional<EngineBundledConfig> bundled = engine.bundledConfig();
+
+        AppliedRecipe applied = null;
+        if (bundled.isEmpty()) {
+            // Auto-apply the engine-named recipe (e.g. "arthur") so the
+            // chat-process inherits the engine's default prompt and
+            // validator templates from recipes.yaml — same path the LLM
+            // takes when it spawns a worker via process_create.
+            AppliedRecipe resolved = recipeResolver.applyDefaulting(
+                    session.getTenantId(),
+                    /*projectId*/ session.getProjectId(),
+                    /*recipeName*/ null,
+                    engineName,
+                    /*callerParams*/ null).orElse(null);
+            applied = resolved;
+            if (resolved != null) {
+                // The recipe may redirect to a different engine.
+                engine = thinkEngineService.resolve(resolved.engine())
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Recipe '" + resolved.name()
+                                        + "' references unknown engine '"
+                                        + resolved.engine() + "'"));
+            }
         }
 
         ThinkProcessDocument fresh;
         try {
-            fresh = applied != null
-                    ? thinkProcessService.create(
-                            session.getTenantId(),
-                            session.getSessionId(),
-                            CHAT_PROCESS_NAME,
-                            engine.name(), engine.version(),
-                            /*title*/ "Session Chat",
-                            /*goal*/  null,
-                            /*parentProcessId*/ null,
-                            applied.params(),
-                            applied.name(),
-                            applied.promptOverride(),
-                            applied.promptOverrideSmall(),
-                            applied.promptMode(),
-                            applied.intentCorrection(),
-                            applied.dataRelayCorrection(),
-                            applied.effectiveAllowedTools())
-                    : thinkProcessService.create(
-                            session.getTenantId(),
-                            session.getSessionId(),
-                            CHAT_PROCESS_NAME,
-                            engine.name(), engine.version(),
-                            /*title*/ "Session Chat",
-                            /*goal*/  null);
+            if (bundled.isPresent()) {
+                EngineBundledConfig cfg = bundled.get();
+                fresh = thinkProcessService.create(
+                        session.getTenantId(),
+                        session.getSessionId(),
+                        CHAT_PROCESS_NAME,
+                        engine.name(), engine.version(),
+                        /*title*/ "Session Chat",
+                        /*goal*/  null,
+                        /*parentProcessId*/ null,
+                        cfg.params(),
+                        /*recipeName*/ null,
+                        cfg.promptOverride(),
+                        cfg.promptOverrideSmall(),
+                        cfg.promptMode(),
+                        cfg.intentCorrection(),
+                        cfg.dataRelayCorrection(),
+                        cfg.allowedTools());
+            } else if (applied != null) {
+                fresh = thinkProcessService.create(
+                        session.getTenantId(),
+                        session.getSessionId(),
+                        CHAT_PROCESS_NAME,
+                        engine.name(), engine.version(),
+                        /*title*/ "Session Chat",
+                        /*goal*/  null,
+                        /*parentProcessId*/ null,
+                        applied.params(),
+                        applied.name(),
+                        applied.promptOverride(),
+                        applied.promptOverrideSmall(),
+                        applied.promptMode(),
+                        applied.intentCorrection(),
+                        applied.dataRelayCorrection(),
+                        applied.effectiveAllowedTools());
+            } else {
+                fresh = thinkProcessService.create(
+                        session.getTenantId(),
+                        session.getSessionId(),
+                        CHAT_PROCESS_NAME,
+                        engine.name(), engine.version(),
+                        /*title*/ "Session Chat",
+                        /*goal*/  null);
+            }
         } catch (ThinkProcessService.ThinkProcessAlreadyExistsException race) {
             // Lost the race against a concurrent bootstrapper — adopt their result.
             ThinkProcessDocument adopted = thinkProcessService.findByName(
@@ -172,5 +215,14 @@ public class SessionChatBootstrapper {
         log.info("Bootstrapped chat-process id='{}' engine='{}' session='{}'",
                 fresh.getId(), engine.name(), session.getSessionId());
         return thinkProcessService.findById(fresh.getId());
+    }
+
+    private boolean isHubProject(String tenantId, String projectName) {
+        if (projectName == null || projectName.isBlank()) {
+            return false;
+        }
+        return projectService.findByTenantAndName(tenantId, projectName)
+                .map(p -> p.getKind() == ProjectKind.SYSTEM)
+                .orElse(false);
     }
 }

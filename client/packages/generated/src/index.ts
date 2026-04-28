@@ -12,6 +12,8 @@ export * from './documents/DocumentListResponse';
 export * from './documents/DocumentSummary';
 export * from './documents/DocumentUpdateRequest';
 
+export * from './chat/ChatRole';
+
 export * from './inbox/AnswerOutcome';
 export * from './inbox/AnswerPayload';
 export * from './inbox/Criticality';
@@ -23,6 +25,14 @@ export * from './inbox/InboxItemType';
 export * from './inbox/InboxListResponse';
 export * from './inbox/InboxTagsResponse';
 export * from './inbox/ResolvedBy';
+
+export * from './insights/ActiveSkillInsightsDto';
+export * from './insights/ChatMessageInsightsDto';
+export * from './insights/MarvinNodeInsightsDto';
+export * from './insights/MemoryInsightsDto';
+export * from './insights/PendingMessageInsightsDto';
+export * from './insights/SessionInsightsDto';
+export * from './insights/ThinkProcessInsightsDto';
 
 export * from './projects/ProjectCreateRequest';
 export * from './projects/ProjectDto';

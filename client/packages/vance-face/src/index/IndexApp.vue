@@ -158,6 +158,16 @@ function readNextParam(): string | null {
             </div>
             <VButton variant="primary" size="sm" href="/skills.html">Open</VButton>
           </li>
+          <li class="flex items-center justify-between gap-4">
+            <div>
+              <div class="font-semibold">Insights</div>
+              <div class="text-sm opacity-70">
+                Inspect sessions, think-processes, chat history,
+                memory and Marvin trees. Read-only diagnostic view.
+              </div>
+            </div>
+            <VButton variant="primary" size="sm" href="/insights.html">Open</VButton>
+          </li>
         </ul>
       </VCard>
     </div>

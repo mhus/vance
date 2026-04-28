@@ -270,6 +270,107 @@ class VanceHubTest {
                 .isGreaterThanOrEqualTo(messagesBefore + 2);
     }
 
+    /**
+     * Tool-call round-trip: Vance gets a deliberately unambiguous "leg
+     * ein Projekt {name} an"-instruction so the LLM picks
+     * {@code project_create} reliably. We then assert that the project,
+     * its session, and an Arthur chat-process with cross-project parent
+     * = the Vance hub-process all materialise in Mongo.
+     *
+     * <p>LLMs are stochastic, so the prompt is engineered for high tool-
+     * call reliability:
+     * <ul>
+     *   <li>Direct imperative ("leg an", not "könntest du").</li>
+     *   <li>Concrete name in backticks so the model passes it through
+     *       verbatim.</li>
+     *   <li>No initialPrompt asked for — keeps the call shape minimal.</li>
+     * </ul>
+     */
+    @Test
+    @Order(3)
+    void chatTriggersProjectCreate() throws Exception {
+        Document vanceProcess = findOne("think_processes",
+                Filters.and(
+                        Filters.eq("tenantId", TENANT),
+                        Filters.eq("thinkEngine", VANCE_ENGINE_NAME)));
+        assertThat(vanceProcess)
+                .as("test 1 should have left a vance chat-process behind")
+                .isNotNull();
+        String vanceProcessId = vanceProcess.getObjectId("_id").toHexString();
+
+        // A name unlikely to collide with the InitBrain seed projects.
+        String requestedProject = "apollo-13-audit";
+
+        // Make sure it doesn't already exist (previous test re-run via
+        // shared mongo container — best-effort cleanup).
+        mongo.getCollection("projects").deleteMany(
+                Filters.and(
+                        Filters.eq("tenantId", TENANT),
+                        Filters.eq("name", requestedProject)));
+
+        FootProcess.InputResult chat = foot.chat(
+                "Bitte leg ein neues Projekt mit dem exakten Namen `"
+                        + requestedProject + "` an. Keinen initialPrompt, "
+                        + "keine zusätzlichen Schritte — einfach nur das "
+                        + "Projekt anlegen.");
+        assertThat(chat.ok())
+                .as("/debug/chat should succeed; error: %s", chat.error())
+                .isTrue();
+
+        // Wait for the project document to appear. 90 seconds gives the
+        // LLM room for two tool iterations + final synthesis.
+        boolean projectAppeared = pollUntil(Duration.ofSeconds(90), () -> {
+            Document p = findOne("projects",
+                    Filters.and(
+                            Filters.eq("tenantId", TENANT),
+                            Filters.eq("name", requestedProject)));
+            return p != null;
+        });
+        assertThat(projectAppeared)
+                .as("Vance should have called project_create within 90s. "
+                        + "If this fails: check brain.log for tool calls "
+                        + "and consider tightening the prompt.")
+                .isTrue();
+
+        Document project = findOne("projects",
+                Filters.and(
+                        Filters.eq("tenantId", TENANT),
+                        Filters.eq("name", requestedProject)));
+        assertThat(project).isNotNull();
+        assertThat(project.getString("kind"))
+                .as("user-created project must be NORMAL")
+                .isEqualTo("NORMAL");
+
+        // ProjectCreateTool spawns a session and chat-process; both
+        // should be there too.
+        Document session = findOne("sessions",
+                Filters.and(
+                        Filters.eq("tenantId", TENANT),
+                        Filters.eq("projectId", requestedProject)));
+        assertThat(session)
+                .as("project_create should have opened a session in '%s'", requestedProject)
+                .isNotNull();
+        assertThat(session.getString("userId"))
+                .as("session user should be the hub user")
+                .isEqualTo(USER_LOGIN);
+
+        Document chatProcess = findOne("think_processes",
+                Filters.and(
+                        Filters.eq("sessionId", session.getString("sessionId")),
+                        Filters.eq("name", "chat")));
+        assertThat(chatProcess)
+                .as("project_create should have bootstrapped a chat-process")
+                .isNotNull();
+        assertThat(chatProcess.getString("thinkEngine"))
+                .as("regular project's chat-engine must be Arthur, not Vance")
+                .isEqualTo("arthur");
+
+        // Cross-project parent — the whole point of phase 3.6.
+        assertThat(chatProcess.getString("parentProcessId"))
+                .as("Arthur's parentProcessId should point back to the Vance hub-process")
+                .isEqualTo(vanceProcessId);
+    }
+
     private Document findOne(String collection, org.bson.conversions.Bson filter) {
         return mongo.getCollection(collection).find(filter).first();
     }

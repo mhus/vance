@@ -135,12 +135,23 @@ const sessionProcessesForTab = computed(() => {
     return processesBySession.value[sel.id] ?? [];
 });
 const isMarvin = computed(() => (selectedProcess.value?.thinkEngine ?? '').toLowerCase() === 'marvin');
+function sessionLabel(sessionId) {
+    // Prefer the denormalised topic when we already have it cached;
+    // otherwise fall back to the raw id.
+    const s = sessionsState.sessions.value.find(x => x.sessionId === sessionId);
+    const topic = s?.firstUserMessage;
+    if (topic && topic.length > 0) {
+        const short = topic.length > 60 ? topic.slice(0, 59) + '…' : topic;
+        return `Session: ${short}`;
+    }
+    return `Session: ${sessionId}`;
+}
 const breadcrumbs = computed(() => {
     const sel = selection.value;
     if (!sel)
         return [];
     if (sel.kind === 'session')
-        return [`Session: ${sel.id}`];
+        return [sessionLabel(sel.id)];
     const p = selectedProcess.value;
     if (!p)
         return ['Process'];
@@ -148,7 +159,7 @@ const breadcrumbs = computed(() => {
     // session view — the most common "go up one level" gesture.
     return [
         {
-            text: `Session: ${p.sessionId}`,
+            text: sessionLabel(p.sessionId),
             onClick: () => { selection.value = { kind: 'session', id: p.sessionId }; },
         },
         `Process: ${p.name}`,
@@ -332,16 +343,17 @@ __VLS_3.slots.default;
             type: "button",
             ...{ class: "session-label" },
             ...{ class: ({ 'session-label--active': __VLS_ctx.isSelectedSession(s) }) },
+            title: (s.firstUserMessage ?? s.sessionId),
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex items-center justify-between gap-2" },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "font-mono text-sm truncate" },
+            ...{ class: "session-topic truncate" },
         });
-        (s.sessionId);
+        (s.firstUserMessage || s.sessionId);
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "text-xs px-1.5 py-0.5 rounded" },
+            ...{ class: "text-xs px-1.5 py-0.5 rounded shrink-0" },
             ...{ class: (s.status === 'OPEN' ? 'badge-open' : 'badge-closed') },
         });
         (s.status?.toLowerCase());
@@ -353,6 +365,17 @@ __VLS_3.slots.default;
         if (s.processCount != null) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
             (s.processCount);
+        }
+        if (s.lastMessagePreview) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs opacity-60 truncate mt-0.5" },
+                title: (s.lastMessagePreview),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-70" },
+            });
+            (s.lastMessageRole?.toLowerCase());
+            (s.lastMessagePreview);
         }
         if (__VLS_ctx.expanded.has(s.sessionId)) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -485,6 +508,42 @@ else if (__VLS_ctx.selection.kind === 'session') {
                 title: (`Session ${__VLS_ctx.selectedSession.sessionId}`),
             }, ...__VLS_functionalComponentArgsRest(__VLS_38));
             __VLS_40.slots.default;
+            if (__VLS_ctx.selectedSession.firstUserMessage) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "mb-3" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "text-xs uppercase opacity-60 mb-1" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "text-sm" },
+                });
+                (__VLS_ctx.selectedSession.firstUserMessage);
+            }
+            if (__VLS_ctx.selectedSession.lastMessagePreview) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "mb-3" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "text-xs uppercase opacity-60 mb-1" },
+                });
+                if (__VLS_ctx.selectedSession.lastMessageRole) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                        ...{ class: "opacity-70" },
+                    });
+                    (__VLS_ctx.selectedSession.lastMessageRole.toLowerCase());
+                }
+                if (__VLS_ctx.selectedSession.lastMessageAt) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                        ...{ class: "opacity-70" },
+                    });
+                    (__VLS_ctx.fmt(__VLS_ctx.selectedSession.lastMessageAt));
+                }
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "text-sm" },
+                });
+                (__VLS_ctx.selectedSession.lastMessagePreview);
+            }
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
                 ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm" },
             });
@@ -1166,16 +1225,21 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['session-topic']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['session-children']} */ ;
 /** @type {__VLS_StyleScopedClasses['process-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['process-row--active']} */ ;
@@ -1204,6 +1268,20 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-x-4']} */ ;

@@ -103,6 +103,8 @@ public class VanceEngine implements ThinkEngine {
             "project_list",
             "project_switch",
             "project_current",
+            "project_create",
+            "project_chat_send",
             "recipe_list",
             "recipe_describe",
             // Documents (within active project)
@@ -162,6 +164,14 @@ public class VanceEngine implements ThinkEngine {
     @Override
     public Set<String> allowedTools() {
         return ALLOWED_TOOLS;
+    }
+
+    @Override
+    public boolean allowsCrossProjectSpawn() {
+        // Vance's whole purpose: create / steer worker projects and
+        // observe their Arthur chat-processes. See
+        // specification/vance-engine.md §7.
+        return true;
     }
 
     @Override

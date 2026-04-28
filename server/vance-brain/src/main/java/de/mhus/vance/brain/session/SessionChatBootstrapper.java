@@ -56,15 +56,30 @@ public class SessionChatBootstrapper {
     private final ProjectService projectService;
 
     /**
+     * @see #ensureChatProcess(SessionDocument, String) — defaults to no parent.
+     */
+    public Optional<ThinkProcessDocument> ensureChatProcess(SessionDocument session) {
+        return ensureChatProcess(session, null);
+    }
+
+    /**
      * Returns the session's chat-process, creating + starting it on
      * the first call. Empty only when the session itself is gone.
+     *
+     * <p>{@code parentProcessId} (optional) is the cross-project
+     * parent — used by hub engines (Vance) when they create a
+     * worker project and want the project's Arthur-chat-process to
+     * report status/done events back to them. {@code null} for
+     * regular session-create flows.
      *
      * <p>The engine's {@code start} runs on the chat-process's lane
      * and is awaited synchronously, so the caller can read the
      * greeting from {@code chat-message-history} the moment this
      * returns.
      */
-    public Optional<ThinkProcessDocument> ensureChatProcess(SessionDocument session) {
+    public Optional<ThinkProcessDocument> ensureChatProcess(
+            SessionDocument session,
+            @org.jspecify.annotations.Nullable String parentProcessId) {
         // Already linked → just resolve the doc.
         if (session.getChatProcessId() != null) {
             Optional<ThinkProcessDocument> linked = thinkProcessService.findById(
@@ -145,7 +160,7 @@ public class SessionChatBootstrapper {
                         engine.name(), engine.version(),
                         /*title*/ "Session Chat",
                         /*goal*/  null,
-                        /*parentProcessId*/ null,
+                        parentProcessId,
                         cfg.params(),
                         /*recipeName*/ null,
                         cfg.promptOverride(),
@@ -162,7 +177,7 @@ public class SessionChatBootstrapper {
                         engine.name(), engine.version(),
                         /*title*/ "Session Chat",
                         /*goal*/  null,
-                        /*parentProcessId*/ null,
+                        parentProcessId,
                         applied.params(),
                         applied.name(),
                         applied.promptOverride(),

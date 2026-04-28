@@ -52,6 +52,22 @@ public class SessionInsightsDto {
 
     private @Nullable Instant lastActivityAt;
 
+    /**
+     * First USER-role chat message in the session, truncated to 250
+     * characters. Set once on the very first user message — this is
+     * the session's stable "topic" surfaced in pickers and lists.
+     */
+    private @Nullable String firstUserMessage;
+
+    /** Most recent message preview (truncated to 250 characters). */
+    private @Nullable String lastMessagePreview;
+
+    /** Role of the message captured in {@link #lastMessagePreview}. */
+    private @Nullable String lastMessageRole;
+
+    /** When {@link #lastMessagePreview} was created. */
+    private @Nullable Instant lastMessageAt;
+
     /** Number of think-processes attached to this session — populated for list views. */
     private @Nullable Integer processCount;
 }

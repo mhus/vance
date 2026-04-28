@@ -182,17 +182,29 @@ const sessionProcessesForTab = computed<ThinkProcessInsightsDto[]>(() => {
 const isMarvin = computed(() =>
   (selectedProcess.value?.thinkEngine ?? '').toLowerCase() === 'marvin');
 
+function sessionLabel(sessionId: string): string {
+  // Prefer the denormalised topic when we already have it cached;
+  // otherwise fall back to the raw id.
+  const s = sessionsState.sessions.value.find(x => x.sessionId === sessionId);
+  const topic = s?.firstUserMessage;
+  if (topic && topic.length > 0) {
+    const short = topic.length > 60 ? topic.slice(0, 59) + '…' : topic;
+    return `Session: ${short}`;
+  }
+  return `Session: ${sessionId}`;
+}
+
 const breadcrumbs = computed<Crumb[]>(() => {
   const sel = selection.value;
   if (!sel) return [];
-  if (sel.kind === 'session') return [`Session: ${sel.id}`];
+  if (sel.kind === 'session') return [sessionLabel(sel.id)];
   const p = selectedProcess.value;
   if (!p) return ['Process'];
   // When a process is selected, the session crumb navigates back to the
   // session view — the most common "go up one level" gesture.
   return [
     {
-      text: `Session: ${p.sessionId}`,
+      text: sessionLabel(p.sessionId),
       onClick: () => { selection.value = { kind: 'session', id: p.sessionId }; },
     },
     `Process: ${p.name}`,
@@ -293,18 +305,29 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                 type="button"
                 class="session-label"
                 :class="{ 'session-label--active': isSelectedSession(s) }"
+                :title="s.firstUserMessage ?? s.sessionId"
                 @click="selectSession(s)"
               >
                 <div class="flex items-center justify-between gap-2">
-                  <span class="font-mono text-sm truncate">{{ s.sessionId }}</span>
+                  <span class="session-topic truncate">
+                    {{ s.firstUserMessage || s.sessionId }}
+                  </span>
                   <span
-                    class="text-xs px-1.5 py-0.5 rounded"
+                    class="text-xs px-1.5 py-0.5 rounded shrink-0"
                     :class="s.status === 'OPEN' ? 'badge-open' : 'badge-closed'"
                   >{{ s.status?.toLowerCase() }}</span>
                 </div>
                 <div class="text-xs opacity-60 truncate">
                   {{ s.userId }} · {{ s.projectId }}
                   <span v-if="s.processCount != null">· {{ s.processCount }} proc</span>
+                </div>
+                <div
+                  v-if="s.lastMessagePreview"
+                  class="text-xs opacity-60 truncate mt-0.5"
+                  :title="s.lastMessagePreview"
+                >
+                  <span class="opacity-70">{{ s.lastMessageRole?.toLowerCase() }}:</span>
+                  {{ s.lastMessagePreview }}
                 </div>
               </button>
             </div>
@@ -367,6 +390,22 @@ function clickProcessByMongoId(id: string | undefined | null): void {
           </div>
 
           <VCard v-if="activeTab === 'overview'" :title="`Session ${selectedSession.sessionId}`">
+            <div v-if="selectedSession.firstUserMessage" class="mb-3">
+              <div class="text-xs uppercase opacity-60 mb-1">Topic</div>
+              <div class="text-sm">{{ selectedSession.firstUserMessage }}</div>
+            </div>
+            <div v-if="selectedSession.lastMessagePreview" class="mb-3">
+              <div class="text-xs uppercase opacity-60 mb-1">
+                Last message
+                <span v-if="selectedSession.lastMessageRole" class="opacity-70">
+                  · {{ selectedSession.lastMessageRole.toLowerCase() }}
+                </span>
+                <span v-if="selectedSession.lastMessageAt" class="opacity-70">
+                  · {{ fmt(selectedSession.lastMessageAt) }}
+                </span>
+              </div>
+              <div class="text-sm">{{ selectedSession.lastMessagePreview }}</div>
+            </div>
             <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
               <dt class="opacity-60">Mongo id</dt><dd class="font-mono">{{ selectedSession.id }}</dd>
               <dt class="opacity-60">User</dt><dd>{{ selectedSession.userId }}</dd>
@@ -654,6 +693,10 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 .session-label--active {
   background: hsl(var(--p) / 0.12);
   border-color: hsl(var(--p) / 0.3);
+}
+.session-topic {
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .session-children {

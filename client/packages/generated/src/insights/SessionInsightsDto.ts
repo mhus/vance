@@ -16,5 +16,9 @@ export interface SessionInsightsDto {
   chatProcessId?: string;
   createdAt?: Date;
   lastActivityAt?: Date;
+  firstUserMessage?: string;
+  lastMessagePreview?: string;
+  lastMessageRole?: string;
+  lastMessageAt?: Date;
   processCount?: number;
 }

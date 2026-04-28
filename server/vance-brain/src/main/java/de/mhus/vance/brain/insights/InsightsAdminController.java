@@ -201,6 +201,10 @@ public class InsightsAdminController {
                 .chatProcessId(s.getChatProcessId())
                 .createdAt(s.getCreatedAt())
                 .lastActivityAt(s.getLastActivityAt())
+                .firstUserMessage(s.getFirstUserMessage())
+                .lastMessagePreview(s.getLastMessagePreview())
+                .lastMessageRole(s.getLastMessageRole())
+                .lastMessageAt(s.getLastMessageAt())
                 .processCount(count)
                 .build();
     }

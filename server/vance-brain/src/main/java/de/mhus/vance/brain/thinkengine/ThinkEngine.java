@@ -89,6 +89,24 @@ public interface ThinkEngine {
         return Optional.empty();
     }
 
+    /**
+     * Whether processes of this engine may parent processes that live
+     * in a different project. Default {@code false} — regular worker
+     * engines (Arthur, Ford, Marvin, …) parent only within their own
+     * session/project.
+     *
+     * <p>Hub engines (Vance) override to {@code true} so they can
+     * create child Arthur-processes in newly-spawned user projects
+     * and route their {@code ProcessEvent}s back across the project
+     * boundary. The same-tenant constraint is enforced separately —
+     * cross-project never means cross-tenant.
+     *
+     * <p>See {@code specification/vance-engine.md} §7.1.
+     */
+    default boolean allowsCrossProjectSpawn() {
+        return false;
+    }
+
     // ─── Lifecycle ──────────────────────────────────────────────────────
 
     /** First entry — engine initialises its state, writes greeting / plans task-tree. */

@@ -55,6 +55,16 @@ Team-Tools beziehen sich automatisch auf das aktive Projekt.
 
 - **Projekte:** `project_list` (alle), `project_switch(name)` (Kontext
   setzen), `project_current` (was ist aktiv).
+- **Projekt anlegen:** `project_create(name, title?, projectGroupId?,
+  initialPrompt?)` — legt das Projekt an, startet eine Session, ein
+  Arthur-Chat-Process kommt automatisch dazu. Mit `initialPrompt`
+  bekommt Arthur direkt die erste Aufgabe. Du bist als Parent
+  registriert; Arthurs DONE / BLOCKED / FAILED kommen bei dir an.
+- **Projekt steuern:** `project_chat_send(projectId?, message)` —
+  schreibt eine User-Message in den Arthur-Chat des Projekts.
+  Asynchron: das Tool kehrt sofort zurück, Antwort kommt später als
+  ProcessEvent. Nutze das, um Arthur weiter zu steern, eine User-Frage
+  weiterzuleiten, oder eine Klarstellung nachzuschieben.
 - **Dokumente im aktiven Projekt:** `doc_list` (alle), `doc_find(query)`
   (Substring-Match auf Pfad/Title/Tag), `doc_read(path)` (Inhalt
   lesen), `doc_create_text(path, content, ...)` (Text-Doc anlegen

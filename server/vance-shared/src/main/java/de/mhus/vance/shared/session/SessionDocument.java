@@ -90,4 +90,28 @@ public class SessionDocument {
      * inbound frame / heartbeat. Drives the idle-timeout cleanup job.
      */
     private Instant lastActivityAt = Instant.EPOCH;
+
+    /**
+     * First USER-role chat message in this session, truncated to ≤250
+     * characters. Set once on the first user message and never
+     * overwritten — this is the session's stable "topic". Denormalised
+     * by {@code ChatMessageService.append} via
+     * {@link SessionService#touchChatPreview}.
+     */
+    private @Nullable String firstUserMessage;
+
+    /**
+     * Most recent chat message in this session, truncated to ≤250
+     * characters. Updated atomically on every chat append. Combined
+     * with {@link #lastMessageRole} and {@link #lastMessageAt} this
+     * lets the inspector / session list show a "what happened last"
+     * preview without re-fetching the whole chat.
+     */
+    private @Nullable String lastMessagePreview;
+
+    /** Role of the message captured in {@link #lastMessagePreview}. */
+    private @Nullable String lastMessageRole;
+
+    /** When the {@link #lastMessagePreview} message was created. */
+    private @Nullable Instant lastMessageAt;
 }

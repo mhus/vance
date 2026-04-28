@@ -38,6 +38,13 @@ public class SessionService {
     private static final String F_BOUND_CONNECTION = "boundConnectionId";
     private static final String F_LAST_ACTIVITY = "lastActivityAt";
     private static final String F_CHAT_PROCESS_ID = "chatProcessId";
+    private static final String F_FIRST_USER_MESSAGE = "firstUserMessage";
+    private static final String F_LAST_MESSAGE_PREVIEW = "lastMessagePreview";
+    private static final String F_LAST_MESSAGE_ROLE = "lastMessageRole";
+    private static final String F_LAST_MESSAGE_AT = "lastMessageAt";
+
+    /** Hard cap for the denormalised preview / topic strings. */
+    public static final int PREVIEW_MAX_CHARS = 250;
 
     private final SessionRepository repository;
     private final MongoTemplate mongoTemplate;
@@ -207,6 +214,57 @@ public class SessionService {
                     chatProcessId, sessionId);
         }
         return ok;
+    }
+
+    /**
+     * Updates the denormalised chat preview ({@code lastMessagePreview} +
+     * {@code lastMessageAt} + {@code lastMessageRole}) on the session doc;
+     * additionally seeds {@code firstUserMessage} on the very first
+     * {@code USER}-role message and never overwrites it later. Two
+     * conditional updates so a later USER message can't replace the
+     * stable "topic". Idempotent against re-runs with the same content.
+     *
+     * <p>Called from {@link de.mhus.vance.shared.chat.ChatMessageService#append}
+     * — keeps the chat hot-path adding at most two atomic Mongo ops.
+     */
+    public void touchChatPreview(
+            String sessionId,
+            @Nullable String role,
+            @Nullable String content,
+            @Nullable Instant at) {
+        if (sessionId == null || sessionId.isBlank()) return;
+        String preview = truncate(content);
+        Instant when = at == null ? Instant.now() : at;
+
+        Update lastUpdate = new Update()
+                .set(F_LAST_MESSAGE_PREVIEW, preview)
+                .set(F_LAST_MESSAGE_ROLE, role)
+                .set(F_LAST_MESSAGE_AT, when);
+        mongoTemplate.updateFirst(
+                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
+                lastUpdate,
+                SessionDocument.class);
+
+        if ("USER".equalsIgnoreCase(role) && preview != null) {
+            // Set firstUserMessage only when the field is currently null /
+            // missing — captures the session's "topic" once.
+            Query firstQuery = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                    .andOperator(new Criteria().orOperator(
+                            Criteria.where(F_FIRST_USER_MESSAGE).isNull(),
+                            Criteria.where(F_FIRST_USER_MESSAGE).exists(false))));
+            Update firstUpdate = new Update().set(F_FIRST_USER_MESSAGE, preview);
+            mongoTemplate.updateFirst(firstQuery, firstUpdate, SessionDocument.class);
+        }
+    }
+
+    private static @Nullable String truncate(@Nullable String content) {
+        if (content == null) return null;
+        // Collapse whitespace so multi-line messages stay readable in a
+        // one-line preview slot.
+        String flat = content.replaceAll("\\s+", " ").trim();
+        if (flat.isEmpty()) return null;
+        if (flat.length() <= PREVIEW_MAX_CHARS) return flat;
+        return flat.substring(0, PREVIEW_MAX_CHARS - 1) + "…";
     }
 
     // --------------------------------------------------------- lifecycle end

@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.chat;
 
 import com.mongodb.client.result.UpdateResult;
+import de.mhus.vance.shared.session.SessionService;
 import java.util.Collection;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -32,16 +33,28 @@ public class ChatMessageService {
 
     private final ChatMessageRepository repository;
     private final MongoTemplate mongoTemplate;
+    private final SessionService sessionService;
 
     /**
      * Persists {@code message}. The {@code createdAt} timestamp is filled in
      * by the framework on insert; callers do not need to set it.
+     *
+     * <p>After save, denormalises a short preview of the message onto
+     * the owning {@code SessionDocument} so the inspector / session
+     * picker can show "topic" + "what happened last" without reading
+     * the full chat. See
+     * {@link SessionService#touchChatPreview(String, String, String, java.time.Instant)}.
      */
     public ChatMessageDocument append(ChatMessageDocument message) {
         ChatMessageDocument saved = repository.save(message);
         log.debug("Chat message appended tenant='{}' session='{}' process='{}' role={} id='{}'",
                 saved.getTenantId(), saved.getSessionId(), saved.getThinkProcessId(),
                 saved.getRole(), saved.getId());
+        sessionService.touchChatPreview(
+                saved.getSessionId(),
+                saved.getRole() == null ? null : saved.getRole().name(),
+                saved.getContent(),
+                saved.getCreatedAt());
         return saved;
     }
 

@@ -23,11 +23,15 @@ export declare function useDocuments(pageSize?: number): {
     selected: Ref<DocumentDto | null>;
     loading: Ref<boolean>;
     error: Ref<string | null>;
-    loadPage: (projectId: string, page: number) => Promise<void>;
+    folders: Ref<string[]>;
+    pathPrefix: Ref<string>;
+    loadPage: (projectId: string, page: number, pathPrefix?: string) => Promise<void>;
+    loadFolders: (projectId: string) => Promise<void>;
     loadOne: (id: string) => Promise<void>;
     clearSelection: () => void;
     create: (projectId: string, body: DocumentCreateRequest) => Promise<DocumentDto | null>;
     upload: (projectId: string, opts: UploadOptions) => Promise<DocumentDto | null>;
     update: (id: string, body: DocumentUpdateRequest) => Promise<void>;
+    remove: (id: string) => Promise<boolean>;
 };
 //# sourceMappingURL=useDocuments.d.ts.map

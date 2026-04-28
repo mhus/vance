@@ -1,16 +1,23 @@
 import { computed, onMounted, ref, watch } from 'vue';
-import { EditorShell, VAlert, VBackButton, VButton, VCard, VDataList, VEmptyState, VFileInput, VInput, VModal, VPagination, VSelect, VTextarea, } from '@/components';
+import { EditorShell, VAlert, VBackButton, VButton, VCard, VDataList, VEmptyState, VFileInput, VInput, VModal, VPagination, VSelect, CodeEditor, } from '@/components';
 import { useDocuments } from '@/composables/useDocuments';
 import { useTenantProjects } from '@/composables/useTenantProjects';
+import { documentContentUrl } from '@vance/shared';
+import DocumentPreview from './DocumentPreview.vue';
 const PAGE_SIZE = 20;
 const projectsState = useTenantProjects();
 const docsState = useDocuments(PAGE_SIZE);
 const selectedProjectId = ref(null);
 const editTitle = ref('');
+const editPath = ref('');
 const editInlineText = ref('');
 const editError = ref(null);
 const saving = ref(false);
 const showCreateModal = ref(false);
+// Delete-confirm modal — destructive action gets an explicit
+// confirmation step. See specification/web-ui.md §7.7.1.
+const showDeleteModal = ref(false);
+const deleting = ref(false);
 const createMode = ref('inline');
 const createPath = ref('');
 const createTitle = ref('');
@@ -21,11 +28,27 @@ const createFiles = ref([]);
 const createError = ref(null);
 const creating = ref(false);
 const uploadProgress = ref([]);
+// Document-content mime-types the inline editor handles. The
+// `group` field drives `<optgroup>`-style separation in VSelect
+// (see VSelect interface — adjacent items with the same `group`
+// land under one `<optgroup>`). Order roughly "most common first".
+// CodeEditor picks the matching syntax-highlighting language from
+// these mime-types — see CodeEditor.languageFor.
 const createMimeOptions = [
-    { value: 'text/markdown', label: 'Markdown (.md)' },
-    { value: 'text/plain', label: 'Plain text (.txt)' },
-    { value: 'application/json', label: 'JSON' },
-    { value: 'application/yaml', label: 'YAML' },
+    { value: 'text/markdown', label: 'Markdown (.md)', group: 'Doc & config' },
+    { value: 'text/plain', label: 'Plain text (.txt)', group: 'Doc & config' },
+    { value: 'application/json', label: 'JSON', group: 'Doc & config' },
+    { value: 'application/yaml', label: 'YAML', group: 'Doc & config' },
+    { value: 'application/xml', label: 'XML', group: 'Doc & config' },
+    { value: 'application/javascript', label: 'JavaScript (.js)', group: 'Code' },
+    { value: 'application/typescript', label: 'TypeScript (.ts)', group: 'Code' },
+    { value: 'text/x-python', label: 'Python (.py)', group: 'Code' },
+    { value: 'application/x-sh', label: 'Bash / Shell (.sh)', group: 'Code' },
+    { value: 'text/x-r', label: 'R (.r)', group: 'Code' },
+    { value: 'text/x-java-source', label: 'Java (.java)', group: 'Code' },
+    { value: 'application/sql', label: 'SQL', group: 'Code' },
+    { value: 'text/html', label: 'HTML', group: 'Web' },
+    { value: 'text/css', label: 'CSS', group: 'Web' },
 ];
 onMounted(async () => {
     await projectsState.reload();
@@ -41,7 +64,10 @@ onMounted(async () => {
         selectedProjectId.value = projectsState.projects.value[0].name;
     }
     if (selectedProjectId.value) {
-        await docsState.loadPage(selectedProjectId.value, 0);
+        await Promise.all([
+            docsState.loadPage(selectedProjectId.value, 0),
+            docsState.loadFolders(selectedProjectId.value),
+        ]);
     }
     if (queryDoc) {
         await docsState.loadOne(queryDoc);
@@ -54,8 +80,34 @@ watch(selectedProjectId, async (next) => {
     syncQueryParam('projectId', next);
     syncQueryParam('documentId', null);
     docsState.clearSelection();
-    await docsState.loadPage(next, 0);
+    // Reset filter on project switch — folder list belongs to the
+    // new project and the previous prefix won't match anyway.
+    docsState.pathPrefix.value = '';
+    await Promise.all([
+        docsState.loadPage(next, 0, ''),
+        docsState.loadFolders(next),
+    ]);
 });
+/**
+ * Apply the path-filter input. Debounced via a small timeout so
+ * typing into the combobox doesn't fire one request per keystroke;
+ * pressing Enter or selecting a datalist option commits immediately.
+ */
+let filterTimer = null;
+function applyPathFilter(prefix, immediate = false) {
+    const project = selectedProjectId.value;
+    if (!project)
+        return;
+    if (filterTimer)
+        clearTimeout(filterTimer);
+    const fire = () => {
+        void docsState.loadPage(project, 0, prefix);
+    };
+    if (immediate)
+        fire();
+    else
+        filterTimer = setTimeout(fire, 300);
+}
 watch(() => docsState.selected.value?.id ?? null, (id) => {
     syncQueryParam('documentId', id);
 });
@@ -89,12 +141,21 @@ async function openDocument(doc) {
 function fillEditor() {
     const sel = docsState.selected.value;
     editTitle.value = sel?.title ?? '';
+    editPath.value = sel?.path ?? '';
     editInlineText.value = sel?.inlineText ?? '';
     editError.value = null;
 }
 function backToList() {
     docsState.clearSelection();
     editError.value = null;
+}
+/**
+ * Build a `Content-Disposition: attachment` URL for a document.
+ * The {@code documentContentUrl} helper appends the JWT as
+ * `?token=…` so an `<a download>` link works without a header.
+ */
+function downloadUrl(doc) {
+    return documentContentUrl(doc.id, true);
 }
 function openCreateModal() {
     createMode.value = 'inline';
@@ -215,23 +276,93 @@ async function submitCreate() {
         creating.value = false;
     }
 }
-async function save() {
+/**
+ * Persist current edits without leaving the detail view. Conventional
+ * "Apply" semantic — see specification/web-ui.md §7.7.
+ *
+ * @returns `true` when the update succeeded with no error,
+ *          `false` if the server rejected (e.g. path conflict). The
+ *          caller can chain this for save-and-close behaviour.
+ */
+async function apply() {
     const sel = docsState.selected.value;
     if (!sel?.id)
-        return;
+        return false;
     saving.value = true;
     editError.value = null;
     try {
         const body = { title: editTitle.value };
         if (sel.inline)
             body.inlineText = editInlineText.value;
+        // Path-change (move/rename) — only send when actually changed.
+        // Server-side normalisation makes minor whitespace/leading-slash
+        // diffs idempotent, so we compare verbatim and let the server
+        // be the source of truth.
+        const newPath = editPath.value.trim();
+        if (newPath && newPath !== sel.path) {
+            body.newPath = newPath;
+        }
         await docsState.update(sel.id, body);
         if (docsState.error.value) {
             editError.value = docsState.error.value;
+            return false;
         }
+        if (body.newPath && docsState.selected.value) {
+            // Server normalised the path; reflect that back into the
+            // editor so the field shows the canonical form.
+            editPath.value = docsState.selected.value.path;
+        }
+        return true;
     }
     finally {
         saving.value = false;
+    }
+}
+/**
+ * Save-and-close — applies the edits and returns to the list when
+ * the server accepted them. On error, stays on the detail view so
+ * the user can inspect the message and retry. See
+ * specification/web-ui.md §7.7.
+ */
+async function save() {
+    const ok = await apply();
+    if (ok)
+        backToList();
+}
+/**
+ * Open the delete-confirmation modal. Actual deletion runs through
+ * {@link confirmDelete} after the user confirms.
+ */
+function openDeleteModal() {
+    editError.value = null;
+    showDeleteModal.value = true;
+}
+/**
+ * User confirmed — call the API and, on success, close the modal,
+ * leave the detail view, and refresh the folder list (a deleted
+ * document may have been the last in its folder).
+ */
+async function confirmDelete() {
+    const sel = docsState.selected.value;
+    if (!sel?.id)
+        return;
+    deleting.value = true;
+    try {
+        const ok = await docsState.remove(sel.id);
+        if (!ok) {
+            editError.value = docsState.error.value;
+            return;
+        }
+        showDeleteModal.value = false;
+        backToList();
+        if (selectedProjectId.value) {
+            // Folder list cheap to reload — keeps the path-filter
+            // dropdown honest after an empty folder disappears.
+            void docsState.loadFolders(selectedProjectId.value);
+        }
+    }
+    finally {
+        deleting.value = false;
     }
 }
 function syncQueryParam(key, value) {
@@ -396,11 +527,11 @@ else if (__VLS_ctx.docsState.selected.value) {
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
         const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
-            variant: "warning",
+            variant: "info",
             ...{ class: "mt-3" },
         }));
         const __VLS_35 = __VLS_34({
-            variant: "warning",
+            variant: "info",
             ...{ class: "mt-3" },
         }, ...__VLS_functionalComponentArgsRest(__VLS_34));
         __VLS_36.slots.default;
@@ -440,172 +571,325 @@ else if (__VLS_ctx.docsState.selected.value) {
         label: "Title",
         disabled: (__VLS_ctx.saving),
     }, ...__VLS_functionalComponentArgsRest(__VLS_42));
+    const __VLS_45 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+    // @ts-ignore
+    const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+        modelValue: (__VLS_ctx.editPath),
+        label: "Path",
+        disabled: (__VLS_ctx.saving),
+        help: "Move or rename this document. Path is unique within the project; conflicts are rejected.",
+    }));
+    const __VLS_47 = __VLS_46({
+        modelValue: (__VLS_ctx.editPath),
+        label: "Path",
+        disabled: (__VLS_ctx.saving),
+        help: "Move or rename this document. Path is unique within the project; conflicts are rejected.",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_46));
     if (__VLS_ctx.docsState.selected.value.inline) {
-        const __VLS_45 = {}.VTextarea;
-        /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
+        const __VLS_49 = {}.CodeEditor;
+        /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+        const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
             modelValue: (__VLS_ctx.editInlineText),
             label: "Content",
             rows: (20),
             disabled: (__VLS_ctx.saving),
+            mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
         }));
-        const __VLS_47 = __VLS_46({
+        const __VLS_51 = __VLS_50({
             modelValue: (__VLS_ctx.editInlineText),
             label: "Content",
             rows: (20),
             disabled: (__VLS_ctx.saving),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_46));
+            mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_50));
+    }
+    else {
+        /** @type {[typeof DocumentPreview, ]} */ ;
+        // @ts-ignore
+        const __VLS_53 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
+            documentId: (__VLS_ctx.docsState.selected.value.id),
+            mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
+            inline: (false),
+        }));
+        const __VLS_54 = __VLS_53({
+            documentId: (__VLS_ctx.docsState.selected.value.id),
+            mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
+            inline: (false),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_53));
     }
     {
         const { actions: __VLS_thisSlot } = __VLS_32.slots;
-        const __VLS_49 = {}.VButton;
+        const __VLS_56 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
+        const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
             ...{ 'onClick': {} },
-            variant: "ghost",
-            disabled: (__VLS_ctx.saving),
+            ...{ class: "mr-auto" },
+            variant: "danger",
+            disabled: (__VLS_ctx.saving || __VLS_ctx.deleting),
         }));
-        const __VLS_51 = __VLS_50({
+        const __VLS_58 = __VLS_57({
             ...{ 'onClick': {} },
-            variant: "ghost",
-            disabled: (__VLS_ctx.saving),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_50));
-        let __VLS_53;
-        let __VLS_54;
-        let __VLS_55;
-        const __VLS_56 = {
-            onClick: (__VLS_ctx.backToList)
-        };
-        __VLS_52.slots.default;
-        var __VLS_52;
-        const __VLS_57 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({
-            ...{ 'onClick': {} },
-            variant: "primary",
-            loading: (__VLS_ctx.saving),
-        }));
-        const __VLS_59 = __VLS_58({
-            ...{ 'onClick': {} },
-            variant: "primary",
-            loading: (__VLS_ctx.saving),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_58));
+            ...{ class: "mr-auto" },
+            variant: "danger",
+            disabled: (__VLS_ctx.saving || __VLS_ctx.deleting),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+        let __VLS_60;
         let __VLS_61;
         let __VLS_62;
-        let __VLS_63;
-        const __VLS_64 = {
+        const __VLS_63 = {
+            onClick: (__VLS_ctx.openDeleteModal)
+        };
+        __VLS_59.slots.default;
+        var __VLS_59;
+        const __VLS_64 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+            variant: "ghost",
+            href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
+            download: (__VLS_ctx.docsState.selected.value.name || 'document'),
+        }));
+        const __VLS_66 = __VLS_65({
+            variant: "ghost",
+            href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
+            download: (__VLS_ctx.docsState.selected.value.name || 'document'),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+        __VLS_67.slots.default;
+        var __VLS_67;
+        const __VLS_68 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            disabled: (__VLS_ctx.saving),
+        }));
+        const __VLS_70 = __VLS_69({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            disabled: (__VLS_ctx.saving),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+        let __VLS_72;
+        let __VLS_73;
+        let __VLS_74;
+        const __VLS_75 = {
+            onClick: (__VLS_ctx.backToList)
+        };
+        __VLS_71.slots.default;
+        var __VLS_71;
+        const __VLS_76 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
+            ...{ 'onClick': {} },
+            variant: "secondary",
+            loading: (__VLS_ctx.saving),
+        }));
+        const __VLS_78 = __VLS_77({
+            ...{ 'onClick': {} },
+            variant: "secondary",
+            loading: (__VLS_ctx.saving),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_77));
+        let __VLS_80;
+        let __VLS_81;
+        let __VLS_82;
+        const __VLS_83 = {
+            onClick: (__VLS_ctx.apply)
+        };
+        __VLS_79.slots.default;
+        var __VLS_79;
+        const __VLS_84 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            loading: (__VLS_ctx.saving),
+        }));
+        const __VLS_86 = __VLS_85({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            loading: (__VLS_ctx.saving),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_85));
+        let __VLS_88;
+        let __VLS_89;
+        let __VLS_90;
+        const __VLS_91 = {
             onClick: (__VLS_ctx.save)
         };
-        __VLS_60.slots.default;
-        var __VLS_60;
+        __VLS_87.slots.default;
+        var __VLS_87;
     }
     var __VLS_32;
 }
 else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "flex items-center justify-end mb-3" },
+        ...{ class: "flex items-center gap-3 mb-3" },
     });
-    const __VLS_65 = {}.VButton;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex-1 min-w-0" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+        ...{ onInput: (...[$event]) => {
+                if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                    return;
+                if (!!(!__VLS_ctx.selectedProjectId))
+                    return;
+                if (!!(__VLS_ctx.docsState.selected.value))
+                    return;
+                __VLS_ctx.applyPathFilter(__VLS_ctx.docsState.pathPrefix.value);
+            } },
+        ...{ onChange: (...[$event]) => {
+                if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                    return;
+                if (!!(!__VLS_ctx.selectedProjectId))
+                    return;
+                if (!!(__VLS_ctx.docsState.selected.value))
+                    return;
+                __VLS_ctx.applyPathFilter(__VLS_ctx.docsState.pathPrefix.value, true);
+            } },
+        ...{ onKeydown: (...[$event]) => {
+                if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                    return;
+                if (!!(!__VLS_ctx.selectedProjectId))
+                    return;
+                if (!!(__VLS_ctx.docsState.selected.value))
+                    return;
+                __VLS_ctx.applyPathFilter(__VLS_ctx.docsState.pathPrefix.value, true);
+            } },
+        value: (__VLS_ctx.docsState.pathPrefix.value),
+        type: "text",
+        placeholder: "Filter by folder or path prefix… (e.g. notes/, archive/2026)",
+        list: "folder-list",
+        ...{ class: "input input-bordered input-sm w-full" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.datalist, __VLS_intrinsicElements.datalist)({
+        id: "folder-list",
+    });
+    for (const [folder] of __VLS_getVForSourceType((__VLS_ctx.docsState.folders.value))) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.option)({
+            key: (folder),
+            value: (folder),
+        });
+    }
+    if (__VLS_ctx.docsState.pathPrefix.value) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                        return;
+                    if (!!(!__VLS_ctx.selectedProjectId))
+                        return;
+                    if (!!(__VLS_ctx.docsState.selected.value))
+                        return;
+                    if (!(__VLS_ctx.docsState.pathPrefix.value))
+                        return;
+                    __VLS_ctx.applyPathFilter('', true);
+                } },
+            type: "button",
+            ...{ class: "btn btn-ghost btn-sm" },
+        });
+    }
+    const __VLS_92 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_66 = __VLS_asFunctionalComponent(__VLS_65, new __VLS_65({
+    const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
         ...{ 'onClick': {} },
         variant: "primary",
         size: "sm",
     }));
-    const __VLS_67 = __VLS_66({
+    const __VLS_94 = __VLS_93({
         ...{ 'onClick': {} },
         variant: "primary",
         size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_66));
-    let __VLS_69;
-    let __VLS_70;
-    let __VLS_71;
-    const __VLS_72 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_93));
+    let __VLS_96;
+    let __VLS_97;
+    let __VLS_98;
+    const __VLS_99 = {
         onClick: (__VLS_ctx.openCreateModal)
     };
-    __VLS_68.slots.default;
-    var __VLS_68;
+    __VLS_95.slots.default;
+    var __VLS_95;
     if (__VLS_ctx.docsState.error.value) {
-        const __VLS_73 = {}.VAlert;
+        const __VLS_100 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_74 = __VLS_asFunctionalComponent(__VLS_73, new __VLS_73({
+        const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
             variant: "error",
             ...{ class: "mb-4" },
         }));
-        const __VLS_75 = __VLS_74({
+        const __VLS_102 = __VLS_101({
             variant: "error",
             ...{ class: "mb-4" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_74));
-        __VLS_76.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_101));
+        __VLS_103.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
         (__VLS_ctx.docsState.error.value);
-        var __VLS_76;
+        var __VLS_103;
     }
     if (!__VLS_ctx.docsState.loading.value && __VLS_ctx.docsState.items.value.length === 0) {
-        const __VLS_77 = {}.VEmptyState;
+        const __VLS_104 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_78 = __VLS_asFunctionalComponent(__VLS_77, new __VLS_77({
+        const __VLS_105 = __VLS_asFunctionalComponent(__VLS_104, new __VLS_104({
             headline: "No documents",
             body: "This project has no documents yet.",
         }));
-        const __VLS_79 = __VLS_78({
+        const __VLS_106 = __VLS_105({
             headline: "No documents",
             body: "This project has no documents yet.",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_78));
-        __VLS_80.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_105));
+        __VLS_107.slots.default;
         {
-            const { action: __VLS_thisSlot } = __VLS_80.slots;
-            const __VLS_81 = {}.VButton;
+            const { action: __VLS_thisSlot } = __VLS_107.slots;
+            const __VLS_108 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
-            const __VLS_82 = __VLS_asFunctionalComponent(__VLS_81, new __VLS_81({
+            const __VLS_109 = __VLS_asFunctionalComponent(__VLS_108, new __VLS_108({
                 ...{ 'onClick': {} },
                 variant: "primary",
             }));
-            const __VLS_83 = __VLS_82({
+            const __VLS_110 = __VLS_109({
                 ...{ 'onClick': {} },
                 variant: "primary",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_82));
-            let __VLS_85;
-            let __VLS_86;
-            let __VLS_87;
-            const __VLS_88 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_109));
+            let __VLS_112;
+            let __VLS_113;
+            let __VLS_114;
+            const __VLS_115 = {
                 onClick: (__VLS_ctx.openCreateModal)
             };
-            __VLS_84.slots.default;
-            var __VLS_84;
+            __VLS_111.slots.default;
+            var __VLS_111;
         }
-        var __VLS_80;
+        var __VLS_107;
     }
     else {
-        const __VLS_89 = {}.VDataList;
+        const __VLS_116 = {}.VDataList;
         /** @type {[typeof __VLS_components.VDataList, typeof __VLS_components.VDataList, ]} */ ;
         // @ts-ignore
-        const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
+        const __VLS_117 = __VLS_asFunctionalComponent(__VLS_116, new __VLS_116({
             ...{ 'onSelect': {} },
             items: (__VLS_ctx.docsState.items.value),
             selectable: true,
         }));
-        const __VLS_91 = __VLS_90({
+        const __VLS_118 = __VLS_117({
             ...{ 'onSelect': {} },
             items: (__VLS_ctx.docsState.items.value),
             selectable: true,
-        }, ...__VLS_functionalComponentArgsRest(__VLS_90));
-        let __VLS_93;
-        let __VLS_94;
-        let __VLS_95;
-        const __VLS_96 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_117));
+        let __VLS_120;
+        let __VLS_121;
+        let __VLS_122;
+        const __VLS_123 = {
             onSelect: (__VLS_ctx.openDocument)
         };
-        __VLS_92.slots.default;
+        __VLS_119.slots.default;
         {
-            const { default: __VLS_thisSlot } = __VLS_92.slots;
+            const { default: __VLS_thisSlot } = __VLS_119.slots;
             const [{ item }] = __VLS_getSlotParams(__VLS_thisSlot);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "flex items-center justify-between gap-4" },
@@ -644,127 +928,194 @@ else {
                 });
             }
         }
-        var __VLS_92;
+        var __VLS_119;
     }
     if (__VLS_ctx.docsState.totalCount.value > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "mt-4" },
         });
-        const __VLS_97 = {}.VPagination;
+        const __VLS_124 = {}.VPagination;
         /** @type {[typeof __VLS_components.VPagination, ]} */ ;
         // @ts-ignore
-        const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
+        const __VLS_125 = __VLS_asFunctionalComponent(__VLS_124, new __VLS_124({
             ...{ 'onUpdate:page': {} },
             page: (__VLS_ctx.docsState.page.value),
             pageSize: (__VLS_ctx.docsState.pageSize.value),
             totalCount: (__VLS_ctx.docsState.totalCount.value),
         }));
-        const __VLS_99 = __VLS_98({
+        const __VLS_126 = __VLS_125({
             ...{ 'onUpdate:page': {} },
             page: (__VLS_ctx.docsState.page.value),
             pageSize: (__VLS_ctx.docsState.pageSize.value),
             totalCount: (__VLS_ctx.docsState.totalCount.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_98));
-        let __VLS_101;
-        let __VLS_102;
-        let __VLS_103;
-        const __VLS_104 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_125));
+        let __VLS_128;
+        let __VLS_129;
+        let __VLS_130;
+        const __VLS_131 = {
             'onUpdate:page': (__VLS_ctx.changePage)
         };
-        var __VLS_100;
+        var __VLS_127;
     }
 }
-const __VLS_105 = {}.VModal;
+const __VLS_132 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_106 = __VLS_asFunctionalComponent(__VLS_105, new __VLS_105({
+const __VLS_133 = __VLS_asFunctionalComponent(__VLS_132, new __VLS_132({
+    modelValue: (__VLS_ctx.showDeleteModal),
+    title: "Delete document",
+    closeOnBackdrop: (!__VLS_ctx.deleting),
+}));
+const __VLS_134 = __VLS_133({
+    modelValue: (__VLS_ctx.showDeleteModal),
+    title: "Delete document",
+    closeOnBackdrop: (!__VLS_ctx.deleting),
+}, ...__VLS_functionalComponentArgsRest(__VLS_133));
+__VLS_135.slots.default;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+    ...{ class: "font-mono" },
+});
+(__VLS_ctx.docsState.selected.value?.path);
+{
+    const { actions: __VLS_thisSlot } = __VLS_135.slots;
+    const __VLS_136 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_137 = __VLS_asFunctionalComponent(__VLS_136, new __VLS_136({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        disabled: (__VLS_ctx.deleting),
+    }));
+    const __VLS_138 = __VLS_137({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        disabled: (__VLS_ctx.deleting),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_137));
+    let __VLS_140;
+    let __VLS_141;
+    let __VLS_142;
+    const __VLS_143 = {
+        onClick: (...[$event]) => {
+            __VLS_ctx.showDeleteModal = false;
+        }
+    };
+    __VLS_139.slots.default;
+    var __VLS_139;
+    const __VLS_144 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_145 = __VLS_asFunctionalComponent(__VLS_144, new __VLS_144({
+        ...{ 'onClick': {} },
+        variant: "danger",
+        loading: (__VLS_ctx.deleting),
+    }));
+    const __VLS_146 = __VLS_145({
+        ...{ 'onClick': {} },
+        variant: "danger",
+        loading: (__VLS_ctx.deleting),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_145));
+    let __VLS_148;
+    let __VLS_149;
+    let __VLS_150;
+    const __VLS_151 = {
+        onClick: (__VLS_ctx.confirmDelete)
+    };
+    __VLS_147.slots.default;
+    var __VLS_147;
+}
+var __VLS_135;
+const __VLS_152 = {}.VModal;
+/** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
+// @ts-ignore
+const __VLS_153 = __VLS_asFunctionalComponent(__VLS_152, new __VLS_152({
     modelValue: (__VLS_ctx.showCreateModal),
     title: "New document",
     closeOnBackdrop: (false),
 }));
-const __VLS_107 = __VLS_106({
+const __VLS_154 = __VLS_153({
     modelValue: (__VLS_ctx.showCreateModal),
     title: "New document",
     closeOnBackdrop: (false),
-}, ...__VLS_functionalComponentArgsRest(__VLS_106));
-__VLS_108.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_153));
+__VLS_155.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex gap-2 mb-4" },
 });
-const __VLS_109 = {}.VButton;
+const __VLS_156 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_110 = __VLS_asFunctionalComponent(__VLS_109, new __VLS_109({
+const __VLS_157 = __VLS_asFunctionalComponent(__VLS_156, new __VLS_156({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_111 = __VLS_110({
+const __VLS_158 = __VLS_157({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_110));
-let __VLS_113;
-let __VLS_114;
-let __VLS_115;
-const __VLS_116 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_157));
+let __VLS_160;
+let __VLS_161;
+let __VLS_162;
+const __VLS_163 = {
     onClick: (...[$event]) => {
         __VLS_ctx.setCreateMode('inline');
     }
 };
-__VLS_112.slots.default;
-var __VLS_112;
-const __VLS_117 = {}.VButton;
+__VLS_159.slots.default;
+var __VLS_159;
+const __VLS_164 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_118 = __VLS_asFunctionalComponent(__VLS_117, new __VLS_117({
+const __VLS_165 = __VLS_asFunctionalComponent(__VLS_164, new __VLS_164({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_119 = __VLS_118({
+const __VLS_166 = __VLS_165({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_118));
-let __VLS_121;
-let __VLS_122;
-let __VLS_123;
-const __VLS_124 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_165));
+let __VLS_168;
+let __VLS_169;
+let __VLS_170;
+const __VLS_171 = {
     onClick: (...[$event]) => {
         __VLS_ctx.setCreateMode('upload');
     }
 };
-__VLS_120.slots.default;
-var __VLS_120;
+__VLS_167.slots.default;
+var __VLS_167;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.submitCreate) },
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.createError) {
-    const __VLS_125 = {}.VAlert;
+    const __VLS_172 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_126 = __VLS_asFunctionalComponent(__VLS_125, new __VLS_125({
+    const __VLS_173 = __VLS_asFunctionalComponent(__VLS_172, new __VLS_172({
         variant: "error",
     }));
-    const __VLS_127 = __VLS_126({
+    const __VLS_174 = __VLS_173({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_126));
-    __VLS_128.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_173));
+    __VLS_175.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.createError);
-    var __VLS_128;
+    var __VLS_175;
 }
 if (__VLS_ctx.createMode === 'inline') {
-    const __VLS_129 = {}.VInput;
+    const __VLS_176 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_130 = __VLS_asFunctionalComponent(__VLS_129, new __VLS_129({
+    const __VLS_177 = __VLS_asFunctionalComponent(__VLS_176, new __VLS_176({
         modelValue: (__VLS_ctx.createPath),
         label: "Path",
         placeholder: "notes/example.md",
@@ -772,137 +1123,138 @@ if (__VLS_ctx.createMode === 'inline') {
         disabled: (__VLS_ctx.creating),
         help: "Virtual path inside the project. Must be unique.",
     }));
-    const __VLS_131 = __VLS_130({
+    const __VLS_178 = __VLS_177({
         modelValue: (__VLS_ctx.createPath),
         label: "Path",
         placeholder: "notes/example.md",
         required: true,
         disabled: (__VLS_ctx.creating),
         help: "Virtual path inside the project. Must be unique.",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_130));
-    const __VLS_133 = {}.VInput;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_177));
+    const __VLS_180 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_134 = __VLS_asFunctionalComponent(__VLS_133, new __VLS_133({
+    const __VLS_181 = __VLS_asFunctionalComponent(__VLS_180, new __VLS_180({
         modelValue: (__VLS_ctx.createTitle),
         label: "Title",
         placeholder: "Optional display title",
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_135 = __VLS_134({
+    const __VLS_182 = __VLS_181({
         modelValue: (__VLS_ctx.createTitle),
         label: "Title",
         placeholder: "Optional display title",
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_134));
-    const __VLS_137 = {}.VInput;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_181));
+    const __VLS_184 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_138 = __VLS_asFunctionalComponent(__VLS_137, new __VLS_137({
+    const __VLS_185 = __VLS_asFunctionalComponent(__VLS_184, new __VLS_184({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: "Tags",
         placeholder: "comma, separated, tags",
         disabled: (__VLS_ctx.creating),
         help: "Optional, separated by commas.",
     }));
-    const __VLS_139 = __VLS_138({
+    const __VLS_186 = __VLS_185({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: "Tags",
         placeholder: "comma, separated, tags",
         disabled: (__VLS_ctx.creating),
         help: "Optional, separated by commas.",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_138));
-    const __VLS_141 = {}.VSelect;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_185));
+    const __VLS_188 = {}.VSelect;
     /** @type {[typeof __VLS_components.VSelect, ]} */ ;
     // @ts-ignore
-    const __VLS_142 = __VLS_asFunctionalComponent(__VLS_141, new __VLS_141({
+    const __VLS_189 = __VLS_asFunctionalComponent(__VLS_188, new __VLS_188({
         modelValue: (__VLS_ctx.createMime),
         options: (__VLS_ctx.createMimeOptions),
         label: "Type",
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_143 = __VLS_142({
+    const __VLS_190 = __VLS_189({
         modelValue: (__VLS_ctx.createMime),
         options: (__VLS_ctx.createMimeOptions),
         label: "Type",
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_142));
-    const __VLS_145 = {}.VTextarea;
-    /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_189));
+    const __VLS_192 = {}.CodeEditor;
+    /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
     // @ts-ignore
-    const __VLS_146 = __VLS_asFunctionalComponent(__VLS_145, new __VLS_145({
+    const __VLS_193 = __VLS_asFunctionalComponent(__VLS_192, new __VLS_192({
         modelValue: (__VLS_ctx.createContent),
         label: "Content",
         rows: (14),
-        required: true,
         disabled: (__VLS_ctx.creating),
-        help: "Inline content, up to 4 KB. For larger or binary files use the upload tab.",
+        mimeType: (__VLS_ctx.createMime),
     }));
-    const __VLS_147 = __VLS_146({
+    const __VLS_194 = __VLS_193({
         modelValue: (__VLS_ctx.createContent),
         label: "Content",
         rows: (14),
-        required: true,
         disabled: (__VLS_ctx.creating),
-        help: "Inline content, up to 4 KB. For larger or binary files use the upload tab.",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_146));
+        mimeType: (__VLS_ctx.createMime),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_193));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-xs opacity-70 -mt-1" },
+    });
 }
 else {
-    const __VLS_149 = {}.VFileInput;
+    const __VLS_196 = {}.VFileInput;
     /** @type {[typeof __VLS_components.VFileInput, ]} */ ;
     // @ts-ignore
-    const __VLS_150 = __VLS_asFunctionalComponent(__VLS_149, new __VLS_149({
+    const __VLS_197 = __VLS_asFunctionalComponent(__VLS_196, new __VLS_196({
         modelValue: (__VLS_ctx.createFiles),
         label: "Files",
         multiple: true,
         disabled: (__VLS_ctx.creating),
         help: "Drop one or more files. Server picks inline vs. storage automatically per file.",
     }));
-    const __VLS_151 = __VLS_150({
+    const __VLS_198 = __VLS_197({
         modelValue: (__VLS_ctx.createFiles),
         label: "Files",
         multiple: true,
         disabled: (__VLS_ctx.creating),
         help: "Drop one or more files. Server picks inline vs. storage automatically per file.",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_150));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_197));
     if (__VLS_ctx.createFiles.length <= 1) {
-        const __VLS_153 = {}.VInput;
+        const __VLS_200 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_154 = __VLS_asFunctionalComponent(__VLS_153, new __VLS_153({
+        const __VLS_201 = __VLS_asFunctionalComponent(__VLS_200, new __VLS_200({
             modelValue: (__VLS_ctx.createPath),
             label: "Path",
             placeholder: "(defaults to file name)",
             disabled: (__VLS_ctx.creating),
             help: "Override the destination path inside the project. Optional.",
         }));
-        const __VLS_155 = __VLS_154({
+        const __VLS_202 = __VLS_201({
             modelValue: (__VLS_ctx.createPath),
             label: "Path",
             placeholder: "(defaults to file name)",
             disabled: (__VLS_ctx.creating),
             help: "Override the destination path inside the project. Optional.",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_154));
-        const __VLS_157 = {}.VInput;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_201));
+        const __VLS_204 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_158 = __VLS_asFunctionalComponent(__VLS_157, new __VLS_157({
+        const __VLS_205 = __VLS_asFunctionalComponent(__VLS_204, new __VLS_204({
             modelValue: (__VLS_ctx.createTitle),
             label: "Title",
             placeholder: "Optional display title",
             disabled: (__VLS_ctx.creating),
         }));
-        const __VLS_159 = __VLS_158({
+        const __VLS_206 = __VLS_205({
             modelValue: (__VLS_ctx.createTitle),
             label: "Title",
             placeholder: "Optional display title",
             disabled: (__VLS_ctx.creating),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_158));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_205));
     }
-    const __VLS_161 = {}.VInput;
+    const __VLS_208 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_162 = __VLS_asFunctionalComponent(__VLS_161, new __VLS_161({
+    const __VLS_209 = __VLS_asFunctionalComponent(__VLS_208, new __VLS_208({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: "Tags",
         placeholder: "comma, separated, tags",
@@ -911,7 +1263,7 @@ else {
             ? 'Applied to every uploaded file.'
             : 'Optional, separated by commas.'),
     }));
-    const __VLS_163 = __VLS_162({
+    const __VLS_210 = __VLS_209({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: "Tags",
         placeholder: "comma, separated, tags",
@@ -919,7 +1271,7 @@ else {
         help: (__VLS_ctx.createFiles.length > 1
             ? 'Applied to every uploaded file.'
             : 'Optional, separated by commas.'),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_162));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_209));
     if (__VLS_ctx.uploadProgress.length > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
             ...{ class: "flex flex-col gap-1.5 text-sm border border-base-300 rounded-md p-3 bg-base-200" },
@@ -956,54 +1308,54 @@ else {
     }
 }
 {
-    const { actions: __VLS_thisSlot } = __VLS_108.slots;
-    const __VLS_165 = {}.VButton;
+    const { actions: __VLS_thisSlot } = __VLS_155.slots;
+    const __VLS_212 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_166 = __VLS_asFunctionalComponent(__VLS_165, new __VLS_165({
+    const __VLS_213 = __VLS_asFunctionalComponent(__VLS_212, new __VLS_212({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_167 = __VLS_166({
+    const __VLS_214 = __VLS_213({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_166));
-    let __VLS_169;
-    let __VLS_170;
-    let __VLS_171;
-    const __VLS_172 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_213));
+    let __VLS_216;
+    let __VLS_217;
+    let __VLS_218;
+    const __VLS_219 = {
         onClick: (...[$event]) => {
             __VLS_ctx.showCreateModal = false;
         }
     };
-    __VLS_168.slots.default;
-    var __VLS_168;
-    const __VLS_173 = {}.VButton;
+    __VLS_215.slots.default;
+    var __VLS_215;
+    const __VLS_220 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_174 = __VLS_asFunctionalComponent(__VLS_173, new __VLS_173({
+    const __VLS_221 = __VLS_asFunctionalComponent(__VLS_220, new __VLS_220({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
     }));
-    const __VLS_175 = __VLS_174({
+    const __VLS_222 = __VLS_221({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_174));
-    let __VLS_177;
-    let __VLS_178;
-    let __VLS_179;
-    const __VLS_180 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_221));
+    let __VLS_224;
+    let __VLS_225;
+    let __VLS_226;
+    const __VLS_227 = {
         onClick: (__VLS_ctx.submitCreate)
     };
-    __VLS_176.slots.default;
+    __VLS_223.slots.default;
     (__VLS_ctx.createMode === 'upload' ? 'Upload' : 'Create');
-    var __VLS_176;
+    var __VLS_223;
 }
-var __VLS_108;
+var __VLS_155;
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['w-64']} */ ;
 /** @type {__VLS_StyleScopedClasses['container']} */ ;
@@ -1026,10 +1378,20 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['mr-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['input']} */ ;
+/** @type {__VLS_StyleScopedClasses['input-bordered']} */ ;
+/** @type {__VLS_StyleScopedClasses['input-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-ghost']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
@@ -1056,12 +1418,16 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-warning']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['-mt-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
@@ -1100,15 +1466,19 @@ const __VLS_self = (await import('vue')).defineComponent({
             VModal: VModal,
             VPagination: VPagination,
             VSelect: VSelect,
-            VTextarea: VTextarea,
+            CodeEditor: CodeEditor,
+            DocumentPreview: DocumentPreview,
             projectsState: projectsState,
             docsState: docsState,
             selectedProjectId: selectedProjectId,
             editTitle: editTitle,
+            editPath: editPath,
             editInlineText: editInlineText,
             editError: editError,
             saving: saving,
             showCreateModal: showCreateModal,
+            showDeleteModal: showDeleteModal,
+            deleting: deleting,
             createMode: createMode,
             createPath: createPath,
             createTitle: createTitle,
@@ -1120,14 +1490,19 @@ const __VLS_self = (await import('vue')).defineComponent({
             creating: creating,
             uploadProgress: uploadProgress,
             createMimeOptions: createMimeOptions,
+            applyPathFilter: applyPathFilter,
             projectOptions: projectOptions,
             changePage: changePage,
             openDocument: openDocument,
             backToList: backToList,
+            downloadUrl: downloadUrl,
             openCreateModal: openCreateModal,
             setCreateMode: setCreateMode,
             submitCreate: submitCreate,
+            apply: apply,
             save: save,
+            openDeleteModal: openDeleteModal,
+            confirmDelete: confirmDelete,
             breadcrumbs: breadcrumbs,
             formatBytes: formatBytes,
         };

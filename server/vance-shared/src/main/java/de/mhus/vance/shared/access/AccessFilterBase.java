@@ -56,6 +56,24 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
     protected abstract boolean shouldRequireAuthentication(String requestUri, String method);
 
     /**
+     * Whether the given request path/method may authenticate via a
+     * {@code ?token=<jwt>} query parameter as a fallback when the
+     * {@code Authorization} header is missing.
+     *
+     * <p>Default {@code false} — only the {@code Authorization}
+     * header is accepted. Concrete filters open this for specific
+     * routes where {@code <img src>} / {@code <a href>} can't set
+     * a header (typically GET-only content streaming endpoints).
+     *
+     * <p>Caveats when enabling: tokens land in browser history /
+     * server access logs / referer headers. Use only for short-lived
+     * GETs where the threat model accepts that.
+     */
+    protected boolean allowsQueryToken(String requestUri, String method) {
+        return false;
+    }
+
+    /**
      * Hook for subclass-specific claim validation after signature has been verified.
      * Gets the request so subclasses can cross-check against the target path
      * (e.g. a tenant in the URL must match the tenant in the JWT).
@@ -100,6 +118,10 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
 
     private @Nullable VanceJwtClaims resolveClaims(HttpServletRequest request) {
         String token = extractBearer(request);
+        if (token == null
+                && allowsQueryToken(request.getRequestURI(), request.getMethod())) {
+            token = extractQueryToken(request);
+        }
         if (token == null) {
             return null;
         }
@@ -123,6 +145,11 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
         }
         String token = header.substring(BEARER_PREFIX.length()).trim();
         return token.isEmpty() ? null : token;
+    }
+
+    private static @Nullable String extractQueryToken(HttpServletRequest request) {
+        String token = request.getParameter("token");
+        return token == null || token.isBlank() ? null : token.trim();
     }
 
     private static void writeUnauthorized(HttpServletResponse response) throws IOException {

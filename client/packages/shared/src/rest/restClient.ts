@@ -102,3 +102,25 @@ function redirectToLogin(): void {
   const next = encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
   window.location.href = `/index.html?next=${next}`;
 }
+
+/**
+ * Build a tenant-scoped, JWT-authenticated URL for a document's
+ * streaming-content endpoint. Used by `<img src>` / PDF.js viewers
+ * / `<a href download>` — places where we can't inject an
+ * `Authorization` header.
+ *
+ * <p>The Brain's {@code BrainAccessFilter} accepts {@code ?token=}
+ * as a fallback for this specific GET-only route.
+ *
+ * @param documentId   Mongo id of the document
+ * @param download     `true` adds {@code &download=1} so the brain
+ *                     emits {@code Content-Disposition: attachment}
+ */
+export function documentContentUrl(documentId: string, download = false): string {
+  const tenant = getTenantId();
+  const jwt = getJwt();
+  if (!tenant || !jwt) return '';
+  const params = new URLSearchParams({ token: jwt });
+  if (download) params.set('download', '1');
+  return `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/documents/${encodeURIComponent(documentId)}/content?${params}`;
+}

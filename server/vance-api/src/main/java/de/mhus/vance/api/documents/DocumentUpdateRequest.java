@@ -30,4 +30,14 @@ public class DocumentUpdateRequest {
     private @Nullable List<String> tags;
 
     private @Nullable String inlineText;
+
+    /**
+     * New path (move/rename) for this document. Optional. The server
+     * normalizes (trims, strips leading/trailing slashes) and rejects
+     * with HTTP 409 if a sibling document already lives under the
+     * resolved path. Pass the current path (or {@code null}) to leave
+     * it unchanged. The document's {@code name} is re-derived from
+     * the trailing segment.
+     */
+    private @Nullable String newPath;
 }

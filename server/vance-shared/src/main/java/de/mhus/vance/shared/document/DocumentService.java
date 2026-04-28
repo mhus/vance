@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeSet;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -19,6 +20,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 
 /**
@@ -41,6 +45,7 @@ public class DocumentService {
 
     private final DocumentRepository repository;
     private final StorageService storageService;
+    private final MongoTemplate mongoTemplate;
 
     @Value("${vance.document.inline-threshold:4096}")
     private int inlineThreshold;
@@ -65,11 +70,61 @@ public class DocumentService {
      */
     public Page<DocumentDocument> listByProjectPaged(
             String tenantId, String projectId, int page, int size) {
+        return listByProjectPaged(tenantId, projectId, page, size, null);
+    }
+
+    /**
+     * Page through documents with an optional path-prefix filter — the
+     * UI uses this to scope the list to a folder selected (or freely
+     * typed) in the path-filter combobox. {@code pathPrefix} is matched
+     * with a regex-anchored {@code startsWith} so {@code "notes/"}
+     * returns everything inside the folder and {@code "notes/draft"}
+     * narrows to that prefix specifically. {@code null} or blank →
+     * unfiltered (same as the no-prefix overload).
+     */
+    public Page<DocumentDocument> listByProjectPaged(
+            String tenantId, String projectId, int page, int size,
+            @Nullable String pathPrefix) {
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(size, 200));
         PageRequest pageable = PageRequest.of(safePage, safeSize, Sort.by("path").ascending());
-        return repository.findByTenantIdAndProjectIdAndStatus(
-                tenantId, projectId, DocumentStatus.ACTIVE, pageable);
+        if (pathPrefix == null || pathPrefix.isBlank()) {
+            return repository.findByTenantIdAndProjectIdAndStatus(
+                    tenantId, projectId, DocumentStatus.ACTIVE, pageable);
+        }
+        String trimmed = pathPrefix.trim();
+        // Strip a leading slash so "/notes" and "notes" match the same
+        // documents — paths are stored without the leading slash.
+        while (trimmed.startsWith("/")) trimmed = trimmed.substring(1);
+        return repository.findByTenantIdAndProjectIdAndStatusAndPathStartsWith(
+                tenantId, projectId, DocumentStatus.ACTIVE, trimmed, pageable);
+    }
+
+    /**
+     * Returns the list of unique folder paths that contain at least
+     * one active document in this project. Sorted alphabetically.
+     * Implementation reads <em>only the path field</em> via the
+     * {@link MongoTemplate#findDistinct} projection — the rest of
+     * the document doesn't load. Folders are then derived in-process
+     * by splitting each path at {@code "/"}.
+     *
+     * <p>The empty-string entry (top-level documents not nested in
+     * any folder) is intentionally omitted; the UI shows "(all)" /
+     * blank input for that case.
+     */
+    public List<String> listFolders(String tenantId, String projectId) {
+        Query query = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("projectId").is(projectId)
+                .and("status").is(DocumentStatus.ACTIVE));
+        List<String> paths = mongoTemplate.findDistinct(
+                query, "path", DocumentDocument.class, String.class);
+        TreeSet<String> folders = new TreeSet<>();
+        for (String p : paths) {
+            for (String f : foldersOfPath(p)) {
+                folders.add(f);
+            }
+        }
+        return new ArrayList<>(folders);
     }
 
     /** All {@link DocumentStatus#ACTIVE} documents in the project that carry {@code tag}. */
@@ -193,17 +248,23 @@ public class DocumentService {
      * <p>{@code newInlineText} is only honoured for documents that already
      * live inline (i.e. {@link DocumentDocument#getInlineText()} is non-null)
      * and only when the new text fits within {@code vance.document.inline-threshold}.
-     * Storage-backed documents are read-only in v1.
+     * Storage-backed documents are read-only in v1 with respect to content.
+     * {@code newPath} works for any document (inline or storage-backed) —
+     * it's metadata, not content.
      *
      * @return the updated document
      * @throws IllegalArgumentException if the document is unknown or the update
-     *         is rejected (storage-backed content, oversize inline text)
+     *         is rejected (storage-backed content, oversize inline text,
+     *         blank/invalid path)
+     * @throws DocumentAlreadyExistsException if {@code newPath} clashes with
+     *         a sibling document in the same project
      */
     public DocumentDocument update(
             String id,
             @Nullable String newTitle,
             @Nullable List<String> newTags,
-            @Nullable String newInlineText) {
+            @Nullable String newInlineText,
+            @Nullable String newPath) {
 
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
@@ -226,18 +287,37 @@ public class DocumentService {
             doc.setSize(bytes.length);
         }
 
+        if (newPath != null) {
+            String normalized = normalizePath(newPath);
+            if (!normalized.equals(doc.getPath())) {
+                if (repository.existsByTenantIdAndProjectIdAndPath(
+                        doc.getTenantId(), doc.getProjectId(), normalized)) {
+                    throw new DocumentAlreadyExistsException(
+                            "Document '" + normalized + "' already exists in "
+                                    + doc.getTenantId() + "/" + doc.getProjectId());
+                }
+                doc.setPath(normalized);
+                doc.setName(extractName(normalized));
+            }
+        }
+
         DocumentDocument saved = repository.save(doc);
         log.info("Updated document tenantId='{}' projectId='{}' id='{}' fields={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getId(),
-                describeChanges(newTitle, newTags, newInlineText));
+                describeChanges(newTitle, newTags, newInlineText, newPath));
         return saved;
     }
 
-    private static String describeChanges(@Nullable String title, @Nullable List<String> tags, @Nullable String inlineText) {
+    private static String describeChanges(
+            @Nullable String title,
+            @Nullable List<String> tags,
+            @Nullable String inlineText,
+            @Nullable String path) {
         StringBuilder sb = new StringBuilder("[");
         if (title != null) sb.append("title");
         if (tags != null) { if (sb.length() > 1) sb.append(','); sb.append("tags"); }
         if (inlineText != null) { if (sb.length() > 1) sb.append(','); sb.append("inlineText"); }
+        if (path != null) { if (sb.length() > 1) sb.append(','); sb.append("path"); }
         return sb.append(']').toString();
     }
 
@@ -329,8 +409,47 @@ public class DocumentService {
         return slash < 0 ? path : path.substring(slash + 1);
     }
 
+    /**
+     * Mime-types the server treats as inline-eligible plain text —
+     * if the payload also fits the {@code inline-threshold}, it goes
+     * into {@code inlineText} rather than the storage blob layer.
+     *
+     * <p>Any {@code text/*} type qualifies automatically. The
+     * additional whitelist here covers code / config formats whose
+     * IANA / browser-default mime-type is {@code application/...}
+     * but which are conceptually text — JavaScript, JSON, YAML,
+     * Python, Shell, R, SQL, XML, etc. Keeps source / config files
+     * editable in the inline-text web UI.
+     */
+    private static final java.util.Set<String> CODE_MIME_WHITELIST = java.util.Set.of(
+            // Doc / config
+            "application/json",
+            "application/yaml",
+            "application/x-yaml",
+            "application/xml",
+            // Scripts / source
+            "application/javascript",
+            "application/x-javascript",
+            "application/typescript",
+            "application/x-typescript",
+            "application/x-python",
+            "application/x-sh",
+            "application/x-bash",
+            "application/x-shellscript",
+            "application/x-r",
+            "application/sql",
+            "application/x-java-source",
+            "application/xhtml+xml");
+
     private static boolean isTextual(@Nullable String mimeType) {
-        return mimeType != null && mimeType.startsWith("text/");
+        if (mimeType == null) return false;
+        String mt = mimeType.toLowerCase().trim();
+        // Strip any "; charset=…" suffix browsers / clients sometimes
+        // tack onto upload form-data.
+        int semi = mt.indexOf(';');
+        if (semi >= 0) mt = mt.substring(0, semi).trim();
+        if (mt.startsWith("text/")) return true;
+        return CODE_MIME_WHITELIST.contains(mt);
     }
 
     /** All ancestor folder paths of {@code path} (exclusive of the file itself). */

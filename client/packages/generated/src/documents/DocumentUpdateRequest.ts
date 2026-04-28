@@ -7,4 +7,5 @@ export interface DocumentUpdateRequest {
   title?: string;
   tags?: string[];
   inlineText?: string;
+  newPath?: string;
 }

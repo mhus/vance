@@ -13,10 +13,12 @@ import {
   VModal,
   VPagination,
   VSelect,
-  VTextarea,
+  CodeEditor,
 } from '@/components';
 import { useDocuments } from '@/composables/useDocuments';
 import { useTenantProjects } from '@/composables/useTenantProjects';
+import { documentContentUrl } from '@vance/shared';
+import DocumentPreview from './DocumentPreview.vue';
 import type {
   DocumentSummary,
   DocumentUpdateRequest,
@@ -31,6 +33,7 @@ const docsState = useDocuments(PAGE_SIZE);
 const selectedProjectId = ref<string | null>(null);
 
 const editTitle = ref('');
+const editPath = ref('');
 const editInlineText = ref('');
 const editError = ref<string | null>(null);
 const saving = ref(false);
@@ -40,6 +43,11 @@ const saving = ref(false);
 type CreateMode = 'inline' | 'upload';
 
 const showCreateModal = ref(false);
+
+// Delete-confirm modal — destructive action gets an explicit
+// confirmation step. See specification/web-ui.md §7.7.1.
+const showDeleteModal = ref(false);
+const deleting = ref(false);
 const createMode = ref<CreateMode>('inline');
 const createPath = ref('');
 const createTitle = ref('');
@@ -61,11 +69,27 @@ interface UploadProgressItem {
 }
 const uploadProgress = ref<UploadProgressItem[]>([]);
 
+// Document-content mime-types the inline editor handles. The
+// `group` field drives `<optgroup>`-style separation in VSelect
+// (see VSelect interface — adjacent items with the same `group`
+// land under one `<optgroup>`). Order roughly "most common first".
+// CodeEditor picks the matching syntax-highlighting language from
+// these mime-types — see CodeEditor.languageFor.
 const createMimeOptions = [
-  { value: 'text/markdown', label: 'Markdown (.md)' },
-  { value: 'text/plain', label: 'Plain text (.txt)' },
-  { value: 'application/json', label: 'JSON' },
-  { value: 'application/yaml', label: 'YAML' },
+  { value: 'text/markdown', label: 'Markdown (.md)', group: 'Doc & config' },
+  { value: 'text/plain', label: 'Plain text (.txt)', group: 'Doc & config' },
+  { value: 'application/json', label: 'JSON', group: 'Doc & config' },
+  { value: 'application/yaml', label: 'YAML', group: 'Doc & config' },
+  { value: 'application/xml', label: 'XML', group: 'Doc & config' },
+  { value: 'application/javascript', label: 'JavaScript (.js)', group: 'Code' },
+  { value: 'application/typescript', label: 'TypeScript (.ts)', group: 'Code' },
+  { value: 'text/x-python', label: 'Python (.py)', group: 'Code' },
+  { value: 'application/x-sh', label: 'Bash / Shell (.sh)', group: 'Code' },
+  { value: 'text/x-r', label: 'R (.r)', group: 'Code' },
+  { value: 'text/x-java-source', label: 'Java (.java)', group: 'Code' },
+  { value: 'application/sql', label: 'SQL', group: 'Code' },
+  { value: 'text/html', label: 'HTML', group: 'Web' },
+  { value: 'text/css', label: 'CSS', group: 'Web' },
 ];
 
 onMounted(async () => {
@@ -81,7 +105,10 @@ onMounted(async () => {
     selectedProjectId.value = projectsState.projects.value[0].name;
   }
   if (selectedProjectId.value) {
-    await docsState.loadPage(selectedProjectId.value, 0);
+    await Promise.all([
+      docsState.loadPage(selectedProjectId.value, 0),
+      docsState.loadFolders(selectedProjectId.value),
+    ]);
   }
   if (queryDoc) {
     await docsState.loadOne(queryDoc);
@@ -94,8 +121,31 @@ watch(selectedProjectId, async (next) => {
   syncQueryParam('projectId', next);
   syncQueryParam('documentId', null);
   docsState.clearSelection();
-  await docsState.loadPage(next, 0);
+  // Reset filter on project switch — folder list belongs to the
+  // new project and the previous prefix won't match anyway.
+  docsState.pathPrefix.value = '';
+  await Promise.all([
+    docsState.loadPage(next, 0, ''),
+    docsState.loadFolders(next),
+  ]);
 });
+
+/**
+ * Apply the path-filter input. Debounced via a small timeout so
+ * typing into the combobox doesn't fire one request per keystroke;
+ * pressing Enter or selecting a datalist option commits immediately.
+ */
+let filterTimer: ReturnType<typeof setTimeout> | null = null;
+function applyPathFilter(prefix: string, immediate = false): void {
+  const project = selectedProjectId.value;
+  if (!project) return;
+  if (filterTimer) clearTimeout(filterTimer);
+  const fire = () => {
+    void docsState.loadPage(project, 0, prefix);
+  };
+  if (immediate) fire();
+  else filterTimer = setTimeout(fire, 300);
+}
 
 watch(
   () => docsState.selected.value?.id ?? null,
@@ -135,6 +185,7 @@ async function openDocument(doc: DocumentSummary): Promise<void> {
 function fillEditor(): void {
   const sel = docsState.selected.value;
   editTitle.value = sel?.title ?? '';
+  editPath.value = sel?.path ?? '';
   editInlineText.value = sel?.inlineText ?? '';
   editError.value = null;
 }
@@ -142,6 +193,15 @@ function fillEditor(): void {
 function backToList(): void {
   docsState.clearSelection();
   editError.value = null;
+}
+
+/**
+ * Build a `Content-Disposition: attachment` URL for a document.
+ * The {@code documentContentUrl} helper appends the JWT as
+ * `?token=…` so an `<a download>` link works without a header.
+ */
+function downloadUrl(doc: { id: string }): string {
+  return documentContentUrl(doc.id, true);
 }
 
 function openCreateModal(): void {
@@ -258,20 +318,90 @@ async function submitCreate(): Promise<void> {
   }
 }
 
-async function save(): Promise<void> {
+/**
+ * Persist current edits without leaving the detail view. Conventional
+ * "Apply" semantic — see specification/web-ui.md §7.7.
+ *
+ * @returns `true` when the update succeeded with no error,
+ *          `false` if the server rejected (e.g. path conflict). The
+ *          caller can chain this for save-and-close behaviour.
+ */
+async function apply(): Promise<boolean> {
   const sel = docsState.selected.value;
-  if (!sel?.id) return;
+  if (!sel?.id) return false;
   saving.value = true;
   editError.value = null;
   try {
     const body: DocumentUpdateRequest = { title: editTitle.value };
     if (sel.inline) body.inlineText = editInlineText.value;
+    // Path-change (move/rename) — only send when actually changed.
+    // Server-side normalisation makes minor whitespace/leading-slash
+    // diffs idempotent, so we compare verbatim and let the server
+    // be the source of truth.
+    const newPath = editPath.value.trim();
+    if (newPath && newPath !== sel.path) {
+      body.newPath = newPath;
+    }
     await docsState.update(sel.id, body);
     if (docsState.error.value) {
       editError.value = docsState.error.value;
+      return false;
     }
+    if (body.newPath && docsState.selected.value) {
+      // Server normalised the path; reflect that back into the
+      // editor so the field shows the canonical form.
+      editPath.value = docsState.selected.value.path;
+    }
+    return true;
   } finally {
     saving.value = false;
+  }
+}
+
+/**
+ * Save-and-close — applies the edits and returns to the list when
+ * the server accepted them. On error, stays on the detail view so
+ * the user can inspect the message and retry. See
+ * specification/web-ui.md §7.7.
+ */
+async function save(): Promise<void> {
+  const ok = await apply();
+  if (ok) backToList();
+}
+
+/**
+ * Open the delete-confirmation modal. Actual deletion runs through
+ * {@link confirmDelete} after the user confirms.
+ */
+function openDeleteModal(): void {
+  editError.value = null;
+  showDeleteModal.value = true;
+}
+
+/**
+ * User confirmed — call the API and, on success, close the modal,
+ * leave the detail view, and refresh the folder list (a deleted
+ * document may have been the last in its folder).
+ */
+async function confirmDelete(): Promise<void> {
+  const sel = docsState.selected.value;
+  if (!sel?.id) return;
+  deleting.value = true;
+  try {
+    const ok = await docsState.remove(sel.id);
+    if (!ok) {
+      editError.value = docsState.error.value;
+      return;
+    }
+    showDeleteModal.value = false;
+    backToList();
+    if (selectedProjectId.value) {
+      // Folder list cheap to reload — keeps the path-filter
+      // dropdown honest after an empty folder disappears.
+      void docsState.loadFolders(selectedProjectId.value);
+    }
+  } finally {
+    deleting.value = false;
   }
 }
 
@@ -350,8 +480,8 @@ const formatBytes = (n: number): string => {
             </span>
           </div>
 
-          <VAlert v-if="!docsState.selected.value.inline" variant="warning" class="mt-3">
-            <span>This document is stored out-of-band and is read-only in v1.</span>
+          <VAlert v-if="!docsState.selected.value.inline" variant="info" class="mt-3">
+            <span>Stored content — read-only in v1. Use the download button to save a local copy.</span>
           </VAlert>
 
           <VAlert v-if="editError" variant="error" class="mt-3">
@@ -360,17 +490,46 @@ const formatBytes = (n: number): string => {
 
           <div class="flex flex-col gap-3 mt-3">
             <VInput v-model="editTitle" label="Title" :disabled="saving" />
-            <VTextarea
+            <VInput
+              v-model="editPath"
+              label="Path"
+              :disabled="saving"
+              help="Move or rename this document. Path is unique within the project; conflicts are rejected."
+            />
+            <CodeEditor
               v-if="docsState.selected.value.inline"
               v-model="editInlineText"
               label="Content"
               :rows="20"
               :disabled="saving"
+              :mime-type="docsState.selected.value.mimeType"
+            />
+            <DocumentPreview
+              v-else
+              :document-id="docsState.selected.value.id"
+              :mime-type="docsState.selected.value.mimeType"
+              :inline="false"
             />
           </div>
 
           <template #actions>
+            <!-- Destructive action separated to the left edge.
+                 `mr-auto` overrides the `justify-end` inherited from
+                 .card-actions and pushes Delete fully left, the rest
+                 stay clustered right. -->
+            <VButton
+              class="mr-auto"
+              variant="danger"
+              :disabled="saving || deleting"
+              @click="openDeleteModal"
+            >Delete</VButton>
+            <VButton
+              variant="ghost"
+              :href="downloadUrl(docsState.selected.value)"
+              :download="docsState.selected.value.name || 'document'"
+            >Download</VButton>
             <VButton variant="ghost" :disabled="saving" @click="backToList">Cancel</VButton>
+            <VButton variant="secondary" :loading="saving" @click="apply">Apply</VButton>
             <VButton variant="primary" :loading="saving" @click="save">Save</VButton>
           </template>
         </VCard>
@@ -378,7 +537,34 @@ const formatBytes = (n: number): string => {
 
       <!-- List view -->
       <template v-else>
-        <div class="flex items-center justify-end mb-3">
+        <!-- Path filter — HTML5 combobox: free-text input plus a
+             folder dropdown derived from server-side projection. -->
+        <div class="flex items-center gap-3 mb-3">
+          <div class="flex-1 min-w-0">
+            <input
+              v-model="docsState.pathPrefix.value"
+              type="text"
+              placeholder="Filter by folder or path prefix… (e.g. notes/, archive/2026)"
+              list="folder-list"
+              class="input input-bordered input-sm w-full"
+              @input="applyPathFilter(docsState.pathPrefix.value)"
+              @change="applyPathFilter(docsState.pathPrefix.value, true)"
+              @keydown.enter.prevent="applyPathFilter(docsState.pathPrefix.value, true)"
+            />
+            <datalist id="folder-list">
+              <option
+                v-for="folder in docsState.folders.value"
+                :key="folder"
+                :value="folder"
+              />
+            </datalist>
+          </div>
+          <button
+            v-if="docsState.pathPrefix.value"
+            type="button"
+            class="btn btn-ghost btn-sm"
+            @click="applyPathFilter('', true)"
+          >Clear filter</button>
           <VButton variant="primary" size="sm" @click="openCreateModal">+ New document</VButton>
         </div>
 
@@ -436,6 +622,29 @@ const formatBytes = (n: number): string => {
       </template>
     </div>
 
+    <!-- Delete confirmation. Single-shot Cancel | Delete pattern —
+         see specification/web-ui.md §7.7.1 (destructive actions). -->
+    <VModal
+      v-model="showDeleteModal"
+      title="Delete document"
+      :close-on-backdrop="!deleting"
+    >
+      <p>
+        Delete
+        <span class="font-mono">{{ docsState.selected.value?.path }}</span>?
+        This removes the document and its stored content. The action
+        cannot be undone.
+      </p>
+      <template #actions>
+        <VButton
+          variant="ghost"
+          :disabled="deleting"
+          @click="showDeleteModal = false"
+        >Cancel</VButton>
+        <VButton variant="danger" :loading="deleting" @click="confirmDelete">Delete</VButton>
+      </template>
+    </VModal>
+
     <!-- Create modal: lives outside the list/detail branches so it stays
          mounted across view switches and its open-state is independent. -->
     <VModal
@@ -491,14 +700,16 @@ const formatBytes = (n: number): string => {
             label="Type"
             :disabled="creating"
           />
-          <VTextarea
+          <CodeEditor
             v-model="createContent"
             label="Content"
             :rows="14"
-            required
             :disabled="creating"
-            help="Inline content, up to 4 KB. For larger or binary files use the upload tab."
+            :mime-type="createMime"
           />
+          <p class="text-xs opacity-70 -mt-1">
+            Inline content, up to 4 KB. For larger or binary files use the upload tab.
+          </p>
         </template>
 
         <template v-else>

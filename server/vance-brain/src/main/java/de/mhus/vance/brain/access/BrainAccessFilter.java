@@ -32,6 +32,18 @@ public class BrainAccessFilter extends AccessFilterBase {
     /** Any tenant-scoped path: captures the tenant name in group 1. */
     private static final Pattern BRAIN_TENANT_PATH = Pattern.compile("^/brain/([^/]+)(?:/.*)?$");
 
+    /**
+     * Document-content streaming endpoint. The web UI renders this
+     * URL inside {@code <img src>}, {@code <iframe src>} and
+     * {@code <a href download>} — none of which can carry an
+     * {@code Authorization} header. Allow {@code ?token=<jwt>} as a
+     * fallback for GET-only access here, scoped tightly to this
+     * route so the security trade-off (token in URL → access logs,
+     * referer headers, history) stays minimal.
+     */
+    private static final Pattern DOCUMENT_CONTENT_PATH =
+            Pattern.compile("^/brain/[^/]+/documents/[^/]+/content/?$");
+
     public BrainAccessFilter(JwtService jwtService) {
         super(jwtService);
     }
@@ -45,6 +57,13 @@ public class BrainAccessFilter extends AccessFilterBase {
             return false;
         }
         return true;
+    }
+
+    @Override
+    protected boolean allowsQueryToken(String requestUri, String method) {
+        // GET-only, scoped to the document-content streaming route.
+        return "GET".equals(method)
+                && DOCUMENT_CONTENT_PATH.matcher(requestUri).matches();
     }
 
     @Override

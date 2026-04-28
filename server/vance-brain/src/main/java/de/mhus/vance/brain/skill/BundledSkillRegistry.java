@@ -155,9 +155,15 @@ public class BundledSkillRegistry {
         List<BundledSkill.ReferenceDoc> referenceDocs =
                 parseReferenceDocs(spec.get("referenceDocs"), name, skillMd, resolver);
 
+        // Bundled skills don't carry scripts in v1 — the directory layout
+        // for shipped scripts is reserved for a later phase (see
+        // specification/skills.md §13). For now an empty list keeps the
+        // record uniform with Mongo-stored skills.
+        List<BundledSkill.Script> scripts = List.of();
+
         return new BundledSkill(
                 name, title, description, version,
-                triggers, promptExtension, tools, referenceDocs, tags, enabled);
+                triggers, promptExtension, tools, referenceDocs, scripts, tags, enabled);
     }
 
     private static String readAsString(Resource resource) {

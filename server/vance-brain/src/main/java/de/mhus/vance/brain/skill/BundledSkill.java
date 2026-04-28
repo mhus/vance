@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.skill;
 
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
+import de.mhus.vance.api.skills.SkillScriptTarget;
 import de.mhus.vance.api.skills.SkillTriggerType;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -20,6 +21,7 @@ public record BundledSkill(
         @Nullable String promptExtension,
         List<String> tools,
         List<ReferenceDoc> referenceDocs,
+        List<Script> scripts,
         List<String> tags,
         boolean enabled) {
 
@@ -33,5 +35,12 @@ public record BundledSkill(
             String title,
             String content,
             SkillReferenceDocLoadMode loadMode) {
+    }
+
+    public record Script(
+            String name,
+            @Nullable String description,
+            SkillScriptTarget target,
+            String content) {
     }
 }

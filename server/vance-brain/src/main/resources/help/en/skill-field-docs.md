@@ -94,3 +94,42 @@ Each doc has:
 *list of strings, optional* — free-form discovery tags shown in the
 selector and used by future filter UIs. Examples: `code`, `review`,
 `research`, `internal-only`.
+
+## Scripts
+
+### `scripts`
+*list of script objects, optional* — JavaScript snippets bundled with
+the skill. Phase 1 (current) **persists and edits** scripts only; the
+runtime that turns them into LLM-callable tools is a later phase
+(see `specification/skills.md` §13).
+
+Each script has:
+
+- **`name`**: kebab-case identifier inside the skill (will become part
+  of a future tool name like `skill_<skillname>__<name>`).
+- **`description`** *(optional)*: one-liner that becomes the tool
+  description the LLM sees once Phase 2 mounts scripts as tools.
+  Without it the model has only the name to go on when deciding
+  whether to call. Recommended: tell the model *what the script does*
+  and *what it returns*.
+- **`target`**:
+  - `BRAIN` — runs server-side in the brain's `JsEngine` (GraalJS
+    sandbox). Future host bindings give access to the project
+    workspace and other brain tools.
+  - `FOOT` — runs client-side in the foot CLI's `ClientJsEngine`. The
+    brain routes the script + args through the WebSocket connection;
+    foot evaluates and returns the result.
+- **`content`**: the JavaScript source.
+
+### Phase 1 caveat — runtime not active yet
+
+In v1 the engine ignores skill-attached scripts. Save what you mean to
+ship; the field is editable so the catalog is ready when the
+mounting + host-bindings phases land. Rough plan:
+
+| Phase | Status | What it adds |
+|---|---|---|
+| 1 — schema + editor | done | Scripts persist; UI lets you create/edit/remove them. |
+| 2 — Skill-as-Tool | open | When a skill is active, each script is registered as a tool in the engine's tool-loop. |
+| 3 — host bindings | open | Inject a `vance.*` global so scripts can reach project workspace, other tools, logging. |
+| 4 — FOOT routing | open | WebSocket protocol extension to ship a script body + args to a connected foot client and await the result. |

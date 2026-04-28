@@ -92,6 +92,14 @@ public class SkillDocument {
     @Builder.Default
     private List<SkillReferenceDocEmbedded> referenceDocs = new ArrayList<>();
 
+    /**
+     * JavaScript snippets bundled with the skill. v1 persists them only —
+     * runtime mounting (Skill-as-Tool) is a later phase, see
+     * {@code specification/skills.md} §13.
+     */
+    @Builder.Default
+    private List<SkillScriptEmbedded> scripts = new ArrayList<>();
+
     @Builder.Default
     private List<String> tags = new ArrayList<>();
 

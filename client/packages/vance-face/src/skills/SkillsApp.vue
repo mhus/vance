@@ -21,9 +21,11 @@ import { getUsername } from '@vance/shared';
 import {
   SkillReferenceDocLoadMode,
   SkillScope,
+  SkillScriptTarget,
   SkillTriggerType,
   type SkillDto,
   type SkillReferenceDocDto,
+  type SkillScriptDto,
   type SkillTriggerDto,
   type SkillWriteRequest,
 } from '@vance/generated';
@@ -61,6 +63,12 @@ interface RefDocForm {
   content: string;
   loadMode: SkillReferenceDocLoadMode;
 }
+interface ScriptForm {
+  name: string;
+  description: string;
+  target: SkillScriptTarget;
+  content: string;
+}
 const form = reactive({
   title: '',
   description: '',
@@ -71,6 +79,7 @@ const form = reactive({
   toolsText: '',
   tagsText: '',
   refDocs: [] as RefDocForm[],
+  scripts: [] as ScriptForm[],
 });
 
 // ─── New-skill modal ────────────────────────────────────────────────────
@@ -162,6 +171,13 @@ const loadModeOptions = [
   { value: SkillReferenceDocLoadMode.ON_DEMAND, label: 'ON_DEMAND' },
 ];
 
+const scriptTargetOptions = [
+  { value: SkillScriptTarget.BRAIN, label: 'BRAIN (server)' },
+  { value: SkillScriptTarget.FOOT, label: 'FOOT (client)' },
+];
+
+const SCRIPT_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
 // ─── Lifecycle ──────────────────────────────────────────────────────────
 
 onMounted(async () => {
@@ -203,6 +219,7 @@ function resetForm(): void {
   form.toolsText = '';
   form.tagsText = '';
   form.refDocs = [];
+  form.scripts = [];
 }
 
 function populateForm(s: SkillDto): void {
@@ -222,6 +239,12 @@ function populateForm(s: SkillDto): void {
     title: d.title,
     content: d.content,
     loadMode: d.loadMode,
+  }));
+  form.scripts = (s.scripts ?? []).map(x => ({
+    name: x.name,
+    description: x.description ?? '',
+    target: x.target,
+    content: x.content,
   }));
 }
 
@@ -261,6 +284,27 @@ function buildWriteRequest(): SkillWriteRequest | null {
     if (!d.content) { formError.value = 'Reference doc content is required.'; return null; }
   }
 
+  const scripts: SkillScriptDto[] = form.scripts.map(s => ({
+    name: s.name.trim(),
+    description: s.description.trim() || undefined,
+    target: s.target,
+    content: s.content,
+  }));
+  const seenScriptNames = new Set<string>();
+  for (const s of scripts) {
+    if (!s.name) { formError.value = 'Script name is required.'; return null; }
+    if (!SCRIPT_NAME_PATTERN.test(s.name)) {
+      formError.value = `Script name "${s.name}" must be lower-case alphanumerics with optional "-" or "_".`;
+      return null;
+    }
+    if (seenScriptNames.has(s.name)) {
+      formError.value = `Duplicate script name "${s.name}".`;
+      return null;
+    }
+    seenScriptNames.add(s.name);
+    if (!s.content) { formError.value = `Script "${s.name}" needs content.`; return null; }
+  }
+
   return {
     title,
     description,
@@ -269,6 +313,7 @@ function buildWriteRequest(): SkillWriteRequest | null {
     promptExtension: form.promptExtension.trim() || undefined,
     tools: splitLines(form.toolsText),
     referenceDocs: refDocs,
+    scripts,
     tags: splitLines(form.tagsText),
     enabled: form.enabled,
   };
@@ -303,6 +348,18 @@ function addRefDoc(): void {
 }
 function removeRefDoc(idx: number): void {
   form.refDocs.splice(idx, 1);
+}
+
+function addScript(): void {
+  form.scripts.push({
+    name: '',
+    description: '',
+    target: SkillScriptTarget.BRAIN,
+    content: '',
+  });
+}
+function removeScript(idx: number): void {
+  form.scripts.splice(idx, 1);
 }
 
 // ─── Save / Override / Delete ───────────────────────────────────────────
@@ -367,6 +424,7 @@ async function submitNewSkill(): Promise<void> {
     triggers: [],
     tools: [],
     referenceDocs: [],
+    scripts: [],
     tags: [],
     enabled: true,
   };
@@ -608,6 +666,35 @@ const combinedError = computed<string | null>(() =>
             <VButton variant="ghost" size="sm" @click="addRefDoc">+ Add reference doc</VButton>
           </div>
         </VCard>
+
+        <VCard title="Scripts">
+          <div class="flex flex-col gap-3">
+            <div
+              v-for="(s, idx) in form.scripts"
+              :key="'scr-' + idx"
+              class="script-row"
+            >
+              <div class="grid grid-cols-3 gap-2 mb-2">
+                <VInput v-model="s.name" label="Name" required />
+                <VSelect v-model="s.target" :options="scriptTargetOptions" label="Target" />
+                <div class="flex items-end justify-end">
+                  <VButton variant="ghost" size="sm" @click="removeScript(idx)">Remove</VButton>
+                </div>
+              </div>
+              <VInput
+                v-model="s.description"
+                label="Description"
+                help="Becomes the tool description the LLM sees once Phase 2 mounts scripts as tools."
+              />
+              <CodeEditor
+                v-model="s.content"
+                mime-type="application/javascript"
+                :rows="14"
+              />
+            </div>
+            <VButton variant="ghost" size="sm" @click="addScript">+ Add script</VButton>
+          </div>
+        </VCard>
       </template>
     </div>
 
@@ -682,7 +769,8 @@ const combinedError = computed<string | null>(() =>
 .badge-user    { background: hsl(var(--wa) / 0.18); color: hsl(var(--wac)); }
 
 .trigger-row,
-.refdoc-row {
+.refdoc-row,
+.script-row {
   border: 1px solid hsl(var(--bc) / 0.12);
   border-radius: 0.5rem;
   padding: 0.75rem;

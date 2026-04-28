@@ -39,6 +39,8 @@ export * from './skills/SkillDto';
 export * from './skills/SkillReferenceDocDto';
 export * from './skills/SkillReferenceDocLoadMode';
 export * from './skills/SkillScope';
+export * from './skills/SkillScriptDto';
+export * from './skills/SkillScriptTarget';
 export * from './skills/SkillTriggerDto';
 export * from './skills/SkillTriggerType';
 export * from './skills/SkillWriteRequest';

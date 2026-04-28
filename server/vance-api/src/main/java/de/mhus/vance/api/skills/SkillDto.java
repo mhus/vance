@@ -47,6 +47,9 @@ public class SkillDto {
     private List<SkillReferenceDocDto> referenceDocs = new ArrayList<>();
 
     @Builder.Default
+    private List<SkillScriptDto> scripts = new ArrayList<>();
+
+    @Builder.Default
     private List<String> tags = new ArrayList<>();
 
     @Builder.Default

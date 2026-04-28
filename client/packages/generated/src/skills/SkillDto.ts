@@ -5,6 +5,7 @@
 
 import { SkillTriggerDto } from './SkillTriggerDto';
 import { SkillReferenceDocDto } from './SkillReferenceDocDto';
+import { SkillScriptDto } from './SkillScriptDto';
 import { SkillScope } from './SkillScope';
 
 export interface SkillDto {
@@ -16,6 +17,7 @@ export interface SkillDto {
   promptExtension?: string;
   tools: string[];
   referenceDocs: SkillReferenceDocDto[];
+  scripts: SkillScriptDto[];
   tags: string[];
   enabled: boolean;
   scope: SkillScope;

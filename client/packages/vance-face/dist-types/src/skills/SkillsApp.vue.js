@@ -4,7 +4,7 @@ import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useAdminSkills } from '@/composables/useAdminSkills';
 import { useHelp } from '@/composables/useHelp';
 import { getUsername } from '@vance/shared';
-import { SkillReferenceDocLoadMode, SkillScope, SkillTriggerType, } from '@vance/generated';
+import { SkillReferenceDocLoadMode, SkillScope, SkillScriptTarget, SkillTriggerType, } from '@vance/generated';
 const tenantProjects = useTenantProjects();
 const skillsState = useAdminSkills();
 const help = useHelp();
@@ -23,6 +23,7 @@ const form = reactive({
     toolsText: '',
     tagsText: '',
     refDocs: [],
+    scripts: [],
 });
 // ─── New-skill modal ────────────────────────────────────────────────────
 const showNewModal = ref(false);
@@ -99,6 +100,11 @@ const loadModeOptions = [
     { value: SkillReferenceDocLoadMode.INLINE, label: 'INLINE' },
     { value: SkillReferenceDocLoadMode.ON_DEMAND, label: 'ON_DEMAND' },
 ];
+const scriptTargetOptions = [
+    { value: SkillScriptTarget.BRAIN, label: 'BRAIN (server)' },
+    { value: SkillScriptTarget.FOOT, label: 'FOOT (client)' },
+];
+const SCRIPT_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 // ─── Lifecycle ──────────────────────────────────────────────────────────
 onMounted(async () => {
     await Promise.all([
@@ -132,6 +138,7 @@ function resetForm() {
     form.toolsText = '';
     form.tagsText = '';
     form.refDocs = [];
+    form.scripts = [];
 }
 function populateForm(s) {
     form.title = s.title;
@@ -150,6 +157,12 @@ function populateForm(s) {
         title: d.title,
         content: d.content,
         loadMode: d.loadMode,
+    }));
+    form.scripts = (s.scripts ?? []).map(x => ({
+        name: x.name,
+        description: x.description ?? '',
+        target: x.target,
+        content: x.content,
     }));
 }
 function buildWriteRequest() {
@@ -202,6 +215,32 @@ function buildWriteRequest() {
             return null;
         }
     }
+    const scripts = form.scripts.map(s => ({
+        name: s.name.trim(),
+        description: s.description.trim() || undefined,
+        target: s.target,
+        content: s.content,
+    }));
+    const seenScriptNames = new Set();
+    for (const s of scripts) {
+        if (!s.name) {
+            formError.value = 'Script name is required.';
+            return null;
+        }
+        if (!SCRIPT_NAME_PATTERN.test(s.name)) {
+            formError.value = `Script name "${s.name}" must be lower-case alphanumerics with optional "-" or "_".`;
+            return null;
+        }
+        if (seenScriptNames.has(s.name)) {
+            formError.value = `Duplicate script name "${s.name}".`;
+            return null;
+        }
+        seenScriptNames.add(s.name);
+        if (!s.content) {
+            formError.value = `Script "${s.name}" needs content.`;
+            return null;
+        }
+    }
     return {
         title,
         description,
@@ -210,6 +249,7 @@ function buildWriteRequest() {
         promptExtension: form.promptExtension.trim() || undefined,
         tools: splitLines(form.toolsText),
         referenceDocs: refDocs,
+        scripts,
         tags: splitLines(form.tagsText),
         enabled: form.enabled,
     };
@@ -240,6 +280,17 @@ function addRefDoc() {
 }
 function removeRefDoc(idx) {
     form.refDocs.splice(idx, 1);
+}
+function addScript() {
+    form.scripts.push({
+        name: '',
+        description: '',
+        target: SkillScriptTarget.BRAIN,
+        content: '',
+    });
+}
+function removeScript(idx) {
+    form.scripts.splice(idx, 1);
 }
 // ─── Save / Override / Delete ───────────────────────────────────────────
 async function save() {
@@ -313,6 +364,7 @@ async function submitNewSkill() {
         triggers: [],
         tools: [],
         referenceDocs: [],
+        scripts: [],
         tags: [],
         enabled: true,
     };
@@ -1009,6 +1061,130 @@ else {
     __VLS_168.slots.default;
     var __VLS_168;
     var __VLS_144;
+    const __VLS_173 = {}.VCard;
+    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+    // @ts-ignore
+    const __VLS_174 = __VLS_asFunctionalComponent(__VLS_173, new __VLS_173({
+        title: "Scripts",
+    }));
+    const __VLS_175 = __VLS_174({
+        title: "Scripts",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_174));
+    __VLS_176.slots.default;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex flex-col gap-3" },
+    });
+    for (const [s, idx] of __VLS_getVForSourceType((__VLS_ctx.form.scripts))) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            key: ('scr-' + idx),
+            ...{ class: "script-row" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "grid grid-cols-3 gap-2 mb-2" },
+        });
+        const __VLS_177 = {}.VInput;
+        /** @type {[typeof __VLS_components.VInput, ]} */ ;
+        // @ts-ignore
+        const __VLS_178 = __VLS_asFunctionalComponent(__VLS_177, new __VLS_177({
+            modelValue: (s.name),
+            label: "Name",
+            required: true,
+        }));
+        const __VLS_179 = __VLS_178({
+            modelValue: (s.name),
+            label: "Name",
+            required: true,
+        }, ...__VLS_functionalComponentArgsRest(__VLS_178));
+        const __VLS_181 = {}.VSelect;
+        /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+        // @ts-ignore
+        const __VLS_182 = __VLS_asFunctionalComponent(__VLS_181, new __VLS_181({
+            modelValue: (s.target),
+            options: (__VLS_ctx.scriptTargetOptions),
+            label: "Target",
+        }));
+        const __VLS_183 = __VLS_182({
+            modelValue: (s.target),
+            options: (__VLS_ctx.scriptTargetOptions),
+            label: "Target",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_182));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex items-end justify-end" },
+        });
+        const __VLS_185 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_186 = __VLS_asFunctionalComponent(__VLS_185, new __VLS_185({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+        }));
+        const __VLS_187 = __VLS_186({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_186));
+        let __VLS_189;
+        let __VLS_190;
+        let __VLS_191;
+        const __VLS_192 = {
+            onClick: (...[$event]) => {
+                if (!!(!__VLS_ctx.selectedSkill))
+                    return;
+                __VLS_ctx.removeScript(idx);
+            }
+        };
+        __VLS_188.slots.default;
+        var __VLS_188;
+        const __VLS_193 = {}.VInput;
+        /** @type {[typeof __VLS_components.VInput, ]} */ ;
+        // @ts-ignore
+        const __VLS_194 = __VLS_asFunctionalComponent(__VLS_193, new __VLS_193({
+            modelValue: (s.description),
+            label: "Description",
+            help: "Becomes the tool description the LLM sees once Phase 2 mounts scripts as tools.",
+        }));
+        const __VLS_195 = __VLS_194({
+            modelValue: (s.description),
+            label: "Description",
+            help: "Becomes the tool description the LLM sees once Phase 2 mounts scripts as tools.",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_194));
+        const __VLS_197 = {}.CodeEditor;
+        /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
+        // @ts-ignore
+        const __VLS_198 = __VLS_asFunctionalComponent(__VLS_197, new __VLS_197({
+            modelValue: (s.content),
+            mimeType: "application/javascript",
+            rows: (14),
+        }));
+        const __VLS_199 = __VLS_198({
+            modelValue: (s.content),
+            mimeType: "application/javascript",
+            rows: (14),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_198));
+    }
+    const __VLS_201 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_202 = __VLS_asFunctionalComponent(__VLS_201, new __VLS_201({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+    }));
+    const __VLS_203 = __VLS_202({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_202));
+    let __VLS_205;
+    let __VLS_206;
+    let __VLS_207;
+    const __VLS_208 = {
+        onClick: (__VLS_ctx.addScript)
+    };
+    __VLS_204.slots.default;
+    var __VLS_204;
+    var __VLS_176;
 }
 {
     const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
@@ -1036,88 +1212,88 @@ else {
         });
     }
     else {
-        const __VLS_173 = {}.MarkdownView;
+        const __VLS_209 = {}.MarkdownView;
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
-        const __VLS_174 = __VLS_asFunctionalComponent(__VLS_173, new __VLS_173({
+        const __VLS_210 = __VLS_asFunctionalComponent(__VLS_209, new __VLS_209({
             source: (__VLS_ctx.help.content.value),
         }));
-        const __VLS_175 = __VLS_174({
+        const __VLS_211 = __VLS_210({
             source: (__VLS_ctx.help.content.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_174));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_210));
     }
 }
-const __VLS_177 = {}.VModal;
+const __VLS_213 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_178 = __VLS_asFunctionalComponent(__VLS_177, new __VLS_177({
+const __VLS_214 = __VLS_asFunctionalComponent(__VLS_213, new __VLS_213({
     modelValue: (__VLS_ctx.showNewModal),
     title: "New skill",
 }));
-const __VLS_179 = __VLS_178({
+const __VLS_215 = __VLS_214({
     modelValue: (__VLS_ctx.showNewModal),
     title: "New skill",
-}, ...__VLS_functionalComponentArgsRest(__VLS_178));
-__VLS_180.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_214));
+__VLS_216.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.newError) {
-    const __VLS_181 = {}.VAlert;
+    const __VLS_217 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_182 = __VLS_asFunctionalComponent(__VLS_181, new __VLS_181({
+    const __VLS_218 = __VLS_asFunctionalComponent(__VLS_217, new __VLS_217({
         variant: "error",
     }));
-    const __VLS_183 = __VLS_182({
+    const __VLS_219 = __VLS_218({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_182));
-    __VLS_184.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_218));
+    __VLS_220.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.newError);
-    var __VLS_184;
+    var __VLS_220;
 }
-const __VLS_185 = {}.VInput;
+const __VLS_221 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_186 = __VLS_asFunctionalComponent(__VLS_185, new __VLS_185({
+const __VLS_222 = __VLS_asFunctionalComponent(__VLS_221, new __VLS_221({
     modelValue: (__VLS_ctx.newName),
     label: "Name",
     required: true,
     help: "Lower-case alphanumerics, '-' or '_' allowed. Must not collide with an existing skill at this scope.",
 }));
-const __VLS_187 = __VLS_186({
+const __VLS_223 = __VLS_222({
     modelValue: (__VLS_ctx.newName),
     label: "Name",
     required: true,
     help: "Lower-case alphanumerics, '-' or '_' allowed. Must not collide with an existing skill at this scope.",
-}, ...__VLS_functionalComponentArgsRest(__VLS_186));
-const __VLS_189 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_222));
+const __VLS_225 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_190 = __VLS_asFunctionalComponent(__VLS_189, new __VLS_189({
+const __VLS_226 = __VLS_asFunctionalComponent(__VLS_225, new __VLS_225({
     modelValue: (__VLS_ctx.newTitle),
     label: "Title",
     required: true,
 }));
-const __VLS_191 = __VLS_190({
+const __VLS_227 = __VLS_226({
     modelValue: (__VLS_ctx.newTitle),
     label: "Title",
     required: true,
-}, ...__VLS_functionalComponentArgsRest(__VLS_190));
-const __VLS_193 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_226));
+const __VLS_229 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_194 = __VLS_asFunctionalComponent(__VLS_193, new __VLS_193({
+const __VLS_230 = __VLS_asFunctionalComponent(__VLS_229, new __VLS_229({
     modelValue: (__VLS_ctx.newDescription),
     label: "Description",
     required: true,
 }));
-const __VLS_195 = __VLS_194({
+const __VLS_231 = __VLS_230({
     modelValue: (__VLS_ctx.newDescription),
     label: "Description",
     required: true,
-}, ...__VLS_functionalComponentArgsRest(__VLS_194));
+}, ...__VLS_functionalComponentArgsRest(__VLS_230));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
     ...{ class: "text-xs opacity-70" },
 });
@@ -1126,49 +1302,49 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElement
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2" },
 });
-const __VLS_197 = {}.VButton;
+const __VLS_233 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_198 = __VLS_asFunctionalComponent(__VLS_197, new __VLS_197({
+const __VLS_234 = __VLS_asFunctionalComponent(__VLS_233, new __VLS_233({
     ...{ 'onClick': {} },
     variant: "ghost",
 }));
-const __VLS_199 = __VLS_198({
+const __VLS_235 = __VLS_234({
     ...{ 'onClick': {} },
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_198));
-let __VLS_201;
-let __VLS_202;
-let __VLS_203;
-const __VLS_204 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_234));
+let __VLS_237;
+let __VLS_238;
+let __VLS_239;
+const __VLS_240 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showNewModal = false;
     }
 };
-__VLS_200.slots.default;
-var __VLS_200;
-const __VLS_205 = {}.VButton;
+__VLS_236.slots.default;
+var __VLS_236;
+const __VLS_241 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_206 = __VLS_asFunctionalComponent(__VLS_205, new __VLS_205({
+const __VLS_242 = __VLS_asFunctionalComponent(__VLS_241, new __VLS_241({
     ...{ 'onClick': {} },
     variant: "primary",
     loading: (__VLS_ctx.skillsState.busy.value),
 }));
-const __VLS_207 = __VLS_206({
+const __VLS_243 = __VLS_242({
     ...{ 'onClick': {} },
     variant: "primary",
     loading: (__VLS_ctx.skillsState.busy.value),
-}, ...__VLS_functionalComponentArgsRest(__VLS_206));
-let __VLS_209;
-let __VLS_210;
-let __VLS_211;
-const __VLS_212 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_242));
+let __VLS_245;
+let __VLS_246;
+let __VLS_247;
+const __VLS_248 = {
     onClick: (__VLS_ctx.submitNewSkill)
 };
-__VLS_208.slots.default;
-var __VLS_208;
-var __VLS_180;
+__VLS_244.slots.default;
+var __VLS_244;
+var __VLS_216;
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -1247,6 +1423,17 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-end']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['script-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid-cols-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-end']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -1308,10 +1495,13 @@ const __VLS_self = (await import('vue')).defineComponent({
             breadcrumbs: breadcrumbs,
             triggerTypeOptions: triggerTypeOptions,
             loadModeOptions: loadModeOptions,
+            scriptTargetOptions: scriptTargetOptions,
             addTrigger: addTrigger,
             removeTrigger: removeTrigger,
             addRefDoc: addRefDoc,
             removeRefDoc: removeRefDoc,
+            addScript: addScript,
+            removeScript: removeScript,
             save: save,
             deleteOverride: deleteOverride,
             openNewSkill: openNewSkill,

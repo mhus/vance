@@ -3,12 +3,15 @@ package de.mhus.vance.brain.skill;
 import de.mhus.vance.api.skills.SkillDto;
 import de.mhus.vance.api.skills.SkillReferenceDocDto;
 import de.mhus.vance.api.skills.SkillScope;
+import de.mhus.vance.api.skills.SkillScriptDto;
+import de.mhus.vance.api.skills.SkillScriptTarget;
 import de.mhus.vance.api.skills.SkillTriggerDto;
 import de.mhus.vance.api.skills.SkillTriggerType;
 import de.mhus.vance.api.skills.SkillWriteRequest;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.skill.SkillDocument;
 import de.mhus.vance.shared.skill.SkillReferenceDocEmbedded;
+import de.mhus.vance.shared.skill.SkillScriptEmbedded;
 import de.mhus.vance.shared.skill.SkillService;
 import de.mhus.vance.shared.skill.SkillTriggerEmbedded;
 import jakarta.servlet.http.HttpServletRequest;
@@ -288,6 +291,9 @@ public class SkillAdminController {
                 .referenceDocs(b.referenceDocs().stream()
                         .map(SkillAdminController::toDto)
                         .toList())
+                .scripts(b.scripts().stream()
+                        .map(SkillAdminController::toDto)
+                        .toList())
                 .tags(new ArrayList<>(b.tags()))
                 .enabled(b.enabled())
                 .scope(SkillScope.BUNDLED)
@@ -306,6 +312,9 @@ public class SkillAdminController {
                 .promptExtension(d.getPromptExtension())
                 .tools(new ArrayList<>(d.getTools()))
                 .referenceDocs(d.getReferenceDocs().stream()
+                        .map(SkillAdminController::toDto)
+                        .toList())
+                .scripts(d.getScripts().stream()
                         .map(SkillAdminController::toDto)
                         .toList())
                 .tags(new ArrayList<>(d.getTags()))
@@ -348,6 +357,24 @@ public class SkillAdminController {
                 .build();
     }
 
+    private static SkillScriptDto toDto(BundledSkill.Script s) {
+        return SkillScriptDto.builder()
+                .name(s.name())
+                .description(s.description())
+                .target(s.target())
+                .content(s.content())
+                .build();
+    }
+
+    private static SkillScriptDto toDto(SkillScriptEmbedded s) {
+        return SkillScriptDto.builder()
+                .name(s.getName())
+                .description(s.getDescription())
+                .target(s.getTarget())
+                .content(s.getContent())
+                .build();
+    }
+
     private static void applyWrite(SkillDocument doc, SkillWriteRequest r) {
         doc.setTitle(r.getTitle());
         doc.setDescription(r.getDescription());
@@ -360,8 +387,21 @@ public class SkillAdminController {
         doc.setReferenceDocs(r.getReferenceDocs().stream()
                 .map(SkillAdminController::fromDto)
                 .toList());
+        doc.setScripts(r.getScripts().stream()
+                .map(SkillAdminController::fromDto)
+                .toList());
         doc.setTags(new ArrayList<>(r.getTags()));
         doc.setEnabled(r.isEnabled());
+    }
+
+    private static SkillScriptEmbedded fromDto(SkillScriptDto s) {
+        SkillScriptTarget target = s.getTarget();
+        return SkillScriptEmbedded.builder()
+                .name(s.getName())
+                .description(s.getDescription())
+                .target(target == null ? SkillScriptTarget.BRAIN : target)
+                .content(s.getContent())
+                .build();
     }
 
     private static SkillTriggerEmbedded fromDto(SkillTriggerDto t) {

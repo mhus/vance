@@ -5,6 +5,7 @@
 
 import { SkillTriggerDto } from './SkillTriggerDto';
 import { SkillReferenceDocDto } from './SkillReferenceDocDto';
+import { SkillScriptDto } from './SkillScriptDto';
 
 export interface SkillWriteRequest {
   title: string;
@@ -14,6 +15,7 @@ export interface SkillWriteRequest {
   promptExtension?: string;
   tools: string[];
   referenceDocs: SkillReferenceDocDto[];
+  scripts: SkillScriptDto[];
   tags: string[];
   enabled: boolean;
 }

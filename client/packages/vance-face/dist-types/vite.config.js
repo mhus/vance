@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 const editorEntries = {
     index: resolve(__dirname, 'index.html'),
     document: resolve(__dirname, 'document-editor.html'),
+    inbox: resolve(__dirname, 'inbox.html'),
 };
 export default defineConfig({
     plugins: [vue()],

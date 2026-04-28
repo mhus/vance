@@ -30,7 +30,12 @@ function logout(): void {
 <template>
   <div class="min-h-screen flex flex-col bg-base-200">
     <header class="navbar bg-base-100 shadow-sm border-b border-base-300 px-4 gap-2">
-      <div class="flex-none font-bold text-lg font-mono">vance</div>
+      <!-- Logo doubles as a "home" link back to the editor list. -->
+      <a
+        href="/index.html"
+        class="flex-none font-bold text-lg font-mono no-underline hover:opacity-80"
+        title="Back to home"
+      >vance</a>
 
       <div class="flex-1 flex items-center gap-2 text-sm">
         <span class="font-semibold">{{ title }}</span>

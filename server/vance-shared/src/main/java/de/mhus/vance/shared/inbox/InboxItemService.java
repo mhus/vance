@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Sort;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -159,6 +160,62 @@ public class InboxItemService {
         return repository.findByTenantIdAndAssignedToUserIdAndStatus(tenantId, userId, status);
     }
 
+    /**
+     * Generalised list with optional filters — used by the Web-UI's
+     * three-pane inbox to drive both the "personal inbox" view (one
+     * userId), the "team inbox" view (multiple member userIds, the
+     * current user excluded by the caller) and the tag-filter that
+     * sits on top.
+     *
+     * @param tenantId   tenant scope (mandatory)
+     * @param userIds    list of {@code assignedToUserId} values to
+     *                   include — empty means "no filter on user".
+     *                   Typical: {@code [currentUser]} for personal,
+     *                   {@code [memberA, memberB, …]} (excluding
+     *                   self) for team-view.
+     * @param status     filter on item status, or {@code null} =
+     *                   any status.
+     * @param tag        filter on a single tag, or {@code null} =
+     *                   any tag.
+     * @return matching items, sorted by {@code createdAt} desc so
+     *         the freshest land at the top.
+     */
+    public List<InboxItemDocument> listFiltered(
+            String tenantId,
+            List<String> userIds,
+            @Nullable InboxItemStatus status,
+            @Nullable String tag) {
+        Criteria criteria = Criteria.where(F_TENANT).is(tenantId);
+        if (userIds != null && !userIds.isEmpty()) {
+            criteria = criteria.and(F_ASSIGNED).in(userIds);
+        }
+        if (status != null) {
+            criteria = criteria.and(F_STATUS).is(status);
+        }
+        if (tag != null && !tag.isBlank()) {
+            criteria = criteria.and("tags").is(tag);
+        }
+        Query query = Query.query(criteria)
+                .with(Sort.by(Sort.Direction.DESC, "createdAt"));
+        return mongoTemplate.find(query, InboxItemDocument.class);
+    }
+
+    /**
+     * Lists the unique tags currently used across {@code userIds}'
+     * inbox items in a tenant. Drives the tag-filter sidebar; uses
+     * a {@code distinct} projection so the full documents don't
+     * load. Empty {@code userIds} → distinct across the whole
+     * tenant (admin view, not exposed in v1 UI).
+     */
+    public List<String> distinctTags(String tenantId, List<String> userIds) {
+        Criteria criteria = Criteria.where(F_TENANT).is(tenantId);
+        if (userIds != null && !userIds.isEmpty()) {
+            criteria = criteria.and(F_ASSIGNED).in(userIds);
+        }
+        return mongoTemplate.findDistinct(
+                Query.query(criteria), "tags", InboxItemDocument.class, String.class);
+    }
+
     public List<InboxItemDocument> listPendingForUser(String tenantId, String userId) {
         return listForUser(tenantId, userId, InboxItemStatus.PENDING);
     }
@@ -246,6 +303,41 @@ public class InboxItemService {
         InboxItemDocument refreshed = findById(tenantId, itemId).orElse(doc);
         eventPublisher.publishEvent(new InboxItemArchivedEvent(refreshed));
         return Optional.of(refreshed);
+    }
+
+    /**
+     * Pulls an archived item back into the active inbox. Status is
+     * restored to {@link InboxItemStatus#ANSWERED} when an answer
+     * is on file (the item was answered before being archived) or
+     * {@link InboxItemStatus#PENDING} otherwise. {@code archivedAt}
+     * is cleared. No-op when the item isn't currently archived.
+     *
+     * <p>v1 doesn't preserve the original pre-archive status — the
+     * answer-presence heuristic gives the right answer in practice
+     * (archive of an open ask vs. archive of a resolved item).
+     */
+    public Optional<InboxItemDocument> unarchive(
+            String tenantId, String itemId, String byUserId) {
+        Optional<InboxItemDocument> existing = findById(tenantId, itemId);
+        if (existing.isEmpty()) return Optional.empty();
+        InboxItemDocument doc = existing.get();
+        if (doc.getStatus() != InboxItemStatus.ARCHIVED) return Optional.of(doc);
+        InboxItemStatus restored = doc.getAnswer() != null
+                ? InboxItemStatus.ANSWERED : InboxItemStatus.PENDING;
+        Instant now = Instant.now();
+        Update update = new Update()
+                .set("status", restored)
+                .unset("archivedAt")
+                .push("history", InboxItemHistoryEntry.builder()
+                        .action("UNARCHIVED")
+                        .actor(byUserId)
+                        .details("restored to " + restored.name())
+                        .at(now)
+                        .build());
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where(F_ID).is(itemId).and(F_TENANT).is(tenantId)),
+                update, InboxItemDocument.class);
+        return findById(tenantId, itemId);
     }
 
     public Optional<InboxItemDocument> delegate(

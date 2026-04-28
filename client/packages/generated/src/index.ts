@@ -12,7 +12,22 @@ export * from './documents/DocumentListResponse';
 export * from './documents/DocumentSummary';
 export * from './documents/DocumentUpdateRequest';
 
+export * from './inbox/AnswerOutcome';
+export * from './inbox/AnswerPayload';
+export * from './inbox/Criticality';
+export * from './inbox/InboxAnswerRequest';
+export * from './inbox/InboxDelegateRequest';
+export * from './inbox/InboxItemDto';
+export * from './inbox/InboxItemStatus';
+export * from './inbox/InboxItemType';
+export * from './inbox/InboxListResponse';
+export * from './inbox/InboxTagsResponse';
+export * from './inbox/ResolvedBy';
+
 export * from './projects/TenantProjectsResponse';
+
+export * from './teams/TeamListResponse';
+export * from './teams/TeamSummary';
 
 export * from './ws/ProjectGroupSummary';
 export * from './ws/ProjectSummary';

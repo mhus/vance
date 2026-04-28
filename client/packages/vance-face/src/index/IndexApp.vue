@@ -118,6 +118,16 @@ function readNextParam(): string | null {
             </div>
             <VButton variant="primary" size="sm" href="/document-editor.html">Open</VButton>
           </li>
+          <li class="flex items-center justify-between gap-4">
+            <div>
+              <div class="font-semibold">Inbox</div>
+              <div class="text-sm opacity-70">
+                Read items from your personal inbox and the team-inbox of every
+                team you're in. Reply, archive, delegate.
+              </div>
+            </div>
+            <VButton variant="primary" size="sm" href="/inbox.html">Open</VButton>
+          </li>
         </ul>
       </VCard>
     </div>

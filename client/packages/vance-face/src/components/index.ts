@@ -7,6 +7,7 @@
 
 export { default as CodeEditor } from './CodeEditor.vue';
 export { default as EditorShell } from './EditorShell.vue';
+export { default as MarkdownView } from './MarkdownView.vue';
 export { default as VAlert } from './VAlert.vue';
 export { default as VBackButton } from './VBackButton.vue';
 export { default as VButton } from './VButton.vue';

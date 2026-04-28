@@ -10,6 +10,8 @@ import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.vance.activity.VanceActivityEntry;
+import de.mhus.vance.brain.vance.activity.VanceActivityService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -118,6 +120,8 @@ public class VanceEngine implements ThinkEngine {
             "team_describe",
             // Inbox — for posting findings / outputs to the user
             "inbox_post",
+            // Cross-hub sync — notify other Vance sessions of the same user
+            "peer_notify",
             // Vance hub-specific docs (separate from general Brain docs)
             "vance_docs_list",
             "vance_docs_read",
@@ -136,6 +140,8 @@ public class VanceEngine implements ThinkEngine {
 
     private final ArthurEngine arthur;
     private final ThinkProcessService thinkProcessService;
+    private final VanceActivityService activityService;
+    private final de.mhus.vance.shared.session.SessionService sessionService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -216,12 +222,13 @@ public class VanceEngine implements ThinkEngine {
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Vance.start tenant='{}' session='{}' id='{}'",
                 process.getTenantId(), process.getSessionId(), process.getId());
+        String greeting = composeGreetingWithRecap(process);
         ctx.chatMessageService().append(ChatMessageDocument.builder()
                 .tenantId(process.getTenantId())
                 .sessionId(process.getSessionId())
                 .thinkProcessId(process.getId())
                 .role(ChatRole.ASSISTANT)
-                .content(GREETING)
+                .content(greeting)
                 .build());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
     }
@@ -229,7 +236,63 @@ public class VanceEngine implements ThinkEngine {
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.debug("Vance.resume id='{}'", process.getId());
+        // Resume-Recap: was haben Peers oder ich selbst zuletzt getan?
+        // Schreiben wir nur, wenn was Substantielles vorliegt — sonst
+        // wirkt jedes Reconnect lärmig.
+        String recap = buildPeerRecap(process);
+        if (recap != null) {
+            ctx.chatMessageService().append(ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content(recap)
+                    .build());
+        }
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+    }
+
+    /**
+     * Initial greeting plus, if there's recent peer activity, a
+     * one-line recap. Keeps {@link #GREETING} stable for the
+     * "nothing happened" case so cold starts feel snappy.
+     */
+    private String composeGreetingWithRecap(ThinkProcessDocument process) {
+        String recap = buildPeerRecap(process);
+        if (recap == null) return GREETING;
+        return GREETING + " " + recap;
+    }
+
+    /**
+     * Builds a voice-friendly recap line from the most recent peer
+     * Activity-Log entries, or {@code null} if nothing is worth
+     * mentioning.
+     */
+    private @org.jspecify.annotations.Nullable String buildPeerRecap(ThinkProcessDocument process) {
+        // userId comes from the session — process doesn't carry it directly.
+        var sessionOpt = sessionService.findBySessionId(process.getSessionId());
+        if (sessionOpt.isEmpty()) return null;
+        String userId = sessionOpt.get().getUserId();
+        if (userId == null || userId.isBlank()) return null;
+
+        java.util.List<VanceActivityEntry> peers = activityService.readPeerRecap(
+                process.getTenantId(), userId, process.getId());
+        if (peers.isEmpty()) return null;
+        if (peers.size() == 1) {
+            return "Kurzer Stand: " + peers.get(0).getSummary() + ".";
+        }
+        // 2..N entries — summarise top 3 inline, count the rest.
+        int top = Math.min(3, peers.size());
+        StringBuilder sb = new StringBuilder("Kurzer Stand: ");
+        for (int i = 0; i < top; i++) {
+            if (i > 0) sb.append(i == top - 1 ? " und " : ", ");
+            sb.append(peers.get(i).getSummary());
+        }
+        if (peers.size() > top) {
+            sb.append(" — plus ").append(peers.size() - top).append(" weitere");
+        }
+        sb.append(".");
+        return sb.toString();
     }
 
     @Override

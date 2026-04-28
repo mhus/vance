@@ -7,6 +7,9 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.brain.vance.activity.EntityRef;
+import de.mhus.vance.brain.vance.activity.VanceActivityKind;
+import de.mhus.vance.brain.vance.activity.VanceActivityService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -22,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -72,10 +76,18 @@ public class ProjectCreateTool implements Tool {
 
     private final ProjectService projectService;
     private final SessionService sessionService;
-    private final SessionChatBootstrapper chatBootstrapper;
+    /**
+     * {@code ObjectProvider} breaks the bean cycle:
+     * ProjectCreateTool → SessionChatBootstrapper → ThinkEngineService →
+     * ToolDispatcher → ServerToolSource → ProjectCreateTool.
+     * Resolution happens on first use, by which time all engine beans
+     * exist.
+     */
+    private final ObjectProvider<SessionChatBootstrapper> chatBootstrapperProvider;
     private final de.mhus.vance.shared.thinkprocess.ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
+    private final VanceActivityService activityService;
 
     @Override
     public String name() {
@@ -142,6 +154,7 @@ public class ProjectCreateTool implements Tool {
         //    with cross-project parent = this Vance process. Engine.start()
         //    runs synchronously so the greeting is already in chat-history
         //    when this returns.
+        SessionChatBootstrapper chatBootstrapper = chatBootstrapperProvider.getObject();
         Optional<ThinkProcessDocument> chatOpt = chatBootstrapper.ensureChatProcess(
                 session, /*parentProcessId*/ ctx.processId());
         ThinkProcessDocument chat = chatOpt.orElseThrow(() ->
@@ -170,6 +183,16 @@ public class ProjectCreateTool implements Tool {
         log.info("project_create: tenant='{}' project='{}' session='{}' chat='{}' parent='{}'",
                 ctx.tenantId(), project.getName(), session.getSessionId(),
                 chat.getId(), ctx.processId());
+
+        // Activity-Log: peers see this on their next recap.
+        activityService.append(
+                ctx.tenantId(), ctx.userId(),
+                ctx.sessionId(), ctx.processId(),
+                VanceActivityKind.PROJECT_CREATED,
+                "Projekt `" + project.getName() + "` angelegt"
+                        + (initialPrompt != null ? " mit initialer Aufgabe" : ""),
+                List.of(EntityRef.project(project.getName()),
+                        EntityRef.process(chat.getId(), chat.getName())));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("projectId", project.getName());

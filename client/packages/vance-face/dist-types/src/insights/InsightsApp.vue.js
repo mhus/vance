@@ -454,6 +454,53 @@ else if (__VLS_ctx.selection.kind === 'session') {
         });
     }
     else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.header, __VLS_intrinsicElements.header)({
+            ...{ class: "session-header" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex items-baseline gap-2 flex-wrap" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "font-mono text-sm opacity-70" },
+        });
+        (__VLS_ctx.selectedSession.sessionId);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-xs px-1.5 py-0.5 rounded" },
+            ...{ class: (__VLS_ctx.selectedSession.status === 'OPEN' ? 'badge-open' : 'badge-closed') },
+        });
+        (__VLS_ctx.selectedSession.status?.toLowerCase());
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-xs opacity-60" },
+        });
+        (__VLS_ctx.selectedSession.userId);
+        (__VLS_ctx.selectedSession.projectId);
+        if (__VLS_ctx.selectedSession.firstUserMessage) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
+                ...{ class: "session-topic-title" },
+            });
+            (__VLS_ctx.selectedSession.firstUserMessage);
+        }
+        if (__VLS_ctx.selectedSession.lastMessagePreview) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs opacity-70 mt-1" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-70" },
+            });
+            if (__VLS_ctx.selectedSession.lastMessageRole) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                (__VLS_ctx.selectedSession.lastMessageRole.toLowerCase());
+            }
+            if (__VLS_ctx.selectedSession.lastMessageAt) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                (__VLS_ctx.fmt(__VLS_ctx.selectedSession.lastMessageAt));
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "block opacity-90 truncate" },
+                title: (__VLS_ctx.selectedSession.lastMessagePreview),
+            });
+            (__VLS_ctx.selectedSession.lastMessagePreview);
+        }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "tab-bar" },
         });
@@ -502,48 +549,12 @@ else if (__VLS_ctx.selection.kind === 'session') {
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
             const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
-                title: (`Session ${__VLS_ctx.selectedSession.sessionId}`),
+                title: "Details",
             }));
             const __VLS_39 = __VLS_38({
-                title: (`Session ${__VLS_ctx.selectedSession.sessionId}`),
+                title: "Details",
             }, ...__VLS_functionalComponentArgsRest(__VLS_38));
             __VLS_40.slots.default;
-            if (__VLS_ctx.selectedSession.firstUserMessage) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "mb-3" },
-                });
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "text-xs uppercase opacity-60 mb-1" },
-                });
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "text-sm" },
-                });
-                (__VLS_ctx.selectedSession.firstUserMessage);
-            }
-            if (__VLS_ctx.selectedSession.lastMessagePreview) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "mb-3" },
-                });
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "text-xs uppercase opacity-60 mb-1" },
-                });
-                if (__VLS_ctx.selectedSession.lastMessageRole) {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "opacity-70" },
-                    });
-                    (__VLS_ctx.selectedSession.lastMessageRole.toLowerCase());
-                }
-                if (__VLS_ctx.selectedSession.lastMessageAt) {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "opacity-70" },
-                    });
-                    (__VLS_ctx.fmt(__VLS_ctx.selectedSession.lastMessageAt));
-                }
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "text-sm" },
-                });
-                (__VLS_ctx.selectedSession.lastMessagePreview);
-            }
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
                 ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm" },
             });
@@ -1261,6 +1272,28 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-w-5xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['session-header']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-baseline']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['session-topic-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['block']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-90']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab-bar']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
@@ -1268,20 +1301,6 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-x-4']} */ ;

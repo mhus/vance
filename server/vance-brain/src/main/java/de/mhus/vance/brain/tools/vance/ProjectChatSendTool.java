@@ -5,6 +5,9 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.brain.vance.activity.EntityRef;
+import de.mhus.vance.brain.vance.activity.VanceActivityKind;
+import de.mhus.vance.brain.vance.activity.VanceActivityService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -67,6 +70,7 @@ public class ProjectChatSendTool implements Tool {
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
+    private final VanceActivityService activityService;
 
     @Override
     public String name() {
@@ -143,6 +147,14 @@ public class ProjectChatSendTool implements Tool {
 
         log.info("project_chat_send: tenant='{}' project='{}' chat='{}' chars={}",
                 ctx.tenantId(), project.getName(), chat.getId(), message.length());
+
+        activityService.append(
+                ctx.tenantId(), ctx.userId(),
+                ctx.sessionId(), ctx.processId(),
+                VanceActivityKind.PROCESS_STEERED,
+                "Arthur in `" + project.getName() + "` angesprochen",
+                List.of(EntityRef.project(project.getName()),
+                        EntityRef.process(chat.getId(), chat.getName())));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("projectId", project.getName());

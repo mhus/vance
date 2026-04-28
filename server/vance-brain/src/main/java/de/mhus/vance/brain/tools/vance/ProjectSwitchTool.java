@@ -3,6 +3,9 @@ package de.mhus.vance.brain.tools.vance;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.brain.vance.activity.EntityRef;
+import de.mhus.vance.brain.vance.activity.VanceActivityKind;
+import de.mhus.vance.brain.vance.activity.VanceActivityService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -34,6 +37,7 @@ public class ProjectSwitchTool implements Tool {
 
     private final ProjectService projectService;
     private final VanceContext vanceContext;
+    private final VanceActivityService activityService;
 
     @Override
     public String name() {
@@ -73,6 +77,15 @@ public class ProjectSwitchTool implements Tool {
                             + "are not supported there. Pick a regular user project.");
         }
         vanceContext.writeActiveProject(ctx, project.getName());
+
+        if (ctx.userId() != null && ctx.processId() != null) {
+            activityService.append(
+                    ctx.tenantId(), ctx.userId(),
+                    ctx.sessionId(), ctx.processId(),
+                    VanceActivityKind.PROJECT_SWITCHED,
+                    "Aktives Projekt: `" + project.getName() + "`",
+                    List.of(EntityRef.project(project.getName())));
+        }
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", project.getName());

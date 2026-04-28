@@ -371,6 +371,37 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <template v-else-if="selection.kind === 'session'">
         <div v-if="!selectedSession" class="opacity-70">Loading…</div>
         <template v-else>
+          <!-- Session header — always visible across Overview / Processes /
+               Timeline tabs so the user keeps the "what session am I in"
+               context after switching. -->
+          <header class="session-header">
+            <div class="flex items-baseline gap-2 flex-wrap">
+              <span class="font-mono text-sm opacity-70">{{ selectedSession.sessionId }}</span>
+              <span
+                class="text-xs px-1.5 py-0.5 rounded"
+                :class="selectedSession.status === 'OPEN' ? 'badge-open' : 'badge-closed'"
+              >{{ selectedSession.status?.toLowerCase() }}</span>
+              <span class="text-xs opacity-60">
+                {{ selectedSession.userId }} · {{ selectedSession.projectId }}
+              </span>
+            </div>
+            <h2 v-if="selectedSession.firstUserMessage" class="session-topic-title">
+              {{ selectedSession.firstUserMessage }}
+            </h2>
+            <div v-if="selectedSession.lastMessagePreview" class="text-xs opacity-70 mt-1">
+              <span class="opacity-70">last</span>
+              <span v-if="selectedSession.lastMessageRole">
+                · {{ selectedSession.lastMessageRole.toLowerCase() }}
+              </span>
+              <span v-if="selectedSession.lastMessageAt">
+                · {{ fmt(selectedSession.lastMessageAt) }}
+              </span>
+              <span class="block opacity-90 truncate" :title="selectedSession.lastMessagePreview">
+                {{ selectedSession.lastMessagePreview }}
+              </span>
+            </div>
+          </header>
+
           <div class="tab-bar">
             <button
               class="tab"
@@ -389,23 +420,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
             >Timeline</button>
           </div>
 
-          <VCard v-if="activeTab === 'overview'" :title="`Session ${selectedSession.sessionId}`">
-            <div v-if="selectedSession.firstUserMessage" class="mb-3">
-              <div class="text-xs uppercase opacity-60 mb-1">Topic</div>
-              <div class="text-sm">{{ selectedSession.firstUserMessage }}</div>
-            </div>
-            <div v-if="selectedSession.lastMessagePreview" class="mb-3">
-              <div class="text-xs uppercase opacity-60 mb-1">
-                Last message
-                <span v-if="selectedSession.lastMessageRole" class="opacity-70">
-                  · {{ selectedSession.lastMessageRole.toLowerCase() }}
-                </span>
-                <span v-if="selectedSession.lastMessageAt" class="opacity-70">
-                  · {{ fmt(selectedSession.lastMessageAt) }}
-                </span>
-              </div>
-              <div class="text-sm">{{ selectedSession.lastMessagePreview }}</div>
-            </div>
+          <VCard v-if="activeTab === 'overview'" title="Details">
             <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
               <dt class="opacity-60">Mongo id</dt><dd class="font-mono">{{ selectedSession.id }}</dd>
               <dt class="opacity-60">User</dt><dd>{{ selectedSession.userId }}</dd>
@@ -697,6 +712,19 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 .session-topic {
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.session-header {
+  border: 1px solid hsl(var(--bc) / 0.12);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: hsl(var(--b1));
+}
+.session-topic-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-top: 0.4rem;
+  line-height: 1.3;
 }
 
 .session-children {

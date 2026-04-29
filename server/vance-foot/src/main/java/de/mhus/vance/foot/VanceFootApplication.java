@@ -27,7 +27,6 @@ public class VanceFootApplication {
     static void main(String[] args) {
         String[] effectiveArgs = applyConfigShim(args);
         SpringApplication app = new SpringApplication(VanceFootApplication.class);
-        app.setBannerMode(Banner.Mode.OFF);
         app.setWebApplicationType(WebApplicationType.NONE);
         app.setLogStartupInfo(false);
         System.exit(SpringApplication.exit(app.run(effectiveArgs)));

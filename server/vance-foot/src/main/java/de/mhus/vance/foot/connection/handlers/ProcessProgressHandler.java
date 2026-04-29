@@ -4,14 +4,19 @@ import de.mhus.vance.api.progress.MetricsPayload;
 import de.mhus.vance.api.progress.PlanNode;
 import de.mhus.vance.api.progress.PlanPayload;
 import de.mhus.vance.api.progress.ProcessProgressNotification;
+import de.mhus.vance.api.progress.ProgressKind;
 import de.mhus.vance.api.progress.StatusPayload;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.util.HashMap;
 import java.util.Map;
+import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStringBuilder;
+import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -25,17 +30,29 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>v1 is a flat textual renderer through {@link ChatTerminal}: a HUD
  * line for metrics, a one-line phase summary for plan, a toast-style
- * line for status. A future TUI overlay (split-screen with Lanterna)
- * can swap this implementation without touching the wire contract.
+ * line for status. Lines are styled faint-gray via JLine's
+ * {@link AttributedStyle} so they sit visually behind the chat. A
+ * future TUI overlay (split-screen with Lanterna) can swap this
+ * implementation without touching the wire contract.
  */
 @Component
 public class ProcessProgressHandler implements MessageHandler {
 
+    /**
+     * Bright-black ("gray") — the "side-channel" tone. One notch
+     * brighter than {@code bright-black + faint}, which read as
+     * almost-invisible on most modern terminals.
+     */
+    private static final AttributedStyle DIM_STYLE = AttributedStyle.DEFAULT
+            .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
+
     private final ChatTerminal terminal;
+    private final StreamingDisplay streaming;
     private final ObjectMapper json = JsonMapper.builder().build();
 
-    public ProcessProgressHandler(ChatTerminal terminal) {
+    public ProcessProgressHandler(ChatTerminal terminal, StreamingDisplay streaming) {
         this.terminal = terminal;
+        this.streaming = streaming;
     }
 
     @Override
@@ -48,6 +65,19 @@ public class ProcessProgressHandler implements MessageHandler {
         ProcessProgressNotification msg = json.convertValue(
                 envelope.getData(), ProcessProgressNotification.class);
         if (msg == null || msg.getKind() == null) return;
+        // Skip the whole pipeline (including the streaming-suspend
+        // newline) when the user's verbosity threshold would filter
+        // this kind out. Otherwise we'd emit a stray newline that
+        // unhooks the in-flight chat stream from its onCommit and
+        // makes ChatMessageAppendedHandler re-render the canonical
+        // text — visible duplicate.
+        if (!terminal.threshold().shows(verbosityFor(msg.getKind()))) {
+            return;
+        }
+        // Terminate any in-flight chat stream first so the side-channel
+        // line lands on its own line. The next chat chunk re-emits its
+        // role header on a fresh line.
+        streaming.suspend();
         String src = formatSource(msg);
         switch (msg.getKind()) {
             case METRICS -> renderMetrics(src, msg.getMetrics());
@@ -56,11 +86,19 @@ public class ProcessProgressHandler implements MessageHandler {
         }
     }
 
+    private static Verbosity verbosityFor(ProgressKind kind) {
+        // Mirror the per-renderer choices below — keep these in sync.
+        return switch (kind) {
+            case METRICS -> Verbosity.VERBOSE;
+            case PLAN, STATUS -> Verbosity.INFO;
+        };
+    }
+
     private void renderMetrics(String src, @Nullable MetricsPayload m) {
         if (m == null) return;
         // HUD-style one-liner. Verbosity VERBOSE so the user can mute
         // at INFO if the per-roundtrip cadence gets too chatty.
-        terminal.println(Verbosity.VERBOSE,
+        String line = String.format(
                 "[hud] %s · %d calls · %s in / %s out · %.1fs%s",
                 src,
                 m.getLlmCallCount(),
@@ -68,6 +106,7 @@ public class ProcessProgressHandler implements MessageHandler {
                 formatTokens(m.getTokensOutTotal()),
                 m.getElapsedMs() / 1000.0,
                 m.getModelAlias() == null ? "" : " · " + m.getModelAlias());
+        terminal.printlnStyled(Verbosity.VERBOSE, dim(line));
     }
 
     private void renderPlan(String src, @Nullable PlanPayload p) {
@@ -84,16 +123,24 @@ public class ProcessProgressHandler implements MessageHandler {
             first = false;
             sb.append(e.getKey()).append("=").append(e.getValue());
         }
-        terminal.println(Verbosity.INFO, "%s", sb.toString());
+        terminal.printlnStyled(Verbosity.INFO, dim(sb.toString()));
     }
 
     private void renderStatus(String src, @Nullable StatusPayload s) {
         if (s == null) return;
-        terminal.println(Verbosity.INFO,
+        String line = String.format(
                 "[%s] %s · %s",
                 s.getTag() == null ? "?" : s.getTag().name().toLowerCase(),
                 src,
                 s.getText() == null ? "" : s.getText());
+        terminal.printlnStyled(Verbosity.INFO, dim(line));
+    }
+
+    private static AttributedString dim(String text) {
+        return new AttributedStringBuilder()
+                .style(DIM_STYLE)
+                .append(text)
+                .toAttributedString();
     }
 
     private static String formatSource(ProcessProgressNotification msg) {

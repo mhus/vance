@@ -67,6 +67,32 @@ public class StreamingDisplay {
     }
 
     /**
+     * Terminates any in-flight exclusive-mode stream with a newline so
+     * a subsequent {@link ChatTerminal#printlnStyled} (or any other
+     * {@code printAbove}-based write) doesn't land on the same line.
+     * Resets {@code headerEmitted} so the next chunk for that process
+     * re-emits the role header on a fresh line.
+     *
+     * <p>Buffered (non-exclusive) streams are untouched — they don't
+     * write to the terminal until {@link #onCommit}, so there's no
+     * conflict.
+     *
+     * <p>Called by side-channel renderers (status / plan / metrics)
+     * just before they print, so the chat stream and the progress
+     * pings don't visually fuse.
+     */
+    public void suspend() {
+        for (ProcessStream state : streams.values()) {
+            synchronized (state) {
+                if (state.headerEmitted) {
+                    terminal.streamRaw("\n");
+                    state.headerEmitted = false;
+                }
+            }
+        }
+    }
+
+    /**
      * Closes the stream for a process. Returns {@code true} when this
      * call rendered the assistant's content already — caller should
      * suppress the canonical commit render to avoid duplication.

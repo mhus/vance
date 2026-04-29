@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jline.reader.LineReader;
 import org.jline.terminal.Terminal;
+import org.jline.utils.AttributedString;
 import org.jline.utils.InfoCmp;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -83,6 +84,37 @@ public class ChatTerminal {
         String formatted = String.format(format, args);
         record(level, formatted);
         emit(formatted);
+    }
+
+    /**
+     * Println variant that accepts a JLine {@link AttributedString} so
+     * callers can style output (faint gray, colors, bold) without
+     * hand-rolling ANSI escapes. Threshold and ring-buffer behaviour
+     * match {@link #println(Verbosity, String)} — the buffer records
+     * the plain text only, escapes do not leak into the debug-REST
+     * tail view.
+     *
+     * <p>When a JLine reader is attached, the styled overload of
+     * {@code printAbove} is used so JLine emits the right escape
+     * sequence for the terminal's actual capabilities (or strips
+     * them on a non-color terminal). Without a reader we fall back
+     * to {@link AttributedString#toAnsi()} on the plain writer.
+     */
+    public void printlnStyled(Verbosity level, AttributedString styled) {
+        if (!threshold.get().shows(level)) {
+            return;
+        }
+        String plain = styled.toString();
+        record(level, plain);
+        LineReader r = jlineReader.get();
+        if (r != null) {
+            r.printAbove(styled);
+            return;
+        }
+        Terminal t = jlineTerminal.get();
+        PrintWriter w = writer();
+        w.println(t != null ? styled.toAnsi(t) : styled.toAnsi());
+        w.flush();
     }
 
     public void error(String message) {

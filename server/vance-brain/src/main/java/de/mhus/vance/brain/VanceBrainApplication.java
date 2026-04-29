@@ -10,6 +10,7 @@ import de.mhus.vance.brain.ford.FordProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.data.mongodb.config.EnableMongoAuditing;
 import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -25,6 +26,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication(scanBasePackages = {"de.mhus.vance.brain", "de.mhus.vance.shared"})
 @EnableMongoRepositories(basePackages = {"de.mhus.vance.shared", "de.mhus.vance.brain"})
+// Drives @CreatedDate / @LastModifiedDate on Mongo documents (e.g.
+// ChatMessageDocument.createdAt). Without this, fields stay null on
+// insert and any sort that relies on them is undefined.
+@EnableMongoAuditing
 @EnableConfigurationProperties({
         WorkspaceProperties.class,
         ExecProperties.class,

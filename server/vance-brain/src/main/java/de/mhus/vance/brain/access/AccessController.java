@@ -93,6 +93,10 @@ public class AccessController {
         // rather block the login than mint a token for a user whose
         // hub can't be opened.
         homeBootstrapService.ensureHome(tenant, username);
+        // Tenant-wide _vance system project — holds the override layer
+        // for tenant-level documents/prompts/memory (resource lookup
+        // logic lands in a follow-up). Idempotent and cheap.
+        homeBootstrapService.ensureVance(tenant);
 
         Instant expiresAt = Instant.now().plus(TOKEN_LIFETIME);
         String token = jwtService.createToken(tenant, username, expiresAt);

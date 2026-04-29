@@ -3,19 +3,20 @@ package de.mhus.vance.brain.tools.eddie;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.document.LookupResult;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 /**
- * Reads one Eddie hub-specific Markdown topic by name.
+ * Reads one Eddie hub-specific Markdown topic by name through the cascade
+ * project → {@code _vance} → classpath
+ * ({@code vance-defaults/eddie/docs/}).
  *
  * <p>Path sanitisation: {@code /} and {@code ..} are rejected so the
  * LLM can't pull arbitrary files off the classpath.
@@ -35,8 +36,7 @@ public class EddieDocsReadTool implements Tool {
                                             + "e.g. 'projects'.")),
             "required", List.of("name"));
 
-    private final PathMatchingResourcePatternResolver resolver =
-            new PathMatchingResourcePatternResolver();
+    private final DocumentService documentService;
 
     @Override
     public String name() {
@@ -62,6 +62,9 @@ public class EddieDocsReadTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+        if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
+            throw new ToolException("eddie_docs_read requires a tenant scope");
+        }
         Object raw = params == null ? null : params.get("name");
         if (!(raw instanceof String name) || name.isBlank()) {
             throw new ToolException("'name' is required");
@@ -69,21 +72,20 @@ public class EddieDocsReadTool implements Tool {
         if (name.contains("/") || name.contains("..") || name.contains("\\")) {
             throw new ToolException("Invalid doc name: " + name);
         }
-        Resource r = resolver.getResource("classpath:vance/docs/" + name + ".md");
-        if (!r.exists()) {
+        String path = EddieDocsListTool.DOCS_PREFIX + name + ".md";
+        Optional<LookupResult> hit = documentService.lookupCascade(
+                ctx.tenantId(), ctx.projectId(), path);
+        if (hit.isEmpty()) {
             throw new ToolException("Eddie doc not found: '" + name + "'. "
                     + "Use eddie_docs_list to see what's available.");
         }
-        try {
-            String content = r.getContentAsString(StandardCharsets.UTF_8);
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("name", name);
-            out.put("content", content);
-            out.put("chars", content.length());
-            return out;
-        } catch (IOException e) {
-            throw new ToolException("Failed to read Eddie doc '" + name + "': "
-                    + e.getMessage(), e);
-        }
+        LookupResult result = hit.get();
+        String content = result.content() == null ? "" : result.content();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("name", name);
+        out.put("content", content);
+        out.put("chars", content.length());
+        out.put("source", result.source().name().toLowerCase());
+        return out;
     }
 }

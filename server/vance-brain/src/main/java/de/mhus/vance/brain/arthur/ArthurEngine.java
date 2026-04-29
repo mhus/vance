@@ -168,6 +168,7 @@ public class ArthurEngine implements ThinkEngine {
     private final ModelCatalog modelCatalog;
     private final LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
+    private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -571,6 +572,13 @@ public class ArthurEngine implements ThinkEngine {
         List<ChatMessage> messages = new ArrayList<>();
         String base = SystemPrompts.compose(process, engineDefaultPrompt(), modelSize);
         String withCatalog = base + recipeCatalogCached();
+        // Append the project-memory block (memory.* settings cascade) so
+        // the user can pin language / tone / persona / arbitrary key:value
+        // hints at any scope without rewriting the recipe prompt.
+        String memoryBlock = memoryContextLoader.composeBlock(process);
+        if (memoryBlock != null && !memoryBlock.isBlank()) {
+            withCatalog = withCatalog + "\n\n" + memoryBlock;
+        }
         messages.add(SystemMessage.from(withCatalog));
 
         // Active history (ARCHIVED_CHAT compaction-aware once we wire

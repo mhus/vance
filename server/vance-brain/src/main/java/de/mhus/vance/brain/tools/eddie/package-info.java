@@ -1,6 +1,7 @@
 /**
  * Eddie hub-specific tools — surfaces the Eddie documentation set
- * ({@code classpath:eddie/docs/*.md}) which is separate from the
+ * via the {@code eddie/docs/} cascade (project → {@code _vance} →
+ * {@code classpath:vance-defaults/eddie/docs/*.md}), separate from the
  * general Brain documentation read by {@code docs_list} /
  * {@code docs_read}. See {@code specification/eddie-engine.md}.
  */

@@ -2,7 +2,9 @@ package de.mhus.vance.shared.settings;
 
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -214,6 +216,86 @@ public class SettingService {
     }
 
     // ──────────────────── Password (encrypted) ────────────────────
+
+    // ──────────────────── Cascade lookup ────────────────────
+
+    /**
+     * Reference-type strings used by the cascade resolvers. Mirrors the
+     * scope hierarchy documented in {@code specification/settings-system.md}:
+     * inner scopes override outer scopes. Account / team are not yet wired
+     * because the codebase has no first-class user / team entity in v1.
+     */
+    public static final String SCOPE_TENANT = "tenant";
+    public static final String SCOPE_PROJECT = "project";
+    public static final String SCOPE_THINK_PROCESS = "think-process";
+
+    /**
+     * Resolves {@code key} along the cascade tenant → project →
+     * think-process and returns the value of the innermost scope that
+     * has it set. {@code null} if no scope defines the key. Password
+     * settings are skipped (use {@link #getDecryptedPassword}).
+     *
+     * <p>{@code projectId} and {@code thinkProcessId} may be {@code null}
+     * — the corresponding scope is then simply not consulted.
+     */
+    public @Nullable String getStringValueCascade(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String thinkProcessId,
+            String key) {
+        // Inner-to-outer: first hit wins.
+        if (thinkProcessId != null && !thinkProcessId.isBlank()) {
+            String v = getStringValue(tenantId, SCOPE_THINK_PROCESS, thinkProcessId, key);
+            if (v != null) return v;
+        }
+        if (projectId != null && !projectId.isBlank()) {
+            String v = getStringValue(tenantId, SCOPE_PROJECT, projectId, key);
+            if (v != null) return v;
+        }
+        return getStringValue(tenantId, SCOPE_TENANT, tenantId, key);
+    }
+
+    /**
+     * Returns all settings whose key starts with {@code keyPrefix}, merged
+     * across the cascade tenant → project → think-process. Inner scopes
+     * overwrite outer scopes per-key. Password settings are skipped.
+     *
+     * <p>The returned map is keyed by the full setting key (including the
+     * prefix); callers can strip the prefix themselves if needed. Insertion
+     * order is the cascade application order, which means callers
+     * iterating the entries see "tenant entries first, then project
+     * overrides, then think-process overrides" — though semantic meaning
+     * is "the value the inner scope put last".
+     */
+    public Map<String, String> findByPrefixCascade(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String thinkProcessId,
+            String keyPrefix) {
+        Map<String, String> merged = new LinkedHashMap<>();
+        applyPrefixScope(merged, tenantId, SCOPE_TENANT, tenantId, keyPrefix);
+        if (projectId != null && !projectId.isBlank()) {
+            applyPrefixScope(merged, tenantId, SCOPE_PROJECT, projectId, keyPrefix);
+        }
+        if (thinkProcessId != null && !thinkProcessId.isBlank()) {
+            applyPrefixScope(merged, tenantId, SCOPE_THINK_PROCESS, thinkProcessId, keyPrefix);
+        }
+        return merged;
+    }
+
+    private void applyPrefixScope(
+            Map<String, String> acc,
+            String tenantId,
+            String referenceType,
+            String referenceId,
+            String keyPrefix) {
+        for (SettingDocument doc : findAll(tenantId, referenceType, referenceId)) {
+            String key = doc.getKey();
+            if (key == null || !key.startsWith(keyPrefix)) continue;
+            if (doc.getType() == SettingType.PASSWORD) continue;
+            acc.put(key, doc.getValue() == null ? "" : doc.getValue());
+        }
+    }
 
     /**
      * Stores {@code plaintext} encrypted. Passing {@code null} stores a

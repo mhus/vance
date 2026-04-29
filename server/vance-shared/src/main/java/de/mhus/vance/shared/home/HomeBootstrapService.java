@@ -55,6 +55,21 @@ public class HomeBootstrapService {
      */
     public static final String HUB_PROJECT_NAME_PREFIX = "_user_";
 
+    /**
+     * Reserved name of the tenant-wide "Vance" system project — sibling
+     * to the per-user {@code _user_<login>} projects, but tenant-scoped
+     * (one per tenant, no user suffix). Reserved as the override layer
+     * for system-wide defaults: documents under {@code _vance/agent.md},
+     * {@code _vance/documents/…}, {@code _vance/prompts/…} etc. shadow
+     * the bundled JAR resources at tenant level. Lookup logic comes
+     * with later iterations; this iteration just provisions the
+     * project.
+     */
+    public static final String VANCE_PROJECT_NAME = "_vance";
+
+    /** Display title of the {@code _vance} project on first creation. */
+    public static final String VANCE_PROJECT_TITLE = "Vance";
+
     private final ProjectGroupService projectGroupService;
     private final ProjectService projectService;
     private final UserService userService;
@@ -98,6 +113,35 @@ public class HomeBootstrapService {
         return projectGroupService.findByTenantAndName(tenantId, HOME_GROUP_NAME)
                 .orElseGet(() -> projectGroupService.create(
                         tenantId, HOME_GROUP_NAME, HOME_GROUP_TITLE));
+    }
+
+    /**
+     * Ensures the tenant-wide {@value #VANCE_PROJECT_NAME} system project
+     * exists in {@code tenantId}, creating it inside the {@value #HOME_GROUP_NAME}
+     * project group on first call. Idempotent: repeated calls return the
+     * existing row.
+     *
+     * <p>Intended use: a holding project for tenant-level overrides of
+     * system defaults (documents, prompts, agent memos). The lookup
+     * paths that consult it ({@code _vance/agent.md}, etc.) are added
+     * by the resource-loader in a follow-up step — this method only
+     * provisions the slot.
+     */
+    public ProjectDocument ensureVance(String tenantId) {
+        ProjectGroupDocument group = ensureHomeGroup(tenantId);
+        return projectService.findByTenantAndName(tenantId, VANCE_PROJECT_NAME)
+                .orElseGet(() -> {
+                    ProjectDocument created = projectService.create(
+                            tenantId,
+                            VANCE_PROJECT_NAME,
+                            VANCE_PROJECT_TITLE,
+                            group.getName(),
+                            null,
+                            ProjectKind.SYSTEM);
+                    log.info("Bootstrapped tenant-wide Vance project tenantId='{}' project='{}'",
+                            tenantId, created.getName());
+                    return created;
+                });
     }
 
     /**

@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.document;
 
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.storage.StorageService;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -9,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -17,6 +19,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -43,9 +47,19 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class DocumentService {
 
+    /**
+     * Classpath prefix for system-default documents shipped inside the
+     * brain JAR — e.g. {@code vance-defaults/agent.md}. The cascade
+     * lookup falls through to this layer when neither the user's
+     * project nor the tenant-wide {@code _vance} project carries the
+     * requested path.
+     */
+    public static final String RESOURCE_PREFIX = "vance-defaults/";
+
     private final DocumentRepository repository;
     private final StorageService storageService;
     private final MongoTemplate mongoTemplate;
+    private final ResourcePatternResolver resourcePatternResolver;
 
     @Value("${vance.document.inline-threshold:4096}")
     private int inlineThreshold;
@@ -224,6 +238,192 @@ public class DocumentService {
      * Returns an empty stream for documents that have neither inline text nor
      * a storage blob (shouldn't happen, but defensive).
      */
+    // ──────────────────── Cascade lookup ────────────────────
+
+    /**
+     * Resolve {@code path} along the cascade
+     * project → {@code _vance} → classpath ({@code vance-defaults/<path>}).
+     * Returns the first match — innermost wins. Storage-backed and
+     * inline documents are both materialized to a UTF-8 string, so the
+     * caller never has to differentiate.
+     *
+     * <p>Calling with {@code projectId == "_vance"} just collapses the
+     * first two layers — the project lookup and the {@code _vance}
+     * lookup are the same row and we don't read it twice.
+     *
+     * @return the resolved document, or {@link Optional#empty()} when
+     *         no layer carries the path
+     */
+    public Optional<LookupResult> lookupCascade(
+            String tenantId, String projectId, String path) {
+        String norm = normalizePath(path);
+
+        // 1. Project (if not the _vance project itself).
+        if (!HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+            Optional<LookupResult> hit = tryProjectLookup(
+                    tenantId, projectId, norm, LookupResult.Source.PROJECT);
+            if (hit.isPresent()) return hit;
+        }
+
+        // 2. _vance project.
+        Optional<LookupResult> vance = tryProjectLookup(
+                tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, norm,
+                LookupResult.Source.VANCE);
+        if (vance.isPresent()) return vance;
+
+        // 3. Classpath fallback.
+        return loadResource(norm).map(content ->
+                new LookupResult(norm, content, LookupResult.Source.RESOURCE, null));
+    }
+
+    /**
+     * List all documents one level under {@code pathPrefix}, merged
+     * across the cascade. Inner sources overwrite outer ones <b>per
+     * normalized path</b>: a {@code documents/how_to_tools.md} found in
+     * the user's project replaces the same path coming from
+     * {@code _vance} or from the classpath default — exactly one entry
+     * survives in the returned map regardless of how many layers carry it.
+     *
+     * <p>One level means: only paths that match {@code <prefix>/<name>}
+     * with no further slashes. {@code documents/sub/foo.md} is excluded
+     * when {@code pathPrefix} is {@code documents/}.
+     *
+     * <p>The map iteration order is the cascade application order
+     * (resources first, then {@code _vance}, then project) — useful for
+     * diagnostics, not for semantics. Semantically the map carries
+     * "the value the innermost layer set last".
+     *
+     * @param pathPrefix folder path. Trailing slash is optional;
+     *                   passing {@code ""} or {@code "/"} means top-level
+     *                   (matches paths without any slash).
+     */
+    public Map<String, LookupResult> listByPrefixCascade(
+            String tenantId, String projectId, String pathPrefix) {
+        String prefix = normalizePrefix(pathPrefix);
+        Map<String, LookupResult> merged = new LinkedHashMap<>();
+
+        // Outer-to-inner: each subsequent put() overrides the previous
+        // entry for the same path. This guarantees no duplicates and
+        // honours "innermost wins" without tracking seen-keys manually.
+        applyResourceLayer(merged, prefix);
+        applyProjectLayer(merged,
+                tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, prefix,
+                LookupResult.Source.VANCE);
+        if (!HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+            applyProjectLayer(merged,
+                    tenantId, projectId, prefix,
+                    LookupResult.Source.PROJECT);
+        }
+        return merged;
+    }
+
+    // ──────────────────── Cascade helpers ────────────────────
+
+    private Optional<LookupResult> tryProjectLookup(
+            String tenantId, String projectId, String normalizedPath,
+            LookupResult.Source source) {
+        return repository
+                .findByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizedPath)
+                .filter(doc -> doc.getStatus() == DocumentStatus.ACTIVE)
+                .map(doc -> new LookupResult(
+                        doc.getPath(), readAsString(doc), source, doc));
+    }
+
+    private void applyProjectLayer(
+            Map<String, LookupResult> acc,
+            String tenantId, String projectId, String prefix,
+            LookupResult.Source source) {
+        for (DocumentDocument doc : repository.findByTenantIdAndProjectIdAndStatus(
+                tenantId, projectId, DocumentStatus.ACTIVE)) {
+            String path = doc.getPath();
+            if (path == null || !matchesOneLevel(path, prefix)) continue;
+            acc.put(path, new LookupResult(path, readAsString(doc), source, doc));
+        }
+    }
+
+    private void applyResourceLayer(Map<String, LookupResult> acc, String prefix) {
+        // Pattern: classpath:vance-defaults/<prefix>* — '*' does not match
+        // slashes in Spring's AntPathMatcher, so this naturally enforces
+        // the one-level rule for resources too.
+        String pattern = "classpath*:" + RESOURCE_PREFIX + prefix + "*";
+        Resource[] resources;
+        try {
+            resources = resourcePatternResolver.getResources(pattern);
+        } catch (IOException e) {
+            log.warn("Failed to scan classpath '{}': {}", pattern, e.toString());
+            return;
+        }
+        for (Resource resource : resources) {
+            if (!resource.exists() || !resource.isReadable()) continue;
+            String filename = resource.getFilename();
+            if (filename == null || filename.isEmpty()) continue;
+            String path = prefix + filename;
+            try (InputStream in = resource.getInputStream()) {
+                String content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                acc.put(path, new LookupResult(
+                        path, content, LookupResult.Source.RESOURCE, null));
+            } catch (IOException e) {
+                log.warn("Failed to read classpath resource '{}': {}",
+                        resource, e.toString());
+            }
+        }
+    }
+
+    private Optional<String> loadResource(String normalizedPath) {
+        String resourcePath = RESOURCE_PREFIX + normalizedPath;
+        try {
+            Resource resource = resourcePatternResolver.getResource(
+                    "classpath:" + resourcePath);
+            if (!resource.exists() || !resource.isReadable()) {
+                return Optional.empty();
+            }
+            try (InputStream in = resource.getInputStream()) {
+                return Optional.of(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            }
+        } catch (IOException e) {
+            log.warn("Failed to read classpath resource '{}': {}", resourcePath, e.toString());
+            return Optional.empty();
+        }
+    }
+
+    private String readAsString(DocumentDocument doc) {
+        String inline = doc.getInlineText();
+        if (inline != null) return inline;
+        try (InputStream in = loadContent(doc)) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("Failed to read document id='{}' path='{}': {}",
+                    doc.getId(), doc.getPath(), e.toString());
+            return "";
+        }
+    }
+
+    /**
+     * Normalize a folder prefix to either {@code ""} (top level) or
+     * {@code "<folder>/"}. Defends against null, leading slash, missing
+     * trailing slash.
+     */
+    private static String normalizePrefix(@Nullable String pathPrefix) {
+        if (pathPrefix == null) return "";
+        String trimmed = pathPrefix.trim();
+        while (trimmed.startsWith("/")) trimmed = trimmed.substring(1);
+        if (trimmed.isEmpty()) return "";
+        if (!trimmed.endsWith("/")) trimmed = trimmed + "/";
+        return trimmed;
+    }
+
+    /**
+     * {@code true} when {@code path} sits exactly one level under
+     * {@code prefix} — i.e. starts with the prefix and the remainder
+     * contains no further slash. Both arguments are expected normalized.
+     */
+    private static boolean matchesOneLevel(String path, String prefix) {
+        if (!path.startsWith(prefix)) return false;
+        String rest = path.substring(prefix.length());
+        if (rest.isEmpty()) return false;
+        return rest.indexOf('/') < 0;
+    }
+
     public InputStream loadContent(DocumentDocument doc) {
         String inline = doc.getInlineText();
         if (inline != null) {

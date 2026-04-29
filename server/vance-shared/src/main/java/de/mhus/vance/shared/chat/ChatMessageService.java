@@ -29,7 +29,16 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class ChatMessageService {
 
-    private static final Sort BY_CREATED = Sort.by(Sort.Direction.ASC, "createdAt");
+    /**
+     * Primary key {@code createdAt} for chronological order, {@code id}
+     * (the Mongo {@code ObjectId}) as tiebreaker — and as the only
+     * reliable order for older documents inserted before Mongo
+     * auditing was enabled. Their {@code createdAt} is {@code null}
+     * so the primary key ranks them all together; the {@code ObjectId}
+     * encodes the insert timestamp and breaks the tie monotonically.
+     */
+    private static final Sort BY_CREATED =
+            Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"));
 
     private final ChatMessageRepository repository;
     private final MongoTemplate mongoTemplate;

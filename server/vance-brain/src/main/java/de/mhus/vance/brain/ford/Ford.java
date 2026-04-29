@@ -165,6 +165,7 @@ public class Ford implements ThinkEngine {
     private final ModelCatalog modelCatalog;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
+    private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
     private final FordProperties fordProperties;
     private final MemoryService memoryService;
     private final MemoryCompactionService memoryCompactionService;
@@ -653,8 +654,12 @@ public class Ford implements ThinkEngine {
             ThinkProcessDocument process, ChatMessageService chatLog,
             ModelSize modelSize, @Nullable String skillSection) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(
-                SystemPrompts.compose(process, SYSTEM_PROMPT, modelSize)));
+        String base = SystemPrompts.compose(process, SYSTEM_PROMPT, modelSize);
+        String memoryBlock = memoryContextLoader.composeBlock(process);
+        if (memoryBlock != null && !memoryBlock.isBlank()) {
+            base = base + "\n\n" + memoryBlock;
+        }
+        messages.add(SystemMessage.from(base));
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }

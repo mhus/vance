@@ -29,7 +29,7 @@ import org.springframework.test.context.DynamicPropertySource;
  *
  * <p>This validates the orchestrator pattern:
  * <ul>
- *   <li>Arthur is the chat-process (not Vance — regular project).</li>
+ *   <li>Arthur is the chat-process (not Eddie — regular project).</li>
  *   <li>Arthur picks an appropriate recipe from {@code recipe_list} and
  *       calls {@code process_create}.</li>
  *   <li>The spawned worker has {@code thinkEngine = ford} and
@@ -94,7 +94,7 @@ class ArthurFordTest {
                 .as("/session-create should resolve")
                 .isTrue();
 
-        // The chat-process should run Arthur (not Vance — instant-hole is
+        // The chat-process should run Arthur (not Eddie — instant-hole is
         // a NORMAL project).
         boolean arthurAppeared = pollUntil(Duration.ofSeconds(15), () -> {
             Document p = findOne("think_processes",

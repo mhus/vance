@@ -731,8 +731,11 @@ public class MarvinEngine implements ThinkEngine {
             ThinkEngineContext ctx,
             MarvinNodeDocument node) {
         try {
-            AiChatConfig config = resolveAiConfig(process, ctx.settingService(), aiModelResolver);
-            AiChat ai = ctx.aiModelService().createChat(config, AiChatOptions.builder().build());
+            de.mhus.vance.brain.ai.ChatBehavior behavior =
+                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
+                            process, ctx.settingService(), aiModelResolver);
+            AiChatConfig config = behavior.entries().get(0).config();
+            AiChat ai = ctx.aiModelService().createChat(behavior, AiChatOptions.builder().build());
 
             int maxChildren = paramInt(node, "maxChildren", properties.getPlanMaxChildren());
             String customPrompt = paramString(node, "prompt", null);
@@ -1104,8 +1107,11 @@ public class MarvinEngine implements ThinkEngine {
                     properties.getAggregateMaxOutputChars());
             String customPrompt = paramString(node, "prompt", null);
 
-            AiChatConfig config = resolveAiConfig(process, ctx.settingService(), aiModelResolver);
-            AiChat ai = ctx.aiModelService().createChat(config, AiChatOptions.builder().build());
+            de.mhus.vance.brain.ai.ChatBehavior behavior =
+                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
+                            process, ctx.settingService(), aiModelResolver);
+            AiChatConfig config = behavior.entries().get(0).config();
+            AiChat ai = ctx.aiModelService().createChat(behavior, AiChatOptions.builder().build());
 
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(AGGREGATE_SYSTEM_PROMPT));

@@ -284,10 +284,16 @@ public class ArthurEngine implements ThinkEngine {
                 }
             }
 
-            AiChatConfig config = resolveAiConfig(
-                    process, ctx.settingService(), aiModelResolver);
+            // Build the chat as a primary + ordered fallback chain, so a
+            // demand-spike on one provider falls through to the next without
+            // Arthur knowing about it. Single-entry behaviour is unchanged
+            // when params.fallbackModels is empty / missing.
+            de.mhus.vance.brain.ai.ChatBehavior behavior =
+                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
+                            process, ctx.settingService(), aiModelResolver);
+            AiChatConfig config = behavior.entries().get(0).config();
             AiChat aiChat = ctx.aiModelService().createChat(
-                    config, AiChatOptions.builder().build());
+                    behavior, AiChatOptions.builder().build());
             ContextToolsApi tools = ctx.tools();
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(

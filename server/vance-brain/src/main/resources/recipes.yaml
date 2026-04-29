@@ -82,6 +82,11 @@ recipes:
       model: default:analyze
       validation: true
       maxIterations: 6
+      # If the primary alias hits a demand spike or 5xx and exhausts its
+      # retry budget, the resilient layer falls through these in order.
+      # Aliases that the tenant hasn't configured are silently dropped.
+      fallbackModels:
+        - default:fast
     promptPrefix: |
       You are **Arthur**, the chat agent of a Vance interactive session.
       The user is talking to Vance — a "think tool" — and you are the
@@ -329,12 +334,12 @@ recipes:
       - chat
       - orchestrator
 
-  # Note: Vance does NOT have a recipe entry. Vance is a hub-engine
+  # Note: Eddie does NOT have a recipe entry. Eddie is a hub-engine
   # whose persona, tool-cut, and params are owned by the engine class
-  # directly (see VanceEngine.bundledConfig()) — not by recipe config.
-  # This is deliberate: Vance has engine-level mechanics (Activity-Log,
+  # directly (see EddieEngine.bundledConfig()) — not by recipe config.
+  # This is deliberate: Eddie has engine-level mechanics (Activity-Log,
   # Peer-Events, Cross-Project-Spawn) that are not config-bar. See
-  # specification/vance-engine.md §1.2.
+  # specification/eddie-engine.md §1.2.
 
   - name: ford
     description: |
@@ -347,6 +352,11 @@ recipes:
       model: default:analyze
       validation: false
       maxIterations: 8
+      # Degraded-but-available fallback: if the analyze-tier model is
+      # rate-limited or 5xx, retry on the fast tier rather than failing
+      # the whole turn.
+      fallbackModels:
+        - default:fast
     promptPrefix: |
       You are a minimal Ford assistant in a Vance session.
       Keep answers short and helpful. Tools are available — call
@@ -600,6 +610,11 @@ recipes:
     params:
       model: default:analyze
       rootTaskKind: PLAN
+      # PLAN/AGGREGATE turns benefit from staying on the analyze tier;
+      # but if it's unavailable, falling to fast is better than dying
+      # mid-tree.
+      fallbackModels:
+        - default:fast
     promptPrefix: |
       You are **Marvin**, the deep-think engine of a Vance session.
       You don't talk to the user directly — that's Arthur's job. You
@@ -636,7 +651,11 @@ recipes:
       (Tests). Für echte Use-Cases das spezifische Council-Recipe
       wählen (z.B. council-three-perspectives).
     engine: zaphod
-    params: {}
+    params:
+      # Synthesis call falls through to fast tier if the tenant default
+      # is rate-limited.
+      fallbackModels:
+        - default:fast
     promptPrefix: |
       You are Zaphod, the multi-head orchestrator. You don't talk to
       the user directly — you drive heads (each one a Ford-style

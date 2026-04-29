@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
  * infrastructure, not work projects. Pass {@code includeSystem=true}
  * to see them anyway.
  *
- * <p>Used primarily by the Vance hub engine so the user can ask
+ * <p>Used primarily by the Eddie hub engine so the user can ask
  * „welche Projekte gibt es?" and get a real answer instead of an
  * intent-without-action turn.
  */
@@ -33,7 +33,7 @@ public class ProjectListTool implements Tool {
                     "includeSystem", Map.of(
                             "type", "boolean",
                             "description", "Include SYSTEM-kind projects "
-                                    + "(e.g. the per-user Vance hub). "
+                                    + "(e.g. the per-user Eddie hub). "
                                     + "Defaults to false."),
                     "includeArchived", Map.of(
                             "type", "boolean",

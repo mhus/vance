@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
  * <p>Schemes other than {@code http} / {@code https} are rejected to
  * avoid accidental local-file or {@code file://} access. There is no
  * loopback-blocklist — this is a hub-side tool, not a worker tool, and
- * the engines that get it (Vance, Ford) are trusted to operate inside
+ * the engines that get it (Eddie, Ford) are trusted to operate inside
  * the user's own scope.
  */
 @Component

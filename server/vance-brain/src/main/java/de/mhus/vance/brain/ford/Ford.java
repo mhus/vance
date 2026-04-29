@@ -255,10 +255,15 @@ public class Ford implements ThinkEngine {
                     .content(userInput)
                     .build());
 
-            AiChatConfig config = resolveAiConfig(
-                    process, ctx.settingService(), aiModelResolver);
+            // Build the chat as primary + ordered fallback chain (recipe
+            // params.fallbackModels). Single-entry behaviour when no
+            // fallbacks configured.
+            de.mhus.vance.brain.ai.ChatBehavior behavior =
+                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
+                            process, ctx.settingService(), aiModelResolver);
+            AiChatConfig config = behavior.entries().get(0).config();
             AiChat aiChat = ctx.aiModelService().createChat(
-                    config, AiChatOptions.builder().build());
+                    behavior, AiChatOptions.builder().build());
 
             List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
             String skillSection = skillPromptComposer.compose(activeSkills);

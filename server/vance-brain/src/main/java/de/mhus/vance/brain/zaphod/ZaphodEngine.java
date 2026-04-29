@@ -392,8 +392,11 @@ public class ZaphodEngine implements ThinkEngine {
             return;
         }
         try {
-            AiChatConfig config = resolveAiConfig(process, ctx.settingService(), aiModelResolver);
-            AiChat ai = ctx.aiModelService().createChat(config, AiChatOptions.builder().build());
+            de.mhus.vance.brain.ai.ChatBehavior behavior =
+                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
+                            process, ctx.settingService(), aiModelResolver);
+            AiChatConfig config = behavior.entries().get(0).config();
+            AiChat ai = ctx.aiModelService().createChat(behavior, AiChatOptions.builder().build());
 
             StringBuilder body = new StringBuilder();
             if (state.getSynthesizerPrompt() != null && !state.getSynthesizerPrompt().isBlank()) {

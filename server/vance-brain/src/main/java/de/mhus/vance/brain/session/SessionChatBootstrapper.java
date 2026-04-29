@@ -44,7 +44,7 @@ public class SessionChatBootstrapper {
 
     private static final String SETTING_DEFAULT_CHAT_ENGINE = "session.defaultChatEngine";
     private static final String DEFAULT_CHAT_ENGINE = "arthur";
-    private static final String HUB_CHAT_ENGINE = "vance";
+    private static final String HUB_CHAT_ENGINE = "eddie";
     private static final String SETTINGS_REF_TYPE = "tenant";
 
     private final ThinkProcessService thinkProcessService;

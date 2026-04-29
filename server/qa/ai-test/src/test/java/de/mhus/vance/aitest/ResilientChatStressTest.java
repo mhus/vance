@@ -8,6 +8,7 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
+import de.mhus.vance.brain.ai.ChatBehavior;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
@@ -102,6 +103,68 @@ class ResilientChatStressTest {
         assertThat(FailingAiProvider.callCount("3-then-ok"))
                 .as("primary entry should be hit 4 times: 3 fails + 1 success")
                 .isEqualTo(4);
+    }
+
+    /**
+     * Phase B: a two-entry chain where the primary always fails (retriable)
+     * and the fallback always succeeds. The chain should advance to the
+     * fallback after the primary's budget is exhausted, and the caller
+     * sees a clean completion.
+     */
+    @Test
+    void chainFallback_primaryExhausted_secondaryServes() throws Exception {
+        ChatBehavior behavior = new ChatBehavior(java.util.List.of(
+                new ChatBehavior.Entry(
+                        new AiChatConfig("failing", "always-503", "n/a"),
+                        "primary"),
+                new ChatBehavior.Entry(
+                        new AiChatConfig("failing", "always-ok", "n/a"),
+                        "fallback")));
+        AiChat chat = aiModelService.createChat(behavior, AiChatOptions.defaults());
+
+        ChatResponse response = streamAndCaptureResponse(chat, Duration.ofMinutes(3));
+
+        assertThat(response)
+                .as("call should complete via the fallback after primary exhausts retries")
+                .isNotNull();
+        assertThat(response.aiMessage().text())
+                .isEqualTo("ok-from-failing-provider");
+        assertThat(FailingAiProvider.callCount("always-503"))
+                .as("primary should burn its full retry budget (5)")
+                .isEqualTo(5);
+        assertThat(FailingAiProvider.callCount("always-ok"))
+                .as("fallback should serve exactly one call")
+                .isEqualTo(1);
+    }
+
+    /**
+     * Phase B: a two-entry chain where both entries always fail. Final
+     * outcome is a clean {@link AiChatException}, not a raw provider
+     * exception.
+     */
+    @Test
+    void chainFallback_allEntriesExhausted_propagates() throws Exception {
+        ChatBehavior behavior = new ChatBehavior(java.util.List.of(
+                new ChatBehavior.Entry(
+                        new AiChatConfig("failing", "always-503", "n/a"),
+                        "primary"),
+                new ChatBehavior.Entry(
+                        new AiChatConfig("failing", "always-overloaded", "n/a"),
+                        "fallback")));
+        AiChat chat = aiModelService.createChat(behavior, AiChatOptions.defaults());
+
+        Throwable err = streamAndCaptureError(chat, Duration.ofMinutes(5));
+
+        assertThat(err)
+                .as("after all chain entries fail, caller sees AiChatException")
+                .isNotNull()
+                .isInstanceOf(AiChatException.class);
+        assertThat(FailingAiProvider.callCount("always-503"))
+                .as("primary burns 5 attempts before chain advances")
+                .isEqualTo(5);
+        assertThat(FailingAiProvider.callCount("always-overloaded"))
+                .as("fallback also burns 5 attempts before chain runs out")
+                .isEqualTo(5);
     }
 
     /**

@@ -54,6 +54,27 @@ public class AiModelService {
         return createChat(config, AiChatOptions.defaults());
     }
 
+    /**
+     * Build a chat from a {@link ChatBehavior} — single entry behaves
+     * exactly like {@link #createChat(AiChatConfig, AiChatOptions)}.
+     * Multi-entry composes the entries into a {@link ChainedAiChat} that
+     * advances through fallbacks when an entry's retry budget is exhausted.
+     */
+    public AiChat createChat(ChatBehavior behavior, AiChatOptions options) {
+        if (behavior.entries().size() == 1) {
+            return createChat(behavior.entries().get(0).config(), options);
+        }
+        List<AiChat> built = behavior.entries().stream()
+                .map(e -> createChat(e.config(), options))
+                .toList();
+        String name = behavior.entries().stream()
+                .map(ChatBehavior.Entry::label)
+                .reduce((a, b) -> a + "+" + b)
+                .orElse("chained");
+        log.debug("ChatBehavior chain built: {} ({} entries)", name, built.size());
+        return new ChainedAiChat(name, built);
+    }
+
     /** Names of all registered providers, in no particular order. */
     public List<String> listProviders() {
         return List.copyOf(providers.keySet());

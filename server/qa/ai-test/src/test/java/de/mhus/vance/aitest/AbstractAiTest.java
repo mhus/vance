@@ -62,25 +62,40 @@ abstract class AbstractAiTest {
 
     @DynamicPropertySource
     static void mongoProperties(DynamicPropertyRegistry registry) {
-        // Wipe the ai-test working dir BEFORE Spring boots — brain's logback
-        // opens target/ai-test/brain.log during context init, and removing
-        // a file out from under an open FileAppender would orphan its writes.
-        // Running this in @DynamicPropertySource (which fires before context
-        // load) keeps every run on a clean slate without that race.
-        wipeAiTestDir();
+        // Wipe the work-product subdirs of target/ai-test/ so the next run
+        // starts clean. Keep the parent dir + brain.log alone: by the time
+        // @DynamicPropertySource fires, brain's logback FileAppender is
+        // already open on target/ai-test/brain.log (LoggingApplicationListener
+        // fires on ApplicationEnvironmentPreparedEvent, which is BEFORE the
+        // ContextCustomizer that backs @DynamicPropertySource). Deleting the
+        // file under it would orphan all subsequent writes; logback's
+        // <append>false</append> already truncates per JVM start so a fresh
+        // log per run is guaranteed without our help.
+        wipeAiTestArtifacts();
         MongoFixture.start();
         registry.add("spring.mongodb.uri", MongoFixture::uri);
         registry.add("spring.mongodb.database", () -> MongoFixture.DATABASE);
     }
 
     /**
-     * Recursively deletes {@code <surefire-cwd>/target/ai-test/} so the
-     * next run starts clean. Best-effort — silent on missing dir; rethrows
-     * other IO errors so a permission problem fails fast instead of leaving
-     * a hybrid state behind.
+     * Recursively deletes the work-product subdirectories under
+     * {@code target/ai-test/} ({@code workspace/}, {@code exec/},
+     * {@code data/}, {@code src/}) plus the foot subprocess stdout
+     * ({@code foot.log}). Keeps {@code brain.log} alone — see
+     * {@link #mongoProperties} for the reason.
      */
-    static void wipeAiTestDir() {
+    static void wipeAiTestArtifacts() {
         Path dir = Path.of("target", "ai-test").toAbsolutePath();
+        if (!Files.exists(dir)) {
+            return;
+        }
+        for (String sub : List.of("workspace", "exec", "data", "src")) {
+            deleteRecursively(dir.resolve(sub));
+        }
+        deleteFile(dir.resolve("foot.log"));
+    }
+
+    private static void deleteRecursively(Path dir) {
         if (!Files.exists(dir)) {
             return;
         }
@@ -96,6 +111,14 @@ abstract class AbstractAiTest {
                     });
         } catch (IOException e) {
             throw new RuntimeException("ai-test cleanup walk failed", e);
+        }
+    }
+
+    private static void deleteFile(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            throw new RuntimeException("ai-test cleanup failed at " + file, e);
         }
     }
 

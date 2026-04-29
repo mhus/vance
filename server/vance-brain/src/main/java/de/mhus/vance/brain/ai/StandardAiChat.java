@@ -14,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Provider-agnostic {@link AiChat} wrapper. Holds a matched sync/streaming
@@ -40,9 +41,25 @@ public class StandardAiChat implements AiChat {
         // trace under logger {@code de.mhus.vance.brain.ai.trace}.
         // The wrappers are zero-cost when trace is disabled.
         this.sync = sync == null ? null : new LoggingChatModel(name, sync);
-        this.streaming = streaming == null
-                ? null : new LoggingStreamingChatModel(name, streaming);
+        this.streaming = wrapStreaming(name, streaming);
         this.options = options;
+    }
+
+    /**
+     * Stack the streaming model: trace-logging inside, retry / chain-fallback
+     * outside. The resilient layer hides transient provider failures (rate
+     * limits, demand spikes, 5xx) from every engine — they see one
+     * {@link StreamingChatModel} that just works, or a clean
+     * {@link AiChatException} when everything is genuinely down.
+     */
+    private static @Nullable StreamingChatModel wrapStreaming(
+            String name, @Nullable StreamingChatModel raw) {
+        if (raw == null) {
+            return null;
+        }
+        StreamingChatModel logged = new LoggingStreamingChatModel(name, raw);
+        return new ResilientStreamingChatModel(
+                List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)));
     }
 
     @Override

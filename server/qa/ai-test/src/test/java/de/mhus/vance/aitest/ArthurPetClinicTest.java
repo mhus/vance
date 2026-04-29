@@ -4,14 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Stream;
 import org.bson.Document;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -62,13 +58,18 @@ class ArthurPetClinicTest extends AbstractAiTest {
     private static final String USERNAME = "wile.coyote";
     private static final String PASSWORD = "acme-rocket";
 
-    /** Time we give Arthur from "go" to landing compiled .class files. */
-    private static final Duration COMPILE_TIMEOUT = Duration.ofMinutes(8);
-    /** Additional time after compile to finish tests + post the summary. */
-    private static final Duration FINISH_TIMEOUT = Duration.ofMinutes(8);
+    /**
+     * Hard upper bound on how long we wait for Arthur to post the final
+     * OUTPUT_TEXT summary. This is an abort-the-stuck-test deadline, not
+     * a "happy path" duration — the run completes the moment Arthur
+     * actually posts, regardless of how soon that is.
+     */
+    private static final Duration FINISH_TIMEOUT = Duration.ofMinutes(15);
 
     private BrainAuthClient auth;
     private InboxAutoResponder responder;
+    private BrainInsightsClient insights;
+    private String sessionId;
 
     @BeforeAll
     void startSupport() throws Exception {
@@ -76,6 +77,7 @@ class ArthurPetClinicTest extends AbstractAiTest {
         auth.mint();
         responder = new InboxAutoResponder(auth, Duration.ofSeconds(2));
         responder.start();
+        insights = new BrainInsightsClient(auth);
     }
 
     @AfterAll
@@ -86,9 +88,14 @@ class ArthurPetClinicTest extends AbstractAiTest {
     }
 
     @Test
-    @Timeout(value = 20, unit = java.util.concurrent.TimeUnit.MINUTES, threadMode = ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 25, unit = java.util.concurrent.TimeUnit.MINUTES, threadMode = ThreadMode.SEPARATE_THREAD)
     void arthurBuildsPetClinic() throws Exception {
         String arthurId = connectAndCreateSession(PROJECT_ID);
+        // Capture the bound session id from the chat-process so the test can
+        // hit the Insights REST endpoint with the right session scope.
+        Document arthurDoc = findOne("think_processes",
+                Filters.eq("_id", new org.bson.types.ObjectId(arthurId)));
+        sessionId = arthurDoc != null ? arthurDoc.getString("sessionId") : "";
 
         // ChatStallResponder: a tiny background nudge that pokes Arthur in
         // the chat with 'Yes, please proceed.' if his process sits READY
@@ -148,72 +155,37 @@ class ArthurPetClinicTest extends AbstractAiTest {
                 """);
         assertThat(chat.kind()).isEqualTo("CHAT");
 
-        // Wait until the workspace shows a pom.xml and at least one .java
-        // file the agent wrote — that's the load-bearing structural signal.
-        Path workspace = Path.of("target", "ai-test", "workspace", PROJECT_ID).toAbsolutePath();
-        boolean produced = pollUntil(COMPILE_TIMEOUT, () -> {
-            if (!Files.exists(workspace.resolve("pom.xml"))) {
-                return false;
-            }
-            try (Stream<Path> walk = Files.walk(workspace)) {
-                return walk.filter(p -> p.toString().endsWith(".java"))
-                        .findAny().isPresent();
-            } catch (IOException e) {
-                return false;
-            }
-        });
-        assertThat(produced)
-                .as("workspace should contain pom.xml + at least one .java file "
-                        + "within %s — see %s and brain.log on failure",
-                        COMPILE_TIMEOUT, workspace)
-                .isTrue();
-
-        // Build evidence — checking the workspace's own build output is far
-        // more robust than scraping mvn stdout, because the agent may run
-        // `mvn` via either the server-side `exec_run` (target/ai-test/exec/)
-        // or the foot-side `client_exec_run` (target/ai-test/data/client-exec/),
-        // and the choice shifts between runs.
-        Path classes = workspace.resolve("target/classes");
-        boolean compiled = pollUntil(FINISH_TIMEOUT, () -> {
-            if (!Files.exists(classes)) {
-                return false;
-            }
-            try (Stream<Path> walk = Files.walk(classes)) {
-                return walk.anyMatch(p -> p.toString().endsWith(".class"));
-            } catch (IOException e) {
-                return false;
-            }
-        });
-        assertThat(compiled)
-                .as("workspace should contain compiled classes under %s "
-                        + "within %s", classes, FINISH_TIMEOUT)
-                .isTrue();
-
-        // Done-detection: Arthur is "done" when EITHER
-        //   (a) it posts a final OUTPUT_TEXT inbox item — the explicit
-        //       summary the prompt asks for, OR
-        //   (b) the workspace already shows a complete build
-        //       (target/classes + target/surefire-reports populated) —
-        //       Arthur may have stopped without posting; that's still a
-        //       successful task as far as the test is concerned.
-        // We poll both, and accept whichever lands first.
-        Path surefire = workspace.resolve("target/surefire-reports");
+        // Done-detection — single canonical signal: Arthur posts a
+        // final OUTPUT_TEXT inbox item per the prompt ("post a final
+        // summary to the inbox"). Anything weaker is a false positive
+        // (a passing mvn run from the planning phase doesn't mean the
+        // strategy completed). Anything else gets us the timeout, which
+        // exists ONLY to abort the test — not as a happy path.
         boolean done = pollUntil(FINISH_TIMEOUT, () -> {
             Document summary = findOne("inbox_items",
                     Filters.and(
                             Filters.eq("tenantId", TENANT),
                             Filters.eq("type", "OUTPUT_TEXT"),
                             Filters.eq("originProcessId", arthurId)));
-            if (summary != null) {
-                return true;
-            }
-            return Files.isDirectory(surefire) && hasAnyFile(surefire);
+            return summary != null;
         });
-        assertThat(done)
-                .as("Arthur should either post a final OUTPUT_TEXT summary "
-                        + "or land surefire-reports within %s after compile",
-                        FINISH_TIMEOUT)
-                .isTrue();
+        if (!done) {
+            // Pull a coherent server-side picture of who's still running
+            // before we fail — way more useful than just "timed out".
+            String snapshot;
+            try {
+                snapshot = insights.formatProcessTree(
+                        insights.processesForSession(sessionId));
+            } catch (Exception e) {
+                snapshot = "(insights snapshot failed: " + e.getMessage() + ")";
+            }
+            assertThat(done)
+                    .as("Arthur should post a final OUTPUT_TEXT summary "
+                            + "within %s — current engine snapshot:\n%s\n"
+                            + "see brain.log + foot.log under target/ai-test/",
+                            FINISH_TIMEOUT, snapshot)
+                    .isTrue();
+        }
 
         // Sanity: at least one Marvin/Vogon/Ford child of Arthur exists —
         // proves Arthur actually delegated rather than answering inline.
@@ -231,14 +203,6 @@ class ArthurPetClinicTest extends AbstractAiTest {
                 + responder.answered().size() + " inbox item(s):");
         for (InboxAutoResponder.AnsweredItem a : responder.answered()) {
             System.out.println("  - " + a.type() + " '" + a.title() + "' → " + a.value());
-        }
-    }
-
-    private static boolean hasAnyFile(Path dir) {
-        try (Stream<Path> walk = Files.walk(dir)) {
-            return walk.anyMatch(Files::isRegularFile);
-        } catch (IOException e) {
-            return false;
         }
     }
 

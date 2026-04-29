@@ -200,6 +200,8 @@ public class MarvinEngine implements ThinkEngine {
     private final BundledRecipeRegistry bundledRecipeRegistry;
     private final MarvinWorkerOutputParser workerOutputParser;
     private final AiModelResolver aiModelResolver;
+    private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final ObjectMapper objectMapper;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
@@ -408,6 +410,23 @@ public class MarvinEngine implements ThinkEngine {
         // finish.
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         try {
+            runTurnInner(process, ctx);
+        } finally {
+            // Snapshot the (possibly mutated) task-tree to the
+            // user-progress side-channel — runs on every turn end,
+            // including the failure path, so the HUD never freezes
+            // on a stale plan.
+            try {
+                emitPlanSnapshot(process);
+            } catch (RuntimeException pe) {
+                log.debug("Marvin id='{}' plan-snapshot push failed: {}",
+                        process.getId(), pe.toString());
+            }
+        }
+    }
+
+    private void runTurnInner(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        try {
             // 1. Consume pending events into node-status updates.
             List<SteerMessage> drained = ctx.drainPending();
             for (SteerMessage msg : drained) {
@@ -476,6 +495,67 @@ public class MarvinEngine implements ThinkEngine {
                     log.debug("Marvin id='{}' ignoring PeerEvent type='{}' (hub-only)",
                             process.getId(), pe.type());
         }
+    }
+
+    // ──────────────────── Plan snapshot ────────────────────
+
+    /**
+     * Builds a {@link de.mhus.vance.api.progress.PlanPayload} from the
+     * current task-tree and pushes it to the user-progress side-channel.
+     * Empty trees (process just spawned, root not yet created) are
+     * skipped — there's nothing useful to render.
+     */
+    private void emitPlanSnapshot(ThinkProcessDocument process) {
+        if (process.getId() == null) return;
+        List<MarvinNodeDocument> all = nodeService.listAll(process.getId());
+        if (all.isEmpty()) return;
+        Map<String, List<MarvinNodeDocument>> byParent = new LinkedHashMap<>();
+        MarvinNodeDocument root = null;
+        for (MarvinNodeDocument n : all) {
+            if (n.getParentId() == null) {
+                root = n;
+            } else {
+                byParent.computeIfAbsent(n.getParentId(), k -> new ArrayList<>()).add(n);
+            }
+        }
+        if (root == null) return;
+        for (List<MarvinNodeDocument> kids : byParent.values()) {
+            kids.sort((a, b) -> Integer.compare(a.getPosition(), b.getPosition()));
+        }
+        de.mhus.vance.api.progress.PlanNode rootPlanNode = toPlanNode(root, byParent);
+        progressEmitter.emitPlan(
+                process,
+                de.mhus.vance.api.progress.PlanPayload.builder()
+                        .rootNode(rootPlanNode)
+                        .build());
+    }
+
+    private de.mhus.vance.api.progress.PlanNode toPlanNode(
+            MarvinNodeDocument node,
+            Map<String, List<MarvinNodeDocument>> byParent) {
+        List<MarvinNodeDocument> kids = byParent.getOrDefault(node.getId(), List.of());
+        List<de.mhus.vance.api.progress.PlanNode> childPlans = kids.isEmpty()
+                ? null
+                : kids.stream().map(k -> toPlanNode(k, byParent)).toList();
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("position", node.getPosition());
+        if (node.getFailureReason() != null) {
+            meta.put("failureReason", node.getFailureReason());
+        }
+        if (node.getSpawnedProcessId() != null) {
+            meta.put("spawnedProcessId", node.getSpawnedProcessId());
+        }
+        if (node.getInboxItemId() != null) {
+            meta.put("inboxItemId", node.getInboxItemId());
+        }
+        return de.mhus.vance.api.progress.PlanNode.builder()
+                .id(node.getId() == null ? "" : node.getId())
+                .kind(node.getTaskKind().name().toLowerCase())
+                .title(node.getGoal())
+                .status(node.getStatus().name().toLowerCase())
+                .children(childPlans)
+                .meta(meta)
+                .build();
     }
 
     /**
@@ -751,8 +831,12 @@ public class MarvinEngine implements ThinkEngine {
                     + (customPrompt == null ? "" : "\n\nAdditional instruction:\n" + customPrompt);
             messages.add(UserMessage.from(body));
 
+            String modelAlias = config.provider() + ":" + config.modelName();
+            long startMs = System.currentTimeMillis();
             ChatResponse response = ai.chatModel().chat(
                     ChatRequest.builder().messages(messages).build());
+            llmCallTracker.record(
+                    process, response, System.currentTimeMillis() - startMs, modelAlias);
             AiMessage reply = response.aiMessage();
             String text = reply == null ? "" : reply.text();
             if (text == null) text = "";
@@ -1134,8 +1218,12 @@ public class MarvinEngine implements ThinkEngine {
             }
 
             messages.add(UserMessage.from(body.toString()));
+            String modelAlias = config.provider() + ":" + config.modelName();
+            long startMs = System.currentTimeMillis();
             ChatResponse response = ai.chatModel().chat(
                     ChatRequest.builder().messages(messages).build());
+            llmCallTracker.record(
+                    process, response, System.currentTimeMillis() - startMs, modelAlias);
             String summary = response.aiMessage() == null
                     ? "" : nullSafe(response.aiMessage().text()).trim();
             if (summary.length() > maxChars) {

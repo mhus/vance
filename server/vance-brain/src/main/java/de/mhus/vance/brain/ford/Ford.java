@@ -163,6 +163,7 @@ public class Ford implements ThinkEngine {
     private final ObjectMapper objectMapper;
     private final StreamingProperties streamingProperties;
     private final ModelCatalog modelCatalog;
+    private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final FordProperties fordProperties;
     private final MemoryService memoryService;
     private final MemoryCompactionService memoryCompactionService;
@@ -322,9 +323,10 @@ public class Ford implements ThinkEngine {
                 log.info("Ford.turn id='{}' validation=on maxIters={}",
                         process.getId(), maxIters);
             }
+            String modelAlias = config.provider() + ":" + config.modelName();
             String finalText = runToolLoop(
                     aiChat, toolSpecs, tools, messages, ctx, process,
-                    maxIters, validation);
+                    maxIters, validation, modelAlias);
 
             chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -413,7 +415,8 @@ public class Ford implements ThinkEngine {
             ThinkEngineContext ctx,
             ThinkProcessDocument process,
             int maxIters,
-            boolean validation) {
+            boolean validation,
+            String modelAlias) {
         StringBuilder finalText = new StringBuilder();
         int corrections = 0;
         int toolDataChars = 0;
@@ -423,7 +426,7 @@ public class Ford implements ThinkEngine {
                 req.toolSpecifications(toolSpecs);
             }
 
-            StreamResult streamed = streamOneIteration(aiChat, req.build(), ctx, process);
+            StreamResult streamed = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
             AiMessage reply = streamed.message;
 
             if (!reply.hasToolExecutionRequests()) {
@@ -508,10 +511,12 @@ public class Ford implements ThinkEngine {
             AiChat aiChat,
             ChatRequest request,
             ThinkEngineContext ctx,
-            ThinkProcessDocument process) {
+            ThinkProcessDocument process,
+            String modelAlias) {
         CompletableFuture<ChatResponse> done = new CompletableFuture<>();
         ClientEventPublisher events = ctx.events();
         String sessionId = process.getSessionId();
+        long startMs = System.currentTimeMillis();
 
         ChunkBatcher batcher = new ChunkBatcher(
                 streamingProperties.getChunkCharThreshold(),
@@ -552,6 +557,8 @@ public class Ford implements ThinkEngine {
 
         try {
             ChatResponse response = done.get();
+            llmCallTracker.record(
+                    process, response, System.currentTimeMillis() - startMs, modelAlias);
             AiMessage reply = response.aiMessage();
             return new StreamResult(reply, reply.text() == null ? "" : reply.text());
         } catch (ExecutionException e) {

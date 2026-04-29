@@ -76,6 +76,17 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <!--
+                      Each ai-test class boots its own brain via @SpringBootTest
+                      with WebEnvironment.DEFINED_PORT (18080). Spring's TestContext
+                      cache keeps prior contexts alive across classes in the same
+                      JVM, so the second class's bind fails with
+                      "Port 18080 is already in use". A fresh JVM per class drops
+                      the prior context (and frees the port) cleanly.
+                      See AbstractAiTest's class-level note.
+                    -->
+                    <forkCount>1</forkCount>
+                    <reuseForks>false</reuseForks>
                     <systemPropertyVariables>
                         <vance.foot.jar>${project.basedir}/../../vance-foot/target/vance-foot.jar</vance.foot.jar>
                         <vance.aitest.workdir>${project.build.directory}/ai-test</vance.aitest.workdir>

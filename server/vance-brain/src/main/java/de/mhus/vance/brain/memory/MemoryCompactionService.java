@@ -86,6 +86,7 @@ public class MemoryCompactionService {
     private final SessionService sessionService;
     private final SettingService settingService;
     private final FordProperties properties;
+    private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -128,7 +129,7 @@ public class MemoryCompactionService {
 
         String summary;
         try {
-            summary = callSummarizer(config, priorSummary, older);
+            summary = callSummarizer(process, config, priorSummary, older);
         } catch (RuntimeException e) {
             log.warn("Compaction summarizer failed for process='{}': {}",
                     processId, e.toString());
@@ -184,6 +185,7 @@ public class MemoryCompactionService {
     }
 
     private String callSummarizer(
+            ThinkProcessDocument process,
             AiChatConfig config,
             @Nullable MemoryDocument priorSummary,
             List<ChatMessageDocument> older) {
@@ -212,7 +214,11 @@ public class MemoryCompactionService {
         messages.add(UserMessage.from(body.toString()));
 
         ChatRequest request = ChatRequest.builder().messages(messages).build();
+        String modelAlias = config.provider() + ":" + config.modelName();
+        long startMs = System.currentTimeMillis();
         ChatResponse response = ai.chatModel().chat(request);
+        llmCallTracker.record(
+                process, response, System.currentTimeMillis() - startMs, modelAlias);
         String text = response.aiMessage() == null ? null : response.aiMessage().text();
         return text == null ? "" : text.trim();
     }

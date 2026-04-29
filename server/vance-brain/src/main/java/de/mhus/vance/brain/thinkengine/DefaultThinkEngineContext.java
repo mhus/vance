@@ -5,6 +5,7 @@ import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.brain.tools.ToolInvocationListener;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -30,7 +31,8 @@ record DefaultThinkEngineContext(
         ClientEventPublisher eventPublisher,
         ThinkProcessService thinkProcessService,
         ProcessEventEmitter processEventEmitter,
-        Set<String> allowedTools
+        Set<String> allowedTools,
+        ToolInvocationListener toolInvocationListener
 ) implements ThinkEngineContext {
 
     @Override
@@ -51,7 +53,7 @@ record DefaultThinkEngineContext(
                 process.getSessionId(),
                 process.getId(),
                 userId);
-        return new ContextToolsApi(toolDispatcher, scope, allowedTools);
+        return new ContextToolsApi(toolDispatcher, scope, allowedTools, toolInvocationListener);
     }
 
     @Override

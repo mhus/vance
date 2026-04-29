@@ -106,6 +106,7 @@ public class ZaphodEngine implements ThinkEngine {
     private final ChatMessageService chatMessageService;
     private final RecipeResolver recipeResolver;
     private final AiModelResolver aiModelResolver;
+    private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
@@ -418,8 +419,12 @@ public class ZaphodEngine implements ThinkEngine {
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(SYNTHESIS_SYSTEM_PROMPT));
             messages.add(UserMessage.from(body.toString()));
+            String modelAlias = config.provider() + ":" + config.modelName();
+            long startMs = System.currentTimeMillis();
             ChatResponse response = ai.chatModel().chat(
                     ChatRequest.builder().messages(messages).build());
+            llmCallTracker.record(
+                    process, response, System.currentTimeMillis() - startMs, modelAlias);
             String text = response.aiMessage() == null
                     ? null : response.aiMessage().text();
             if (text == null || text.isBlank()) {

@@ -2,6 +2,7 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.progress.ProgressToolListener;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -41,6 +42,7 @@ public class ThinkEngineService {
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter processEventEmitter;
+    private final ProgressToolListener progressToolListener;
 
     public ThinkEngineService(
             List<ThinkEngine> engineBeans,
@@ -51,7 +53,8 @@ public class ThinkEngineService {
             ClientEventPublisher eventPublisher,
             SessionService sessionService,
             ThinkProcessService thinkProcessService,
-            ProcessEventEmitter processEventEmitter) {
+            ProcessEventEmitter processEventEmitter,
+            ProgressToolListener progressToolListener) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
                     throw new IllegalStateException(
@@ -66,6 +69,7 @@ public class ThinkEngineService {
         this.sessionService = sessionService;
         this.thinkProcessService = thinkProcessService;
         this.processEventEmitter = processEventEmitter;
+        this.progressToolListener = progressToolListener;
         log.info("Registered think-engines: {}", engines.keySet());
     }
 
@@ -119,7 +123,8 @@ public class ThinkEngineService {
                 aiModelService, settingService, chatMessageService,
                 toolDispatcher, eventPublisher,
                 thinkProcessService, processEventEmitter,
-                allowed);
+                allowed,
+                progressToolListener.forProcess(process));
     }
 
     // ─── Convenience dispatch ────────────────────────────────────────────

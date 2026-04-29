@@ -94,6 +94,7 @@ public class VogonEngine implements ThinkEngine {
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     /** Lazy — Vogon spawns workers via the engine service which
      *  bootstraps every engine bean, including this one. */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
@@ -202,6 +203,27 @@ public class VogonEngine implements ThinkEngine {
                         "Strategy '" + initialState.getStrategy() + "' missing at runtime"));
         StrategyState state = initialState;
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
+        try {
+            runTurnInner(process, ctx, strategy, state);
+        } finally {
+            // Snapshot the (possibly mutated) phase state to the
+            // user-progress side-channel — runs on every turn end,
+            // including the failure path.
+            try {
+                emitPlanSnapshot(process, strategy, loadState(process));
+            } catch (RuntimeException pe) {
+                log.debug("Vogon id='{}' plan-snapshot push failed: {}",
+                        process.getId(), pe.toString());
+            }
+        }
+    }
+
+    private void runTurnInner(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            StrategySpec strategy,
+            StrategyState initialState) {
+        StrategyState state = initialState;
         try {
             // 1. Fold pending events (inbox answers, parent steers).
             for (SteerMessage msg : ctx.drainPending()) {
@@ -725,6 +747,69 @@ public class VogonEngine implements ThinkEngine {
             if (phaseName.equals(p.getName())) return p;
         }
         return null;
+    }
+
+    // ──────────────────── Plan snapshot ────────────────────
+
+    /**
+     * Builds a {@link de.mhus.vance.api.progress.PlanPayload} from the
+     * strategy + current state and pushes it to the user-progress
+     * side-channel. Each phase becomes a child of the strategy root;
+     * status is derived from {@code phaseHistory}, {@code currentPhaseName},
+     * and {@code pendingCheckpoint}.
+     */
+    private void emitPlanSnapshot(
+            ThinkProcessDocument process,
+            StrategySpec strategy,
+            StrategyState state) {
+        if (process.getId() == null) return;
+        java.util.List<de.mhus.vance.api.progress.PlanNode> phaseNodes =
+                new java.util.ArrayList<>();
+        java.util.Set<String> historySet = new java.util.HashSet<>(state.getPhaseHistory());
+        String current = state.getCurrentPhaseName();
+        boolean blocked = state.getPendingCheckpoint() != null;
+        for (PhaseSpec p : strategy.getPhases()) {
+            String status;
+            if (historySet.contains(p.getName())) {
+                status = "done";
+            } else if (p.getName().equals(current)) {
+                status = blocked ? "blocked" : "running";
+            } else {
+                status = "pending";
+            }
+            java.util.Map<String, Object> meta = new java.util.LinkedHashMap<>();
+            if (p.getWorker() != null) meta.put("worker", p.getWorker());
+            if (p.getCheckpoint() != null) meta.put("hasCheckpoint", true);
+            if (p.getGate() != null) meta.put("hasGate", true);
+            String spawnedId = state.getWorkerProcessIds().get(p.getName());
+            if (spawnedId != null) meta.put("spawnedProcessId", spawnedId);
+            if (status.equals("blocked") && state.getPendingCheckpoint() != null) {
+                meta.put("inboxItemId", state.getPendingCheckpoint().getInboxItemId());
+            }
+            phaseNodes.add(de.mhus.vance.api.progress.PlanNode.builder()
+                    .id(p.getName())
+                    .kind("phase")
+                    .title(p.getName())
+                    .status(status)
+                    .meta(meta)
+                    .build());
+        }
+        String rootStatus = state.isStrategyComplete()
+                ? "done"
+                : (current == null ? "pending" : (blocked ? "blocked" : "running"));
+        de.mhus.vance.api.progress.PlanNode rootNode =
+                de.mhus.vance.api.progress.PlanNode.builder()
+                        .id(state.getStrategy())
+                        .kind("strategy")
+                        .title(state.getStrategy())
+                        .status(rootStatus)
+                        .children(phaseNodes)
+                        .build();
+        progressEmitter.emitPlan(
+                process,
+                de.mhus.vance.api.progress.PlanPayload.builder()
+                        .rootNode(rootNode)
+                        .build());
     }
 
     private static boolean isFlagTrue(StrategyState state, String flag) {

@@ -132,6 +132,14 @@ public class RecipeResolver {
             }
         }
 
+        // Default the user-progress verbosity if the recipe didn't pin
+        // it (and the caller didn't override it). NORMAL = metrics +
+        // tool-boundary status, no engine-INFO chatter. Engines never
+        // hard-code the key, so it has to surface here.
+        mergedParams.putIfAbsent(
+                de.mhus.vance.brain.progress.ProgressLevel.PARAM_KEY,
+                de.mhus.vance.brain.progress.ProgressLevel.NORMAL.name().toLowerCase());
+
         Set<String> effectiveAllowed = computeAllowed(
                 engine.allowedTools(), r.allowedToolsAdd(), r.allowedToolsRemove());
 

@@ -33,18 +33,28 @@ public final class ContextToolsApi {
     private final ToolDispatcher dispatcher;
     private final ToolInvocationContext ctx;
     private final Set<String> allowed;
+    private final ToolInvocationListener listener;
 
     public ContextToolsApi(ToolDispatcher dispatcher, ToolInvocationContext ctx) {
-        this(dispatcher, ctx, Set.of());
+        this(dispatcher, ctx, Set.of(), ToolInvocationListener.NOOP);
     }
 
     public ContextToolsApi(
             ToolDispatcher dispatcher,
             ToolInvocationContext ctx,
             Set<String> allowed) {
+        this(dispatcher, ctx, allowed, ToolInvocationListener.NOOP);
+    }
+
+    public ContextToolsApi(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> allowed,
+            ToolInvocationListener listener) {
         this.dispatcher = dispatcher;
         this.ctx = ctx;
         this.allowed = allowed == null ? Set.of() : Set.copyOf(allowed);
+        this.listener = listener == null ? ToolInvocationListener.NOOP : listener;
     }
 
     /** All tools visible in this scope (after the engine's allow-filter). */
@@ -63,14 +73,25 @@ public final class ContextToolsApi {
 
     /**
      * Invoke by name. Unknown tool, denied tool, or failure
-     * → {@link ToolException}.
+     * → {@link ToolException}. The wired
+     * {@link ToolInvocationListener} (if any) is called before and
+     * after dispatch — including on the failure path.
      */
     public Map<String, Object> invoke(String name, Map<String, Object> params) {
         if (!isAllowed(name)) {
             throw new ToolException(
                     "Tool '" + name + "' is not in this engine's allowed tool-pool");
         }
-        return dispatcher.invoke(name, params, ctx);
+        listener.before(name);
+        long startMs = System.currentTimeMillis();
+        try {
+            Map<String, Object> result = dispatcher.invoke(name, params, ctx);
+            listener.after(name, System.currentTimeMillis() - startMs, null);
+            return result;
+        } catch (RuntimeException e) {
+            listener.after(name, System.currentTimeMillis() - startMs, e);
+            throw e;
+        }
     }
 
     /**
@@ -122,7 +143,7 @@ public final class ContextToolsApi {
         if (merged.size() == allowed.size()) {
             return this;
         }
-        return new ContextToolsApi(dispatcher, ctx, merged);
+        return new ContextToolsApi(dispatcher, ctx, merged, listener);
     }
 
     private boolean isAllowed(String toolName) {

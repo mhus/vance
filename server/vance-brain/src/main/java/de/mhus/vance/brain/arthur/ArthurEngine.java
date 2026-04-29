@@ -15,6 +15,7 @@ import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
+import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.recipe.BundledRecipe;
 import de.mhus.vance.brain.recipe.BundledRecipeRegistry;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -165,6 +166,7 @@ public class ArthurEngine implements ThinkEngine {
     private final BundledRecipeRegistry bundledRecipeRegistry;
     private final AiModelResolver aiModelResolver;
     private final ModelCatalog modelCatalog;
+    private final LlmCallTracker llmCallTracker;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -313,9 +315,10 @@ public class ArthurEngine implements ThinkEngine {
                     process.getId(), inbox.size(), messages.size(),
                     config.modelName(), maxIters, validation);
 
+            String modelAlias = config.provider() + ":" + config.modelName();
             String finalText = runToolLoop(
                     aiChat, toolSpecs, tools, messages, ctx, process,
-                    maxIters, validation);
+                    maxIters, validation, modelAlias);
 
             chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -347,7 +350,8 @@ public class ArthurEngine implements ThinkEngine {
             ThinkEngineContext ctx,
             ThinkProcessDocument process,
             int maxIters,
-            boolean validation) {
+            boolean validation,
+            String modelAlias) {
         StringBuilder finalText = new StringBuilder();
         int corrections = 0;
         for (int iter = 0; iter < maxIters; iter++) {
@@ -355,7 +359,7 @@ public class ArthurEngine implements ThinkEngine {
             if (!toolSpecs.isEmpty()) {
                 req.toolSpecifications(toolSpecs);
             }
-            AiMessage reply = streamOneIteration(aiChat, req.build(), ctx, process);
+            AiMessage reply = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
 
             if (!reply.hasToolExecutionRequests()) {
                 String text = reply.text();
@@ -417,10 +421,12 @@ public class ArthurEngine implements ThinkEngine {
             AiChat aiChat,
             ChatRequest request,
             ThinkEngineContext ctx,
-            ThinkProcessDocument process) {
+            ThinkProcessDocument process,
+            String modelAlias) {
         CompletableFuture<ChatResponse> done = new CompletableFuture<>();
         ClientEventPublisher events = ctx.events();
         String sessionId = process.getSessionId();
+        long startMs = System.currentTimeMillis();
 
         ChunkBatcher batcher = new ChunkBatcher(
                 streamingProperties.getChunkCharThreshold(),
@@ -460,7 +466,10 @@ public class ArthurEngine implements ThinkEngine {
         });
 
         try {
-            return done.get().aiMessage();
+            ChatResponse complete = done.get();
+            llmCallTracker.record(
+                    process, complete, System.currentTimeMillis() - startMs, modelAlias);
+            return complete.aiMessage();
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             throw new AiChatException("Arthur streaming failed: " + cause.getMessage(), cause);

@@ -34,6 +34,14 @@ export * from './insights/PendingMessageInsightsDto';
 export * from './insights/SessionInsightsDto';
 export * from './insights/ThinkProcessInsightsDto';
 
+export * from './progress/MetricsPayload';
+export * from './progress/PlanNode';
+export * from './progress/PlanPayload';
+export * from './progress/ProcessProgressNotification';
+export * from './progress/ProgressKind';
+export * from './progress/StatusPayload';
+export * from './progress/StatusTag';
+
 export * from './projects/ProjectCreateRequest';
 export * from './projects/ProjectDto';
 export * from './projects/ProjectGroupCreateRequest';

@@ -86,6 +86,18 @@ public final class MessageType {
     /** Brain → client (welcome-time): summary of pending items waiting. */
     public static final String INBOX_PENDING_SUMMARY = "inbox-pending-summary";
 
+    // ─── User-Progress Side-Channel ──────────────────────────────
+
+    /**
+     * Server-initiated notification: live progress update from a running
+     * think-process. Unified envelope ({@code ProcessProgressNotification})
+     * with three payload variants (metrics / plan / status) discriminated
+     * by {@code kind}. Side-channel — never enters conversation history.
+     *
+     * See {@code specification/user-progress-channel.md}.
+     */
+    public static final String PROCESS_PROGRESS = "process-progress";
+
     private MessageType() {
     }
 }

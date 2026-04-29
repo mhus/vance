@@ -20,10 +20,15 @@ public class ProjectListCommand implements SlashCommand {
 
     private final ConnectionService connection;
     private final ChatTerminal terminal;
+    private final SuggestionCache suggestionCache;
 
-    public ProjectListCommand(ConnectionService connection, ChatTerminal terminal) {
+    public ProjectListCommand(
+            ConnectionService connection,
+            ChatTerminal terminal,
+            SuggestionCache suggestionCache) {
         this.connection = connection;
         this.terminal = terminal;
+        this.suggestionCache = suggestionCache;
     }
 
     @Override
@@ -34,6 +39,11 @@ public class ProjectListCommand implements SlashCommand {
     @Override
     public String description() {
         return "List projects in the current tenant. Optional: [projectGroupId].";
+    }
+
+    @Override
+    public List<ArgSpec> argSpec() {
+        return List.of(ArgSpec.of("projectGroupId", ArgKind.PROJECT_GROUP));
     }
 
     @Override
@@ -49,6 +59,12 @@ public class ProjectListCommand implements SlashCommand {
                 ProjectListResponse.class,
                 Duration.ofSeconds(10));
 
+        if (response.getProjects() != null) {
+            suggestionCache.rememberProjects(response.getProjects().stream()
+                    .map(ProjectSummary::getName)
+                    .filter(s -> s != null && !s.isBlank())
+                    .toList());
+        }
         if (response.getProjects() == null || response.getProjects().isEmpty()) {
             terminal.info("No projects.");
             return;

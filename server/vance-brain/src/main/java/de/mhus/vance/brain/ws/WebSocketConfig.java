@@ -24,6 +24,12 @@ public class WebSocketConfig {
             VanceBrainProperties properties) {
         return registry -> registry
                 .addHandler(handler, properties.getPath())
-                .addInterceptors(interceptor);
+                .addInterceptors(interceptor)
+                // Browser WebSocket sends an Origin header that Spring matches
+                // against the registered allowed list; the default refuses any
+                // cross-origin upgrade. We accept any origin because auth is
+                // JWT-only — the upgrade itself is gated by BrainAccessFilter
+                // (token + tenant cross-check) rather than the page's origin.
+                .setAllowedOrigins("*");
     }
 }

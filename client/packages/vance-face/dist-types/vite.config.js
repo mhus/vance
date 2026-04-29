@@ -7,6 +7,7 @@ const editorEntries = {
     index: resolve(__dirname, 'index.html'),
     document: resolve(__dirname, 'document-editor.html'),
     inbox: resolve(__dirname, 'inbox.html'),
+    chat: resolve(__dirname, 'chat-editor.html'),
     scopes: resolve(__dirname, 'scopes.html'),
     recipes: resolve(__dirname, 'recipes.html'),
     skills: resolve(__dirname, 'skills.html'),
@@ -16,11 +17,12 @@ const editorEntries = {
 export default defineConfig({
     plugins: [vue()],
     server: {
-        port: 3000,
+        port: 9900,
         proxy: {
             '/brain': {
-                target: process.env.VITE_BRAIN_URL ?? 'http://localhost:8080',
+                target: process.env.VITE_BRAIN_URL ?? 'http://localhost:9990',
                 changeOrigin: true,
+                ws: true,
             },
         },
     },

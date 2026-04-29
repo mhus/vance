@@ -33,6 +33,11 @@ public class ProcessActivateCommand implements SlashCommand {
     }
 
     @Override
+    public List<ArgSpec> argSpec() {
+        return List.of(ArgSpec.of("name", ArgKind.PROCESS));
+    }
+
+    @Override
     public void execute(List<String> args) {
         if (args.isEmpty()) {
             String active = sessions.activeProcess();

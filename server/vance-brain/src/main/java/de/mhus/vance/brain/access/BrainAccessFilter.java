@@ -44,6 +44,17 @@ public class BrainAccessFilter extends AccessFilterBase {
     private static final Pattern DOCUMENT_CONTENT_PATH =
             Pattern.compile("^/brain/[^/]+/documents/[^/]+/content/?$");
 
+    /**
+     * WebSocket upgrade endpoint. The browser {@code WebSocket()} API
+     * cannot attach an {@code Authorization} header, so web clients
+     * pass the JWT as {@code ?token=}. Same caveat as the document
+     * route: token will appear in access logs of the upgrade request.
+     * Acceptable here because the JWT is short-lived and the WS
+     * connection itself authenticates by socket identity afterwards.
+     */
+    private static final Pattern WS_UPGRADE_PATH =
+            Pattern.compile("^/brain/[^/]+/ws/?$");
+
     public BrainAccessFilter(JwtService jwtService) {
         super(jwtService);
     }
@@ -61,9 +72,13 @@ public class BrainAccessFilter extends AccessFilterBase {
 
     @Override
     protected boolean allowsQueryToken(String requestUri, String method) {
-        // GET-only, scoped to the document-content streaming route.
-        return "GET".equals(method)
-                && DOCUMENT_CONTENT_PATH.matcher(requestUri).matches();
+        if (!"GET".equals(method)) {
+            return false;
+        }
+        // Document-content streaming and WebSocket upgrade — both routes
+        // can't carry an Authorization header from the browser.
+        return DOCUMENT_CONTENT_PATH.matcher(requestUri).matches()
+                || WS_UPGRADE_PATH.matcher(requestUri).matches();
     }
 
     @Override

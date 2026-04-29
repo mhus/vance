@@ -12,5 +12,8 @@ export enum StatusTag {
   FILE_READ,
   DELEGATING,
   WAITING,
+  PROVIDER,
+  NODE_DONE,
+  PHASE_DONE,
   INFO
 }

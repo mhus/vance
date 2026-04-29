@@ -31,6 +31,12 @@ public class VerbosityCommand implements SlashCommand {
     }
 
     @Override
+    public List<ArgSpec> argSpec() {
+        return List.of(ArgSpec.enumOf("level",
+                Arrays.stream(Verbosity.values()).map(Enum::name).toList()));
+    }
+
+    @Override
     public void execute(List<String> args) {
         if (args.isEmpty()) {
             terminal.info("Current verbosity: " + terminal.threshold()

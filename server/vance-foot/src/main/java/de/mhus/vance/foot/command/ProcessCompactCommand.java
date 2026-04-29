@@ -47,6 +47,11 @@ public class ProcessCompactCommand implements SlashCommand {
     }
 
     @Override
+    public List<ArgSpec> argSpec() {
+        return List.of(ArgSpec.of("processName", ArgKind.PROCESS));
+    }
+
+    @Override
     public void execute(List<String> args) throws Exception {
         String processName = args.isEmpty() ? sessions.activeProcess() : args.get(0);
         if (processName == null || processName.isBlank()) {

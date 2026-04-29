@@ -15,6 +15,15 @@ import org.jspecify.annotations.Nullable;
 public enum ClientType {
 
     CLI("cli"),
+    /**
+     * Browser-based UI (`@vance/vance-face`, chat-editor). Browsers
+     * cannot send custom headers on the WebSocket upgrade, so web
+     * clients authenticate via query parameters
+     * ({@code ?token=}, {@code ?clientType=}, {@code ?clientVersion=}).
+     * Web clients do not register {@code client-tool-*} frames —
+     * workspace tools are CLI/desktop concern.
+     */
+    WEB("web"),
     DESKTOP("desktop"),
     MOBILE("mobile");
 

@@ -12,7 +12,7 @@ spring:
       max-request-size: 50MB
 
 server:
-  # Fixed but non-default — brain default is 8080.
+  # Fixed but non-default — brain default is 9990.
   port: 18080
 
 vance:

@@ -39,6 +39,13 @@ public class ProcessSteerCommand implements SlashCommand {
     }
 
     @Override
+    public List<ArgSpec> argSpec() {
+        return List.of(
+                ArgSpec.of("processName", ArgKind.PROCESS),
+                ArgSpec.free("message"));
+    }
+
+    @Override
     public void execute(List<String> args) throws Exception {
         if (args.size() < 2) {
             terminal.error("Usage: /process-steer <processName> <message...>");

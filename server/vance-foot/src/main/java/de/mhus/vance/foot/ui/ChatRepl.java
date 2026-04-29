@@ -1,6 +1,7 @@
 package de.mhus.vance.foot.ui;
 
 import de.mhus.vance.foot.command.ChatInputService;
+import de.mhus.vance.foot.command.SlashCompleter;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.session.SessionService;
 import jakarta.annotation.PreDestroy;
@@ -8,13 +9,17 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.jline.keymap.KeyMap;
 import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.Reference;
 import org.jline.reader.UserInterruptException;
 import org.jline.reader.impl.history.DefaultHistory;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.jline.utils.InfoCmp;
+import org.jline.widget.AutosuggestionWidgets;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -35,6 +40,7 @@ public class ChatRepl {
     private final SessionService sessions;
     private final StatusBar statusBar;
     private final FootConfig config;
+    private final SlashCompleter completer;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -45,13 +51,15 @@ public class ChatRepl {
                     InterfaceService interfaceService,
                     SessionService sessions,
                     StatusBar statusBar,
-                    FootConfig config) {
+                    FootConfig config,
+                    SlashCompleter completer) {
         this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
         this.sessions = sessions;
         this.statusBar = statusBar;
         this.config = config;
+        this.completer = completer;
     }
 
     /** Allows {@code /quit} (or shutdown hooks) to exit the loop cleanly. */
@@ -79,6 +87,7 @@ public class ChatRepl {
         LineReaderBuilder builder = LineReaderBuilder.builder()
                 .terminal(t)
                 .history(new DefaultHistory())
+                .completer(completer)
                 .appName("vance-foot");
         Path historyFile = resolveHistoryFile();
         if (historyFile != null) {
@@ -95,6 +104,20 @@ public class ChatRepl {
         // terminals (older IntelliJ) need it pinned explicitly to not
         // accidentally disable it via fallback mode.
         r.setOpt(LineReader.Option.BRACKETED_PASTE);
+        // fish-shell-style ghost-text suggestion: while typing, JLine
+        // shows the tail of the most-recent matching history entry
+        // dimmed. AutosuggestionWidgets aliases forward-char /
+        // end-of-line / forward-word so that pressing them at the end
+        // of the line copies the suggested tail into the buffer
+        // instead of just beeping. setAutosuggestion(HISTORY) alone
+        // would only render the dim text without making it acceptable.
+        AutosuggestionWidgets autosuggestion = new AutosuggestionWidgets(r);
+        autosuggestion.enable();
+        // Up/Down arrow defaults to "up-line-or-history" (walks all
+        // history entries). Rebind to "history-search-backward" so the
+        // arrows walk only history entries that share the typed prefix.
+        // Same as readline's M-p / M-n behavior.
+        rebindHistorySearch(r, t);
         this.reader = r;
         chatTerminal.attachReader(r);
         statusBar.attach(t);
@@ -158,6 +181,26 @@ public class ChatRepl {
             return null;
         }
         return path;
+    }
+
+    /**
+     * Rebind Up/Down to prefix-search instead of unconditional history
+     * walk. Looks up the terminfo capabilities for the arrow keys —
+     * works whether the terminal sends {@code ESC [ A} (xterm-style) or
+     * an alternate sequence. No-op when the capability strings are
+     * unavailable for the current terminal.
+     */
+    private static void rebindHistorySearch(LineReader r, Terminal t) {
+        KeyMap<org.jline.reader.Binding> main = r.getKeyMaps().get(LineReader.MAIN);
+        if (main == null) return;
+        String up = KeyMap.key(t, InfoCmp.Capability.key_up);
+        String down = KeyMap.key(t, InfoCmp.Capability.key_down);
+        if (up != null) {
+            main.bind(new Reference(LineReader.HISTORY_SEARCH_BACKWARD), up);
+        }
+        if (down != null) {
+            main.bind(new Reference(LineReader.HISTORY_SEARCH_FORWARD), down);
+        }
     }
 
     private String prompt() {

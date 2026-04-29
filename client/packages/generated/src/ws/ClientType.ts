@@ -5,6 +5,7 @@
 
 export enum ClientType {
   CLI,
+  WEB,
   DESKTOP,
   MOBILE
 }

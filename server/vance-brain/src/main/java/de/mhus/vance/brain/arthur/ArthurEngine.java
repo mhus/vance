@@ -167,6 +167,7 @@ public class ArthurEngine implements ThinkEngine {
     private final AiModelResolver aiModelResolver;
     private final ModelCatalog modelCatalog;
     private final LlmCallTracker llmCallTracker;
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -294,8 +295,19 @@ public class ArthurEngine implements ThinkEngine {
                     de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
                             process, ctx.settingService(), aiModelResolver);
             AiChatConfig config = behavior.entries().get(0).config();
+            // Surface transient provider failures (rate limits, 5xx) to
+            // the user via the progress side-channel so they understand
+            // why the turn is stalled. The notifier is fired by the
+            // ResilientStreamingChatModel on every retry and chain-
+            // advance — see specification/user-progress-channel.md §6.
             AiChat aiChat = ctx.aiModelService().createChat(
-                    behavior, AiChatOptions.builder().build());
+                    behavior,
+                    AiChatOptions.builder()
+                            .userNotifier(msg -> progressEmitter.emitStatus(
+                                    process,
+                                    de.mhus.vance.api.progress.StatusTag.PROVIDER,
+                                    msg))
+                            .build());
             ContextToolsApi tools = ctx.tools();
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(

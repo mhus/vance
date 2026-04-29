@@ -1,6 +1,6 @@
 import { computed } from 'vue';
 import { clearAuth, getTenantId, getUsername } from '@vance/shared';
-const __VLS_props = withDefaults(defineProps(), {
+const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     wideRightPanel: false,
 });
@@ -12,6 +12,14 @@ function crumbOnClick(c) {
 }
 const tenantId = computed(() => getTenantId());
 const username = computed(() => getUsername());
+const defaultConnectionTooltip = computed(() => {
+    switch (props.connectionState) {
+        case 'connected': return 'Connected — live';
+        case 'occupied': return 'Session is occupied by another connection';
+        case 'idle': return 'Pick a session to start';
+        default: return '';
+    }
+});
 function logout() {
     clearAuth();
     window.location.href = '/index.html';
@@ -91,10 +99,10 @@ if (__VLS_ctx.connectionState) {
         ...{ class: ([
                 'inline-block w-2.5 h-2.5 rounded-full',
                 __VLS_ctx.connectionState === 'connected' ? 'bg-success' : '',
-                __VLS_ctx.connectionState === 'connecting' ? 'bg-warning' : '',
-                __VLS_ctx.connectionState === 'disconnected' ? 'bg-error' : '',
+                __VLS_ctx.connectionState === 'idle' ? 'bg-base-content/40' : '',
+                __VLS_ctx.connectionState === 'occupied' ? 'bg-error' : '',
             ]) },
-        title: (`Connection: ${__VLS_ctx.connectionState}`),
+        title: (__VLS_ctx.connectionTooltip ?? __VLS_ctx.defaultConnectionTooltip),
     });
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -225,6 +233,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             crumbOnClick: crumbOnClick,
             tenantId: tenantId,
             username: username,
+            defaultConnectionTooltip: defaultConnectionTooltip,
             logout: logout,
         };
     },

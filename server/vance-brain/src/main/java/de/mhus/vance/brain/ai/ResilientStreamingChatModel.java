@@ -10,6 +10,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,12 +57,27 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             });
 
     private final List<ChainEntry> chain;
+    private final @Nullable Consumer<String> userNotifier;
 
     public ResilientStreamingChatModel(List<ChainEntry> chain) {
+        this(chain, null);
+    }
+
+    /**
+     * @param chain         non-empty fallback chain
+     * @param userNotifier  optional human-readable feedback hook fired on
+     *                      every retry and chain-advance — used by the
+     *                      engine call-site to push a status ping into
+     *                      the user-progress side-channel so the user
+     *                      understands why a turn is taking longer.
+     *                      {@code null} disables the hook.
+     */
+    public ResilientStreamingChatModel(List<ChainEntry> chain, @Nullable Consumer<String> userNotifier) {
         if (chain == null || chain.isEmpty()) {
             throw new IllegalArgumentException("chain must contain at least one entry");
         }
         this.chain = List.copyOf(chain);
+        this.userNotifier = userNotifier;
     }
 
     @Override
@@ -147,6 +164,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
             // error so the final exception preserves the cause.
             log.warn("ResilientChatModel '{}': non-retriable error → advance: {}",
                     entry.label(), errorSummary(error));
+            notifyChainAdvance(entry, chainIdx, error);
             attempt(chainIdx + 1, 1, request, caller, error);
             return;
         }
@@ -156,6 +174,7 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
                             + "retry in {}ms — {}",
                     entry.label(), attempt, entry.policy().maxAttempts(),
                     backoffMs, errorSummary(error));
+            notifyRetry(entry, attempt, backoffMs, error);
             CompletableFuture.runAsync(
                     () -> attempt(chainIdx, attempt + 1, request, caller, error),
                     delayed(backoffMs));
@@ -165,7 +184,38 @@ public class ResilientStreamingChatModel implements StreamingChatModel {
         // (for Phase A: none, so the recursion call ends with all-exhausted).
         log.warn("ResilientChatModel '{}': retry budget exhausted after {} attempts → advance",
                 entry.label(), entry.policy().maxAttempts());
+        notifyChainAdvance(entry, chainIdx, error);
         attempt(chainIdx + 1, 1, request, caller, error);
+    }
+
+    private void notifyRetry(ChainEntry entry, int attempt, long backoffMs, Throwable error) {
+        Consumer<String> n = userNotifier;
+        if (n == null) return;
+        try {
+            n.accept(String.format("%s transient failure — %s · retry %d/%d in %.1fs",
+                    entry.label(),
+                    errorSummary(error),
+                    attempt,
+                    entry.policy().maxAttempts(),
+                    backoffMs / 1000.0));
+        } catch (RuntimeException notifyFail) {
+            // Resilience hook must never break the resilience itself.
+            log.debug("userNotifier threw on retry: {}", notifyFail.toString());
+        }
+    }
+
+    private void notifyChainAdvance(ChainEntry entry, int chainIdx, Throwable error) {
+        Consumer<String> n = userNotifier;
+        if (n == null) return;
+        String next = chainIdx + 1 < chain.size() ? chain.get(chainIdx + 1).label() : "<exhausted>";
+        try {
+            n.accept(String.format("%s exhausted — %s · falling back to %s",
+                    entry.label(),
+                    errorSummary(error),
+                    next));
+        } catch (RuntimeException notifyFail) {
+            log.debug("userNotifier threw on chain-advance: {}", notifyFail.toString());
+        }
     }
 
     private static java.util.concurrent.Executor delayed(long delayMs) {

@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -43,6 +44,12 @@ public class CommandService {
     /** Returns commands sorted by name — useful for {@code /help}. */
     public Collection<SlashCommand> all() {
         return new TreeMap<>(commands).values();
+    }
+
+    /** Lookup by canonical name (no leading slash, lower-case). */
+    public @Nullable SlashCommand find(String name) {
+        if (name == null || name.isEmpty()) return null;
+        return commands.get(name.toLowerCase());
     }
 
     /**

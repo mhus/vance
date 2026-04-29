@@ -67,7 +67,13 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
         }
 
         String rawClientType = firstHeader(request, HandshakeHeaders.CLIENT_TYPE);
+        if (isBlank(rawClientType)) {
+            rawClientType = firstQueryParam(request, HandshakeHeaders.CLIENT_TYPE_PARAM);
+        }
         String clientVersion = firstHeader(request, HandshakeHeaders.CLIENT_VERSION);
+        if (isBlank(clientVersion)) {
+            clientVersion = firstQueryParam(request, HandshakeHeaders.CLIENT_VERSION_PARAM);
+        }
         if (isBlank(rawClientType) || isBlank(clientVersion)) {
             response.setStatusCode(HttpStatus.BAD_REQUEST);
             return false;
@@ -117,6 +123,13 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
         List<String> values = request.getHeaders().get(name);
         if (values == null || values.isEmpty()) return null;
         return values.get(0);
+    }
+
+    private static @Nullable String firstQueryParam(ServerHttpRequest request, String name) {
+        if (!(request instanceof ServletServerHttpRequest servletRequest)) {
+            return null;
+        }
+        return servletRequest.getServletRequest().getParameter(name);
     }
 
     private static boolean isBlank(@Nullable String value) {

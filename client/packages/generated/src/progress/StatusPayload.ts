@@ -4,9 +4,12 @@
 */
 
 import { StatusTag } from './StatusTag';
+import { UsageDelta } from './UsageDelta';
 
 export interface StatusPayload {
   tag: StatusTag;
   text: string;
   detail?: string;
+  operationId?: string;
+  usage?: UsageDelta;
 }

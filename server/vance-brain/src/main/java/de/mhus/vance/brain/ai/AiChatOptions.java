@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import java.util.function.Consumer;
 import lombok.Builder;
 import lombok.Data;
 import org.jspecify.annotations.Nullable;
@@ -33,6 +34,15 @@ public class AiChatOptions {
     /** If {@code true}, the underlying provider logs requests + responses. */
     @Builder.Default
     private Boolean logRequests = false;
+
+    /**
+     * Optional callback fired by {@link ResilientStreamingChatModel} on
+     * every retry and chain-advance, with a human-readable explanation.
+     * Engines wire this to {@code ProgressEmitter.emitStatus(process,
+     * StatusTag.PROVIDER, msg)} so the user sees why a turn is taking
+     * longer than usual. {@code null} disables resilience feedback.
+     */
+    private @Nullable Consumer<String> userNotifier;
 
     public static AiChatOptions defaults() {
         return AiChatOptions.builder().build();

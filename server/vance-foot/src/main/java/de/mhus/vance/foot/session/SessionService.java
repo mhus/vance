@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.session;
 
+import de.mhus.vance.foot.command.SuggestionCache;
 import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.ui.StatusBar;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,12 +33,15 @@ public class SessionService {
     private final AtomicReference<@Nullable String> activeProcess = new AtomicReference<>();
     private final ObjectProvider<StatusBar> statusBar;
     private final ObjectProvider<ClientToolService> clientToolService;
+    private final ObjectProvider<SuggestionCache> suggestionCache;
 
     public SessionService(
             ObjectProvider<StatusBar> statusBar,
-            ObjectProvider<ClientToolService> clientToolService) {
+            ObjectProvider<ClientToolService> clientToolService,
+            ObjectProvider<SuggestionCache> suggestionCache) {
         this.statusBar = statusBar;
         this.clientToolService = clientToolService;
+        this.suggestionCache = suggestionCache;
     }
 
     public @Nullable BoundSession current() {
@@ -48,12 +52,14 @@ public class SessionService {
         current.set(new BoundSession(sessionId, projectId));
         notifyStatusBar();
         notifyClientTools();
+        invalidateSuggestions();
     }
 
     public void clear() {
         current.set(null);
         activeProcess.set(null);
         notifyStatusBar();
+        invalidateSuggestions();
     }
 
     public @Nullable String activeProcess() {
@@ -76,6 +82,13 @@ public class SessionService {
         ClientToolService cts = clientToolService.getIfAvailable();
         if (cts != null) {
             cts.registerAll();
+        }
+    }
+
+    private void invalidateSuggestions() {
+        SuggestionCache cache = suggestionCache.getIfAvailable();
+        if (cache != null) {
+            cache.invalidateAll();
         }
     }
 

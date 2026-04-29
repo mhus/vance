@@ -31,4 +31,22 @@ public class StatusPayload {
     private String text;
 
     private @Nullable String detail;
+
+    /**
+     * Correlation key linking an open ({@link StatusTag#TOOL_START},
+     * {@link StatusTag#DELEGATING}) ping with its close ({@link StatusTag#TOOL_END},
+     * {@link StatusTag#NODE_DONE}, {@link StatusTag#PHASE_DONE}). Lets the
+     * client measure wall-clock per operation and dispatch concurrent
+     * operations without mixing them up. {@code null} for one-shot pings
+     * ({@link StatusTag#SEARCH}, {@link StatusTag#FETCH}, {@link StatusTag#FILE_READ},
+     * {@link StatusTag#FILE_WRITE}, {@link StatusTag#WAITING}, {@link StatusTag#INFO}).
+     */
+    private @Nullable String operationId;
+
+    /**
+     * Cost of the operation just completed. Only populated on close-pings
+     * (TOOL_END / NODE_DONE / PHASE_DONE); always {@code null} on open-
+     * and one-shot pings.
+     */
+    private @Nullable UsageDelta usage;
 }

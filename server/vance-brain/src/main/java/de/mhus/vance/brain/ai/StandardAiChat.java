@@ -41,7 +41,7 @@ public class StandardAiChat implements AiChat {
         // trace under logger {@code de.mhus.vance.brain.ai.trace}.
         // The wrappers are zero-cost when trace is disabled.
         this.sync = sync == null ? null : new LoggingChatModel(name, sync);
-        this.streaming = wrapStreaming(name, streaming);
+        this.streaming = wrapStreaming(name, streaming, options);
         this.options = options;
     }
 
@@ -51,15 +51,20 @@ public class StandardAiChat implements AiChat {
      * limits, demand spikes, 5xx) from every engine — they see one
      * {@link StreamingChatModel} that just works, or a clean
      * {@link AiChatException} when everything is genuinely down.
+     *
+     * <p>When {@code options.userNotifier} is set, the resilient layer also
+     * pushes human-readable retry / chain-advance messages so the engine
+     * call-site can surface them in the user-progress side-channel.
      */
     private static @Nullable StreamingChatModel wrapStreaming(
-            String name, @Nullable StreamingChatModel raw) {
+            String name, @Nullable StreamingChatModel raw, AiChatOptions options) {
         if (raw == null) {
             return null;
         }
         StreamingChatModel logged = new LoggingStreamingChatModel(name, raw);
         return new ResilientStreamingChatModel(
-                List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)));
+                List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)),
+                options.getUserNotifier());
     }
 
     @Override

@@ -44,6 +44,14 @@ public class SkillSlashCommand implements SlashCommand {
     }
 
     @Override
+    public List<ArgSpec> argSpec() {
+        // Mixed ENUM+SKILL: the first token is "list", "clear", or a skill
+        // name. We surface the static subcommands here; users can still
+        // type a skill name freely (the brain validates).
+        return List.of(ArgSpec.enumOf("subcommand", List.of("list", "clear")));
+    }
+
+    @Override
     public void execute(List<String> args) throws Exception {
         if (args.isEmpty()) {
             terminal.error("Usage: /skill list | clear [name] | <name> [--once] [message...]");

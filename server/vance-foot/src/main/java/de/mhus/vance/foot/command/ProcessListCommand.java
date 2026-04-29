@@ -21,10 +21,15 @@ public class ProcessListCommand implements SlashCommand {
 
     private final ConnectionService connection;
     private final ChatTerminal terminal;
+    private final SuggestionCache suggestionCache;
 
-    public ProcessListCommand(ConnectionService connection, ChatTerminal terminal) {
+    public ProcessListCommand(
+            ConnectionService connection,
+            ChatTerminal terminal,
+            SuggestionCache suggestionCache) {
         this.connection = connection;
         this.terminal = terminal;
+        this.suggestionCache = suggestionCache;
     }
 
     @Override
@@ -57,6 +62,15 @@ public class ProcessListCommand implements SlashCommand {
                         .build(),
                 ProcessListResponse.class,
                 Duration.ofSeconds(10));
+        // Refill the suggestion cache so a Tab right after /process-list
+        // is instant. We always remember non-terminated names — that's
+        // what the completer wants regardless of the --all flag.
+        if (response.getProcesses() != null) {
+            suggestionCache.rememberProcesses(response.getProcesses().stream()
+                    .map(ProcessSummary::getName)
+                    .filter(s -> s != null && !s.isBlank())
+                    .toList());
+        }
         if (response.getProcesses() == null || response.getProcesses().isEmpty()) {
             if (response.getHiddenTerminated() != null) {
                 terminal.info("No live processes — "

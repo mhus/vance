@@ -6,12 +6,15 @@ import de.mhus.vance.api.progress.ProcessProgressNotification;
 import de.mhus.vance.api.progress.ProgressKind;
 import de.mhus.vance.api.progress.StatusPayload;
 import de.mhus.vance.api.progress.StatusTag;
+import de.mhus.vance.api.progress.UsageDelta;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.time.Instant;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -67,6 +70,48 @@ public class ProgressEmitter {
     /** Convenience overload — most status pings only need a tag and a short text. */
     public void emitStatus(ThinkProcessDocument process, StatusTag tag, String text) {
         emitStatus(process, StatusPayload.builder().tag(tag).text(text).build());
+    }
+
+    /**
+     * Opens a correlated operation: emits an open-tag ping
+     * ({@link StatusTag#TOOL_START}, {@link StatusTag#DELEGATING}, …) carrying
+     * a freshly minted {@code operationId}, and returns that id so the caller
+     * can pass it to {@link #closeOperation} when the operation finishes.
+     *
+     * <p>The id is also returned when the underlying {@link ProgressLevel}
+     * filter would suppress the push — callers don't have to special-case
+     * {@code null}, and a later {@link #closeOperation} with the id will
+     * also be suppressed consistently.
+     */
+    public String openOperation(ThinkProcessDocument process, StatusTag tag, String text) {
+        String operationId = UUID.randomUUID().toString();
+        emitStatus(process, StatusPayload.builder()
+                .tag(tag)
+                .text(text)
+                .operationId(operationId)
+                .build());
+        return operationId;
+    }
+
+    /**
+     * Closes a correlated operation: emits a close-tag ping
+     * ({@link StatusTag#TOOL_END}, {@link StatusTag#NODE_DONE},
+     * {@link StatusTag#PHASE_DONE}) carrying the same {@code operationId}
+     * that {@link #openOperation} returned, plus the operation's
+     * {@link UsageDelta}.
+     */
+    public void closeOperation(
+            ThinkProcessDocument process,
+            String operationId,
+            StatusTag tag,
+            String text,
+            @Nullable UsageDelta usage) {
+        emitStatus(process, StatusPayload.builder()
+                .tag(tag)
+                .text(text)
+                .operationId(operationId)
+                .usage(usage)
+                .build());
     }
 
     // ──────────────────────────────────────────────────────────────

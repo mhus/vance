@@ -28,6 +28,19 @@ public enum StatusTag {
     DELEGATING,
     /** Process is parked waiting for user input (inbox, gate, etc.). */
     WAITING,
+    /**
+     * AI provider resilience event — transient failure being retried, or
+     * the chain advancing to the next fallback model. Carries a human-
+     * readable explanation in {@link StatusPayload#getText()} so the user
+     * understands why a turn is taking longer than usual. Goes through
+     * the {@code NORMAL} progress level (only {@link #INFO} is filtered
+     * there).
+     */
+    PROVIDER,
+    /** Marvin task-tree node finished — {@link StatusPayload#getUsage()} carries the node subtotal. */
+    NODE_DONE,
+    /** Vogon phase completed — {@link StatusPayload#getUsage()} carries the phase subtotal. */
+    PHASE_DONE,
     /** Catch-all for engine-emitted asides that don't fit a specific tag. */
     INFO
 }

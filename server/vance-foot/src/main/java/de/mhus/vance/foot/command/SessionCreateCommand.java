@@ -41,6 +41,11 @@ public class SessionCreateCommand implements SlashCommand {
     }
 
     @Override
+    public List<ArgSpec> argSpec() {
+        return List.of(ArgSpec.of("projectId", ArgKind.PROJECT));
+    }
+
+    @Override
     public void execute(List<String> args) throws Exception {
         if (args.size() != 1) {
             terminal.error("Usage: /session-create <projectId>");

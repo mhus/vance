@@ -12,6 +12,9 @@ export * from './documents/DocumentListResponse';
 export * from './documents/DocumentSummary';
 export * from './documents/DocumentUpdateRequest';
 
+export * from './chat/ChatMessageAppendedData';
+export * from './chat/ChatMessageChunkData';
+export * from './chat/ChatMessageDto';
 export * from './chat/ChatRole';
 
 export * from './inbox/AnswerOutcome';
@@ -41,6 +44,7 @@ export * from './progress/ProcessProgressNotification';
 export * from './progress/ProgressKind';
 export * from './progress/StatusPayload';
 export * from './progress/StatusTag';
+export * from './progress/UsageDelta';
 
 export * from './projects/ProjectCreateRequest';
 export * from './projects/ProjectDto';
@@ -63,7 +67,15 @@ export * from './skills/SkillTriggerDto';
 export * from './skills/SkillTriggerType';
 export * from './skills/SkillWriteRequest';
 
+export * from './thinkprocess/BootstrappedProcess';
+export * from './thinkprocess/ProcessSpec';
+export * from './thinkprocess/ProcessSteerRequest';
+export * from './thinkprocess/ProcessSteerResponse';
+export * from './thinkprocess/ProcessSummary';
 export * from './thinkprocess/PromptMode';
+export * from './thinkprocess/SessionBootstrapRequest';
+export * from './thinkprocess/SessionBootstrapResponse';
+export * from './thinkprocess/ThinkProcessStatus';
 
 export * from './settings/SettingDto';
 export * from './settings/SettingType';
@@ -83,5 +95,18 @@ export * from './users/UserDto';
 export * from './users/UserPasswordRequest';
 export * from './users/UserUpdateRequest';
 
+export * from './ws/ClientType';
+export * from './ws/ErrorData';
 export * from './ws/ProjectGroupSummary';
+export * from './ws/ProjectListRequest';
+export * from './ws/ProjectListResponse';
 export * from './ws/ProjectSummary';
+export * from './ws/ServerInfo';
+export * from './ws/SessionCreateRequest';
+export * from './ws/SessionCreateResponse';
+export * from './ws/SessionListRequest';
+export * from './ws/SessionListResponse';
+export * from './ws/SessionResumeRequest';
+export * from './ws/SessionResumeResponse';
+export * from './ws/SessionSummary';
+export * from './ws/WelcomeData';

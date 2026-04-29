@@ -26,10 +26,15 @@ public class SessionListCommand implements SlashCommand {
 
     private final ConnectionService connection;
     private final ChatTerminal terminal;
+    private final SuggestionCache suggestionCache;
 
-    public SessionListCommand(ConnectionService connection, ChatTerminal terminal) {
+    public SessionListCommand(
+            ConnectionService connection,
+            ChatTerminal terminal,
+            SuggestionCache suggestionCache) {
         this.connection = connection;
         this.terminal = terminal;
+        this.suggestionCache = suggestionCache;
     }
 
     @Override
@@ -40,6 +45,11 @@ public class SessionListCommand implements SlashCommand {
     @Override
     public String description() {
         return "List sessions for the current user. Optional: [projectId].";
+    }
+
+    @Override
+    public List<ArgSpec> argSpec() {
+        return List.of(ArgSpec.of("projectId", ArgKind.PROJECT));
     }
 
     @Override
@@ -55,6 +65,12 @@ public class SessionListCommand implements SlashCommand {
                 SessionListResponse.class,
                 Duration.ofSeconds(10));
 
+        if (response.getSessions() != null) {
+            suggestionCache.rememberSessions(response.getSessions().stream()
+                    .map(SessionSummary::getSessionId)
+                    .filter(s -> s != null && !s.isBlank())
+                    .toList());
+        }
         if (response.getSessions() == null || response.getSessions().isEmpty()) {
             terminal.info("No sessions.");
             return;

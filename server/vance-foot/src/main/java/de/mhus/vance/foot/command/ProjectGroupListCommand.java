@@ -19,10 +19,15 @@ public class ProjectGroupListCommand implements SlashCommand {
 
     private final ConnectionService connection;
     private final ChatTerminal terminal;
+    private final SuggestionCache suggestionCache;
 
-    public ProjectGroupListCommand(ConnectionService connection, ChatTerminal terminal) {
+    public ProjectGroupListCommand(
+            ConnectionService connection,
+            ChatTerminal terminal,
+            SuggestionCache suggestionCache) {
         this.connection = connection;
         this.terminal = terminal;
+        this.suggestionCache = suggestionCache;
     }
 
     @Override
@@ -47,6 +52,12 @@ public class ProjectGroupListCommand implements SlashCommand {
                 ProjectGroupListResponse.class,
                 Duration.ofSeconds(10));
 
+        if (response.getGroups() != null) {
+            suggestionCache.rememberProjectGroups(response.getGroups().stream()
+                    .map(ProjectGroupSummary::getName)
+                    .filter(s -> s != null && !s.isBlank())
+                    .toList());
+        }
         if (response.getGroups() == null || response.getGroups().isEmpty()) {
             terminal.info("No project groups.");
             return;

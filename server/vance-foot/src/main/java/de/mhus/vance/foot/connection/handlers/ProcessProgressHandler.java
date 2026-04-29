@@ -6,14 +6,19 @@ import de.mhus.vance.api.progress.PlanPayload;
 import de.mhus.vance.api.progress.ProcessProgressNotification;
 import de.mhus.vance.api.progress.ProgressKind;
 import de.mhus.vance.api.progress.StatusPayload;
+import de.mhus.vance.api.progress.StatusTag;
+import de.mhus.vance.api.progress.UsageDelta;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.Verbosity;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
@@ -49,6 +54,15 @@ public class ProcessProgressHandler implements MessageHandler {
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
     private final ObjectMapper json = JsonMapper.builder().build();
+
+    /**
+     * Wall-clock start of every in-flight operation, keyed by
+     * {@code operationId}. Filled on open-tags ({@link StatusTag#TOOL_START},
+     * {@link StatusTag#DELEGATING}); drained on close-tags. End-to-end
+     * wall-clock measured here is the latency the user actually sees —
+     * server-side {@code usage.elapsedMs} reflects only brain-internal time.
+     */
+    private final Map<String, Instant> operationStarts = new ConcurrentHashMap<>();
 
     public ProcessProgressHandler(ChatTerminal terminal, StreamingDisplay streaming) {
         this.terminal = terminal;
@@ -128,12 +142,86 @@ public class ProcessProgressHandler implements MessageHandler {
 
     private void renderStatus(String src, @Nullable StatusPayload s) {
         if (s == null) return;
-        String line = String.format(
-                "[%s] %s · %s",
-                s.getTag() == null ? "?" : s.getTag().name().toLowerCase(),
-                src,
-                s.getText() == null ? "" : s.getText());
-        terminal.printlnStyled(Verbosity.INFO, dim(line));
+        StatusTag tag = s.getTag();
+        String operationId = s.getOperationId();
+        Duration wallClock = trackOperation(tag, operationId);
+
+        StringBuilder line = new StringBuilder();
+        line.append('[').append(tag == null ? "?" : tag.name().toLowerCase()).append("] ")
+                .append(src)
+                .append(" · ")
+                .append(s.getText() == null ? "" : s.getText());
+
+        if (wallClock != null) {
+            line.append(" · ").append(formatSeconds(wallClock.toMillis())).append(" wall");
+        }
+        appendUsage(line, s.getUsage());
+
+        terminal.printlnStyled(Verbosity.INFO, dim(line.toString()));
+    }
+
+    /**
+     * Returns the end-to-end wall-clock for a closing tag, or {@code null}
+     * if this status doesn't terminate a tracked operation. Open-tags get
+     * stored; close-tags get drained.
+     */
+    private @Nullable Duration trackOperation(@Nullable StatusTag tag, @Nullable String operationId) {
+        if (tag == null || operationId == null || operationId.isBlank()) {
+            return null;
+        }
+        if (isOpenTag(tag)) {
+            operationStarts.put(operationId, Instant.now());
+            return null;
+        }
+        if (isCloseTag(tag)) {
+            Instant started = operationStarts.remove(operationId);
+            if (started == null) return null;
+            return Duration.between(started, Instant.now());
+        }
+        return null;
+    }
+
+    private static boolean isOpenTag(StatusTag tag) {
+        return tag == StatusTag.TOOL_START || tag == StatusTag.DELEGATING;
+    }
+
+    private static boolean isCloseTag(StatusTag tag) {
+        return tag == StatusTag.TOOL_END
+                || tag == StatusTag.NODE_DONE
+                || tag == StatusTag.PHASE_DONE;
+    }
+
+    private static void appendUsage(StringBuilder line, @Nullable UsageDelta u) {
+        if (u == null) return;
+        // Token block only when an LLM was actually involved — otherwise
+        // the zero counts add noise (filesystem tools etc.).
+        if (u.getLlmCalls() > 0 || u.getTokensIn() > 0 || u.getTokensOut() > 0) {
+            line.append(" · ")
+                    .append(formatTokens(u.getTokensIn())).append(" in / ")
+                    .append(formatTokens(u.getTokensOut())).append(" out");
+            if (u.getLlmCalls() > 1) {
+                line.append(" · ").append(u.getLlmCalls()).append(" calls");
+            }
+        }
+        if (u.getModelAlias() != null && !u.getModelAlias().isBlank()) {
+            line.append(" · ").append(u.getModelAlias());
+        }
+        if (u.getCostMicros() != null && u.getCostMicros() > 0) {
+            line.append(" · ").append(formatCost(u.getCostMicros()));
+        }
+    }
+
+    private static String formatSeconds(long ms) {
+        if (ms < 1_000) return ms + "ms";
+        return String.format("%.1fs", ms / 1_000.0);
+    }
+
+    private static String formatCost(long micros) {
+        // micros = 1/1_000_000 EUR — render with two significant digits.
+        double euros = micros / 1_000_000.0;
+        if (euros >= 1.0) return String.format("€%.2f", euros);
+        if (euros >= 0.01) return String.format("%.0f¢", euros * 100);
+        return String.format("%.2f¢", euros * 100);
     }
 
     private static AttributedString dim(String text) {

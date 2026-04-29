@@ -72,8 +72,43 @@ public class LlmCallTracker {
         byProcess.remove(processId);
     }
 
+    /**
+     * Cumulative snapshot for {@code processId}. Returns {@link Snapshot#ZERO}
+     * when no LLM call has been recorded yet — callers (tool-decorator,
+     * marvin/vogon node entry) can subtract two snapshots to get the delta
+     * for the operation in between.
+     */
+    public Snapshot snapshot(@Nullable String processId) {
+        if (processId == null) {
+            return Snapshot.ZERO;
+        }
+        AtomicReference<Counters> ref = byProcess.get(processId);
+        if (ref == null) {
+            return Snapshot.ZERO;
+        }
+        Counters c = ref.get();
+        return new Snapshot(c.tokensIn, c.tokensOut, c.calls);
+    }
+
     private static int tokens(@Nullable Integer raw) {
         return raw == null || raw < 0 ? 0 : raw;
+    }
+
+    /**
+     * Read-only view of the cumulative counters for one process. Wall-clock
+     * is intentionally omitted — that's a {@code MetricsPayload} concern;
+     * operation-level wall-clock is measured separately by the tool
+     * decorator.
+     */
+    public record Snapshot(long tokensIn, long tokensOut, int calls) {
+        public static final Snapshot ZERO = new Snapshot(0, 0, 0);
+
+        public Snapshot minus(Snapshot other) {
+            return new Snapshot(
+                    tokensIn - other.tokensIn,
+                    tokensOut - other.tokensOut,
+                    calls - other.calls);
+        }
     }
 
     private record Counters(long tokensIn, long tokensOut, int calls, long elapsedMs) {

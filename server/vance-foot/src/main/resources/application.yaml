@@ -1,7 +1,7 @@
 vance:
   brain:
-    http-base: http://localhost:8080
-    ws-base: ws://localhost:8080
+    http-base: http://localhost:9990
+    ws-base: ws://localhost:9990
   auth:
     tenant: acme
     username: wile.coyote

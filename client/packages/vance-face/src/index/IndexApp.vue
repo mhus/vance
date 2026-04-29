@@ -113,6 +113,16 @@ function readNextParam(): string | null {
         <ul class="flex flex-col gap-3">
           <li class="flex items-center justify-between gap-4">
             <div>
+              <div class="font-semibold">Chat</div>
+              <div class="text-sm opacity-70">
+                Live chat with the brain over WebSocket. Pick an existing
+                session or start a new one in any project.
+              </div>
+            </div>
+            <VButton variant="primary" size="sm" href="/chat-editor.html">Open</VButton>
+          </li>
+          <li class="flex items-center justify-between gap-4">
+            <div>
               <div class="font-semibold">Documents</div>
               <div class="text-sm opacity-70">Browse and edit project documents.</div>
             </div>

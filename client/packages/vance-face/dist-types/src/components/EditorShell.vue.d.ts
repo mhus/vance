@@ -14,10 +14,18 @@ interface Props {
     /** Breadcrumb segments left-to-right (e.g. `['Project foo', 'Session bar']`). */
     breadcrumbs?: Crumb[];
     /**
-     * Connection-state dot in the topbar. Only chat-editor sets this; REST-only
+     * Connection-state dot in the topbar. Only WS editors set this; REST-only
      * editors omit the prop and the dot is hidden.
+     *
+     * Three states (see `specification/web-ui.md` §6.4):
+     *  - `connected` (green) — WS bound to a session, live stream active
+     *  - `idle`      (grey)  — picker mode, or transient reconnect
+     *  - `occupied`  (red)   — last bind attempt was rejected with 409
+     *                          (another connection holds the session lock)
      */
-    connectionState?: 'connected' | 'connecting' | 'disconnected';
+    connectionState?: 'connected' | 'idle' | 'occupied';
+    /** Optional tooltip override; defaults to a sensible per-state label. */
+    connectionTooltip?: string;
     /**
      * Doubles the default width of the right panel (320px → 640px). Use for
      * editors whose right panel hosts forms (e.g. settings editor).

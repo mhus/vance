@@ -16,10 +16,18 @@ interface Props {
   /** Breadcrumb segments left-to-right (e.g. `['Project foo', 'Session bar']`). */
   breadcrumbs?: Crumb[];
   /**
-   * Connection-state dot in the topbar. Only chat-editor sets this; REST-only
+   * Connection-state dot in the topbar. Only WS editors set this; REST-only
    * editors omit the prop and the dot is hidden.
+   *
+   * Three states (see `specification/web-ui.md` §6.4):
+   *  - `connected` (green) — WS bound to a session, live stream active
+   *  - `idle`      (grey)  — picker mode, or transient reconnect
+   *  - `occupied`  (red)   — last bind attempt was rejected with 409
+   *                          (another connection holds the session lock)
    */
-  connectionState?: 'connected' | 'connecting' | 'disconnected';
+  connectionState?: 'connected' | 'idle' | 'occupied';
+  /** Optional tooltip override; defaults to a sensible per-state label. */
+  connectionTooltip?: string;
   /**
    * Doubles the default width of the right panel (320px → 640px). Use for
    * editors whose right panel hosts forms (e.g. settings editor).
@@ -27,7 +35,7 @@ interface Props {
   wideRightPanel?: boolean;
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   breadcrumbs: () => [],
   wideRightPanel: false,
 });
@@ -41,6 +49,15 @@ function crumbOnClick(c: Crumb): (() => void) | null {
 
 const tenantId = computed<string | null>(() => getTenantId());
 const username = computed<string | null>(() => getUsername());
+
+const defaultConnectionTooltip = computed<string>(() => {
+  switch (props.connectionState) {
+    case 'connected': return 'Connected — live';
+    case 'occupied':  return 'Session is occupied by another connection';
+    case 'idle':      return 'Pick a session to start';
+    default:          return '';
+  }
+});
 
 function logout(): void {
   clearAuth();
@@ -89,10 +106,10 @@ function logout(): void {
           :class="[
             'inline-block w-2.5 h-2.5 rounded-full',
             connectionState === 'connected' ? 'bg-success' : '',
-            connectionState === 'connecting' ? 'bg-warning' : '',
-            connectionState === 'disconnected' ? 'bg-error' : '',
+            connectionState === 'idle' ? 'bg-base-content/40' : '',
+            connectionState === 'occupied' ? 'bg-error' : '',
           ]"
-          :title="`Connection: ${connectionState}`"
+          :title="connectionTooltip ?? defaultConnectionTooltip"
         />
 
         <div class="dropdown dropdown-end">

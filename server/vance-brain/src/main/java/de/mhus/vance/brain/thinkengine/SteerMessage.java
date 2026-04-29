@@ -120,9 +120,9 @@ public sealed interface SteerMessage
      * A peer hub-process of the same user reports a relevant action
      * (project created, worker spawned, status changed). Hub-only —
      * regular worker engines never receive this. See
-     * {@code specification/vance-engine.md} §5.3.
+     * {@code specification/eddie-engine.md} §5.3.
      *
-     * @param sourceVanceProcessId Mongo id of the emitting hub-process
+     * @param sourceEddieProcessId Mongo id of the emitting hub-process
      * @param userId               {@code UserDocument.name} that owns
      *                             both peer hubs
      * @param type                 event flavor — see {@link PeerEventType}
@@ -134,7 +134,7 @@ public sealed interface SteerMessage
     record PeerEvent(
             Instant at,
             @Nullable String idempotencyKey,
-            String sourceVanceProcessId,
+            String sourceEddieProcessId,
             String userId,
             PeerEventType type,
             String humanSummary,

@@ -78,7 +78,7 @@ public class PendingMessageDocument {
 
     // ─── PEER_EVENT ──────────────────────────────────────────────
     /** {@code ThinkProcessDocument.id} of the emitting hub-process. */
-    private @Nullable String sourceVanceProcessId;
+    private @Nullable String sourceEddieProcessId;
 
     /** {@code UserDocument.name} — both peer hubs belong to the same user. */
     private @Nullable String peerUserId;

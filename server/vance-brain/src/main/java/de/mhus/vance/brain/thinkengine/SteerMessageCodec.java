@@ -82,7 +82,7 @@ public final class SteerMessageCodec {
 
             case SteerMessage.PeerEvent pe -> b
                     .type(PendingMessageType.PEER_EVENT)
-                    .sourceVanceProcessId(pe.sourceVanceProcessId())
+                    .sourceEddieProcessId(pe.sourceEddieProcessId())
                     .peerUserId(pe.userId())
                     .peerEventType(pe.type())
                     .content(pe.humanSummary())
@@ -140,7 +140,7 @@ public final class SteerMessageCodec {
 
             case PEER_EVENT -> new SteerMessage.PeerEvent(
                     at, idem,
-                    nullToEmpty(d.getSourceVanceProcessId()),
+                    nullToEmpty(d.getSourceEddieProcessId()),
                     nullToEmpty(d.getPeerUserId()),
                     d.getPeerEventType() == null ? PeerEventType.NOTE : d.getPeerEventType(),
                     nullToEmpty(d.getContent()),

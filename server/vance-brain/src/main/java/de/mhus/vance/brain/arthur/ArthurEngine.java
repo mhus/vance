@@ -652,15 +652,15 @@ public class ArthurEngine implements ThinkEngine {
             }
             case SteerMessage.PeerEvent pe -> {
                 // PeerEvents only ever reach Arthur when she's
-                // acting as the chat-machinery for the Vance hub
+                // acting as the chat-machinery for the Eddie hub
                 // engine (delegate target). Render them so the
                 // LLM sees what a peer hub did and can react
                 // appropriately. Other engines (Marvin, Vogon)
                 // never receive PeerEvents — their switch-cases
                 // stay no-op.
                 StringBuilder sb = new StringBuilder();
-                sb.append("<peer-event sourceVanceProcessId=\"")
-                        .append(escapeAttr(pe.sourceVanceProcessId()))
+                sb.append("<peer-event sourceEddieProcessId=\"")
+                        .append(escapeAttr(pe.sourceEddieProcessId()))
                         .append("\" type=\"")
                         .append(pe.type().name().toLowerCase())
                         .append("\">")

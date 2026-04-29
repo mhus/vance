@@ -259,7 +259,7 @@ public class InsightsAdminController {
         putIfNotNull(payload, "inboxItemId", m.getInboxItemId());
         putIfNotNull(payload, "inboxItemType", m.getInboxItemType());
         putIfNotNull(payload, "inboxAnswer", m.getInboxAnswer());
-        putIfNotNull(payload, "sourceVanceProcessId", m.getSourceVanceProcessId());
+        putIfNotNull(payload, "sourceEddieProcessId", m.getSourceEddieProcessId());
         putIfNotNull(payload, "peerUserId", m.getPeerUserId());
         putIfNotNull(payload, "peerEventType", m.getPeerEventType());
         if (m.getPayload() != null && !m.getPayload().isEmpty()) {

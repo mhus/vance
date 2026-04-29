@@ -106,7 +106,7 @@ public class PeerNotifyTool implements Tool {
             PendingMessageDocument msg = PendingMessageDocument.builder()
                     .type(PendingMessageType.PEER_EVENT)
                     .at(Instant.now())
-                    .sourceVanceProcessId(ctx.processId())
+                    .sourceEddieProcessId(ctx.processId())
                     .peerUserId(ctx.userId())
                     .peerEventType(type)
                     .content(summary)

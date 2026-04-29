@@ -553,10 +553,17 @@ public class DocumentService {
                 ? null
                 : parentPath.replaceAll("/+$", "");
 
-        List<DocumentDocument> docs = listByProject(tenantId, projectId);
+        // Project-distinct paths only — never load full documents (no
+        // inlineText, no storage blob lookup) just to derive the folder
+        // tree. Mirrors {@link #listFolders} but keeps per-folder counts.
+        Query query = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("projectId").is(projectId)
+                .and("status").is(DocumentStatus.ACTIVE));
+        List<String> paths = mongoTemplate.findDistinct(
+                query, "path", DocumentDocument.class, String.class);
         Map<String, FolderStats> folders = new HashMap<>();
-        for (DocumentDocument doc : docs) {
-            for (String folder : foldersOfPath(doc.getPath())) {
+        for (String path : paths) {
+            for (String folder : foldersOfPath(path)) {
                 if (normalizedParent != null
                         && !folder.equals(normalizedParent)
                         && !folder.startsWith(normalizedParent + "/")) {

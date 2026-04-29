@@ -160,6 +160,16 @@ function readNextParam(): string | null {
           </li>
           <li class="flex items-center justify-between gap-4">
             <div>
+              <div class="font-semibold">Server Tools</div>
+              <div class="text-sm opacity-70">
+                Configure server-side tools per project. Pick a project
+                or _vance for tenant-wide defaults.
+              </div>
+            </div>
+            <VButton variant="primary" size="sm" href="/tools.html">Open</VButton>
+          </li>
+          <li class="flex items-center justify-between gap-4">
+            <div>
               <div class="font-semibold">Insights</div>
               <div class="text-sm opacity-70">
                 Inspect sessions, think-processes, chat history,

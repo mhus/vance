@@ -196,6 +196,43 @@ async function changePage(p: number): Promise<void> {
   await docsState.loadPage(selectedProjectId.value, p);
 }
 
+// ─── Folder navigation (sidebar) ────────────────────────────────────────
+//
+// Top-level folders are shown in the left sidebar; clicking one filters
+// the main file list to that prefix. The sidebar highlight tracks the
+// pathPrefix bidirectionally — the path-input field and the sidebar
+// stay in sync regardless of which one the user touched.
+
+/** First-level folders only — `recipes` yes, `recipes/sub` no. */
+const topLevelFolders = computed<string[]>(() =>
+  docsState.folders.value.filter((f) => !f.includes('/')),
+);
+
+/**
+ * Sidebar selection key derived from the current `pathPrefix`.
+ * - `''` → "All" entry highlighted (no filter)
+ * - `<folder>` → that top-level folder entry highlighted
+ * - `null` → free-form prefix typed in the input, nothing highlighted
+ */
+const selectedFolderKey = computed<string | null>(() => {
+  const p = docsState.pathPrefix.value.trim();
+  if (!p) return '';
+  if (p.endsWith('/')) {
+    const stripped = p.slice(0, -1);
+    return stripped.includes('/') ? null : stripped;
+  }
+  return null;
+});
+
+function selectFolder(folder: string | null): void {
+  // null === "All" (clear filter), otherwise the folder name without
+  // trailing slash. We always commit to pathPrefix with the slash so
+  // the prefix-match on the server doesn't accidentally span sibling
+  // folders that happen to share a prefix (e.g. "rec" matching
+  // "recipes" and "records").
+  applyPathFilter(folder == null ? '' : folder + '/', true);
+}
+
 async function openDocument(doc: DocumentSummary): Promise<void> {
   if (!doc.id) return;
   await docsState.loadOne(doc.id);
@@ -514,6 +551,42 @@ const formatBytes = (n: number): string => {
           :disabled="projectsState.loading.value || projectOptions.length === 0"
         />
       </div>
+    </template>
+
+    <!-- ─── Folder navigation ──────────────────────────────────────────
+         Top-level folders only; clicking one applies the path-prefix
+         filter to the main list. The sidebar is hidden until a project
+         is picked (matches the empty-state in the main panel). ─── -->
+    <template v-if="selectedProjectId" #sidebar>
+      <nav class="p-3 flex flex-col gap-1">
+        <h3 class="text-xs uppercase opacity-60 mb-2 px-2">Folders</h3>
+        <button
+          type="button"
+          class="folder-item"
+          :class="{ 'folder-item--active': selectedFolderKey === '' }"
+          @click="selectFolder(null)"
+        >
+          <span>All</span>
+          <span class="folder-count">{{ docsState.totalCount.value }}</span>
+        </button>
+        <button
+          v-for="folder in topLevelFolders"
+          :key="folder"
+          type="button"
+          class="folder-item"
+          :class="{ 'folder-item--active': selectedFolderKey === folder }"
+          @click="selectFolder(folder)"
+        >
+          <span>{{ folder }}/</span>
+        </button>
+        <p
+          v-if="topLevelFolders.length === 0"
+          class="text-xs opacity-60 italic mt-2 px-2"
+        >
+          No folders yet — create a document with a path like
+          <code>notes/foo.md</code> to nest it.
+        </p>
+      </nav>
     </template>
 
     <div class="container mx-auto px-4 py-6 max-w-5xl">
@@ -865,5 +938,54 @@ const formatBytes = (n: number): string => {
         >{{ createMode === 'upload' ? 'Upload' : 'Create' }}</VButton>
       </template>
     </VModal>
+
+    <!-- ─── Contextual help — shown only when the selected document
+         lives under a known path prefix (e.g. recipes/, strategies/).
+         Vue 3 renders the slot only when the v-if passes, so the
+         right aside disappears completely when no help applies. ─── -->
+    <template v-if="helpResource" #right-panel>
+      <div class="p-4 flex flex-col gap-4">
+        <h3 class="text-xs uppercase opacity-60 mb-2">Field reference</h3>
+        <div v-if="help.loading.value" class="text-xs opacity-60">
+          Loading…
+        </div>
+        <div v-else-if="help.error.value" class="text-xs opacity-60">
+          Help unavailable: {{ help.error.value }}
+        </div>
+        <div v-else-if="!help.content.value" class="text-xs opacity-60">
+          No help content for this resource.
+        </div>
+        <MarkdownView v-else :source="help.content.value" />
+      </div>
+    </template>
   </EditorShell>
 </template>
+
+<style scoped>
+.folder-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.folder-item:hover {
+  background: rgba(127, 127, 127, 0.08);
+}
+.folder-item--active {
+  background: rgba(127, 127, 127, 0.14);
+  font-weight: 600;
+}
+.folder-count {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+</style>

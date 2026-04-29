@@ -4,9 +4,7 @@ import de.mhus.vance.api.skills.ActiveSkillRefDto;
 import de.mhus.vance.api.skills.ProcessSkillCommand;
 import de.mhus.vance.api.skills.ProcessSkillRequest;
 import de.mhus.vance.api.skills.ProcessSkillResponse;
-import de.mhus.vance.api.skills.SkillDto;
-import de.mhus.vance.api.skills.SkillReferenceDocDto;
-import de.mhus.vance.api.skills.SkillTriggerDto;
+import de.mhus.vance.api.skills.SkillSummaryDto;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.skill.ResolvedSkill;
@@ -130,9 +128,9 @@ public class ProcessSkillHandler implements WsHandler {
                         .activeSkills(toActiveDtoList(active));
 
         if (command == ProcessSkillCommand.LIST) {
-            List<SkillDto> available = new ArrayList<>();
+            List<SkillSummaryDto> available = new ArrayList<>();
             for (ResolvedSkill skill : skillSteerProcessor.listAvailable(process)) {
-                available.add(toDto(skill));
+                available.add(toSummary(skill));
             }
             responseBuilder.availableSkills(available);
         }
@@ -153,35 +151,15 @@ public class ProcessSkillHandler implements WsHandler {
         return out;
     }
 
-    private static SkillDto toDto(ResolvedSkill skill) {
-        List<SkillTriggerDto> triggers = new ArrayList<>(skill.triggers().size());
-        for (ResolvedSkill.Trigger t : skill.triggers()) {
-            triggers.add(SkillTriggerDto.builder()
-                    .type(t.type())
-                    .pattern(t.pattern())
-                    .keywords(t.keywords())
-                    .build());
-        }
-        List<SkillReferenceDocDto> docs = new ArrayList<>(skill.referenceDocs().size());
-        for (ResolvedSkill.ReferenceDoc d : skill.referenceDocs()) {
-            docs.add(SkillReferenceDocDto.builder()
-                    .title(d.title())
-                    .content(d.content())
-                    .loadMode(d.loadMode())
-                    .build());
-        }
-        return SkillDto.builder()
+    private static SkillSummaryDto toSummary(ResolvedSkill skill) {
+        return SkillSummaryDto.builder()
                 .name(skill.name())
                 .title(skill.title())
                 .description(skill.description())
                 .version(skill.version())
-                .triggers(triggers)
-                .promptExtension(skill.promptExtension())
-                .tools(skill.tools())
-                .referenceDocs(docs)
                 .tags(skill.tags())
                 .enabled(skill.enabled())
-                .scope(skill.source())
+                .source(skill.source())
                 .build();
     }
 

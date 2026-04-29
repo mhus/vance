@@ -34,5 +34,5 @@ public class ProcessSkillResponse {
 
     /** Populated for {@link ProcessSkillCommand#LIST} responses. */
     @Builder.Default
-    private List<SkillDto> availableSkills = new ArrayList<>();
+    private List<SkillSummaryDto> availableSkills = new ArrayList<>();
 }

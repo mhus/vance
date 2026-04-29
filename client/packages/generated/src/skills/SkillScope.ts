@@ -4,8 +4,8 @@
 */
 
 export enum SkillScope {
-  BUNDLED,
-  TENANT,
+  USER,
   PROJECT,
-  USER
+  VANCE,
+  RESOURCE
 }

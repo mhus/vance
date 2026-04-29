@@ -4,10 +4,10 @@
 */
 
 import { ActiveSkillRefDto } from './ActiveSkillRefDto';
-import { SkillDto } from './SkillDto';
+import { SkillSummaryDto } from './SkillSummaryDto';
 
 export interface ProcessSkillResponse {
   processName: string;
   activeSkills: ActiveSkillRefDto[];
-  availableSkills: SkillDto[];
+  availableSkills: SkillSummaryDto[];
 }

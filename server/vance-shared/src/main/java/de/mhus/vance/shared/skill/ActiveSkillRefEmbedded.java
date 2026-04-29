@@ -27,7 +27,7 @@ public class ActiveSkillRefEmbedded {
 
     private String name = "";
 
-    private SkillScope resolvedFromScope = SkillScope.BUNDLED;
+    private SkillScope resolvedFromScope = SkillScope.RESOURCE;
 
     /** {@code true} for {@code /skill <name> --once} activations. */
     private boolean oneShot;

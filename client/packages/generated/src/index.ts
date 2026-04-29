@@ -53,15 +53,12 @@ export * from './projects/ProjectGroupUpdateRequest';
 export * from './projects/ProjectUpdateRequest';
 export * from './projects/TenantProjectsResponse';
 
-export * from './skills/SkillDto';
 export * from './skills/SkillReferenceDocDto';
 export * from './skills/SkillReferenceDocLoadMode';
 export * from './skills/SkillScope';
-export * from './skills/SkillScriptDto';
-export * from './skills/SkillScriptTarget';
+export * from './skills/SkillSummaryDto';
 export * from './skills/SkillTriggerDto';
 export * from './skills/SkillTriggerType';
-export * from './skills/SkillWriteRequest';
 
 export * from './thinkprocess/BootstrappedProcess';
 export * from './thinkprocess/ProcessSpec';

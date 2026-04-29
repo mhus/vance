@@ -3,20 +3,22 @@ package de.mhus.vance.api.skills;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 
 /**
- * Where the effective copy of a skill lives.
+ * Cascade layer that produced a skill lookup result. Mirrors the
+ * document cascade plus a USER tier (from the per-user
+ * {@code _user_<login>} system project), since skills are persisted
+ * as documents under {@code skills/<name>/SKILL.md}.
  *
- * <p>Cascade order on lookup is USER → PROJECT → TENANT → BUNDLED;
- * first-hit-wins. Listing operations return the union with
- * deduplication by skill name (more specific scope wins).
+ * <p>Cascade priority: {@link #USER} → {@link #PROJECT} → {@link #VANCE}
+ * → {@link #RESOURCE}; first-hit-wins.
  */
 @GenerateTypeScript("skills")
 public enum SkillScope {
-    /** From a bundled {@code SKILL.md} on the brain's classpath. */
-    BUNDLED,
-    /** A tenant-scope override stored in MongoDB. */
-    TENANT,
-    /** A project-scope override stored in MongoDB. */
+    /** From the per-user {@code _user_<login>} system project. Innermost. */
+    USER,
+    /** From the user's project. */
     PROJECT,
-    /** A user-private skill stored in MongoDB. Visible only to its owner. */
-    USER
+    /** From the tenant-wide {@code _vance} system project. */
+    VANCE,
+    /** From a bundled classpath resource under {@code vance-defaults/skills/}. */
+    RESOURCE
 }

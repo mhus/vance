@@ -3,6 +3,28 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   type BrainWsApi,
   WebSocketRequestError,
+  AUTO_LANGUAGE,
+  SUPPORTED_SPEECH_LANGUAGES,
+  getSpeechLanguage,
+  resolveSpeechLanguage,
+  setSpeechLanguage,
+  buildUtterance,
+  getSpeakerEnabled,
+  getSpeechRate,
+  getSpeechVoiceURI,
+  getSpeechVolume,
+  isSpeechSynthesisSupported,
+  listVoices,
+  onVoicesChanged,
+  setSpeakerEnabled,
+  setSpeechRate,
+  setSpeechVoiceURI,
+  setSpeechVolume,
+  stripMarkdown,
+  MIN_RATE,
+  MAX_RATE,
+  MIN_VOLUME,
+  MAX_VOLUME,
 } from '@vance/shared';
 import type {
   ChatMessageAppendedData,
@@ -16,7 +38,7 @@ import type {
   SessionListResponse,
 } from '@vance/generated';
 import { useChatHistory } from '@composables/useChatHistory';
-import { VAlert, VButton, VTextarea } from '@components/index';
+import { VAlert, VButton, VSelect, VTextarea } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
 import ProgressFeed from './ProgressFeed.vue';
 
@@ -93,6 +115,12 @@ type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 const speechSupported = ref(false);
 const speechRecording = ref(false);
 const speechError = ref<string | null>(null);
+const speechSettingsOpen = ref(false);
+const speechLanguageStored = ref<string>(getSpeechLanguage());
+const speechLanguageOptions = SUPPORTED_SPEECH_LANGUAGES.map((opt) => ({
+  value: opt.code,
+  label: opt.label,
+}));
 let recognition: SpeechRecognitionLike | null = null;
 
 function initSpeechRecognition(): void {
@@ -106,7 +134,7 @@ function initSpeechRecognition(): void {
   const instance = new Ctor();
   instance.continuous = true;
   instance.interimResults = false;
-  instance.lang = navigator.language || 'en-US';
+  instance.lang = resolveSpeechLanguage();
   instance.onresult = (event) => {
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const r = event.results[i];
@@ -138,6 +166,8 @@ function toggleSpeech(): void {
     return;
   }
   speechError.value = null;
+  // Pick up any language change applied since the last start().
+  recognition.lang = resolveSpeechLanguage();
   try {
     recognition.start();
     speechRecording.value = true;
@@ -147,6 +177,139 @@ function toggleSpeech(): void {
     speechRecording.value = false;
     speechError.value = e instanceof Error ? e.message : 'Failed to start recording.';
   }
+}
+
+function onLanguageChanged(code: string | null): void {
+  // VSelect emits null when the placeholder option is picked; treat
+  // that as "auto" so we never persist `null` as a wire value.
+  const next = code ?? AUTO_LANGUAGE;
+  setSpeechLanguage(next === AUTO_LANGUAGE ? null : next);
+  speechLanguageStored.value = next;
+  // Stop a running recognition so the next start() picks up the new
+  // language; setting `lang` on a live instance is unreliable across
+  // browsers.
+  if (recognition && speechRecording.value) {
+    recognition.stop();
+  }
+  // Refresh voice list — the defaults filter by language.
+  refreshVoiceOptions();
+}
+
+// ──────────────── Speaker (text-to-speech queue) ────────────────
+//
+// SpeechSynthesis already has an internal queue: speak() enqueues,
+// cancel() flushes the queue and stops the active utterance. We rely
+// on that — no client-side queue plumbing needed. The toggle is
+// persisted; while enabled, every non-USER `chat-message-appended`
+// frame is read aloud with the configured language / voice / rate /
+// volume.
+
+const speakerSupported = ref(false);
+const speakerEnabled = ref(false);
+const speakerSpeaking = ref(false);
+/**
+ * Becomes true once the REST history snapshot has finished loading.
+ * The WS subscriptions are wired *before* the load to avoid losing
+ * frames, but messages that arrive in that window are typically
+ * "live" anyway — we still gate speaking behind this flag so the
+ * speaker only ever reads aloud what arrives over the WebSocket as
+ * a new message, never anything related to the initial backfill.
+ */
+const speakerLiveReady = ref(false);
+const speechRate = ref<number>(getSpeechRate());
+const speechVolume = ref<number>(getSpeechVolume());
+const speechVoiceUri = ref<string | null>(getSpeechVoiceURI());
+
+interface VoiceOption {
+  value: string;
+  label: string;
+  group?: string;
+}
+const voiceOptions = ref<VoiceOption[]>([]);
+let voicesUnsubscribe: (() => void) | null = null;
+
+function refreshVoiceOptions(): void {
+  if (!speakerSupported.value) return;
+  const targetLang = resolveSpeechLanguage().toLowerCase().split('-')[0];
+  // Filter to voices whose `lang` matches the active language at the
+  // primary-tag level (`de` matches `de-DE`, `de-AT`, ...). Most
+  // platforms expose `lang` as `xx-YY`; some report `xx_YY`, so we
+  // normalise the separator before comparing.
+  const matching = listVoices()
+    .filter((v) => v.lang.toLowerCase().replace('_', '-').split('-')[0] === targetLang)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+  voiceOptions.value = [
+    { value: '__auto__', label: 'Auto (default voice for language)' },
+    ...matching.map((v) => ({
+      value: v.voiceURI,
+      label: `${v.name} (${v.lang})${v.default ? ' · default' : ''}`,
+    })),
+  ];
+}
+
+function initSpeechSynthesis(): void {
+  if (!isSpeechSynthesisSupported()) return;
+  speakerSupported.value = true;
+  speakerEnabled.value = getSpeakerEnabled();
+  voicesUnsubscribe = onVoicesChanged(refreshVoiceOptions);
+  refreshVoiceOptions();
+}
+
+function speakMessage(content: string): void {
+  if (!speakerEnabled.value || !speakerSupported.value) return;
+  // Guard against speaking anything that might be tied to the initial
+  // history backfill — only frames that arrive after the REST snapshot
+  // has loaded count as "new from the WebSocket".
+  if (!speakerLiveReady.value) return;
+  const text = stripMarkdown(content);
+  if (!text) return;
+  const utter = buildUtterance(text, resolveSpeechLanguage());
+  if (!utter) return;
+  utter.onstart = () => { speakerSpeaking.value = true; };
+  utter.onend = () => {
+    // Stays true until the queue actually drains — the browser fires
+    // `end` per utterance, so re-check whether more are queued.
+    if (window.speechSynthesis && !window.speechSynthesis.speaking) {
+      speakerSpeaking.value = false;
+    }
+  };
+  utter.onerror = () => { speakerSpeaking.value = false; };
+  window.speechSynthesis.speak(utter);
+}
+
+function toggleSpeaker(): void {
+  if (!speakerSupported.value) return;
+  const next = !speakerEnabled.value;
+  speakerEnabled.value = next;
+  setSpeakerEnabled(next);
+  if (!next) {
+    // Disable: flush the queue and stop the active utterance.
+    window.speechSynthesis.cancel();
+    speakerSpeaking.value = false;
+  }
+}
+
+function onVoiceChanged(uri: string | null): void {
+  // VSelect emits the value or null. The pseudo-option `__auto__`
+  // means "let the heuristic pick a voice for the language".
+  const next = uri && uri !== '__auto__' ? uri : null;
+  speechVoiceUri.value = next;
+  setSpeechVoiceURI(next);
+}
+
+function onRateInput(event: Event): void {
+  const value = parseFloat((event.target as HTMLInputElement).value);
+  if (!Number.isFinite(value)) return;
+  speechRate.value = value;
+  setSpeechRate(value);
+}
+
+function onVolumeInput(event: Event): void {
+  const value = parseFloat((event.target as HTMLInputElement).value);
+  if (!Number.isFinite(value)) return;
+  speechVolume.value = value;
+  setSpeechVolume(value);
 }
 
 /** Resolved chat-process name — needed to address `process-steer`. */
@@ -231,6 +394,12 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
   });
   // Commit beats the pending draft of this process — clear it.
   streamingDrafts.value.delete(data.processName);
+  // Speak non-USER messages when the speaker is enabled. USER frames
+  // are the canonical echo of what the user typed — they shouldn't be
+  // read back to them.
+  if (String(data.role) !== 'USER') {
+    speakMessage(data.content);
+  }
   scrollToBottom();
 }
 
@@ -336,17 +505,25 @@ onMounted(async () => {
     props.socket.on<ProcessProgressNotification>('process-progress', recordProgress),
   );
   initSpeechRecognition();
+  initSpeechSynthesis();
   await Promise.all([
     load(props.sessionId),
     resolveSessionAndProcess(),
   ]);
   scrollToBottom();
+  // From here on, any chat-message-appended frame is by definition a
+  // fresh server-side event, not a history backfill — open the gate.
+  speakerLiveReady.value = true;
 });
 
 onBeforeUnmount(() => {
   for (const off of subscriptions) off();
   if (recognition && speechRecording.value) {
     try { recognition.stop(); } catch { /* already stopped */ }
+  }
+  if (voicesUnsubscribe) voicesUnsubscribe();
+  if (speakerSupported.value && window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
   }
   reset();
 });
@@ -364,7 +541,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
 <template>
   <div class="flex h-full min-h-0">
     <!-- Main chat column -->
-    <section class="flex-1 min-w-0 flex flex-col">
+    <section class="flex-1 min-w-0 min-h-0 flex flex-col">
       <header class="px-6 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
         <VButton variant="ghost" size="sm" @click="emit('leave')">← Sessions</VButton>
         <div class="flex-1 min-w-0 truncate">
@@ -407,16 +584,103 @@ watch(() => props.sessionId, async (newId, oldId) => {
           >
             {{ multiline ? '▲' : '▼' }}
           </VButton>
-          <VButton
-            v-if="speechSupported"
-            variant="ghost"
-            size="sm"
-            :class="speechRecording ? 'text-error animate-pulse' : ''"
-            :title="speechRecording ? 'Stop speech-to-text' : 'Start speech-to-text'"
-            @click="toggleSpeech"
-          >
-            🎤
-          </VButton>
+          <div v-if="speechSupported || speakerSupported" class="relative">
+            <div class="flex gap-1">
+              <VButton
+                v-if="speechSupported"
+                variant="ghost"
+                size="sm"
+                :class="speechRecording ? 'text-error animate-pulse' : ''"
+                :title="speechRecording ? 'Stop speech-to-text' : 'Start speech-to-text'"
+                @click="toggleSpeech"
+              >
+                🎤
+              </VButton>
+              <VButton
+                v-if="speakerSupported"
+                variant="ghost"
+                size="sm"
+                :class="speakerEnabled ? (speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : ''"
+                :title="speakerEnabled ? 'Mute incoming messages' : 'Read incoming messages aloud'"
+                @click="toggleSpeaker"
+              >
+                {{ speakerEnabled ? '🔊' : '🔇' }}
+              </VButton>
+              <VButton
+                variant="ghost"
+                size="sm"
+                title="Speech settings"
+                @click="speechSettingsOpen = !speechSettingsOpen"
+              >
+                ⚙
+              </VButton>
+            </div>
+            <div
+              v-if="speechSettingsOpen"
+              class="absolute bottom-full mb-2 left-0 z-10 w-80 bg-base-100 border border-base-300 rounded shadow-lg p-3 flex flex-col gap-3"
+            >
+              <div>
+                <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+                  Language
+                </div>
+                <VSelect
+                  :model-value="speechLanguageStored"
+                  :options="speechLanguageOptions"
+                  @update:model-value="onLanguageChanged"
+                />
+              </div>
+
+              <template v-if="speakerSupported">
+                <div>
+                  <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
+                    Voice
+                  </div>
+                  <VSelect
+                    :model-value="speechVoiceUri ?? '__auto__'"
+                    :options="voiceOptions"
+                    @update:model-value="onVoiceChanged"
+                  />
+                </div>
+
+                <div>
+                  <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between">
+                    <span>Rate</span>
+                    <span class="opacity-70">{{ speechRate.toFixed(2) }}×</span>
+                  </div>
+                  <input
+                    type="range"
+                    class="range range-sm w-full"
+                    :min="MIN_RATE"
+                    :max="MAX_RATE"
+                    step="0.05"
+                    :value="speechRate"
+                    @input="onRateInput"
+                  />
+                </div>
+
+                <div>
+                  <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between">
+                    <span>Volume</span>
+                    <span class="opacity-70">{{ Math.round(speechVolume * 100) }}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    class="range range-sm w-full"
+                    :min="MIN_VOLUME"
+                    :max="MAX_VOLUME"
+                    step="0.05"
+                    :value="speechVolume"
+                    @input="onVolumeInput"
+                  />
+                </div>
+              </template>
+
+              <p class="text-xs opacity-60">
+                Saved locally. Used by the chat speaker now and any future
+                read-aloud feature.
+              </p>
+            </div>
+          </div>
           <div class="flex-1">
             <VTextarea
               v-model="composerText"

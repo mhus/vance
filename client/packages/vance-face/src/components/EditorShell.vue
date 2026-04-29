@@ -33,11 +33,20 @@ interface Props {
    * editors whose right panel hosts forms (e.g. settings editor).
    */
   wideRightPanel?: boolean;
+  /**
+   * App-style layout: the main slot becomes a fixed-height frame
+   * (`overflow-hidden`) instead of the default page-scroll
+   * (`overflow-y-auto`). Editors that own internal scroll regions —
+   * chat with its message list + progress feed, future canvas
+   * editors — opt into this so the page itself never scrolls.
+   */
+  fullHeight?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   breadcrumbs: () => [],
   wideRightPanel: false,
+  fullHeight: false,
 });
 
 function crumbText(c: Crumb): string {
@@ -66,7 +75,7 @@ function logout(): void {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col bg-base-200">
+  <div class="h-screen overflow-hidden flex flex-col bg-base-200">
     <header class="navbar bg-base-100 shadow-sm border-b border-base-300 px-4 gap-2">
       <!-- Logo doubles as a "home" link back to the editor list. -->
       <a
@@ -136,7 +145,7 @@ function logout(): void {
         <slot name="sidebar" />
       </aside>
 
-      <main class="flex-1 min-w-0 overflow-y-auto">
+      <main :class="['flex-1 min-w-0 min-h-0', fullHeight ? 'overflow-hidden' : 'overflow-y-auto']">
         <slot />
       </main>
 

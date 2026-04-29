@@ -1,7 +1,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { WebSocketRequestError, } from '@vance/shared';
+import { WebSocketRequestError, AUTO_LANGUAGE, SUPPORTED_SPEECH_LANGUAGES, getSpeechLanguage, resolveSpeechLanguage, setSpeechLanguage, buildUtterance, getSpeakerEnabled, getSpeechRate, getSpeechVoiceURI, getSpeechVolume, isSpeechSynthesisSupported, listVoices, onVoicesChanged, setSpeakerEnabled, setSpeechRate, setSpeechVoiceURI, setSpeechVolume, stripMarkdown, MIN_RATE, MAX_RATE, MIN_VOLUME, MAX_VOLUME, } from '@vance/shared';
 import { useChatHistory } from '@composables/useChatHistory';
-import { VAlert, VButton, VTextarea } from '@components/index';
+import { VAlert, VButton, VSelect, VTextarea } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
 import ProgressFeed from './ProgressFeed.vue';
 const props = defineProps();
@@ -32,6 +32,12 @@ const OPTIMISTIC_PREFIX = 'tmp_';
 const speechSupported = ref(false);
 const speechRecording = ref(false);
 const speechError = ref(null);
+const speechSettingsOpen = ref(false);
+const speechLanguageStored = ref(getSpeechLanguage());
+const speechLanguageOptions = SUPPORTED_SPEECH_LANGUAGES.map((opt) => ({
+    value: opt.code,
+    label: opt.label,
+}));
 let recognition = null;
 function initSpeechRecognition() {
     const w = window;
@@ -42,7 +48,7 @@ function initSpeechRecognition() {
     const instance = new Ctor();
     instance.continuous = true;
     instance.interimResults = false;
-    instance.lang = navigator.language || 'en-US';
+    instance.lang = resolveSpeechLanguage();
     instance.onresult = (event) => {
         for (let i = event.resultIndex; i < event.results.length; i++) {
             const r = event.results[i];
@@ -76,6 +82,8 @@ function toggleSpeech() {
         return;
     }
     speechError.value = null;
+    // Pick up any language change applied since the last start().
+    recognition.lang = resolveSpeechLanguage();
     try {
         recognition.start();
         speechRecording.value = true;
@@ -86,6 +94,132 @@ function toggleSpeech() {
         speechRecording.value = false;
         speechError.value = e instanceof Error ? e.message : 'Failed to start recording.';
     }
+}
+function onLanguageChanged(code) {
+    // VSelect emits null when the placeholder option is picked; treat
+    // that as "auto" so we never persist `null` as a wire value.
+    const next = code ?? AUTO_LANGUAGE;
+    setSpeechLanguage(next === AUTO_LANGUAGE ? null : next);
+    speechLanguageStored.value = next;
+    // Stop a running recognition so the next start() picks up the new
+    // language; setting `lang` on a live instance is unreliable across
+    // browsers.
+    if (recognition && speechRecording.value) {
+        recognition.stop();
+    }
+    // Refresh voice list — the defaults filter by language.
+    refreshVoiceOptions();
+}
+// ──────────────── Speaker (text-to-speech queue) ────────────────
+//
+// SpeechSynthesis already has an internal queue: speak() enqueues,
+// cancel() flushes the queue and stops the active utterance. We rely
+// on that — no client-side queue plumbing needed. The toggle is
+// persisted; while enabled, every non-USER `chat-message-appended`
+// frame is read aloud with the configured language / voice / rate /
+// volume.
+const speakerSupported = ref(false);
+const speakerEnabled = ref(false);
+const speakerSpeaking = ref(false);
+/**
+ * Becomes true once the REST history snapshot has finished loading.
+ * The WS subscriptions are wired *before* the load to avoid losing
+ * frames, but messages that arrive in that window are typically
+ * "live" anyway — we still gate speaking behind this flag so the
+ * speaker only ever reads aloud what arrives over the WebSocket as
+ * a new message, never anything related to the initial backfill.
+ */
+const speakerLiveReady = ref(false);
+const speechRate = ref(getSpeechRate());
+const speechVolume = ref(getSpeechVolume());
+const speechVoiceUri = ref(getSpeechVoiceURI());
+const voiceOptions = ref([]);
+let voicesUnsubscribe = null;
+function refreshVoiceOptions() {
+    if (!speakerSupported.value)
+        return;
+    const targetLang = resolveSpeechLanguage().toLowerCase().split('-')[0];
+    // Filter to voices whose `lang` matches the active language at the
+    // primary-tag level (`de` matches `de-DE`, `de-AT`, ...). Most
+    // platforms expose `lang` as `xx-YY`; some report `xx_YY`, so we
+    // normalise the separator before comparing.
+    const matching = listVoices()
+        .filter((v) => v.lang.toLowerCase().replace('_', '-').split('-')[0] === targetLang)
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name));
+    voiceOptions.value = [
+        { value: '__auto__', label: 'Auto (default voice for language)' },
+        ...matching.map((v) => ({
+            value: v.voiceURI,
+            label: `${v.name} (${v.lang})${v.default ? ' · default' : ''}`,
+        })),
+    ];
+}
+function initSpeechSynthesis() {
+    if (!isSpeechSynthesisSupported())
+        return;
+    speakerSupported.value = true;
+    speakerEnabled.value = getSpeakerEnabled();
+    voicesUnsubscribe = onVoicesChanged(refreshVoiceOptions);
+    refreshVoiceOptions();
+}
+function speakMessage(content) {
+    if (!speakerEnabled.value || !speakerSupported.value)
+        return;
+    // Guard against speaking anything that might be tied to the initial
+    // history backfill — only frames that arrive after the REST snapshot
+    // has loaded count as "new from the WebSocket".
+    if (!speakerLiveReady.value)
+        return;
+    const text = stripMarkdown(content);
+    if (!text)
+        return;
+    const utter = buildUtterance(text, resolveSpeechLanguage());
+    if (!utter)
+        return;
+    utter.onstart = () => { speakerSpeaking.value = true; };
+    utter.onend = () => {
+        // Stays true until the queue actually drains — the browser fires
+        // `end` per utterance, so re-check whether more are queued.
+        if (window.speechSynthesis && !window.speechSynthesis.speaking) {
+            speakerSpeaking.value = false;
+        }
+    };
+    utter.onerror = () => { speakerSpeaking.value = false; };
+    window.speechSynthesis.speak(utter);
+}
+function toggleSpeaker() {
+    if (!speakerSupported.value)
+        return;
+    const next = !speakerEnabled.value;
+    speakerEnabled.value = next;
+    setSpeakerEnabled(next);
+    if (!next) {
+        // Disable: flush the queue and stop the active utterance.
+        window.speechSynthesis.cancel();
+        speakerSpeaking.value = false;
+    }
+}
+function onVoiceChanged(uri) {
+    // VSelect emits the value or null. The pseudo-option `__auto__`
+    // means "let the heuristic pick a voice for the language".
+    const next = uri && uri !== '__auto__' ? uri : null;
+    speechVoiceUri.value = next;
+    setSpeechVoiceURI(next);
+}
+function onRateInput(event) {
+    const value = parseFloat(event.target.value);
+    if (!Number.isFinite(value))
+        return;
+    speechRate.value = value;
+    setSpeechRate(value);
+}
+function onVolumeInput(event) {
+    const value = parseFloat(event.target.value);
+    if (!Number.isFinite(value))
+        return;
+    speechVolume.value = value;
+    setSpeechVolume(value);
 }
 /** Resolved chat-process name — needed to address `process-steer`. */
 const chatProcessName = ref(null);
@@ -163,6 +297,12 @@ function appendMessageBubble(data) {
     });
     // Commit beats the pending draft of this process — clear it.
     streamingDrafts.value.delete(data.processName);
+    // Speak non-USER messages when the speaker is enabled. USER frames
+    // are the canonical echo of what the user typed — they shouldn't be
+    // read back to them.
+    if (String(data.role) !== 'USER') {
+        speakMessage(data.content);
+    }
     scrollToBottom();
 }
 function appendChunk(data) {
@@ -263,11 +403,15 @@ onMounted(async () => {
     // Wire up live frames before history load so we don't miss anything.
     subscriptions.push(props.socket.on('chat-message-appended', appendMessageBubble), props.socket.on('chat-message-stream-chunk', appendChunk), props.socket.on('process-progress', recordProgress));
     initSpeechRecognition();
+    initSpeechSynthesis();
     await Promise.all([
         load(props.sessionId),
         resolveSessionAndProcess(),
     ]);
     scrollToBottom();
+    // From here on, any chat-message-appended frame is by definition a
+    // fresh server-side event, not a history backfill — open the gate.
+    speakerLiveReady.value = true;
 });
 onBeforeUnmount(() => {
     for (const off of subscriptions)
@@ -277,6 +421,11 @@ onBeforeUnmount(() => {
             recognition.stop();
         }
         catch { /* already stopped */ }
+    }
+    if (voicesUnsubscribe)
+        voicesUnsubscribe();
+    if (speakerSupported.value && window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
     }
     reset();
 });
@@ -297,7 +446,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
     ...{ class: "flex h-full min-h-0" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
-    ...{ class: "flex-1 min-w-0 flex flex-col" },
+    ...{ class: "flex-1 min-w-0 min-h-0 flex flex-col" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.header, __VLS_intrinsicElements.header)({
     ...{ class: "px-6 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3" },
@@ -469,97 +618,255 @@ const __VLS_37 = {
 __VLS_33.slots.default;
 (__VLS_ctx.multiline ? '▲' : '▼');
 var __VLS_33;
-if (__VLS_ctx.speechSupported) {
-    const __VLS_38 = {}.VButton;
+if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "relative" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex gap-1" },
+    });
+    if (__VLS_ctx.speechSupported) {
+        const __VLS_38 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_39 = __VLS_asFunctionalComponent(__VLS_38, new __VLS_38({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
+            title: (__VLS_ctx.speechRecording ? 'Stop speech-to-text' : 'Start speech-to-text'),
+        }));
+        const __VLS_40 = __VLS_39({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
+            title: (__VLS_ctx.speechRecording ? 'Stop speech-to-text' : 'Start speech-to-text'),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_39));
+        let __VLS_42;
+        let __VLS_43;
+        let __VLS_44;
+        const __VLS_45 = {
+            onClick: (__VLS_ctx.toggleSpeech)
+        };
+        __VLS_41.slots.default;
+        var __VLS_41;
+    }
+    if (__VLS_ctx.speakerSupported) {
+        const __VLS_46 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_47 = __VLS_asFunctionalComponent(__VLS_46, new __VLS_46({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
+            title: (__VLS_ctx.speakerEnabled ? 'Mute incoming messages' : 'Read incoming messages aloud'),
+        }));
+        const __VLS_48 = __VLS_47({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
+            title: (__VLS_ctx.speakerEnabled ? 'Mute incoming messages' : 'Read incoming messages aloud'),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_47));
+        let __VLS_50;
+        let __VLS_51;
+        let __VLS_52;
+        const __VLS_53 = {
+            onClick: (__VLS_ctx.toggleSpeaker)
+        };
+        __VLS_49.slots.default;
+        (__VLS_ctx.speakerEnabled ? '🔊' : '🔇');
+        var __VLS_49;
+    }
+    const __VLS_54 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_39 = __VLS_asFunctionalComponent(__VLS_38, new __VLS_38({
+    const __VLS_55 = __VLS_asFunctionalComponent(__VLS_54, new __VLS_54({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
-        ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
-        title: (__VLS_ctx.speechRecording ? 'Stop speech-to-text' : 'Start speech-to-text'),
+        title: "Speech settings",
     }));
-    const __VLS_40 = __VLS_39({
+    const __VLS_56 = __VLS_55({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
-        ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
-        title: (__VLS_ctx.speechRecording ? 'Stop speech-to-text' : 'Start speech-to-text'),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_39));
-    let __VLS_42;
-    let __VLS_43;
-    let __VLS_44;
-    const __VLS_45 = {
-        onClick: (__VLS_ctx.toggleSpeech)
+        title: "Speech settings",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_55));
+    let __VLS_58;
+    let __VLS_59;
+    let __VLS_60;
+    const __VLS_61 = {
+        onClick: (...[$event]) => {
+            if (!(__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported))
+                return;
+            __VLS_ctx.speechSettingsOpen = !__VLS_ctx.speechSettingsOpen;
+        }
     };
-    __VLS_41.slots.default;
-    var __VLS_41;
+    __VLS_57.slots.default;
+    var __VLS_57;
+    if (__VLS_ctx.speechSettingsOpen) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "absolute bottom-full mb-2 left-0 z-10 w-80 bg-base-100 border border-base-300 rounded shadow-lg p-3 flex flex-col gap-3" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
+        });
+        const __VLS_62 = {}.VSelect;
+        /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+        // @ts-ignore
+        const __VLS_63 = __VLS_asFunctionalComponent(__VLS_62, new __VLS_62({
+            ...{ 'onUpdate:modelValue': {} },
+            modelValue: (__VLS_ctx.speechLanguageStored),
+            options: (__VLS_ctx.speechLanguageOptions),
+        }));
+        const __VLS_64 = __VLS_63({
+            ...{ 'onUpdate:modelValue': {} },
+            modelValue: (__VLS_ctx.speechLanguageStored),
+            options: (__VLS_ctx.speechLanguageOptions),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_63));
+        let __VLS_66;
+        let __VLS_67;
+        let __VLS_68;
+        const __VLS_69 = {
+            'onUpdate:modelValue': (__VLS_ctx.onLanguageChanged)
+        };
+        var __VLS_65;
+        if (__VLS_ctx.speakerSupported) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
+            });
+            const __VLS_70 = {}.VSelect;
+            /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+            // @ts-ignore
+            const __VLS_71 = __VLS_asFunctionalComponent(__VLS_70, new __VLS_70({
+                ...{ 'onUpdate:modelValue': {} },
+                modelValue: (__VLS_ctx.speechVoiceUri ?? '__auto__'),
+                options: (__VLS_ctx.voiceOptions),
+            }));
+            const __VLS_72 = __VLS_71({
+                ...{ 'onUpdate:modelValue': {} },
+                modelValue: (__VLS_ctx.speechVoiceUri ?? '__auto__'),
+                options: (__VLS_ctx.voiceOptions),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_71));
+            let __VLS_74;
+            let __VLS_75;
+            let __VLS_76;
+            const __VLS_77 = {
+                'onUpdate:modelValue': (__VLS_ctx.onVoiceChanged)
+            };
+            var __VLS_73;
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-70" },
+            });
+            (__VLS_ctx.speechRate.toFixed(2));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+                ...{ onInput: (__VLS_ctx.onRateInput) },
+                type: "range",
+                ...{ class: "range range-sm w-full" },
+                min: (__VLS_ctx.MIN_RATE),
+                max: (__VLS_ctx.MAX_RATE),
+                step: "0.05",
+                value: (__VLS_ctx.speechRate),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-70" },
+            });
+            (Math.round(__VLS_ctx.speechVolume * 100));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+                ...{ onInput: (__VLS_ctx.onVolumeInput) },
+                type: "range",
+                ...{ class: "range range-sm w-full" },
+                min: (__VLS_ctx.MIN_VOLUME),
+                max: (__VLS_ctx.MAX_VOLUME),
+                step: "0.05",
+                value: (__VLS_ctx.speechVolume),
+            });
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ class: "text-xs opacity-60" },
+        });
+    }
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1" },
 });
-const __VLS_46 = {}.VTextarea;
+const __VLS_78 = {}.VTextarea;
 /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
 // @ts-ignore
-const __VLS_47 = __VLS_asFunctionalComponent(__VLS_46, new __VLS_46({
+const __VLS_79 = __VLS_asFunctionalComponent(__VLS_78, new __VLS_78({
     ...{ 'onKeydown': {} },
     modelValue: (__VLS_ctx.composerText),
     placeholder: (__VLS_ctx.composerPlaceholder),
     rows: (__VLS_ctx.composerRows),
 }));
-const __VLS_48 = __VLS_47({
+const __VLS_80 = __VLS_79({
     ...{ 'onKeydown': {} },
     modelValue: (__VLS_ctx.composerText),
     placeholder: (__VLS_ctx.composerPlaceholder),
     rows: (__VLS_ctx.composerRows),
-}, ...__VLS_functionalComponentArgsRest(__VLS_47));
-let __VLS_50;
-let __VLS_51;
-let __VLS_52;
-const __VLS_53 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_79));
+let __VLS_82;
+let __VLS_83;
+let __VLS_84;
+const __VLS_85 = {
     onKeydown: (__VLS_ctx.onComposerKeydown)
 };
-var __VLS_49;
-const __VLS_54 = {}.VButton;
+var __VLS_81;
+const __VLS_86 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_55 = __VLS_asFunctionalComponent(__VLS_54, new __VLS_54({
+const __VLS_87 = __VLS_asFunctionalComponent(__VLS_86, new __VLS_86({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (!__VLS_ctx.composerText.trim() || __VLS_ctx.sending || !__VLS_ctx.chatProcessName),
     loading: (__VLS_ctx.sending),
 }));
-const __VLS_56 = __VLS_55({
+const __VLS_88 = __VLS_87({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (!__VLS_ctx.composerText.trim() || __VLS_ctx.sending || !__VLS_ctx.chatProcessName),
     loading: (__VLS_ctx.sending),
-}, ...__VLS_functionalComponentArgsRest(__VLS_55));
-let __VLS_58;
-let __VLS_59;
-let __VLS_60;
-const __VLS_61 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_87));
+let __VLS_90;
+let __VLS_91;
+let __VLS_92;
+const __VLS_93 = {
     onClick: (__VLS_ctx.send)
 };
-__VLS_57.slots.default;
-var __VLS_57;
+__VLS_89.slots.default;
+var __VLS_89;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
     ...{ class: "w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto" },
 });
 /** @type {[typeof ProgressFeed, ]} */ ;
 // @ts-ignore
-const __VLS_62 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
+const __VLS_94 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
     events: (__VLS_ctx.progressEvents),
 }));
-const __VLS_63 = __VLS_62({
+const __VLS_95 = __VLS_94({
     events: (__VLS_ctx.progressEvents),
-}, ...__VLS_functionalComponentArgsRest(__VLS_62));
+}, ...__VLS_functionalComponentArgsRest(__VLS_94));
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-6']} */ ;
@@ -598,6 +905,62 @@ const __VLS_63 = __VLS_62({
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-end']} */ ;
+/** @type {__VLS_StyleScopedClasses['relative']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['absolute']} */ ;
+/** @type {__VLS_StyleScopedClasses['bottom-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['left-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['z-10']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-80']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['shadow-lg']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['tracking-wide']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['tracking-wide']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['tracking-wide']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['range']} */ ;
+/** @type {__VLS_StyleScopedClasses['range-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['tracking-wide']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['range']} */ ;
+/** @type {__VLS_StyleScopedClasses['range-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
@@ -609,8 +972,13 @@ var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
+            MIN_RATE: MIN_RATE,
+            MAX_RATE: MAX_RATE,
+            MIN_VOLUME: MIN_VOLUME,
+            MAX_VOLUME: MAX_VOLUME,
             VAlert: VAlert,
             VButton: VButton,
+            VSelect: VSelect,
             VTextarea: VTextarea,
             MessageBubble: MessageBubble,
             ProgressFeed: ProgressFeed,
@@ -627,7 +995,22 @@ const __VLS_self = (await import('vue')).defineComponent({
             speechSupported: speechSupported,
             speechRecording: speechRecording,
             speechError: speechError,
+            speechSettingsOpen: speechSettingsOpen,
+            speechLanguageStored: speechLanguageStored,
+            speechLanguageOptions: speechLanguageOptions,
             toggleSpeech: toggleSpeech,
+            onLanguageChanged: onLanguageChanged,
+            speakerSupported: speakerSupported,
+            speakerEnabled: speakerEnabled,
+            speakerSpeaking: speakerSpeaking,
+            speechRate: speechRate,
+            speechVolume: speechVolume,
+            speechVoiceUri: speechVoiceUri,
+            voiceOptions: voiceOptions,
+            toggleSpeaker: toggleSpeaker,
+            onVoiceChanged: onVoiceChanged,
+            onRateInput: onRateInput,
+            onVolumeInput: onVolumeInput,
             chatProcessName: chatProcessName,
             sessionDisplay: sessionDisplay,
             sessionResolveError: sessionResolveError,

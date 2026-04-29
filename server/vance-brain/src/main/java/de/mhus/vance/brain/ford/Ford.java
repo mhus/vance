@@ -164,6 +164,7 @@ public class Ford implements ThinkEngine {
     private final StreamingProperties streamingProperties;
     private final ModelCatalog modelCatalog;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final FordProperties fordProperties;
     private final MemoryService memoryService;
     private final MemoryCompactionService memoryCompactionService;
@@ -264,7 +265,13 @@ public class Ford implements ThinkEngine {
                             process, ctx.settingService(), aiModelResolver);
             AiChatConfig config = behavior.entries().get(0).config();
             AiChat aiChat = ctx.aiModelService().createChat(
-                    behavior, AiChatOptions.builder().build());
+                    behavior,
+                    AiChatOptions.builder()
+                            .userNotifier(msg -> progressEmitter.emitStatus(
+                                    process,
+                                    de.mhus.vance.api.progress.StatusTag.PROVIDER,
+                                    msg))
+                            .build());
 
             List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
             String skillSection = skillPromptComposer.compose(activeSkills);

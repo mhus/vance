@@ -39,7 +39,12 @@ public record RetryPolicy(
                     "503", "429",
                     "high demand", "overloaded",
                     "RESOURCE_EXHAUSTED", "UNAVAILABLE",
-                    "quota", "rate limit", "rate-limit"));
+                    "quota", "rate limit", "rate-limit",
+                    // Gemini occasionally returns an empty response with
+                    // neither text nor a tool-call — langchain4j surfaces
+                    // it as this exact phrase. It's transient; retrying
+                    // typically yields a real reply on the next attempt.
+                    "neither with text nor with a function call"));
 
     public RetryPolicy {
         if (maxAttempts < 1) {

@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.process;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.thinkengine.StopInitiatorRegistry;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
@@ -44,14 +45,17 @@ public class ProcessStopTool implements Tool {
     /** Lazy — same cycle reasons as {@code ProcessCreateTool}. */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final LaneScheduler laneScheduler;
+    private final StopInitiatorRegistry stopInitiatorRegistry;
 
     public ProcessStopTool(
             ThinkProcessService thinkProcessService,
             ObjectProvider<ThinkEngineService> thinkEngineServiceProvider,
-            LaneScheduler laneScheduler) {
+            LaneScheduler laneScheduler,
+            StopInitiatorRegistry stopInitiatorRegistry) {
         this.thinkProcessService = thinkProcessService;
         this.thinkEngineServiceProvider = thinkEngineServiceProvider;
         this.laneScheduler = laneScheduler;
+        this.stopInitiatorRegistry = stopInitiatorRegistry;
     }
 
     @Override
@@ -100,6 +104,17 @@ public class ProcessStopTool implements Tool {
             return shape(target);
         }
 
+        // Mark the stop as parent-initiated so ParentNotificationListener
+        // can suppress the resulting STOPPED event going BACK to this
+        // caller — the caller already knows it stopped the child, no
+        // need to wake them with a redundant inbox event. Without this
+        // suppression Arthur sees the event in his pending queue, the
+        // lane scheduler wakes him for an extra LLM turn, and he
+        // sometimes interprets the event as "re-run the user's request"
+        // — the spontaneous-restart bug.
+        if (ctx.processId() != null) {
+            stopInitiatorRegistry.mark(target.getId(), ctx.processId());
+        }
         try {
             laneScheduler.submit(target.getId(),
                     () -> {
@@ -113,6 +128,12 @@ public class ProcessStopTool implements Tool {
             Throwable cause = ee.getCause() == null ? ee : ee.getCause();
             throw new ToolException(
                     "Target stop failed: " + cause.getMessage(), cause);
+        } finally {
+            // Listener consumes on match; this is the cleanup safety net
+            // for the case where engine.stop fails before the status
+            // transition fires (no listener call → entry would otherwise
+            // leak forever).
+            stopInitiatorRegistry.consume(target.getId());
         }
 
         ThinkProcessDocument refreshed = thinkProcessService.findById(target.getId())

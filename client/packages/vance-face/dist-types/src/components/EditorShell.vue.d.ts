@@ -31,6 +31,14 @@ interface Props {
      * editors whose right panel hosts forms (e.g. settings editor).
      */
     wideRightPanel?: boolean;
+    /**
+     * App-style layout: the main slot becomes a fixed-height frame
+     * (`overflow-hidden`) instead of the default page-scroll
+     * (`overflow-y-auto`). Editors that own internal scroll regions —
+     * chat with its message list + progress feed, future canvas
+     * editors — opt into this so the page itself never scrolls.
+     */
+    fullHeight?: boolean;
 }
 declare var __VLS_1: {}, __VLS_3: {}, __VLS_5: {}, __VLS_7: {};
 type __VLS_Slots = {} & {
@@ -45,6 +53,7 @@ type __VLS_Slots = {} & {
 declare const __VLS_component: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<Props> & Readonly<{}>, {
     breadcrumbs: Crumb[];
     wideRightPanel: boolean;
+    fullHeight: boolean;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 declare const _default: __VLS_WithSlots<typeof __VLS_component, __VLS_Slots>;
 export default _default;

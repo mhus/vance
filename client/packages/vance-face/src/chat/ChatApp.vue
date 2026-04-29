@@ -191,6 +191,7 @@ onBeforeUnmount(() => {
   <EditorShell
     title="Chat"
     :connection-state="connectionState"
+    :full-height="true"
   >
     <div class="h-full min-h-0 flex flex-col">
       <div v-if="errorMessage" class="px-6 pt-4">

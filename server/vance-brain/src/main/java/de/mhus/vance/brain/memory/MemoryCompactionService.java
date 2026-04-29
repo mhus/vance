@@ -87,6 +87,7 @@ public class MemoryCompactionService {
     private final SettingService settingService;
     private final FordProperties properties;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -189,7 +190,14 @@ public class MemoryCompactionService {
             AiChatConfig config,
             @Nullable MemoryDocument priorSummary,
             List<ChatMessageDocument> older) {
-        AiChat ai = aiModelService.createChat(config, AiChatOptions.builder().build());
+        AiChat ai = aiModelService.createChat(
+                config,
+                AiChatOptions.builder()
+                        .userNotifier(msg -> progressEmitter.emitStatus(
+                                process,
+                                de.mhus.vance.api.progress.StatusTag.PROVIDER,
+                                msg))
+                        .build());
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(SUMMARIZER_SYSTEM_PROMPT));
         StringBuilder body = new StringBuilder();

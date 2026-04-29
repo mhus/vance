@@ -107,6 +107,7 @@ public class ZaphodEngine implements ThinkEngine {
     private final RecipeResolver recipeResolver;
     private final AiModelResolver aiModelResolver;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
@@ -397,7 +398,14 @@ public class ZaphodEngine implements ThinkEngine {
                     de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
                             process, ctx.settingService(), aiModelResolver);
             AiChatConfig config = behavior.entries().get(0).config();
-            AiChat ai = ctx.aiModelService().createChat(behavior, AiChatOptions.builder().build());
+            AiChat ai = ctx.aiModelService().createChat(
+                    behavior,
+                    AiChatOptions.builder()
+                            .userNotifier(msg -> progressEmitter.emitStatus(
+                                    process,
+                                    de.mhus.vance.api.progress.StatusTag.PROVIDER,
+                                    msg))
+                            .build());
 
             StringBuilder body = new StringBuilder();
             if (state.getSynthesizerPrompt() != null && !state.getSynthesizerPrompt().isBlank()) {

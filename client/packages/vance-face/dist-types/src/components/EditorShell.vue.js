@@ -3,6 +3,7 @@ import { clearAuth, getTenantId, getUsername } from '@vance/shared';
 const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     wideRightPanel: false,
+    fullHeight: false,
 });
 function crumbText(c) {
     return typeof c === 'string' ? c : c.text;
@@ -28,6 +29,7 @@ debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
     breadcrumbs: () => [],
     wideRightPanel: false,
+    fullHeight: false,
 });
 const __VLS_ctx = {};
 let __VLS_components;
@@ -36,7 +38,7 @@ let __VLS_directives;
 // CSS variable injection 
 // CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "min-h-screen flex flex-col bg-base-200" },
+    ...{ class: "h-screen overflow-hidden flex flex-col bg-base-200" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.header, __VLS_intrinsicElements.header)({
     ...{ class: "navbar bg-base-100 shadow-sm border-b border-base-300 px-4 gap-2" },
@@ -138,7 +140,7 @@ if (__VLS_ctx.$slots.sidebar) {
     var __VLS_2 = {};
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.main, __VLS_intrinsicElements.main)({
-    ...{ class: "flex-1 min-w-0 overflow-y-auto" },
+    ...{ class: (['flex-1 min-w-0 min-h-0', __VLS_ctx.fullHeight ? 'overflow-hidden' : 'overflow-y-auto']) },
 });
 var __VLS_4 = {};
 if (__VLS_ctx.$slots['right-panel']) {
@@ -150,7 +152,8 @@ if (__VLS_ctx.$slots['right-panel']) {
     });
     var __VLS_6 = {};
 }
-/** @type {__VLS_StyleScopedClasses['min-h-screen']} */ ;
+/** @type {__VLS_StyleScopedClasses['h-screen']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
@@ -217,7 +220,7 @@ if (__VLS_ctx.$slots['right-panel']) {
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
-/** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-l']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;

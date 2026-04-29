@@ -172,10 +172,12 @@ const __VLS_0 = {}.EditorShell;
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
     title: "Chat",
     connectionState: (__VLS_ctx.connectionState),
+    fullHeight: (true),
 }));
 const __VLS_2 = __VLS_1({
     title: "Chat",
     connectionState: (__VLS_ctx.connectionState),
+    fullHeight: (true),
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 var __VLS_4 = {};
 __VLS_3.slots.default;

@@ -94,8 +94,12 @@ class ArthurNoSpontaneousRestartTest extends AbstractAiTest {
                         + "] fresh session, new chat-process id=" + arthurId);
             }
 
-            int childrenBefore = childrenOf(arthurId);
-            int messagesBefore = assistantMessagesOn(arthurId);
+            // Lambda capture needs an effectively final ref to this
+            // iteration's chat-process id.
+            final String iterArthurId = arthurId;
+
+            int childrenBefore = childrenOf(iterArthurId);
+            int messagesBefore = assistantMessagesOn(iterArthurId);
 
             String prompt = PROMPTS[(iteration - 1) % PROMPTS.length];
             FootProcess.InputResult chat = foot.chat(prompt);
@@ -104,7 +108,7 @@ class ArthurNoSpontaneousRestartTest extends AbstractAiTest {
 
             // Wait for Arthur's reply to THIS iteration's prompt.
             boolean firstAssistant = pollUntil(FIRST_REPLY_TIMEOUT, () ->
-                    assistantMessagesOn(arthurId) >= messagesBefore + 1);
+                    assistantMessagesOn(iterArthurId) >= messagesBefore + 1);
             if (!firstAssistant) {
                 // Arthur's own LLM stack died (e.g. Gemini exhausted both
                 // chain entries) before producing a reply. That's a
@@ -118,8 +122,8 @@ class ArthurNoSpontaneousRestartTest extends AbstractAiTest {
                 continue;
             }
 
-            int messagesAtT1 = assistantMessagesOn(arthurId);
-            int childrenAtT1 = childrenOf(arthurId);
+            int messagesAtT1 = assistantMessagesOn(iterArthurId);
+            int childrenAtT1 = childrenOf(iterArthurId);
             System.out.println("[iteration " + iteration + "/" + RUNS + "] turn 1 done: "
                     + "children=" + childrenAtT1 + " (Δ" + (childrenAtT1 - childrenBefore) + ")"
                     + " messages=" + messagesAtT1 + " (Δ" + (messagesAtT1 - messagesBefore) + ")");
@@ -127,10 +131,10 @@ class ArthurNoSpontaneousRestartTest extends AbstractAiTest {
             // Watch for a spontaneous second turn during the idle window.
             // pollUntil returns true on first matching observation.
             boolean secondTurnFired = pollUntil(WATCH_WINDOW, () ->
-                    assistantMessagesOn(arthurId) > messagesAtT1);
+                    assistantMessagesOn(iterArthurId) > messagesAtT1);
 
-            int childrenNow = childrenOf(arthurId);
-            int messagesNow = assistantMessagesOn(arthurId);
+            int childrenNow = childrenOf(iterArthurId);
+            int messagesNow = assistantMessagesOn(iterArthurId);
             System.out.println("[iteration " + iteration + "/" + RUNS + "] after "
                     + WATCH_WINDOW.toSeconds() + "s idle window: "
                     + "children=" + childrenNow + " messages=" + messagesNow

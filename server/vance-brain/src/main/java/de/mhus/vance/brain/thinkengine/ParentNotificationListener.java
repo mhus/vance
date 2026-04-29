@@ -26,6 +26,14 @@ import org.springframework.stereotype.Component;
  *   <li>Skip intermediate transitions ({@code READY/RUNNING/PAUSED/SUSPENDED})
  *       — they're internal lane state, not something the parent needs
  *       to be woken for.</li>
+ *   <li>Skip parent-initiated stops — when the parent itself called
+ *       {@code process_stop} via {@link de.mhus.vance.brain.tools.process.ProcessStopTool},
+ *       the resulting STOPPED event would loop back to it as redundant
+ *       inbox material. {@link StopInitiatorRegistry} carries the
+ *       initiator id so we can detect and suppress this case. Without
+ *       the suppression, Arthur — and any other orchestrator — gets a
+ *       phantom turn that the LLM sometimes interprets as "do
+ *       something" (the classic spontaneous-restart symptom).</li>
  * </ul>
  */
 @Component
@@ -41,6 +49,7 @@ public class ParentNotificationListener {
      * would close the bean-graph cycle.
      */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    private final StopInitiatorRegistry stopInitiatorRegistry;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -54,6 +63,15 @@ public class ParentNotificationListener {
         ProcessEventType eventType = mapStatus(event.newStatus());
         if (eventType == null) {
             return;
+        }
+        // Parent-initiated stops loop right back to the caller — suppress.
+        if (eventType == ProcessEventType.STOPPED) {
+            String initiator = stopInitiatorRegistry.consume(event.processId()).orElse(null);
+            if (initiator != null && initiator.equals(parentId)) {
+                log.debug("Parent {} stopped child {} itself — suppressing STOPPED notification",
+                        parentId, event.processId());
+                return;
+            }
         }
         ParentReport report = buildReport(event.processId(), eventType, event.newStatus());
         boolean queued = eventEmitter.notifyParent(

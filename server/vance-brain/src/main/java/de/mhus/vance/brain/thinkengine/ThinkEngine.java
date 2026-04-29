@@ -90,6 +90,24 @@ public interface ThinkEngine {
     }
 
     /**
+     * Tenant-aware variant of {@link #bundledConfig()} — used by spawners
+     * that have a tenant context and want engines to resolve their
+     * defaults through the document cascade
+     * (project → {@code _vance} → classpath). Engines that override this
+     * method can return a fresh config per call (e.g. Eddie reads its
+     * prompts via {@link EnginePromptResolver}); the default delegates
+     * to the tenant-agnostic {@link #bundledConfig()}.
+     *
+     * @param tenantId  always set
+     * @param projectId session's project — engines that want per-user
+     *                  overrides (Eddie's {@code _user_<login>}) read it
+     */
+    default Optional<EngineBundledConfig> bundledConfig(
+            String tenantId, @org.jspecify.annotations.Nullable String projectId) {
+        return bundledConfig();
+    }
+
+    /**
      * Whether processes of this engine may parent processes that live
      * in a different project. Default {@code false} — regular worker
      * engines (Arthur, Ford, Marvin, …) parent only within their own

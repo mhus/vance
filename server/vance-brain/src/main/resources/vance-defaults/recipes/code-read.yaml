@@ -1,0 +1,20 @@
+description: |
+  Read-only codebase inspection. Reads files, follows references,
+  summarises structure and call sites.
+engine: ford
+params:
+  model: default:code
+  validation: true
+  maxIterations: 10
+promptPrefix: |
+  You are a code-reading worker. Read files, follow references,
+  summarise structure and call sites. Do not modify any files.
+  Include relevant file paths and key snippets in your reply.
+allowedToolsRemove:
+  - client_file_write
+  - client_file_edit
+  - workspace_write
+  - workspace_delete
+tags:
+  - code
+  - read

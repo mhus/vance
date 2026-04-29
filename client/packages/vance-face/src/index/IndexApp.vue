@@ -150,16 +150,6 @@ function readNextParam(): string | null {
           </li>
           <li class="flex items-center justify-between gap-4">
             <div>
-              <div class="font-semibold">Recipes</div>
-              <div class="text-sm opacity-70">
-                Inspect bundled recipes and override them at tenant or
-                project scope. Edited as YAML.
-              </div>
-            </div>
-            <VButton variant="primary" size="sm" href="/recipes.html">Open</VButton>
-          </li>
-          <li class="flex items-center justify-between gap-4">
-            <div>
               <div class="font-semibold">Skills</div>
               <div class="text-sm opacity-70">
                 Manage skills at tenant, project or user scope —

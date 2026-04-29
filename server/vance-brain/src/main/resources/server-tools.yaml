@@ -1,0 +1,44 @@
+# Bundled default server tools — provisioned into the tenant-wide
+# `_vance` system project on first tenant login. Tenant edits to a
+# document are preserved across restarts: the bootstrap creates a
+# document only when `(tenantId, _vance, name)` does not yet exist.
+#
+# To roll back to the bundled default, delete the document — the next
+# login re-creates it from this file.
+#
+# Schema mirrors `ServerToolDocument` minus tenantId/projectId/version.
+
+tools:
+  - name: doc_getting_started
+    type: doc_lookup
+    description: >
+      Onboarding cheat sheet: what Vance is, how sessions and projects
+      relate, and how to drive the chat. Read this when the user looks
+      lost.
+    parameters:
+      path: docs/getting-started.md
+    enabled: true
+    primary: false
+    labels: [docs, onboarding]
+
+  - name: doc_processes_overview
+    type: doc_lookup
+    description: >
+      Reference on think-process lifecycle, suspend/resume semantics,
+      and how processes relate to sessions.
+    parameters:
+      path: docs/processes.md
+    enabled: true
+    primary: false
+    labels: [docs, processes]
+
+  - name: doc_tools_overview
+    type: doc_lookup
+    description: >
+      Catalogue and conventions for the available tools — when to use
+      `find_tools` vs. primary tools, error handling, scoping.
+    parameters:
+      path: docs/tools.md
+    enabled: true
+    primary: false
+    labels: [docs, tools]

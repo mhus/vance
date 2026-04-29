@@ -15,8 +15,9 @@ import org.springframework.stereotype.Service;
  * knowing which source the tool came from.
  *
  * <p>Name collisions across sources are resolved first-wins in source
- * order — {@link ServerToolSource} is registered first, so built-ins
- * cannot be shadowed by a client pushing a same-named tool.
+ * order — {@code ConfiguredToolSource} (server-side cascade) is
+ * registered first, so client-pushed tools cannot shadow server-managed
+ * tools that share a name.
  */
 @Service
 @Slf4j

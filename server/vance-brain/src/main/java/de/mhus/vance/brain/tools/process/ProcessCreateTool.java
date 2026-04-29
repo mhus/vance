@@ -76,7 +76,7 @@ public class ProcessCreateTool implements Tool {
     private final ThinkProcessService thinkProcessService;
     /**
      * Lazy because the bean graph cycles otherwise:
-     * {@code ThinkEngineService → ToolDispatcher → ServerToolSource → this}.
+     * {@code ThinkEngineService → ToolDispatcher → BuiltInToolSource → this}.
      * Resolving via {@link ObjectProvider} defers the lookup to
      * first use, by which time the singleton is built.
      */

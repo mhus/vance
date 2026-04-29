@@ -8,8 +8,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Cascade-resolved view of one recipe — what the spawner uses after
  * {@link RecipeResolver#resolve} but <em>before</em> caller-supplied
- * params have been merged in. Same shape as {@link BundledRecipe}
- * plus the source attribution.
+ * params have been merged in. Carries the parsed YAML fields plus the
+ * cascade source attribution.
  */
 public record ResolvedRecipe(
         String name,

@@ -129,8 +129,19 @@ public class EddieEngine implements ThinkEngine {
             "docs_list",
             "docs_read");
 
-    private static final String PROMPT_RESOURCE = "eddie/eddie-prompt.md";
-    private static final String PROMPT_SMALL_RESOURCE = "eddie/eddie-prompt-small.md";
+    /**
+     * Document-cascade paths for Eddie's main and small-model prompts.
+     * Resolved through {@link de.mhus.vance.brain.thinkengine.EnginePromptResolver}
+     * so a per-user override (in the {@code _user_<login>} project) or
+     * tenant-wide override (in the {@code _vance} project) can replace
+     * the bundled defaults shipped under {@code classpath:vance-defaults/prompts/}.
+     */
+    private static final String PROMPT_PATH = "prompts/eddie-prompt.md";
+    private static final String PROMPT_SMALL_PATH = "prompts/eddie-prompt-small.md";
+
+    /** Classpath path of the bundled fallback (kept loadable when no tenant context). */
+    private static final String PROMPT_RESOURCE = "vance-defaults/prompts/eddie-prompt.md";
+    private static final String PROMPT_SMALL_RESOURCE = "vance-defaults/prompts/eddie-prompt-small.md";
 
     private static final int DEFAULT_MAX_ITERATIONS = 4;
     private static final String DEFAULT_MODEL_ALIAS = "default:analyze";
@@ -142,6 +153,7 @@ public class EddieEngine implements ThinkEngine {
     private final ThinkProcessService thinkProcessService;
     private final EddieActivityService activityService;
     private final de.mhus.vance.shared.session.SessionService sessionService;
+    private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -184,13 +196,34 @@ public class EddieEngine implements ThinkEngine {
     public Optional<EngineBundledConfig> bundledConfig() {
         EngineBundledConfig cached = cachedConfig;
         if (cached == null) {
-            cached = buildBundledConfig();
+            cached = buildBundledConfig(loadResource(PROMPT_RESOURCE),
+                    loadResource(PROMPT_SMALL_RESOURCE));
             cachedConfig = cached;
         }
         return Optional.of(cached);
     }
 
-    private EngineBundledConfig buildBundledConfig() {
+    /**
+     * Tenant-aware variant: resolves both prompts via the document
+     * cascade ({@code _user_<login>} → {@code _vance} →
+     * {@code classpath:vance-defaults/prompts/eddie-prompt*.md}). The
+     * classpath fallback is the same content that the cached default
+     * loads from, so a missing override silently falls through to the
+     * bundled prompt without an extra round-trip.
+     */
+    @Override
+    public Optional<EngineBundledConfig> bundledConfig(
+            String tenantId, @org.jspecify.annotations.Nullable String projectId) {
+        String promptFallback = loadResource(PROMPT_RESOURCE);
+        String promptSmallFallback = loadResource(PROMPT_SMALL_RESOURCE);
+        String prompt = enginePromptResolver.resolveForTenant(
+                tenantId, projectId, PROMPT_PATH, promptFallback);
+        String promptSmall = enginePromptResolver.resolveForTenant(
+                tenantId, projectId, PROMPT_SMALL_PATH, promptSmallFallback);
+        return Optional.of(buildBundledConfig(prompt, promptSmall));
+    }
+
+    private EngineBundledConfig buildBundledConfig(String prompt, String promptSmall) {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("model", DEFAULT_MODEL_ALIAS);
         params.put("validation", true);
@@ -198,8 +231,8 @@ public class EddieEngine implements ThinkEngine {
 
         return new EngineBundledConfig(
                 params,
-                loadResource(PROMPT_RESOURCE),
-                loadResource(PROMPT_SMALL_RESOURCE),
+                prompt,
+                promptSmall,
                 PromptMode.OVERWRITE,
                 /*intentCorrection*/ null,
                 /*dataRelayCorrection*/ null,

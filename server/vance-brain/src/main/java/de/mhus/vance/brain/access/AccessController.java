@@ -3,6 +3,7 @@ package de.mhus.vance.brain.access;
 import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.api.access.RefreshTokenResponse;
+import de.mhus.vance.brain.servertool.ServerToolBootstrapService;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.jwt.JwtService;
@@ -56,6 +57,7 @@ public class AccessController {
     private final UserService userService;
     private final PasswordService passwordService;
     private final HomeBootstrapService homeBootstrapService;
+    private final ServerToolBootstrapService serverToolBootstrapService;
 
     @PostMapping("/brain/{tenant}/access/{username}")
     public ResponseEntity<AccessTokenResponse> createToken(
@@ -97,6 +99,9 @@ public class AccessController {
         // for tenant-level documents/prompts/memory (resource lookup
         // logic lands in a follow-up). Idempotent and cheap.
         homeBootstrapService.ensureVance(tenant);
+        // Bundled server-tool defaults inside _vance. Idempotent —
+        // existing rows are left untouched so tenant edits survive.
+        serverToolBootstrapService.ensureSystemTools(tenant);
 
         Instant expiresAt = Instant.now().plus(TOKEN_LIFETIME);
         String token = jwtService.createToken(tenant, username, expiresAt);

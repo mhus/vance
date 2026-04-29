@@ -40,7 +40,7 @@ import org.springframework.stereotype.Component;
  * up by the next loop iteration in the same lane-turn.
  *
  * <p>{@link ObjectProvider} for {@link ThinkEngineService} because
- * the latter wires through {@code ToolDispatcher → ServerToolSource
+ * the latter wires through {@code ToolDispatcher → BuiltInToolSource
  * → process tools → ThinkEngineService}; a direct dep would close
  * the cycle.
  */

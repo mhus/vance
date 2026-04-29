@@ -16,8 +16,8 @@ import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.progress.LlmCallTracker;
-import de.mhus.vance.brain.recipe.BundledRecipe;
-import de.mhus.vance.brain.recipe.BundledRecipeRegistry;
+import de.mhus.vance.brain.recipe.RecipeLoader;
+import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -100,7 +100,6 @@ public class ArthurEngine implements ThinkEngine {
      * catalog). Composed once after first turn since bundled-recipe
      * state doesn't change without a brain restart.
      */
-    private static volatile String cachedFallbackPrompt;
 
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "whoami",
@@ -159,16 +158,29 @@ public class ArthurEngine implements ThinkEngine {
 
     private static final int MAX_VALIDATION_CORRECTIONS = 2;
 
+    /**
+     * Base cascade path for the Arthur engine prompt. Loaded via
+     * {@link de.mhus.vance.brain.thinkengine.EnginePromptResolver#resolveTiered};
+     * SMALL models automatically pick up
+     * {@code prompts/arthur-prompt-small.md} when one exists, otherwise
+     * fall through to this base path. Tenants override either variant by
+     * placing matching files in their {@code _vance} (or per-user) project.
+     * Recipes can swap the paths via {@code promptDocument} /
+     * {@code promptDocumentSmall} params.
+     */
+    private static final String DEFAULT_PROMPT_PATH = "prompts/arthur-prompt.md";
+
     private final ThinkProcessService thinkProcessService;
     private final ObjectMapper objectMapper;
     private final StreamingProperties streamingProperties;
     private final ArthurProperties arthurProperties;
-    private final BundledRecipeRegistry bundledRecipeRegistry;
+    private final RecipeLoader recipeLoader;
     private final AiModelResolver aiModelResolver;
     private final ModelCatalog modelCatalog;
     private final LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
+    private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -570,8 +582,9 @@ public class ArthurEngine implements ThinkEngine {
             List<SteerMessage> inbox,
             ModelSize modelSize) {
         List<ChatMessage> messages = new ArrayList<>();
-        String base = SystemPrompts.compose(process, engineDefaultPrompt(), modelSize);
-        String withCatalog = base + recipeCatalogCached();
+        String base = SystemPrompts.compose(process,
+                engineDefaultPrompt(process, modelSize), modelSize);
+        String withCatalog = base + buildRecipeCatalogSection(process);
         // Append the project-memory block (memory.* settings cascade) so
         // the user can pin language / tone / persona / arbitrary key:value
         // hints at any scope without rewriting the recipe prompt.
@@ -726,35 +739,46 @@ public class ArthurEngine implements ThinkEngine {
      * bundled-recipe catalog is appended <em>after</em> compose so it
      * sits at the end of the system prompt regardless.
      */
-    private static String engineDefaultPrompt() {
-        return ENGINE_FALLBACK_PROMPT;
-    }
-
-    /** Cached version of {@link #buildRecipeCatalogSection()}. */
-    private String recipeCatalogCached() {
-        String cached = cachedFallbackPrompt;
-        if (cached != null) return cached;
-        String composed = buildRecipeCatalogSection();
-        cachedFallbackPrompt = composed;
-        return composed;
+    /**
+     * Resolves the engine-default prompt for the current turn through the
+     * tier-aware document cascade. Recipe params {@code promptDocument}
+     * (base path) and {@code promptDocumentSmall} (optional explicit
+     * small-variant path) override the engine defaults; the resolver
+     * automatically derives a {@code -small} suffix and falls through to
+     * the base path when no small variant exists, so engines don't need
+     * to maintain two separate files unless they want differentiated
+     * tiers.
+     */
+    private String engineDefaultPrompt(ThinkProcessDocument process, ModelSize modelSize) {
+        String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
+        String smallOverride = paramString(process, "promptDocumentSmall", null);
+        return enginePromptResolver.resolveTiered(
+                process, basePath, smallOverride, modelSize, ENGINE_FALLBACK_PROMPT);
     }
 
     /**
-     * Builds the bullet-list of bundled recipes that gets appended to
-     * the system prompt. Tenant- and project-scoped recipes are NOT
-     * embedded here — they're discoverable via {@code recipe_list}
-     * at runtime instead.
+     * Builds the bullet-list of recipes that gets appended to the
+     * system prompt. Pulled fresh per call from
+     * {@link RecipeLoader#listAll} so tenant- and project-recipes are
+     * included alongside the bundled defaults — same source as
+     * {@code recipe_list} at runtime.
      */
-    private String buildRecipeCatalogSection() {
-        if (bundledRecipeRegistry.size() == 0) {
+    private String buildRecipeCatalogSection(ThinkProcessDocument process) {
+        // No projectId on a ThinkProcessDocument — RecipeLoader falls back
+        // to the _vance system project, which is what Arthur wants here:
+        // the catalog in the system prompt covers tenant-wide + bundled
+        // recipes. Project-scoped recipes show up at runtime through
+        // recipe_list (which has the full ToolInvocationContext).
+        java.util.List<ResolvedRecipe> recipes = recipeLoader.listAll(
+                process.getTenantId(), null);
+        if (recipes.isEmpty()) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n## Available worker recipes\n\n")
-                .append("These bundled recipes are always present. Tenant- or "
-                        + "project-specific recipes may also exist — call "
-                        + "`recipe_list` at runtime to see the complete catalog.\n\n");
-        for (BundledRecipe r : bundledRecipeRegistry.all()) {
+                .append("Use one of these names for `process_create(recipe=…)`. "
+                        + "Call `recipe_list` at runtime if you want the live catalog.\n\n");
+        for (ResolvedRecipe r : recipes) {
             sb.append("- `").append(r.name()).append("` — ")
                     .append(oneLine(r.description())).append("\n");
         }

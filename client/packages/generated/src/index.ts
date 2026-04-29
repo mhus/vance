@@ -53,10 +53,6 @@ export * from './projects/ProjectGroupUpdateRequest';
 export * from './projects/ProjectUpdateRequest';
 export * from './projects/TenantProjectsResponse';
 
-export * from './recipes/RecipeDto';
-export * from './recipes/RecipeSource';
-export * from './recipes/RecipeWriteRequest';
-
 export * from './skills/SkillDto';
 export * from './skills/SkillReferenceDocDto';
 export * from './skills/SkillReferenceDocLoadMode';

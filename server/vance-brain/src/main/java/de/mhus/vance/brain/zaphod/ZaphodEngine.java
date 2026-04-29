@@ -84,9 +84,11 @@ public class ZaphodEngine implements ThinkEngine {
     private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
-    /** Engine-default synthesis system prompt. Recipes override
-     *  the *user-message* prefix via {@code synthesisPrompt}; the
-     *  system prompt itself is engine-stable. */
+    /** Engine-default synthesis system prompt — last-resort Java
+     *  fallback. Primary source is the document cascade
+     *  ({@code prompts/zaphod-synthesis.md}); recipes can override the
+     *  cascade path via {@code promptDocument}. The user-message prefix
+     *  remains a separate concern (recipe param {@code synthesisPrompt}). */
     private static final String SYNTHESIS_SYSTEM_PROMPT =
             """
             Du synthetisierst die Sichten mehrerer Berater zu einer einzigen
@@ -98,6 +100,10 @@ public class ZaphodEngine implements ThinkEngine {
             Zitiere konkrete Punkte aus den Köpfen, paraphrasiere nicht generisch.
             """;
 
+    /** Cascade path for the Zaphod synthesis prompt. Loaded via
+     *  {@link de.mhus.vance.brain.thinkengine.EnginePromptResolver}. */
+    private static final String SYNTHESIS_PROMPT_PATH = "prompts/zaphod-synthesis.md";
+
     /** Soft-cap on heads per council. More than this is almost
      *  certainly a config error; we warn + cut off. */
     private static final int MAX_HEADS = 10;
@@ -108,6 +114,7 @@ public class ZaphodEngine implements ThinkEngine {
     private final AiModelResolver aiModelResolver;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
+    private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
@@ -425,7 +432,14 @@ public class ZaphodEngine implements ThinkEngine {
                 body.append('\n');
             }
             List<ChatMessage> messages = new ArrayList<>();
-            messages.add(SystemMessage.from(SYNTHESIS_SYSTEM_PROMPT));
+            String basePath = paramString(process, "promptDocument", SYNTHESIS_PROMPT_PATH);
+            String smallOverride = paramString(process, "promptDocumentSmall", null);
+            messages.add(SystemMessage.from(enginePromptResolver.resolveTiered(
+                    process,
+                    basePath,
+                    smallOverride,
+                    de.mhus.vance.brain.ai.ModelSize.LARGE,
+                    SYNTHESIS_SYSTEM_PROMPT)));
             messages.add(UserMessage.from(body.toString()));
             String modelAlias = config.provider() + ":" + config.modelName();
             long startMs = System.currentTimeMillis();

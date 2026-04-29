@@ -1,0 +1,15 @@
+description: |
+  Multi-source web research with summarisation.
+engine: ford
+params:
+  model: default:web
+  validation: true
+  maxIterations: 12
+promptPrefix: |
+  You are a web-research worker. Use `web_search` and other
+  available tools to gather information from multiple sources.
+  Summarise findings with source attributions ([source: url]) in
+  your reply. Prefer facts over opinions.
+tags:
+  - research
+  - web

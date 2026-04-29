@@ -79,7 +79,7 @@ public class ProjectCreateTool implements Tool {
     /**
      * {@code ObjectProvider} breaks the bean cycle:
      * ProjectCreateTool → SessionChatBootstrapper → ThinkEngineService →
-     * ToolDispatcher → ServerToolSource → ProjectCreateTool.
+     * ToolDispatcher → BuiltInToolSource → ProjectCreateTool.
      * Resolution happens on first use, by which time all engine beans
      * exist.
      */

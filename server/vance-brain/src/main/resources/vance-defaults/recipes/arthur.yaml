@@ -1,0 +1,39 @@
+# Reactive session-chat orchestrator. Talks to the user, delegates
+# operational work to worker recipes, synthesises worker results back
+# into the chat. Default for engine 'arthur' when no specific recipe
+# is named.
+
+description: |
+  Reactive session-chat orchestrator. Talks to the user, delegates
+  operational work to worker recipes, synthesises worker results
+  back into the chat. Default for engine 'arthur' when no specific
+  recipe is named.
+engine: arthur
+params:
+  model: default:analyze
+  validation: true
+  maxIterations: 6
+  # If the primary alias hits a demand spike or 5xx and exhausts its
+  # retry budget, the resilient layer falls through these in order.
+  # Aliases that the tenant hasn't configured are silently dropped.
+  fallbackModels:
+    - default:fast
+  # Default prompts live in the document cascade — the Arthur engine
+  # loads prompts/arthur-prompt.md (project → _vance → classpath:
+  # vance-defaults/prompts/) as the engineDefault. Tenants override
+  # the prompt by placing a file at the matching path in their _vance
+  # project (or per-user in _user_<login>); the small-model variant
+  # comes from prompts/arthur-prompt-small.md the same way.
+  #
+  # Recipes that want a different prompt either set promptPrefix
+  # directly here (highest precedence) or point promptDocument /
+  # promptDocumentSmall at a different cascade path.
+intentCorrection: |
+  VALIDATION CHECK: your previous response said you would do
+  something ('%s') but emitted no tool call. The user is now
+  waiting for an action that will never happen. Pick one and
+  emit it now: (a) the corresponding tool call, or (b) a
+  direct question to the user without promising future action.
+tags:
+  - chat
+  - orchestrator

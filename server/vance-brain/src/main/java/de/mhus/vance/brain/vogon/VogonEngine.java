@@ -86,7 +86,8 @@ public class VogonEngine implements ThinkEngine {
 
     private static final String SETTINGS_REF_TYPE = "tenant";
 
-    private final BundledStrategyRegistry strategyRegistry;
+    private final StrategyResolver strategyResolver;
+    private final de.mhus.vance.shared.session.SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
     private final InboxItemService inboxItemService;
@@ -149,7 +150,8 @@ public class VogonEngine implements ThinkEngine {
                     "Vogon.start requires engineParams.strategy — id='"
                             + process.getId() + "'");
         }
-        StrategySpec strategy = strategyRegistry.find(strategyName)
+        StrategySpec strategy = strategyResolver.find(
+                strategyName, process.getTenantId(), resolveProjectId(process))
                 .orElseThrow(() -> new IllegalStateException(
                         "Unknown strategy '" + strategyName + "'"));
         if (strategy.getPhases().isEmpty()) {
@@ -198,7 +200,8 @@ public class VogonEngine implements ThinkEngine {
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         StrategyState initialState = loadState(process);
-        StrategySpec strategy = strategyRegistry.find(initialState.getStrategy())
+        StrategySpec strategy = strategyResolver.find(
+                initialState.getStrategy(), process.getTenantId(), resolveProjectId(process))
                 .orElseThrow(() -> new IllegalStateException(
                         "Strategy '" + initialState.getStrategy() + "' missing at runtime"));
         StrategyState state = initialState;
@@ -856,5 +859,20 @@ public class VogonEngine implements ThinkEngine {
         Map<String, Object> p = process.getEngineParams();
         Object v = p == null ? null : p.get(key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
+    }
+
+    /**
+     * Resolves the project the process is running in — needed by the
+     * strategy cascade so per-project overrides get a chance. Returns
+     * {@code null} when no session is bound, in which case the cascade
+     * collapses to {@code _vance} → classpath.
+     */
+    private @Nullable String resolveProjectId(ThinkProcessDocument process) {
+        String sessionId = process.getSessionId();
+        if (sessionId == null || sessionId.isBlank()) return null;
+        return sessionService.findBySessionId(sessionId)
+                .map(s -> s.getProjectId())
+                .filter(p -> p != null && !p.isBlank())
+                .orElse(null);
     }
 }

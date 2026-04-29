@@ -1,10 +1,10 @@
 package de.mhus.vance.brain.recipe;
 
-import de.mhus.vance.api.thinkprocess.PromptMode;
+import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
-import de.mhus.vance.shared.recipe.RecipeDocument;
-import de.mhus.vance.shared.recipe.RecipeService;
+import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -19,11 +19,11 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
- * Cascade resolver for recipe names — Project → Tenant → Bundled.
- * Combines persistent (Mongo, via {@link RecipeService}) and bundled
- * (classpath, via {@link BundledRecipeRegistry}) tiers. Returns
+ * Cascade resolver for recipe names — Project → {@code _vance} →
+ * classpath, all reached through {@link RecipeLoader} which in turn
+ * delegates to {@code DocumentService.lookupCascade}. Returns
  * {@link AppliedRecipe} with caller-supplied param overrides already
- * folded in (unless the recipe is {@link RecipeDocument#isLocked()}).
+ * folded in (unless the recipe is locked).
  *
  * <p>Lazy {@link ObjectProvider} for {@link ThinkEngineService}
  * because the bean graph cycles otherwise:
@@ -35,12 +35,15 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class RecipeResolver {
 
-    private final RecipeService recipeService;
-    private final BundledRecipeRegistry bundled;
+    private final RecipeLoader loader;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    private final ServerToolService serverToolService;
+
+    /** Prefix that marks an entry as a label selector (vs. a literal tool name). */
+    public static final String LABEL_PREFIX = "@";
 
     /**
-     * Resolves {@code name} in the project/tenant/bundled cascade.
+     * Resolves {@code name} in the project/_vance/classpath cascade.
      * Returns empty if no tier carries the name — the caller will
      * normally turn this into a 4xx-style error for the LLM/REST API.
      */
@@ -49,44 +52,7 @@ public class RecipeResolver {
         if (name == null || name.isBlank()) {
             return Optional.empty();
         }
-
-        Optional<RecipeDocument> persistent = recipeService.find(tenantId, projectId, name);
-        if (persistent.isPresent()) {
-            RecipeDocument d = persistent.get();
-            RecipeSource source = d.getProjectId() != null
-                    ? RecipeSource.PROJECT : RecipeSource.TENANT;
-            return Optional.of(new ResolvedRecipe(
-                    d.getName(),
-                    d.getDescription(),
-                    d.getEngine(),
-                    d.getParams() == null ? Map.of() : d.getParams(),
-                    d.getPromptPrefix(),
-                    d.getPromptPrefixSmall(),
-                    d.getPromptMode() == null ? PromptMode.APPEND : d.getPromptMode(),
-                    d.getIntentCorrection(),
-                    d.getDataRelayCorrection(),
-                    d.getAllowedToolsAdd() == null ? List.of() : d.getAllowedToolsAdd(),
-                    d.getAllowedToolsRemove() == null ? List.of() : d.getAllowedToolsRemove(),
-                    d.isLocked(),
-                    d.getTags() == null ? List.of() : d.getTags(),
-                    source));
-        }
-
-        return bundled.find(name).map(b -> new ResolvedRecipe(
-                b.name(),
-                b.description(),
-                b.engine(),
-                b.params(),
-                b.promptPrefix(),
-                b.promptPrefixSmall(),
-                b.promptMode(),
-                b.intentCorrection(),
-                b.dataRelayCorrection(),
-                b.allowedToolsAdd(),
-                b.allowedToolsRemove(),
-                b.locked(),
-                b.tags(),
-                RecipeSource.BUNDLED));
+        return loader.load(tenantId, effectiveProjectId(projectId), name);
     }
 
     /**
@@ -140,8 +106,13 @@ public class RecipeResolver {
                 de.mhus.vance.brain.progress.ProgressLevel.PARAM_KEY,
                 de.mhus.vance.brain.progress.ProgressLevel.NORMAL.name().toLowerCase());
 
+        List<String> expandedAdd = expandLabelSelectors(
+                tenantId, projectId, r.allowedToolsAdd());
+        List<String> expandedRemove = expandLabelSelectors(
+                tenantId, projectId, r.allowedToolsRemove());
+
         Set<String> effectiveAllowed = computeAllowed(
-                engine.allowedTools(), r.allowedToolsAdd(), r.allowedToolsRemove());
+                engine.allowedTools(), expandedAdd, expandedRemove);
 
         return new AppliedRecipe(
                 r.name(),
@@ -155,6 +126,48 @@ public class RecipeResolver {
                 effectiveAllowed,
                 r.source(),
                 List.copyOf(overriddenKeys));
+    }
+
+    /**
+     * Expands any {@code @<label>} selector in {@code entries} to the
+     * concrete tool names carrying that label, looked up through
+     * {@link ServerToolService#findByLabel}. Literal entries (without
+     * the {@code @} prefix) pass through unchanged. Result is
+     * deduplicated while preserving first-seen order — the snapshot
+     * gets persisted on the spawned process and must be deterministic.
+     *
+     * <p>An unresolved label (no tools carry it) silently expands to
+     * the empty list. The recipe author can use that as a feature
+     * (label is "optional") — and it avoids spawn failures when a
+     * label-bearing tool is removed at runtime.
+     */
+    private List<String> expandLabelSelectors(
+            String tenantId, @Nullable String projectId, List<String> entries) {
+        if (entries == null || entries.isEmpty()) return List.of();
+        boolean hasSelector = false;
+        for (String e : entries) {
+            if (e != null && e.startsWith(LABEL_PREFIX) && e.length() > 1) {
+                hasSelector = true;
+                break;
+            }
+        }
+        if (!hasSelector) return entries;
+        String effectiveProjectId = effectiveProjectId(projectId);
+        Set<String> seen = new LinkedHashSet<>();
+        List<String> out = new ArrayList<>();
+        for (String entry : entries) {
+            if (entry == null || entry.isBlank()) continue;
+            if (entry.startsWith(LABEL_PREFIX) && entry.length() > 1) {
+                String label = entry.substring(LABEL_PREFIX.length());
+                for (Tool t : serverToolService.findByLabel(
+                        tenantId, effectiveProjectId, label)) {
+                    if (seen.add(t.name())) out.add(t.name());
+                }
+            } else if (seen.add(entry)) {
+                out.add(entry);
+            }
+        }
+        return List.copyOf(out);
     }
 
     /**
@@ -223,6 +236,11 @@ public class RecipeResolver {
             return Optional.empty(); // caller falls back to engine-direct
         }
         return Optional.of(apply(tenantId, projectId, "default", callerParams));
+    }
+
+    private static String effectiveProjectId(@Nullable String projectId) {
+        return (projectId == null || projectId.isBlank())
+                ? HomeBootstrapService.VANCE_PROJECT_NAME : projectId;
     }
 
     public static class UnknownRecipeException extends RuntimeException {

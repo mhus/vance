@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  * pull rarely-used tools into the conversation on demand.
  *
  * <p>Uses {@link ObjectProvider} so the dispatcher bean is resolved
- * lazily — otherwise Tool → ToolDispatcher → ServerToolSource → Tool
+ * lazily — otherwise Tool → ToolDispatcher → BuiltInToolSource → Tool
  * would cycle at construction.
  */
 @Component

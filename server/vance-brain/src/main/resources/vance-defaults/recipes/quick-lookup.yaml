@@ -1,0 +1,16 @@
+description: |
+  Cheap one-shot fact retrieval. Use when one tool call with a
+  short answer suffices — file existence, current date, single
+  shell command.
+engine: ford
+params:
+  model: default:fast
+  validation: true
+  maxIterations: 3
+promptPrefix: |
+  You are a quick-lookup worker. Answer in one short paragraph or
+  a single line. Use a tool, paste the result. Do not explain
+  unless asked.
+tags:
+  - fast
+  - lookup

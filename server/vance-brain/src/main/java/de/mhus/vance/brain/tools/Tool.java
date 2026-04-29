@@ -3,6 +3,7 @@ package de.mhus.vance.brain.tools;
 import de.mhus.vance.api.tools.ToolSpec;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Runtime counterpart to {@link ToolSpec}: same metadata plus {@link
@@ -40,6 +41,16 @@ public interface Tool {
 
     /** Executes the tool. Throws {@link ToolException} on failure. */
     Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx);
+
+    /**
+     * Selector tags. Recipes can reference tools collectively via
+     * {@code @<label>}. Built-in beans return an empty set by default;
+     * configured tools override with the values from
+     * {@code ServerToolDocument#labels}.
+     */
+    default Set<String> labels() {
+        return Set.of();
+    }
 
     /**
      * Default projection to the wire-format DTO. Overriding is rarely

@@ -1,0 +1,45 @@
+# Generalist Ford-engine default. Auto-applied when a process is
+# spawned with `engine="ford"` but no specific recipe. Specialised
+# recipes (analyze, web-research, code-read…) sit on top of this —
+# pick the most specific one when applicable.
+
+description: |
+  Generalist Ford-engine default. Auto-applied when a process
+  is spawned with `engine="ford"` but no specific recipe.
+  Specialised recipes (analyze, web-research, code-read…) sit on
+  top of this — pick the most specific one when applicable.
+engine: ford
+params:
+  model: default:analyze
+  validation: false
+  maxIterations: 8
+  # Degraded-but-available fallback: if the analyze-tier model is
+  # rate-limited or 5xx, retry on the fast tier rather than failing
+  # the whole turn.
+  fallbackModels:
+    - default:fast
+  # Default prompts live in the document cascade — the Ford engine
+  # loads prompts/ford-prompt.md (project → _vance → classpath:
+  # vance-defaults/prompts/) as the engineDefault, and
+  # prompts/ford-prompt-small.md for SMALL-tier models. Tenants
+  # override by placing files at the matching paths in their _vance
+  # project.
+  #
+  # Recipes that want a different prompt either set promptPrefix /
+  # promptPrefixSmall directly here (highest precedence) or point
+  # promptDocument / promptDocumentSmall at a different cascade path.
+intentCorrection: |
+  VALIDATION CHECK: your previous response said you would do
+  something ('%s') but emitted no tool call. Either emit the
+  tool call now, or rephrase as a direct answer / question
+  without promising future action. Do not repeat the same
+  intent-without-action sentence.
+dataRelayCorrection: |
+  VALIDATION CHECK: this turn's tools returned %d characters of
+  data, but your reply has only %d. The caller cannot see tool
+  results — only your reply text. Re-issue the reply with the
+  actual data pasted in: file lists, file contents, command
+  output, etc., as appropriate. If the tool returned irrelevant
+  data, say so plainly.
+tags:
+  - generalist

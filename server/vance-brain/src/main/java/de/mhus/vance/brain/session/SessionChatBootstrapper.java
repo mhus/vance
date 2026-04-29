@@ -124,7 +124,8 @@ public class SessionChatBootstrapper {
                         "Configured chat engine '" + engineName
                                 + "' is not registered — known: "
                                 + thinkEngineService.listEngines()));
-        Optional<EngineBundledConfig> bundled = engine.bundledConfig();
+        Optional<EngineBundledConfig> bundled = engine.bundledConfig(
+                session.getTenantId(), session.getProjectId());
 
         AppliedRecipe applied = null;
         if (bundled.isEmpty()) {

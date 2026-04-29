@@ -17,8 +17,8 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
-import de.mhus.vance.brain.recipe.BundledRecipe;
-import de.mhus.vance.brain.recipe.BundledRecipeRegistry;
+import de.mhus.vance.brain.recipe.RecipeLoader;
+import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ParentReport;
@@ -88,6 +88,15 @@ public class MarvinEngine implements ThinkEngine {
             "You are Marvin, the Vance deep-think engine. You decompose "
                     + "goals into sub-tasks, delegate concrete work to worker "
                     + "processes, and synthesize their results.";
+
+    /**
+     * Document-cascade paths for Marvin's PLAN and AGGREGATE prompts.
+     * Tenants/users can override the file at the matching path
+     * (project / {@code _vance} / classpath:vance-defaults/) without
+     * touching source.
+     */
+    private static final String PLAN_PROMPT_PATH = "prompts/marvin-plan.md";
+    private static final String AGGREGATE_PROMPT_PATH = "prompts/marvin-aggregate.md";
 
     /** System prompt for the synchronous PLAN-call. The model must
      *  return a JSON document with a {@code children} array; we parse
@@ -197,11 +206,12 @@ public class MarvinEngine implements ThinkEngine {
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
     private final RecipeResolver recipeResolver;
-    private final BundledRecipeRegistry bundledRecipeRegistry;
+    private final RecipeLoader recipeLoader;
     private final MarvinWorkerOutputParser workerOutputParser;
     private final AiModelResolver aiModelResolver;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
+    private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final ObjectMapper objectMapper;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
@@ -828,13 +838,18 @@ public class MarvinEngine implements ThinkEngine {
             String customPrompt = paramString(node, "prompt", null);
 
             List<ChatMessage> messages = new ArrayList<>();
-            messages.add(SystemMessage.from(PLAN_SYSTEM_PROMPT));
+            messages.add(SystemMessage.from(enginePromptResolver.resolveTiered(
+                    process,
+                    PLAN_PROMPT_PATH,
+                    /*smallOverride*/ null,
+                    de.mhus.vance.brain.ai.ModelSize.LARGE,
+                    PLAN_SYSTEM_PROMPT)));
             String body = "ROOT goal of the Marvin process:\n"
                     + nullSafe(process.getGoal()) + "\n\n"
                     + "PARENT goal of the node you are decomposing:\n"
                     + node.getGoal() + "\n\n"
                     + "maxChildren: " + maxChildren + "\n\n"
-                    + buildRecipeCatalog()
+                    + buildRecipeCatalog(process)
                     + (customPrompt == null ? "" : "\n\nAdditional instruction:\n" + customPrompt);
             messages.add(UserMessage.from(body));
 
@@ -918,22 +933,26 @@ public class MarvinEngine implements ThinkEngine {
     }
 
     /**
-     * Lists the bundled recipes that exist on this brain so the
-     * planner picks real names instead of inventing
-     * {@code RESEARCH_AND_SUMMARIZE}-style fictions. We don't include
-     * tenant- or project-recipes here in v1 — adding them would
-     * require a project-scoped lookup, and they're discoverable via
-     * {@code recipe_list} at runtime if a worker needs them.
+     * Lists the recipes available to the planner so it picks real
+     * names instead of inventing {@code RESEARCH_AND_SUMMARIZE}-style
+     * fictions. Reads through the project cascade so tenant- and
+     * project-overrides are visible alongside bundled defaults.
      */
-    private String buildRecipeCatalog() {
-        if (bundledRecipeRegistry.size() == 0) return "";
+    private String buildRecipeCatalog(ThinkProcessDocument process) {
+        // ThinkProcessDocument has no projectId — RecipeLoader falls
+        // back to the _vance system project (tenant-wide + bundled).
+        // Project-scoped recipes are still discoverable through the
+        // recipe_list tool at runtime.
+        java.util.List<ResolvedRecipe> recipes = recipeLoader.listAll(
+                process.getTenantId(), null);
+        if (recipes.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         sb.append("Available WORKER recipes (use one of these for "
                 + "every WORKER child's `taskSpec.recipe`; never invent "
                 + "recipe names):\n");
-        for (BundledRecipe r : bundledRecipeRegistry.all()) {
-            // Skip Marvin / Arthur / engine-default themselves — they
-            // aren't sensible workers for a Marvin-spawned child.
+        for (ResolvedRecipe r : recipes) {
+            // Skip Marvin / Arthur themselves — they aren't sensible
+            // workers for a Marvin-spawned child.
             if (r.name().equals(NAME) || r.name().equals("arthur")) continue;
             sb.append("- `").append(r.name()).append("` — ");
             String desc = r.description();
@@ -1212,7 +1231,12 @@ public class MarvinEngine implements ThinkEngine {
                             .build());
 
             List<ChatMessage> messages = new ArrayList<>();
-            messages.add(SystemMessage.from(AGGREGATE_SYSTEM_PROMPT));
+            messages.add(SystemMessage.from(enginePromptResolver.resolveTiered(
+                    process,
+                    AGGREGATE_PROMPT_PATH,
+                    /*smallOverride*/ null,
+                    de.mhus.vance.brain.ai.ModelSize.LARGE,
+                    AGGREGATE_SYSTEM_PROMPT)));
             StringBuilder body = new StringBuilder();
             body.append("Goal of this AGGREGATE node:\n").append(node.getGoal()).append("\n\n");
             if (customPrompt != null) {

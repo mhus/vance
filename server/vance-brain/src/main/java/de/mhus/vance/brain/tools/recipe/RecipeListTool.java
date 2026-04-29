@@ -1,26 +1,22 @@
 package de.mhus.vance.brain.tools.recipe;
 
-import de.mhus.vance.brain.recipe.BundledRecipe;
-import de.mhus.vance.brain.recipe.BundledRecipeRegistry;
-import de.mhus.vance.brain.recipe.RecipeSource;
+import de.mhus.vance.brain.recipe.RecipeLoader;
+import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
-import de.mhus.vance.shared.recipe.RecipeDocument;
-import de.mhus.vance.shared.recipe.RecipeService;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
  * Lists all recipes visible to the current tenant/project, with the
- * cascade applied. Bundled defaults are included; tenant- and
- * project-overrides hide bundled entries with the same name.
+ * cascade applied. Inner layers (project) shadow outer ones
+ * ({@code _vance}, classpath) by recipe name.
  *
  * <p>Primary so Arthur sees it on every turn — the LLM can decide to
  * fetch the catalog when it's unsure which recipe applies.
@@ -34,8 +30,7 @@ public class RecipeListTool implements Tool {
             "properties", Map.of(),
             "required", List.of());
 
-    private final RecipeService recipeService;
-    private final BundledRecipeRegistry bundled;
+    private final RecipeLoader loader;
 
     @Override
     public String name() {
@@ -63,61 +58,29 @@ public class RecipeListTool implements Tool {
         if (ctx.tenantId() == null) {
             throw new ToolException("recipe_list requires a tenant scope");
         }
-        Set<String> seen = new LinkedHashSet<>();
+        String projectId = ctx.projectId() == null || ctx.projectId().isBlank()
+                ? HomeBootstrapService.VANCE_PROJECT_NAME
+                : ctx.projectId();
         List<Map<String, Object>> rows = new ArrayList<>();
-
-        // Project-scoped recipes first (highest priority).
-        if (ctx.projectId() != null) {
-            for (RecipeDocument d : recipeService.listProject(ctx.tenantId(), ctx.projectId())) {
-                if (seen.add(d.getName())) {
-                    rows.add(rowFromDocument(d, RecipeSource.PROJECT));
-                }
-            }
+        for (ResolvedRecipe r : loader.listAll(ctx.tenantId(), projectId)) {
+            rows.add(rowFor(r));
         }
-        // Tenant-scoped recipes next.
-        for (RecipeDocument d : recipeService.listTenant(ctx.tenantId())) {
-            if (seen.add(d.getName())) {
-                rows.add(rowFromDocument(d, RecipeSource.TENANT));
-            }
-        }
-        // Bundled defaults last — only the names not already covered.
-        for (BundledRecipe b : bundled.all()) {
-            if (seen.add(b.name())) {
-                rows.add(rowFromBundled(b));
-            }
-        }
-
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("recipes", rows);
         out.put("count", rows.size());
         return out;
     }
 
-    private static Map<String, Object> rowFromDocument(RecipeDocument d, RecipeSource source) {
+    private static Map<String, Object> rowFor(ResolvedRecipe r) {
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("name", d.getName());
-        row.put("description", d.getDescription());
-        row.put("engine", d.getEngine());
-        row.put("source", source.name());
-        if (d.getTags() != null && !d.getTags().isEmpty()) {
-            row.put("tags", d.getTags());
+        row.put("name", r.name());
+        row.put("description", r.description());
+        row.put("engine", r.engine());
+        row.put("source", r.source().name());
+        if (r.tags() != null && !r.tags().isEmpty()) {
+            row.put("tags", r.tags());
         }
-        if (d.isLocked()) {
-            row.put("locked", true);
-        }
-        return row;
-    }
-
-    private static Map<String, Object> rowFromBundled(BundledRecipe b) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("name", b.name());
-        row.put("description", b.description());
-        row.put("engine", b.engine());
-        row.put("source", RecipeSource.BUNDLED.name());
-        if (b.tags() != null && !b.tags().isEmpty()) {
-            row.put("tags", b.tags());
-        }
-        if (b.locked()) {
+        if (r.locked()) {
             row.put("locked", true);
         }
         return row;

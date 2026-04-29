@@ -1,0 +1,19 @@
+description: |
+  Zaphod engine default — bewusst minimal. Verlangt explizit
+  pattern + heads via params. Catch-all für engine-direct-Spawns
+  (Tests). Für echte Use-Cases das spezifische Council-Recipe
+  wählen (z.B. council-three-perspectives).
+engine: zaphod
+params:
+  # Synthesis call falls through to fast tier if the tenant default
+  # is rate-limited.
+  fallbackModels:
+    - default:fast
+promptPrefix: |
+  You are Zaphod, the multi-head orchestrator. You don't talk to
+  the user directly — you drive heads (each one a Ford-style
+  sub-process with a distinct persona) and synthesize their
+  answers into a single combined reply.
+tags:
+  - default
+  - multi-head

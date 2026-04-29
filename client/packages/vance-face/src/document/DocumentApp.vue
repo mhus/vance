@@ -14,8 +14,10 @@ import {
   VPagination,
   VSelect,
   CodeEditor,
+  MarkdownView,
 } from '@/components';
 import { useDocuments } from '@/composables/useDocuments';
+import { useHelp } from '@/composables/useHelp';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { consumeDocumentDraft, documentContentUrl } from '@vance/shared';
 import DocumentPreview from './DocumentPreview.vue';
@@ -207,6 +209,49 @@ function fillEditor(): void {
   editInlineText.value = sel?.inlineText ?? '';
   editError.value = null;
 }
+
+// ─── Contextual help ────────────────────────────────────────────────────
+//
+// When the selected document sits under one of these path prefixes we
+// load a matching field-reference Markdown into the right panel. Empty
+// when no prefix matches — the right panel is then suppressed entirely.
+//
+// Add new mappings here; the `_vance` prefix is implicit in the project
+// scope (the user editing a document in their `_vance` project sees
+// `recipes/foo.yaml`, not `_vance/recipes/foo.yaml`).
+const help = useHelp();
+
+interface HelpRule {
+  /** Path prefix relative to the project root, e.g. `recipes/`. */
+  prefix: string;
+  /** Help resource under `help/<lang>/`. */
+  resource: string;
+}
+
+const HELP_RULES: HelpRule[] = [
+  { prefix: 'recipes/', resource: 'recipe-field-docs.md' },
+  { prefix: 'strategies/', resource: 'strategy-field-docs.md' },
+];
+
+const helpResource = computed<string | null>(() => {
+  const path = docsState.selected.value?.path ?? '';
+  if (!path) return null;
+  const match = HELP_RULES.find((rule) => path.startsWith(rule.prefix));
+  return match ? match.resource : null;
+});
+
+watch(
+  helpResource,
+  (resource) => {
+    if (resource) {
+      help.load(resource);
+    } else {
+      help.content.value = null;
+      help.error.value = null;
+    }
+  },
+  { immediate: true },
+);
 
 function backToList(): void {
   docsState.clearSelection();
@@ -455,7 +500,11 @@ const formatBytes = (n: number): string => {
 </script>
 
 <template>
-  <EditorShell title="Documents" :breadcrumbs="breadcrumbs">
+  <EditorShell
+    title="Documents"
+    :breadcrumbs="breadcrumbs"
+    :wide-right-panel="!!helpResource"
+  >
     <template #topbar-extra>
       <div class="w-64">
         <VSelect

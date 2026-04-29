@@ -107,6 +107,17 @@ public class Ford implements ThinkEngine {
                     + "gather concrete data; paste the relevant data into "
                     + "your reply. Don't invent content from training.";
 
+    /**
+     * Base cascade path for the Ford engine prompt. Loaded via
+     * {@link de.mhus.vance.brain.thinkengine.EnginePromptResolver#resolveTiered};
+     * SMALL models automatically pick up {@code prompts/ford-prompt-small.md}
+     * when one exists, otherwise fall through to this base path. Tenants
+     * override either variant by placing matching files in their
+     * {@code _vance} project. Recipes can swap the paths via
+     * {@code promptDocument} / {@code promptDocumentSmall} params.
+     */
+    private static final String DEFAULT_PROMPT_PATH = "prompts/ford-prompt.md";
+
     /** Hard cap on tool-call iterations per turn — a broken model can loop.
      *  Per-process override via {@code params.maxIterations}. */
     private static final int MAX_TOOL_ITERATIONS = 8;
@@ -166,6 +177,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
+    private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final FordProperties fordProperties;
     private final MemoryService memoryService;
     private final MemoryCompactionService memoryCompactionService;
@@ -654,7 +666,8 @@ public class Ford implements ThinkEngine {
             ThinkProcessDocument process, ChatMessageService chatLog,
             ModelSize modelSize, @Nullable String skillSection) {
         List<ChatMessage> messages = new ArrayList<>();
-        String base = SystemPrompts.compose(process, SYSTEM_PROMPT, modelSize);
+        String base = SystemPrompts.compose(process,
+                engineDefaultPrompt(process, modelSize), modelSize);
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             base = base + "\n\n" + memoryBlock;
@@ -728,6 +741,24 @@ public class Ford implements ThinkEngine {
                             + "', setting='" + apiKeySetting + "')");
         }
         return new AiChatConfig(resolved.provider(), resolved.modelName(), apiKey);
+    }
+
+    /**
+     * Resolves the engine-default prompt for the current turn through
+     * the tier-aware document cascade. Recipe params
+     * {@code promptDocument} (base path) and {@code promptDocumentSmall}
+     * (optional explicit small-variant path) override the engine
+     * defaults; the resolver derives a {@code -small} suffix
+     * automatically and falls through to the base when no small variant
+     * exists, so engines don't have to maintain two files unless they
+     * want differentiated tiers. {@link #SYSTEM_PROMPT} is the
+     * last-resort fallback.
+     */
+    private String engineDefaultPrompt(ThinkProcessDocument process, ModelSize modelSize) {
+        String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
+        String smallOverride = paramString(process, "promptDocumentSmall", null);
+        return enginePromptResolver.resolveTiered(
+                process, basePath, smallOverride, modelSize, SYSTEM_PROMPT);
     }
 
     // ──────────────────── engineParams helpers ────────────────────

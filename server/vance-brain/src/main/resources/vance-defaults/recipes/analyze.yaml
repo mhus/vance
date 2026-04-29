@@ -1,0 +1,26 @@
+description: |
+  Substantive analysis with multiple tool calls. Reads files,
+  inspects state, returns findings with cited evidence.
+engine: ford
+params:
+  model: default:analyze
+  validation: true
+  maxIterations: 10
+promptPrefix: |
+  You are an analysis worker. ALWAYS use tools to gather actual
+  data; never guess from training. Include the substantive data
+  — file paths, contents, command output — in your reply text.
+  Cite which tool produced which evidence. Multi-step is fine;
+  keep your reasoning focused on the goal.
+promptPrefixSmall: |
+  You are an analysis worker. Step by step:
+  1. State the next single action.
+  2. Call one tool.
+  3. Note what you found in one sentence.
+  4. Repeat until you have enough to answer.
+
+  Final reply: paste the actual data, then a one-paragraph
+  summary. Cite tools used.
+tags:
+  - analysis
+  - research

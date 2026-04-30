@@ -57,6 +57,21 @@ public class KitManifestDto {
     private List<String> resolvedInherits = new ArrayList<>();
 
     /**
+     * Per-inherit ownership of installed artefacts. One entry per
+     * inherit layer that actually contributed at least one artefact
+     * after last-writer-wins resolution; layers that were fully
+     * shadowed by the top layer (or by a later inherit) do not
+     * appear. The top-layer's own contributions stay in
+     * {@link #documents}/{@link #settings}/{@link #tools}.
+     *
+     * <p>Each path/key/name appears in exactly one place across the
+     * manifest (either the top fields or one of these entries) — that
+     * invariant is what makes prune-on-update tractable.
+     */
+    @Builder.Default
+    private List<InheritArtefactsDto> inheritArtefacts = new ArrayList<>();
+
+    /**
      * Set when the top-layer (or any of its inherits) shipped any
      * PASSWORD-type setting. Used by the export-form to know whether
      * a vault passphrase prompt is needed.

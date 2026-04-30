@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.kit;
 
+import de.mhus.vance.api.kit.InheritArtefactsDto;
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitInheritDto;
@@ -193,9 +194,9 @@ public class KitInstaller {
             @Nullable KitManifestDto previous, KitImportMode mode, boolean prune,
             @Nullable String actor, KitOperationResultDto.KitOperationResultDtoBuilder result) {
 
-        Set<String> previousPaths = previous == null
-                ? Collections.emptySet()
-                : new LinkedHashSet<>(previous.getDocuments());
+        Set<String> previousPaths = unionAcrossLayers(previous,
+                KitManifestDto::getDocuments,
+                InheritArtefactsDto::getDocuments);
 
         List<String> added = new ArrayList<>();
         List<String> updated = new ArrayList<>();
@@ -254,9 +255,9 @@ public class KitInstaller {
             @Nullable String vaultPassword, boolean kitDeclaresEncrypted,
             KitOperationResultDto.KitOperationResultDtoBuilder result) {
 
-        Set<String> previousKeys = previous == null
-                ? Collections.emptySet()
-                : new LinkedHashSet<>(previous.getSettings());
+        Set<String> previousKeys = unionAcrossLayers(previous,
+                KitManifestDto::getSettings,
+                InheritArtefactsDto::getSettings);
 
         List<String> added = new ArrayList<>();
         List<String> updated = new ArrayList<>();
@@ -325,9 +326,9 @@ public class KitInstaller {
             @Nullable KitManifestDto previous, KitImportMode mode, boolean prune,
             KitOperationResultDto.KitOperationResultDtoBuilder result) {
 
-        Set<String> previousNames = previous == null
-                ? Collections.emptySet()
-                : new LinkedHashSet<>(previous.getTools());
+        Set<String> previousNames = unionAcrossLayers(previous,
+                KitManifestDto::getTools,
+                InheritArtefactsDto::getTools);
 
         List<String> added = new ArrayList<>();
         List<String> updated = new ArrayList<>();
@@ -442,6 +443,18 @@ public class KitInstaller {
     private KitManifestDto buildManifest(
             KitDescriptorDto top, KitInheritDto source,
             KitResolver.ResolvedKit resolved, BuildTreeScan scan, @Nullable String actor) {
+        KitResolver.LayerArtefacts topOwned = resolved.topLayerArtefacts();
+        List<InheritArtefactsDto> inheritArtefacts = new ArrayList<>();
+        for (Map.Entry<String, KitResolver.LayerArtefacts> e
+                : resolved.inheritArtefacts().entrySet()) {
+            KitResolver.LayerArtefacts a = e.getValue();
+            inheritArtefacts.add(InheritArtefactsDto.builder()
+                    .name(e.getKey())
+                    .documents(new ArrayList<>(a.documents()))
+                    .settings(new ArrayList<>(a.settings()))
+                    .tools(new ArrayList<>(a.tools()))
+                    .build());
+        }
         return KitManifestDto.builder()
                 .kit(KitMetadataDto.builder()
                         .name(top.getName())
@@ -456,12 +469,13 @@ public class KitInstaller {
                         .installedAt(Instant.now())
                         .installedBy(actor)
                         .build())
-                .documents(new ArrayList<>(scan.documents().keySet()))
-                .settings(new ArrayList<>(scan.settings().keySet()))
-                .tools(new ArrayList<>(scan.tools().keySet()))
+                .documents(new ArrayList<>(topOwned.documents()))
+                .settings(new ArrayList<>(topOwned.settings()))
+                .tools(new ArrayList<>(topOwned.tools()))
                 .inherits(new ArrayList<>(top.getInherits() == null
                         ? Collections.emptyList() : top.getInherits()))
                 .resolvedInherits(new ArrayList<>(resolved.resolvedInherits()))
+                .inheritArtefacts(inheritArtefacts)
                 .hasEncryptedSecrets(hasAnyPasswordSetting(scan))
                 .build();
     }
@@ -471,6 +485,23 @@ public class KitInstaller {
             if (s.type() == SettingType.PASSWORD) return true;
         }
         return false;
+    }
+
+    private static Set<String> unionAcrossLayers(
+            @Nullable KitManifestDto previous,
+            java.util.function.Function<KitManifestDto, List<String>> topGetter,
+            java.util.function.Function<InheritArtefactsDto, List<String>> inheritGetter) {
+        if (previous == null) return Collections.emptySet();
+        Set<String> out = new LinkedHashSet<>();
+        List<String> top = topGetter.apply(previous);
+        if (top != null) out.addAll(top);
+        if (previous.getInheritArtefacts() != null) {
+            for (InheritArtefactsDto i : previous.getInheritArtefacts()) {
+                List<String> v = inheritGetter.apply(i);
+                if (v != null) out.addAll(v);
+            }
+        }
+        return out;
     }
 
     private void writeManifest(

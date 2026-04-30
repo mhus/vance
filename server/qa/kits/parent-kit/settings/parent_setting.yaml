@@ -1,0 +1,3 @@
+type: STRING
+value: "parent-kit-default"
+description: "Setting contributed by the parent-kit; visible to the child after the inherits cascade."

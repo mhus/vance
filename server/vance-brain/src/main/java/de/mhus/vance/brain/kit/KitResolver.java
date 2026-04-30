@@ -10,8 +10,10 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
@@ -40,16 +42,36 @@ public class KitResolver {
     private final KitWorkspace workspace;
 
     /**
+     * Per-layer scan: relative paths of every artefact a single kit
+     * declares (before merge / before last-writer-wins resolution).
+     */
+    public record LayerArtefacts(
+            List<String> documents,
+            List<String> settings,
+            List<String> tools) {
+
+        public static LayerArtefacts empty() {
+            return new LayerArtefacts(new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+        }
+    }
+
+    /**
      * Result of a resolve operation. {@link #buildRoot} is the merged
      * tree; the caller treats it as read-only and is responsible for
      * cleaning up via {@link KitWorkspace#remove} on every entry of
      * {@link #temporaryPaths} (build root + every per-layer load).
+     *
+     * <p>{@link #topLayerArtefacts} and {@link #inheritArtefacts}
+     * partition the merged tree by ownership after last-writer-wins:
+     * each path/key/name appears in exactly one entry.
      */
     public record ResolvedKit(
             Path buildRoot,
             KitDescriptorDto topLayer,
             String sourceCommit,
             List<String> resolvedInherits,
+            LayerArtefacts topLayerArtefacts,
+            LinkedHashMap<String, LayerArtefacts> inheritArtefacts,
             List<Path> temporaryPaths,
             List<String> warnings) {
 
@@ -92,13 +114,126 @@ public class KitResolver {
             mergeLayer(layer.root(), buildRoot);
         }
 
+        // 3. Compute per-layer ownership over the merged tree —
+        //    last-writer-wins per category. The result is what ends
+        //    up persisted in the kit-manifest so prune-on-update can
+        //    track inherit-side removals.
+        OwnershipResult ownership = computeOwnership(mergeOrder, top.descriptor().getName());
+
         return new ResolvedKit(
                 buildRoot,
                 top.descriptor(),
                 top.commit(),
                 new ArrayList<>(resolvedNames),
+                ownership.topLayer,
+                ownership.inheritLayers,
                 tmp,
                 warnings);
+    }
+
+    // ──────────────────── ownership ────────────────────
+
+    private record OwnershipResult(
+            LayerArtefacts topLayer,
+            LinkedHashMap<String, LayerArtefacts> inheritLayers) {}
+
+    private static OwnershipResult computeOwnership(
+            List<KitRepoLoader.LoadedKit> mergeOrder, String topLayerName) {
+        // Scan each layer's declared paths once.
+        LinkedHashMap<String, LayerArtefacts> perLayerScan = new LinkedHashMap<>();
+        for (KitRepoLoader.LoadedKit layer : mergeOrder) {
+            perLayerScan.put(layer.descriptor().getName(), scanLayer(layer.root()));
+        }
+
+        // Walk in merge order, last-writer-wins per (category, path).
+        Map<String, String> docOwner = new LinkedHashMap<>();
+        Map<String, String> settingOwner = new LinkedHashMap<>();
+        Map<String, String> toolOwner = new LinkedHashMap<>();
+        for (KitRepoLoader.LoadedKit layer : mergeOrder) {
+            String name = layer.descriptor().getName();
+            LayerArtefacts s = perLayerScan.get(name);
+            for (String d : s.documents()) docOwner.put(d, name);
+            for (String k : s.settings()) settingOwner.put(k, name);
+            for (String t : s.tools()) toolOwner.put(t, name);
+        }
+
+        // Invert: build per-layer artefact lists out of the owner maps.
+        LayerArtefacts topArtefacts = LayerArtefacts.empty();
+        LinkedHashMap<String, LayerArtefacts> inheritArtefacts = new LinkedHashMap<>();
+        for (String layerName : perLayerScan.keySet()) {
+            List<String> docs = ownedFor(docOwner, layerName);
+            List<String> settings = ownedFor(settingOwner, layerName);
+            List<String> tools = ownedFor(toolOwner, layerName);
+            if (layerName.equals(topLayerName)) {
+                topArtefacts = new LayerArtefacts(docs, settings, tools);
+            } else if (!docs.isEmpty() || !settings.isEmpty() || !tools.isEmpty()) {
+                // Skip inherits that ended up fully shadowed — they don't own anything,
+                // so no point listing them in the manifest.
+                inheritArtefacts.put(layerName, new LayerArtefacts(docs, settings, tools));
+            }
+        }
+        return new OwnershipResult(topArtefacts, inheritArtefacts);
+    }
+
+    private static List<String> ownedFor(Map<String, String> ownerMap, String layerName) {
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, String> e : ownerMap.entrySet()) {
+            if (layerName.equals(e.getValue())) out.add(e.getKey());
+        }
+        return out;
+    }
+
+    private static LayerArtefacts scanLayer(Path layerRoot) {
+        return new LayerArtefacts(
+                scanDocuments(layerRoot.resolve(KitInstaller.DOCUMENTS_DIR)),
+                scanSettings(layerRoot.resolve(KitInstaller.SETTINGS_DIR)),
+                scanTools(layerRoot.resolve(KitInstaller.TOOLS_DIR)));
+    }
+
+    private static List<String> scanDocuments(Path docsRoot) {
+        List<String> out = new ArrayList<>();
+        if (!Files.isDirectory(docsRoot)) return out;
+        try (Stream<Path> stream = Files.walk(docsRoot, FileVisitOption.FOLLOW_LINKS)) {
+            stream.filter(Files::isRegularFile).forEach(file -> {
+                String rel = docsRoot.relativize(file).toString().replace('\\', '/');
+                out.add(rel);
+            });
+        } catch (IOException e) {
+            throw new KitException("failed to walk " + docsRoot, e);
+        }
+        return out;
+    }
+
+    private static List<String> scanSettings(Path settingsRoot) {
+        List<String> out = new ArrayList<>();
+        if (!Files.isDirectory(settingsRoot)) return out;
+        try (Stream<Path> stream = Files.list(settingsRoot)) {
+            stream.filter(Files::isRegularFile).forEach(file -> {
+                String filename = file.getFileName().toString();
+                if (!filename.endsWith(KitInstaller.SETTING_FILE_SUFFIX)) return;
+                out.add(filename.substring(
+                        0, filename.length() - KitInstaller.SETTING_FILE_SUFFIX.length()));
+            });
+        } catch (IOException e) {
+            throw new KitException("failed to list " + settingsRoot, e);
+        }
+        return out;
+    }
+
+    private static List<String> scanTools(Path toolsRoot) {
+        List<String> out = new ArrayList<>();
+        if (!Files.isDirectory(toolsRoot)) return out;
+        try (Stream<Path> stream = Files.list(toolsRoot)) {
+            stream.filter(Files::isRegularFile).forEach(file -> {
+                String filename = file.getFileName().toString();
+                if (!filename.endsWith(KitInstaller.TOOL_FILE_SUFFIX)) return;
+                out.add(filename.substring(
+                        0, filename.length() - KitInstaller.TOOL_FILE_SUFFIX.length()));
+            });
+        } catch (IOException e) {
+            throw new KitException("failed to list " + toolsRoot, e);
+        }
+        return out;
     }
 
     // ──────────────────── private ────────────────────

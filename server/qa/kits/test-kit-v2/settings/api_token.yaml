@@ -1,0 +1,8 @@
+type: PASSWORD
+# value: <ciphertext>  — overwritten at test time with a fresh
+# AesEncryptionService.encryptWith(plaintext, vaultPassword) blob.
+# The static placeholder here is intentionally invalid; importing this
+# fixture verbatim WITHOUT the test runner would cause a vault decryption
+# failure, which is the right error for a careless human copy-paste.
+value: "PLACEHOLDER_REPLACE_AT_TEST_TIME"
+description: "API token used by the test-kit; vault-encrypted on import."

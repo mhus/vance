@@ -29,6 +29,7 @@ export * from './inbox/InboxListResponse';
 export * from './inbox/InboxTagsResponse';
 export * from './inbox/ResolvedBy';
 
+export * from './kit/InheritArtefactsDto';
 export * from './kit/KitDescriptorDto';
 export * from './kit/KitExportRequestDto';
 export * from './kit/KitImportMode';

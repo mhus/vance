@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.kit;
 
+import de.mhus.vance.api.kit.InheritArtefactsDto;
 import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitManifestDto;
@@ -143,6 +144,24 @@ public final class KitYamlMapper {
             }
         }
 
+        List<InheritArtefactsDto> inheritArtefacts = new ArrayList<>();
+        Object inheritArtefactsRaw = map.get("inheritArtefacts");
+        if (inheritArtefactsRaw instanceof List<?> list) {
+            for (Object element : list) {
+                if (!(element instanceof Map<?, ?> nested)) continue;
+                @SuppressWarnings("unchecked")
+                Map<String, Object> e = (Map<String, Object>) nested;
+                String name = stringOrNull(e.get("name"));
+                if (name == null) continue;
+                inheritArtefacts.add(InheritArtefactsDto.builder()
+                        .name(name)
+                        .documents(stringList(e.get("documents")))
+                        .settings(stringList(e.get("settings")))
+                        .tools(stringList(e.get("tools")))
+                        .build());
+            }
+        }
+
         return KitManifestDto.builder()
                 .kit(metadata)
                 .origin(origin)
@@ -151,6 +170,7 @@ public final class KitYamlMapper {
                 .tools(stringList(map.get("tools")))
                 .inherits(inherits)
                 .resolvedInherits(stringList(map.get("resolvedInherits")))
+                .inheritArtefacts(inheritArtefacts)
                 .hasEncryptedSecrets(booleanOrFalse(map.get("hasEncryptedSecrets")))
                 .build();
     }
@@ -202,6 +222,24 @@ public final class KitYamlMapper {
         }
         if (manifest.getResolvedInherits() != null && !manifest.getResolvedInherits().isEmpty()) {
             root.put("resolvedInherits", new ArrayList<>(manifest.getResolvedInherits()));
+        }
+        if (manifest.getInheritArtefacts() != null && !manifest.getInheritArtefacts().isEmpty()) {
+            List<Map<String, Object>> serialized = new ArrayList<>();
+            for (InheritArtefactsDto i : manifest.getInheritArtefacts()) {
+                Map<String, Object> e = new LinkedHashMap<>();
+                e.put("name", i.getName());
+                if (i.getDocuments() != null && !i.getDocuments().isEmpty()) {
+                    e.put("documents", new ArrayList<>(i.getDocuments()));
+                }
+                if (i.getSettings() != null && !i.getSettings().isEmpty()) {
+                    e.put("settings", new ArrayList<>(i.getSettings()));
+                }
+                if (i.getTools() != null && !i.getTools().isEmpty()) {
+                    e.put("tools", new ArrayList<>(i.getTools()));
+                }
+                serialized.add(e);
+            }
+            root.put("inheritArtefacts", serialized);
         }
         if (manifest.isHasEncryptedSecrets()) {
             root.put("hasEncryptedSecrets", true);

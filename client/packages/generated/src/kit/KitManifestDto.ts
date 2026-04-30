@@ -5,6 +5,7 @@
 
 import { KitInheritDto } from './KitInheritDto';
 import { KitMetadataDto } from './KitMetadataDto';
+import { InheritArtefactsDto } from './InheritArtefactsDto';
 import { KitOriginDto } from './KitOriginDto';
 
 export interface KitManifestDto {
@@ -15,5 +16,6 @@ export interface KitManifestDto {
   tools: string[];
   inherits: KitInheritDto[];
   resolvedInherits: string[];
+  inheritArtefacts: InheritArtefactsDto[];
   hasEncryptedSecrets: boolean;
 }

@@ -1,0 +1,8 @@
+name: parent-kit
+description: |
+  Static fixture used as an INHERIT base by qa/kits/test-kit/. Carries one
+  shared document and one shared setting that should land in the target
+  project alongside the child kit's own artefacts. Used by KitImportTest
+  to exercise the inherits-cascade.
+version: "1.0"
+hasEncryptedSecrets: false

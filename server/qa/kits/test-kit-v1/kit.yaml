@@ -6,5 +6,11 @@ description: |
   source template; the test copies this tree into a per-run scratch
   directory and rewrites settings/api_token.yaml with a freshly
   vault-encrypted ciphertext before pointing the brain at it.
+
+  Inherits parent-kit (also under qa/kits/) so the test exercises the
+  inherits-cascade. The url below carries a placeholder that the test
+  rewrites to the absolute file:// path of the scratch parent-kit copy.
 version: "1.0"
 hasEncryptedSecrets: true
+inherits:
+  - url: "INHERIT_URL_PLACEHOLDER"

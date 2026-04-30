@@ -1,0 +1,3 @@
+type: STRING
+value: "v2-only"
+description: "Setting that only exists in test-kit-v2 — proves UPDATE picks up new settings."

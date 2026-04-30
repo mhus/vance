@@ -20,11 +20,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+// PersonIdent / UsernamePasswordCredentialsProvider / GitAPIException
+// moved into GitWriteableTarget alongside the commit/push logic.
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
@@ -69,7 +68,7 @@ public class KitExporter {
         }
 
         Path clonePath = workspace.allocate("kit-export");
-        try (KitRepoLoader.WriteableClone clone =
+        try (WriteableTarget clone =
                      repoLoader.openForWrite(url, branch, request.getToken(), clonePath)) {
             Path workTree = clone.workTree();
             Path kitRoot = subPath == null || subPath.isBlank()
@@ -244,7 +243,7 @@ public class KitExporter {
     // ──────────────────── commit + push ────────────────────
 
     private KitOperationResultDto commitAndPush(
-            KitRepoLoader.WriteableClone clone,
+            WriteableTarget clone,
             KitManifestDto manifest,
             KitExportRequestDto request,
             List<String> writtenDocs,
@@ -253,63 +252,27 @@ public class KitExporter {
             @Nullable String branch,
             @Nullable String actor) {
 
-        try {
-            clone.git().add().addFilepattern(".").call();
-            clone.git().add().setUpdate(true).addFilepattern(".").call();
-            String message = request.getCommitMessage();
-            if (message == null || message.isBlank()) {
-                String commitShort = manifest.getOrigin().getCommit() == null
-                        ? "" : "@" + shortSha(manifest.getOrigin().getCommit());
-                message = "vance-export: " + manifest.getKit().getName() + commitShort;
-            }
-            PersonIdent author = author(actor);
-            String pushedSha = clone.git().commit()
-                    .setMessage(message)
-                    .setAuthor(author)
-                    .setCommitter(author)
-                    .setAllowEmpty(false)
-                    .call()
-                    .getName();
-            clone.git().push()
-                    .setCredentialsProvider(credentials(clone.token()))
-                    .call();
-            log.info("Exported kit '{}' to {} (commit {})",
-                    manifest.getKit().getName(), request.getUrl(), pushedSha);
-            return KitOperationResultDto.builder()
-                    .kitName(manifest.getKit().getName())
-                    .mode("EXPORT")
-                    .sourceCommit(pushedSha)
-                    .documentsAdded(writtenDocs)
-                    .settingsAdded(writtenSettings)
-                    .toolsAdded(writtenTools)
-                    .build();
-        } catch (GitAPIException e) {
-            // EmptyCommitException is wrapped — surface that cleanly.
-            if (e.getMessage() != null && e.getMessage().toLowerCase().contains("empty commit")) {
-                log.info("nothing to export — repo is up to date");
-                return KitOperationResultDto.builder()
+        String message = request.getCommitMessage();
+        if (message == null || message.isBlank()) {
+            String commitShort = manifest.getOrigin().getCommit() == null
+                    ? "" : "@" + shortSha(manifest.getOrigin().getCommit());
+            message = "vance-export: " + manifest.getKit().getName() + commitShort;
+        }
+
+        Optional<String> pushedSha = clone.commitAndPublish(message, actor);
+        log.info("Exported kit '{}' to {} (commit {})",
+                manifest.getKit().getName(), request.getUrl(),
+                pushedSha.orElse("none"));
+
+        KitOperationResultDto.KitOperationResultDtoBuilder result =
+                KitOperationResultDto.builder()
                         .kitName(manifest.getKit().getName())
                         .mode("EXPORT")
                         .documentsAdded(writtenDocs)
                         .settingsAdded(writtenSettings)
-                        .toolsAdded(writtenTools)
-                        .warnings(List.of("nothing to commit — repository already in sync"))
-                        .build();
-            }
-            throw new KitException("git commit/push failed: " + e.getMessage(), e);
-        }
-    }
-
-    private static PersonIdent author(@Nullable String actor) {
-        String name = actor == null || actor.isBlank() ? "vance" : actor;
-        String email = actor == null || actor.isBlank() ? "vance@localhost" : actor;
-        if (!email.contains("@")) email = name + "@vance";
-        return new PersonIdent(name, email);
-    }
-
-    private static @Nullable UsernamePasswordCredentialsProvider credentials(@Nullable String token) {
-        if (token == null || token.isBlank()) return null;
-        return new UsernamePasswordCredentialsProvider("x-access-token", token);
+                        .toolsAdded(writtenTools);
+        pushedSha.ifPresent(result::sourceCommit);
+        return result.build();
     }
 
     private static @Nullable String firstNonBlank(@Nullable String a, @Nullable String b) {

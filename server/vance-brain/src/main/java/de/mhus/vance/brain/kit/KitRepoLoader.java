@@ -45,34 +45,8 @@ public class KitRepoLoader {
             KitDescriptorDto descriptor,
             boolean fromFolder) {}
 
-    /**
-     * Mutable handle on a clone opened for writing — used by export.
-     * The {@link Git} instance must be {@link Git#close() closed} when
-     * done.
-     */
-    public static final class WriteableClone implements AutoCloseable {
-        private final Git git;
-        private final Path repoRoot;
-        private final Path workTree;
-        private final @Nullable String token;
-
-        WriteableClone(Git git, Path repoRoot, Path workTree, @Nullable String token) {
-            this.git = git;
-            this.repoRoot = repoRoot;
-            this.workTree = workTree;
-            this.token = token;
-        }
-
-        public Git git() { return git; }
-        public Path repoRoot() { return repoRoot; }
-        public Path workTree() { return workTree; }
-        public @Nullable String token() { return token; }
-
-        @Override
-        public void close() {
-            git.close();
-        }
-    }
+    // WriteableTarget is the strategy interface; see GitWriteableTarget
+    // and FolderWriteableTarget for the two implementations.
 
     /**
      * Load a kit into {@code target}. Returns the parsed descriptor
@@ -115,26 +89,33 @@ public class KitRepoLoader {
     }
 
     /**
-     * Open a writable clone for export. The branch is checked out into
-     * a fresh working tree at {@code target}; commit + push happens
-     * via the returned {@link WriteableClone}.
+     * Open a writable target for export. Strategy is picked from the URL:
+     *
+     * <ul>
+     *   <li>{@code file://} or absolute path → {@link FolderWriteableTarget}
+     *       — writes directly into that directory, no git involved.</li>
+     *   <li>Anything else (https/git@/ssh) → {@link GitWriteableTarget}
+     *       — clones the remote into {@code workspaceTarget} and commits +
+     *       pushes on {@link WriteableTarget#commitAndPublish}.</li>
+     * </ul>
      */
-    public WriteableClone openForWrite(
-            String url, @Nullable String branch, @Nullable String token, Path target) {
+    public WriteableTarget openForWrite(
+            String url, @Nullable String branch, @Nullable String token, Path workspaceTarget) {
         if (url == null || url.isBlank()) {
             throw new KitException("export url must not be blank");
         }
         if (isFolderUrl(url)) {
-            throw new KitException("folder urls cannot be used for export — use an https remote");
+            Path folder = resolveFolderUrl(url);
+            return new FolderWriteableTarget(folder);
         }
         try {
             Git git = Git.cloneRepository()
                     .setURI(url)
-                    .setDirectory(target.toFile())
+                    .setDirectory(workspaceTarget.toFile())
                     .setBranch(branch == null || branch.isBlank() ? "main" : branch)
                     .setCredentialsProvider(credentials(token))
                     .call();
-            return new WriteableClone(git, target, target, token);
+            return new GitWriteableTarget(git, workspaceTarget, token);
         } catch (GitAPIException e) {
             throw new KitException("git clone failed for " + url + ": " + e.getMessage(), e);
         }

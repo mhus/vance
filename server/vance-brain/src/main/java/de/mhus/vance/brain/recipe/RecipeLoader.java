@@ -157,6 +157,10 @@ public class RecipeLoader {
         List<String> add = stringList(spec.get("allowedToolsAdd"), "allowedToolsAdd");
         List<String> remove = stringList(spec.get("allowedToolsRemove"), "allowedToolsRemove");
         Map<String, ProfileBlock> profiles = parseProfiles(spec.get("profiles"));
+        List<String> defaultActiveSkills = stringList(
+                spec.get("defaultActiveSkills"), "defaultActiveSkills");
+        List<String> allowedSkills = parseAllowedSkills(spec.get("allowedSkills"));
+        validateDefaultsAreAllowed(name, defaultActiveSkills, allowedSkills);
         boolean locked = spec.get("locked") instanceof Boolean b && b;
         List<String> tags = stringList(spec.get("tags"), "tags");
 
@@ -164,8 +168,46 @@ public class RecipeLoader {
                 name, description, engine, params,
                 promptPrefix, promptPrefixSmall, promptMode,
                 intentCorrection, dataRelayCorrection,
-                add, remove, profiles, locked, tags,
+                add, remove, profiles,
+                defaultActiveSkills, allowedSkills,
+                locked, tags,
                 mapSource(hit.source()));
+    }
+
+    /**
+     * Parses the optional {@code allowedSkills} field. Distinguishes
+     * "missing key" (returns {@code null} → no restriction) from
+     * "empty list" (returns empty → lockdown).
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable List<String> parseAllowedSkills(@Nullable Object raw) {
+        if (raw == null) return null;
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException("'allowedSkills' must be a list");
+        }
+        List<String> out = new ArrayList<>(list.size());
+        for (Object item : list) {
+            if (!(item instanceof String s) || s.isBlank()) {
+                throw new IllegalStateException(
+                        "'allowedSkills' contains a non-string or blank entry");
+            }
+            out.add(s);
+        }
+        return List.copyOf(out);
+    }
+
+    private static void validateDefaultsAreAllowed(
+            String recipeName,
+            List<String> defaultActiveSkills,
+            @Nullable List<String> allowedSkills) {
+        if (allowedSkills == null) return;
+        for (String name : defaultActiveSkills) {
+            if (!allowedSkills.contains(name)) {
+                throw new IllegalStateException(
+                        "recipe '" + recipeName + "': defaultActiveSkill '"
+                                + name + "' is not in allowedSkills");
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")

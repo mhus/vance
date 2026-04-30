@@ -291,7 +291,10 @@ public class ZaphodEngine implements ThinkEngine {
                     applied.intentCorrection(),
                     applied.dataRelayCorrection(),
                     applied.effectiveAllowedTools(),
-                    applied.connectionProfile());
+                    applied.connectionProfile(),
+                    applied.defaultActiveSkills(),
+                    applied.allowedSkills() == null
+                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
             head.setSpawnedProcessId(child.getId());
             thinkEngineServiceProvider.getObject().start(child);
             log.info("Zaphod id='{}' head '{}' spawned child='{}' recipe='{}'",

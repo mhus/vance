@@ -1,9 +1,11 @@
 package de.mhus.vance.shared.thinkprocess;
 
 import com.mongodb.client.result.UpdateResult;
+import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -130,7 +132,9 @@ public class ThinkProcessService {
                 /*intentCorrectionOverride*/ null,
                 /*dataRelayCorrectionOverride*/ null,
                 allowedToolsOverride,
-                /*connectionProfile*/ null);
+                /*connectionProfile*/ null,
+                /*defaultActiveSkills*/ null,
+                /*allowedSkillsOverride*/ null);
     }
 
     /**
@@ -156,7 +160,9 @@ public class ThinkProcessService {
             @Nullable String intentCorrectionOverride,
             @Nullable String dataRelayCorrectionOverride,
             @Nullable Set<String> allowedToolsOverride,
-            @Nullable String connectionProfile) {
+            @Nullable String connectionProfile,
+            @Nullable List<String> defaultActiveSkills,
+            @Nullable Set<String> allowedSkillsOverride) {
         if (repository.existsByTenantIdAndSessionIdAndName(tenantId, sessionId, name)) {
             throw new ThinkProcessAlreadyExistsException(
                     "Think-process '" + name + "' already exists in session '"
@@ -166,6 +172,9 @@ public class ThinkProcessService {
                 ? new LinkedHashMap<>() : new LinkedHashMap<>(engineParams);
         Set<String> allowed = allowedToolsOverride == null
                 ? null : new LinkedHashSet<>(allowedToolsOverride);
+        Set<String> skillWhitelist = allowedSkillsOverride == null
+                ? null : new LinkedHashSet<>(allowedSkillsOverride);
+        List<ActiveSkillRefEmbedded> seededSkills = seedActiveSkills(defaultActiveSkills);
         ThinkProcessDocument doc = ThinkProcessDocument.builder()
                 .tenantId(tenantId)
                 .projectId(projectId == null ? "" : projectId)
@@ -185,14 +194,47 @@ public class ThinkProcessService {
                 .intentCorrectionOverride(intentCorrectionOverride)
                 .dataRelayCorrectionOverride(dataRelayCorrectionOverride)
                 .allowedToolsOverride(allowed)
+                .allowedSkillsOverride(skillWhitelist)
+                .activeSkills(seededSkills)
                 .status(ThinkProcessStatus.READY)
                 .build();
         ThinkProcessDocument saved = repository.save(doc);
-        log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' recipe='{}' profile='{}' params={}",
+        log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' recipe='{}' profile='{}' skills={} params={}",
                 tenantId, sessionId, name, thinkEngine, saved.getId(), parentProcessId,
                 recipeName, connectionProfile,
+                seededSkills.isEmpty() ? "[]" : seededSkills.stream().map(ActiveSkillRefEmbedded::getName).toList(),
                 params.isEmpty() ? "{}" : params.keySet());
         return saved;
+    }
+
+    /**
+     * Builds the initial {@code activeSkills} list from the recipe's
+     * {@code defaultActiveSkills} names. Each entry is sticky and
+     * marked {@code fromRecipe=true} so {@code /skill clear} respects
+     * the recipe author's intent (see
+     * {@link de.mhus.vance.shared.skill.ActiveSkillRefEmbedded}).
+     * {@code resolvedFromScope} is left at the safe default
+     * {@link SkillScope#RESOURCE}; engines re-resolve the actual scope
+     * on every turn anyway.
+     */
+    private static List<ActiveSkillRefEmbedded> seedActiveSkills(
+            @Nullable List<String> defaultActiveSkills) {
+        if (defaultActiveSkills == null || defaultActiveSkills.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Instant now = Instant.now();
+        List<ActiveSkillRefEmbedded> out = new ArrayList<>(defaultActiveSkills.size());
+        for (String name : defaultActiveSkills) {
+            if (name == null || name.isBlank()) continue;
+            out.add(ActiveSkillRefEmbedded.builder()
+                    .name(name)
+                    .resolvedFromScope(SkillScope.RESOURCE)
+                    .oneShot(false)
+                    .fromRecipe(true)
+                    .activatedAt(now)
+                    .build());
+        }
+        return out;
     }
 
     // ────────────────── Read ──────────────────

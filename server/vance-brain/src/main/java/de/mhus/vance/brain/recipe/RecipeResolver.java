@@ -144,6 +144,8 @@ public class RecipeResolver {
                 r.dataRelayCorrection(),
                 effectiveAllowed,
                 connectionProfile,
+                r.defaultActiveSkills(),
+                r.allowedSkills(),
                 r.source(),
                 List.copyOf(overriddenKeys));
     }

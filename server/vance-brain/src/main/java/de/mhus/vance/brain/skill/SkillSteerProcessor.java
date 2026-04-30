@@ -41,6 +41,10 @@ public class SkillSteerProcessor {
         if (skillName == null || skillName.isBlank()) {
             throw new IllegalArgumentException("skillName is required for activate");
         }
+        java.util.Set<String> whitelist = process.getAllowedSkillsOverride();
+        if (whitelist != null && !whitelist.contains(skillName)) {
+            throw new SkillNotAllowedByRecipeException(skillName, process.getRecipeName());
+        }
         SkillScopeContext scope = scopeFor(process);
         ResolvedSkill skill = skillResolver.resolve(scope, skillName)
                 .orElseThrow(() -> new UnknownSkillException(skillName));

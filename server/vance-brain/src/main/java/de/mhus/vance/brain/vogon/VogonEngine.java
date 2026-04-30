@@ -385,7 +385,10 @@ public class VogonEngine implements ThinkEngine {
                     applied.intentCorrection(),
                     applied.dataRelayCorrection(),
                     applied.effectiveAllowedTools(),
-                    applied.connectionProfile());
+                    applied.connectionProfile(),
+                    applied.defaultActiveSkills(),
+                    applied.allowedSkills() == null
+                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
             state.getWorkerProcessIds().put(phase.getName(), child.getId());
             persistState(process, state);
             thinkEngineServiceProvider.getObject().start(child);

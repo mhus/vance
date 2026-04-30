@@ -157,6 +157,22 @@ public class ThinkProcessDocument {
     private @Nullable Set<String> allowedToolsOverride;
 
     /**
+     * Snapshot of the recipe's {@code allowedSkills} whitelist at spawn
+     * time. {@code null} means "no restriction" (any visible skill may
+     * be activated via trigger / {@code /skill}); an empty
+     * <em>non-null</em> set is a hard lockdown ("no skill may ever be
+     * active on this process"). Mirrors the
+     * {@link #allowedToolsOverride} pattern.
+     *
+     * <p>Recipe edits after spawn do not affect a running process — the
+     * snapshot wins. {@link #activeSkills} entries with
+     * {@code fromRecipe=true} that came from {@code defaultActiveSkills}
+     * are not subject to this filter (they were placed by the recipe
+     * author themselves at spawn time).
+     */
+    private @Nullable Set<String> allowedSkillsOverride;
+
+    /**
      * Mongo id of the orchestrator process that spawned this one.
      * {@code null} for top-level processes (e.g. the session's chat).
      * Used to route life-cycle {@code ProcessEvent}s back to the parent

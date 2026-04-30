@@ -1022,7 +1022,10 @@ public class MarvinEngine implements ThinkEngine {
                     applied.intentCorrection(),
                     applied.dataRelayCorrection(),
                     applied.effectiveAllowedTools(),
-                    applied.connectionProfile());
+                    applied.connectionProfile(),
+                    applied.defaultActiveSkills(),
+                    applied.allowedSkills() == null
+                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
             nodeService.setSpawnedProcessId(node, child.getId());
             thinkEngineServiceProvider.getObject().start(child);
             log.info("Marvin id='{}' WORKER node='{}' spawned child='{}' recipe='{}'",

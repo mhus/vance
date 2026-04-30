@@ -34,6 +34,17 @@ public record AppliedRecipe(
          * not used for engine logic.
          */
         @Nullable String connectionProfile,
+        /**
+         * Skill names to seed the spawned process's {@code activeSkills}
+         * list with. Each entry becomes an {@code ActiveSkillRefEmbedded}
+         * with {@code fromRecipe=true}, sticky.
+         */
+        List<String> defaultActiveSkills,
+        /**
+         * Whitelist passed through to {@code allowedSkillsOverride} on
+         * the spawned process. {@code null} means "no restriction".
+         */
+        @Nullable List<String> allowedSkills,
         RecipeSource source,
         List<String> overriddenParamKeys) {
 }

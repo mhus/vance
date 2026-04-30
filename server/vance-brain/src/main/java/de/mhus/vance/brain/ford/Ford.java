@@ -182,6 +182,7 @@ public class Ford implements ThinkEngine {
     private final MemoryCompactionService memoryCompactionService;
     private final SkillResolver skillResolver;
     private final SkillPromptComposer skillPromptComposer;
+    private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final SessionService sessionService;
 
     // ──────────────────── Metadata ────────────────────
@@ -267,6 +268,12 @@ public class Ford implements ThinkEngine {
                     .role(ChatRole.USER)
                     .content(userInput)
                     .build());
+
+            // Skill auto-trigger: match the user input against PATTERN/
+            // KEYWORDS triggers of visible skills, one-shot activate
+            // matches. Filters via process.allowedSkillsOverride. Quiet
+            // when nothing fires.
+            skillTriggerMatcher.detectAndActivate(process, userInput);
 
             // Build the chat with primary + ordered fallback chain plus
             // the standard resilience-notifier and (when tracing.llm is

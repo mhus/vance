@@ -204,7 +204,10 @@ public class ProcessCreateTool implements Tool {
                 applied.intentCorrection(),
                 applied.dataRelayCorrection(),
                 applied.effectiveAllowedTools(),
-                applied.connectionProfile());
+                applied.connectionProfile(),
+                applied.defaultActiveSkills(),
+                applied.allowedSkills() == null
+                        ? null : java.util.Set.copyOf(applied.allowedSkills()));
     }
 
     private ThinkProcessDocument createFromEngine(

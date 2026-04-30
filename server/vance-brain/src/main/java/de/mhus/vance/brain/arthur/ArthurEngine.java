@@ -179,6 +179,7 @@ public class ArthurEngine implements ThinkEngine {
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
+    private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -286,6 +287,7 @@ public class ArthurEngine implements ThinkEngine {
             // see them in history). Other inbox kinds — ProcessEvent,
             // ToolResult, ExternalCommand — are turn-local: they steer this
             // turn but don't get written back as user-visible chat history.
+            StringBuilder userTextForTriggers = new StringBuilder();
             for (SteerMessage m : inbox) {
                 if (m instanceof SteerMessage.UserChatInput uci) {
                     chatLog.append(ChatMessageDocument.builder()
@@ -295,7 +297,18 @@ public class ArthurEngine implements ThinkEngine {
                             .role(ChatRole.USER)
                             .content(uci.content())
                             .build());
+                    if (uci.content() != null && !uci.content().isBlank()) {
+                        if (userTextForTriggers.length() > 0) userTextForTriggers.append('\n');
+                        userTextForTriggers.append(uci.content());
+                    }
                 }
+            }
+
+            // Skill auto-trigger: match the joined user-input text against
+            // PATTERN/KEYWORDS triggers of visible skills, one-shot
+            // activate matches. Filters via process.allowedSkillsOverride.
+            if (userTextForTriggers.length() > 0) {
+                skillTriggerMatcher.detectAndActivate(process, userTextForTriggers.toString());
             }
 
             // Build the chat with primary + ordered fallback chain plus

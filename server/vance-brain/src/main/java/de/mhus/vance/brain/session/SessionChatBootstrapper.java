@@ -173,7 +173,9 @@ public class SessionChatBootstrapper {
                         cfg.intentCorrection(),
                         cfg.dataRelayCorrection(),
                         cfg.allowedTools(),
-                        session.getProfile());
+                        session.getProfile(),
+                        /*defaultActiveSkills*/ null,
+                        /*allowedSkillsOverride*/ null);
             } else if (applied != null) {
                 fresh = thinkProcessService.create(
                         session.getTenantId(),
@@ -192,7 +194,10 @@ public class SessionChatBootstrapper {
                         applied.intentCorrection(),
                         applied.dataRelayCorrection(),
                         applied.effectiveAllowedTools(),
-                        applied.connectionProfile());
+                        applied.connectionProfile(),
+                        applied.defaultActiveSkills(),
+                        applied.allowedSkills() == null
+                                ? null : java.util.Set.copyOf(applied.allowedSkills()));
             } else {
                 fresh = thinkProcessService.create(
                         session.getTenantId(),

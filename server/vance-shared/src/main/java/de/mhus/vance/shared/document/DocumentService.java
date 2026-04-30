@@ -657,17 +657,22 @@ public class DocumentService {
 
     /**
      * Parse the front matter of {@code doc.inlineText} and mirror the result
-     * onto the entity's {@code kind} / {@code headers} fields. Only runs for
-     * markdown payloads — every other mime-type clears the header projection.
-     * Truth lives in {@code inlineText}; this method rebuilds the index.
+     * onto the entity's {@code kind} / {@code headers} fields. The mime-type
+     * picks the {@link HeaderStrategy} (markdown front-matter, YAML
+     * multi-document stream, JSON {@code $meta} object); unsupported
+     * mime-types and unparsable bodies clear the projection.
+     *
+     * <p>Truth lives in {@code inlineText}; this method rebuilds the index
+     * on every save and is never written back from.
      */
     private void applyHeader(DocumentDocument doc) {
-        if (!isMarkdown(doc.getMimeType()) || doc.getInlineText() == null) {
+        if (doc.getInlineText() == null) {
             doc.setKind(null);
             doc.setHeaders(new java.util.LinkedHashMap<>());
             return;
         }
-        Optional<DocumentHeader> parsed = headerParser.parse(doc.getInlineText());
+        Optional<DocumentHeader> parsed = headerParser.parse(
+                doc.getMimeType(), doc.getInlineText());
         if (parsed.isEmpty()) {
             doc.setKind(null);
             doc.setHeaders(new java.util.LinkedHashMap<>());
@@ -676,14 +681,6 @@ public class DocumentService {
         DocumentHeader header = parsed.get();
         doc.setKind(header.getKind());
         doc.setHeaders(new java.util.LinkedHashMap<>(header.getValues()));
-    }
-
-    private static boolean isMarkdown(@Nullable String mimeType) {
-        if (mimeType == null) return false;
-        String mt = mimeType.toLowerCase().trim();
-        int semi = mt.indexOf(';');
-        if (semi >= 0) mt = mt.substring(0, semi).trim();
-        return "text/markdown".equals(mt) || "text/x-markdown".equals(mt);
     }
 
     private static String normalizePath(String path) {

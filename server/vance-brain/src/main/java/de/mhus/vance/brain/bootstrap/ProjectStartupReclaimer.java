@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.init;
+package de.mhus.vance.brain.bootstrap;
 
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.project.ProjectDocument;

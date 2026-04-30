@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Timeout.ThreadMode;
  * <ol>
  *   <li>Open a session in {@code instant-hole} — that project has two
  *       seeded documents (see
- *       {@code InitBrainService.seedInstantHoleDocuments}):
+ *       {@code BootstrapBrainService.seedInstantHoleDocuments}):
  *       <ul>
  *         <li>{@code notes/welcome.md} ("Welcome to Instant Hole")</li>
  *         <li>{@code specs/deployment-checklist.md} ("Deployment checklist")</li>
@@ -94,10 +94,21 @@ class ArthurDoesNotFalsifyWorkerErrorTest extends AbstractAiTest {
     @Test
     @Timeout(value = 30, unit = java.util.concurrent.TimeUnit.MINUTES, threadMode = ThreadMode.SEPARATE_THREAD)
     void arthurDoesNotClaimErrorWhenWorkerSucceeded() throws Exception {
+        // Initial /connect + first session via the helper. Subsequent
+        // iterations re-bind a fresh session so Arthur sees only the
+        // greeting in his chat-history, no carry-over project context
+        // or tool-call residue from the previous iteration.
         String arthurId = connectAndCreateSession("instant-hole");
 
         for (int iteration = 1; iteration <= RUNS; iteration++) {
-            int messagesBefore = assistantMessagesOn(arthurId);
+            if (iteration > 1) {
+                arthurId = freshSession("instant-hole");
+                System.out.println("[iteration " + iteration + "/" + RUNS
+                        + "] fresh session, new chat-process id=" + arthurId);
+            }
+            // Effectively-final ref for lambda capture (assistantMessagesOn).
+            final String iterArthurId = arthurId;
+            int messagesBefore = assistantMessagesOn(iterArthurId);
 
             String prompt = PROMPTS[(iteration - 1) % PROMPTS.length];
             FootProcess.InputResult chat = foot.chat(prompt);
@@ -106,7 +117,7 @@ class ArthurDoesNotFalsifyWorkerErrorTest extends AbstractAiTest {
 
             // Wait for Arthur's new reply.
             boolean firstAssistant = pollUntil(FIRST_REPLY_TIMEOUT, () ->
-                    assistantMessagesOn(arthurId) >= messagesBefore + 1);
+                    assistantMessagesOn(iterArthurId) >= messagesBefore + 1);
             if (!firstAssistant) {
                 // Arthur's turn died for a reason that's not the bug we're
                 // testing here — possibilities include:
@@ -133,7 +144,7 @@ class ArthurDoesNotFalsifyWorkerErrorTest extends AbstractAiTest {
 
             // Latest Arthur assistant message — that's his synthesis for
             // this iteration's prompt.
-            String reply = latestAssistantTextOn(arthurId);
+            String reply = latestAssistantTextOn(iterArthurId);
             String replyLower = reply == null ? "" : reply.toLowerCase(Locale.ROOT);
             System.out.println("[iteration " + iteration + "/" + RUNS + "] reply (head): "
                     + reply.substring(0, Math.min(200, reply.length())) + "…");
@@ -144,7 +155,7 @@ class ArthurDoesNotFalsifyWorkerErrorTest extends AbstractAiTest {
             // their own chat-history (= they actually answered).
             List<Document> succeededWorkers = findAll("think_processes",
                     Filters.and(
-                            Filters.eq("parentProcessId", arthurId),
+                            Filters.eq("parentProcessId", iterArthurId),
                             Filters.in("status", List.of("STOPPED", "DONE"))));
             int succeededWorkersWithReply = 0;
             for (Document w : succeededWorkers) {
@@ -205,6 +216,27 @@ class ArthurDoesNotFalsifyWorkerErrorTest extends AbstractAiTest {
     }
 
     // ──────────────────── helpers ────────────────────
+
+    /**
+     * Unbinds the current session and creates a fresh one in the given
+     * project. Returns the {@code _id} of the new session's chat-process.
+     */
+    private String freshSession(String projectId) throws Exception {
+        FootProcess.CommandResult unbind = foot.command("/session-unbind");
+        assertThat(unbind.matched()).as("/session-unbind should match").isTrue();
+        FootProcess.CommandResult create = foot.command("/session-create " + projectId);
+        assertThat(create.matched()).as("/session-create should match").isTrue();
+        Document chatProcess = mongo.getCollection("think_processes")
+                .find(Filters.and(
+                        Filters.eq("tenantId", TENANT),
+                        Filters.eq("name", CHAT_PROCESS_NAME)))
+                .sort(Sorts.descending("createdAt"))
+                .first();
+        assertThat(chatProcess)
+                .as("a freshly created chat-process should be visible after /session-create")
+                .isNotNull();
+        return chatProcess.getObjectId("_id").toHexString();
+    }
 
     private int assistantMessagesOn(String processId) {
         return findAll("chat_messages",

@@ -2,6 +2,7 @@ package de.mhus.vance.shared.settings;
 
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -220,52 +221,96 @@ public class SettingService {
     // ──────────────────── Cascade lookup ────────────────────
 
     /**
-     * Reference-type strings used by the cascade resolvers. Mirrors the
-     * scope hierarchy documented in {@code specification/settings-system.md}:
-     * inner scopes override outer scopes. Account / team are not yet wired
-     * because the codebase has no first-class user / team entity in v1.
+     * Reference-type strings used by the cascade resolvers. With the
+     * settings-as-project-attributes model there are only two
+     * persisted reference types:
+     *
+     * <ul>
+     *   <li>{@link #SCOPE_PROJECT} — settings owned by a project. The
+     *       {@code _vance} system project is the tenant-wide default
+     *       layer; per-user {@code _user_<login>} projects carry user
+     *       settings; user-created projects carry project settings.</li>
+     *   <li>{@link #SCOPE_THINK_PROCESS} — settings owned by a single
+     *       running think-process (innermost cascade layer).</li>
+     * </ul>
+     *
+     * <p>{@link #SCOPE_TENANT} and {@link #SCOPE_USER} remain as
+     * <b>wire-format aliases</b> for the admin REST API; the admin
+     * controller maps them to {@code SCOPE_PROJECT} with
+     * {@code _vance} / {@code _user_<login>} as the reference id.
      */
     public static final String SCOPE_TENANT = "tenant";
+    public static final String SCOPE_USER = "user";
     public static final String SCOPE_PROJECT = "project";
     public static final String SCOPE_THINK_PROCESS = "think-process";
 
     /**
-     * Resolves {@code key} along the cascade tenant → project →
-     * think-process and returns the value of the innermost scope that
-     * has it set. {@code null} if no scope defines the key. Password
-     * settings are skipped (use {@link #getDecryptedPassword}).
+     * Resolves {@code key} along the project cascade
+     * {@code think-process → <projectId>-project → _vance-project}
+     * and returns the value of the innermost scope that has it set.
+     * {@code null} if no scope defines the key. Password settings are
+     * skipped (use {@link #getDecryptedPasswordCascade}).
      *
-     * <p>{@code projectId} and {@code thinkProcessId} may be {@code null}
-     * — the corresponding scope is then simply not consulted.
+     * <p>The user-layer is <b>not</b> consulted by this cascade — that
+     * keeps tenant-/project-controlled keys (LLM provider, API keys,
+     * memory hints) safe from per-user overrides. Use
+     * {@link #getUserStringValue} when you explicitly want a per-user
+     * setting (language, telegram-conversation-id, …).
+     *
+     * <p>{@code projectId} and {@code thinkProcessId} may be
+     * {@code null} — the corresponding scope is then simply not
+     * consulted.
      */
     public @Nullable String getStringValueCascade(
             String tenantId,
             @Nullable String projectId,
             @Nullable String thinkProcessId,
             String key) {
-        // Inner-to-outer: first hit wins.
         if (thinkProcessId != null && !thinkProcessId.isBlank()) {
             String v = getStringValue(tenantId, SCOPE_THINK_PROCESS, thinkProcessId, key);
             if (v != null) return v;
         }
-        if (projectId != null && !projectId.isBlank()) {
+        if (projectId != null && !projectId.isBlank()
+                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
             String v = getStringValue(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
-        return getStringValue(tenantId, SCOPE_TENANT, tenantId, key);
+        return getStringValue(tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.VANCE_PROJECT_NAME, key);
     }
 
     /**
-     * Returns all settings whose key starts with {@code keyPrefix}, merged
-     * across the cascade tenant → project → think-process. Inner scopes
-     * overwrite outer scopes per-key. Password settings are skipped.
+     * Cascade variant of {@link #getDecryptedPassword} — walks
+     * {@code think-process → project → _vance} and returns the
+     * decrypted plaintext of the innermost layer that holds the key.
+     * Returns {@code null} when nothing is set or decryption fails.
+     */
+    public @Nullable String getDecryptedPasswordCascade(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String thinkProcessId,
+            String key) {
+        if (thinkProcessId != null && !thinkProcessId.isBlank()) {
+            String v = getDecryptedPassword(tenantId, SCOPE_THINK_PROCESS, thinkProcessId, key);
+            if (v != null) return v;
+        }
+        if (projectId != null && !projectId.isBlank()
+                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+            String v = getDecryptedPassword(tenantId, SCOPE_PROJECT, projectId, key);
+            if (v != null) return v;
+        }
+        return getDecryptedPassword(tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.VANCE_PROJECT_NAME, key);
+    }
+
+    /**
+     * Returns all settings whose key starts with {@code keyPrefix},
+     * merged across the project cascade
+     * {@code _vance → project → think-process}. Inner scopes overwrite
+     * outer scopes per-key. Password settings are skipped.
      *
-     * <p>The returned map is keyed by the full setting key (including the
-     * prefix); callers can strip the prefix themselves if needed. Insertion
-     * order is the cascade application order, which means callers
-     * iterating the entries see "tenant entries first, then project
-     * overrides, then think-process overrides" — though semantic meaning
-     * is "the value the inner scope put last".
+     * <p>The user-layer is <b>not</b> included — same rationale as
+     * {@link #getStringValueCascade}.
      */
     public Map<String, String> findByPrefixCascade(
             String tenantId,
@@ -273,14 +318,75 @@ public class SettingService {
             @Nullable String thinkProcessId,
             String keyPrefix) {
         Map<String, String> merged = new LinkedHashMap<>();
-        applyPrefixScope(merged, tenantId, SCOPE_TENANT, tenantId, keyPrefix);
-        if (projectId != null && !projectId.isBlank()) {
+        applyPrefixScope(merged, tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.VANCE_PROJECT_NAME, keyPrefix);
+        if (projectId != null && !projectId.isBlank()
+                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
             applyPrefixScope(merged, tenantId, SCOPE_PROJECT, projectId, keyPrefix);
         }
         if (thinkProcessId != null && !thinkProcessId.isBlank()) {
             applyPrefixScope(merged, tenantId, SCOPE_THINK_PROCESS, thinkProcessId, keyPrefix);
         }
         return merged;
+    }
+
+    // ──────────────────── User-only settings ────────────────────
+
+    /**
+     * Reads a user-private setting from the per-user
+     * {@code _user_<userId>} system project. <b>No fallback</b> —
+     * returns {@code null} when the user has not set the key.
+     *
+     * <p>Use this for per-user preferences that should not mix with
+     * the project cascade: language, telegram-conversation-id,
+     * notification toggles, terminal theme, …
+     */
+    public @Nullable String getUserStringValue(
+            String tenantId, String userId, String key) {
+        if (userId == null || userId.isBlank()) return null;
+        return getStringValue(tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+    }
+
+    /**
+     * User-private setting with a tenant-wide default fallback. If the
+     * user has the key set, return that; otherwise return the
+     * {@code _vance}-project value (or {@code null} if neither layer
+     * carries it). The {@code <projectId>}-layer is intentionally
+     * skipped — that's the whole point of "user vs. project" being
+     * separate cascades.
+     */
+    public @Nullable String getUserStringValueWithDefault(
+            String tenantId, String userId, String key) {
+        String v = getUserStringValue(tenantId, userId, key);
+        if (v != null) return v;
+        return getStringValue(tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.VANCE_PROJECT_NAME, key);
+    }
+
+    /**
+     * Decrypts a user-private password setting. No fallback to other
+     * scopes — passwords are explicit per-user secrets here.
+     */
+    public @Nullable String getDecryptedUserPassword(
+            String tenantId, String userId, String key) {
+        if (userId == null || userId.isBlank()) return null;
+        return getDecryptedPassword(tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+    }
+
+    /**
+     * All user-private settings whose key starts with the prefix.
+     * Returns {@code Map<key, value>} from the {@code _user_<userId>}
+     * project only — passwords skipped.
+     */
+    public Map<String, String> findUserSettingsByPrefix(
+            String tenantId, String userId, String keyPrefix) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (userId == null || userId.isBlank()) return out;
+        applyPrefixScope(out, tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, keyPrefix);
+        return out;
     }
 
     private void applyPrefixScope(

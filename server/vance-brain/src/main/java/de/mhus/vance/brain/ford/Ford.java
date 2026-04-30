@@ -166,7 +166,6 @@ public class Ford implements ThinkEngine {
             "VALIDATION CHECK: tools returned %d chars, your reply has "
                     + "%d — paste the actual data into the reply text.";
 
-    private static final String SETTINGS_REF_TYPE = "tenant";
     /** Provider-specific API-key setting key, e.g. {@code ai.provider.gemini.apiKey}. */
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
@@ -175,13 +174,12 @@ public class Ford implements ThinkEngine {
     private final StreamingProperties streamingProperties;
     private final ModelCatalog modelCatalog;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
-    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
+    private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final FordProperties fordProperties;
     private final MemoryService memoryService;
     private final MemoryCompactionService memoryCompactionService;
-    private final AiModelResolver aiModelResolver;
     private final SkillResolver skillResolver;
     private final SkillPromptComposer skillPromptComposer;
     private final SessionService sessionService;
@@ -270,21 +268,13 @@ public class Ford implements ThinkEngine {
                     .content(userInput)
                     .build());
 
-            // Build the chat as primary + ordered fallback chain (recipe
-            // params.fallbackModels). Single-entry behaviour when no
-            // fallbacks configured.
-            de.mhus.vance.brain.ai.ChatBehavior behavior =
-                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
-                            process, ctx.settingService(), aiModelResolver);
-            AiChatConfig config = behavior.entries().get(0).config();
-            AiChat aiChat = ctx.aiModelService().createChat(
-                    behavior,
-                    AiChatOptions.builder()
-                            .userNotifier(msg -> progressEmitter.emitStatus(
-                                    process,
-                                    de.mhus.vance.api.progress.StatusTag.PROVIDER,
-                                    msg))
-                            .build());
+            // Build the chat with primary + ordered fallback chain plus
+            // the standard resilience-notifier and (when tracing.llm is
+            // on) LLM-trace persistence — see EngineChatFactory.
+            de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle chatBundle =
+                    engineChatFactory.forProcess(process, ctx, NAME);
+            AiChat aiChat = chatBundle.chat();
+            AiChatConfig config = chatBundle.primaryConfig();
 
             List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
             String skillSection = skillPromptComposer.compose(activeSkills);
@@ -728,12 +718,13 @@ public class Ford implements ThinkEngine {
         } else {
             spec = null;
         }
-        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(spec, tenantId);
+        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
+                spec, tenantId, /*projectId*/ null, process.getId());
 
         String apiKeySetting = String.format(
                 SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
-        String apiKey = settings.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId, apiKeySetting);
+        String apiKey = settings.getDecryptedPasswordCascade(
+                tenantId, /*projectId*/ null, process.getId(), apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key configured for provider '" + resolved.provider()

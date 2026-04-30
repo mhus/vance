@@ -73,7 +73,6 @@ public class MemoryCompactionService {
             closing remarks.
             """;
 
-    private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_AI_PROVIDER = "ai.default.provider";
     private static final String SETTING_AI_MODEL = "ai.default.model";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
@@ -233,15 +232,18 @@ public class MemoryCompactionService {
 
     private AiChatConfig resolveAiConfig(ThinkProcessDocument process) {
         String tenantId = process.getTenantId();
-        String provider = settingService.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                SETTING_AI_PROVIDER, DEFAULT_PROVIDER);
-        String model = settingService.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                SETTING_AI_MODEL, DEFAULT_MODEL);
+        String processId = process.getId();
+        String providerCascade = settingService.getStringValueCascade(
+                tenantId, /*projectId*/ null, processId, SETTING_AI_PROVIDER);
+        String provider = (providerCascade == null || providerCascade.isBlank())
+                ? DEFAULT_PROVIDER : providerCascade;
+        String modelCascade = settingService.getStringValueCascade(
+                tenantId, /*projectId*/ null, processId, SETTING_AI_MODEL);
+        String model = (modelCascade == null || modelCascade.isBlank())
+                ? DEFAULT_MODEL : modelCascade;
         String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
-        String apiKey = settingService.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId, apiKeySetting);
+        String apiKey = settingService.getDecryptedPasswordCascade(
+                tenantId, /*projectId*/ null, processId, apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key configured for provider '" + provider

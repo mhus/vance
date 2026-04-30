@@ -1,6 +1,7 @@
-package de.mhus.vance.brain.init;
+package de.mhus.vance.brain.bootstrap;
 
 import de.mhus.vance.api.settings.SettingType;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingService;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,7 +20,8 @@ import org.yaml.snakeyaml.Yaml;
  * back LLM provider/model defaults and API keys after a database wipe
  * without re-typing them through the admin REST endpoint.
  *
- * <p>File format (per tenant, scope is always {@code tenant:<tenantId>}):
+ * <p>File format (per tenant; entries land in the tenant's
+ * {@code _vance} system project):
  *
  * <pre>
  *   acme:
@@ -46,7 +48,14 @@ import org.yaml.snakeyaml.Yaml;
 public class InitSettingsLoader {
 
     private static final String CONVENTIONAL_PATH = "confidential/init-settings.yaml";
-    private static final String SETTINGS_REF_TYPE = "tenant";
+    /**
+     * Settings imported by this loader land on the tenant-wide
+     * {@code _vance} system project. Caller (BootstrapBrainService) must
+     * ensure {@code _vance} exists before invoking
+     * {@link #loadIfPresent()}.
+     */
+    private static final String SETTINGS_REF_TYPE = SettingService.SCOPE_PROJECT;
+    private static final String SETTINGS_REF_ID = HomeBootstrapService.VANCE_PROJECT_NAME;
 
     private final InitSettingsProperties properties;
     private final SettingService settingService;
@@ -129,10 +138,10 @@ public class InitSettingsLoader {
                 ? null : spec.get("description").toString();
         if (type == SettingType.PASSWORD) {
             settingService.setEncryptedPassword(
-                    tenant, SETTINGS_REF_TYPE, tenant, key, value);
+                    tenant, SETTINGS_REF_TYPE, SETTINGS_REF_ID, key, value);
         } else {
             settingService.set(
-                    tenant, SETTINGS_REF_TYPE, tenant, key, value, type, description);
+                    tenant, SETTINGS_REF_TYPE, SETTINGS_REF_ID, key, value, type, description);
         }
     }
 

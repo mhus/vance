@@ -7,8 +7,12 @@ import de.mhus.vance.api.insights.MemoryInsightsDto;
 import de.mhus.vance.api.insights.PendingMessageInsightsDto;
 import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
+import de.mhus.vance.api.llmtrace.LlmTraceDto;
+import de.mhus.vance.api.llmtrace.LlmTraceListResponse;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.llmtrace.LlmTraceDocument;
+import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.marvin.MarvinNodeDocument;
 import de.mhus.vance.shared.marvin.MarvinNodeService;
 import de.mhus.vance.shared.memory.MemoryDocument;
@@ -58,6 +62,7 @@ public class InsightsAdminController {
     private final ChatMessageService chatMessageService;
     private final MemoryService memoryService;
     private final MarvinNodeService marvinNodeService;
+    private final LlmTraceService llmTraceService;
 
     // ─── Sessions ──────────────────────────────────────────────────────────
 
@@ -165,6 +170,36 @@ public class InsightsAdminController {
         return marvinNodeService.listAll(process.getId()).stream()
                 .map(InsightsAdminController::toDto)
                 .toList();
+    }
+
+    /**
+     * Paginated LLM-trace history for one process — drives the
+     * Insights "LLM Trace" tab. Empty list when {@code tracing.llm}
+     * was off when the process ran (no rows ever written) or after
+     * MongoDB's TTL evicted them. Newest entries first; the UI groups
+     * by {@code turnId} client-side.
+     *
+     * @param page  zero-based, default 0
+     * @param size  page size, capped server-side at 200
+     */
+    @GetMapping("/processes/{processId}/llm-traces")
+    public LlmTraceListResponse listLlmTraces(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("processId") String processId,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "50") int size) {
+        ThinkProcessDocument process = loadProcess(tenant, processId);
+        org.springframework.data.domain.Page<LlmTraceDocument> result =
+                llmTraceService.listByProcess(tenant, process.getId(), page, size);
+        List<LlmTraceDto> items = result.getContent().stream()
+                .map(InsightsAdminController::toDto)
+                .toList();
+        return LlmTraceListResponse.builder()
+                .items(items)
+                .page(result.getNumber())
+                .pageSize(result.getSize())
+                .totalCount(result.getTotalElements())
+                .build();
     }
 
     // ─── Authorization helpers ─────────────────────────────────────────────
@@ -317,6 +352,37 @@ public class InsightsAdminController {
                 .createdAt(n.getCreatedAt())
                 .startedAt(n.getStartedAt())
                 .completedAt(n.getCompletedAt())
+                .build();
+    }
+
+    /**
+     * Maps {@link LlmTraceDocument} to its wire-DTO. The {@code direction}
+     * enum is rendered as a lower-case string so the UI can switch on
+     * it without importing the server-side enum.
+     */
+    private static LlmTraceDto toDto(LlmTraceDocument t) {
+        return LlmTraceDto.builder()
+                .id(t.getId())
+                .tenantId(t.getTenantId() == null ? "" : t.getTenantId())
+                .projectId(t.getProjectId())
+                .sessionId(t.getSessionId())
+                .processId(t.getProcessId() == null ? "" : t.getProcessId())
+                .engine(t.getEngine())
+                .turnId(t.getTurnId())
+                .sequence(t.getSequence())
+                .direction(t.getDirection() == null
+                        ? ""
+                        : t.getDirection().name().toLowerCase())
+                .role(t.getRole())
+                .content(t.getContent())
+                .toolName(t.getToolName())
+                .toolCallId(t.getToolCallId())
+                .modelAlias(t.getModelAlias())
+                .providerModel(t.getProviderModel())
+                .tokensIn(t.getTokensIn())
+                .tokensOut(t.getTokensOut())
+                .elapsedMs(t.getElapsedMs())
+                .createdAt(t.getCreatedAt())
                 .build();
     }
 }

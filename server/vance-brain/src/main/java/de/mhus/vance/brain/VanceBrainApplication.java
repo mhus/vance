@@ -2,7 +2,8 @@ package de.mhus.vance.brain;
 
 import de.mhus.vance.brain.arthur.ArthurProperties;
 import de.mhus.vance.brain.events.StreamingProperties;
-import de.mhus.vance.brain.init.InitSettingsProperties;
+import de.mhus.vance.brain.bootstrap.BootstrapProperties;
+import de.mhus.vance.brain.bootstrap.InitSettingsProperties;
 import de.mhus.vance.brain.marvin.MarvinProperties;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.tools.workspace.WorkspaceProperties;
@@ -34,6 +35,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         WorkspaceProperties.class,
         ExecProperties.class,
         StreamingProperties.class,
+        BootstrapProperties.class,
         InitSettingsProperties.class,
         FordProperties.class,
         ArthurProperties.class,

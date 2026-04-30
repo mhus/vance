@@ -4,7 +4,7 @@ import de.mhus.vance.api.skills.ActiveSkillRefDto;
 import de.mhus.vance.api.skills.ProcessSkillCommand;
 import de.mhus.vance.api.skills.ProcessSkillRequest;
 import de.mhus.vance.api.skills.ProcessSkillResponse;
-import de.mhus.vance.api.skills.SkillDto;
+import de.mhus.vance.api.skills.SkillSummaryDto;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.ws.MessageType;
@@ -80,10 +80,10 @@ public class SkillCommandHelper {
             return;
         }
         terminal.info("available:");
-        for (SkillDto dto : response.getAvailableSkills()) {
+        for (SkillSummaryDto dto : response.getAvailableSkills()) {
             String marker = activeNames.contains(dto.getName()) ? "  ✓ " : "    ";
             terminal.info(marker + dto.getName()
-                    + "  [" + dto.getScope() + "]"
+                    + "  [" + dto.getSource() + "]"
                     + "  — " + dto.getDescription());
         }
     }

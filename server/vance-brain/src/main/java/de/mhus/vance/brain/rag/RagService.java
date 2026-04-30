@@ -41,7 +41,6 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class RagService {
 
-    private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_EMBED_PROVIDER = "ai.embedding.provider";
     private static final String SETTING_EMBED_MODEL = "ai.embedding.model";
     private static final String SETTING_DEFAULT_PROVIDER = "ai.default.provider";
@@ -172,8 +171,10 @@ public class RagService {
     private EmbeddingModel modelFor(RagDocument rag) {
         String apiKeySetting = String.format(
                 SETTING_PROVIDER_API_KEY_FMT, rag.getEmbeddingProvider());
-        String apiKey = settingService.getDecryptedPassword(
-                rag.getTenantId(), SETTINGS_REF_TYPE, rag.getTenantId(), apiKeySetting);
+        // RAG-level operation has no process scope — read from the
+        // _vance/project layer of the project cascade.
+        String apiKey = settingService.getDecryptedPasswordCascade(
+                rag.getTenantId(), /*projectId*/ null, /*processId*/ null, apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key for embedding provider '" + rag.getEmbeddingProvider()
@@ -185,21 +186,20 @@ public class RagService {
     }
 
     private EmbeddingConfig resolveEmbeddingConfig(String tenantId) {
-        String provider = settingService.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                SETTING_EMBED_PROVIDER, DEFAULT_EMBED_PROVIDER);
-        String model = settingService.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId,
-                SETTING_EMBED_MODEL, DEFAULT_EMBED_MODEL);
-        // Fall back to chat provider if embedding provider isn't explicitly set.
+        String provider = settingService.getStringValueCascade(
+                tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_PROVIDER);
         if (provider == null || provider.isBlank()) {
-            provider = settingService.getStringValue(
-                    tenantId, SETTINGS_REF_TYPE, tenantId,
-                    SETTING_DEFAULT_PROVIDER, DEFAULT_EMBED_PROVIDER);
+            // Fall back to chat provider if embedding provider isn't explicitly set.
+            provider = settingService.getStringValueCascade(
+                    tenantId, /*projectId*/ null, /*processId*/ null, SETTING_DEFAULT_PROVIDER);
+            if (provider == null || provider.isBlank()) provider = DEFAULT_EMBED_PROVIDER;
         }
+        String model = settingService.getStringValueCascade(
+                tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_MODEL);
+        if (model == null || model.isBlank()) model = DEFAULT_EMBED_MODEL;
         String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
-        String apiKey = settingService.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId, apiKeySetting);
+        String apiKey = settingService.getDecryptedPasswordCascade(
+                tenantId, /*projectId*/ null, /*processId*/ null, apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key for embedding provider '" + provider

@@ -40,7 +40,6 @@ import tools.jackson.databind.ObjectMapper;
 public class WebSearchTool implements Tool {
 
     public static final String SETTING_KEY = "web.serper.apiKey";
-    private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SERPER_API_URL = "https://google.serper.dev/search";
     private static final int DEFAULT_NUM = 5;
     private static final int MAX_NUM = 10;
@@ -95,12 +94,15 @@ public class WebSearchTool implements Tool {
         int num = clampNum(params == null ? null : params.get("num"));
 
         String tenantId = ctx.tenantId();
-        String apiKey = settings.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId, SETTING_KEY);
+        // ToolInvocationContext carries the full call scope, so the
+        // serper-key lookup can honour project / process overrides
+        // (e.g. a project pinning a stricter rate-limited key).
+        String apiKey = settings.getDecryptedPasswordCascade(
+                tenantId, ctx.projectId(), ctx.processId(), SETTING_KEY);
         if (apiKey == null || apiKey.isBlank()) {
             return errorResult(
                     "Serper API key not configured (setting '" + SETTING_KEY
-                            + "' under tenant scope). Ask the operator to set it.");
+                            + "' in _vance / project / think-process). Ask the operator to set it.");
         }
 
         try {

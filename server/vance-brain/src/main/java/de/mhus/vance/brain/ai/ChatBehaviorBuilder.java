@@ -36,7 +36,6 @@ public final class ChatBehaviorBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(ChatBehaviorBuilder.class);
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
-    private static final String SETTINGS_REF_TYPE = "tenant";
 
     private ChatBehaviorBuilder() {}
 
@@ -51,18 +50,24 @@ public final class ChatBehaviorBuilder {
             SettingService settings,
             AiModelResolver resolver) {
         String tenantId = process.getTenantId();
+        String processId = process.getId();
+        // projectId is not denormalised onto ThinkProcessDocument — the
+        // project cascade falls through to _vance only. Callers that
+        // want project-level overrides need to look up the session and
+        // reach this builder via a richer entry point.
+        @Nullable String projectId = null;
         List<ChatBehavior.Entry> entries = new ArrayList<>();
 
         // Primary
         String primarySpec = readModelSpec(process);
-        AiChatConfig primary = resolveOne(primarySpec, tenantId, settings, resolver);
+        AiChatConfig primary = resolveOne(primarySpec, tenantId, projectId, processId, settings, resolver);
         entries.add(new ChatBehavior.Entry(primary, "primary"));
 
         // Fallbacks
         List<String> fallbackAliases = readFallbackAliases(process);
         for (String alias : fallbackAliases) {
             try {
-                AiChatConfig fbConfig = resolveOne(alias, tenantId, settings, resolver);
+                AiChatConfig fbConfig = resolveOne(alias, tenantId, projectId, processId, settings, resolver);
                 entries.add(new ChatBehavior.Entry(fbConfig, "fallback:" + alias));
             } catch (RuntimeException e) {
                 log.warn("ChatBehaviorBuilder: dropping unreachable fallback '{}' "
@@ -78,18 +83,21 @@ public final class ChatBehaviorBuilder {
 
     /**
      * Resolve a single alias / spec into an {@link AiChatConfig}, including
-     * the matching API key.
+     * the matching API key. Reads through the project cascade
+     * ({@code process → project → _vance}).
      */
     public static AiChatConfig resolveOne(
             @Nullable String spec,
             String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
             SettingService settings,
             AiModelResolver resolver) {
-        AiModelResolver.Resolved resolved = resolver.resolveOrDefault(spec, tenantId);
+        AiModelResolver.Resolved resolved = resolver.resolveOrDefault(spec, tenantId, projectId, processId);
         String apiKeySetting = String.format(
                 SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
-        String apiKey = settings.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId, apiKeySetting);
+        String apiKey = settings.getDecryptedPasswordCascade(
+                tenantId, projectId, processId, apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key configured for provider '" + resolved.provider()

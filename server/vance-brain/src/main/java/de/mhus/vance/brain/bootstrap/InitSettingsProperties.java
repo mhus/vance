@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.init;
+package de.mhus.vance.brain.bootstrap;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;

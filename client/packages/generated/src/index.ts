@@ -46,6 +46,9 @@ export * from './progress/StatusPayload';
 export * from './progress/StatusTag';
 export * from './progress/UsageDelta';
 
+export * from './llmtrace/LlmTraceDto';
+export * from './llmtrace/LlmTraceListResponse';
+
 export * from './projects/ProjectCreateRequest';
 export * from './projects/ProjectDto';
 export * from './projects/ProjectGroupCreateRequest';

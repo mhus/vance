@@ -39,8 +39,12 @@ public class StandardAiChat implements AiChat {
         // (Arthur/Ford/Marvin/...) and every caller (engines,
         // memory-compaction, future tools) gets the same input/output
         // trace under logger {@code de.mhus.vance.brain.ai.trace}.
-        // The wrappers are zero-cost when trace is disabled.
-        this.sync = sync == null ? null : new LoggingChatModel(name, sync);
+        // The wrappers are zero-cost when trace is disabled. When the
+        // engine attached an llmTraceWriter via options, the same
+        // wrappers also forward the round-trip for persistent storage.
+        this.sync = sync == null
+                ? null
+                : new LoggingChatModel(name, sync, options.getLlmTraceWriter());
         this.streaming = wrapStreaming(name, streaming, options);
         this.options = options;
     }
@@ -61,7 +65,8 @@ public class StandardAiChat implements AiChat {
         if (raw == null) {
             return null;
         }
-        StreamingChatModel logged = new LoggingStreamingChatModel(name, raw);
+        StreamingChatModel logged = new LoggingStreamingChatModel(
+                name, raw, options.getLlmTraceWriter());
         return new ResilientStreamingChatModel(
                 List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)),
                 options.getUserNotifier());

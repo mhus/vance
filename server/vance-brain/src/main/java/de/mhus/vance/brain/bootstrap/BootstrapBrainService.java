@@ -1,6 +1,7 @@
-package de.mhus.vance.brain.init;
+package de.mhus.vance.brain.bootstrap;
 
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
@@ -30,11 +31,16 @@ import org.springframework.stereotype.Service;
  * Runs after {@link TenantService}'s own {@code @PostConstruct} (which creates
  * the {@code default} tenant), so on a fresh database both tenants and their
  * dependents are present by the time the application finishes starting up.
+ *
+ * <p>Gated by {@link BootstrapProperties#isAcme()} (default {@code true}).
+ * Set {@code vance.bootstrap.acme=false} in {@code application.yml} (or via
+ * {@code VANCE_BOOTSTRAP_ACME=false}) for clean production deployments —
+ * the entire {@link #init()} method then short-circuits to a no-op.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class InitBrainService {
+public class BootstrapBrainService {
 
     public static final String ACME_TENANT = "acme";
 
@@ -45,10 +51,16 @@ public class InitBrainService {
     private final ProjectService projectService;
     private final TeamService teamService;
     private final DocumentService documentService;
+    private final HomeBootstrapService homeBootstrapService;
     private final InitSettingsLoader initSettingsLoader;
+    private final BootstrapProperties properties;
 
     @PostConstruct
     void init() {
+        if (!properties.isAcme()) {
+            log.info("Bootstrap: vance.bootstrap.acme=false — skipping Acme demo seed");
+            return;
+        }
         tenantService.ensure(ACME_TENANT, "Acme");
 
         ensureUser(ACME_TENANT, "marvin.acme", "Marvin Acme", "marvin.acme@mhus.de", "toon-boss");
@@ -76,8 +88,16 @@ public class InitBrainService {
 
         seedInstantHoleDocuments();
 
+        // The tenant-wide _vance system project hosts settings and
+        // server-tool defaults. Provision it eagerly so that
+        // InitSettingsLoader has somewhere to write — other tenants
+        // get _vance lazily on first login (AccessController).
+        homeBootstrapService.ensureVance(ACME_TENANT);
+
         // LLM keys, provider/model defaults, etc. — loaded from a
-        // gitignored YAML so a Mongo wipe doesn't lose them.
+        // gitignored YAML so a Mongo wipe doesn't lose them. The
+        // entries land on the tenant's _vance project (see
+        // InitSettingsLoader).
         initSettingsLoader.loadIfPresent();
     }
 

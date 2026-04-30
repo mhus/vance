@@ -21,7 +21,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * First end-to-end ai-test: boots a fresh Mongo testcontainer, the brain
  * (in-process via {@code @SpringBootTest}) and the foot CLI (subprocess in
  * daemon mode), then drives foot through the debug REST endpoint to issue a
- * connect + 'Hello'. Verifies that {@code InitBrainService} seeded the
+ * connect + 'Hello'. Verifies that {@code BootstrapBrainService} seeded the
  * default tenant/users/projects and that no chat messages exist yet.
  *
  * <p>Lifecycle is per-class — Mongo, brain context and foot subprocess all
@@ -65,7 +65,7 @@ class HelloAiTest {
     @BeforeAll
     void startFoot() throws Exception {
         // Mongo container and brain context are both fresh per JVM, so the
-        // DB is empty when InitBrainService's PostConstruct runs and the
+        // DB is empty when BootstrapBrainService's PostConstruct runs and the
         // seed data lands as expected — no manual drop needed here.
         foot.start("foot-application-aitest.yaml");
         boolean up = foot.waitForHealth(Duration.ofSeconds(60));
@@ -109,7 +109,7 @@ class HelloAiTest {
         assertThat(helloRes.ok()).isFalse();
         assertThat(helloRes.error()).contains("No bound session");
 
-        // 3. Verify InitBrainService seed data exists in Mongo.
+        // 3. Verify BootstrapBrainService seed data exists in Mongo.
         long tenants = mongo.getCollection("tenants").countDocuments();
         long users = mongo.getCollection("users").countDocuments();
         long groups = mongo.getCollection("project_groups").countDocuments();
@@ -122,16 +122,16 @@ class HelloAiTest {
                         + "(plus optionally 'default' from TenantService)")
                 .isGreaterThanOrEqualTo(1);
         assertThat(users)
-                .as("InitBrainService seeds 3 acme users (marvin/wile/road)")
+                .as("BootstrapBrainService seeds 3 acme users (marvin/wile/road)")
                 .isGreaterThanOrEqualTo(3);
         assertThat(groups)
-                .as("InitBrainService seeds 4 project groups under acme")
+                .as("BootstrapBrainService seeds 4 project groups under acme")
                 .isGreaterThanOrEqualTo(4);
         assertThat(projects)
-                .as("InitBrainService seeds 8 projects under acme")
+                .as("BootstrapBrainService seeds 8 projects under acme")
                 .isGreaterThanOrEqualTo(8);
         assertThat(teams)
-                .as("InitBrainService seeds 2 acme teams")
+                .as("BootstrapBrainService seeds 2 acme teams")
                 .isGreaterThanOrEqualTo(2);
         assertThat(settings)
                 .as("InitSettingsLoader should have applied at least the gemini key from confidential/init-settings.yaml")

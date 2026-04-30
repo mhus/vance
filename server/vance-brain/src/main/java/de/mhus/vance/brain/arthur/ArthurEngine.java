@@ -114,7 +114,6 @@ public class ArthurEngine implements ThinkEngine {
             "docs_read",
             "inbox_post");
 
-    private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     // ──────────────────── Validation heuristic ────────────────────
@@ -175,12 +174,11 @@ public class ArthurEngine implements ThinkEngine {
     private final StreamingProperties streamingProperties;
     private final ArthurProperties arthurProperties;
     private final RecipeLoader recipeLoader;
-    private final AiModelResolver aiModelResolver;
     private final ModelCatalog modelCatalog;
     private final LlmCallTracker llmCallTracker;
-    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
+    private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -300,27 +298,15 @@ public class ArthurEngine implements ThinkEngine {
                 }
             }
 
-            // Build the chat as a primary + ordered fallback chain, so a
-            // demand-spike on one provider falls through to the next without
-            // Arthur knowing about it. Single-entry behaviour is unchanged
-            // when params.fallbackModels is empty / missing.
-            de.mhus.vance.brain.ai.ChatBehavior behavior =
-                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
-                            process, ctx.settingService(), aiModelResolver);
-            AiChatConfig config = behavior.entries().get(0).config();
-            // Surface transient provider failures (rate limits, 5xx) to
-            // the user via the progress side-channel so they understand
-            // why the turn is stalled. The notifier is fired by the
-            // ResilientStreamingChatModel on every retry and chain-
-            // advance — see specification/user-progress-channel.md §6.
-            AiChat aiChat = ctx.aiModelService().createChat(
-                    behavior,
-                    AiChatOptions.builder()
-                            .userNotifier(msg -> progressEmitter.emitStatus(
-                                    process,
-                                    de.mhus.vance.api.progress.StatusTag.PROVIDER,
-                                    msg))
-                            .build());
+            // Build the chat with primary + ordered fallback chain plus
+            // the standard resilience-notifier and (when tracing.llm is
+            // on) LLM-trace persistence. EngineChatFactory handles the
+            // boilerplate that used to sit here — single-entry behaviour
+            // is unchanged when params.fallbackModels is empty / missing.
+            de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle chatBundle =
+                    engineChatFactory.forProcess(process, ctx, NAME);
+            AiChat aiChat = chatBundle.chat();
+            AiChatConfig config = chatBundle.primaryConfig();
             ContextToolsApi tools = ctx.tools();
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
@@ -819,12 +805,13 @@ public class ArthurEngine implements ThinkEngine {
         } else {
             spec = null; // resolver picks tenant default
         }
-        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(spec, tenantId);
+        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
+                spec, tenantId, /*projectId*/ null, process.getId());
 
         String apiKeySetting = String.format(
                 SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
-        String apiKey = settings.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId, apiKeySetting);
+        String apiKey = settings.getDecryptedPasswordCascade(
+                tenantId, /*projectId*/ null, process.getId(), apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key configured for provider '" + resolved.provider()

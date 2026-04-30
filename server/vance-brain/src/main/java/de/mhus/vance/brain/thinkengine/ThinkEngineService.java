@@ -5,6 +5,7 @@ import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.progress.ProgressToolListener;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -43,6 +44,10 @@ public class ThinkEngineService {
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter processEventEmitter;
     private final ProgressToolListener progressToolListener;
+    private final LlmTraceService llmTraceService;
+
+    /** Setting key driving per-process LLM-trace persistence. */
+    public static final String SETTING_TRACE_LLM = "tracing.llm";
 
     public ThinkEngineService(
             List<ThinkEngine> engineBeans,
@@ -54,7 +59,8 @@ public class ThinkEngineService {
             SessionService sessionService,
             ThinkProcessService thinkProcessService,
             ProcessEventEmitter processEventEmitter,
-            ProgressToolListener progressToolListener) {
+            ProgressToolListener progressToolListener,
+            LlmTraceService llmTraceService) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
                     throw new IllegalStateException(
@@ -70,6 +76,7 @@ public class ThinkEngineService {
         this.thinkProcessService = thinkProcessService;
         this.processEventEmitter = processEventEmitter;
         this.progressToolListener = progressToolListener;
+        this.llmTraceService = llmTraceService;
         log.info("Registered think-engines: {}", engines.keySet());
     }
 
@@ -118,13 +125,26 @@ public class ThinkEngineService {
         java.util.Set<String> allowed = process.getAllowedToolsOverride() != null
                 ? process.getAllowedToolsOverride()
                 : engine.allowedTools();
+        // Resolve the LLM-trace toggle once per turn — engines pay no
+        // setting lookup per round-trip. Cascade is tenant → project →
+        // think-process so a single noisy process can be flipped on
+        // without enabling tracing for the whole tenant.
+        String traceFlag = settingService.getStringValueCascade(
+                process.getTenantId(), projectId, process.getId(), SETTING_TRACE_LLM);
+        boolean traceLlm = traceFlag != null && (
+                "true".equalsIgnoreCase(traceFlag.trim())
+                || "1".equals(traceFlag.trim())
+                || "yes".equalsIgnoreCase(traceFlag.trim())
+                || "on".equalsIgnoreCase(traceFlag.trim()));
         return new DefaultThinkEngineContext(
                 process, projectId, userId,
                 aiModelService, settingService, chatMessageService,
                 toolDispatcher, eventPublisher,
                 thinkProcessService, processEventEmitter,
                 allowed,
-                progressToolListener.forProcess(process));
+                progressToolListener.forProcess(process),
+                traceLlm,
+                llmTraceService);
     }
 
     // ─── Convenience dispatch ────────────────────────────────────────────

@@ -81,7 +81,6 @@ public class ZaphodEngine implements ThinkEngine {
     /** {@code engineParams[SYNTHESIS_PROMPT_KEY]} — optional. */
     public static final String SYNTHESIS_PROMPT_KEY = "synthesisPrompt";
 
-    private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     /** Engine-default synthesis system prompt — last-resort Java
@@ -111,10 +110,9 @@ public class ZaphodEngine implements ThinkEngine {
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
     private final RecipeResolver recipeResolver;
-    private final AiModelResolver aiModelResolver;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
-    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
+    private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
@@ -401,18 +399,10 @@ public class ZaphodEngine implements ThinkEngine {
             return;
         }
         try {
-            de.mhus.vance.brain.ai.ChatBehavior behavior =
-                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
-                            process, ctx.settingService(), aiModelResolver);
-            AiChatConfig config = behavior.entries().get(0).config();
-            AiChat ai = ctx.aiModelService().createChat(
-                    behavior,
-                    AiChatOptions.builder()
-                            .userNotifier(msg -> progressEmitter.emitStatus(
-                                    process,
-                                    de.mhus.vance.api.progress.StatusTag.PROVIDER,
-                                    msg))
-                            .build());
+            de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle bundle =
+                    engineChatFactory.forProcess(process, ctx, NAME);
+            AiChat ai = bundle.chat();
+            AiChatConfig config = bundle.primaryConfig();
 
             StringBuilder body = new StringBuilder();
             if (state.getSynthesizerPrompt() != null && !state.getSynthesizerPrompt().isBlank()) {
@@ -626,10 +616,11 @@ public class ZaphodEngine implements ThinkEngine {
         } else {
             spec = null;
         }
-        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(spec, tenantId);
+        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
+                spec, tenantId, /*projectId*/ null, process.getId());
         String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
-        String apiKey = settings.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId, apiKeySetting);
+        String apiKey = settings.getDecryptedPasswordCascade(
+                tenantId, /*projectId*/ null, process.getId(), apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key configured for provider '" + resolved.provider()

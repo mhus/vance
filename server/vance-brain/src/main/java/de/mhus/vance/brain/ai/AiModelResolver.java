@@ -56,7 +56,6 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class AiModelResolver {
 
-    private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String ALIAS_KEY_PREFIX = "ai.alias.";
     private static final String DEFAULT_PROVIDER_KEY = "ai.default.provider";
     private static final String DEFAULT_MODEL_KEY = "ai.default.model";
@@ -73,28 +72,49 @@ public class AiModelResolver {
      * Resolves a non-null model spec. Falls through to the tenant
      * default when the value is the literal string {@code "default"}
      * with no rest.
+     *
+     * <p>{@code projectId}/{@code processId} drive the project cascade
+     * for alias and default lookups; pass {@code null} to read from
+     * {@code _vance} only.
      */
-    public Resolved resolve(String input, String tenantId) {
+    public Resolved resolve(
+            String input,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId) {
         if (input == null || input.isBlank()) {
-            return tenantDefault(tenantId, "<missing input>");
+            return tenantDefault(tenantId, projectId, processId, "<missing input>");
         }
-        return resolve(input.trim(), tenantId, new LinkedHashSet<>());
+        return resolve(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
     }
 
     /**
      * Resolves an optional model spec. When {@code input} is
-     * {@code null} or blank, returns the tenant default
-     * ({@code ai.default.provider}/{@code ai.default.model}). Used
-     * by engines whose {@code params.model} may or may not be set.
+     * {@code null} or blank, returns the project-cascade default
+     * ({@code ai.default.provider}/{@code ai.default.model}, looked up
+     * via {@code getStringValueCascade}). Used by engines whose
+     * {@code params.model} may or may not be set.
+     *
+     * <p>{@code projectId}/{@code processId} may be {@code null} —
+     * the corresponding cascade layers are skipped.
      */
-    public Resolved resolveOrDefault(@Nullable String input, String tenantId) {
+    public Resolved resolveOrDefault(
+            @Nullable String input,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId) {
         if (input == null || input.isBlank()) {
-            return tenantDefault(tenantId, "<no override>");
+            return tenantDefault(tenantId, projectId, processId, "<no override>");
         }
-        return resolve(input.trim(), tenantId, new LinkedHashSet<>());
+        return resolve(input.trim(), tenantId, projectId, processId, new LinkedHashSet<>());
     }
 
-    private Resolved resolve(String input, String tenantId, Set<String> seen) {
+    private Resolved resolve(
+            String input,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            Set<String> seen) {
         if (!seen.add(input)) {
             throw new UnknownModelException(
                     "Alias cycle detected: " + String.join(" → ", seen) + " → " + input);
@@ -122,13 +142,13 @@ public class AiModelResolver {
             return new Resolved(prefix, rest);
         }
 
-        // Alias lookup.
+        // Alias lookup — project cascade.
         String settingKey = ALIAS_KEY_PREFIX + prefix + "." + rest;
-        @Nullable String aliased = settingService.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId, settingKey);
+        @Nullable String aliased = settingService.getStringValueCascade(
+                tenantId, projectId, processId, settingKey);
         if (aliased != null && !aliased.isBlank()) {
             log.debug("AiModelResolver: alias '{}' → '{}'", input, aliased);
-            return resolve(aliased.trim(), tenantId, seen);
+            return resolve(aliased.trim(), tenantId, projectId, processId, seen);
         }
 
         // Fallback for the `default:` namespace — keeps out-of-the-box
@@ -137,7 +157,7 @@ public class AiModelResolver {
         if (DEFAULT_NAMESPACE.equals(prefix)) {
             log.debug("AiModelResolver: alias '{}' not configured, falling back to tenant default",
                     input);
-            return tenantDefault(tenantId, input);
+            return tenantDefault(tenantId, projectId, processId, input);
         }
 
         throw new UnknownModelException(
@@ -147,11 +167,15 @@ public class AiModelResolver {
                         + "; expected setting: '" + settingKey + "'");
     }
 
-    private Resolved tenantDefault(String tenantId, String triggeredBy) {
-        @Nullable String provider = settingService.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId, DEFAULT_PROVIDER_KEY);
-        @Nullable String model = settingService.getStringValue(
-                tenantId, SETTINGS_REF_TYPE, tenantId, DEFAULT_MODEL_KEY);
+    private Resolved tenantDefault(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            String triggeredBy) {
+        @Nullable String provider = settingService.getStringValueCascade(
+                tenantId, projectId, processId, DEFAULT_PROVIDER_KEY);
+        @Nullable String model = settingService.getStringValueCascade(
+                tenantId, projectId, processId, DEFAULT_MODEL_KEY);
         if (provider == null || provider.isBlank()
                 || model == null || model.isBlank()) {
             throw new UnknownModelException(

@@ -7,6 +7,7 @@ import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
 import de.mhus.vance.brain.tools.ToolInvocationListener;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -32,7 +33,9 @@ record DefaultThinkEngineContext(
         ThinkProcessService thinkProcessService,
         ProcessEventEmitter processEventEmitter,
         Set<String> allowedTools,
-        ToolInvocationListener toolInvocationListener
+        ToolInvocationListener toolInvocationListener,
+        boolean traceLlm,
+        LlmTraceService llmTraceService
 ) implements ThinkEngineContext {
 
     @Override

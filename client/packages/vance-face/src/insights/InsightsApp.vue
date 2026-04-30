@@ -22,6 +22,7 @@ import {
 import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem, { type MarvinTreeNode } from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
+import LlmTraceTab from './LlmTraceTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -503,6 +504,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               :class="{ 'tab--active': activeTab === 'tree' }"
               @click="activeTab = 'tree'"
             >Tree</button>
+            <button
+              class="tab"
+              :class="{ 'tab--active': activeTab === 'llm-traces' }"
+              @click="activeTab = 'llm-traces'"
+            >LLM Trace</button>
           </div>
 
           <!-- Overview -->
@@ -657,6 +663,14 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                 </li>
               </ul>
             </VCard>
+          </template>
+
+          <!-- LLM Trace — persistent record of every LLM round-trip
+               for this process when tracing.llm was on. Self-contained
+               component; loads its own data the first time the user
+               switches to this tab and on subsequent process changes. -->
+          <template v-else-if="activeTab === 'llm-traces'">
+            <LlmTraceTab :process-id="selectedProcess.id" />
           </template>
         </template>
       </template>

@@ -45,7 +45,6 @@ public class SessionChatBootstrapper {
     private static final String SETTING_DEFAULT_CHAT_ENGINE = "session.defaultChatEngine";
     private static final String DEFAULT_CHAT_ENGINE = "arthur";
     private static final String HUB_CHAT_ENGINE = "eddie";
-    private static final String SETTINGS_REF_TYPE = "tenant";
 
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
@@ -110,9 +109,11 @@ public class SessionChatBootstrapper {
         if (isHubProject(session.getTenantId(), session.getProjectId())) {
             engineName = HUB_CHAT_ENGINE;
         } else {
-            engineName = settingService.getStringValue(
-                    session.getTenantId(), SETTINGS_REF_TYPE, session.getTenantId(),
-                    SETTING_DEFAULT_CHAT_ENGINE, DEFAULT_CHAT_ENGINE);
+            String configured = settingService.getStringValueCascade(
+                    session.getTenantId(), session.getProjectId(),
+                    /*processId*/ null, SETTING_DEFAULT_CHAT_ENGINE);
+            engineName = (configured == null || configured.isBlank())
+                    ? DEFAULT_CHAT_ENGINE : configured;
         }
 
         // Engines that ship their own bundled config (Vance, future

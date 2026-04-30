@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.List;
@@ -83,4 +84,21 @@ public interface ThinkEngineContext {
      * parent through this API.
      */
     ProcessOrchestrator processes();
+
+    /**
+     * Whether LLM-roundtrip persistence is enabled for this turn.
+     * Resolved once at context build via the {@code tracing.llm} setting
+     * (cascade tenant → project → think-process), so engines don't pay
+     * a setting lookup per round-trip. When {@code true}, engines should
+     * record their LLM I/O via {@link #llmTraceService()}.
+     */
+    boolean traceLlm();
+
+    /**
+     * Service for persisting LLM-roundtrip trace records. Engines call
+     * this only when {@link #traceLlm()} is {@code true}; the service
+     * itself is always available so downstream code can record without
+     * conditional injection.
+     */
+    LlmTraceService llmTraceService();
 }

@@ -197,7 +197,6 @@ public class MarvinEngine implements ThinkEngine {
             "web_fetch",
             "execute_javascript");
 
-    private static final String SETTINGS_REF_TYPE = "tenant";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     private final MarvinNodeService nodeService;
@@ -208,10 +207,10 @@ public class MarvinEngine implements ThinkEngine {
     private final RecipeResolver recipeResolver;
     private final RecipeLoader recipeLoader;
     private final MarvinWorkerOutputParser workerOutputParser;
-    private final AiModelResolver aiModelResolver;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
+    private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final ObjectMapper objectMapper;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
@@ -821,18 +820,10 @@ public class MarvinEngine implements ThinkEngine {
             ThinkEngineContext ctx,
             MarvinNodeDocument node) {
         try {
-            de.mhus.vance.brain.ai.ChatBehavior behavior =
-                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
-                            process, ctx.settingService(), aiModelResolver);
-            AiChatConfig config = behavior.entries().get(0).config();
-            AiChat ai = ctx.aiModelService().createChat(
-                    behavior,
-                    AiChatOptions.builder()
-                            .userNotifier(msg -> progressEmitter.emitStatus(
-                                    process,
-                                    de.mhus.vance.api.progress.StatusTag.PROVIDER,
-                                    msg))
-                            .build());
+            de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle planBundle =
+                    engineChatFactory.forProcess(process, ctx, NAME);
+            AiChat ai = planBundle.chat();
+            AiChatConfig config = planBundle.primaryConfig();
 
             int maxChildren = paramInt(node, "maxChildren", properties.getPlanMaxChildren());
             String customPrompt = paramString(node, "prompt", null);
@@ -1217,18 +1208,10 @@ public class MarvinEngine implements ThinkEngine {
                     properties.getAggregateMaxOutputChars());
             String customPrompt = paramString(node, "prompt", null);
 
-            de.mhus.vance.brain.ai.ChatBehavior behavior =
-                    de.mhus.vance.brain.ai.ChatBehaviorBuilder.fromProcess(
-                            process, ctx.settingService(), aiModelResolver);
-            AiChatConfig config = behavior.entries().get(0).config();
-            AiChat ai = ctx.aiModelService().createChat(
-                    behavior,
-                    AiChatOptions.builder()
-                            .userNotifier(msg -> progressEmitter.emitStatus(
-                                    process,
-                                    de.mhus.vance.api.progress.StatusTag.PROVIDER,
-                                    msg))
-                            .build());
+            de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle aggregateBundle =
+                    engineChatFactory.forProcess(process, ctx, NAME);
+            AiChat ai = aggregateBundle.chat();
+            AiChatConfig config = aggregateBundle.primaryConfig();
 
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(enginePromptResolver.resolveTiered(
@@ -1347,10 +1330,11 @@ public class MarvinEngine implements ThinkEngine {
         } else {
             spec = null;
         }
-        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(spec, tenantId);
+        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
+                spec, tenantId, /*projectId*/ null, process.getId());
         String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
-        String apiKey = settings.getDecryptedPassword(
-                tenantId, SETTINGS_REF_TYPE, tenantId, apiKeySetting);
+        String apiKey = settings.getDecryptedPasswordCascade(
+                tenantId, /*projectId*/ null, process.getId(), apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key configured for provider '" + resolved.provider()

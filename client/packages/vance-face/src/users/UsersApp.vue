@@ -15,14 +15,37 @@ import {
 } from '@/components';
 import { useAdminUsers } from '@/composables/useAdminUsers';
 import { useAdminTeams } from '@/composables/useAdminTeams';
+import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useHelp } from '@/composables/useHelp';
 import { getUsername } from '@vance/shared';
-import type { TeamDto, UserDto } from '@vance/generated';
+import {
+  SettingType,
+  type SettingDto,
+  type TeamDto,
+  type UserDto,
+} from '@vance/generated';
 
 const usersState = useAdminUsers();
 const teamsState = useAdminTeams();
+const settingsState = useScopeSettings();
 const help = useHelp();
 const currentUsername = getUsername() ?? '';
+
+const settingTypeOptions = [
+  { value: SettingType.STRING, label: 'STRING' },
+  { value: SettingType.INT, label: 'INT' },
+  { value: SettingType.LONG, label: 'LONG' },
+  { value: SettingType.DOUBLE, label: 'DOUBLE' },
+  { value: SettingType.BOOLEAN, label: 'BOOLEAN' },
+  { value: SettingType.PASSWORD, label: 'PASSWORD' },
+];
+const editingKey = ref<string | null>(null);
+const editValue = ref('');
+const editDescription = ref('');
+const newSettingKey = ref('');
+const newSettingValue = ref('');
+const newSettingType = ref<SettingType>(SettingType.STRING);
+const newSettingDescription = ref('');
 
 type Selection =
   | { kind: 'user'; name: string }
@@ -97,7 +120,7 @@ const breadcrumbs = computed<string[]>(() => {
 });
 
 const combinedError = computed<string | null>(() =>
-  usersState.error.value || teamsState.error.value);
+  usersState.error.value || teamsState.error.value || settingsState.error.value);
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -109,11 +132,83 @@ onMounted(async () => {
   ]);
 });
 
-watch(selection, () => {
+watch(selection, async (sel) => {
   banner.value = null;
   formError.value = null;
+  resetSettingEditor();
   populateForm();
+  if (sel?.kind === 'user') {
+    await settingsState.load('user', sel.name);
+  } else {
+    settingsState.clear();
+  }
 });
+
+function resetSettingEditor(): void {
+  editingKey.value = null;
+  editValue.value = '';
+  editDescription.value = '';
+  newSettingKey.value = '';
+  newSettingValue.value = '';
+  newSettingType.value = SettingType.STRING;
+  newSettingDescription.value = '';
+}
+
+async function addUserSetting(): Promise<void> {
+  if (selection.value?.kind !== 'user') return;
+  const key = newSettingKey.value.trim();
+  if (!key) return;
+  try {
+    await settingsState.upsert(
+      'user',
+      selection.value.name,
+      key,
+      newSettingValue.value === '' ? null : newSettingValue.value,
+      newSettingType.value,
+      newSettingDescription.value.trim() || null,
+    );
+    resetSettingEditor();
+  } catch {
+    /* error in settingsState.error */
+  }
+}
+
+function startEditUserSetting(s: SettingDto): void {
+  editingKey.value = s.key;
+  editValue.value = s.type === SettingType.PASSWORD ? '' : (s.value ?? '');
+  editDescription.value = s.description ?? '';
+}
+
+function cancelEditUserSetting(): void {
+  editingKey.value = null;
+}
+
+async function saveEditUserSetting(s: SettingDto): Promise<void> {
+  if (selection.value?.kind !== 'user') return;
+  try {
+    await settingsState.upsert(
+      'user',
+      selection.value.name,
+      s.key,
+      editValue.value === '' && s.type === SettingType.PASSWORD ? null : editValue.value,
+      s.type,
+      editDescription.value || null,
+    );
+    editingKey.value = null;
+  } catch {
+    /* error */
+  }
+}
+
+async function deleteUserSetting(s: SettingDto): Promise<void> {
+  if (selection.value?.kind !== 'user') return;
+  if (!confirm(`Delete setting "${s.key}"?`)) return;
+  try {
+    await settingsState.remove('user', selection.value.name, s.key);
+  } catch {
+    /* error */
+  }
+}
 
 watch(() => selectedUser.value, () => {
   if (selection.value?.kind === 'user') populateForm();
@@ -453,6 +548,95 @@ function fmt(value: unknown): string {
                   Save
                 </VButton>
               </div>
+            </div>
+          </VCard>
+
+          <!-- ─── User settings ─── -->
+          <VCard title="User settings">
+            <p class="text-xs opacity-70 mb-3">
+              Per-user settings live on the synthetic
+              <code>_user_{{ selectedUser.name }}</code> system project.
+              They take precedence over project and tenant settings in
+              the cascade — useful for per-user model preferences, API
+              keys, language defaults.
+            </p>
+
+            <VEmptyState
+              v-if="!settingsState.loading.value && settingsState.settings.value.length === 0"
+              headline="No settings"
+              body="Add a key/value below to override tenant defaults for this user."
+            />
+
+            <ul class="flex flex-col divide-y divide-base-300">
+              <li
+                v-for="s in settingsState.settings.value"
+                :key="s.key"
+                class="setting-row"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <span class="font-mono text-sm truncate">{{ s.key }}</span>
+                  <span class="opacity-60 text-xs">{{ s.type }}</span>
+                </div>
+                <template v-if="editingKey === s.key">
+                  <VInput
+                    v-if="s.type !== SettingType.PASSWORD"
+                    v-model="editValue"
+                    label="Value"
+                  />
+                  <VInput
+                    v-else
+                    v-model="editValue"
+                    type="password"
+                    label="New password"
+                    placeholder="(leave empty to clear)"
+                  />
+                  <VTextarea v-model="editDescription" label="Description" :rows="2" />
+                  <div class="flex justify-end gap-2 mt-1">
+                    <VButton variant="ghost" size="sm" @click="cancelEditUserSetting">Cancel</VButton>
+                    <VButton
+                      variant="primary"
+                      size="sm"
+                      :loading="settingsState.busy.value"
+                      @click="saveEditUserSetting(s)"
+                    >Save</VButton>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="text-sm break-words">
+                    <span class="opacity-70">{{ s.value ?? '(empty)' }}</span>
+                  </div>
+                  <div v-if="s.description" class="text-xs opacity-60">{{ s.description }}</div>
+                  <div class="flex justify-end gap-2 mt-1">
+                    <VButton variant="ghost" size="sm" @click="startEditUserSetting(s)">Edit</VButton>
+                    <VButton variant="ghost" size="sm" @click="deleteUserSetting(s)">Delete</VButton>
+                  </div>
+                </template>
+              </li>
+            </ul>
+
+            <div class="border-t border-base-300 pt-3 mt-2 flex flex-col gap-2">
+              <h4 class="text-xs uppercase opacity-60">Add setting</h4>
+              <VInput v-model="newSettingKey" label="Key" placeholder="e.g. ai.default.model" />
+              <VSelect v-model="newSettingType" label="Type" :options="settingTypeOptions" />
+              <VInput
+                v-if="newSettingType !== SettingType.PASSWORD"
+                v-model="newSettingValue"
+                label="Value"
+              />
+              <VInput
+                v-else
+                v-model="newSettingValue"
+                type="password"
+                label="Password"
+              />
+              <VTextarea v-model="newSettingDescription" label="Description (optional)" :rows="2" />
+              <VButton
+                variant="primary"
+                size="sm"
+                :disabled="!newSettingKey.trim()"
+                :loading="settingsState.busy.value"
+                @click="addUserSetting"
+              >Add</VButton>
             </div>
           </VCard>
         </template>

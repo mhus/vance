@@ -14,6 +14,11 @@ server:
   port: 9990
 
 vance:
+  bootstrap:
+    # Seed the Acme demo tenant on first start (users, project groups,
+    # projects, demo documents, _vance system project, init-settings
+    # YAML import). Set to false for production deployments.
+    acme: true
   ws:
     path: /brain/*/ws
   storage:

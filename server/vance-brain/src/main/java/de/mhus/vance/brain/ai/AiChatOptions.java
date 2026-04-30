@@ -44,6 +44,17 @@ public class AiChatOptions {
      */
     private @Nullable Consumer<String> userNotifier;
 
+    /**
+     * Optional hook fired by {@link LoggingChatModel} /
+     * {@link LoggingStreamingChatModel} after each LLM round-trip.
+     * Engines pass a Lambda closing over their {@code process},
+     * {@code engineName} and {@code turnId} to persist the raw I/O
+     * via {@code LlmTraceService} when the tenant has
+     * {@code tracing.llm} enabled. {@code null} disables persistence
+     * (log-level trace continues regardless).
+     */
+    private @Nullable LlmTraceWriter llmTraceWriter;
+
     public static AiChatOptions defaults() {
         return AiChatOptions.builder().build();
     }

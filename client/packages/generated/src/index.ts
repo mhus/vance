@@ -95,6 +95,7 @@ export * from './users/UserDto';
 export * from './users/UserPasswordRequest';
 export * from './users/UserUpdateRequest';
 
+export * from './ws/ClientAgentUploadRequest';
 export * from './ws/ErrorData';
 export * from './ws/ProjectGroupSummary';
 export * from './ws/ProjectListRequest';

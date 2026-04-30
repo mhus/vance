@@ -19,6 +19,10 @@ allowedToolsRemove:
   - workspace_delete
 profiles:
   foot:
+    params:
+      # Splice the foot-uploaded ./agent.md into the conversation
+      # memory block. See specification/recipes.md §6a.
+      useClientAgentDoc: true
     promptPrefixAppend: |
       ## Client context — local CLI
 

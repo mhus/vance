@@ -46,6 +46,13 @@ public class MemoryContextLoader {
     /** Default agent-document path looked up via the document cascade. */
     public static final String DEFAULT_AGENT_DOC_PATH = "agent.md";
 
+    /**
+     * Recipe param flag (typically set in a profile-block) that opts in
+     * to splicing the client-uploaded agent doc into the memory block.
+     * Off by default — only foot-style profiles turn it on.
+     */
+    public static final String USE_CLIENT_AGENT_DOC_PARAM = "useClientAgentDoc";
+
     private static final String MEMORY_HEADING = "## Project Memory";
 
     private final SettingService settingService;
@@ -67,6 +74,7 @@ public class MemoryContextLoader {
 
         appendMemorySettings(sb, process, projectId);
         appendAgentDocument(sb, process, projectId);
+        appendClientAgentDoc(sb, process);
 
         return sb.length() == 0 ? null : sb.toString();
     }
@@ -108,6 +116,42 @@ public class MemoryContextLoader {
                         sb.append(content.trim()).append('\n');
                     }
                 });
+    }
+
+    /**
+     * Splices the session's {@code clientAgentDoc} (uploaded by the
+     * foot client right after bind) into the prompt — but only when
+     * the active recipe's profile-block has opted in via
+     * {@code params.useClientAgentDoc=true}. Quiet no-op otherwise:
+     * for web/mobile the upload doesn't happen, and for foot recipes
+     * that don't ask for it the flag is absent.
+     */
+    private void appendClientAgentDoc(StringBuilder sb, ThinkProcessDocument process) {
+        if (!isClientAgentDocEnabled(process)) return;
+        String sessionId = process.getSessionId();
+        if (sessionId == null || sessionId.isBlank()) return;
+        sessionService.findBySessionId(sessionId).ifPresent(session -> {
+            String content = session.getClientAgentDoc();
+            if (content == null || content.isBlank()) return;
+            if (sb.length() > 0) sb.append('\n');
+            String path = session.getClientAgentDocPath();
+            sb.append("## Agent Notes (from client: ")
+                    .append(path == null || path.isBlank() ? "agent.md" : path)
+                    .append(")\n")
+                    .append(content.trim()).append('\n');
+        });
+    }
+
+    private static boolean isClientAgentDocEnabled(ThinkProcessDocument process) {
+        Map<String, Object> params = process.getEngineParams();
+        if (params == null) return false;
+        Object raw = params.get(USE_CLIENT_AGENT_DOC_PARAM);
+        if (raw instanceof Boolean b) return b;
+        if (raw instanceof String s) {
+            String v = s.trim().toLowerCase();
+            return v.equals("true") || v.equals("1") || v.equals("yes") || v.equals("on");
+        }
+        return false;
     }
 
     /**

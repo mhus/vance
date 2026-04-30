@@ -45,6 +45,10 @@ profiles:
   # The foot CLI is the user's terminal on their own machine. Lean
   # into client_* tools — that's the point of the foot client.
   foot:
+    params:
+      # Splice the foot-uploaded ./agent.md into the conversation
+      # memory block. See specification/recipes.md §6a.
+      useClientAgentDoc: true
     promptPrefixAppend: |
       ## Client context — local CLI
 

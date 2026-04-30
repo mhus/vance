@@ -44,6 +44,11 @@ profiles:
   # The foot CLI is the user's terminal on their own machine — local
   # files, shell, and JS run there. Reach them through client_*.
   foot:
+    params:
+      # Splice the foot-uploaded ./agent.md into the conversation
+      # memory block (in addition to the server-side agent doc).
+      # See specification/recipes.md §6a.
+      useClientAgentDoc: true
     promptPrefixAppend: |
       ## Client context — local CLI
 

@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.session;
 
+import de.mhus.vance.foot.agent.ClientAgentDocService;
 import de.mhus.vance.foot.command.SuggestionCache;
 import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.ui.StatusBar;
@@ -33,14 +34,17 @@ public class SessionService {
     private final AtomicReference<@Nullable String> activeProcess = new AtomicReference<>();
     private final ObjectProvider<StatusBar> statusBar;
     private final ObjectProvider<ClientToolService> clientToolService;
+    private final ObjectProvider<ClientAgentDocService> clientAgentDocService;
     private final ObjectProvider<SuggestionCache> suggestionCache;
 
     public SessionService(
             ObjectProvider<StatusBar> statusBar,
             ObjectProvider<ClientToolService> clientToolService,
+            ObjectProvider<ClientAgentDocService> clientAgentDocService,
             ObjectProvider<SuggestionCache> suggestionCache) {
         this.statusBar = statusBar;
         this.clientToolService = clientToolService;
+        this.clientAgentDocService = clientAgentDocService;
         this.suggestionCache = suggestionCache;
     }
 
@@ -52,6 +56,7 @@ public class SessionService {
         current.set(new BoundSession(sessionId, projectId));
         notifyStatusBar();
         notifyClientTools();
+        uploadClientAgentDoc();
         invalidateSuggestions();
     }
 
@@ -82,6 +87,13 @@ public class SessionService {
         ClientToolService cts = clientToolService.getIfAvailable();
         if (cts != null) {
             cts.registerAll();
+        }
+    }
+
+    private void uploadClientAgentDoc() {
+        ClientAgentDocService cads = clientAgentDocService.getIfAvailable();
+        if (cads != null) {
+            cads.uploadIfPresent();
         }
     }
 

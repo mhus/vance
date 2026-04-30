@@ -57,6 +57,17 @@ public final class MessageType {
     /** Client → brain: the result of a prior {@link #CLIENT_TOOL_INVOKE}. */
     public static final String CLIENT_TOOL_RESULT = "client-tool-result";
 
+    /**
+     * Client → brain: upload the local {@code agent.md} (or whatever
+     * client-side agent doc) so the brain can splice it into the
+     * conversation's memory block. One-shot, snapshot-at-bind. Stored
+     * on the bound session; surviving until session close or a new
+     * upload (e.g. via foot's {@code /reload}). Only consumed when the
+     * recipe's profile-block opts in via
+     * {@code params.useClientAgentDoc=true}.
+     */
+    public static final String CLIENT_AGENT_UPLOAD = "client-agent-upload";
+
     // ─── User-Interaction (Inbox) Subsystem ──────────────────────
 
     /** Client → brain: list inbox items for the bound user/session. */

@@ -41,6 +41,8 @@ public class SessionService {
     private static final String F_LAST_MESSAGE_PREVIEW = "lastMessagePreview";
     private static final String F_LAST_MESSAGE_ROLE = "lastMessageRole";
     private static final String F_LAST_MESSAGE_AT = "lastMessageAt";
+    private static final String F_CLIENT_AGENT_DOC = "clientAgentDoc";
+    private static final String F_CLIENT_AGENT_DOC_PATH = "clientAgentDocPath";
 
     /** Hard cap for the denormalised preview / topic strings. */
     public static final int PREVIEW_MAX_CHARS = 250;
@@ -190,6 +192,28 @@ public class SessionService {
         Update update = new Update().set(F_LAST_ACTIVITY, Instant.now());
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         return result.getModifiedCount() == 1;
+    }
+
+    /**
+     * Stores the client-uploaded agent doc on the session. Idempotent —
+     * a second upload overwrites the first. Pass {@code null} content to
+     * clear (the corresponding fields are unset).
+     */
+    public void setClientAgentDoc(
+            String sessionId, @Nullable String path, @Nullable String content) {
+        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId));
+        Update update = new Update();
+        if (content == null) {
+            update.unset(F_CLIENT_AGENT_DOC).unset(F_CLIENT_AGENT_DOC_PATH);
+        } else {
+            update.set(F_CLIENT_AGENT_DOC, content)
+                    .set(F_CLIENT_AGENT_DOC_PATH, path);
+        }
+        UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
+        if (result.getModifiedCount() == 1) {
+            log.info("Stored client agent doc for session='{}' path='{}' chars={}",
+                    sessionId, path, content == null ? 0 : content.length());
+        }
     }
 
     /**

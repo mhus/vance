@@ -3,6 +3,7 @@ import type {
   DocumentCreateRequest,
   DocumentDto,
   DocumentFoldersResponse,
+  DocumentKindsResponse,
   DocumentListResponse,
   DocumentSummary,
   DocumentUpdateRequest,
@@ -35,8 +36,11 @@ export function useDocuments(pageSize = 20): {
   error: Ref<string | null>;
   folders: Ref<string[]>;
   pathPrefix: Ref<string>;
-  loadPage: (projectId: string, page: number, pathPrefix?: string) => Promise<void>;
+  kinds: Ref<string[]>;
+  kindFilter: Ref<string>;
+  loadPage: (projectId: string, page: number, pathPrefix?: string, kind?: string) => Promise<void>;
   loadFolders: (projectId: string) => Promise<void>;
+  loadKinds: (projectId: string) => Promise<void>;
   loadOne: (id: string) => Promise<void>;
   clearSelection: () => void;
   create: (projectId: string, body: DocumentCreateRequest) => Promise<DocumentDto | null>;
@@ -52,11 +56,18 @@ export function useDocuments(pageSize = 20): {
   const loading = ref(false);
   const error = ref<string | null>(null);
   const folders = ref<string[]>([]);
+  const kinds = ref<string[]>([]);
   // Sticky path-filter — owned by the composable so reloads
   // (e.g. after upload, after page-change) keep the active filter.
   const pathPrefix = ref('');
+  const kindFilter = ref('');
 
-  async function loadPage(projectId: string, p: number, prefixOverride?: string): Promise<void> {
+  async function loadPage(
+    projectId: string,
+    p: number,
+    prefixOverride?: string,
+    kindOverride?: string,
+  ): Promise<void> {
     loading.value = true;
     error.value = null;
     try {
@@ -66,6 +77,9 @@ export function useDocuments(pageSize = 20): {
       if (prefixOverride !== undefined) {
         pathPrefix.value = prefixOverride;
       }
+      if (kindOverride !== undefined) {
+        kindFilter.value = kindOverride;
+      }
       const params = new URLSearchParams({
         projectId,
         page: String(p),
@@ -73,6 +87,9 @@ export function useDocuments(pageSize = 20): {
       });
       if (pathPrefix.value.trim()) {
         params.set('pathPrefix', pathPrefix.value.trim());
+      }
+      if (kindFilter.value.trim()) {
+        params.set('kind', kindFilter.value.trim());
       }
       const data = await brainFetch<DocumentListResponse>('GET', `documents?${params}`);
       items.value = data.items ?? [];
@@ -99,6 +116,22 @@ export function useDocuments(pageSize = 20): {
       // would mask the actual document load. Just clear and log.
       folders.value = [];
       console.warn('Failed to load folders', e);
+    }
+  }
+
+  async function loadKinds(projectId: string): Promise<void> {
+    try {
+      const params = new URLSearchParams({ projectId });
+      const data = await brainFetch<DocumentKindsResponse>(
+        'GET',
+        `documents/kinds?${params}`,
+      );
+      kinds.value = data.kinds ?? [];
+    } catch (e) {
+      // Same posture as folder loading — surfaced errors would mask
+      // the document list. Drop quietly.
+      kinds.value = [];
+      console.warn('Failed to load kinds', e);
     }
   }
 
@@ -243,8 +276,11 @@ export function useDocuments(pageSize = 20): {
     error,
     folders,
     pathPrefix,
+    kinds,
+    kindFilter,
     loadPage,
     loadFolders,
+    loadKinds,
     loadOne,
     clearSelection,
     create,

@@ -25,8 +25,11 @@ export declare function useDocuments(pageSize?: number): {
     error: Ref<string | null>;
     folders: Ref<string[]>;
     pathPrefix: Ref<string>;
-    loadPage: (projectId: string, page: number, pathPrefix?: string) => Promise<void>;
+    kinds: Ref<string[]>;
+    kindFilter: Ref<string>;
+    loadPage: (projectId: string, page: number, pathPrefix?: string, kind?: string) => Promise<void>;
     loadFolders: (projectId: string) => Promise<void>;
+    loadKinds: (projectId: string) => Promise<void>;
     loadOne: (id: string) => Promise<void>;
     clearSelection: () => void;
     create: (projectId: string, body: DocumentCreateRequest) => Promise<DocumentDto | null>;

@@ -2,7 +2,9 @@ package de.mhus.vance.shared.document;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -73,6 +75,24 @@ public class DocumentDocument {
 
     /** Content for small text documents, held directly on the record. */
     private @Nullable String inlineText;
+
+    /**
+     * Mirror of the {@code kind:} front-matter value for markdown documents.
+     * {@code null} when the body is not markdown or carries no front matter.
+     * Indexed so the list endpoint can filter by document kind.
+     */
+    @Indexed
+    private @Nullable String kind;
+
+    /**
+     * Mirror of every parsed front-matter line for markdown documents — kept
+     * in source order. Keys are normalised by {@link DocumentHeaderParser}
+     * (lower-case, dots→underscores) so MongoDB does not interpret them as
+     * sub-document paths. The body remains the source of truth: this map is
+     * rebuilt on every save.
+     */
+    @Builder.Default
+    private Map<String, String> headers = new LinkedHashMap<>();
 
     /** Username of the creator ({@code UserDocument.name}). */
     private @Nullable String createdBy;

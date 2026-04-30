@@ -60,6 +60,7 @@ public class DocumentService {
     private final StorageService storageService;
     private final MongoTemplate mongoTemplate;
     private final ResourcePatternResolver resourcePatternResolver;
+    private final DocumentHeaderParser headerParser;
 
     @Value("${vance.document.inline-threshold:4096}")
     private int inlineThreshold;
@@ -99,19 +100,70 @@ public class DocumentService {
     public Page<DocumentDocument> listByProjectPaged(
             String tenantId, String projectId, int page, int size,
             @Nullable String pathPrefix) {
+        return listByProjectPaged(tenantId, projectId, page, size, pathPrefix, null);
+    }
+
+    /**
+     * Page through documents with optional path-prefix and {@code kind}
+     * filters. The {@code kind} comes from parsed front matter of markdown
+     * documents (see {@link DocumentHeaderParser}); passing it scopes the
+     * list to documents whose body declared {@code kind: <value>}.
+     */
+    public Page<DocumentDocument> listByProjectPaged(
+            String tenantId, String projectId, int page, int size,
+            @Nullable String pathPrefix, @Nullable String kind) {
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(size, 200));
         PageRequest pageable = PageRequest.of(safePage, safeSize, Sort.by("path").ascending());
-        if (pathPrefix == null || pathPrefix.isBlank()) {
-            return repository.findByTenantIdAndProjectIdAndStatus(
-                    tenantId, projectId, DocumentStatus.ACTIVE, pageable);
+
+        String trimmedPrefix = (pathPrefix == null || pathPrefix.isBlank()) ? null : pathPrefix.trim();
+        if (trimmedPrefix != null) {
+            // Strip a leading slash so "/notes" and "notes" match the same
+            // documents — paths are stored without the leading slash.
+            while (trimmedPrefix.startsWith("/")) trimmedPrefix = trimmedPrefix.substring(1);
         }
-        String trimmed = pathPrefix.trim();
-        // Strip a leading slash so "/notes" and "notes" match the same
-        // documents — paths are stored without the leading slash.
-        while (trimmed.startsWith("/")) trimmed = trimmed.substring(1);
-        return repository.findByTenantIdAndProjectIdAndStatusAndPathStartsWith(
-                tenantId, projectId, DocumentStatus.ACTIVE, trimmed, pageable);
+        String trimmedKind = (kind == null || kind.isBlank()) ? null : kind.trim();
+
+        if (trimmedKind != null && trimmedPrefix != null) {
+            return repository.findByTenantIdAndProjectIdAndStatusAndKindAndPathStartsWith(
+                    tenantId, projectId, DocumentStatus.ACTIVE, trimmedKind, trimmedPrefix, pageable);
+        }
+        if (trimmedKind != null) {
+            return repository.findByTenantIdAndProjectIdAndStatusAndKind(
+                    tenantId, projectId, DocumentStatus.ACTIVE, trimmedKind, pageable);
+        }
+        if (trimmedPrefix != null) {
+            return repository.findByTenantIdAndProjectIdAndStatusAndPathStartsWith(
+                    tenantId, projectId, DocumentStatus.ACTIVE, trimmedPrefix, pageable);
+        }
+        return repository.findByTenantIdAndProjectIdAndStatus(
+                tenantId, projectId, DocumentStatus.ACTIVE, pageable);
+    }
+
+    /** All {@link DocumentStatus#ACTIVE} documents in the project that declared {@code kind: <kind>}. */
+    public List<DocumentDocument> listByKind(String tenantId, String projectId, String kind) {
+        return repository.findByTenantIdAndProjectIdAndStatusAndKind(
+                tenantId, projectId, DocumentStatus.ACTIVE, kind);
+    }
+
+    /**
+     * Distinct {@code kind} values present in the project. Lightweight —
+     * Mongo projection on the indexed {@code kind} field. Sorted, with
+     * {@code null}/blank dropped (documents without a {@code kind} header
+     * are not part of this projection).
+     */
+    public List<String> listKinds(String tenantId, String projectId) {
+        Query query = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("projectId").is(projectId)
+                .and("status").is(DocumentStatus.ACTIVE)
+                .and("kind").ne(null));
+        List<String> kinds = mongoTemplate.findDistinct(
+                query, "kind", DocumentDocument.class, String.class);
+        TreeSet<String> sorted = new TreeSet<>();
+        for (String k : kinds) {
+            if (k != null && !k.isBlank()) sorted.add(k);
+        }
+        return new ArrayList<>(sorted);
     }
 
     /**
@@ -209,6 +261,7 @@ public class DocumentService {
                 .createdBy(createdBy)
                 .status(DocumentStatus.ACTIVE)
                 .build();
+        applyHeader(doc);
 
         DocumentDocument saved = repository.save(doc);
         log.info("Created document tenantId='{}' projectId='{}' path='{}' id='{}' inline={} size={}",
@@ -485,6 +538,7 @@ public class DocumentService {
             }
             doc.setInlineText(newInlineText);
             doc.setSize(bytes.length);
+            applyHeader(doc);
         }
 
         if (newPath != null) {
@@ -599,6 +653,37 @@ public class DocumentService {
         }
         result.sort(Comparator.comparing(FolderInfo::path));
         return result;
+    }
+
+    /**
+     * Parse the front matter of {@code doc.inlineText} and mirror the result
+     * onto the entity's {@code kind} / {@code headers} fields. Only runs for
+     * markdown payloads — every other mime-type clears the header projection.
+     * Truth lives in {@code inlineText}; this method rebuilds the index.
+     */
+    private void applyHeader(DocumentDocument doc) {
+        if (!isMarkdown(doc.getMimeType()) || doc.getInlineText() == null) {
+            doc.setKind(null);
+            doc.setHeaders(new java.util.LinkedHashMap<>());
+            return;
+        }
+        Optional<DocumentHeader> parsed = headerParser.parse(doc.getInlineText());
+        if (parsed.isEmpty()) {
+            doc.setKind(null);
+            doc.setHeaders(new java.util.LinkedHashMap<>());
+            return;
+        }
+        DocumentHeader header = parsed.get();
+        doc.setKind(header.getKind());
+        doc.setHeaders(new java.util.LinkedHashMap<>(header.getValues()));
+    }
+
+    private static boolean isMarkdown(@Nullable String mimeType) {
+        if (mimeType == null) return false;
+        String mt = mimeType.toLowerCase().trim();
+        int semi = mt.indexOf(';');
+        if (semi >= 0) mt = mt.substring(0, semi).trim();
+        return "text/markdown".equals(mt) || "text/x-markdown".equals(mt);
     }
 
     private static String normalizePath(String path) {

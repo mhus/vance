@@ -15,4 +15,5 @@ export interface DocumentSummary {
   createdAtMs?: number;
   createdBy?: string;
   inline: boolean;
+  kind?: string;
 }

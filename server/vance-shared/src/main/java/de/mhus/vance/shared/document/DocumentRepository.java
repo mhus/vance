@@ -29,6 +29,17 @@ interface DocumentRepository extends MongoRepository<DocumentDocument, String> {
             String tenantId, String projectId, DocumentStatus status,
             String pathPrefix, Pageable pageable);
 
+    Page<DocumentDocument> findByTenantIdAndProjectIdAndStatusAndKind(
+            String tenantId, String projectId, DocumentStatus status,
+            String kind, Pageable pageable);
+
+    Page<DocumentDocument> findByTenantIdAndProjectIdAndStatusAndKindAndPathStartsWith(
+            String tenantId, String projectId, DocumentStatus status,
+            String kind, String pathPrefix, Pageable pageable);
+
+    List<DocumentDocument> findByTenantIdAndProjectIdAndStatusAndKind(
+            String tenantId, String projectId, DocumentStatus status, String kind);
+
     List<DocumentDocument> findByTenantIdAndProjectIdAndTagsContainingAndStatus(
             String tenantId, String projectId, String tag, DocumentStatus status);
 }

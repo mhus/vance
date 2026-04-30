@@ -54,4 +54,12 @@ public class DocumentSummary {
 
     /** {@code true} when the content lives inline on the record (editable in v1 UI). */
     private boolean inline;
+
+    /**
+     * {@code kind:} value parsed from markdown front matter, mirrored on
+     * the document record so the list view can render a badge / filter
+     * by kind without loading the body. {@code null} for non-markdown
+     * documents and markdown documents without a front matter.
+     */
+    private @Nullable String kind;
 }

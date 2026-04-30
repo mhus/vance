@@ -16,4 +16,6 @@ export interface DocumentDto {
   createdBy?: string;
   inline: boolean;
   inlineText?: string;
+  kind?: string;
+  headers: Record<string, string>;
 }

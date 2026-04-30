@@ -8,6 +8,7 @@ export * from './access/RefreshTokenResponse';
 export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';
 export * from './documents/DocumentFoldersResponse';
+export * from './documents/DocumentKindsResponse';
 export * from './documents/DocumentListResponse';
 export * from './documents/DocumentSummary';
 export * from './documents/DocumentUpdateRequest';

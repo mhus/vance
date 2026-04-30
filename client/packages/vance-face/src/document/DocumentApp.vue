@@ -110,6 +110,7 @@ onMounted(async () => {
     await Promise.all([
       docsState.loadPage(selectedProjectId.value, 0),
       docsState.loadFolders(selectedProjectId.value),
+      docsState.loadKinds(selectedProjectId.value),
     ]);
   }
   if (queryDoc) {
@@ -141,12 +142,14 @@ watch(selectedProjectId, async (next) => {
   syncQueryParam('projectId', next);
   syncQueryParam('documentId', null);
   docsState.clearSelection();
-  // Reset filter on project switch — folder list belongs to the
-  // new project and the previous prefix won't match anyway.
+  // Reset filters on project switch — folder/kind lists belong to
+  // the new project and the previous filters won't match anyway.
   docsState.pathPrefix.value = '';
+  docsState.kindFilter.value = '';
   await Promise.all([
-    docsState.loadPage(next, 0, ''),
+    docsState.loadPage(next, 0, '', ''),
     docsState.loadFolders(next),
+    docsState.loadKinds(next),
   ]);
 });
 
@@ -165,6 +168,17 @@ function applyPathFilter(prefix: string, immediate = false): void {
   };
   if (immediate) fire();
   else filterTimer = setTimeout(fire, 300);
+}
+
+/**
+ * Switch the {@code kind} filter. Triggered immediately from the select
+ * — no debounce needed (one click per change). Passing `''` clears the
+ * filter back to "all kinds".
+ */
+function applyKindFilter(kind: string): void {
+  const project = selectedProjectId.value;
+  if (!project) return;
+  void docsState.loadPage(project, 0, undefined, kind);
 }
 
 watch(
@@ -522,6 +536,25 @@ function syncQueryParam(key: string, value: string | null): void {
   window.history.replaceState(null, '', url.toString());
 }
 
+/**
+ * Front-matter rows for the read-only table in the editor. Iterating
+ * `Record<string,string>` yields key/value pairs in insertion order;
+ * the server returns them in source order so this matches what the
+ * user typed.
+ */
+const headerEntries = computed<{ key: string; value: string }[]>(() => {
+  const headers = docsState.selected.value?.headers;
+  if (!headers) return [];
+  return Object.entries(headers).map(([key, value]) => ({ key, value }));
+});
+
+const kindOptions = computed<{ value: string; label: string }[]>(() => {
+  return [
+    { value: '', label: 'All kinds' },
+    ...docsState.kinds.value.map((k) => ({ value: k, label: k })),
+  ];
+});
+
 const breadcrumbs = computed<string[]>(() => {
   const crumbs: string[] = ['Documents'];
   if (selectedProjectId.value) crumbs.push(selectedProjectId.value);
@@ -617,7 +650,7 @@ const formatBytes = (n: number): string => {
             <span class="font-mono text-sm">{{ docsState.selected.value.path }}</span>
           </template>
 
-          <div class="text-xs opacity-60 flex flex-wrap gap-3">
+          <div class="text-xs opacity-60 flex flex-wrap gap-3 items-center">
             <span>{{ formatBytes(docsState.selected.value.size) }}</span>
             <span v-if="docsState.selected.value.mimeType">
               {{ docsState.selected.value.mimeType }}
@@ -625,6 +658,31 @@ const formatBytes = (n: number): string => {
             <span v-if="docsState.selected.value.createdBy">
               by {{ docsState.selected.value.createdBy }}
             </span>
+            <span
+              v-if="docsState.selected.value.kind"
+              class="badge badge-info badge-sm"
+              title="Document kind, parsed from front matter"
+            >kind: {{ docsState.selected.value.kind }}</span>
+          </div>
+
+          <!-- ─── Front-matter table — only when the markdown body
+               carries a recognised header. Read-only: the content is
+               authoritative, this just mirrors what the parser saw. ─── -->
+          <div
+            v-if="headerEntries.length > 0"
+            class="mt-3 border border-base-300 rounded-md overflow-hidden"
+          >
+            <div class="px-3 py-2 bg-base-200 text-xs uppercase opacity-70">
+              Front matter
+            </div>
+            <table class="table table-xs">
+              <tbody>
+                <tr v-for="entry in headerEntries" :key="entry.key">
+                  <td class="font-mono opacity-70 w-1/3">{{ entry.key }}</td>
+                  <td class="font-mono break-all">{{ entry.value }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
           <VAlert v-if="!docsState.selected.value.inline" variant="info" class="mt-3">
@@ -685,7 +743,9 @@ const formatBytes = (n: number): string => {
       <!-- List view -->
       <template v-else>
         <!-- Path filter — HTML5 combobox: free-text input plus a
-             folder dropdown derived from server-side projection. -->
+             folder dropdown derived from server-side projection.
+             Kind filter sits next to it; populated from /documents/kinds
+             so only kinds actually present in the project show up. -->
         <div class="flex items-center gap-3 mb-3">
           <div class="flex-1 min-w-0">
             <input
@@ -706,11 +766,18 @@ const formatBytes = (n: number): string => {
               />
             </datalist>
           </div>
+          <div v-if="docsState.kinds.value.length > 0" class="w-40 shrink-0">
+            <VSelect
+              :model-value="docsState.kindFilter.value"
+              :options="kindOptions"
+              @update:model-value="applyKindFilter(($event as string | null) ?? '')"
+            />
+          </div>
           <button
-            v-if="docsState.pathPrefix.value"
+            v-if="docsState.pathPrefix.value || docsState.kindFilter.value"
             type="button"
             class="btn btn-ghost btn-sm"
-            @click="applyPathFilter('', true)"
+            @click="applyPathFilter('', true); applyKindFilter('');"
           >Clear filter</button>
           <VButton variant="primary" size="sm" @click="openCreateModal()">+ New document</VButton>
         </div>
@@ -738,8 +805,13 @@ const formatBytes = (n: number): string => {
           <template #default="{ item }">
             <div class="flex items-center justify-between gap-4">
               <div class="min-w-0 flex-1">
-                <div class="font-semibold truncate">
-                  {{ item.title?.trim() || item.name }}
+                <div class="font-semibold truncate flex items-center gap-2">
+                  <span class="truncate">{{ item.title?.trim() || item.name }}</span>
+                  <span
+                    v-if="item.kind"
+                    class="badge badge-info badge-sm shrink-0"
+                    :title="`kind: ${item.kind}`"
+                  >{{ item.kind }}</span>
                 </div>
                 <div class="text-xs opacity-60 truncate font-mono">{{ item.path }}</div>
                 <div v-if="item.tags && item.tags.length" class="mt-1 flex gap-1 flex-wrap">

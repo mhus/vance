@@ -14,10 +14,12 @@ export function useDocuments(pageSize = 20) {
     const loading = ref(false);
     const error = ref(null);
     const folders = ref([]);
+    const kinds = ref([]);
     // Sticky path-filter — owned by the composable so reloads
     // (e.g. after upload, after page-change) keep the active filter.
     const pathPrefix = ref('');
-    async function loadPage(projectId, p, prefixOverride) {
+    const kindFilter = ref('');
+    async function loadPage(projectId, p, prefixOverride, kindOverride) {
         loading.value = true;
         error.value = null;
         try {
@@ -27,6 +29,9 @@ export function useDocuments(pageSize = 20) {
             if (prefixOverride !== undefined) {
                 pathPrefix.value = prefixOverride;
             }
+            if (kindOverride !== undefined) {
+                kindFilter.value = kindOverride;
+            }
             const params = new URLSearchParams({
                 projectId,
                 page: String(p),
@@ -34,6 +39,9 @@ export function useDocuments(pageSize = 20) {
             });
             if (pathPrefix.value.trim()) {
                 params.set('pathPrefix', pathPrefix.value.trim());
+            }
+            if (kindFilter.value.trim()) {
+                params.set('kind', kindFilter.value.trim());
             }
             const data = await brainFetch('GET', `documents?${params}`);
             items.value = data.items ?? [];
@@ -59,6 +67,19 @@ export function useDocuments(pageSize = 20) {
             // would mask the actual document load. Just clear and log.
             folders.value = [];
             console.warn('Failed to load folders', e);
+        }
+    }
+    async function loadKinds(projectId) {
+        try {
+            const params = new URLSearchParams({ projectId });
+            const data = await brainFetch('GET', `documents/kinds?${params}`);
+            kinds.value = data.kinds ?? [];
+        }
+        catch (e) {
+            // Same posture as folder loading — surfaced errors would mask
+            // the document list. Drop quietly.
+            kinds.value = [];
+            console.warn('Failed to load kinds', e);
         }
     }
     async function loadOne(id) {
@@ -197,8 +218,11 @@ export function useDocuments(pageSize = 20) {
         error,
         folders,
         pathPrefix,
+        kinds,
+        kindFilter,
         loadPage,
         loadFolders,
+        loadKinds,
         loadOne,
         clearSelection,
         create,

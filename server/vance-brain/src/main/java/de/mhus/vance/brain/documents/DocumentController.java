@@ -3,6 +3,7 @@ package de.mhus.vance.brain.documents;
 import de.mhus.vance.api.documents.DocumentCreateRequest;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentFoldersResponse;
+import de.mhus.vance.api.documents.DocumentKindsResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
 import de.mhus.vance.api.documents.DocumentSummary;
 import de.mhus.vance.api.documents.DocumentUpdateRequest;
@@ -62,10 +63,11 @@ public class DocumentController {
             @RequestParam("projectId") String projectId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "50") int size,
-            @RequestParam(value = "pathPrefix", required = false) @Nullable String pathPrefix) {
+            @RequestParam(value = "pathPrefix", required = false) @Nullable String pathPrefix,
+            @RequestParam(value = "kind", required = false) @Nullable String kind) {
 
         Page<DocumentDocument> result = documentService.listByProjectPaged(
-                tenant, projectId, page, size, pathPrefix);
+                tenant, projectId, page, size, pathPrefix, kind);
         return DocumentListResponse.builder()
                 .items(result.getContent().stream().map(DocumentController::toSummary).toList())
                 .page(result.getNumber())
@@ -86,6 +88,20 @@ public class DocumentController {
             @RequestParam("projectId") String projectId) {
         List<String> folders = documentService.listFolders(tenant, projectId);
         return DocumentFoldersResponse.builder().folders(folders).build();
+    }
+
+    /**
+     * Distinct document {@code kind} values present in the project — same
+     * lightweight contract as {@link #folders}, derived from a Mongo
+     * projection on the indexed {@code kind} field. Powers the kind-filter
+     * dropdown in the document list.
+     */
+    @GetMapping("/brain/{tenant}/documents/kinds")
+    public DocumentKindsResponse kinds(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId) {
+        List<String> kinds = documentService.listKinds(tenant, projectId);
+        return DocumentKindsResponse.builder().kinds(kinds).build();
     }
 
     @GetMapping("/brain/{tenant}/documents/{id}")
@@ -314,6 +330,7 @@ public class DocumentController {
                 .createdAtMs(toEpochMillis(doc.getCreatedAt()))
                 .createdBy(doc.getCreatedBy())
                 .inline(doc.getInlineText() != null)
+                .kind(doc.getKind())
                 .build();
     }
 
@@ -331,6 +348,10 @@ public class DocumentController {
                 .createdBy(doc.getCreatedBy())
                 .inline(doc.getInlineText() != null)
                 .inlineText(doc.getInlineText())
+                .kind(doc.getKind())
+                .headers(doc.getHeaders() == null
+                        ? new java.util.LinkedHashMap<>()
+                        : new java.util.LinkedHashMap<>(doc.getHeaders()))
                 .build();
     }
 

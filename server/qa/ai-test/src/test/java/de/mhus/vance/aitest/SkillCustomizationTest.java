@@ -58,6 +58,19 @@ import tools.jackson.databind.json.JsonMapper;
  * skill before the LLM call. The worker reply must carry a separate
  * marker that only fires when this skill's prompt-extension is in
  * scope — proving the trigger detector reached the LLM.
+ *
+ * <p>Phase 3 ({@link #step3_cascadeOverrideOfBundledSkill}) verifies
+ * the document cascade priority: the bundled {@code decision-frame}
+ * skill ships on the classpath ({@code RESOURCE} tier). A document
+ * dropped at {@code _vance/skills/decision-frame/SKILL.md} must beat
+ * the bundled copy; {@code SkillResolver.resolve} returns the
+ * {@code VANCE} tier with our override marker.
+ *
+ * <p>Phase 4 ({@link #step4_disabledSkillIsBlocked}) checks that
+ * {@code enabled: false} prunes the skill from every consumer — the
+ * cascade-resolver returns empty, manual {@code /skill} adds nothing
+ * to {@code activeSkills}, and the keyword that should auto-trigger
+ * leaves no marker in the worker's reply.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class SkillCustomizationTest extends AbstractAiTest {
@@ -73,6 +86,18 @@ class SkillCustomizationTest extends AbstractAiTest {
     private static final String TRIGGER_SKILL = "zappelhuhn-mode";
     private static final String TRIGGER_WORKER = "zappelhuhn-worker";
     private static final String TRIGGER_MARKER = "ZAPPELHUHN-99";
+
+    // Phase 3: cascade override of a bundled skill (decision-frame
+    // ships under vance-defaults/skills/ on the classpath).
+    private static final String OVERRIDE_SKILL = "decision-frame";
+    private static final String OVERRIDE_DESCRIPTION_MARKER =
+            "OVERRIDE-DECISION-FRAME-FROM-VANCE-PROJECT";
+
+    // Phase 4: disabled skill is filtered everywhere.
+    private static final String DISABLED_SKILL = "inert-marker";
+    private static final String DISABLED_KEYWORD = "klabauterstein";
+    private static final String DISABLED_WORKER = "inert-worker";
+    private static final String DISABLED_MARKER = "INERT-MARKER-33";
 
     @Autowired
     private SkillResolver skillResolver;
@@ -309,6 +334,165 @@ class SkillCustomizationTest extends AbstractAiTest {
                         + "the LLM. Foot log: %s",
                         TRIGGER_MARKER, foot.workdir().resolve("foot.log"))
                 .isTrue();
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    //  Phase 3 — cascade override: VANCE tier beats bundled RESOURCE.
+    //   The bundled `decision-frame` ships under
+    //   vance-defaults/skills/. Pre-condition is RESOURCE; after
+    //   posting an override document at _vance/skills/decision-frame/
+    //   SKILL.md, the cascade resolver must serve from VANCE.
+    // ──────────────────────────────────────────────────────────────────
+
+    @Test
+    @Order(3)
+    void step3_cascadeOverrideOfBundledSkill() throws Exception {
+        SkillScopeContext scope = SkillScopeContext.of(TENANT, "wile.coyote", PROJECT_ID);
+
+        // Pre-condition: bundled copy answers from RESOURCE tier.
+        Optional<ResolvedSkill> bundled = skillResolver.resolve(scope, OVERRIDE_SKILL);
+        assertThat(bundled)
+                .as("bundled '%s' must exist before the override", OVERRIDE_SKILL)
+                .isPresent();
+        assertThat(bundled.get().source())
+                .as("pre-override source must be the classpath fallback")
+                .isEqualTo(de.mhus.vance.api.skills.SkillScope.RESOURCE);
+        assertThat(bundled.get().description())
+                .doesNotContain(OVERRIDE_DESCRIPTION_MARKER);
+
+        // Drop the override into _vance/skills/decision-frame/SKILL.md.
+        // Same name (folder name = skill stem), distinct
+        // promptExtension and description so we can assert the
+        // override took.
+        String overrideMarkdown = """
+                ---
+                name: decision-frame
+                title: Decision Framing — TENANT OVERRIDE
+                version: 99.0.0
+                description: %s — tenant override of the bundled decision-frame.
+                tags: [test, override]
+                enabled: true
+                ---
+
+                You are operating in the **OVERRIDDEN decision-frame mode**.
+                Reply in one short sentence acknowledging the override.
+                """.formatted(OVERRIDE_DESCRIPTION_MARKER);
+        createSkillDocument(OVERRIDE_SKILL, overrideMarkdown);
+
+        // After override, the cascade resolver must serve from VANCE.
+        Optional<ResolvedSkill> overridden = skillResolver.resolve(scope, OVERRIDE_SKILL);
+        assertThat(overridden).isPresent();
+        assertThat(overridden.get().source())
+                .as("override must come from the _vance project, not classpath")
+                .isEqualTo(de.mhus.vance.api.skills.SkillScope.VANCE);
+        assertThat(overridden.get().description())
+                .as("override description carries the marker")
+                .contains(OVERRIDE_DESCRIPTION_MARKER);
+        assertThat(overridden.get().title())
+                .as("override title is the new one")
+                .contains("TENANT OVERRIDE");
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    //  Phase 4 — `enabled: false` prunes the skill everywhere.
+    //   The cascade resolver filters via .filter(ResolvedSkill::enabled),
+    //   /skill goes through the resolver and surfaces UnknownSkill,
+    //   and SkillTriggerMatcher uses listAvailable which itself drops
+    //   disabled entries — so neither manual nor auto activation can
+    //   land the marker in the worker's reply.
+    // ──────────────────────────────────────────────────────────────────
+
+    @Test
+    @Order(4)
+    void step4_disabledSkillIsBlocked() throws Exception {
+        // Disabled skill with KEYWORDS triggers — would normally
+        // auto-fire on the keyword if it were enabled.
+        String disabledMarkdown = """
+                ---
+                name: inert-marker
+                title: Inert Marker (Test, disabled)
+                version: 1.0.0
+                description: Disabled skill — must never activate.
+                tags: [test, disabled]
+                enabled: false
+                triggers:
+                  - type: KEYWORDS
+                    keywords: [%s]
+                ---
+
+                You are operating in **inert-marker mode**. CRITICAL
+                RULE: every reply MUST start with `%s`.
+                """.formatted(DISABLED_KEYWORD, DISABLED_MARKER);
+        createSkillDocument(DISABLED_SKILL, disabledMarkdown);
+
+        // ── 4a. Cascade resolver filters disabled skills → empty.
+        SkillScopeContext scope = SkillScopeContext.of(TENANT, "wile.coyote", PROJECT_ID);
+        assertThat(skillResolver.resolve(scope, DISABLED_SKILL))
+                .as("disabled skill must NOT resolve")
+                .isEmpty();
+
+        // ── 4b. Spawn a Ford worker, attempt manual activation: must
+        // not land in activeSkills.
+        FootProcess.CommandResult create =
+                foot.command("/process-create ford " + DISABLED_WORKER);
+        assertThat(create.matched()).isTrue();
+        Document worker = pollForOne(
+                "think_processes",
+                Filters.and(
+                        Filters.eq("tenantId", TENANT),
+                        Filters.eq("name", DISABLED_WORKER),
+                        Filters.eq("thinkEngine", "ford")),
+                Duration.ofSeconds(10));
+        assertThat(worker).isNotNull();
+        String workerId = worker.getObjectId("_id").toHexString();
+
+        foot.command("/skill " + DISABLED_SKILL);
+        Thread.sleep(2000);
+        Document afterManual = findOne("think_processes",
+                Filters.eq("_id", worker.getObjectId("_id")));
+        assertThat(afterManual).isNotNull();
+        Object active = afterManual.get("activeSkills");
+        if (active instanceof List<?> list) {
+            assertThat(list)
+                    .as("disabled skill must NOT appear in activeSkills after /skill")
+                    .noneMatch(item -> item instanceof Document d
+                            && DISABLED_SKILL.equals(d.getString("name")));
+        }
+
+        // ── 4c. Auto-trigger path must also skip the disabled skill.
+        // Send a chat with the trigger keyword on the (still-active)
+        // worker; wait for ASSISTANT reply; confirm the marker is
+        // absent.
+        long assistantBefore = mongo.getCollection("chat_messages").countDocuments(
+                Filters.and(
+                        Filters.eq("thinkProcessId", workerId),
+                        Filters.eq("role", "ASSISTANT")));
+        FootProcess.InputResult chat = foot.chat(
+                "Sag mir bitte einen ganz kurzen Satz über '" + DISABLED_KEYWORD + "'.");
+        assertThat(chat.kind()).isEqualTo("CHAT");
+
+        boolean replyArrived = pollUntil(Duration.ofSeconds(150), () -> {
+            long now = mongo.getCollection("chat_messages").countDocuments(
+                    Filters.and(
+                            Filters.eq("thinkProcessId", workerId),
+                            Filters.eq("role", "ASSISTANT")));
+            return now > assistantBefore;
+        });
+        assertThat(replyArrived)
+                .as("disabled-keyword chat should still produce a reply")
+                .isTrue();
+
+        List<Document> assistants = findAll("chat_messages",
+                Filters.and(
+                        Filters.eq("thinkProcessId", workerId),
+                        Filters.eq("role", "ASSISTANT")));
+        for (Document msg : assistants) {
+            String content = msg.getString("content");
+            assertThat(content == null ? "" : content)
+                    .as("ASSISTANT message %s must NOT carry the disabled-skill marker",
+                            msg.getObjectId("_id").toHexString())
+                    .doesNotContain(DISABLED_MARKER);
+        }
     }
 
     private void createSkillDocument(String skillName, String markdown) throws Exception {

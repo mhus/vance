@@ -51,11 +51,10 @@ public final class ChatBehaviorBuilder {
             AiModelResolver resolver) {
         String tenantId = process.getTenantId();
         String processId = process.getId();
-        // projectId is not denormalised onto ThinkProcessDocument — the
-        // project cascade falls through to _vance only. Callers that
-        // want project-level overrides need to look up the session and
-        // reach this builder via a richer entry point.
-        @Nullable String projectId = null;
+        // projectId is denormalised onto ThinkProcessDocument at spawn
+        // time — empty string means "unknown / system-wide", which the
+        // cascade collapses to the _vance layer only.
+        @Nullable String projectId = process.getProjectId();
         List<ChatBehavior.Entry> entries = new ArrayList<>();
 
         // Primary

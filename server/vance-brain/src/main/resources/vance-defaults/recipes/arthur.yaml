@@ -34,6 +34,20 @@ intentCorrection: |
   waiting for an action that will never happen. Pick one and
   emit it now: (a) the corresponding tool call, or (b) a
   direct question to the user without promising future action.
+profiles:
+  # Browser clients can't host filesystem / shell / JS tools — strip
+  # them from the allowed list so the LLM doesn't propose calls that
+  # would always fail. See specification/recipes.md §6a.
+  web:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
 tags:
   - chat
   - orchestrator

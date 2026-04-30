@@ -719,12 +719,12 @@ public class Ford implements ThinkEngine {
             spec = null;
         }
         AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
-                spec, tenantId, /*projectId*/ null, process.getId());
+                spec, tenantId, process.getProjectId(), process.getId());
 
         String apiKeySetting = String.format(
                 SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
         String apiKey = settings.getDecryptedPasswordCascade(
-                tenantId, /*projectId*/ null, process.getId(), apiKeySetting);
+                tenantId, process.getProjectId(), process.getId(), apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key configured for provider '" + resolved.provider()

@@ -265,7 +265,8 @@ public class ZaphodEngine implements ThinkEngine {
         ThinkProcessDocument child;
         try {
             AppliedRecipe applied = recipeResolver.apply(
-                    process.getTenantId(), ctx.projectId(), head.getRecipe(), null);
+                    process.getTenantId(), ctx.projectId(), head.getRecipe(),
+                    process.getConnectionProfile(), null);
             ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
                     .resolve(applied.engine())
                     .orElseThrow(() -> new IllegalStateException(
@@ -274,6 +275,7 @@ public class ZaphodEngine implements ThinkEngine {
             String childName = "zaphod-" + process.getId() + "-" + head.getName();
             child = thinkProcessService.create(
                     process.getTenantId(),
+                    process.getProjectId(),
                     process.getSessionId(),
                     childName,
                     targetEngine.name(),
@@ -288,7 +290,8 @@ public class ZaphodEngine implements ThinkEngine {
                     applied.promptMode(),
                     applied.intentCorrection(),
                     applied.dataRelayCorrection(),
-                    applied.effectiveAllowedTools());
+                    applied.effectiveAllowedTools(),
+                    applied.connectionProfile());
             head.setSpawnedProcessId(child.getId());
             thinkEngineServiceProvider.getObject().start(child);
             log.info("Zaphod id='{}' head '{}' spawned child='{}' recipe='{}'",
@@ -617,10 +620,10 @@ public class ZaphodEngine implements ThinkEngine {
             spec = null;
         }
         AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
-                spec, tenantId, /*projectId*/ null, process.getId());
+                spec, tenantId, process.getProjectId(), process.getId());
         String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
         String apiKey = settings.getDecryptedPasswordCascade(
-                tenantId, /*projectId*/ null, process.getId(), apiKeySetting);
+                tenantId, process.getProjectId(), process.getId(), apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key configured for provider '" + resolved.provider()

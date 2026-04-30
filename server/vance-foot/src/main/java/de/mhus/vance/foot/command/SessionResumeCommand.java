@@ -10,6 +10,7 @@ import com.googlecode.lanterna.gui2.LinearLayout;
 import com.googlecode.lanterna.gui2.Panel;
 import com.googlecode.lanterna.gui2.Window;
 import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.api.ws.SessionListRequest;
 import de.mhus.vance.api.ws.SessionListResponse;
 import de.mhus.vance.api.ws.SessionResumeRequest;
@@ -115,14 +116,30 @@ public class SessionResumeCommand implements SlashCommand {
             return null;
         }
 
+        // Profile-mismatch sessions can't be resumed by this client (the brain
+        // rejects them with HTTP 409). Hide them from the picker so the user
+        // doesn't waste a click on something that would error out.
         List<SessionSummary> available = all.stream()
                 .filter(s -> !s.isBound())
+                .filter(s -> Profiles.FOOT.equals(s.getProfile()) || s.getProfile() == null)
                 .sorted(Comparator.comparingLong(SessionSummary::getLastActivityAt).reversed())
                 .toList();
-        int hidden = all.size() - available.size();
+        int hiddenBound = (int) all.stream().filter(SessionSummary::isBound).count();
+        int hiddenProfile = (int) all.stream()
+                .filter(s -> !s.isBound())
+                .filter(s -> s.getProfile() != null && !Profiles.FOOT.equals(s.getProfile()))
+                .count();
         if (available.isEmpty()) {
-            terminal.info("No resumable sessions — all "
-                    + all.size() + " are currently bound to another connection.");
+            StringBuilder why = new StringBuilder("No resumable sessions for this client");
+            if (hiddenBound > 0) {
+                why.append(" — ").append(hiddenBound).append(" bound");
+            }
+            if (hiddenProfile > 0) {
+                why.append(hiddenBound > 0 ? ", " : " — ");
+                why.append(hiddenProfile).append(" with a different profile");
+            }
+            why.append('.');
+            terminal.info(why.toString());
             return null;
         }
 
@@ -145,10 +162,17 @@ public class SessionResumeCommand implements SlashCommand {
             content.setLayoutManager(new LinearLayout(Direction.VERTICAL));
             content.addComponent(new Label(
                     "Select a session — Enter to resume, Esc/Cancel to keep current."));
-            if (hidden > 0) {
+            if (hiddenBound > 0) {
                 content.addComponent(new Label(
-                        "(" + hidden + " bound session" + (hidden == 1 ? "" : "s")
+                        "(" + hiddenBound + " bound session"
+                                + (hiddenBound == 1 ? "" : "s")
                                 + " hidden — not resumable.)"));
+            }
+            if (hiddenProfile > 0) {
+                content.addComponent(new Label(
+                        "(" + hiddenProfile + " session"
+                                + (hiddenProfile == 1 ? "" : "s")
+                                + " with a different profile hidden.)"));
             }
             content.addComponent(listBox.withBorder(Borders.singleLine()));
             content.addComponent(new Button("Cancel", window::close));
@@ -162,9 +186,11 @@ public class SessionResumeCommand implements SlashCommand {
 
     private static String formatRow(SessionSummary s) {
         String displayName = Objects.toString(s.getDisplayName(), "");
-        return String.format("%-9s  %-20s  %-11s  %-20s  %s",
+        String profile = Objects.toString(s.getProfile(), "");
+        return String.format("%-9s  %-20s  %-8s  %-11s  %-20s  %s",
                 truncate(Objects.toString(s.getStatus(), ""), 9),
                 truncate(Objects.toString(s.getProjectId(), ""), 20),
+                truncate(profile, 8),
                 TIME.format(Instant.ofEpochMilli(s.getLastActivityAt())),
                 truncate(displayName, 20),
                 s.getSessionId());

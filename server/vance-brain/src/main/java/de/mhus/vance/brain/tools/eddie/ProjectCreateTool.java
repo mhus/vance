@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.tools.eddie;
 
-import de.mhus.vance.api.ws.ClientType;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -142,13 +142,16 @@ public class ProjectCreateTool implements Tool {
         }
 
         // 2) Session — owned by the user; Eddie acts on the user's behalf.
+        // Synthetic session has no real client connection; FOOT is a stand-in
+        // value that disables web-only restrictions on the spawned chat process.
         SessionDocument session = sessionService.create(
                 ctx.tenantId(),
                 ctx.userId(),
                 project.getName(),
                 SPAWNED_BY_EDDIE_LABEL,
-                ClientType.CLI,
-                SPAWNED_CLIENT_VERSION);
+                Profiles.FOOT,
+                SPAWNED_CLIENT_VERSION,
+                /* clientName */ null);
 
         // 3) Chat-process — Arthur (or whatever the tenant default is)
         //    with cross-project parent = this Eddie process. Engine.start()

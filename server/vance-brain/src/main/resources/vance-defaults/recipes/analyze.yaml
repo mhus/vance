@@ -21,6 +21,18 @@ promptPrefixSmall: |
 
   Final reply: paste the actual data, then a one-paragraph
   summary. Cite tools used.
+profiles:
+  # Browser clients can't host filesystem / shell / JS tools.
+  web:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
 tags:
   - analysis
   - research

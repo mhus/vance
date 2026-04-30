@@ -93,8 +93,9 @@ public class SessionCreateHandler implements WsHandler {
                 ctx.getUserId(),
                 claimed.getName(),
                 ctx.getDisplayName(),
-                ctx.getClientType(),
-                ctx.getClientVersion());
+                ctx.getProfile(),
+                ctx.getClientVersion(),
+                ctx.getClientName());
 
         boolean bound = sessionService.tryBind(
                 created.getSessionId(), ctx.getConnectionId());

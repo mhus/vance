@@ -48,13 +48,14 @@ public class ThinkProcessService {
      */
     public ThinkProcessDocument create(
             String tenantId,
+            @Nullable String projectId,
             String sessionId,
             String name,
             String thinkEngine,
             @Nullable String thinkEngineVersion,
             @Nullable String title,
             @Nullable String goal) {
-        return create(tenantId, sessionId, name, thinkEngine,
+        return create(tenantId, projectId, sessionId, name, thinkEngine,
                 thinkEngineVersion, title, goal,
                 /*parentProcessId*/ null, /*engineParams*/ null);
     }
@@ -65,6 +66,7 @@ public class ThinkProcessService {
      */
     public ThinkProcessDocument create(
             String tenantId,
+            @Nullable String projectId,
             String sessionId,
             String name,
             String thinkEngine,
@@ -72,7 +74,7 @@ public class ThinkProcessService {
             @Nullable String title,
             @Nullable String goal,
             @Nullable String parentProcessId) {
-        return create(tenantId, sessionId, name, thinkEngine,
+        return create(tenantId, projectId, sessionId, name, thinkEngine,
                 thinkEngineVersion, title, goal, parentProcessId,
                 /*engineParams*/ null);
     }
@@ -84,6 +86,7 @@ public class ThinkProcessService {
      */
     public ThinkProcessDocument create(
             String tenantId,
+            @Nullable String projectId,
             String sessionId,
             String name,
             String thinkEngine,
@@ -92,7 +95,7 @@ public class ThinkProcessService {
             @Nullable String goal,
             @Nullable String parentProcessId,
             @Nullable Map<String, Object> engineParams) {
-        return create(tenantId, sessionId, name, thinkEngine,
+        return create(tenantId, projectId, sessionId, name, thinkEngine,
                 thinkEngineVersion, title, goal, parentProcessId,
                 engineParams,
                 /*recipeName*/ null,
@@ -107,6 +110,7 @@ public class ThinkProcessService {
      */
     public ThinkProcessDocument create(
             String tenantId,
+            @Nullable String projectId,
             String sessionId,
             String name,
             String thinkEngine,
@@ -119,21 +123,24 @@ public class ThinkProcessService {
             @Nullable String promptOverride,
             @Nullable PromptMode promptMode,
             @Nullable Set<String> allowedToolsOverride) {
-        return create(tenantId, sessionId, name, thinkEngine,
+        return create(tenantId, projectId, sessionId, name, thinkEngine,
                 thinkEngineVersion, title, goal, parentProcessId,
                 engineParams, recipeName,
                 promptOverride, /*promptOverrideSmall*/ null, promptMode,
                 /*intentCorrectionOverride*/ null,
                 /*dataRelayCorrectionOverride*/ null,
-                allowedToolsOverride);
+                allowedToolsOverride,
+                /*connectionProfile*/ null);
     }
 
     /**
-     * Full create — also accepts the size-aware prompt variant and
-     * the per-recipe validator overrides.
+     * Full create — also accepts the size-aware prompt variant, the
+     * per-recipe validator overrides, and the connection-profile that
+     * was active at spawn time (audit-only).
      */
     public ThinkProcessDocument create(
             String tenantId,
+            @Nullable String projectId,
             String sessionId,
             String name,
             String thinkEngine,
@@ -148,7 +155,8 @@ public class ThinkProcessService {
             @Nullable PromptMode promptMode,
             @Nullable String intentCorrectionOverride,
             @Nullable String dataRelayCorrectionOverride,
-            @Nullable Set<String> allowedToolsOverride) {
+            @Nullable Set<String> allowedToolsOverride,
+            @Nullable String connectionProfile) {
         if (repository.existsByTenantIdAndSessionIdAndName(tenantId, sessionId, name)) {
             throw new ThinkProcessAlreadyExistsException(
                     "Think-process '" + name + "' already exists in session '"
@@ -160,6 +168,7 @@ public class ThinkProcessService {
                 ? null : new LinkedHashSet<>(allowedToolsOverride);
         ThinkProcessDocument doc = ThinkProcessDocument.builder()
                 .tenantId(tenantId)
+                .projectId(projectId == null ? "" : projectId)
                 .sessionId(sessionId)
                 .name(name)
                 .title(title)
@@ -169,6 +178,7 @@ public class ThinkProcessService {
                 .parentProcessId(parentProcessId)
                 .engineParams(params)
                 .recipeName(recipeName)
+                .connectionProfile(connectionProfile)
                 .promptOverride(promptOverride)
                 .promptOverrideSmall(promptOverrideSmall)
                 .promptMode(promptMode == null ? PromptMode.APPEND : promptMode)
@@ -178,9 +188,9 @@ public class ThinkProcessService {
                 .status(ThinkProcessStatus.READY)
                 .build();
         ThinkProcessDocument saved = repository.save(doc);
-        log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' recipe='{}' params={}",
+        log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' recipe='{}' profile='{}' params={}",
                 tenantId, sessionId, name, thinkEngine, saved.getId(), parentProcessId,
-                recipeName,
+                recipeName, connectionProfile,
                 params.isEmpty() ? "{}" : params.keySet());
         return saved;
     }

@@ -75,17 +75,26 @@ public class SessionListCommand implements SlashCommand {
             terminal.info("No sessions.");
             return;
         }
-        terminal.info(String.format("%-20s %-10s %-11s %-20s %s",
-                "PROJECT", "STATUS", "LAST SEEN", "NAME", "SESSION"));
+        terminal.info(String.format("%-20s %-10s %-8s %-11s %-20s %s",
+                "PROJECT", "STATUS", "PROFILE", "LAST SEEN", "NAME", "SESSION"));
         for (SessionSummary s : response.getSessions()) {
-            String sessionCell = s.getSessionId() + (s.isBound() ? " (bound)" : "");
-            terminal.info(String.format("%-20s %-10s %-11s %-20s %s",
+            String profile = Objects.toString(s.getProfile(), "");
+            String mismatchTag = isProfileMismatch(profile) ? " (≠profile)" : "";
+            String sessionCell = s.getSessionId()
+                    + (s.isBound() ? " (bound)" : "")
+                    + mismatchTag;
+            terminal.info(String.format("%-20s %-10s %-8s %-11s %-20s %s",
                     truncate(Objects.toString(s.getProjectId(), ""), 20),
                     truncate(Objects.toString(s.getStatus(), ""), 10),
+                    truncate(profile, 8),
                     TIME.format(Instant.ofEpochMilli(s.getLastActivityAt())),
                     truncate(Objects.toString(s.getDisplayName(), ""), 20),
                     sessionCell));
         }
+    }
+
+    private static boolean isProfileMismatch(String profile) {
+        return !profile.isEmpty() && !de.mhus.vance.api.ws.Profiles.FOOT.equals(profile);
     }
 
     private static String truncate(String s, int max) {

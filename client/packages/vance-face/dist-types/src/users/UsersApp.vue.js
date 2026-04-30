@@ -2,12 +2,30 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { EditorShell, MarkdownView, VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea, } from '@/components';
 import { useAdminUsers } from '@/composables/useAdminUsers';
 import { useAdminTeams } from '@/composables/useAdminTeams';
+import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useHelp } from '@/composables/useHelp';
 import { getUsername } from '@vance/shared';
+import { SettingType, } from '@vance/generated';
 const usersState = useAdminUsers();
 const teamsState = useAdminTeams();
+const settingsState = useScopeSettings();
 const help = useHelp();
 const currentUsername = getUsername() ?? '';
+const settingTypeOptions = [
+    { value: SettingType.STRING, label: 'STRING' },
+    { value: SettingType.INT, label: 'INT' },
+    { value: SettingType.LONG, label: 'LONG' },
+    { value: SettingType.DOUBLE, label: 'DOUBLE' },
+    { value: SettingType.BOOLEAN, label: 'BOOLEAN' },
+    { value: SettingType.PASSWORD, label: 'PASSWORD' },
+];
+const editingKey = ref(null);
+const editValue = ref('');
+const editDescription = ref('');
+const newSettingKey = ref('');
+const newSettingValue = ref('');
+const newSettingType = ref(SettingType.STRING);
+const newSettingDescription = ref('');
 const selection = ref(null);
 const banner = ref(null);
 const formError = ref(null);
@@ -66,7 +84,7 @@ const breadcrumbs = computed(() => {
         return [];
     return [sel.kind === 'user' ? `User: ${sel.name}` : `Team: ${sel.name}`];
 });
-const combinedError = computed(() => usersState.error.value || teamsState.error.value);
+const combinedError = computed(() => usersState.error.value || teamsState.error.value || settingsState.error.value);
 // ─── Lifecycle ──────────────────────────────────────────────────────────
 onMounted(async () => {
     await Promise.all([
@@ -75,11 +93,72 @@ onMounted(async () => {
         help.load('user-team-admin.md'),
     ]);
 });
-watch(selection, () => {
+watch(selection, async (sel) => {
     banner.value = null;
     formError.value = null;
+    resetSettingEditor();
     populateForm();
+    if (sel?.kind === 'user') {
+        await settingsState.load('user', sel.name);
+    }
+    else {
+        settingsState.clear();
+    }
 });
+function resetSettingEditor() {
+    editingKey.value = null;
+    editValue.value = '';
+    editDescription.value = '';
+    newSettingKey.value = '';
+    newSettingValue.value = '';
+    newSettingType.value = SettingType.STRING;
+    newSettingDescription.value = '';
+}
+async function addUserSetting() {
+    if (selection.value?.kind !== 'user')
+        return;
+    const key = newSettingKey.value.trim();
+    if (!key)
+        return;
+    try {
+        await settingsState.upsert('user', selection.value.name, key, newSettingValue.value === '' ? null : newSettingValue.value, newSettingType.value, newSettingDescription.value.trim() || null);
+        resetSettingEditor();
+    }
+    catch {
+        /* error in settingsState.error */
+    }
+}
+function startEditUserSetting(s) {
+    editingKey.value = s.key;
+    editValue.value = s.type === SettingType.PASSWORD ? '' : (s.value ?? '');
+    editDescription.value = s.description ?? '';
+}
+function cancelEditUserSetting() {
+    editingKey.value = null;
+}
+async function saveEditUserSetting(s) {
+    if (selection.value?.kind !== 'user')
+        return;
+    try {
+        await settingsState.upsert('user', selection.value.name, s.key, editValue.value === '' && s.type === SettingType.PASSWORD ? null : editValue.value, s.type, editDescription.value || null);
+        editingKey.value = null;
+    }
+    catch {
+        /* error */
+    }
+}
+async function deleteUserSetting(s) {
+    if (selection.value?.kind !== 'user')
+        return;
+    if (!confirm(`Delete setting "${s.key}"?`))
+        return;
+    try {
+        await settingsState.remove('user', selection.value.name, s.key);
+    }
+    catch {
+        /* error */
+    }
+}
 watch(() => selectedUser.value, () => {
     if (selection.value?.kind === 'user')
         populateForm();
@@ -689,6 +768,335 @@ else if (__VLS_ctx.selection.kind === 'user') {
         __VLS_84.slots.default;
         var __VLS_84;
         var __VLS_40;
+        const __VLS_89 = {}.VCard;
+        /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+        // @ts-ignore
+        const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
+            title: "User settings",
+        }));
+        const __VLS_91 = __VLS_90({
+            title: "User settings",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_90));
+        __VLS_92.slots.default;
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ class: "text-xs opacity-70 mb-3" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.code, __VLS_intrinsicElements.code)({});
+        (__VLS_ctx.selectedUser.name);
+        if (!__VLS_ctx.settingsState.loading.value && __VLS_ctx.settingsState.settings.value.length === 0) {
+            const __VLS_93 = {}.VEmptyState;
+            /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+            // @ts-ignore
+            const __VLS_94 = __VLS_asFunctionalComponent(__VLS_93, new __VLS_93({
+                headline: "No settings",
+                body: "Add a key/value below to override tenant defaults for this user.",
+            }));
+            const __VLS_95 = __VLS_94({
+                headline: "No settings",
+                body: "Add a key/value below to override tenant defaults for this user.",
+            }, ...__VLS_functionalComponentArgsRest(__VLS_94));
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+            ...{ class: "flex flex-col divide-y divide-base-300" },
+        });
+        for (const [s] of __VLS_getVForSourceType((__VLS_ctx.settingsState.settings.value))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                key: (s.key),
+                ...{ class: "setting-row" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "flex items-center justify-between gap-2" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "font-mono text-sm truncate" },
+            });
+            (s.key);
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-60 text-xs" },
+            });
+            (s.type);
+            if (__VLS_ctx.editingKey === s.key) {
+                if (s.type !== __VLS_ctx.SettingType.PASSWORD) {
+                    const __VLS_97 = {}.VInput;
+                    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
+                        modelValue: (__VLS_ctx.editValue),
+                        label: "Value",
+                    }));
+                    const __VLS_99 = __VLS_98({
+                        modelValue: (__VLS_ctx.editValue),
+                        label: "Value",
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_98));
+                }
+                else {
+                    const __VLS_101 = {}.VInput;
+                    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_102 = __VLS_asFunctionalComponent(__VLS_101, new __VLS_101({
+                        modelValue: (__VLS_ctx.editValue),
+                        type: "password",
+                        label: "New password",
+                        placeholder: "(leave empty to clear)",
+                    }));
+                    const __VLS_103 = __VLS_102({
+                        modelValue: (__VLS_ctx.editValue),
+                        type: "password",
+                        label: "New password",
+                        placeholder: "(leave empty to clear)",
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_102));
+                }
+                const __VLS_105 = {}.VTextarea;
+                /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
+                // @ts-ignore
+                const __VLS_106 = __VLS_asFunctionalComponent(__VLS_105, new __VLS_105({
+                    modelValue: (__VLS_ctx.editDescription),
+                    label: "Description",
+                    rows: (2),
+                }));
+                const __VLS_107 = __VLS_106({
+                    modelValue: (__VLS_ctx.editDescription),
+                    label: "Description",
+                    rows: (2),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_106));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "flex justify-end gap-2 mt-1" },
+                });
+                const __VLS_109 = {}.VButton;
+                /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+                // @ts-ignore
+                const __VLS_110 = __VLS_asFunctionalComponent(__VLS_109, new __VLS_109({
+                    ...{ 'onClick': {} },
+                    variant: "ghost",
+                    size: "sm",
+                }));
+                const __VLS_111 = __VLS_110({
+                    ...{ 'onClick': {} },
+                    variant: "ghost",
+                    size: "sm",
+                }, ...__VLS_functionalComponentArgsRest(__VLS_110));
+                let __VLS_113;
+                let __VLS_114;
+                let __VLS_115;
+                const __VLS_116 = {
+                    onClick: (__VLS_ctx.cancelEditUserSetting)
+                };
+                __VLS_112.slots.default;
+                var __VLS_112;
+                const __VLS_117 = {}.VButton;
+                /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+                // @ts-ignore
+                const __VLS_118 = __VLS_asFunctionalComponent(__VLS_117, new __VLS_117({
+                    ...{ 'onClick': {} },
+                    variant: "primary",
+                    size: "sm",
+                    loading: (__VLS_ctx.settingsState.busy.value),
+                }));
+                const __VLS_119 = __VLS_118({
+                    ...{ 'onClick': {} },
+                    variant: "primary",
+                    size: "sm",
+                    loading: (__VLS_ctx.settingsState.busy.value),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_118));
+                let __VLS_121;
+                let __VLS_122;
+                let __VLS_123;
+                const __VLS_124 = {
+                    onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'user'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedUser))
+                            return;
+                        if (!(__VLS_ctx.editingKey === s.key))
+                            return;
+                        __VLS_ctx.saveEditUserSetting(s);
+                    }
+                };
+                __VLS_120.slots.default;
+                var __VLS_120;
+            }
+            else {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "text-sm break-words" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "opacity-70" },
+                });
+                (s.value ?? '(empty)');
+                if (s.description) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "text-xs opacity-60" },
+                    });
+                    (s.description);
+                }
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "flex justify-end gap-2 mt-1" },
+                });
+                const __VLS_125 = {}.VButton;
+                /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+                // @ts-ignore
+                const __VLS_126 = __VLS_asFunctionalComponent(__VLS_125, new __VLS_125({
+                    ...{ 'onClick': {} },
+                    variant: "ghost",
+                    size: "sm",
+                }));
+                const __VLS_127 = __VLS_126({
+                    ...{ 'onClick': {} },
+                    variant: "ghost",
+                    size: "sm",
+                }, ...__VLS_functionalComponentArgsRest(__VLS_126));
+                let __VLS_129;
+                let __VLS_130;
+                let __VLS_131;
+                const __VLS_132 = {
+                    onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'user'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedUser))
+                            return;
+                        if (!!(__VLS_ctx.editingKey === s.key))
+                            return;
+                        __VLS_ctx.startEditUserSetting(s);
+                    }
+                };
+                __VLS_128.slots.default;
+                var __VLS_128;
+                const __VLS_133 = {}.VButton;
+                /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+                // @ts-ignore
+                const __VLS_134 = __VLS_asFunctionalComponent(__VLS_133, new __VLS_133({
+                    ...{ 'onClick': {} },
+                    variant: "ghost",
+                    size: "sm",
+                }));
+                const __VLS_135 = __VLS_134({
+                    ...{ 'onClick': {} },
+                    variant: "ghost",
+                    size: "sm",
+                }, ...__VLS_functionalComponentArgsRest(__VLS_134));
+                let __VLS_137;
+                let __VLS_138;
+                let __VLS_139;
+                const __VLS_140 = {
+                    onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'user'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedUser))
+                            return;
+                        if (!!(__VLS_ctx.editingKey === s.key))
+                            return;
+                        __VLS_ctx.deleteUserSetting(s);
+                    }
+                };
+                __VLS_136.slots.default;
+                var __VLS_136;
+            }
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "border-t border-base-300 pt-3 mt-2 flex flex-col gap-2" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.h4, __VLS_intrinsicElements.h4)({
+            ...{ class: "text-xs uppercase opacity-60" },
+        });
+        const __VLS_141 = {}.VInput;
+        /** @type {[typeof __VLS_components.VInput, ]} */ ;
+        // @ts-ignore
+        const __VLS_142 = __VLS_asFunctionalComponent(__VLS_141, new __VLS_141({
+            modelValue: (__VLS_ctx.newSettingKey),
+            label: "Key",
+            placeholder: "e.g. ai.default.model",
+        }));
+        const __VLS_143 = __VLS_142({
+            modelValue: (__VLS_ctx.newSettingKey),
+            label: "Key",
+            placeholder: "e.g. ai.default.model",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_142));
+        const __VLS_145 = {}.VSelect;
+        /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+        // @ts-ignore
+        const __VLS_146 = __VLS_asFunctionalComponent(__VLS_145, new __VLS_145({
+            modelValue: (__VLS_ctx.newSettingType),
+            label: "Type",
+            options: (__VLS_ctx.settingTypeOptions),
+        }));
+        const __VLS_147 = __VLS_146({
+            modelValue: (__VLS_ctx.newSettingType),
+            label: "Type",
+            options: (__VLS_ctx.settingTypeOptions),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_146));
+        if (__VLS_ctx.newSettingType !== __VLS_ctx.SettingType.PASSWORD) {
+            const __VLS_149 = {}.VInput;
+            /** @type {[typeof __VLS_components.VInput, ]} */ ;
+            // @ts-ignore
+            const __VLS_150 = __VLS_asFunctionalComponent(__VLS_149, new __VLS_149({
+                modelValue: (__VLS_ctx.newSettingValue),
+                label: "Value",
+            }));
+            const __VLS_151 = __VLS_150({
+                modelValue: (__VLS_ctx.newSettingValue),
+                label: "Value",
+            }, ...__VLS_functionalComponentArgsRest(__VLS_150));
+        }
+        else {
+            const __VLS_153 = {}.VInput;
+            /** @type {[typeof __VLS_components.VInput, ]} */ ;
+            // @ts-ignore
+            const __VLS_154 = __VLS_asFunctionalComponent(__VLS_153, new __VLS_153({
+                modelValue: (__VLS_ctx.newSettingValue),
+                type: "password",
+                label: "Password",
+            }));
+            const __VLS_155 = __VLS_154({
+                modelValue: (__VLS_ctx.newSettingValue),
+                type: "password",
+                label: "Password",
+            }, ...__VLS_functionalComponentArgsRest(__VLS_154));
+        }
+        const __VLS_157 = {}.VTextarea;
+        /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
+        // @ts-ignore
+        const __VLS_158 = __VLS_asFunctionalComponent(__VLS_157, new __VLS_157({
+            modelValue: (__VLS_ctx.newSettingDescription),
+            label: "Description (optional)",
+            rows: (2),
+        }));
+        const __VLS_159 = __VLS_158({
+            modelValue: (__VLS_ctx.newSettingDescription),
+            label: "Description (optional)",
+            rows: (2),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_158));
+        const __VLS_161 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_162 = __VLS_asFunctionalComponent(__VLS_161, new __VLS_161({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            size: "sm",
+            disabled: (!__VLS_ctx.newSettingKey.trim()),
+            loading: (__VLS_ctx.settingsState.busy.value),
+        }));
+        const __VLS_163 = __VLS_162({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            size: "sm",
+            disabled: (!__VLS_ctx.newSettingKey.trim()),
+            loading: (__VLS_ctx.settingsState.busy.value),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_162));
+        let __VLS_165;
+        let __VLS_166;
+        let __VLS_167;
+        const __VLS_168 = {
+            onClick: (__VLS_ctx.addUserSetting)
+        };
+        __VLS_164.slots.default;
+        var __VLS_164;
+        var __VLS_92;
     }
 }
 else if (__VLS_ctx.selection.kind === 'team') {
@@ -698,82 +1106,82 @@ else if (__VLS_ctx.selection.kind === 'team') {
         });
     }
     else {
-        const __VLS_89 = {}.VCard;
+        const __VLS_169 = {}.VCard;
         /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
         // @ts-ignore
-        const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
+        const __VLS_170 = __VLS_asFunctionalComponent(__VLS_169, new __VLS_169({
             title: (`Team: ${__VLS_ctx.selectedTeam.name}`),
         }));
-        const __VLS_91 = __VLS_90({
+        const __VLS_171 = __VLS_170({
             title: (`Team: ${__VLS_ctx.selectedTeam.name}`),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_90));
-        __VLS_92.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_170));
+        __VLS_172.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex flex-col gap-3" },
         });
-        const __VLS_93 = {}.VInput;
+        const __VLS_173 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_94 = __VLS_asFunctionalComponent(__VLS_93, new __VLS_93({
+        const __VLS_174 = __VLS_asFunctionalComponent(__VLS_173, new __VLS_173({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedTeam.name),
             label: "Name",
             disabled: true,
             help: "Team name is immutable.",
         }));
-        const __VLS_95 = __VLS_94({
+        const __VLS_175 = __VLS_174({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedTeam.name),
             label: "Name",
             disabled: true,
             help: "Team name is immutable.",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_94));
-        let __VLS_97;
-        let __VLS_98;
-        let __VLS_99;
-        const __VLS_100 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_174));
+        let __VLS_177;
+        let __VLS_178;
+        let __VLS_179;
+        const __VLS_180 = {
             'onUpdate:modelValue': (() => { })
         };
-        var __VLS_96;
-        const __VLS_101 = {}.VInput;
+        var __VLS_176;
+        const __VLS_181 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_102 = __VLS_asFunctionalComponent(__VLS_101, new __VLS_101({
+        const __VLS_182 = __VLS_asFunctionalComponent(__VLS_181, new __VLS_181({
             modelValue: (__VLS_ctx.teamForm.title),
             label: "Title",
         }));
-        const __VLS_103 = __VLS_102({
+        const __VLS_183 = __VLS_182({
             modelValue: (__VLS_ctx.teamForm.title),
             label: "Title",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_102));
-        const __VLS_105 = {}.VCheckbox;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_182));
+        const __VLS_185 = {}.VCheckbox;
         /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
         // @ts-ignore
-        const __VLS_106 = __VLS_asFunctionalComponent(__VLS_105, new __VLS_105({
+        const __VLS_186 = __VLS_asFunctionalComponent(__VLS_185, new __VLS_185({
             modelValue: (__VLS_ctx.teamForm.enabled),
             label: "Enabled",
         }));
-        const __VLS_107 = __VLS_106({
+        const __VLS_187 = __VLS_186({
             modelValue: (__VLS_ctx.teamForm.enabled),
             label: "Enabled",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_106));
-        const __VLS_109 = {}.VTextarea;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_186));
+        const __VLS_189 = {}.VTextarea;
         /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
         // @ts-ignore
-        const __VLS_110 = __VLS_asFunctionalComponent(__VLS_109, new __VLS_109({
+        const __VLS_190 = __VLS_asFunctionalComponent(__VLS_189, new __VLS_189({
             modelValue: (__VLS_ctx.teamForm.membersText),
             label: "Members",
             placeholder: "One username per line. Removing a line drops the member.",
             rows: (6),
             help: (`${__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length} member${__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length === 1 ? '' : 's'}`),
         }));
-        const __VLS_111 = __VLS_110({
+        const __VLS_191 = __VLS_190({
             modelValue: (__VLS_ctx.teamForm.membersText),
             label: "Members",
             placeholder: "One username per line. Removing a line drops the member.",
             rows: (6),
             help: (`${__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length} member${__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length === 1 ? '' : 's'}`),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_110));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_190));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
             ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm opacity-80" },
         });
@@ -785,49 +1193,49 @@ else if (__VLS_ctx.selection.kind === 'team') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex justify-between" },
         });
-        const __VLS_113 = {}.VButton;
+        const __VLS_193 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_114 = __VLS_asFunctionalComponent(__VLS_113, new __VLS_113({
+        const __VLS_194 = __VLS_asFunctionalComponent(__VLS_193, new __VLS_193({
             ...{ 'onClick': {} },
             variant: "danger",
             loading: (__VLS_ctx.teamsState.busy.value),
         }));
-        const __VLS_115 = __VLS_114({
+        const __VLS_195 = __VLS_194({
             ...{ 'onClick': {} },
             variant: "danger",
             loading: (__VLS_ctx.teamsState.busy.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_114));
-        let __VLS_117;
-        let __VLS_118;
-        let __VLS_119;
-        const __VLS_120 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_194));
+        let __VLS_197;
+        let __VLS_198;
+        let __VLS_199;
+        const __VLS_200 = {
             onClick: (__VLS_ctx.deleteTeam)
         };
-        __VLS_116.slots.default;
-        var __VLS_116;
-        const __VLS_121 = {}.VButton;
+        __VLS_196.slots.default;
+        var __VLS_196;
+        const __VLS_201 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_122 = __VLS_asFunctionalComponent(__VLS_121, new __VLS_121({
+        const __VLS_202 = __VLS_asFunctionalComponent(__VLS_201, new __VLS_201({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.teamsState.busy.value),
         }));
-        const __VLS_123 = __VLS_122({
+        const __VLS_203 = __VLS_202({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.teamsState.busy.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_122));
-        let __VLS_125;
-        let __VLS_126;
-        let __VLS_127;
-        const __VLS_128 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_202));
+        let __VLS_205;
+        let __VLS_206;
+        let __VLS_207;
+        const __VLS_208 = {
             onClick: (__VLS_ctx.saveTeam)
         };
-        __VLS_124.slots.default;
-        var __VLS_124;
-        var __VLS_92;
+        __VLS_204.slots.default;
+        var __VLS_204;
+        var __VLS_172;
     }
 }
 {
@@ -855,379 +1263,379 @@ else if (__VLS_ctx.selection.kind === 'team') {
         });
     }
     else {
-        const __VLS_129 = {}.MarkdownView;
+        const __VLS_209 = {}.MarkdownView;
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
-        const __VLS_130 = __VLS_asFunctionalComponent(__VLS_129, new __VLS_129({
+        const __VLS_210 = __VLS_asFunctionalComponent(__VLS_209, new __VLS_209({
             source: (__VLS_ctx.help.content.value),
         }));
-        const __VLS_131 = __VLS_130({
+        const __VLS_211 = __VLS_210({
             source: (__VLS_ctx.help.content.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_130));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_210));
     }
 }
-const __VLS_133 = {}.VModal;
+const __VLS_213 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_134 = __VLS_asFunctionalComponent(__VLS_133, new __VLS_133({
+const __VLS_214 = __VLS_asFunctionalComponent(__VLS_213, new __VLS_213({
     modelValue: (__VLS_ctx.showCreateUser),
     title: "New user",
 }));
-const __VLS_135 = __VLS_134({
+const __VLS_215 = __VLS_214({
     modelValue: (__VLS_ctx.showCreateUser),
     title: "New user",
-}, ...__VLS_functionalComponentArgsRest(__VLS_134));
-__VLS_136.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_214));
+__VLS_216.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.newUserError) {
-    const __VLS_137 = {}.VAlert;
+    const __VLS_217 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_138 = __VLS_asFunctionalComponent(__VLS_137, new __VLS_137({
+    const __VLS_218 = __VLS_asFunctionalComponent(__VLS_217, new __VLS_217({
         variant: "error",
     }));
-    const __VLS_139 = __VLS_138({
+    const __VLS_219 = __VLS_218({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_138));
-    __VLS_140.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_218));
+    __VLS_220.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.newUserError);
-    var __VLS_140;
+    var __VLS_220;
 }
-const __VLS_141 = {}.VInput;
+const __VLS_221 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_142 = __VLS_asFunctionalComponent(__VLS_141, new __VLS_141({
+const __VLS_222 = __VLS_asFunctionalComponent(__VLS_221, new __VLS_221({
     modelValue: (__VLS_ctx.newUserName),
     label: "Name",
     required: true,
     help: "Lower-case alphanumerics with optional '.', '-' or '_'.",
 }));
-const __VLS_143 = __VLS_142({
+const __VLS_223 = __VLS_222({
     modelValue: (__VLS_ctx.newUserName),
     label: "Name",
     required: true,
     help: "Lower-case alphanumerics with optional '.', '-' or '_'.",
-}, ...__VLS_functionalComponentArgsRest(__VLS_142));
-const __VLS_145 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_222));
+const __VLS_225 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_146 = __VLS_asFunctionalComponent(__VLS_145, new __VLS_145({
+const __VLS_226 = __VLS_asFunctionalComponent(__VLS_225, new __VLS_225({
     modelValue: (__VLS_ctx.newUserTitle),
     label: "Title",
 }));
-const __VLS_147 = __VLS_146({
+const __VLS_227 = __VLS_226({
     modelValue: (__VLS_ctx.newUserTitle),
     label: "Title",
-}, ...__VLS_functionalComponentArgsRest(__VLS_146));
-const __VLS_149 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_226));
+const __VLS_229 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_150 = __VLS_asFunctionalComponent(__VLS_149, new __VLS_149({
+const __VLS_230 = __VLS_asFunctionalComponent(__VLS_229, new __VLS_229({
     modelValue: (__VLS_ctx.newUserEmail),
     label: "Email",
     type: "email",
 }));
-const __VLS_151 = __VLS_150({
+const __VLS_231 = __VLS_230({
     modelValue: (__VLS_ctx.newUserEmail),
     label: "Email",
     type: "email",
-}, ...__VLS_functionalComponentArgsRest(__VLS_150));
-const __VLS_153 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_230));
+const __VLS_233 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_154 = __VLS_asFunctionalComponent(__VLS_153, new __VLS_153({
+const __VLS_234 = __VLS_asFunctionalComponent(__VLS_233, new __VLS_233({
     modelValue: (__VLS_ctx.newUserPassword),
     label: "Password (optional)",
     type: "password",
     help: "Empty creates a passwordless account that cannot log in until you set one.",
 }));
-const __VLS_155 = __VLS_154({
+const __VLS_235 = __VLS_234({
     modelValue: (__VLS_ctx.newUserPassword),
     label: "Password (optional)",
     type: "password",
     help: "Empty creates a passwordless account that cannot log in until you set one.",
-}, ...__VLS_functionalComponentArgsRest(__VLS_154));
+}, ...__VLS_functionalComponentArgsRest(__VLS_234));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2" },
 });
-const __VLS_157 = {}.VButton;
+const __VLS_237 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_158 = __VLS_asFunctionalComponent(__VLS_157, new __VLS_157({
+const __VLS_238 = __VLS_asFunctionalComponent(__VLS_237, new __VLS_237({
     ...{ 'onClick': {} },
     variant: "ghost",
 }));
-const __VLS_159 = __VLS_158({
+const __VLS_239 = __VLS_238({
     ...{ 'onClick': {} },
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_158));
-let __VLS_161;
-let __VLS_162;
-let __VLS_163;
-const __VLS_164 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_238));
+let __VLS_241;
+let __VLS_242;
+let __VLS_243;
+const __VLS_244 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showCreateUser = false;
     }
 };
-__VLS_160.slots.default;
-var __VLS_160;
-const __VLS_165 = {}.VButton;
+__VLS_240.slots.default;
+var __VLS_240;
+const __VLS_245 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_166 = __VLS_asFunctionalComponent(__VLS_165, new __VLS_165({
+const __VLS_246 = __VLS_asFunctionalComponent(__VLS_245, new __VLS_245({
     ...{ 'onClick': {} },
     variant: "primary",
     loading: (__VLS_ctx.usersState.busy.value),
 }));
-const __VLS_167 = __VLS_166({
+const __VLS_247 = __VLS_246({
     ...{ 'onClick': {} },
     variant: "primary",
     loading: (__VLS_ctx.usersState.busy.value),
-}, ...__VLS_functionalComponentArgsRest(__VLS_166));
-let __VLS_169;
-let __VLS_170;
-let __VLS_171;
-const __VLS_172 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_246));
+let __VLS_249;
+let __VLS_250;
+let __VLS_251;
+const __VLS_252 = {
     onClick: (__VLS_ctx.submitCreateUser)
 };
-__VLS_168.slots.default;
-var __VLS_168;
-var __VLS_136;
-const __VLS_173 = {}.VModal;
+__VLS_248.slots.default;
+var __VLS_248;
+var __VLS_216;
+const __VLS_253 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_174 = __VLS_asFunctionalComponent(__VLS_173, new __VLS_173({
+const __VLS_254 = __VLS_asFunctionalComponent(__VLS_253, new __VLS_253({
     modelValue: (__VLS_ctx.showCreateTeam),
     title: "New team",
 }));
-const __VLS_175 = __VLS_174({
+const __VLS_255 = __VLS_254({
     modelValue: (__VLS_ctx.showCreateTeam),
     title: "New team",
-}, ...__VLS_functionalComponentArgsRest(__VLS_174));
-__VLS_176.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_254));
+__VLS_256.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.newTeamError) {
-    const __VLS_177 = {}.VAlert;
+    const __VLS_257 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_178 = __VLS_asFunctionalComponent(__VLS_177, new __VLS_177({
+    const __VLS_258 = __VLS_asFunctionalComponent(__VLS_257, new __VLS_257({
         variant: "error",
     }));
-    const __VLS_179 = __VLS_178({
+    const __VLS_259 = __VLS_258({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_178));
-    __VLS_180.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_258));
+    __VLS_260.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.newTeamError);
-    var __VLS_180;
+    var __VLS_260;
 }
-const __VLS_181 = {}.VInput;
+const __VLS_261 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_182 = __VLS_asFunctionalComponent(__VLS_181, new __VLS_181({
+const __VLS_262 = __VLS_asFunctionalComponent(__VLS_261, new __VLS_261({
     modelValue: (__VLS_ctx.newTeamName),
     label: "Name",
     required: true,
     help: "Lower-case alphanumerics with optional '-' or '_'.",
 }));
-const __VLS_183 = __VLS_182({
+const __VLS_263 = __VLS_262({
     modelValue: (__VLS_ctx.newTeamName),
     label: "Name",
     required: true,
     help: "Lower-case alphanumerics with optional '-' or '_'.",
-}, ...__VLS_functionalComponentArgsRest(__VLS_182));
-const __VLS_185 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_262));
+const __VLS_265 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_186 = __VLS_asFunctionalComponent(__VLS_185, new __VLS_185({
+const __VLS_266 = __VLS_asFunctionalComponent(__VLS_265, new __VLS_265({
     modelValue: (__VLS_ctx.newTeamTitle),
     label: "Title",
 }));
-const __VLS_187 = __VLS_186({
+const __VLS_267 = __VLS_266({
     modelValue: (__VLS_ctx.newTeamTitle),
     label: "Title",
-}, ...__VLS_functionalComponentArgsRest(__VLS_186));
-const __VLS_189 = {}.VTextarea;
+}, ...__VLS_functionalComponentArgsRest(__VLS_266));
+const __VLS_269 = {}.VTextarea;
 /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
 // @ts-ignore
-const __VLS_190 = __VLS_asFunctionalComponent(__VLS_189, new __VLS_189({
+const __VLS_270 = __VLS_asFunctionalComponent(__VLS_269, new __VLS_269({
     modelValue: (__VLS_ctx.newTeamMembersText),
     label: "Initial members",
     placeholder: "One username per line.",
     rows: (4),
 }));
-const __VLS_191 = __VLS_190({
+const __VLS_271 = __VLS_270({
     modelValue: (__VLS_ctx.newTeamMembersText),
     label: "Initial members",
     placeholder: "One username per line.",
     rows: (4),
-}, ...__VLS_functionalComponentArgsRest(__VLS_190));
+}, ...__VLS_functionalComponentArgsRest(__VLS_270));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2" },
 });
-const __VLS_193 = {}.VButton;
+const __VLS_273 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_194 = __VLS_asFunctionalComponent(__VLS_193, new __VLS_193({
+const __VLS_274 = __VLS_asFunctionalComponent(__VLS_273, new __VLS_273({
     ...{ 'onClick': {} },
     variant: "ghost",
 }));
-const __VLS_195 = __VLS_194({
+const __VLS_275 = __VLS_274({
     ...{ 'onClick': {} },
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_194));
-let __VLS_197;
-let __VLS_198;
-let __VLS_199;
-const __VLS_200 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_274));
+let __VLS_277;
+let __VLS_278;
+let __VLS_279;
+const __VLS_280 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showCreateTeam = false;
     }
 };
-__VLS_196.slots.default;
-var __VLS_196;
-const __VLS_201 = {}.VButton;
+__VLS_276.slots.default;
+var __VLS_276;
+const __VLS_281 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_202 = __VLS_asFunctionalComponent(__VLS_201, new __VLS_201({
+const __VLS_282 = __VLS_asFunctionalComponent(__VLS_281, new __VLS_281({
     ...{ 'onClick': {} },
     variant: "primary",
     loading: (__VLS_ctx.teamsState.busy.value),
 }));
-const __VLS_203 = __VLS_202({
+const __VLS_283 = __VLS_282({
     ...{ 'onClick': {} },
     variant: "primary",
     loading: (__VLS_ctx.teamsState.busy.value),
-}, ...__VLS_functionalComponentArgsRest(__VLS_202));
-let __VLS_205;
-let __VLS_206;
-let __VLS_207;
-const __VLS_208 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_282));
+let __VLS_285;
+let __VLS_286;
+let __VLS_287;
+const __VLS_288 = {
     onClick: (__VLS_ctx.submitCreateTeam)
 };
-__VLS_204.slots.default;
-var __VLS_204;
-var __VLS_176;
-const __VLS_209 = {}.VModal;
+__VLS_284.slots.default;
+var __VLS_284;
+var __VLS_256;
+const __VLS_289 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_210 = __VLS_asFunctionalComponent(__VLS_209, new __VLS_209({
+const __VLS_290 = __VLS_asFunctionalComponent(__VLS_289, new __VLS_289({
     modelValue: (__VLS_ctx.showSetPassword),
     title: "Set password",
 }));
-const __VLS_211 = __VLS_210({
+const __VLS_291 = __VLS_290({
     modelValue: (__VLS_ctx.showSetPassword),
     title: "Set password",
-}, ...__VLS_functionalComponentArgsRest(__VLS_210));
-__VLS_212.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_290));
+__VLS_292.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.passwordError) {
-    const __VLS_213 = {}.VAlert;
+    const __VLS_293 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_214 = __VLS_asFunctionalComponent(__VLS_213, new __VLS_213({
+    const __VLS_294 = __VLS_asFunctionalComponent(__VLS_293, new __VLS_293({
         variant: "error",
     }));
-    const __VLS_215 = __VLS_214({
+    const __VLS_295 = __VLS_294({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_214));
-    __VLS_216.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_294));
+    __VLS_296.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.passwordError);
-    var __VLS_216;
+    var __VLS_296;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
     ...{ class: "text-sm opacity-80" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
 (__VLS_ctx.selection?.kind === 'user' ? __VLS_ctx.selection.name : '');
-const __VLS_217 = {}.VInput;
+const __VLS_297 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_218 = __VLS_asFunctionalComponent(__VLS_217, new __VLS_217({
+const __VLS_298 = __VLS_asFunctionalComponent(__VLS_297, new __VLS_297({
     modelValue: (__VLS_ctx.passwordPlaintext),
     label: "New password",
     type: "password",
     required: true,
     autocomplete: "new-password",
 }));
-const __VLS_219 = __VLS_218({
+const __VLS_299 = __VLS_298({
     modelValue: (__VLS_ctx.passwordPlaintext),
     label: "New password",
     type: "password",
     required: true,
     autocomplete: "new-password",
-}, ...__VLS_functionalComponentArgsRest(__VLS_218));
-const __VLS_221 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_298));
+const __VLS_301 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_222 = __VLS_asFunctionalComponent(__VLS_221, new __VLS_221({
+const __VLS_302 = __VLS_asFunctionalComponent(__VLS_301, new __VLS_301({
     modelValue: (__VLS_ctx.passwordPlaintextRepeat),
     label: "Repeat password",
     type: "password",
     required: true,
     autocomplete: "new-password",
 }));
-const __VLS_223 = __VLS_222({
+const __VLS_303 = __VLS_302({
     modelValue: (__VLS_ctx.passwordPlaintextRepeat),
     label: "Repeat password",
     type: "password",
     required: true,
     autocomplete: "new-password",
-}, ...__VLS_functionalComponentArgsRest(__VLS_222));
+}, ...__VLS_functionalComponentArgsRest(__VLS_302));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2" },
 });
-const __VLS_225 = {}.VButton;
+const __VLS_305 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_226 = __VLS_asFunctionalComponent(__VLS_225, new __VLS_225({
+const __VLS_306 = __VLS_asFunctionalComponent(__VLS_305, new __VLS_305({
     ...{ 'onClick': {} },
     variant: "ghost",
 }));
-const __VLS_227 = __VLS_226({
+const __VLS_307 = __VLS_306({
     ...{ 'onClick': {} },
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_226));
-let __VLS_229;
-let __VLS_230;
-let __VLS_231;
-const __VLS_232 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_306));
+let __VLS_309;
+let __VLS_310;
+let __VLS_311;
+const __VLS_312 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showSetPassword = false;
     }
 };
-__VLS_228.slots.default;
-var __VLS_228;
-const __VLS_233 = {}.VButton;
+__VLS_308.slots.default;
+var __VLS_308;
+const __VLS_313 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_234 = __VLS_asFunctionalComponent(__VLS_233, new __VLS_233({
+const __VLS_314 = __VLS_asFunctionalComponent(__VLS_313, new __VLS_313({
     ...{ 'onClick': {} },
     variant: "primary",
     loading: (__VLS_ctx.usersState.busy.value),
 }));
-const __VLS_235 = __VLS_234({
+const __VLS_315 = __VLS_314({
     ...{ 'onClick': {} },
     variant: "primary",
     loading: (__VLS_ctx.usersState.busy.value),
-}, ...__VLS_functionalComponentArgsRest(__VLS_234));
-let __VLS_237;
-let __VLS_238;
-let __VLS_239;
-const __VLS_240 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_314));
+let __VLS_317;
+let __VLS_318;
+let __VLS_319;
+const __VLS_320 = {
     onClick: (__VLS_ctx.submitSetPassword)
 };
-__VLS_236.slots.default;
-var __VLS_236;
-var __VLS_212;
+__VLS_316.slots.default;
+var __VLS_316;
+var __VLS_292;
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -1309,6 +1717,46 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['divide-y']} */ ;
+/** @type {__VLS_StyleScopedClasses['divide-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['setting-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['break-words']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-t']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['pt-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -1371,9 +1819,19 @@ const __VLS_self = (await import('vue')).defineComponent({
             VModal: VModal,
             VSelect: VSelect,
             VTextarea: VTextarea,
+            SettingType: SettingType,
             usersState: usersState,
             teamsState: teamsState,
+            settingsState: settingsState,
             help: help,
+            settingTypeOptions: settingTypeOptions,
+            editingKey: editingKey,
+            editValue: editValue,
+            editDescription: editDescription,
+            newSettingKey: newSettingKey,
+            newSettingValue: newSettingValue,
+            newSettingType: newSettingType,
+            newSettingDescription: newSettingDescription,
             selection: selection,
             banner: banner,
             formError: formError,
@@ -1400,6 +1858,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             isOwnAccount: isOwnAccount,
             breadcrumbs: breadcrumbs,
             combinedError: combinedError,
+            addUserSetting: addUserSetting,
+            startEditUserSetting: startEditUserSetting,
+            cancelEditUserSetting: cancelEditUserSetting,
+            saveEditUserSetting: saveEditUserSetting,
+            deleteUserSetting: deleteUserSetting,
             selectUser: selectUser,
             selectTeam: selectTeam,
             isSelectedUser: isSelectedUser,

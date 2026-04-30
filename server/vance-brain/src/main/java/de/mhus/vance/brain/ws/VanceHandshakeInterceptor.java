@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.ws;
 
-import de.mhus.vance.api.ws.ClientType;
 import de.mhus.vance.api.ws.HandshakeHeaders;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import de.mhus.vance.shared.location.LocationService;
@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -38,11 +39,22 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
  * or resume a session via {@code session.create} / {@code session.resume}
  * WebSocket messages.
  *
- * <p>Error mapping (see {@code specification/websocket-protokoll.md} §2):
+ * <p>Error mapping (see {@code specification/client-protokoll-erweiterbarkeit.md}
+ * §2.1a):
  * <ul>
  *   <li>missing or invalid JWT → 401</li>
- *   <li>missing / invalid {@code X-Vance-Client-Type} or {@code -Version} → 400</li>
+ *   <li>{@code X-Vance-Profile} value violates the shape pattern → 400</li>
+ *   <li>missing {@code X-Vance-Client-Version} → 400</li>
  * </ul>
+ *
+ * <p>Profile is an <em>open string</em> — unknown values are accepted; whether
+ * a recipe-profile-block exists for the value is decided later by the recipe
+ * resolver (with {@code profiles.default} as fallback). Only the shape is
+ * checked here.
+ *
+ * <p>If the profile is omitted entirely the most restrictive canonical value
+ * ({@link Profiles#WEB}) is assumed — this is the default for browser-based
+ * clients that do not pass {@code ?profile=}.
  */
 @Component
 @RequiredArgsConstructor
@@ -50,6 +62,8 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 public class VanceHandshakeInterceptor implements HandshakeInterceptor {
 
     public static final String ATTR_CONNECTION = "vance.connection";
+
+    private static final Pattern PROFILE_PATTERN = Pattern.compile(Profiles.PATTERN);
 
     private final LocationService locationService;
 
@@ -66,37 +80,51 @@ public class VanceHandshakeInterceptor implements HandshakeInterceptor {
             return false;
         }
 
-        String rawClientType = firstHeader(request, HandshakeHeaders.CLIENT_TYPE);
-        if (isBlank(rawClientType)) {
-            rawClientType = firstQueryParam(request, HandshakeHeaders.CLIENT_TYPE_PARAM);
+        String rawProfile = firstHeader(request, HandshakeHeaders.PROFILE);
+        if (isBlank(rawProfile)) {
+            rawProfile = firstQueryParam(request, HandshakeHeaders.PROFILE_PARAM);
         }
         String clientVersion = firstHeader(request, HandshakeHeaders.CLIENT_VERSION);
         if (isBlank(clientVersion)) {
             clientVersion = firstQueryParam(request, HandshakeHeaders.CLIENT_VERSION_PARAM);
         }
-        if (isBlank(rawClientType) || isBlank(clientVersion)) {
+        if (isBlank(clientVersion)) {
             response.setStatusCode(HttpStatus.BAD_REQUEST);
             return false;
         }
-        ClientType clientType;
-        try {
-            clientType = ClientType.fromWire(rawClientType);
-        } catch (IllegalArgumentException e) {
+        String profile;
+        if (isBlank(rawProfile)) {
+            // Spec §2.1a: missing profile defaults to the most restrictive canonical value.
+            profile = Profiles.WEB;
+        } else if (!PROFILE_PATTERN.matcher(rawProfile).matches()) {
+            // Shape-only check — value identity is open. Reject malformed
+            // strings to keep them out of logs / metric labels.
             response.setStatusCode(HttpStatus.BAD_REQUEST);
             return false;
+        } else {
+            profile = rawProfile;
+        }
+
+        String clientName = firstHeader(request, HandshakeHeaders.CLIENT_NAME);
+        if (isBlank(clientName)) {
+            clientName = firstQueryParam(request, HandshakeHeaders.CLIENT_NAME_PARAM);
+        }
+        if (isBlank(clientName)) {
+            clientName = null;
         }
 
         ConnectionContext ctx = new ConnectionContext(
                 claims.tenantId(),
                 claims.username(),
                 claims.username(),
-                clientType,
+                profile,
                 clientVersion,
+                clientName,
                 UUID.randomUUID().toString(),
                 locationService.getPodIp());
         attributes.put(ATTR_CONNECTION, ctx);
-        log.debug("Handshake ok: user='{}' tenant='{}' clientType={} connectionId='{}' podIp='{}'",
-                claims.username(), claims.tenantId(), clientType,
+        log.debug("Handshake ok: user='{}' tenant='{}' profile={} clientName='{}' connectionId='{}' podIp='{}'",
+                claims.username(), claims.tenantId(), profile, clientName,
                 ctx.getConnectionId(), ctx.getPodIp());
         return true;
     }

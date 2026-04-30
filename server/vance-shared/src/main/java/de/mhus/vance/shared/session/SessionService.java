@@ -1,7 +1,6 @@
 package de.mhus.vance.shared.session;
 
 import com.mongodb.client.result.UpdateResult;
-import de.mhus.vance.api.ws.ClientType;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -86,8 +85,9 @@ public class SessionService {
             String userId,
             String projectId,
             @Nullable String displayName,
-            ClientType clientType,
-            String clientVersion) {
+            String profile,
+            String clientVersion,
+            @Nullable String clientName) {
         Instant now = Instant.now();
         SessionDocument doc = SessionDocument.builder()
                 .sessionId(newSessionId())
@@ -95,8 +95,9 @@ public class SessionService {
                 .userId(userId)
                 .projectId(projectId)
                 .displayName(displayName)
-                .clientType(clientType)
+                .profile(profile)
                 .clientVersion(clientVersion)
+                .clientName(clientName)
                 .boundConnectionId(null)
                 .status(SessionStatus.OPEN)
                 .createdAt(now)

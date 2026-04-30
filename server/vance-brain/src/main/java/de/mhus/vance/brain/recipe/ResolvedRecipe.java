@@ -23,6 +23,7 @@ public record ResolvedRecipe(
         @Nullable String dataRelayCorrection,
         List<String> allowedToolsAdd,
         List<String> allowedToolsRemove,
+        Map<String, ProfileBlock> profiles,
         boolean locked,
         List<String> tags,
         RecipeSource source) {

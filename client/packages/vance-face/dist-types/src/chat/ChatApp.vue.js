@@ -40,7 +40,7 @@ async function openSocket() {
     return BrainWebSocket.connect({
         tenant,
         jwt,
-        clientType: 'web',
+        profile: 'web',
         clientVersion: CLIENT_VERSION,
     });
 }

@@ -132,11 +132,20 @@ public class ProcessCreateTool implements Tool {
                     recipeName, engineName);
         }
 
+        // Inherit the connection-profile from the parent process so a worker
+        // spawned by an Arthur running on a foot connection picks up the
+        // foot profile-block. Falls back to null when the parent has no
+        // profile (e.g. service-spawned processes).
+        String parentProfile = ctx.processId() == null ? null
+                : thinkProcessService.findById(ctx.processId())
+                        .map(ThinkProcessDocument::getConnectionProfile)
+                        .orElse(null);
+
         Optional<AppliedRecipe> applied;
         try {
             applied = recipeResolver.applyDefaulting(
                     ctx.tenantId(), ctx.projectId(),
-                    recipeName, engineName, callerParams);
+                    recipeName, engineName, parentProfile, callerParams);
         } catch (RecipeResolver.UnknownRecipeException ure) {
             throw new ToolException(ure.getMessage());
         } catch (RecipeResolver.UnknownEngineException uee) {
@@ -184,7 +193,7 @@ public class ProcessCreateTool implements Tool {
                         "Recipe '" + applied.name() + "' references unknown engine '"
                                 + applied.engine() + "'"));
         return thinkProcessService.create(
-                ctx.tenantId(), sessionId, name,
+                ctx.tenantId(), ctx.projectId(), sessionId, name,
                 engine.name(), engine.version(), title, goal,
                 /*parentProcessId*/ ctx.processId(),
                 applied.params(),
@@ -194,7 +203,8 @@ public class ProcessCreateTool implements Tool {
                 applied.promptMode(),
                 applied.intentCorrection(),
                 applied.dataRelayCorrection(),
-                applied.effectiveAllowedTools());
+                applied.effectiveAllowedTools(),
+                applied.connectionProfile());
     }
 
     private ThinkProcessDocument createFromEngine(
@@ -206,7 +216,7 @@ public class ProcessCreateTool implements Tool {
                         "Unknown engine '" + engineName + "' — known: "
                                 + thinkEngineServiceProvider.getObject().listEngines()));
         return thinkProcessService.create(
-                ctx.tenantId(), sessionId, name,
+                ctx.tenantId(), ctx.projectId(), sessionId, name,
                 engine.name(), engine.version(), title, goal,
                 /*parentProcessId*/ ctx.processId(),
                 callerParams);

@@ -11,4 +11,5 @@ export interface SessionSummary {
   lastActivityAt: number;
   bound: boolean;
   displayName?: string;
+  profile?: string;
 }

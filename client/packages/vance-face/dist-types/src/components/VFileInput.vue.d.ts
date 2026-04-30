@@ -19,9 +19,9 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
     "onUpdate:modelValue"?: ((files: File[]) => any) | undefined;
 }>, {
-    multiple: boolean;
     required: boolean;
     disabled: boolean;
+    multiple: boolean;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=VFileInput.vue.d.ts.map

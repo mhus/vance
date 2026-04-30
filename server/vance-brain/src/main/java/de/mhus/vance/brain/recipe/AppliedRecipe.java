@@ -28,6 +28,12 @@ public record AppliedRecipe(
         @Nullable String intentCorrection,
         @Nullable String dataRelayCorrection,
         @Nullable Set<String> effectiveAllowedTools,
+        /**
+         * Connection-profile that was active when this recipe was applied.
+         * Persisted on the spawned process for audit / late introspection;
+         * not used for engine logic.
+         */
+        @Nullable String connectionProfile,
         RecipeSource source,
         List<String> overriddenParamKeys) {
 }

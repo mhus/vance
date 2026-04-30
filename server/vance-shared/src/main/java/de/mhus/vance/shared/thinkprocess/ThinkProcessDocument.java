@@ -55,6 +55,15 @@ public class ThinkProcessDocument {
 
     private String tenantId = "";
 
+    /**
+     * Owning project ({@code ProjectDocument.name}). Denormalised from
+     * the session at spawn time so engines don't need a session lookup
+     * to drive project-aware settings cascades. Empty string means
+     * "unknown project" — the cascade then falls through to
+     * {@code _vance} only.
+     */
+    private String projectId = "";
+
     /** Owning session — {@code SessionDocument.sessionId}. */
     private String sessionId = "";
 
@@ -92,6 +101,17 @@ public class ThinkProcessDocument {
      * on this field.
      */
     private @Nullable String recipeName;
+
+    /**
+     * Connection-profile that was active when this process was spawned
+     * (e.g. {@code "foot"}, {@code "web"}, {@code "mobile"}). {@code null}
+     * for processes spawned outside an interactive connection (e.g. by
+     * Eddie tools acting on the user's behalf). Audit only — engines do
+     * not act on this field; the recipe-time profile-block merge has
+     * already been folded into {@link #engineParams},
+     * {@link #promptOverride}, and {@link #allowedToolsOverride}.
+     */
+    private @Nullable String connectionProfile;
 
     /**
      * Recipe-derived system-prompt fragment. Engines blend this with

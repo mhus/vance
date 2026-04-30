@@ -5,6 +5,7 @@ import { useInsightsSessions, useSessionProcesses, useProcessDetail, useProcessC
 import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
+import LlmTraceTab from './LlmTraceTab.vue';
 import { ChatRole, } from '@vance/generated';
 const tenantProjects = useTenantProjects();
 const sessionsState = useInsightsSessions();
@@ -584,7 +585,7 @@ else if (__VLS_ctx.selection.kind === 'session') {
                 ...{ class: "opacity-60" },
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.selectedSession.clientType);
+            (__VLS_ctx.selectedSession.profile);
             (__VLS_ctx.selectedSession.clientVersion);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
@@ -791,6 +792,21 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'tree' }) },
             });
         }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.selection))
+                        return;
+                    if (!!(__VLS_ctx.selection.kind === 'session'))
+                        return;
+                    if (!(__VLS_ctx.selection.kind === 'process'))
+                        return;
+                    if (!!(!__VLS_ctx.selectedProcess))
+                        return;
+                    __VLS_ctx.activeTab = 'llm-traces';
+                } },
+            ...{ class: "tab" },
+            ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'llm-traces' }) },
+        });
         if (__VLS_ctx.activeTab === 'overview') {
             const __VLS_52 = {}.VCard;
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
@@ -1176,6 +1192,16 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 var __VLS_95;
             }
         }
+        else if (__VLS_ctx.activeTab === 'llm-traces') {
+            /** @type {[typeof LlmTraceTab, ]} */ ;
+            // @ts-ignore
+            const __VLS_103 = __VLS_asFunctionalComponent(LlmTraceTab, new LlmTraceTab({
+                processId: (__VLS_ctx.selectedProcess.id),
+            }));
+            const __VLS_104 = __VLS_103({
+                processId: (__VLS_ctx.selectedProcess.id),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_103));
+        }
     }
 }
 {
@@ -1203,15 +1229,15 @@ else if (__VLS_ctx.selection.kind === 'process') {
         });
     }
     else {
-        const __VLS_103 = {}.MarkdownView;
+        const __VLS_106 = {}.MarkdownView;
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
-        const __VLS_104 = __VLS_asFunctionalComponent(__VLS_103, new __VLS_103({
+        const __VLS_107 = __VLS_asFunctionalComponent(__VLS_106, new __VLS_106({
             source: (__VLS_ctx.help.content.value),
         }));
-        const __VLS_105 = __VLS_104({
+        const __VLS_108 = __VLS_107({
             source: (__VLS_ctx.help.content.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_104));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_107));
     }
 }
 var __VLS_3;
@@ -1351,6 +1377,8 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-x-4']} */ ;
@@ -1464,6 +1492,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VSelect: VSelect,
             MarvinTreeItem: MarvinTreeItem,
             SessionTimelineTab: SessionTimelineTab,
+            LlmTraceTab: LlmTraceTab,
             ChatRole: ChatRole,
             sessionsState: sessionsState,
             chatState: chatState,

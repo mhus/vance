@@ -1,6 +1,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
-import { EditorShell, VAlert, VBackButton, VButton, VCard, VDataList, VEmptyState, VFileInput, VInput, VModal, VPagination, VSelect, CodeEditor, } from '@/components';
+import { EditorShell, VAlert, VBackButton, VButton, VCard, VDataList, VEmptyState, VFileInput, VInput, VModal, VPagination, VSelect, CodeEditor, MarkdownView, } from '@/components';
 import { useDocuments } from '@/composables/useDocuments';
+import { useHelp } from '@/composables/useHelp';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { consumeDocumentDraft, documentContentUrl } from '@vance/shared';
 import DocumentPreview from './DocumentPreview.vue';
@@ -150,6 +151,38 @@ async function changePage(p) {
         return;
     await docsState.loadPage(selectedProjectId.value, p);
 }
+// ─── Folder navigation (sidebar) ────────────────────────────────────────
+//
+// Top-level folders are shown in the left sidebar; clicking one filters
+// the main file list to that prefix. The sidebar highlight tracks the
+// pathPrefix bidirectionally — the path-input field and the sidebar
+// stay in sync regardless of which one the user touched.
+/** First-level folders only — `recipes` yes, `recipes/sub` no. */
+const topLevelFolders = computed(() => docsState.folders.value.filter((f) => !f.includes('/')));
+/**
+ * Sidebar selection key derived from the current `pathPrefix`.
+ * - `''` → "All" entry highlighted (no filter)
+ * - `<folder>` → that top-level folder entry highlighted
+ * - `null` → free-form prefix typed in the input, nothing highlighted
+ */
+const selectedFolderKey = computed(() => {
+    const p = docsState.pathPrefix.value.trim();
+    if (!p)
+        return '';
+    if (p.endsWith('/')) {
+        const stripped = p.slice(0, -1);
+        return stripped.includes('/') ? null : stripped;
+    }
+    return null;
+});
+function selectFolder(folder) {
+    // null === "All" (clear filter), otherwise the folder name without
+    // trailing slash. We always commit to pathPrefix with the slash so
+    // the prefix-match on the server doesn't accidentally span sibling
+    // folders that happen to share a prefix (e.g. "rec" matching
+    // "recipes" and "records").
+    applyPathFilter(folder == null ? '' : folder + '/', true);
+}
 async function openDocument(doc) {
     if (!doc.id)
         return;
@@ -163,6 +196,36 @@ function fillEditor() {
     editInlineText.value = sel?.inlineText ?? '';
     editError.value = null;
 }
+// ─── Contextual help ────────────────────────────────────────────────────
+//
+// When the selected document sits under one of these path prefixes we
+// load a matching field-reference Markdown into the right panel. Empty
+// when no prefix matches — the right panel is then suppressed entirely.
+//
+// Add new mappings here; the `_vance` prefix is implicit in the project
+// scope (the user editing a document in their `_vance` project sees
+// `recipes/foo.yaml`, not `_vance/recipes/foo.yaml`).
+const help = useHelp();
+const HELP_RULES = [
+    { prefix: 'recipes/', resource: 'recipe-field-docs.md' },
+    { prefix: 'strategies/', resource: 'strategy-field-docs.md' },
+];
+const helpResource = computed(() => {
+    const path = docsState.selected.value?.path ?? '';
+    if (!path)
+        return null;
+    const match = HELP_RULES.find((rule) => path.startsWith(rule.prefix));
+    return match ? match.resource : null;
+});
+watch(helpResource, (resource) => {
+    if (resource) {
+        help.load(resource);
+    }
+    else {
+        help.content.value = null;
+        help.error.value = null;
+    }
+}, { immediate: true });
 function backToList() {
     docsState.clearSelection();
     editError.value = null;
@@ -412,16 +475,21 @@ debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['folder-item']} */ ;
+// CSS variable injection 
+// CSS variable injection end 
 const __VLS_0 = {}.EditorShell;
 /** @type {[typeof __VLS_components.EditorShell, typeof __VLS_components.EditorShell, ]} */ ;
 // @ts-ignore
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
     title: "Documents",
     breadcrumbs: (__VLS_ctx.breadcrumbs),
+    wideRightPanel: (!!__VLS_ctx.helpResource),
 }));
 const __VLS_2 = __VLS_1({
     title: "Documents",
     breadcrumbs: (__VLS_ctx.breadcrumbs),
+    wideRightPanel: (!!__VLS_ctx.helpResource),
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 var __VLS_4 = {};
 __VLS_3.slots.default;
@@ -445,6 +513,53 @@ __VLS_3.slots.default;
         placeholder: "Select a project",
         disabled: (__VLS_ctx.projectsState.loading.value || __VLS_ctx.projectOptions.length === 0),
     }, ...__VLS_functionalComponentArgsRest(__VLS_6));
+}
+if (__VLS_ctx.selectedProjectId) {
+    {
+        const { sidebar: __VLS_thisSlot } = __VLS_3.slots;
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.nav, __VLS_intrinsicElements.nav)({
+            ...{ class: "p-3 flex flex-col gap-1" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.h3, __VLS_intrinsicElements.h3)({
+            ...{ class: "text-xs uppercase opacity-60 mb-2 px-2" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!(__VLS_ctx.selectedProjectId))
+                        return;
+                    __VLS_ctx.selectFolder(null);
+                } },
+            type: "button",
+            ...{ class: "folder-item" },
+            ...{ class: ({ 'folder-item--active': __VLS_ctx.selectedFolderKey === '' }) },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "folder-count" },
+        });
+        (__VLS_ctx.docsState.totalCount.value);
+        for (const [folder] of __VLS_getVForSourceType((__VLS_ctx.topLevelFolders))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!(__VLS_ctx.selectedProjectId))
+                            return;
+                        __VLS_ctx.selectFolder(folder);
+                    } },
+                key: (folder),
+                type: "button",
+                ...{ class: "folder-item" },
+                ...{ class: ({ 'folder-item--active': __VLS_ctx.selectedFolderKey === folder }) },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            (folder);
+        }
+        if (__VLS_ctx.topLevelFolders.length === 0) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+                ...{ class: "text-xs opacity-60 italic mt-2 px-2" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.code, __VLS_intrinsicElements.code)({});
+        }
+    }
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "container mx-auto px-4 py-6 max-w-5xl" },
@@ -1392,8 +1507,65 @@ else {
     var __VLS_223;
 }
 var __VLS_155;
+if (__VLS_ctx.helpResource) {
+    {
+        const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "p-4 flex flex-col gap-4" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.h3, __VLS_intrinsicElements.h3)({
+            ...{ class: "text-xs uppercase opacity-60 mb-2" },
+        });
+        if (__VLS_ctx.help.loading.value) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs opacity-60" },
+            });
+        }
+        else if (__VLS_ctx.help.error.value) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs opacity-60" },
+            });
+            (__VLS_ctx.help.error.value);
+        }
+        else if (!__VLS_ctx.help.content.value) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs opacity-60" },
+            });
+        }
+        else {
+            const __VLS_228 = {}.MarkdownView;
+            /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
+            // @ts-ignore
+            const __VLS_229 = __VLS_asFunctionalComponent(__VLS_228, new __VLS_228({
+                source: (__VLS_ctx.help.content.value),
+            }));
+            const __VLS_230 = __VLS_229({
+                source: (__VLS_ctx.help.content.value),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_229));
+        }
+    }
+}
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['w-64']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['folder-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['folder-item--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['folder-count']} */ ;
+/** @type {__VLS_StyleScopedClasses['folder-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['folder-item--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['italic']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['container']} */ ;
 /** @type {__VLS_StyleScopedClasses['mx-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-4']} */ ;
@@ -1486,6 +1658,20 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-error']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -1503,6 +1689,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VPagination: VPagination,
             VSelect: VSelect,
             CodeEditor: CodeEditor,
+            MarkdownView: MarkdownView,
             DocumentPreview: DocumentPreview,
             projectsState: projectsState,
             docsState: docsState,
@@ -1529,7 +1716,12 @@ const __VLS_self = (await import('vue')).defineComponent({
             applyPathFilter: applyPathFilter,
             projectOptions: projectOptions,
             changePage: changePage,
+            topLevelFolders: topLevelFolders,
+            selectedFolderKey: selectedFolderKey,
+            selectFolder: selectFolder,
             openDocument: openDocument,
+            help: help,
+            helpResource: helpResource,
             backToList: backToList,
             downloadUrl: downloadUrl,
             openCreateModal: openCreateModal,

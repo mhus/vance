@@ -9,8 +9,7 @@ const editorEntries = {
     inbox: resolve(__dirname, 'inbox.html'),
     chat: resolve(__dirname, 'chat-editor.html'),
     scopes: resolve(__dirname, 'scopes.html'),
-    recipes: resolve(__dirname, 'recipes.html'),
-    skills: resolve(__dirname, 'skills.html'),
+    tools: resolve(__dirname, 'tools.html'),
     insights: resolve(__dirname, 'insights.html'),
     users: resolve(__dirname, 'users.html'),
 };

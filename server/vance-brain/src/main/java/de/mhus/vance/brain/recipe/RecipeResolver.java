@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.recipe;
 
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -69,6 +70,7 @@ public class RecipeResolver {
             String tenantId,
             @Nullable String projectId,
             String name,
+            @Nullable String connectionProfile,
             @Nullable Map<String, Object> callerParams) {
         ResolvedRecipe r = resolve(tenantId, projectId, name)
                 .orElseThrow(() -> new UnknownRecipeException(name));
@@ -78,7 +80,15 @@ public class RecipeResolver {
                         "Recipe '" + r.name() + "' references unknown engine '"
                                 + r.engine() + "'"));
 
+        // Profile-block cascade: exact match → "default" key → empty.
+        // Open-string semantics — unknown profiles silently fall through.
+        ProfileBlock profileBlock = resolveProfileBlock(r, connectionProfile);
+
+        // Param merge order: recipe.params → profile.params → callerParams.
+        // Profile-params apply even when recipe is locked (recipe-author
+        // intent, not caller override). Caller-params skipped on locked.
         Map<String, Object> mergedParams = new LinkedHashMap<>(r.params());
+        mergedParams.putAll(profileBlock.params());
         List<String> overriddenKeys = new ArrayList<>();
         if (callerParams != null && !callerParams.isEmpty()) {
             if (r.locked()) {
@@ -106,26 +116,72 @@ public class RecipeResolver {
                 de.mhus.vance.brain.progress.ProgressLevel.PARAM_KEY,
                 de.mhus.vance.brain.progress.ProgressLevel.NORMAL.name().toLowerCase());
 
-        List<String> expandedAdd = expandLabelSelectors(
-                tenantId, projectId, r.allowedToolsAdd());
-        List<String> expandedRemove = expandLabelSelectors(
-                tenantId, projectId, r.allowedToolsRemove());
+        List<String> combinedAdd = concat(r.allowedToolsAdd(), profileBlock.allowedToolsAdd());
+        List<String> combinedRemove = concat(r.allowedToolsRemove(), profileBlock.allowedToolsRemove());
+        List<String> expandedAdd = expandLabelSelectors(tenantId, projectId, combinedAdd);
+        List<String> expandedRemove = expandLabelSelectors(tenantId, projectId, combinedRemove);
 
         Set<String> effectiveAllowed = computeAllowed(
                 engine.allowedTools(), expandedAdd, expandedRemove);
+
+        // Profile-append is always additive — applied to both prompt variants
+        // regardless of promptMode. The OVERWRITE/APPEND mode controls how the
+        // engine combines this with its fallback later (see specification/recipes.md §5.2).
+        String effectivePromptOverride = appendIfPresent(
+                r.promptPrefix(), profileBlock.promptPrefixAppend());
+        String effectivePromptOverrideSmall = r.promptPrefixSmall() == null
+                ? null
+                : appendIfPresent(r.promptPrefixSmall(), profileBlock.promptPrefixAppend());
 
         return new AppliedRecipe(
                 r.name(),
                 r.engine(),
                 mergedParams,
-                r.promptPrefix(),
-                r.promptPrefixSmall(),
+                effectivePromptOverride,
+                effectivePromptOverrideSmall,
                 r.promptMode(),
                 r.intentCorrection(),
                 r.dataRelayCorrection(),
                 effectiveAllowed,
+                connectionProfile,
                 r.source(),
                 List.copyOf(overriddenKeys));
+    }
+
+    /**
+     * Resolves the profile-block for {@code connectionProfile} via the
+     * cascade {@code exact-match → "default" → empty}. {@code null}/blank
+     * profile name skips the exact-match step and goes straight to
+     * "default" (then empty) — same semantics as an unknown profile.
+     */
+    private static ProfileBlock resolveProfileBlock(
+            ResolvedRecipe r, @Nullable String connectionProfile) {
+        Map<String, ProfileBlock> profiles = r.profiles();
+        if (profiles == null || profiles.isEmpty()) {
+            return ProfileBlock.EMPTY;
+        }
+        if (connectionProfile != null && !connectionProfile.isBlank()) {
+            ProfileBlock exact = profiles.get(connectionProfile);
+            if (exact != null) return exact;
+        }
+        ProfileBlock fallback = profiles.get(Profiles.DEFAULT);
+        return fallback == null ? ProfileBlock.EMPTY : fallback;
+    }
+
+    private static List<String> concat(List<String> a, List<String> b) {
+        if (a == null || a.isEmpty()) return b == null ? List.of() : b;
+        if (b == null || b.isEmpty()) return a;
+        List<String> out = new ArrayList<>(a.size() + b.size());
+        out.addAll(a);
+        out.addAll(b);
+        return out;
+    }
+
+    private static @Nullable String appendIfPresent(
+            @Nullable String base, @Nullable String append) {
+        if (append == null || append.isBlank()) return base;
+        if (base == null || base.isBlank()) return append;
+        return base + "\n\n" + append;
     }
 
     /**
@@ -224,18 +280,22 @@ public class RecipeResolver {
             @Nullable String projectId,
             @Nullable String recipeName,
             @Nullable String engineName,
+            @Nullable String connectionProfile,
             @Nullable Map<String, Object> callerParams) {
         if (recipeName != null && !recipeName.isBlank()) {
-            return Optional.of(apply(tenantId, projectId, recipeName, callerParams));
+            return Optional.of(apply(tenantId, projectId, recipeName,
+                    connectionProfile, callerParams));
         }
         if (engineName != null && !engineName.isBlank()) {
             // Engine-direct path with auto-recipe-by-engine-name.
             if (resolve(tenantId, projectId, engineName).isPresent()) {
-                return Optional.of(apply(tenantId, projectId, engineName, callerParams));
+                return Optional.of(apply(tenantId, projectId, engineName,
+                        connectionProfile, callerParams));
             }
             return Optional.empty(); // caller falls back to engine-direct
         }
-        return Optional.of(apply(tenantId, projectId, "default", callerParams));
+        return Optional.of(apply(tenantId, projectId, "default",
+                connectionProfile, callerParams));
     }
 
     private static String effectiveProjectId(@Nullable String projectId) {

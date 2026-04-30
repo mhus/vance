@@ -330,6 +330,71 @@ public class SettingService {
         return merged;
     }
 
+    // ──────────────────── Mixed user-project cascade ────────────────────
+
+    /**
+     * Cascade with explicit user-override:
+     * {@code think-process → _user_<userId> → <projectId>-project → _vance}.
+     *
+     * <p>Use only when user-overrides are <b>desired</b> for this key —
+     * e.g. a recipe with {@code useUserCredentials=true} that wants
+     * the user's personal API-key to win over the tenant default.
+     * The default {@link #getStringValueCascade} keeps the user-layer
+     * out for safety (Cost/Quota/Compliance); switching call-sites to
+     * this variant is an explicit opt-in.
+     */
+    public @Nullable String getStringValueUserProjectCascade(
+            String tenantId,
+            @Nullable String userId,
+            @Nullable String projectId,
+            @Nullable String thinkProcessId,
+            String key) {
+        if (thinkProcessId != null && !thinkProcessId.isBlank()) {
+            String v = getStringValue(tenantId, SCOPE_THINK_PROCESS, thinkProcessId, key);
+            if (v != null) return v;
+        }
+        if (userId != null && !userId.isBlank()) {
+            String v = getStringValue(tenantId, SCOPE_PROJECT,
+                    HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+            if (v != null) return v;
+        }
+        if (projectId != null && !projectId.isBlank()
+                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+            String v = getStringValue(tenantId, SCOPE_PROJECT, projectId, key);
+            if (v != null) return v;
+        }
+        return getStringValue(tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.VANCE_PROJECT_NAME, key);
+    }
+
+    /**
+     * Password variant of {@link #getStringValueUserProjectCascade} —
+     * same cascade, decrypts the first matching layer's ciphertext.
+     */
+    public @Nullable String getDecryptedPasswordUserProjectCascade(
+            String tenantId,
+            @Nullable String userId,
+            @Nullable String projectId,
+            @Nullable String thinkProcessId,
+            String key) {
+        if (thinkProcessId != null && !thinkProcessId.isBlank()) {
+            String v = getDecryptedPassword(tenantId, SCOPE_THINK_PROCESS, thinkProcessId, key);
+            if (v != null) return v;
+        }
+        if (userId != null && !userId.isBlank()) {
+            String v = getDecryptedPassword(tenantId, SCOPE_PROJECT,
+                    HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + userId, key);
+            if (v != null) return v;
+        }
+        if (projectId != null && !projectId.isBlank()
+                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+            String v = getDecryptedPassword(tenantId, SCOPE_PROJECT, projectId, key);
+            if (v != null) return v;
+        }
+        return getDecryptedPassword(tenantId, SCOPE_PROJECT,
+                HomeBootstrapService.VANCE_PROJECT_NAME, key);
+    }
+
     // ──────────────────── User-only settings ────────────────────
 
     /**

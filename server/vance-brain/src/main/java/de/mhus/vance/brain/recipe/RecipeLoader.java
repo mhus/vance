@@ -156,6 +156,7 @@ public class RecipeLoader {
         String dataRelayCorrection = stringOrNull(spec.get("dataRelayCorrection"));
         List<String> add = stringList(spec.get("allowedToolsAdd"), "allowedToolsAdd");
         List<String> remove = stringList(spec.get("allowedToolsRemove"), "allowedToolsRemove");
+        Map<String, ProfileBlock> profiles = parseProfiles(spec.get("profiles"));
         boolean locked = spec.get("locked") instanceof Boolean b && b;
         List<String> tags = stringList(spec.get("tags"), "tags");
 
@@ -163,8 +164,54 @@ public class RecipeLoader {
                 name, description, engine, params,
                 promptPrefix, promptPrefixSmall, promptMode,
                 intentCorrection, dataRelayCorrection,
-                add, remove, locked, tags,
+                add, remove, profiles, locked, tags,
                 mapSource(hit.source()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, ProfileBlock> parseProfiles(Object raw) {
+        if (raw == null) return Map.of();
+        if (!(raw instanceof Map<?, ?> rawMap)) {
+            throw new IllegalStateException("'profiles' must be a map");
+        }
+        Map<String, ProfileBlock> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if (key.isBlank()) {
+                throw new IllegalStateException("'profiles' contains a blank key");
+            }
+            Object blockRaw = entry.getValue();
+            if (blockRaw == null) {
+                out.put(key, ProfileBlock.EMPTY);
+                continue;
+            }
+            if (!(blockRaw instanceof Map<?, ?>)) {
+                throw new IllegalStateException(
+                        "'profiles." + key + "' must be a map");
+            }
+            Map<String, Object> blockMap = (Map<String, Object>) blockRaw;
+            List<String> blockAdd = stringList(
+                    blockMap.get("allowedToolsAdd"),
+                    "profiles." + key + ".allowedToolsAdd");
+            List<String> blockRemove = stringList(
+                    blockMap.get("allowedToolsRemove"),
+                    "profiles." + key + ".allowedToolsRemove");
+            String blockAppend = stringOrNull(blockMap.get("promptPrefixAppend"));
+            Map<String, Object> blockParams = new LinkedHashMap<>();
+            Object rawBlockParams = blockMap.get("params");
+            if (rawBlockParams != null) {
+                if (!(rawBlockParams instanceof Map<?, ?> bp)) {
+                    throw new IllegalStateException(
+                            "'profiles." + key + ".params' must be a map");
+                }
+                for (Map.Entry<?, ?> p : bp.entrySet()) {
+                    blockParams.put(String.valueOf(p.getKey()), p.getValue());
+                }
+            }
+            out.put(key, new ProfileBlock(
+                    blockAdd, blockRemove, blockAppend, Map.copyOf(blockParams)));
+        }
+        return Map.copyOf(out);
     }
 
     private static RecipeSource mapSource(LookupResult.Source source) {

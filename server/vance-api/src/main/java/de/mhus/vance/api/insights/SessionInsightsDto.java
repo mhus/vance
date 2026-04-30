@@ -37,9 +37,13 @@ public class SessionInsightsDto {
 
     private @Nullable String displayName;
 
-    private String clientType;
+    /** Connection profile of the client that created this session ({@code FOOT}/{@code WEB}/{@code MOBILE}). */
+    private String profile;
 
     private String clientVersion;
+
+    /** Optional client-supplied identifier (logs / UI). */
+    private @Nullable String clientName;
 
     private String status;
 

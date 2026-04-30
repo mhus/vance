@@ -9,8 +9,9 @@ export interface SessionInsightsDto {
   userId: string;
   projectId: string;
   displayName?: string;
-  clientType: string;
+  profile: string;
   clientVersion: string;
+  clientName?: string;
   status: string;
   boundConnectionId?: string;
   chatProcessId?: string;

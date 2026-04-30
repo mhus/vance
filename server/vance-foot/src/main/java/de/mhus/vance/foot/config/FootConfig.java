@@ -40,6 +40,12 @@ public class FootConfig {
     @Data
     public static class Client {
         private String version = "0.1.0";
+        /**
+         * Optional human-readable client identifier sent during the WebSocket
+         * handshake. Surfaced in brain logs and the session inspector — useful
+         * when running multiple foot instances against the same brain.
+         */
+        private @Nullable String name;
     }
 
     @Data

@@ -2,7 +2,7 @@ package de.mhus.vance.foot.connection;
 
 import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
-import de.mhus.vance.api.ws.ClientType;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.api.ws.ErrorData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.PingData;
@@ -100,8 +100,9 @@ public class ConnectionService {
             VanceWebSocketConfig wsConfig = VanceWebSocketConfig.builder()
                     .uri(wsUri)
                     .jwtToken(token.getToken())
-                    .clientType(ClientType.CLI)
+                    .profile(Profiles.FOOT)
                     .clientVersion(config.getClient().getVersion())
+                    .clientName(config.getClient().getName())
                     .build();
 
             VanceWebSocketClient client = new VanceWebSocketClient(wsConfig, new Listener());

@@ -139,6 +139,7 @@ public class SessionChatBootstrapper {
                     /*projectId*/ session.getProjectId(),
                     /*recipeName*/ null,
                     engineName,
+                    session.getProfile(),
                     /*callerParams*/ null).orElse(null);
             applied = resolved;
             if (resolved != null) {
@@ -157,6 +158,7 @@ public class SessionChatBootstrapper {
                 EngineBundledConfig cfg = bundled.get();
                 fresh = thinkProcessService.create(
                         session.getTenantId(),
+                        session.getProjectId(),
                         session.getSessionId(),
                         CHAT_PROCESS_NAME,
                         engine.name(), engine.version(),
@@ -170,10 +172,12 @@ public class SessionChatBootstrapper {
                         cfg.promptMode(),
                         cfg.intentCorrection(),
                         cfg.dataRelayCorrection(),
-                        cfg.allowedTools());
+                        cfg.allowedTools(),
+                        session.getProfile());
             } else if (applied != null) {
                 fresh = thinkProcessService.create(
                         session.getTenantId(),
+                        session.getProjectId(),
                         session.getSessionId(),
                         CHAT_PROCESS_NAME,
                         engine.name(), engine.version(),
@@ -187,10 +191,12 @@ public class SessionChatBootstrapper {
                         applied.promptMode(),
                         applied.intentCorrection(),
                         applied.dataRelayCorrection(),
-                        applied.effectiveAllowedTools());
+                        applied.effectiveAllowedTools(),
+                        applied.connectionProfile());
             } else {
                 fresh = thinkProcessService.create(
                         session.getTenantId(),
+                        session.getProjectId(),
                         session.getSessionId(),
                         CHAT_PROCESS_NAME,
                         engine.name(), engine.version(),

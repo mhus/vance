@@ -39,4 +39,13 @@ public class SessionSummary {
 
     /** Client-supplied display name at session-create time. */
     private @Nullable String displayName;
+
+    /**
+     * Connection-profile of the client that originally created the session
+     * (e.g. {@code "foot"}, {@code "web"}, {@code "mobile"}). Sessions can
+     * only be resumed by a connection with the matching profile —
+     * {@code session-bootstrap} returns an error otherwise. UIs should
+     * surface this so users can spot incompatible sessions before picking.
+     */
+    private @Nullable String profile;
 }

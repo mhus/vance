@@ -203,6 +203,7 @@ public class SessionBootstrapHandler implements WsHandler {
                         session.getProjectId(),
                         spec.getRecipe(),
                         spec.getEngine(),
+                        session.getProfile(),
                         spec.getParams());
             } catch (RecipeResolver.UnknownRecipeException e) {
                 sender.sendError(wsSession, envelope, 404, e.getMessage());
@@ -239,6 +240,7 @@ public class SessionBootstrapHandler implements WsHandler {
                 if (applied != null) {
                     fresh = thinkProcessService.create(
                             session.getTenantId(),
+                            session.getProjectId(),
                             session.getSessionId(),
                             spec.getName(),
                             engine.name(),
@@ -253,10 +255,12 @@ public class SessionBootstrapHandler implements WsHandler {
                             applied.promptMode(),
                             applied.intentCorrection(),
                             applied.dataRelayCorrection(),
-                            applied.effectiveAllowedTools());
+                            applied.effectiveAllowedTools(),
+                            applied.connectionProfile());
                 } else {
                     fresh = thinkProcessService.create(
                             session.getTenantId(),
+                            session.getProjectId(),
                             session.getSessionId(),
                             spec.getName(),
                             engine.name(),
@@ -342,6 +346,11 @@ public class SessionBootstrapHandler implements WsHandler {
                 .listForUser(ctx.getTenantId(), ctx.getUserId()).stream()
                 .filter(s -> s.getStatus() == SessionStatus.OPEN)
                 .filter(s -> s.getBoundConnectionId() == null)
+                // A foot connection auto-resumes only foot sessions and so on —
+                // mismatched profile would surface client-tools the connection
+                // can't host. Cross-profile resume is rejected explicitly in
+                // resumeAndBindSession() below.
+                .filter(s -> profileMatches(ctx, s))
                 .sorted((a, b) -> {
                     Instant aLa = a.getLastActivityAt();
                     Instant bLa = b.getLastActivityAt();
@@ -397,8 +406,9 @@ public class SessionBootstrapHandler implements WsHandler {
                 ctx.getUserId(),
                 projectId,
                 ctx.getDisplayName(),
-                ctx.getClientType(),
-                ctx.getClientVersion());
+                ctx.getProfile(),
+                ctx.getClientVersion(),
+                ctx.getClientName());
         boolean bound = sessionService.tryBind(
                 fresh.getSessionId(), ctx.getConnectionId());
         if (!bound) {
@@ -424,6 +434,16 @@ public class SessionBootstrapHandler implements WsHandler {
                 || !doc.getUserId().equals(ctx.getUserId())) {
             sender.sendError(wsSession, envelope, 403,
                     "Session '" + request.getSessionId() + "' belongs to another user");
+            return Optional.empty();
+        }
+        if (!profileMatches(ctx, doc)) {
+            // Cross-profile resume would mix client-tool sets — a web client
+            // would inherit foot-only tools etc. Force the user to start a
+            // fresh session under the current profile.
+            sender.sendError(wsSession, envelope, 409,
+                    "Session '" + request.getSessionId() + "' was created with profile '"
+                            + doc.getProfile() + "', this connection uses profile '"
+                            + ctx.getProfile() + "' — start a new session instead");
             return Optional.empty();
         }
         projectManager.claimForLocalPod(doc.getTenantId(), doc.getProjectId());
@@ -472,5 +492,17 @@ public class SessionBootstrapHandler implements WsHandler {
 
     private static boolean isBlank(@Nullable String s) {
         return s == null || s.isBlank();
+    }
+
+    /**
+     * Profile-match for resume: the session's profile must equal the
+     * connecting client's profile. Both sides are non-null in practice —
+     * the session-create path stamps a profile (default {@code web}) and
+     * the handshake interceptor likewise defaults missing values.
+     */
+    private static boolean profileMatches(ConnectionContext ctx, SessionDocument session) {
+        String sessionProfile = session.getProfile();
+        String ctxProfile = ctx.getProfile();
+        return sessionProfile != null && sessionProfile.equals(ctxProfile);
     }
 }

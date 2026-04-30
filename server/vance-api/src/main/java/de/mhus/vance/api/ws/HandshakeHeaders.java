@@ -13,24 +13,35 @@ public final class HandshakeHeaders {
     /** Wire prefix of the {@link #AUTHORIZATION} header value. */
     public static final String BEARER_PREFIX = "Bearer ";
 
-    /** {@code X-Vance-Client-Type} — client kind (cli/web/desktop/mobile). */
-    public static final String CLIENT_TYPE = "X-Vance-Client-Type";
+    /** {@code X-Vance-Profile} — connection profile (foot/web/mobile/daemon). */
+    public static final String PROFILE = "X-Vance-Profile";
 
     /** {@code X-Vance-Client-Version} — SemVer of the client build. */
     public static final String CLIENT_VERSION = "X-Vance-Client-Version";
 
     /**
-     * Query-parameter fallback for {@link #CLIENT_TYPE}. Browsers cannot
-     * attach custom headers to the WebSocket upgrade, so web clients
-     * pass the type as {@code ?clientType=web}.
+     * {@code X-Vance-Client-Name} — optional human-readable client identifier
+     * (logs / UI). For {@code DAEMON} connections the brain uses this name to
+     * route tool calls to the right daemon instance; for other profiles it is
+     * purely informational.
      */
-    public static final String CLIENT_TYPE_PARAM = "clientType";
+    public static final String CLIENT_NAME = "X-Vance-Client-Name";
+
+    /**
+     * Query-parameter fallback for {@link #PROFILE}. Browsers cannot
+     * attach custom headers to the WebSocket upgrade, so web clients
+     * pass the profile as {@code ?profile=web}.
+     */
+    public static final String PROFILE_PARAM = "profile";
 
     /**
      * Query-parameter fallback for {@link #CLIENT_VERSION}. Same reason
-     * as {@link #CLIENT_TYPE_PARAM}.
+     * as {@link #PROFILE_PARAM}.
      */
     public static final String CLIENT_VERSION_PARAM = "clientVersion";
+
+    /** Query-parameter fallback for {@link #CLIENT_NAME}. */
+    public static final String CLIENT_NAME_PARAM = "name";
 
     private HandshakeHeaders() {
     }

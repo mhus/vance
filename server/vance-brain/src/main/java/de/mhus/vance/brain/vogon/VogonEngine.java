@@ -353,7 +353,8 @@ public class VogonEngine implements ThinkEngine {
         ThinkProcessDocument child;
         try {
             AppliedRecipe applied = recipeResolver.apply(
-                    process.getTenantId(), ctx.projectId(), recipeName, /*params*/ null);
+                    process.getTenantId(), ctx.projectId(), recipeName,
+                    process.getConnectionProfile(), /*params*/ null);
             ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
                     .resolve(applied.engine())
                     .orElseThrow(() -> new IllegalStateException(
@@ -368,6 +369,7 @@ public class VogonEngine implements ThinkEngine {
                     + "-" + phase.getName() + "-" + attempt;
             child = thinkProcessService.create(
                     process.getTenantId(),
+                    process.getProjectId(),
                     process.getSessionId(),
                     childName,
                     targetEngine.name(),
@@ -382,7 +384,8 @@ public class VogonEngine implements ThinkEngine {
                     applied.promptMode(),
                     applied.intentCorrection(),
                     applied.dataRelayCorrection(),
-                    applied.effectiveAllowedTools());
+                    applied.effectiveAllowedTools(),
+                    applied.connectionProfile());
             state.getWorkerProcessIds().put(phase.getName(), child.getId());
             persistState(process, state);
             thinkEngineServiceProvider.getObject().start(child);

@@ -15,6 +15,17 @@ allowedToolsRemove:
   - client_file_edit
   - workspace_write
   - workspace_delete
+profiles:
+  # Browser clients have no filesystem / shell / JS — strip the rest
+  # of the client_* tools that the recipe-base still leaves in.
+  web:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
 tags:
   - code
   - read

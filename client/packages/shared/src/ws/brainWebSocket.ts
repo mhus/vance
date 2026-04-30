@@ -22,8 +22,14 @@ export type BrainWsApi = Pick<
 export interface BrainWebSocketOptions {
   tenant: string;
   jwt: string;
-  /** Wire value of {@code ClientType} — for the web UI always `'web'`. */
-  clientType: string;
+  /**
+   * Connection-profile sent on the WebSocket handshake. Open string —
+   * canonical values are `'foot' | 'web' | 'mobile' | 'daemon'` (see
+   * `de.mhus.vance.api.ws.Profiles`). For browser-based UI always
+   * `'web'`. Drives the recipe-profile-block selection on the brain
+   * side (see specification/recipes.md §6a).
+   */
+  profile: string;
   clientVersion: string;
   /** Optional override for tests. */
   url?: string;
@@ -44,7 +50,7 @@ interface PendingRequest {
  *
  * Browser WebSocket cannot send custom HTTP headers, so JWT and
  * client-identity travel as query parameters
- * (`?token=&clientType=&clientVersion=`). The server's
+ * (`?token=&profile=&clientVersion=`). The server's
  * {@code BrainAccessFilter} and {@code VanceHandshakeInterceptor}
  * accept those for the WS upgrade route — see
  * `specification/websocket-protokoll.md` §2.
@@ -270,7 +276,7 @@ function buildBrainWsUrl(options: BrainWebSocketOptions): string {
     .replace(/^https:\/\//, 'wss://');
   const params = new URLSearchParams({
     token: options.jwt,
-    clientType: options.clientType,
+    profile: options.profile,
     clientVersion: options.clientVersion,
   });
   return `${wsOrigin}/brain/${encodeURIComponent(options.tenant)}/ws?${params}`;

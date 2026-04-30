@@ -428,7 +428,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               <dt class="opacity-60">Project</dt><dd>{{ selectedSession.projectId }}</dd>
               <dt class="opacity-60">Status</dt><dd>{{ selectedSession.status }}</dd>
               <dt class="opacity-60">Client</dt>
-              <dd>{{ selectedSession.clientType }} {{ selectedSession.clientVersion }}</dd>
+              <dd>{{ selectedSession.profile }} {{ selectedSession.clientVersion }}</dd>
               <dt class="opacity-60">Bound conn</dt>
               <dd class="font-mono text-xs">{{ fmt(selectedSession.boundConnectionId) }}</dd>
               <dt class="opacity-60">Chat process</dt>

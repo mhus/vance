@@ -78,6 +78,7 @@ public class SessionListHandler implements WsHandler {
                 .lastActivityAt(toEpochMillis(doc.getLastActivityAt()))
                 .bound(doc.getBoundConnectionId() != null)
                 .displayName(doc.getDisplayName())
+                .profile(doc.getProfile())
                 .build();
     }
 

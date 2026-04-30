@@ -996,7 +996,8 @@ public class MarvinEngine implements ThinkEngine {
         ThinkProcessDocument child;
         try {
             AppliedRecipe applied = recipeResolver.apply(
-                    process.getTenantId(), ctx.projectId(), recipeName, recipeParams);
+                    process.getTenantId(), ctx.projectId(), recipeName,
+                    process.getConnectionProfile(), recipeParams);
             ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
                     .resolve(applied.engine())
                     .orElseThrow(() -> new IllegalStateException(
@@ -1005,6 +1006,7 @@ public class MarvinEngine implements ThinkEngine {
             String childName = "marvin-" + node.getId();
             child = thinkProcessService.create(
                     process.getTenantId(),
+                    process.getProjectId(),
                     process.getSessionId(),
                     childName,
                     targetEngine.name(),
@@ -1019,7 +1021,8 @@ public class MarvinEngine implements ThinkEngine {
                     applied.promptMode(),
                     applied.intentCorrection(),
                     applied.dataRelayCorrection(),
-                    applied.effectiveAllowedTools());
+                    applied.effectiveAllowedTools(),
+                    applied.connectionProfile());
             nodeService.setSpawnedProcessId(node, child.getId());
             thinkEngineServiceProvider.getObject().start(child);
             log.info("Marvin id='{}' WORKER node='{}' spawned child='{}' recipe='{}'",
@@ -1331,10 +1334,10 @@ public class MarvinEngine implements ThinkEngine {
             spec = null;
         }
         AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
-                spec, tenantId, /*projectId*/ null, process.getId());
+                spec, tenantId, process.getProjectId(), process.getId());
         String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
         String apiKey = settings.getDecryptedPasswordCascade(
-                tenantId, /*projectId*/ null, process.getId(), apiKeySetting);
+                tenantId, process.getProjectId(), process.getId(), apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
                     "No API key configured for provider '" + resolved.provider()

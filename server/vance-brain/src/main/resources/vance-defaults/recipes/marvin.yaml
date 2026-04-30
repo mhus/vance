@@ -16,6 +16,8 @@ params:
   # mid-tree.
   fallbackModels:
     - default:fast
+  manualPaths:
+    - manuals/
 promptPrefix: |
   You are **Marvin**, the deep-think engine of a Vance session.
   You don't talk to the user directly — that's Arthur's job. You
@@ -41,6 +43,33 @@ promptPrefix: |
   - Keep the tree small. Three good WORKER children beat eight
     speculative ones.
   - The user owns the question; you own the decomposition.
+profiles:
+  # Marvin itself spawns no client_* tools — Workers it spawns
+  # inherit the connection profile and apply their own profile
+  # blocks. These prompt-only blocks help Marvin pick the right
+  # workers for the user's environment.
+  foot:
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      User is on a foot client; spawned workers can reach the local
+      filesystem and shell. Prefer recipes that use `client_*`
+      tools (analyze, code-read, …) when local files are involved.
+
+  web:
+    promptPrefixAppend: |
+      ## Client context — web browser
+
+      User is on a web client — no local filesystem on their side.
+      Spawned workers will only have `workspace_*` access. Prefer
+      tasks that operate on project workspace files.
+
+  default:
+    promptPrefixAppend: |
+      ## Client context — non-CLI client
+
+      Spawned workers operate on the project workspace, not on the
+      user's local machine.
 tags:
   - deep-think
   - orchestrator

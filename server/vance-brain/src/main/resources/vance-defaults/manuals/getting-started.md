@@ -40,5 +40,5 @@ Everything is anchored to a **tenant**. Inside a tenant:
 
 ## When unsure
 
-Run `docs_list` to see what's bundled. `docs_read tools` for the tool
-catalogue, `docs_read processes` for sub-process patterns.
+Run `manual_list` to see what's bundled. `manual_read tools` for the tool
+catalogue, `manual_read processes` for sub-process patterns.

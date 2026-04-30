@@ -191,8 +191,8 @@ public class MarvinEngine implements ThinkEngine {
             "current_time",
             "recipe_list",
             "recipe_describe",
-            "docs_list",
-            "docs_read",
+            "manual_list",
+            "manual_read",
             "web_search",
             "web_fetch",
             "execute_javascript");

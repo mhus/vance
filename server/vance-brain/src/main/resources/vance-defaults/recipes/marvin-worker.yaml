@@ -13,6 +13,8 @@ params:
   model: default:analyze
   validation: false
   maxIterations: 10
+  manualPaths:
+    - manuals/
 promptPrefix: |
   You are a Marvin worker. Marvin handed you a goal and a tool
   pool. Use the tools to gather concrete data; reason; arrive at
@@ -71,6 +73,43 @@ intentCorrection: |
   something ('%s') but emitted no tool call. Either issue the
   tool call now, or end the turn with the JSON output object
   summarising what you have.
+profiles:
+  foot:
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      You are reachable from a foot client. Prefer `client_*` tools
+      to operate on the user's actual local files / shell.
+
+  web:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      ## Client context — web browser
+
+      No local filesystem; use `workspace_*` for project files.
+
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      ## Client context — non-CLI client
+
+      No local filesystem; use `workspace_*`.
 tags:
   - marvin
   - worker

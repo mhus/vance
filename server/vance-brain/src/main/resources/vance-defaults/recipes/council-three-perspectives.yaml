@@ -5,6 +5,8 @@ description: |
   bei denen mehrere Sichten Wert bringen.
 engine: zaphod
 params:
+  manualPaths:
+    - manuals/
   pattern: COUNCIL
   heads:
     - name: optimist

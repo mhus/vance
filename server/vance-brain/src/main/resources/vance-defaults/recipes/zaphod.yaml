@@ -5,6 +5,8 @@ description: |
   wählen (z.B. council-three-perspectives).
 engine: zaphod
 params:
+  manualPaths:
+    - manuals/
   # Synthesis call falls through to fast tier if the tenant default
   # is rate-limited.
   fallbackModels:

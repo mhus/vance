@@ -7,10 +7,42 @@ params:
   model: default:fast
   validation: true
   maxIterations: 3
+  manualPaths:
+    - manuals/
 promptPrefix: |
   You are a quick-lookup worker. Answer in one short paragraph or
   a single line. Use a tool, paste the result. Do not explain
   unless asked.
+profiles:
+  foot:
+    promptPrefixAppend: |
+      Foot client — `client_*` tools reach the user's local files.
+
+  web:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      Web client — use `workspace_*` for project files; no local FS.
+
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      Non-CLI client — use `workspace_*` for project files.
 tags:
   - fast
   - lookup

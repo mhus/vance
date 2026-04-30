@@ -110,8 +110,8 @@ public class ArthurEngine implements ThinkEngine {
             "process_status",
             "recipe_list",
             "recipe_describe",
-            "docs_list",
-            "docs_read",
+            "manual_list",
+            "manual_read",
             "inbox_post");
 
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";

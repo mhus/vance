@@ -6,6 +6,8 @@ params:
   model: default:analyze
   validation: true
   maxIterations: 10
+  manualPaths:
+    - manuals/
 promptPrefix: |
   You are an analysis worker. ALWAYS use tools to gather actual
   data; never guess from training. Include the substantive data
@@ -22,6 +24,15 @@ promptPrefixSmall: |
   Final reply: paste the actual data, then a one-paragraph
   summary. Cite tools used.
 profiles:
+  foot:
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      You are reachable from a foot client. Use `client_file_read`
+      / `client_file_list` / `client_exec_run` to operate on the
+      user's actual files and shell — that's the point of the foot
+      client.
+
   # Browser clients can't host filesystem / shell / JS tools.
   web:
     allowedToolsRemove:
@@ -33,6 +44,29 @@ profiles:
       - client_exec_kill
       - client_exec_status
       - client_javascript
+    promptPrefixAppend: |
+      ## Client context — web browser
+
+      No local filesystem on the client side. Use `workspace_read`
+      / `workspace_write` for project files; explain to the user
+      that local paths aren't reachable.
+
+  # Catch-all for unknown / future / API-only profiles — defensive.
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      ## Client context — non-CLI client
+
+      You are reachable from a client without local filesystem or
+      shell access. Use `workspace_*` for project files.
 tags:
   - analysis
   - research

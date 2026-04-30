@@ -16,7 +16,7 @@ tools:
       relate, and how to drive the chat. Read this when the user looks
       lost.
     parameters:
-      path: docs/getting-started.md
+      path: manuals/getting-started.md
     enabled: true
     primary: false
     labels: [docs, onboarding]
@@ -27,7 +27,7 @@ tools:
       Reference on think-process lifecycle, suspend/resume semantics,
       and how processes relate to sessions.
     parameters:
-      path: docs/processes.md
+      path: manuals/processes.md
     enabled: true
     primary: false
     labels: [docs, processes]
@@ -38,7 +38,7 @@ tools:
       Catalogue and conventions for the available tools — when to use
       `find_tools` vs. primary tools, error handling, scoping.
     parameters:
-      path: docs/tools.md
+      path: manuals/tools.md
     enabled: true
     primary: false
     labels: [docs, tools]

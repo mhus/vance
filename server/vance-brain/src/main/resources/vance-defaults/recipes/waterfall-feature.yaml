@@ -5,6 +5,8 @@ description: |
   single Marvin/Ford worker would suffice.
 engine: vogon
 params:
+  manualPaths:
+    - manuals/
   strategy: waterfall
   workerRecipes:
     planning: analyze

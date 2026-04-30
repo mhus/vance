@@ -6,6 +6,8 @@ params:
   model: default:code
   validation: true
   maxIterations: 10
+  manualPaths:
+    - manuals/
 promptPrefix: |
   You are a code-reading worker. Read files, follow references,
   summarise structure and call sites. Do not modify any files.
@@ -16,6 +18,14 @@ allowedToolsRemove:
   - workspace_write
   - workspace_delete
 profiles:
+  foot:
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      You are reachable from a foot client. Use `client_file_read`
+      / `client_file_list` / `client_exec_run` to inspect the user's
+      actual local source tree.
+
   # Browser clients have no filesystem / shell / JS — strip the rest
   # of the client_* tools that the recipe-base still leaves in.
   web:
@@ -26,6 +36,25 @@ profiles:
       - client_exec_kill
       - client_exec_status
       - client_javascript
+    promptPrefixAppend: |
+      ## Client context — web browser
+
+      No local filesystem on the client side. Use `workspace_read`
+      for project files.
+
+  # Catch-all for unknown / future / API-only profiles — defensive.
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      ## Client context — non-CLI client
+
+      No local filesystem; use `workspace_read` for project files.
 tags:
   - code
   - read

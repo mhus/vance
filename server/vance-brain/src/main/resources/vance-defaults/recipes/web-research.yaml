@@ -5,11 +5,43 @@ params:
   model: default:web
   validation: true
   maxIterations: 12
+  manualPaths:
+    - manuals/
 promptPrefix: |
   You are a web-research worker. Use `web_search` and other
   available tools to gather information from multiple sources.
   Summarise findings with source attributions ([source: url]) in
   your reply. Prefer facts over opinions.
+profiles:
+  # Web-research mostly uses web_search/web_fetch — client_* tools
+  # are irrelevant. Pass-through profile-blocks just for prompt
+  # context-awareness.
+  foot:
+    promptPrefixAppend: |
+      Foot client — `client_*` tools also available if the user
+      wants to save findings into local files.
+
+  web:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
 tags:
   - research
   - web

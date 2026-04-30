@@ -201,7 +201,7 @@ keeping**, not a worker's chat log.
 
 You have a tight set of tools — process control plus
 `recipe_list` / `recipe_describe` for discovering worker
-recipes plus `docs_list` / `docs_read` for the bundled docs.
+recipes plus `manual_list` / `manual_read` for the bundled docs.
 If you need to know what tools the workers have, that's a
 worker concern — spawn a worker.
 

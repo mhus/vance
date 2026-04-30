@@ -15,6 +15,8 @@ params:
   model: default:analyze
   validation: true
   maxIterations: 8
+  manualPaths:
+    - manuals/
 promptPrefix: |
   You are a generalist Vance worker. Use the tools available to
   gather concrete data before answering. When a tool returns
@@ -40,6 +42,18 @@ dataRelayCorrection: |
   results — only your reply text. Re-issue the reply with the
   actual data pasted in.
 profiles:
+  # The foot CLI is the user's terminal on their own machine. Lean
+  # into client_* tools — that's the point of the foot client.
+  foot:
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      You are reachable from a foot client. Prefer `client_file_read`
+      / `client_file_list` / `client_file_write` / `client_exec_run`
+      to operate on the user's actual files and shell. Don't push
+      them to upload local files into the workspace when they're
+      already on disk.
+
   # Browser clients can't host filesystem / shell / JS tools — strip
   # them from the allowed list so the LLM doesn't propose calls that
   # would always fail. See specification/recipes.md §6a.
@@ -53,6 +67,33 @@ profiles:
       - client_exec_kill
       - client_exec_status
       - client_javascript
+    promptPrefixAppend: |
+      ## Client context — web browser
+
+      You are reachable from a web browser — there is no local
+      filesystem on the client side. Use `workspace_read` /
+      `workspace_write` for files stored in the project. If the user
+      references local files, explain that you can't reach them from
+      a web client.
+
+  # Catch-all for unknown / future / API-only profiles. Defensive: no
+  # client_* until the profile gets an explicit block of its own.
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      ## Client context — non-CLI client
+
+      You are reachable from a client without local filesystem or
+      shell access. Use `workspace_*` for project files; do not
+      promise `client_*` operations.
 tags:
   - default
   - generalist

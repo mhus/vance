@@ -18,6 +18,8 @@ params:
   # the whole turn.
   fallbackModels:
     - default:fast
+  manualPaths:
+    - manuals/
   # Default prompts live in the document cascade — the Ford engine
   # loads prompts/ford-prompt.md (project → _vance → classpath:
   # vance-defaults/prompts/) as the engineDefault, and
@@ -42,6 +44,18 @@ dataRelayCorrection: |
   output, etc., as appropriate. If the tool returned irrelevant
   data, say so plainly.
 profiles:
+  # The foot CLI is the user's terminal on their own machine. Lean
+  # into client_* tools — that's the point of the foot client.
+  foot:
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      You are reachable from a foot client. Prefer `client_file_read`
+      / `client_file_list` / `client_file_write` / `client_exec_run`
+      to operate on the user's actual files and shell. Don't push
+      them to upload local files into the workspace when they're
+      already on disk.
+
   # Browser clients can't host filesystem / shell / JS tools — strip
   # them from the allowed list so the LLM doesn't propose calls that
   # would always fail. See specification/recipes.md §6a.
@@ -55,5 +69,31 @@ profiles:
       - client_exec_kill
       - client_exec_status
       - client_javascript
+    promptPrefixAppend: |
+      ## Client context — web browser
+
+      No local filesystem on the client side. Use `workspace_read`
+      / `workspace_write` for files stored in the project. If the
+      user references local files, explain that you can't reach
+      them from a web client.
+
+  # Catch-all for unknown / future / API-only profiles — defensive,
+  # no client_*.
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      ## Client context — non-CLI client
+
+      You are reachable from a client without local filesystem or
+      shell access. Use `workspace_*` for project files; do not
+      promise `client_*` operations.
 tags:
   - generalist

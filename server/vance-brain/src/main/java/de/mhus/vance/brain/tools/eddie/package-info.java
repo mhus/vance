@@ -1,9 +1,10 @@
 /**
- * Eddie hub-specific tools — surfaces the Eddie documentation set
- * via the {@code eddie/docs/} cascade (project → {@code _vance} →
- * {@code classpath:vance-defaults/eddie/docs/*.md}), separate from the
- * general Brain documentation read by {@code docs_list} /
- * {@code docs_read}. See {@code specification/eddie-engine.md}.
+ * Eddie hub-specific tools. Eddie's manuals live under
+ * {@code eddie/manuals/} and are merged with the general
+ * {@code manuals/} folder by the recipe-configured
+ * {@code params.manualPaths} (see Eddie's bundled config); the LLM
+ * reaches them through the general {@code manual_list} /
+ * {@code manual_read} tools. See {@code specification/eddie-engine.md}.
  */
 @NullMarked
 package de.mhus.vance.brain.tools.eddie;

@@ -18,6 +18,12 @@ params:
   # Aliases that the tenant hasn't configured are silently dropped.
   fallbackModels:
     - default:fast
+  # Folder list joined by manual_list / manual_read. Resolved through
+  # the document cascade per folder — tenants can drop additional
+  # how-tos into <project>/manuals/ or _vance/manuals/ without touching this
+  # recipe. Recipe order = precedence on duplicate filenames.
+  manualPaths:
+    - manuals/
   # Default prompts live in the document cascade — the Arthur engine
   # loads prompts/arthur-prompt.md (project → _vance → classpath:
   # vance-defaults/prompts/) as the engineDefault. Tenants override
@@ -35,6 +41,19 @@ intentCorrection: |
   emit it now: (a) the corresponding tool call, or (b) a
   direct question to the user without promising future action.
 profiles:
+  # The foot CLI is the user's terminal on their own machine — local
+  # files, shell, and JS run there. Reach them through client_*.
+  foot:
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      You are reachable from a foot client — the user's CLI on their
+      own machine. The user is editing files locally; reach them
+      through `client_file_read` / `client_file_list` /
+      `client_file_write` / `client_exec_run`. That is the point of
+      the foot client. Do not push the user to upload local files
+      into the project workspace when they're already on disk.
+
   # Browser clients can't host filesystem / shell / JS tools — strip
   # them from the allowed list so the LLM doesn't propose calls that
   # would always fail. See specification/recipes.md §6a.
@@ -48,6 +67,36 @@ profiles:
       - client_exec_kill
       - client_exec_status
       - client_javascript
+    promptPrefixAppend: |
+      ## Client context — web browser
+
+      You are reachable from a web browser — there is no local
+      filesystem on the client side. Use `workspace_read` /
+      `workspace_write` for files stored in the project. If the user
+      references local files (`~/Documents/foo.md`, paths on their
+      machine), explain that you can't reach them from a web client
+      and offer alternatives: upload to the workspace, or reconnect
+      via `vance` CLI.
+
+  # Catch-all for unknown / future / API-only profiles. Same
+  # restrictions as web — no client_* — until the new profile gets
+  # an explicit block of its own.
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    promptPrefixAppend: |
+      ## Client context — non-CLI client
+
+      You are reachable from a client without local filesystem or
+      shell access. Use `workspace_*` tools for project files; do not
+      promise `client_*` operations.
 tags:
   - chat
   - orchestrator

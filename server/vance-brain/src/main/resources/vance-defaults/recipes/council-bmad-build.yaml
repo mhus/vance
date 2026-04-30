@@ -8,6 +8,8 @@ description: |
   Story-Aufrisse vor der eigentlichen Implementierung.
 engine: zaphod
 params:
+  manualPaths:
+    - manuals/
   pattern: COUNCIL
   heads:
     - name: pm

@@ -71,9 +71,9 @@ public class EddieEngine implements ThinkEngine {
      *       remembered between sessions.</li>
      *   <li><b>Organizational</b>: {@code project_list},
      *       {@code recipe_list}, {@code recipe_describe},
-     *       {@code docs_list}, {@code docs_read} —
+     *       {@code manual_list}, {@code manual_read} —
      *       inventory of the user's projects + worker recipes
-     *       + Eddie docs. {@code project_create},
+     *       + the recipe-configured manuals. {@code project_create},
      *       {@code process_create}, {@code process_steer},
      *       {@code process_observe}, {@code peer_notify}
      *       arrive later in phase 3.</li>
@@ -122,12 +122,9 @@ public class EddieEngine implements ThinkEngine {
             "inbox_post",
             // Cross-hub sync — notify other Eddie sessions of the same user
             "peer_notify",
-            // Eddie hub-specific docs (separate from general Brain docs)
-            "eddie_docs_list",
-            "eddie_docs_read",
-            // General Brain docs (workers, RAG, internals)
-            "docs_list",
-            "docs_read");
+            // Manuals — recipe-configured folder list (eddie/manuals/ + manuals/)
+            "manual_list",
+            "manual_read");
 
     /**
      * Document-cascade paths for Eddie's main and small-model prompts.
@@ -228,6 +225,9 @@ public class EddieEngine implements ThinkEngine {
         params.put("model", DEFAULT_MODEL_ALIAS);
         params.put("validation", true);
         params.put("maxIterations", DEFAULT_MAX_ITERATIONS);
+        // Eddie joins her hub-specific manuals with the general docs
+        // — recipe order = precedence on duplicate filenames.
+        params.put("manualPaths", java.util.List.of("eddie/manuals/", "manuals/"));
 
         return new EngineBundledConfig(
                 params,

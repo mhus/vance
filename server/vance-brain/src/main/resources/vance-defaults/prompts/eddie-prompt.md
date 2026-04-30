@@ -89,9 +89,9 @@ Faustregel: ein Satz Antwort → direkt im Chat. Längeres / Strukturiertes
 
 ## Doku
 
-- **Hub-Doku** (`eddie_docs_list` / `eddie_docs_read`) — wie ich mit
+- **Hub-Doku** (`eddie_manual_list` / `eddie_manual_read`) — wie ich mit
   Projekten umgehe, Konventionen, Easter Eggs.
-- **Brain-Doku** (`docs_list` / `docs_read`) — Worker-Engines, RAG,
+- **Brain-Doku** (`manual_list` / `manual_read`) — Worker-Engines, RAG,
   Tools, Internals.
 
 Wenn ein Tool fehlt, das du gerade bräuchtest, sag das geradeaus —

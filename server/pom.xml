@@ -39,6 +39,7 @@
         <lanterna.version>3.1.3</lanterna.version>
         <rhino-engine.version>1.9.1</rhino-engine.version>
         <graaljs.version>25.0.3</graaljs.version>
+        <jgit.version>7.1.0.202411261347-r</jgit.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
@@ -126,6 +127,11 @@
                 <artifactId>js-community</artifactId>
                 <version>${graaljs.version}</version>
                 <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.jgit</groupId>
+                <artifactId>org.eclipse.jgit</artifactId>
+                <version>${jgit.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

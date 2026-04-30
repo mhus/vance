@@ -50,15 +50,54 @@ public class AesEncryptionService {
      * {@code null} so callers can pipe through cleanly.
      */
     public @Nullable String encrypt(@Nullable String plaintext) {
+        return encryptInternal(plaintext, secretKey, secureRandom);
+    }
+
+    /**
+     * Decrypts a Base64 blob produced by {@link #encrypt(String)}. Returns
+     * {@code null} for {@code null} / blank input.
+     */
+    public @Nullable String decrypt(@Nullable String ciphertext) {
+        return decryptInternal(ciphertext, secretKey);
+    }
+
+    /**
+     * Encrypts {@code plaintext} with a key derived from {@code password}.
+     * Used by the kit subsystem to re-encrypt PASSWORD-settings with a
+     * user-supplied vault passphrase for export. Same wire-format as
+     * {@link #encrypt(String)} so blobs are interchangeable across keys.
+     */
+    public static @Nullable String encryptWith(
+            @Nullable String plaintext, String password) {
+        if (password == null || password.isEmpty()) {
+            throw new EncryptionException("password must not be empty", null);
+        }
+        return encryptInternal(plaintext, deriveKey(password), new SecureRandom());
+    }
+
+    /**
+     * Decrypts a Base64 blob with a key derived from {@code password}.
+     * Counterpart to {@link #encryptWith(String, String)} for kit imports.
+     */
+    public static @Nullable String decryptWith(
+            @Nullable String ciphertext, String password) {
+        if (password == null || password.isEmpty()) {
+            throw new EncryptionException("password must not be empty", null);
+        }
+        return decryptInternal(ciphertext, deriveKey(password));
+    }
+
+    private static @Nullable String encryptInternal(
+            @Nullable String plaintext, SecretKey key, SecureRandom rng) {
         if (plaintext == null) {
             return null;
         }
         try {
             byte[] iv = new byte[GCM_IV_LENGTH_BYTES];
-            secureRandom.nextBytes(iv);
+            rng.nextBytes(iv);
 
             Cipher cipher = Cipher.getInstance(ALGORITHM);
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey,
+            cipher.init(Cipher.ENCRYPT_MODE, key,
                     new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
             byte[] encrypted = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
 
@@ -71,11 +110,8 @@ public class AesEncryptionService {
         }
     }
 
-    /**
-     * Decrypts a Base64 blob produced by {@link #encrypt(String)}. Returns
-     * {@code null} for {@code null} / blank input.
-     */
-    public @Nullable String decrypt(@Nullable String ciphertext) {
+    private static @Nullable String decryptInternal(
+            @Nullable String ciphertext, SecretKey key) {
         if (ciphertext == null || ciphertext.isBlank()) {
             return null;
         }
@@ -89,7 +125,7 @@ public class AesEncryptionService {
             buffer.get(encrypted);
 
             Cipher cipher = Cipher.getInstance(ALGORITHM);
-            cipher.init(Cipher.DECRYPT_MODE, secretKey,
+            cipher.init(Cipher.DECRYPT_MODE, key,
                     new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
             byte[] decrypted = cipher.doFinal(encrypted);
             return new String(decrypted, StandardCharsets.UTF_8);

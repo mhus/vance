@@ -66,6 +66,12 @@
             <artifactId>rhino-engine</artifactId>
         </dependency>
 
+        <!-- Git operations for the kit subsystem. -->
+        <dependency>
+            <groupId>org.eclipse.jgit</groupId>
+            <artifactId>org.eclipse.jgit</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

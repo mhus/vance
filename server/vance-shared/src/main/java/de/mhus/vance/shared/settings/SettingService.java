@@ -505,4 +505,62 @@ public class SettingService {
             return null;
         }
     }
+
+    // ──────────────────── Transcrypt for kit export/import ────────────────────
+
+    /**
+     * Reads a PASSWORD-setting, decrypts with the server key, re-encrypts with
+     * a user-supplied {@code vaultPassword}, and returns the portable blob.
+     * The plaintext never leaves this method.
+     *
+     * <p>Used by the kit subsystem to export PASSWORD-settings into a portable
+     * git repository — the resulting ciphertext is decryptable only with the
+     * same vault passphrase, not with any server key.
+     *
+     * <p>Returns {@code null} when the setting does not exist, is not a
+     * password, or cannot be decrypted with the server key.
+     */
+    public @Nullable String decryptForExport(
+            String tenantId, String referenceType, String referenceId,
+            String key, String vaultPassword) {
+        String plaintext = getDecryptedPassword(tenantId, referenceType, referenceId, key);
+        if (plaintext == null) {
+            return null;
+        }
+        try {
+            return AesEncryptionService.encryptWith(plaintext, vaultPassword);
+        } catch (AesEncryptionService.EncryptionException e) {
+            log.warn("Failed to re-encrypt password with vault key for ref='{}:{}' key='{}': {}",
+                    referenceType, referenceId, key, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Decrypts a portable vault-blob with {@code vaultPassword}, then persists
+     * it as a normal PASSWORD-setting (re-encrypted with the server key).
+     * Counterpart to {@link #decryptForExport}.
+     *
+     * <p>Returns {@code true} on success, {@code false} when decryption with
+     * the supplied vault passphrase fails. A failure is logged at warn level
+     * but does not throw — kit imports continue with the next setting.
+     */
+    public boolean encryptFromImport(
+            String tenantId, String referenceType, String referenceId,
+            String key, String vaultPassword, @Nullable String vaultCiphertext) {
+        if (vaultCiphertext == null) {
+            setEncryptedPassword(tenantId, referenceType, referenceId, key, null);
+            return true;
+        }
+        String plaintext;
+        try {
+            plaintext = AesEncryptionService.decryptWith(vaultCiphertext, vaultPassword);
+        } catch (AesEncryptionService.EncryptionException e) {
+            log.warn("Failed to decrypt vault blob for ref='{}:{}' key='{}': {}",
+                    referenceType, referenceId, key, e.getMessage());
+            return false;
+        }
+        setEncryptedPassword(tenantId, referenceType, referenceId, key, plaintext);
+        return true;
+    }
 }

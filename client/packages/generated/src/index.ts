@@ -29,6 +29,16 @@ export * from './inbox/InboxListResponse';
 export * from './inbox/InboxTagsResponse';
 export * from './inbox/ResolvedBy';
 
+export * from './kit/KitDescriptorDto';
+export * from './kit/KitExportRequestDto';
+export * from './kit/KitImportMode';
+export * from './kit/KitImportRequestDto';
+export * from './kit/KitInheritDto';
+export * from './kit/KitManifestDto';
+export * from './kit/KitMetadataDto';
+export * from './kit/KitOperationResultDto';
+export * from './kit/KitOriginDto';
+
 export * from './insights/ActiveSkillInsightsDto';
 export * from './insights/ChatMessageInsightsDto';
 export * from './insights/MarvinNodeInsightsDto';

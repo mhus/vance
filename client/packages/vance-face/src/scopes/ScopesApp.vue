@@ -16,12 +16,18 @@ import { useAdminTenant } from '@/composables/useAdminTenant';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
 import { useScopeSettings } from '@/composables/useScopeSettings';
+import { useKitAdmin } from '@/composables/useKitAdmin';
 import {
+  KitImportMode,
   SettingType,
+  type KitImportRequestDto,
+  type KitExportRequestDto,
   type ProjectDto,
   type ProjectGroupSummary,
   type SettingDto,
 } from '@vance/generated';
+
+type KitDialogMode = 'install' | 'update' | 'apply' | 'export';
 
 const ARCHIVED_GROUP = 'archived';
 
@@ -34,6 +40,7 @@ const tenantState = useAdminTenant();
 const groupsState = useAdminProjectGroups();
 const projectsState = useAdminProjects();
 const settingsState = useScopeSettings();
+const kitState = useKitAdmin();
 
 const selection = ref<Selection>({ kind: 'tenant' });
 const banner = ref<string | null>(null);
@@ -55,6 +62,21 @@ const showCreateProject = ref(false);
 const newProjectName = ref('');
 const newProjectTitle = ref('');
 const newProjectGroupId = ref<string | null>(null);
+
+// ─── Kit dialog state ───
+const showKitDialog = ref(false);
+const kitDialogMode = ref<KitDialogMode>('install');
+const kitForm = reactive({
+  url: '',
+  path: '',
+  branch: '',
+  commit: '',
+  token: '',
+  vaultPassword: '',
+  prune: false,
+  keepPasswords: false,
+  commitMessage: '',
+});
 
 // ─── Setting editor state ───
 const newSettingKey = ref('');
@@ -133,11 +155,13 @@ onMounted(async () => {
   // Selection defaults to tenant — populate the form once tenant is loaded.
   applySelectionToForm();
   loadSettingsForSelection();
+  loadKitForSelection();
 });
 
 watch(selection, () => {
   applySelectionToForm();
   loadSettingsForSelection();
+  loadKitForSelection();
 });
 
 watch(() => tenantState.tenant.value, () => {
@@ -172,6 +196,14 @@ function loadSettingsForSelection(): void {
     return;
   }
   void settingsState.load(scope.type, scope.id);
+}
+
+function loadKitForSelection(): void {
+  if (selection.value.kind !== 'project') {
+    kitState.clear();
+    return;
+  }
+  void kitState.load(selection.value.name);
 }
 
 function resetSettingEditor(): void {
@@ -319,6 +351,102 @@ async function submitCreateProject(): Promise<void> {
   }
 }
 
+// ─── Kit actions ───
+
+const kitDialogTitle = computed(() => {
+  switch (kitDialogMode.value) {
+    case 'install': return 'Install kit';
+    case 'update': return 'Update kit';
+    case 'apply': return 'Apply kit';
+    case 'export': return 'Export kit';
+  }
+});
+
+const kitDialogSubmitLabel = computed(() => {
+  switch (kitDialogMode.value) {
+    case 'install': return 'Install';
+    case 'update': return 'Update';
+    case 'apply': return 'Apply';
+    case 'export': return 'Export';
+  }
+});
+
+const kitNeedsUrl = computed(() =>
+  kitDialogMode.value === 'install' || kitDialogMode.value === 'apply');
+
+function openKitDialog(mode: KitDialogMode): void {
+  kitDialogMode.value = mode;
+  kitForm.url = '';
+  kitForm.path = '';
+  kitForm.branch = '';
+  kitForm.commit = '';
+  kitForm.token = '';
+  kitForm.vaultPassword = '';
+  kitForm.prune = false;
+  kitForm.keepPasswords = false;
+  kitForm.commitMessage = '';
+
+  // Pre-fill from manifest origin when available (update / export).
+  const m = kitState.manifest.value;
+  if (m && (mode === 'update' || mode === 'export')) {
+    kitForm.url = m.origin?.url ?? '';
+    kitForm.path = m.origin?.path ?? '';
+    kitForm.branch = m.origin?.branch ?? '';
+  }
+  showKitDialog.value = true;
+}
+
+async function submitKitDialog(): Promise<void> {
+  if (selection.value.kind !== 'project') return;
+  const projectId = selection.value.name;
+  banner.value = null;
+  try {
+    if (kitDialogMode.value === 'export') {
+      const request: KitExportRequestDto = {
+        projectId,
+        url: kitForm.url || undefined,
+        path: kitForm.path || undefined,
+        branch: kitForm.branch || undefined,
+        token: kitForm.token || undefined,
+        vaultPassword: kitForm.vaultPassword || undefined,
+        commitMessage: kitForm.commitMessage || undefined,
+      };
+      await kitState.export(projectId, request);
+      banner.value = 'Kit exported.';
+    } else {
+      const request: KitImportRequestDto = {
+        projectId,
+        source: {
+          url: kitForm.url,
+          path: kitForm.path || undefined,
+          branch: kitForm.branch || undefined,
+          commit: kitForm.commit || undefined,
+        },
+        token: kitForm.token || undefined,
+        vaultPassword: kitForm.vaultPassword || undefined,
+        // Real mode is forced server-side via the URL verb; this is just
+        // a placeholder so the DTO type is satisfied.
+        mode: KitImportMode.INSTALL,
+        prune: kitForm.prune,
+        keepPasswords: kitForm.keepPasswords,
+      };
+      if (kitDialogMode.value === 'install') {
+        await kitState.install(projectId, request);
+        banner.value = 'Kit installed.';
+      } else if (kitDialogMode.value === 'update') {
+        await kitState.update(projectId, request);
+        banner.value = 'Kit updated.';
+      } else {
+        await kitState.apply(projectId, request);
+        banner.value = 'Kit applied.';
+      }
+    }
+    showKitDialog.value = false;
+  } catch {
+    /* error already in kitState.error */
+  }
+}
+
 // ─── Settings actions ───
 
 async function addSetting(): Promise<void> {
@@ -407,7 +535,8 @@ const combinedError = computed<string | null>(() =>
   tenantState.error.value
   || groupsState.error.value
   || projectsState.error.value
-  || settingsState.error.value);
+  || settingsState.error.value
+  || kitState.error.value);
 </script>
 
 <template>
@@ -576,6 +705,110 @@ const combinedError = computed<string | null>(() =>
           </div>
         </div>
       </VCard>
+
+      <!-- Kit -->
+      <VCard
+        v-if="selection.kind === 'project' && selectedProject"
+        title="Kit"
+      >
+        <div v-if="kitState.loading.value" class="opacity-70 text-sm">Loading kit status…</div>
+        <div v-else-if="kitState.manifest.value" class="flex flex-col gap-2 text-sm">
+          <div class="flex items-baseline justify-between">
+            <span class="font-semibold">{{ kitState.manifest.value.kit.name }}</span>
+            <span v-if="kitState.manifest.value.kit.version" class="opacity-60 text-xs">
+              v{{ kitState.manifest.value.kit.version }}
+            </span>
+          </div>
+          <div v-if="kitState.manifest.value.kit.description" class="opacity-80">
+            {{ kitState.manifest.value.kit.description }}
+          </div>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs opacity-80">
+            <dt class="opacity-60">Origin</dt>
+            <dd class="break-all font-mono">{{ kitState.manifest.value.origin.url }}</dd>
+            <dt v-if="kitState.manifest.value.origin.path" class="opacity-60">Path</dt>
+            <dd v-if="kitState.manifest.value.origin.path">{{ kitState.manifest.value.origin.path }}</dd>
+            <dt v-if="kitState.manifest.value.origin.branch" class="opacity-60">Branch</dt>
+            <dd v-if="kitState.manifest.value.origin.branch">{{ kitState.manifest.value.origin.branch }}</dd>
+            <dt v-if="kitState.manifest.value.origin.commit" class="opacity-60">Commit</dt>
+            <dd v-if="kitState.manifest.value.origin.commit" class="font-mono">
+              {{ kitState.manifest.value.origin.commit.slice(0, 12) }}
+            </dd>
+            <dt v-if="kitState.manifest.value.origin.installedAt" class="opacity-60">Installed</dt>
+            <dd v-if="kitState.manifest.value.origin.installedAt">
+              {{ kitState.manifest.value.origin.installedAt }}
+            </dd>
+            <dt class="opacity-60">Documents</dt>
+            <dd>{{ kitState.manifest.value.documents?.length ?? 0 }}</dd>
+            <dt class="opacity-60">Settings</dt>
+            <dd>{{ kitState.manifest.value.settings?.length ?? 0 }}</dd>
+            <dt class="opacity-60">Tools</dt>
+            <dd>{{ kitState.manifest.value.tools?.length ?? 0 }}</dd>
+            <dt v-if="(kitState.manifest.value.resolvedInherits?.length ?? 0) > 0" class="opacity-60">Inherits</dt>
+            <dd v-if="(kitState.manifest.value.resolvedInherits?.length ?? 0) > 0">
+              {{ kitState.manifest.value.resolvedInherits.join(', ') }}
+            </dd>
+          </dl>
+          <div class="flex flex-wrap justify-end gap-2 pt-2">
+            <VButton variant="ghost" size="sm" @click="openKitDialog('apply')">Apply…</VButton>
+            <VButton variant="ghost" size="sm" @click="openKitDialog('export')">Export…</VButton>
+            <VButton
+              variant="primary"
+              size="sm"
+              :loading="kitState.busy.value"
+              @click="openKitDialog('update')"
+            >Update…</VButton>
+          </div>
+        </div>
+        <div v-else class="flex flex-col gap-2 text-sm">
+          <div class="opacity-70">No kit installed in this project.</div>
+          <div class="flex flex-wrap justify-end gap-2 pt-2">
+            <VButton variant="ghost" size="sm" @click="openKitDialog('apply')">Apply…</VButton>
+            <VButton
+              variant="primary"
+              size="sm"
+              :loading="kitState.busy.value"
+              @click="openKitDialog('install')"
+            >Install…</VButton>
+          </div>
+        </div>
+        <div
+          v-if="kitState.lastResult.value"
+          class="mt-3 border-t border-base-300 pt-2 text-xs opacity-80"
+        >
+          <div class="font-semibold opacity-90 mb-1">
+            Last operation: {{ kitState.lastResult.value.mode }}
+          </div>
+          <ul class="flex flex-col gap-0.5">
+            <li v-if="(kitState.lastResult.value.documentsAdded?.length ?? 0) > 0">
+              + {{ kitState.lastResult.value.documentsAdded.length }} documents
+            </li>
+            <li v-if="(kitState.lastResult.value.documentsUpdated?.length ?? 0) > 0">
+              ~ {{ kitState.lastResult.value.documentsUpdated.length }} documents
+            </li>
+            <li v-if="(kitState.lastResult.value.documentsRemoved?.length ?? 0) > 0">
+              − {{ kitState.lastResult.value.documentsRemoved.length }} documents
+            </li>
+            <li v-if="(kitState.lastResult.value.settingsAdded?.length ?? 0) > 0
+                  || (kitState.lastResult.value.settingsUpdated?.length ?? 0) > 0">
+              {{ (kitState.lastResult.value.settingsAdded?.length ?? 0)
+                + (kitState.lastResult.value.settingsUpdated?.length ?? 0) }} settings touched
+            </li>
+            <li v-if="(kitState.lastResult.value.toolsAdded?.length ?? 0) > 0
+                  || (kitState.lastResult.value.toolsUpdated?.length ?? 0) > 0">
+              {{ (kitState.lastResult.value.toolsAdded?.length ?? 0)
+                + (kitState.lastResult.value.toolsUpdated?.length ?? 0) }} tools touched
+            </li>
+            <li v-if="(kitState.lastResult.value.skippedPasswords?.length ?? 0) > 0" class="opacity-90">
+              ⚠ {{ kitState.lastResult.value.skippedPasswords.length }} passwords skipped
+            </li>
+            <li
+              v-for="(w, i) in (kitState.lastResult.value.warnings ?? [])"
+              :key="'kw-' + i"
+              class="opacity-90"
+            >⚠ {{ w }}</li>
+          </ul>
+        </div>
+      </VCard>
     </div>
 
     <!-- ─── Right panel: settings ─── -->
@@ -684,6 +917,82 @@ const combinedError = computed<string | null>(() =>
             :loading="groupsState.busy.value"
             @click="submitCreateGroup"
           >Create</VButton>
+        </div>
+      </div>
+    </VModal>
+
+    <!-- ─── Kit modal (install / update / apply / export) ─── -->
+    <VModal v-model="showKitDialog" :title="kitDialogTitle" :close-on-backdrop="false">
+      <div class="flex flex-col gap-3">
+        <VAlert v-if="kitState.error.value" variant="error">
+          <span>{{ kitState.error.value }}</span>
+        </VAlert>
+        <VInput
+          v-model="kitForm.url"
+          label="Repo URL"
+          :required="kitNeedsUrl"
+          :help="kitDialogMode === 'update' || kitDialogMode === 'export'
+            ? 'Leave empty to reuse manifest origin.'
+            : 'https://… or file:///…'"
+        />
+        <div class="grid grid-cols-2 gap-3">
+          <VInput
+            v-model="kitForm.path"
+            label="Sub-path"
+            help="Optional. Defaults to repo root."
+          />
+          <VInput
+            v-model="kitForm.branch"
+            label="Branch"
+            help="Defaults to main."
+          />
+        </div>
+        <VInput
+          v-if="kitDialogMode !== 'export'"
+          v-model="kitForm.commit"
+          label="Commit SHA"
+          help="Optional. Pins a specific commit."
+        />
+        <VInput
+          v-model="kitForm.token"
+          type="password"
+          label="Auth token"
+          help="Optional. Required for private HTTPS repos."
+        />
+        <VInput
+          v-model="kitForm.vaultPassword"
+          type="password"
+          label="Vault password"
+          :help="kitDialogMode === 'export'
+            ? 'Required only when the kit ships PASSWORD-settings.'
+            : 'Decrypts PASSWORD-settings shipped with the kit.'"
+        />
+        <VInput
+          v-if="kitDialogMode === 'export'"
+          v-model="kitForm.commitMessage"
+          label="Commit message"
+          help="Optional. Defaults to vance-export: <kit>@<sha>."
+        />
+        <VCheckbox
+          v-if="kitDialogMode === 'update'"
+          v-model="kitForm.prune"
+          label="Prune removed artefacts"
+          help="Also delete files / settings / tools that the previous kit version had but the new one no longer ships."
+        />
+        <VCheckbox
+          v-if="kitDialogMode === 'apply'"
+          v-model="kitForm.keepPasswords"
+          label="Keep existing passwords"
+          help="Skip PASSWORD-settings shipped with the kit so existing project credentials are preserved."
+        />
+        <div class="flex justify-end gap-2 pt-2">
+          <VButton variant="ghost" @click="showKitDialog = false">Cancel</VButton>
+          <VButton
+            variant="primary"
+            :disabled="kitNeedsUrl && !kitForm.url.trim()"
+            :loading="kitState.busy.value"
+            @click="submitKitDialog"
+          >{{ kitDialogSubmitLabel }}</VButton>
         </div>
       </div>
     </VModal>

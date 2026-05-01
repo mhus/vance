@@ -1,19 +1,26 @@
 package de.mhus.vance.foot.command;
 
 import java.util.List;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
  * {@code /stop} — request the brain to stop the active chat-process.
  * Same effect as pressing ESC at the prompt: dispatches a
  * {@code process-stop} for the session's active process.
+ *
+ * <p>{@code @Lazy} on the {@link ChatInputService} dependency breaks
+ * the bean-graph cycle (ChatInputService → CommandService →
+ * StopCommand → ChatInputService). The cycle is genuine — slash
+ * commands by design know about the chat-input service — but the
+ * lazy proxy lets it resolve at first call.
  */
 @Component
 public class StopCommand implements SlashCommand {
 
     private final ChatInputService chatInput;
 
-    public StopCommand(ChatInputService chatInput) {
+    public StopCommand(@Lazy ChatInputService chatInput) {
         this.chatInput = chatInput;
     }
 

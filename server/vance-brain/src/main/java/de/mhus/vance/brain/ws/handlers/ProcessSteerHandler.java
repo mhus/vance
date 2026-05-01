@@ -135,18 +135,30 @@ public class ProcessSteerHandler implements WsHandler {
         // Without this flip, the message would land in the queue but
         // the lane wouldn't drain (status-gated). User-typed input is
         // implicitly a "continue" signal.
+        boolean wasResumed = false;
         if (process.getStatus() == ThinkProcessStatus.PAUSED) {
             log.info("Auto-resume on user steer: process='{}' PAUSED -> IDLE",
                     request.getProcessName());
             thinkProcessService.updateStatus(processId, ThinkProcessStatus.IDLE);
             thinkProcessService.clearHalt(processId);
+            wasResumed = true;
         }
+
+        // If we just auto-resumed, prepend a short system note to the
+        // user's message so the chat-engine (Arthur) knows the user
+        // paused before this message and which workers are currently
+        // halted — without this, Arthur replies from his unchanged
+        // chat-history and tends to hallucinate that paused workers
+        // are still running.
+        String content = wasResumed
+                ? buildResumeContext(tenantId, sessionId, processId) + request.getContent()
+                : request.getContent();
 
         SteerMessage.UserChatInput userInput = new SteerMessage.UserChatInput(
                 Instant.now(),
                 request.getIdempotencyKey(),
                 ctx.getUserId(),
-                request.getContent());
+                content);
         PendingMessageDocument doc = SteerMessageCodec.toDocument(userInput);
 
         if (!thinkProcessService.appendPending(processId, doc)) {
@@ -214,6 +226,45 @@ public class ProcessSteerHandler implements WsHandler {
         } catch (IOException sendErr) {
             log.warn("Failed to ship steer follow-up frames: {}", sendErr.toString());
         }
+    }
+
+    /**
+     * Builds a short, system-style preamble that gets prepended to
+     * the user's content when the chat-process just auto-resumed
+     * from PAUSED. Lists the currently paused workers so the
+     * orchestrator (Arthur) doesn't hallucinate that they're still
+     * running. The note is part of the same USER chat message — no
+     * separate role injection — so it survives the chat history
+     * intact and the LLM sees it on every subsequent turn.
+     */
+    private String buildResumeContext(String tenantId, String sessionId, String chatProcessId) {
+        java.util.List<de.mhus.vance.shared.thinkprocess.ThinkProcessDocument> all =
+                thinkProcessService.findBySession(tenantId, sessionId);
+        java.util.List<String> paused = new java.util.ArrayList<>();
+        java.util.List<String> closed = new java.util.ArrayList<>();
+        for (de.mhus.vance.shared.thinkprocess.ThinkProcessDocument p : all) {
+            if (!chatProcessId.equals(p.getParentProcessId())) continue;
+            String name = p.getName();
+            if (name == null) continue;
+            de.mhus.vance.api.thinkprocess.ThinkProcessStatus s = p.getStatus();
+            if (s == de.mhus.vance.api.thinkprocess.ThinkProcessStatus.PAUSED) {
+                paused.add(name);
+            } else if (s == de.mhus.vance.api.thinkprocess.ThinkProcessStatus.CLOSED) {
+                closed.add(name);
+            }
+        }
+        StringBuilder b = new StringBuilder();
+        b.append("[system: the user paused this session before sending this message");
+        if (!paused.isEmpty()) {
+            b.append("; workers currently PAUSED: ").append(paused);
+            b.append(" — call process_resume to wake one before steering it");
+        }
+        if (!closed.isEmpty()) {
+            b.append("; workers already CLOSED: ").append(closed);
+            b.append(" — you cannot reach them anymore, spawn fresh ones with process_create");
+        }
+        b.append(". Call process_list if unsure of current state.]\n\n");
+        return b.toString();
     }
 
     private static ChatMessageAppendedData toDto(ChatMessageDocument doc, String processName) {

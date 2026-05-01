@@ -9,6 +9,7 @@ import de.mhus.vance.api.marvin.MarvinWorkerOutput.UserInputSpec;
 import de.mhus.vance.api.marvin.NodeStatus;
 import de.mhus.vance.api.marvin.TaskKind;
 import de.mhus.vance.api.marvin.WorkerOutcome;
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.ai.AiChat;
@@ -359,7 +360,7 @@ public class MarvinEngine implements ThinkEngine {
                 paramString(process, "rootTaskKind", null), TaskKind.PLAN);
         nodeService.createRoot(process.getTenantId(), process.getId(), goal,
                 rootKind, /*taskSpec*/ null);
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         // Schedule the first turn on Marvin's own lane — never run it
         // synchronously here, otherwise we'd block whatever lane invoked
         // `start` (typically the Arthur-side `process_create` flow). The
@@ -371,7 +372,7 @@ public class MarvinEngine implements ThinkEngine {
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.debug("Marvin.resume id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
 
@@ -401,7 +402,7 @@ public class MarvinEngine implements ThinkEngine {
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Marvin.stop id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STOPPED);
+        thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
     // ──────────────────── runTurn ────────────────────
@@ -471,12 +472,12 @@ public class MarvinEngine implements ThinkEngine {
             // node — but yield this task first so any other queued
             // work (e.g. a parent's process_steer no-op) gets a
             // chance to run between LLM round-trips.
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
             eventEmitter.scheduleTurn(process.getId());
         } catch (RuntimeException e) {
             log.warn("Marvin runTurn failed id='{}': {}",
                     process.getId(), e.toString(), e);
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STALE);
+            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
         }
     }
@@ -1301,7 +1302,7 @@ public class MarvinEngine implements ThinkEngine {
     private void finalizeIdle(ThinkProcessDocument process) {
         if (nodeService.isTreeTerminal(process.getId())) {
             log.info("Marvin id='{}' tree terminal — DONE", process.getId());
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.DONE);
+            thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
             return;
         }
         boolean running = nodeService.hasRunningNodes(process.getId());
@@ -1310,7 +1311,7 @@ public class MarvinEngine implements ThinkEngine {
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
             return;
         }
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     private boolean nodeBudgetExceeded(ThinkProcessDocument process) {

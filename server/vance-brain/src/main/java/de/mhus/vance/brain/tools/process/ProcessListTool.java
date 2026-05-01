@@ -95,8 +95,6 @@ public class ProcessListTool implements Tool {
     }
 
     private static boolean isTerminated(ThinkProcessStatus s) {
-        return s == ThinkProcessStatus.STOPPED
-                || s == ThinkProcessStatus.DONE
-                || s == ThinkProcessStatus.STALE;
+        return s == ThinkProcessStatus.CLOSED;
     }
 }

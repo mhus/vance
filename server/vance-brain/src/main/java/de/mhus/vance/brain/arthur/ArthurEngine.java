@@ -2,6 +2,7 @@ package de.mhus.vance.brain.arthur;
 
 import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
@@ -223,13 +224,13 @@ public class ArthurEngine implements ThinkEngine {
                 .role(ChatRole.ASSISTANT)
                 .content(GREETING)
                 .build());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.debug("Arthur.resume id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     @Override
@@ -241,7 +242,7 @@ public class ArthurEngine implements ThinkEngine {
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Arthur.stop id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STOPPED);
+        thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
     /**
@@ -355,7 +356,7 @@ public class ArthurEngine implements ThinkEngine {
             String preview = finalText.length() > 120 ? finalText.substring(0, 120) + "…" : finalText;
             log.info("Arthur.turn id='{}' -> '{}'", process.getId(), preview);
         } finally {
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         }
     }
 

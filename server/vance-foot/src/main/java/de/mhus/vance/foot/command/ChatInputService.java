@@ -2,13 +2,18 @@ package de.mhus.vance.foot.command;
 
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
+import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
+import de.mhus.vance.api.thinkprocess.ProcessStopResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.PromptGate;
+import jakarta.annotation.PreDestroy;
 import java.time.Duration;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
@@ -32,11 +37,26 @@ public class ChatInputService {
     /** Default timeout for the chat round-trip to the brain. */
     public static final Duration DEFAULT_CHAT_TIMEOUT = Duration.ofSeconds(120);
 
+    /** Timeout for fire-and-forget stop requests. Short — stop is a side-channel. */
+    public static final Duration STOP_TIMEOUT = Duration.ofSeconds(10);
+
     private final CommandService commandService;
     private final ConnectionService connection;
     private final SessionService sessions;
     private final ChatTerminal chatTerminal;
     private final PromptGate promptGate;
+
+    /**
+     * Background executor for async chat submission. Keeps the REPL
+     * responsive while the brain is processing — critical for ESC-stop
+     * to be interceptable while a chat-process is "thinking".
+     */
+    private final ExecutorService asyncExecutor =
+            Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "chat-async-submit");
+                t.setDaemon(true);
+                return t;
+            });
 
     public ChatInputService(CommandService commandService,
                             ConnectionService connection,
@@ -73,6 +93,74 @@ public class ChatInputService {
         } finally {
             promptGate.exitExclusive();
         }
+    }
+
+    /**
+     * REPL variant of {@link #submit}: dispatches commands synchronously
+     * (they're cheap), but routes chat content through the async
+     * executor so the REPL can return to {@code readLine} immediately.
+     * That keeps ESC-stop interceptable while the chat-process is
+     * "thinking" — without the async path the REPL thread is blocked
+     * inside {@code connection.request} for the duration of the engine
+     * turn and {@code readLine} can't fire its key bindings.
+     *
+     * <p>Streaming output (chat-message-appended, process-progress) is
+     * unaffected — those notifications already render via
+     * {@code printAbove}-based writes that respect the prompt gate.
+     */
+    public void submitFromRepl(String line) {
+        if (line == null) return;
+        String trimmed = line.trim();
+        if (trimmed.isEmpty()) return;
+        if (trimmed.startsWith("/")) {
+            // Slash commands stay synchronous — they're cheap and the
+            // REPL expects their feedback before the next prompt.
+            submit(line);
+            return;
+        }
+        // Chat content → async dispatch so the REPL is free to capture ESC.
+        asyncExecutor.submit(() -> submit(line));
+    }
+
+    /**
+     * Fire-and-forget {@code process-stop} for the active chat process
+     * in the bound session. Used by the foot ESC key-binding and the
+     * {@code /stop} slash-command. Async because the REPL prompt should
+     * stay responsive while the brain processes the stop.
+     */
+    public void requestStop() {
+        SessionService.BoundSession bound = sessions.current();
+        if (bound == null) {
+            return;
+        }
+        String process = sessions.activeProcess();
+        if (process == null) {
+            return;
+        }
+        final String processName = process;
+        asyncExecutor.submit(() -> {
+            try {
+                ProcessStopResponse response = connection.request(
+                        MessageType.PROCESS_STOP,
+                        ProcessStopRequest.builder()
+                                .processName(processName)
+                                .build(),
+                        ProcessStopResponse.class,
+                        STOP_TIMEOUT);
+                chatTerminal.verbose("→ stop dispatched processName='" + processName
+                        + "' status=" + response.getStatus()
+                        + " closeReason=" + response.getCloseReason());
+            } catch (BrainException e) {
+                chatTerminal.error("stop failed: " + e.getMessage());
+            } catch (Exception e) {
+                chatTerminal.error("stop failed: " + e.getMessage());
+            }
+        });
+    }
+
+    @PreDestroy
+    void shutdown() {
+        asyncExecutor.shutdown();
     }
 
     /**

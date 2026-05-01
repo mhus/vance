@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -60,7 +61,7 @@ public class ParentNotificationListener {
         if (event.priorStatus() == event.newStatus()) {
             return;
         }
-        ProcessEventType eventType = mapStatus(event.newStatus());
+        ProcessEventType eventType = mapStatus(event.processId(), event.newStatus());
         if (eventType == null) {
             return;
         }
@@ -113,13 +114,25 @@ public class ParentNotificationListener {
         }
     }
 
-    private static @Nullable ProcessEventType mapStatus(ThinkProcessStatus status) {
+    private @Nullable ProcessEventType mapStatus(String processId, ThinkProcessStatus status) {
         return switch (status) {
-            case DONE -> ProcessEventType.DONE;
             case BLOCKED -> ProcessEventType.BLOCKED;
+            case CLOSED -> mapClosedToEventType(processId);
+            case INIT, RUNNING, IDLE, PAUSED, SUSPENDED -> null;
+        };
+    }
+
+    private ProcessEventType mapClosedToEventType(String processId) {
+        CloseReason reason = thinkProcessService.findById(processId)
+                .map(ThinkProcessDocument::getCloseReason)
+                .orElse(null);
+        if (reason == null) {
+            return ProcessEventType.STOPPED;
+        }
+        return switch (reason) {
+            case DONE -> ProcessEventType.DONE;
             case STOPPED -> ProcessEventType.STOPPED;
             case STALE -> ProcessEventType.FAILED;
-            case READY, RUNNING, PAUSED, SUSPENDED -> null;
         };
     }
 

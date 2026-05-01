@@ -14,7 +14,9 @@ import org.jline.reader.EndOfFileException;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.Reference;
+import org.jline.reader.impl.LineReaderImpl;
 import org.jline.reader.UserInterruptException;
+import org.jline.reader.Widget;
 import org.jline.reader.impl.history.DefaultHistory;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -118,6 +120,11 @@ public class ChatRepl {
         // arrows walk only history entries that share the typed prefix.
         // Same as readline's M-p / M-n behavior.
         rebindHistorySearch(r, t);
+        // ESC during the prompt fires a process-stop for the active
+        // chat-process. Works whenever readLine is active — chat
+        // submission has been moved to the async path so this fires
+        // even while the engine is "thinking".
+        bindEscapeStop(r);
         this.reader = r;
         chatTerminal.attachReader(r);
         statusBar.attach(t);
@@ -139,10 +146,31 @@ public class ChatRepl {
             if (line == null || line.isBlank()) {
                 continue;
             }
-            // ChatInputService flips the PromptGate exclusive while the input
-            // is being processed, so async streaming sinks can write directly
-            // during this window without corrupting an active prompt.
-            input.submit(line);
+            // Chat content goes through the async dispatcher so the REPL
+            // can return to readLine immediately and capture ESC even
+            // while the engine is processing. Slash commands stay
+            // synchronous inside submitFromRepl.
+            input.submitFromRepl(line);
+        }
+    }
+
+    /**
+     * Bind raw {@code ESC} to a custom widget that fires
+     * {@link ChatInputService#requestStop()}. JLine resolves multi-byte
+     * sequences (arrow keys, etc.) before deciding what's a "lone" ESC,
+     * so this binding only catches a real, single press.
+     */
+    private void bindEscapeStop(LineReader r) {
+        KeyMap<org.jline.reader.Binding> main = r.getKeyMaps().get(LineReader.MAIN);
+        if (main == null) return;
+        String widgetName = "vance-stop";
+        Widget widget = () -> {
+            input.requestStop();
+            return true;
+        };
+        if (r instanceof LineReaderImpl impl) {
+            impl.getWidgets().put(widgetName, widget);
+            main.bind(new Reference(widgetName), KeyMap.esc());
         }
     }
 

@@ -25,7 +25,7 @@ import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
-import de.mhus.vance.shared.session.SessionStatus;
+import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
@@ -347,7 +347,7 @@ public class SessionBootstrapHandler implements WsHandler {
     private Optional<SessionDocument> tryAutoResumeLatest(ConnectionContext ctx) {
         List<SessionDocument> candidates = sessionService
                 .listForUser(ctx.getTenantId(), ctx.getUserId()).stream()
-                .filter(s -> s.getStatus() == SessionStatus.OPEN)
+                .filter(s -> s.getStatus() != SessionStatus.CLOSED)
                 .filter(s -> s.getBoundConnectionId() == null)
                 // A foot connection auto-resumes only foot sessions and so on —
                 // mismatched profile would surface client-tools the connection
@@ -427,7 +427,7 @@ public class SessionBootstrapHandler implements WsHandler {
             ConnectionContext ctx, WebSocketSession wsSession,
             WebSocketEnvelope envelope, SessionBootstrapRequest request) throws IOException {
         Optional<SessionDocument> existing = sessionService.findBySessionId(request.getSessionId());
-        if (existing.isEmpty() || existing.get().getStatus() != SessionStatus.OPEN) {
+        if (existing.isEmpty() || existing.get().getStatus() == SessionStatus.CLOSED) {
             sender.sendError(wsSession, envelope, 404,
                     "Session '" + request.getSessionId() + "' not found");
             return Optional.empty();

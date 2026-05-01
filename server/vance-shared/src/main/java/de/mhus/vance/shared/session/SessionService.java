@@ -1,6 +1,10 @@
 package de.mhus.vance.shared.session;
 
 import com.mongodb.client.result.UpdateResult;
+import de.mhus.vance.api.session.SessionLifecycleConfig;
+import de.mhus.vance.api.session.SessionStatus;
+import de.mhus.vance.api.session.SuspendCause;
+import de.mhus.vance.api.session.SuspendPolicy;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -78,9 +82,13 @@ public class SessionService {
     // ------------------------------------------------------------- creation
 
     /**
-     * Creates a new session in {@link SessionStatus#OPEN}, scoped to
+     * Creates a new session in {@link SessionStatus#INIT}, scoped to
      * {@code projectId}. No connection is bound yet — call {@link #tryBind}
      * immediately after if the caller is about to hold the connection.
+     *
+     * <p>The session starts with {@link SessionLifecycleConfig#safeDefault()};
+     * the bootstrap path replaces it via {@link #applyLifecycleConfig}
+     * once the recipe has been resolved.
      */
     public SessionDocument create(
             String tenantId,
@@ -91,6 +99,7 @@ public class SessionService {
             String clientVersion,
             @Nullable String clientName) {
         Instant now = Instant.now();
+        SessionLifecycleConfig defaults = SessionLifecycleConfig.safeDefault();
         SessionDocument doc = SessionDocument.builder()
                 .sessionId(newSessionId())
                 .tenantId(tenantId)
@@ -101,7 +110,12 @@ public class SessionService {
                 .clientVersion(clientVersion)
                 .clientName(clientName)
                 .boundConnectionId(null)
-                .status(SessionStatus.OPEN)
+                .status(SessionStatus.INIT)
+                .onDisconnect(defaults.getOnDisconnect())
+                .onIdle(defaults.getOnIdle())
+                .onSuspend(defaults.getOnSuspend())
+                .idleTimeoutMs(defaults.getIdleTimeoutMs())
+                .suspendKeepDurationMs(defaults.getSuspendKeepDurationMs())
                 .createdAt(now)
                 .lastActivityAt(now)
                 .build();
@@ -111,12 +125,43 @@ public class SessionService {
         return saved;
     }
 
+    /**
+     * Replaces the lifecycle config on a session — used by the
+     * bootstrap path immediately after recipe resolution. Once
+     * persisted, the policy fields are read by the lifecycle code
+     * and not changed again for the lifetime of the session.
+     */
+    public void applyLifecycleConfig(String sessionId, SessionLifecycleConfig cfg) {
+        Update update = new Update()
+                .set("onDisconnect", cfg.getOnDisconnect())
+                .set("onIdle", cfg.getOnIdle())
+                .set("onSuspend", cfg.getOnSuspend())
+                .set("idleTimeoutMs", cfg.getIdleTimeoutMs())
+                .set("suspendKeepDurationMs", cfg.getSuspendKeepDurationMs());
+        mongoTemplate.updateFirst(
+                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
+                update,
+                SessionDocument.class);
+    }
+
+    /**
+     * Marks a session's bootstrap as complete: status flips from
+     * {@link SessionStatus#INIT} to {@link SessionStatus#IDLE}.
+     * No-op for sessions that are already past INIT.
+     */
+    public void markBootstrapped(String sessionId) {
+        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                .and(F_STATUS).is(SessionStatus.INIT));
+        Update update = new Update().set(F_STATUS, SessionStatus.IDLE);
+        mongoTemplate.updateFirst(query, update, SessionDocument.class);
+    }
+
     // --------------------------------------------------------- atomic locks
 
     /**
      * Atomically claims the connection lock on {@code sessionId}. Succeeds only
-     * if the session is {@link SessionStatus#OPEN} and no other connection is
-     * currently bound.
+     * if the session is in a bindable status (everything except
+     * {@link SessionStatus#CLOSED}) and no other connection is currently bound.
      *
      * <p>Pod-affinity is no longer tracked here — it lives on the session's
      * project. Callers should ensure the project is claimed by this pod
@@ -127,7 +172,7 @@ public class SessionService {
      */
     public boolean tryBind(String sessionId, String connectionId) {
         Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_STATUS).is(SessionStatus.OPEN)
+                .and(F_STATUS).ne(SessionStatus.CLOSED)
                 .and(F_BOUND_CONNECTION).isNull());
         Update update = new Update()
                 .set(F_BOUND_CONNECTION, connectionId)
@@ -137,7 +182,7 @@ public class SessionService {
         if (bound) {
             log.debug("Bound session '{}' to connection '{}'", sessionId, connectionId);
         } else {
-            log.debug("Bind rejected for session '{}' — no matching OPEN/unbound record", sessionId);
+            log.debug("Bind rejected for session '{}' — no matching non-CLOSED/unbound record", sessionId);
         }
         return bound;
     }
@@ -295,19 +340,108 @@ public class SessionService {
     // --------------------------------------------------------- lifecycle end
 
     /**
-     * Closes the session (marks {@link SessionStatus#CLOSED}, clears binding).
-     * Idempotent.
+     * Closes the session (marks {@link SessionStatus#CLOSED}, clears
+     * binding, clears suspend-runtime fields). Idempotent.
+     *
+     * <p>Used by the close-cascade in {@code SessionLifecycleService}
+     * <em>after</em> all of the session's processes have been stopped.
      */
     public void close(String sessionId) {
         Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId));
         Update update = new Update()
                 .set(F_STATUS, SessionStatus.CLOSED)
                 .set(F_BOUND_CONNECTION, null)
-                .set(F_LAST_ACTIVITY, Instant.now());
+                .set(F_LAST_ACTIVITY, Instant.now())
+                .unset("suspendedAt")
+                .unset("suspendCause")
+                .unset("deleteAt");
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         if (result.getModifiedCount() == 1) {
             log.info("Closed session '{}'", sessionId);
         }
+    }
+
+    /**
+     * Marks the session SUSPENDED, stamping {@code suspendedAt},
+     * {@code suspendCause}, {@code deleteAt}. {@code deleteAt}
+     * computation respects {@code FORCED} as the override case
+     * (use {@code forcedFloorMs} regardless of {@code onSuspend}).
+     *
+     * <p>Idempotent — a second suspend on an already-suspended
+     * session keeps the original timestamps. (We do not "refresh"
+     * deleteAt on repeat suspends.)
+     */
+    public void suspend(String sessionId, SuspendCause cause, long forcedFloorMs) {
+        SessionDocument session = repository.findBySessionId(sessionId).orElse(null);
+        if (session == null) return;
+        if (session.getStatus() == SessionStatus.SUSPENDED
+                || session.getStatus() == SessionStatus.CLOSED) {
+            return;
+        }
+        Instant now = Instant.now();
+        Instant deleteAt;
+        if (cause == SuspendCause.FORCED) {
+            deleteAt = now.plusMillis(forcedFloorMs);
+        } else if (session.getOnSuspend() == SuspendPolicy.CLOSE) {
+            deleteAt = now;
+        } else {
+            deleteAt = now.plusMillis(session.getSuspendKeepDurationMs());
+        }
+        Update update = new Update()
+                .set(F_STATUS, SessionStatus.SUSPENDED)
+                .set("suspendedAt", now)
+                .set("suspendCause", cause)
+                .set("deleteAt", deleteAt)
+                .set(F_LAST_ACTIVITY, now);
+        mongoTemplate.updateFirst(
+                new Query(Criteria.where(F_SESSION_ID).is(sessionId)),
+                update, SessionDocument.class);
+        log.info("Suspended session '{}' cause={} deleteAt={}",
+                sessionId, cause, deleteAt);
+    }
+
+    /**
+     * Resume a SUSPENDED session: status → IDLE, clear suspend-runtime fields.
+     * Caller is responsible for resuming the engines.
+     */
+    public void resume(String sessionId) {
+        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                .and(F_STATUS).is(SessionStatus.SUSPENDED));
+        Update update = new Update()
+                .set(F_STATUS, SessionStatus.IDLE)
+                .set(F_LAST_ACTIVITY, Instant.now())
+                .unset("suspendedAt")
+                .unset("suspendCause")
+                .unset("deleteAt");
+        UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
+        if (result.getModifiedCount() == 1) {
+            log.info("Resumed session '{}'", sessionId);
+        }
+    }
+
+    /**
+     * Returns sessions whose {@code deleteAt} has passed and that
+     * are still in {@link SessionStatus#SUSPENDED}. The caller (sweep
+     * job) is responsible for the close-cascade. Convenience query —
+     * not part of the lifecycle code path.
+     */
+    public List<SessionDocument> findOverdueSuspended(Instant cutoff) {
+        Query query = new Query(Criteria.where(F_STATUS).is(SessionStatus.SUSPENDED)
+                .and("deleteAt").lte(cutoff));
+        return mongoTemplate.find(query, SessionDocument.class);
+    }
+
+    /**
+     * Returns SUSPENDED sessions whose {@code suspendCause} is
+     * {@link SuspendCause#FORCED} and which this pod owns (via project).
+     * Used by the auto-restart job on Brain boot.
+     */
+    public List<SessionDocument> findForcedSuspendedByProject(java.util.Collection<String> projectIds) {
+        if (projectIds == null || projectIds.isEmpty()) return List.of();
+        Query query = new Query(Criteria.where(F_STATUS).is(SessionStatus.SUSPENDED)
+                .and("suspendCause").is(SuspendCause.FORCED)
+                .and("projectId").in(projectIds));
+        return mongoTemplate.find(query, SessionDocument.class);
     }
 
     /** Physically drops the session record. For the idle-timeout cleanup path. */

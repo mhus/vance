@@ -5,7 +5,7 @@ import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
-import de.mhus.vance.shared.session.SessionStatus;
+import de.mhus.vance.api.session.SessionStatus;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,7 +83,7 @@ public class WsNotificationChannel implements NotificationChannel {
                 event.tenantId(), event.userId());
         List<WebSocketSession> out = new ArrayList<>();
         for (SessionDocument s : sessions) {
-            if (s.getStatus() != SessionStatus.OPEN) continue;
+            if (s.getStatus() == SessionStatus.CLOSED) continue;
             connectionRegistry.find(s.getSessionId()).ifPresent(out::add);
         }
         return out;

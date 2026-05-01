@@ -2,6 +2,7 @@ package de.mhus.vance.shared.thinkprocess;
 
 import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.api.skills.SkillScope;
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -196,7 +197,7 @@ public class ThinkProcessService {
                 .allowedToolsOverride(allowed)
                 .allowedSkillsOverride(skillWhitelist)
                 .activeSkills(seededSkills)
-                .status(ThinkProcessStatus.READY)
+                .status(ThinkProcessStatus.INIT)
                 .build();
         ThinkProcessDocument saved = repository.save(doc);
         log.info("Created think-process tenant='{}' session='{}' name='{}' engine='{}' id='{}' parent='{}' recipe='{}' profile='{}' skills={} params={}",
@@ -295,8 +296,9 @@ public class ThinkProcessService {
 
     /**
      * Atomically sets {@code status} on the process with the given Mongo id.
-     * Returns {@code true} if the row exists, {@code false} if the id is
-     * unknown.
+     * For non-CLOSED transitions {@code closeReason} is cleared. For
+     * CLOSED transitions, {@code closeReason} <em>must</em> be set —
+     * the convenience method {@link #closeProcess} does this for you.
      *
      * <p>Publishes a {@link ThinkProcessStatusChangedEvent} after a
      * successful update so listeners (e.g. parent-notification) can
@@ -304,10 +306,18 @@ public class ThinkProcessService {
      * equals the prior</em> — listeners that care about transitions
      * filter on {@code priorStatus != newStatus} themselves; those
      * that just want a heartbeat can ignore the predicate.
+     *
+     * @return {@code true} if the row exists and was updated
      */
     public boolean updateStatus(String id, ThinkProcessStatus status) {
+        if (status == ThinkProcessStatus.CLOSED) {
+            throw new IllegalArgumentException(
+                    "updateStatus(CLOSED) requires a CloseReason — use closeProcess(id, reason)");
+        }
         Query query = new Query(Criteria.where("_id").is(id));
-        Update update = new Update().set("status", status);
+        Update update = new Update()
+                .set("status", status)
+                .unset("closeReason");
         ThinkProcessDocument prior = mongoTemplate.findAndModify(
                 query, update,
                 FindAndModifyOptions.options().returnNew(false),
@@ -324,6 +334,40 @@ public class ThinkProcessService {
                 prior.getParentProcessId(),
                 prior.getStatus(),
                 status));
+        return true;
+    }
+
+    /**
+     * Terminal transition: status → CLOSED with the given
+     * {@link CloseReason}. Publishes a
+     * {@link ThinkProcessStatusChangedEvent} so the parent-notification
+     * listener can react. Idempotent — re-closing an already-closed
+     * process returns {@code false} without firing the event.
+     *
+     * @return {@code true} if the row existed and was transitioned
+     */
+    public boolean closeProcess(String id, CloseReason reason) {
+        Query query = new Query(Criteria.where("_id").is(id)
+                .and("status").ne(ThinkProcessStatus.CLOSED));
+        Update update = new Update()
+                .set("status", ThinkProcessStatus.CLOSED)
+                .set("closeReason", reason);
+        ThinkProcessDocument prior = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(false),
+                ThinkProcessDocument.class);
+        if (prior == null) {
+            return false;
+        }
+        log.info("Think-process closed id='{}' {} -> CLOSED reason={}",
+                id, prior.getStatus(), reason);
+        eventPublisher.publishEvent(new ThinkProcessStatusChangedEvent(
+                id,
+                prior.getTenantId(),
+                prior.getSessionId(),
+                prior.getParentProcessId(),
+                prior.getStatus(),
+                ThinkProcessStatus.CLOSED));
         return true;
     }
 

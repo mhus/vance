@@ -20,8 +20,8 @@ import lombok.NoArgsConstructor;
 public class ProcessListRequest {
 
     /**
-     * Include processes in terminal states (STOPPED, DONE, STALE).
-     * Default {@code false} — terminal-state rows are audit-only and
+     * Include processes in the terminal {@link ThinkProcessStatus#CLOSED}
+     * state. Default {@code false} — closed rows are audit-only and
      * clutter the live view.
      */
     private boolean includeTerminated;

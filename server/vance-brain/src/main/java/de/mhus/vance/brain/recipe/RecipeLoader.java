@@ -1,5 +1,9 @@
 package de.mhus.vance.brain.recipe;
 
+import de.mhus.vance.api.session.DisconnectPolicy;
+import de.mhus.vance.api.session.IdlePolicy;
+import de.mhus.vance.api.session.SessionLifecycleConfig;
+import de.mhus.vance.api.session.SuspendPolicy;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
@@ -250,10 +254,74 @@ public class RecipeLoader {
                     blockParams.put(String.valueOf(p.getKey()), p.getValue());
                 }
             }
+            SessionLifecycleConfig sessionCfg = parseSessionBlock(
+                    blockMap.get("session"), "profiles." + key + ".session");
             out.put(key, new ProfileBlock(
-                    blockAdd, blockRemove, blockAppend, Map.copyOf(blockParams)));
+                    blockAdd, blockRemove, blockAppend, Map.copyOf(blockParams), sessionCfg));
         }
         return Map.copyOf(out);
+    }
+
+    /**
+     * Parses the optional {@code session} sub-block inside a profile.
+     * Each missing field falls through to the safeDefault values; an
+     * entirely missing block returns {@code null}.
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable SessionLifecycleConfig parseSessionBlock(
+            @Nullable Object raw, String fieldName) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> rawMap)) {
+            throw new IllegalStateException("'" + fieldName + "' must be a map");
+        }
+        Map<String, Object> sm = (Map<String, Object>) rawMap;
+        SessionLifecycleConfig.SessionLifecycleConfigBuilder b =
+                SessionLifecycleConfig.builder();
+        Object onDisconnect = sm.get("onDisconnect");
+        if (onDisconnect != null) {
+            b.onDisconnect(parseEnum(DisconnectPolicy.class, onDisconnect, fieldName + ".onDisconnect"));
+        }
+        Object onIdle = sm.get("onIdle");
+        if (onIdle != null) {
+            b.onIdle(parseEnum(IdlePolicy.class, onIdle, fieldName + ".onIdle"));
+        }
+        Object onSuspend = sm.get("onSuspend");
+        if (onSuspend != null) {
+            b.onSuspend(parseEnum(SuspendPolicy.class, onSuspend, fieldName + ".onSuspend"));
+        }
+        Object idleTimeoutMs = sm.get("idleTimeoutMs");
+        if (idleTimeoutMs != null) {
+            b.idleTimeoutMs(parseLong(idleTimeoutMs, fieldName + ".idleTimeoutMs"));
+        }
+        Object suspendKeepDurationMs = sm.get("suspendKeepDurationMs");
+        if (suspendKeepDurationMs != null) {
+            b.suspendKeepDurationMs(parseLong(suspendKeepDurationMs, fieldName + ".suspendKeepDurationMs"));
+        }
+        return b.build();
+    }
+
+    private static <E extends Enum<E>> E parseEnum(Class<E> type, Object raw, String fieldName) {
+        if (!(raw instanceof String s)) {
+            throw new IllegalStateException("'" + fieldName + "' must be a string");
+        }
+        try {
+            return Enum.valueOf(type, s.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "unknown " + type.getSimpleName() + " value '" + s + "' for '" + fieldName + "'");
+        }
+    }
+
+    private static long parseLong(Object raw, String fieldName) {
+        if (raw instanceof Number n) return n.longValue();
+        if (raw instanceof String s) {
+            try {
+                return Long.parseLong(s.trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalStateException("'" + fieldName + "' is not a number: " + s);
+            }
+        }
+        throw new IllegalStateException("'" + fieldName + "' must be a number");
     }
 
     private static RecipeSource mapSource(LookupResult.Source source) {

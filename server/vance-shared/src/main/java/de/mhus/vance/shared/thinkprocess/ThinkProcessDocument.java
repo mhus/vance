@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.thinkprocess;
 
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -206,7 +207,15 @@ public class ThinkProcessDocument {
     @Builder.Default
     private List<ActiveSkillRefEmbedded> activeSkills = new ArrayList<>();
 
-    private ThinkProcessStatus status = ThinkProcessStatus.READY;
+    private ThinkProcessStatus status = ThinkProcessStatus.INIT;
+
+    /**
+     * Set when {@link #status} is {@link ThinkProcessStatus#CLOSED}, null
+     * otherwise. Audit/UI metadata: {@code DONE} (goal reached),
+     * {@code STOPPED} (user/parent/cascade), {@code STALE} (inconsistent).
+     * Drives no behaviour.
+     */
+    private @Nullable CloseReason closeReason;
 
     @Version
     private @Nullable Long version;

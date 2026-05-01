@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.zaphod;
 
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.zaphod.HeadStatus;
@@ -163,14 +164,14 @@ public class ZaphodEngine implements ThinkEngine {
         log.info("Zaphod.start tenant='{}' session='{}' id='{}' pattern={} heads={}",
                 process.getTenantId(), process.getSessionId(), process.getId(),
                 state.getPattern(), state.getHeads().size());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
 
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.debug("Zaphod.resume id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
 
@@ -190,7 +191,7 @@ public class ZaphodEngine implements ThinkEngine {
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Zaphod.stop id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STOPPED);
+        thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
     // ──────────────────── runTurn ────────────────────
@@ -206,13 +207,13 @@ public class ZaphodEngine implements ThinkEngine {
         // through RUNNING again, or each one re-fires a DONE-transition
         // and the parent (Arthur) gets duplicate notifications.
         if (state.getStatus() == ZaphodStatus.DONE) {
-            // Sync ThinkProcessStatus.DONE if not already there. The
-            // listener filters DONE→DONE so this is silent on no-ops.
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.DONE);
+            // Sync ThinkProcessStatus.CLOSED if not already there. The
+            // listener filters CLOSED→CLOSED so this is silent on no-ops.
+            thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
             return;
         }
         if (state.getStatus() == ZaphodStatus.FAILED) {
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STALE);
+            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             return;
         }
 
@@ -232,7 +233,7 @@ public class ZaphodEngine implements ThinkEngine {
                 state.setStatus(ZaphodStatus.RUNNING);
                 persistState(process, state);
                 eventEmitter.scheduleTurn(process.getId());
-                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
                 return;
             }
 
@@ -242,14 +243,14 @@ public class ZaphodEngine implements ThinkEngine {
             runSynthesis(process, ctx, state);
             persistState(process, state);
             if (state.getStatus() == ZaphodStatus.DONE) {
-                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.DONE);
+                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
             } else {
-                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STALE);
+                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             }
         } catch (RuntimeException e) {
             log.warn("Zaphod runTurn failed id='{}': {}",
                     process.getId(), e.toString(), e);
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STALE);
+            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
         }
     }

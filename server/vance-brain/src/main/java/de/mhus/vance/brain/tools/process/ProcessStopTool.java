@@ -98,9 +98,7 @@ public class ProcessStopTool implements Tool {
 
         // If already terminal, return its current shape — no engine call.
         ThinkProcessStatus current = target.getStatus();
-        if (current == ThinkProcessStatus.STOPPED
-                || current == ThinkProcessStatus.DONE
-                || current == ThinkProcessStatus.STALE) {
+        if (current == ThinkProcessStatus.CLOSED) {
             return shape(target);
         }
 

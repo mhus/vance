@@ -223,6 +223,17 @@ public class SessionChatBootstrapper {
         // even if engine.start throws below.
         sessionService.setChatProcessId(session.getSessionId(), fresh.getId());
 
+        // Apply the lifecycle config from the bootstrap-recipe's
+        // profile.session block, before engines start. Worker spawns
+        // ignore their session block (see specification/session-lifecycle.md §6).
+        if (applied != null && applied.sessionLifecycleConfig() != null) {
+            sessionService.applyLifecycleConfig(
+                    session.getSessionId(), applied.sessionLifecycleConfig());
+        }
+        // Bootstrap is now considered complete; flip session INIT → IDLE
+        // before the chat engine's first turn fires.
+        sessionService.markBootstrapped(session.getSessionId());
+
         try {
             laneScheduler.submit(fresh.getId(), () -> {
                 thinkEngineService.start(fresh);

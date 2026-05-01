@@ -49,6 +49,14 @@ profiles:
       # memory block (in addition to the server-side agent doc).
       # See specification/recipes.md §6a.
       useClientAgentDoc: true
+    # Lifecycle for foot sessions — engines depend on local client
+    # tools, so disconnect must suspend; idle = "user is thinking".
+    # See specification/session-lifecycle.md §5.
+    session:
+      onDisconnect: SUSPEND
+      onIdle: NONE
+      onSuspend: KEEP
+      suspendKeepDurationMs: 86400000   # 24h
     promptPrefixAppend: |
       ## Client context — local CLI
 
@@ -72,6 +80,15 @@ profiles:
       - client_exec_kill
       - client_exec_status
       - client_javascript
+    # Lifecycle for web sessions — server tools are enough, so the
+    # session keeps running across disconnects; idle eventually parks
+    # it. See specification/session-lifecycle.md §5.
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000            # 30 min
+      suspendKeepDurationMs: 86400000   # 24h
     promptPrefixAppend: |
       ## Client context — web browser
 
@@ -96,6 +113,12 @@ profiles:
       - client_exec_kill
       - client_exec_status
       - client_javascript
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000
+      suspendKeepDurationMs: 86400000
     promptPrefixAppend: |
       ## Client context — non-CLI client
 

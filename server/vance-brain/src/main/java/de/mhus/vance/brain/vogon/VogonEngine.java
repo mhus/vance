@@ -5,6 +5,7 @@ import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.vogon.CheckpointSpec;
@@ -167,7 +168,7 @@ public class VogonEngine implements ThinkEngine {
         log.info("Vogon.start tenant='{}' session='{}' id='{}' strategy='{}' phase='{}'",
                 process.getTenantId(), process.getSessionId(), process.getId(),
                 strategy.getName(), state.getCurrentPhaseName());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         // Trigger first turn on Vogon's own lane.
         eventEmitter.scheduleTurn(process.getId());
     }
@@ -175,7 +176,7 @@ public class VogonEngine implements ThinkEngine {
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.debug("Vogon.resume id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
 
@@ -192,7 +193,7 @@ public class VogonEngine implements ThinkEngine {
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Vogon.stop id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STOPPED);
+        thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
     // ──────────────────── runTurn ────────────────────
@@ -240,7 +241,7 @@ public class VogonEngine implements ThinkEngine {
             if (state.isStrategyComplete()) {
                 log.info("Vogon id='{}' strategy '{}' complete — DONE",
                         process.getId(), state.getStrategy());
-                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.DONE);
+                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
 
@@ -249,7 +250,7 @@ public class VogonEngine implements ThinkEngine {
             if (phase == null) {
                 state.setStrategyComplete(true);
                 persistState(process, state);
-                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.DONE);
+                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
 
@@ -265,7 +266,7 @@ public class VogonEngine implements ThinkEngine {
             advancePhase(process, ctx, strategy, state, phase);
         } catch (RuntimeException e) {
             log.warn("Vogon runTurn failed id='{}': {}", process.getId(), e.toString(), e);
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STALE);
+            thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
         }
     }
@@ -294,12 +295,12 @@ public class VogonEngine implements ThinkEngine {
                 if (isFlagTrue(state, phaseFlag(phaseName, "failed"))) {
                     log.warn("Vogon id='{}' phase '{}' worker FAILED — process stale",
                             process.getId(), phaseName);
-                    thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STALE);
+                    thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
                     return;
                 }
                 // Defensive: shouldn't happen with synchronous spawn,
                 // but yield rather than loop.
-                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
                 return;
             }
         }
@@ -319,7 +320,7 @@ public class VogonEngine implements ThinkEngine {
             // a config bug, not Vogon's job to recover.
             log.info("Vogon id='{}' phase '{}' gate not yet satisfied — waiting",
                     process.getId(), phaseName);
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
             return;
         }
 

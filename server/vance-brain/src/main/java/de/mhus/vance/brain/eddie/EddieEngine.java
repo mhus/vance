@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.eddie;
 
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
@@ -263,7 +264,7 @@ public class EddieEngine implements ThinkEngine {
                 .role(ChatRole.ASSISTANT)
                 .content(greeting)
                 .build());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     @Override
@@ -282,7 +283,7 @@ public class EddieEngine implements ThinkEngine {
                     .content(recap)
                     .build());
         }
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     /**
@@ -337,7 +338,7 @@ public class EddieEngine implements ThinkEngine {
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Eddie.stop id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STOPPED);
+        thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
     @Override

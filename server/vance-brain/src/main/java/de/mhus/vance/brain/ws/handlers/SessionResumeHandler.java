@@ -12,7 +12,7 @@ import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
-import de.mhus.vance.shared.session.SessionStatus;
+import de.mhus.vance.api.session.SessionStatus;
 import java.io.IOException;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -62,7 +62,7 @@ public class SessionResumeHandler implements WsHandler {
         }
 
         Optional<SessionDocument> existing = sessionService.findBySessionId(request.getSessionId());
-        if (existing.isEmpty() || existing.get().getStatus() != SessionStatus.OPEN) {
+        if (existing.isEmpty() || existing.get().getStatus() == SessionStatus.CLOSED) {
             sender.sendError(wsSession, envelope, 404,
                     "Session '" + request.getSessionId() + "' not found");
             return;

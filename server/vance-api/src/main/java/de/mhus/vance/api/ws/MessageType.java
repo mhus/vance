@@ -24,6 +24,18 @@ public final class MessageType {
     public static final String PROCESS_STEER = "process-steer";
     public static final String PROCESS_LIST = "process-list";
 
+    /**
+     * Client → brain: stop a running think-process in the bound
+     * session. User-initiated counterpart to the orchestrator-only
+     * {@code process_stop} brain-tool. Triggers
+     * {@code engine.stop(...)} on the target's lane and transitions
+     * the process to {@code CLOSED} with {@code closeReason=STOPPED}.
+     *
+     * Foot client maps ESC to this when a chat-process is active —
+     * see {@code specification/session-lifecycle.md} §11.5.
+     */
+    public static final String PROCESS_STOP = "process-stop";
+
     /** Manual memory compaction trigger for a think-process. */
     public static final String PROCESS_COMPACT = "process-compact";
 

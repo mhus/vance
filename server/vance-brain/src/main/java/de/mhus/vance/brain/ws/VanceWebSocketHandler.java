@@ -5,6 +5,7 @@ import de.mhus.vance.api.ws.ServerInfo;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.WelcomeData;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.session.SessionService;
 import java.util.HashMap;
@@ -41,6 +42,7 @@ import tools.jackson.databind.ObjectMapper;
 public class VanceWebSocketHandler extends TextWebSocketHandler {
 
     private final SessionService sessionService;
+    private final SessionLifecycleService sessionLifecycle;
     private final VanceBrainProperties properties;
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
@@ -50,6 +52,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
 
     public VanceWebSocketHandler(
             SessionService sessionService,
+            SessionLifecycleService sessionLifecycle,
             VanceBrainProperties properties,
             ObjectMapper objectMapper,
             WebSocketSender sender,
@@ -57,6 +60,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             SessionConnectionRegistry connectionRegistry,
             List<WsHandler> handlers) {
         this.sessionService = sessionService;
+        this.sessionLifecycle = sessionLifecycle;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.sender = sender;
@@ -146,9 +150,19 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_CONNECTION);
         if (!(attr instanceof ConnectionContext ctx)) return;
         if (ctx.hasSession()) {
-            clientToolRegistry.unregister(ctx.getSessionId());
-            connectionRegistry.unregister(ctx.getSessionId());
-            sessionService.unbind(ctx.getSessionId(), ctx.getConnectionId());
+            String sessionId = ctx.getSessionId();
+            clientToolRegistry.unregister(sessionId);
+            connectionRegistry.unregister(sessionId);
+            sessionService.unbind(sessionId, ctx.getConnectionId());
+            // Drive the per-session onDisconnect policy AFTER the connection
+            // bookkeeping has been cleared. The lifecycle service may
+            // suspend / close the session; engines on the lane finish at
+            // the next safe boundary.
+            try {
+                sessionLifecycle.onDisconnect(sessionId);
+            } catch (RuntimeException e) {
+                log.warn("onDisconnect dispatch failed for session='{}'", sessionId, e);
+            }
         }
     }
 

@@ -89,9 +89,7 @@ public class ProcessListHandler implements WsHandler {
     }
 
     private static boolean isTerminated(ThinkProcessStatus s) {
-        return s == ThinkProcessStatus.STOPPED
-                || s == ThinkProcessStatus.DONE
-                || s == ThinkProcessStatus.STALE;
+        return s == ThinkProcessStatus.CLOSED;
     }
 
     static ProcessSummary toSummary(ThinkProcessDocument doc) {
@@ -103,6 +101,7 @@ public class ProcessListHandler implements WsHandler {
                 .thinkEngineVersion(doc.getThinkEngineVersion())
                 .goal(doc.getGoal())
                 .status(doc.getStatus())
+                .closeReason(doc.getCloseReason())
                 .createdAt(null) // ThinkProcessDocument has no createdAt; populate when added
                 .build();
     }

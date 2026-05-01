@@ -2,6 +2,7 @@ package de.mhus.vance.brain.ford;
 
 import de.mhus.vance.api.chat.ChatMessageChunkData;
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
@@ -220,13 +221,13 @@ public class Ford implements ThinkEngine {
                 .role(ChatRole.ASSISTANT)
                 .content(GREETING)
                 .build());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.debug("Ford.resume id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     @Override
@@ -248,7 +249,7 @@ public class Ford implements ThinkEngine {
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Ford.stop id='{}'", process.getId());
-        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.STOPPED);
+        thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
     // ──────────────────── One turn ────────────────────
@@ -360,7 +361,7 @@ public class Ford implements ThinkEngine {
             // Drain one-shot skills before the next turn — they only
             // ever apply to the turn that activated them.
             dropOneShotSkills(process);
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.READY);
+            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         }
     }
 

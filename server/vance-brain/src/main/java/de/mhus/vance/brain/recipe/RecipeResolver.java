@@ -147,7 +147,8 @@ public class RecipeResolver {
                 r.defaultActiveSkills(),
                 r.allowedSkills(),
                 r.source(),
-                List.copyOf(overriddenKeys));
+                List.copyOf(overriddenKeys),
+                profileBlock.sessionLifecycleConfig());
     }
 
     /**

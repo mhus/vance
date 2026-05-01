@@ -37,5 +37,8 @@ public class ProcessSummary {
 
     private ThinkProcessStatus status;
 
+    /** Set only when {@link #status} is {@link ThinkProcessStatus#CLOSED}. */
+    private @Nullable CloseReason closeReason;
+
     private @Nullable Instant createdAt;
 }

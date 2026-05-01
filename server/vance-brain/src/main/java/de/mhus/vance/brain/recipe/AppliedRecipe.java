@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.recipe;
 
+import de.mhus.vance.api.session.SessionLifecycleConfig;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import java.util.List;
 import java.util.Map;
@@ -46,5 +47,12 @@ public record AppliedRecipe(
          */
         @Nullable List<String> allowedSkills,
         RecipeSource source,
-        List<String> overriddenParamKeys) {
+        List<String> overriddenParamKeys,
+        /**
+         * Session-lifecycle config from {@code profiles.{profile}.session}.
+         * Only meaningful for the bootstrap recipe of a session — worker
+         * recipes ignore this. {@code null} when the resolved profile-block
+         * had no {@code session:} sub-block.
+         */
+        @Nullable SessionLifecycleConfig sessionLifecycleConfig) {
 }

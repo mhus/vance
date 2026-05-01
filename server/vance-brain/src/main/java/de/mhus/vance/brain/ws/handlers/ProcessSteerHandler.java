@@ -4,6 +4,7 @@ import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -128,6 +129,17 @@ public class ProcessSteerHandler implements WsHandler {
         }
         ThinkProcessDocument process = processOpt.get();
         String processId = process.getId();
+
+        // Auto-resume on incoming user input. The user paused, the
+        // chat went PAUSED, and now they're sending the correction.
+        // Without this flip, the message would land in the queue but
+        // the lane wouldn't drain (status-gated). User-typed input is
+        // implicitly a "continue" signal.
+        if (process.getStatus() == ThinkProcessStatus.PAUSED) {
+            log.info("Auto-resume on user steer: process='{}' PAUSED -> IDLE",
+                    request.getProcessName());
+            thinkProcessService.updateStatus(processId, ThinkProcessStatus.IDLE);
+        }
 
         SteerMessage.UserChatInput userInput = new SteerMessage.UserChatInput(
                 Instant.now(),

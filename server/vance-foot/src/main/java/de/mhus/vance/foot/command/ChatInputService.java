@@ -1,15 +1,14 @@
 package de.mhus.vance.foot.command;
 
 import de.mhus.vance.api.thinkprocess.ProcessPauseRequest;
-import de.mhus.vance.api.thinkprocess.ProcessPauseResponse;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
-import de.mhus.vance.api.thinkprocess.ProcessStopResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.session.SessionService;
+import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.PromptGate;
 import jakarta.annotation.PreDestroy;
@@ -47,6 +46,7 @@ public class ChatInputService {
     private final SessionService sessions;
     private final ChatTerminal chatTerminal;
     private final PromptGate promptGate;
+    private final BusyIndicator busyIndicator;
 
     /**
      * Background executor for async chat submission. Keeps the REPL
@@ -64,12 +64,14 @@ public class ChatInputService {
                             ConnectionService connection,
                             SessionService sessions,
                             ChatTerminal chatTerminal,
-                            PromptGate promptGate) {
+                            PromptGate promptGate,
+                            BusyIndicator busyIndicator) {
         this.commandService = commandService;
         this.connection = connection;
         this.sessions = sessions;
         this.chatTerminal = chatTerminal;
         this.promptGate = promptGate;
+        this.busyIndicator = busyIndicator;
     }
 
     /**
@@ -125,41 +127,42 @@ public class ChatInputService {
     }
 
     /**
-     * Fire-and-forget {@code process-pause} for the active workers in
-     * the bound session — workers being defined as non-CLOSED children
-     * of the chat-process. Used by the foot ESC key-binding and the
-     * {@code /stop} slash-command. The chat-process itself stays alive;
-     * the user's next chat message lets Arthur decide what to do
+     * Fire-and-forget {@code process-pause} for everything active in
+     * the bound session (chat + workers). Halts further turns; the
+     * user's next typed chat message lets Arthur decide what to do
      * (resume + steer, or stop + create fresh).
      *
-     * <p>Async because the REPL prompt should stay responsive while
-     * the brain processes the pause.
+     * <p><b>Bypasses the chat asyncExecutor on purpose.</b> The
+     * single-thread executor that handles user-typed chat content
+     * may be blocked inside a synchronous {@code process-steer}
+     * round-trip (waiting for the brain's reply). Queueing the pause
+     * behind that would mean the pause arrives only after the very
+     * turn the user wanted to interrupt has finished. We therefore
+     * call {@link de.mhus.vance.foot.connection.ConnectionService#send}
+     * directly from the caller thread (typically the JLine ESC widget
+     * or the slash-dispatch thread) — non-blocking, fires immediately.
+     * The brain's {@code ENGINE_HALT_REQUESTED} progress ping arrives
+     * back as user feedback through the existing notification channel.
      */
     public void requestPause() {
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
             return;
         }
-        asyncExecutor.submit(() -> {
-            try {
-                ProcessPauseResponse response = connection.request(
-                        MessageType.PROCESS_PAUSE,
-                        ProcessPauseRequest.builder().build(), // null name = active workers
-                        ProcessPauseResponse.class,
-                        PAUSE_TIMEOUT);
-                java.util.List<String> paused = response.getPausedProcessNames();
-                if (paused == null || paused.isEmpty()) {
-                    chatTerminal.verbose("→ pause: no active workers to pause");
-                } else {
-                    chatTerminal.info("Paused " + paused.size()
-                            + " worker(s): " + paused);
-                }
-            } catch (BrainException e) {
-                chatTerminal.error("pause failed: " + e.getMessage());
-            } catch (Exception e) {
-                chatTerminal.error("pause failed: " + e.getMessage());
-            }
-        });
+        boolean sent = connection.send(de.mhus.vance.api.ws.WebSocketEnvelope.request(
+                "pause_" + System.nanoTime(),
+                MessageType.PROCESS_PAUSE,
+                ProcessPauseRequest.builder().build()));
+        if (!sent) {
+            chatTerminal.error("pause failed: not connected");
+            return;
+        }
+        // Drop the busy spinner immediately. The pending chat-request
+        // (PROCESS_STEER) is still waiting for its reply on the
+        // asyncExecutor — but from the user's POV, /pause means "I'm
+        // done waiting". When the steer reply eventually arrives, the
+        // exit() in sendChatLocked's finally is a no-op (caps at 0).
+        busyIndicator.clear();
     }
 
     /**
@@ -168,34 +171,29 @@ public class ChatInputService {
      * but harder: workers go to {@code CLOSED} ({@code closeReason=STOPPED})
      * instead of {@code PAUSED}. Arthur sees the resulting STOPPED
      * parent-notifications and can decide whether to spawn fresh.
-     * Used by the foot {@code /stop} command for "abandon this
-     * direction, start over" scenarios.
+     *
+     * <p>Same async-bypass rationale as {@link #requestPause()} —
+     * goes directly through {@code connection.send} instead of the
+     * chat asyncExecutor so it isn't blocked behind a long-running
+     * chat round-trip.
      */
     public void requestStop() {
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
             return;
         }
-        asyncExecutor.submit(() -> {
-            try {
-                ProcessStopResponse response = connection.request(
-                        MessageType.PROCESS_STOP,
-                        ProcessStopRequest.builder().build(), // null name = active workers
-                        ProcessStopResponse.class,
-                        PAUSE_TIMEOUT);
-                java.util.List<String> stopped = response.getStoppedProcessNames();
-                if (stopped == null || stopped.isEmpty()) {
-                    chatTerminal.verbose("→ stop: no active workers to stop");
-                } else {
-                    chatTerminal.info("Stopped " + stopped.size()
-                            + " worker(s): " + stopped);
-                }
-            } catch (BrainException e) {
-                chatTerminal.error("stop failed: " + e.getMessage());
-            } catch (Exception e) {
-                chatTerminal.error("stop failed: " + e.getMessage());
-            }
-        });
+        boolean sent = connection.send(de.mhus.vance.api.ws.WebSocketEnvelope.request(
+                "stop_" + System.nanoTime(),
+                MessageType.PROCESS_STOP,
+                ProcessStopRequest.builder().build()));
+        if (!sent) {
+            chatTerminal.error("stop failed: not connected");
+            return;
+        }
+        // Same UX rationale as requestPause(): clear the spinner now,
+        // don't keep the user staring at an animation while the
+        // already-in-flight steer reply trickles in.
+        busyIndicator.clear();
     }
 
     @PreDestroy
@@ -235,6 +233,11 @@ public class ChatInputService {
             chatTerminal.error(msg);
             return InputResult.chat(line, false, msg);
         }
+        // Mark busy *around* the synchronous brain round-trip — the
+        // status-bar animation polls this flag and shows the user
+        // that something is in flight even while the REPL prompt is
+        // back and waiting for input.
+        busyIndicator.enter();
         try {
             ProcessSteerResponse response = connection.request(
                     MessageType.PROCESS_STEER,
@@ -254,6 +257,8 @@ public class ChatInputService {
             String msg = "Steer failed: " + e.getMessage();
             chatTerminal.error(msg);
             return InputResult.chat(line, false, msg);
+        } finally {
+            busyIndicator.exit();
         }
     }
 

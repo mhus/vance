@@ -78,12 +78,12 @@ public class ProcessPauseHandler implements WsHandler {
         String processName = request == null ? null : request.getProcessName();
         List<String> paused;
         if (processName == null || processName.isBlank()) {
-            // Emit a "halt requested" ping for each candidate child
+            // Emit a "halt requested" ping for each candidate process
             // immediately so the user sees feedback even if the
             // engine is still mid-turn (the actual ENGINE_PAUSED
             // ping fires once the lane reaches the next boundary).
-            emitHaltRequestedForActiveWorkers(tenantId, sessionId);
-            paused = sessionLifecycle.pauseChildrenOfChat(sessionId);
+            emitHaltRequestedForActiveProcesses(tenantId, sessionId);
+            paused = sessionLifecycle.pauseActiveInSession(sessionId);
         } else {
             // Single named process.
             Optional<ThinkProcessDocument> processOpt =
@@ -132,22 +132,15 @@ public class ProcessPauseHandler implements WsHandler {
     }
 
     /**
-     * Walks the chat-process's children and emits an
-     * ENGINE_HALT_REQUESTED ping per active worker. Decoupled from
-     * the actual pause path so the user gets immediate "I heard
-     * you" feedback even when the lane queue is busy.
+     * Walks every non-CLOSED, non-PAUSED process in the session and
+     * emits an ENGINE_HALT_REQUESTED ping. Decoupled from the actual
+     * pause path so the user gets immediate "I heard you" feedback
+     * even when the lane queue is busy.
      */
-    private void emitHaltRequestedForActiveWorkers(String tenantId, String sessionId) {
+    private void emitHaltRequestedForActiveProcesses(String tenantId, String sessionId) {
         java.util.List<ThinkProcessDocument> all =
                 thinkProcessService.findBySession(tenantId, sessionId);
-        ThinkProcessDocument chat = all.stream()
-                .filter(p -> p.getParentProcessId() == null)
-                .filter(p -> "chat".equals(p.getName()))
-                .findFirst()
-                .orElse(null);
-        if (chat == null) return;
         for (ThinkProcessDocument p : all) {
-            if (!chat.getId().equals(p.getParentProcessId())) continue;
             ThinkProcessStatus s = p.getStatus();
             if (s == ThinkProcessStatus.CLOSED || s == ThinkProcessStatus.PAUSED) {
                 continue;

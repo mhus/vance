@@ -159,33 +159,33 @@ public class SessionLifecycleService {
     }
 
     /**
-     * Pause every non-CLOSED <em>child</em> of the session's chat-process.
-     * Used by the foot ESC binding and {@code /stop} command — the
-     * intent is "halt the workers so I can correct, but keep the chat
-     * alive". Chat-process itself is never paused this way.
+     * Pause every non-CLOSED process in the session — that's the
+     * chat-process plus all its children. Used by the foot ESC
+     * binding and {@code /pause} command: "halt activity so I can
+     * redirect". The chat itself goes PAUSED too so the user's next
+     * typed message arrives at a stopped engine; the
+     * {@code process-steer} WS handler auto-resumes the target on
+     * inbound user input, so the user sees the next chat round-trip
+     * naturally pick up the correction.
      *
-     * <p>Pause runs on each child's lane, so it serialises with any
-     * in-flight {@code runTurn} on that child. The status transition
-     * to {@code PAUSED} happens at the next safe boundary (after the
-     * current turn completes) — that's the existing lane-scheduler
-     * guarantee.
+     * <p>Pause runs on each process's lane and serialises with any
+     * in-flight {@code runTurn}. The status transition to
+     * {@code PAUSED} happens at the next safe boundary — current
+     * LLM call (if any) finishes first.
      *
      * @return the names of the processes that were paused (empty
-     *         when no active workers existed)
+     *         when nothing was active)
      */
-    public java.util.List<String> pauseChildrenOfChat(String sessionId) {
+    public java.util.List<String> pauseActiveInSession(String sessionId) {
         de.mhus.vance.shared.session.SessionDocument session =
                 sessionService.findBySessionId(sessionId).orElse(null);
         if (session == null) return java.util.List.of();
-        String chatProcessId = session.getChatProcessId();
-        if (chatProcessId == null) return java.util.List.of();
 
         java.util.List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
                 session.getTenantId(), sessionId);
         java.util.List<String> pausedNames = new java.util.ArrayList<>();
         java.util.List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
         for (ThinkProcessDocument p : processes) {
-            if (!chatProcessId.equals(p.getParentProcessId())) continue;
             ThinkProcessStatus s = p.getStatus();
             if (s == ThinkProcessStatus.CLOSED
                     || s == ThinkProcessStatus.PAUSED) {
@@ -198,7 +198,7 @@ public class SessionLifecycleService {
             }));
         }
         joinAll(futures);
-        log.info("Paused {} worker(s) under chat-process of session='{}': {}",
+        log.info("Paused {} process(es) in session='{}': {}",
                 pausedNames.size(), sessionId, pausedNames);
         return pausedNames;
     }

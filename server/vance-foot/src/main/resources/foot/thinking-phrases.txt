@@ -1,0 +1,895 @@
+# Vance Foot — random "thinking" phrases for the busy indicator.
+# One phrase per line, ≤30 characters, # for comments.
+# Mostly movie quotes that fit a "stand by, working on it" vibe.
+
+hasta la vista, baby
+I'll be back
+may the force be with you
+to infinity and beyond
+elementary, my dear Watson
+show me the money
+you talkin' to me?
+houston, we have a problem
+say hello to my little friend
+do or do not, there is no try
+beam me up, Scotty
+make my day
+frankly my dear...
+I have a bad feeling
+wax on, wax off
+round up the usual suspects
+I am inevitable
+with great power...
+we need a bigger boat
+life finds a way
+you can't handle the truth
+this is the way
+yippee-ki-yay
+great Scott!
+yo Adrian!
+follow the white rabbit
+there is no spoon
+red pill or blue pill?
+nobody's perfect
+phone home
+engage!
+make it so
+live long and prosper
+resistance is futile
+my precious...
+I see dead people
+keep your friends close
+heeere's Johnny
+get to da choppa
+I'm walkin' here
+why so serious?
+the truth is out there
+just keep swimming
+inconceivable!
+hello, my old friend
+ground control to Major Tom
+plot twist incoming
+curiouser and curiouser
+the cake is a lie
+all your base...
+warp speed, ahead
+in space, no one can hear...
+my name is Inigo Montoya
+chewie, get us out of here
+deus ex thinking
+brain in a vat
+turning it up to eleven
+boldly going
+crunching the numbers
+consulting the oracle
+talking to the machine
+asking the elders
+spinning up a wormhole
+threading the needle
+running the simulation
+divining the answer
+checking the matrix
+chasing rabbits
+counting to infinity
+herding electrons
+rolling the dice
+solving for X
+
+it's dangerous to go alone
+take this!
+finish him!
+get over here!
+hadouken!
+shoryuken!
+fatality
+round one... fight!
+you died
+prepare yourself
+stay awhile and listen
+the princess is in another castle
+a winner is you
+press start to continue
+insert coin
+game over, man!
+all systems nominal
+target acquired
+lock and load
+initializing...
+charging...
+recalculating route
+rerouting...
+processing request
+working as intended
+compiling thoughts
+building solution
+almost there...
+stand by...
+hold please...
+one moment...
+just a second...
+deep in thought
+thinking...
+connecting dots
+joining the pieces
+aligning stars
+cracking the code
+decoding signal
+analyzing patterns
+searching archives
+consulting the logs
+reading the runes
+summoning answers
+rolling initiative
+casting a spell
+channeling energy
+powering up
+overclocking brain
+warming up neurons
+spinning the gears
+turning the cogs
+greasing the wheels
+brewing ideas
+mixing potions
+stirring the pot
+plotting a course
+charting a path
+navigating the void
+into the unknown
+beyond the horizon
+through the looking glass
+down the rabbit hole
+hold onto your butts
+clever girl
+i know kung fu
+welcome to the real world
+wake up, Neo
+follow the signal
+trust the process
+you shall not pass
+fly, you fools!
+one does not simply...
+winter is coming
+valar morghulis
+so say we all
+by your command
+this is fine
+everything is fine
+be right back
+back in a flash
+on it...
+working on it...
+nearly done...
+finalizing...
+wrapping up
+done is better than perfect
+measure twice, cut once
+stay on target
+use the force
+never tell me the odds
+punch it, Chewie!
+we're gonna need backup
+mission in progress
+objective updated
+quest accepted
+quest in progress
+side quest unlocked
+leveling up...
+gaining XP
+new high score
+combo multiplier!
+bonus round
+speed run mode
+hard mode engaged
+expert mode
+nightmare difficulty
+easy does it
+steady as she goes
+keep calm and carry on
+mind the gap
+please wait warmly
+thank you for your patience
+
+believe it!
+dattebayo!
+bankai!
+gear second
+gear fifth
+ka... me... ha... me...
+kamehameha!
+ultra instinct
+plus ultra!
+i am here!
+one for all
+all for one
+tatakae!
+sasageyo!
+shinzou wo sasageyo
+omae wa mou shindeiru
+nani?!
+yare yare daze
+ora ora ora!
+muda muda muda!
+za warudo!
+tokyo drift
+just according to keikaku
+keikaku means plan
+
+bazinga!
+soft kitty, warm kitty
+knock knock knock, Penny!
+fun with flags
+that's my spot
+i'm not crazy
+penny?
+sheldon cooper speaking
+roommate agreement
+spot acquired
+string theory pending
+quantum uncertainty
+schrodinger says maybe
+
+winter is here
+not today
+hold the door
+dracarys
+bend the knee
+you know nothing
+chaos is a ladder
+
+live long and prosper
+fascinating
+illogical
+make it so, number one
+engage warp drive
+red alert
+shields up
+full impulse
+set phasers to stun
+
+glitch in the system
+buffering reality
+syncing...
+handshake complete
+access granted
+access denied
+retrying...
+fallback engaged
+safe mode
+debugging...
+patching reality
+loading assets
+rendering thoughts
+saving progress
+autosave complete
+
+combo breaker!
+flawless victory
+finish the fight
+new challenger
+continue?
+stage cleared
+boss fight incoming
+final boss ahead
+checkpoint reached
+respawning...
+extra life!
+power-up acquired
+inventory full
+skill unlocked
+achievement unlocked
+hidden level found
+secret discovered
+
+rolling for initiative
+nat 20!
+critical hit!
+critical fail
+dice are rolling
+initiative set
+spell on cooldown
+mana low
+hp critical
+buff applied
+debuff incoming
+quest log updated
+
+hacking the planet
+enhance!
+zoom and enhance
+it's a unix system
+accessing mainframe
+decrypting...
+brute forcing...
+spoofing signal
+pinging server
+establishing link
+
+vibe check
+loading vibes
+good vibes only
+bad vibes detected
+adjusting vibes
+syncing vibes
+
+thinking cap on
+gears turning
+neurons firing
+ideas brewing
+pattern matched
+solution forming
+almost cracked it
+lightbulb moment
+eureka pending
+thinking harder
+
+please stand by
+standby mode
+hold tight
+working magic
+doing wizard things
+magic in progress
+alchemy running
+transmuting ideas
+
+trust the code
+code never lies
+ship it!
+refactor later
+quick fix deployed
+temporary solution
+permanent workaround
+it compiles!
+works on my machine
+undefined behavior
+edge case detected
+race condition
+off by one
+
+beep boop
+boop beep
+calculating...
+processing...
+still thinking...
+almost done
+final pass
+last step
+wrapping things up
+done soon™
+
+look behind you, a monkey!
+how appropriate, you fight...
+i'm selling these fine jackets
+never pay more than 20 bucks
+ask me about Loom
+three-headed monkey!
+insult sword fighting
+this is voodoo magic
+mixing the potion
+where's my root beer?
+i can hold my breath
+inventory puzzle time
+combine with...
+that doesn't seem to work
+
+it belongs in a museum!
+fortune and glory!
+snakes... why'd it be snakes?
+choose wisely
+x never marks the spot
+trust the map
+reading the diary
+deciphering clues
+ancient mechanism
+opening the tomb
+
+hey, want to play?
+don't touch that!
+i feel smarter already
+using rubber chicken
+with a pulley in the middle
+pulling the lever
+pushing the button
+that looks important
+this seems useful
+
+hi, i'm Guybrush Threepwood
+mighty pirate™
+talk to Stan
+closed for inventory
+step right up!
+special deal today
+
+another visitor, stay awhile
+stay awhile, listen
+the cake is not here
+where am i now?
+this place looks familiar
+pixel hunting...
+trying every verb
+use, push, pull, talk
+look at everything
+talk to everyone
+try all combinations
+
+wrong dialog option
+skip the dialog
+exhausting all options
+branching conversation
+dialog tree loading
+choosing response
+that escalated quickly
+
+inventory is full
+too many items
+dropping something
+picking that up
+examining object
+nothing happens
+try something else
+backtracking...
+revisiting locations
+fast travel? nope
+
+save often
+load game
+restore progress
+did you save?
+quick save!
+quick load!
+retrying puzzle
+stuck again...
+
+adventure awaits
+mysterious island
+dark cave ahead
+strange contraption
+hidden passage
+secret door found
+unlocking mechanism
+finding the key
+where's the key?
+
+reading strange symbols
+translating text
+ancient language
+cryptic message
+riddle me this
+solving the riddle
+thinking outside the box
+
+this might work
+almost got it
+not quite right
+try again
+experimenting...
+trial and error
+logic puzzle engaged
+
+meanwhile...
+to be continued...
+cutscene loading
+dramatic pause...
+plot thickens
+twist revealed?
+unexpected outcome
+
+don't cross the streams
+wrong universe, sorry
+breaking the fourth wall
+insert witty remark
+sarcasm detected
+dry humor loading
+
+press F5 to save
+point and click
+left click, right click
+choose your verb
+classic interface
+retro mode engaged
+low-res thinking
+pixel perfect
+
+one more try
+just one more attempt
+i can do this
+figure it out
+thinking like it's 1992
+running on floppy disks
+loading from CD-ROM
+please insert disk 2
+buffering from the past
+
+# --- STAR WARS ---
+
+a long time ago...
+in a galaxy far away
+use the force
+i find your lack...
+the force is strong
+stay on target
+almost there...
+target locked
+great shot, kid!
+don't get cocky
+punch it!
+jump to lightspeed
+lightspeed engaged
+hyperdrive online
+calculating jump
+nav computer ready
+shields up!
+power to shields
+rerouting power
+engines at full
+full throttle
+we're losing power
+hold together!
+blast that thing!
+take evasive action
+incoming fire!
+they're on us!
+tighten formation
+lock S-foils
+attack run
+direct hit!
+target destroyed
+
+search your feelings
+you know it to be true
+join me
+rule the galaxy
+the dark side calls
+give in to anger
+your destiny awaits
+
+these aren't the droids
+move along...
+i've got a bad feeling
+never tell me the odds
+odds recalculating
+impressive... most impressive
+stay here, i'll handle it
+this deal is getting worse
+i know
+roger roger
+another happy landing
+this is where the fun begins
+
+# --- STAR TREK ---
+
+space, the final frontier
+boldly going...
+engage warp drive
+warp speed
+maximum warp
+going to warp
+set course
+lay in a course
+course plotted
+helm, steady
+all ahead full
+
+scanning...
+long range scan
+sensor sweep
+analyzing data
+reading life signs
+no life signs detected
+unknown anomaly
+spatial distortion
+temporal anomaly
+subspace signal
+
+red alert!
+yellow alert
+condition green
+shields holding
+shields at 50%
+shields failing!
+hull integrity low
+damage report
+repair crews en route
+
+energize
+beam me up
+transporter ready
+pattern locked
+rematerializing
+in the buffer...
+signal lost
+reacquiring signal
+
+diverting power
+rerouting systems
+aux power engaged
+backup systems online
+life support nominal
+all systems normal
+
+logic dictates...
+fascinating...
+highly illogical
+captain's log
+stardate unknown
+make it so
+it is so ordered
+by your command
+resistance is futile
+we are the Borg
+assimilating...
+
+# --- STAR WARS (deep cuts) ---
+
+hello there
+general kenobi
+so uncivilized
+civilized weapon
+this is podracing!
+now this is podracing
+try spinning!
+i'll try spinning
+wizard!
+yippee!
+stay on target
+almost there...
+negative, it didn't go in
+great shot, kid
+force choke engaged
+disturbance detected
+balance in the force
+prophecy loading
+midichlorians rising
+
+roger roger
+clankers detected
+blast 'em!
+for the republic!
+for the separatists!
+execute order 66
+good soldiers follow orders
+just like the simulations
+watch those wrist rockets
+target the droid control
+
+another happy landing
+this is where the fun begins
+not to worry, we're fine
+we're smarter than this
+we'll handle this
+i've got a plan
+do you trust me?
+
+i am one with the force
+the force is with me
+trust the force
+feel the force flow
+force guiding...
+search your feelings
+you know this
+
+meesa thinking...
+oopsie!
+big boomers!
+mesa ready
+jar jar nooooo!
+
+binary sunset
+twin suns rising
+dagobah training
+yoda is thinking
+hmmm...
+patience you must have
+
+kessel run ready
+parsecs calculated
+jumping to hyperspace
+navicomputer set
+astromech working
+r2 is on it
+bb-8 rolling
+scomp link active
+
+rebellion rising
+empire strikes back
+shield generator down
+endor shield offline
+death star charging
+superlaser ready
+
+# --- STAR TREK (deep cuts) ---
+
+there are four lights!
+make it so
+engage
+warp 9.9
+maximum warp
+initiate warp
+warp core stable
+warp core breach!
+eject the core!
+core ejection failed
+
+deflector dish aligned
+modulating deflector
+inverse tachyons
+tachyon burst
+chroniton surge
+temporal variance
+time loop detected
+causality violation
+
+hailing frequencies open
+no response
+opening channel
+closing channel
+subspace relay active
+encrypted transmission
+
+pattern buffer full
+pattern degrading
+rematerialize now
+transporter locked
+biofilter active
+phase variance
+out of phase
+
+hull integrity 30%
+structural failure
+damage control
+repair teams ready
+force fields holding
+containment field
+
+logic dictates...
+that is illogical
+fascinating
+curious
+most curious
+
+resistance is futile
+we are the borg
+assimilation in progress
+distinctiveness added
+adaptation complete
+nanoprobes active
+
+cardassians detected
+gul dukat smiles
+obsidian order knows
+section 31 active
+ferengi rules apply
+rule of acquisition
+profit is life
+
+q is amused
+trial never ends
+continuum watching
+
+captain's log updated
+stardate pending
+away team deployed
+redshirt down
+prime directive
+directive violated
+
+use the force
+stay on target
+almost there...
+target locked
+processing request
+scanning...
+analyzing data
+rerouting power
+charging...
+stand by...
+one moment...
+working on it...
+finalizing...
+wrapping up
+connecting dots
+cracking the code
+plotting a course
+running simulation
+powering up
+overclocking brain
+quest in progress
+objective updated
+mission in progress
+loading assets
+rendering thoughts
+thinking...
+deep in thought
+please stand by
+hold tight
+all systems nominal
+
+hello there
+general kenobi
+this is the way
+never tell me the odds
+i've got a bad feeling
+another happy landing
+trust the force
+kessel run ready
+jump to lightspeed
+nav computer ready
+r2 is on it
+bb-8 rolling
+
+engage
+warp speed
+maximum warp
+red alert!
+shields up
+energize
+pattern locked
+sensor sweep
+unknown anomaly
+temporal anomaly
+logic dictates...
+fascinating...
+captain's log
+away team deployed
+
+bazinga!
+that's my spot
+soft kitty, warm kitty
+
+stay awhile and listen
+a winner is you
+insert coin
+press start
+checkpoint reached
+respawning...
+extra life!
+boss fight incoming
+
+so uncivilized
+this is podracing!
+try spinning!
+midichlorians rising
+execute order 66
+good soldiers follow orders
+watch those wrist rockets
+binary sunset
+dagobah training
+yoda is thinking
+hmmm...
+meesa thinking...
+
+warp core breach!
+eject the core!
+inverse tachyons
+chroniton surge
+time loop detected
+causality violation
+pattern degrading
+phase variance
+we are the borg
+assimilation in progress
+distinctiveness added
+q is amused
+the trial never ends
+redshirt down
+section 31 active
+rule of acquisition
+
+three-headed monkey!
+never pay more than 20
+rubber chicken ready
+ask me about Loom
+pixel hunting...
+trying every verb
+combine with...
+please insert disk 2
+
+nat 20!
+critical hit!
+mana low
+spell on cooldown
+achievement unlocked
+secret discovered
+glitch in the system
+patching reality
+buffering reality
+

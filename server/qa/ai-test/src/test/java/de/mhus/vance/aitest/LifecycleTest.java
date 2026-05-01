@@ -85,6 +85,79 @@ class LifecycleTest {
         foot.stop();
     }
 
+    /**
+     * Specifically targets the "user pressed /pause, no worker had
+     * been spawned, chat-process was the one running" scenario — the
+     * original LifecycleTest passed by accident because every test
+     * inserted a child worker first; if {@code /pause} silently
+     * skipped the chat-process, that case wasn't observed.
+     *
+     * <p>With the corrected behaviour, {@code /pause} halts the chat
+     * itself when no children exist, and the next user-typed message
+     * (sent via {@code process-steer}) auto-resumes the chat.
+     */
+    @Test
+    void pause_withNoWorkers_haltsChat_andAutoResumesOnSteer() throws Exception {
+        FootProcess.CommandResult connect = foot.command("/connect");
+        assertThat(connect.matched()).isTrue();
+        assertThat(pollUntil(Duration.ofSeconds(30),
+                () -> Boolean.TRUE.equals(foot.state().get("connectionOpen")))).isTrue();
+
+        FootProcess.CommandResult create = foot.command("/session-create " + SEED_PROJECT);
+        assertThat(create.matched()).isTrue();
+
+        Document chat = pollForOne(
+                "think_processes",
+                Filters.and(
+                        Filters.eq("tenantId", TENANT),
+                        Filters.eq("name", CHAT_PROCESS_NAME)),
+                Duration.ofSeconds(20));
+        assertThat(chat).isNotNull();
+        Object chatId = chat.getObjectId("_id");
+        String sessionId = chat.getString("sessionId");
+
+        // Wait for chat to settle in IDLE after start.
+        assertThat(pollUntil(Duration.ofSeconds(10), () -> {
+            Document p = findOne("think_processes", Filters.eq("_id", chatId));
+            return p != null && "IDLE".equals(p.getString("status"));
+        })).isTrue();
+
+        // ─── Pause WITHOUT any worker ─── this is the case the
+        //     manual session caught: previously /pause was a no-op
+        //     when there were no children, leaving the chat running.
+        FootProcess.CommandResult pause = foot.command("/pause");
+        assertThat(pause.matched()).isTrue();
+
+        boolean chatPaused = pollUntil(Duration.ofSeconds(10), () -> {
+            Document p = findOne("think_processes", Filters.eq("_id", chatId));
+            return p != null && "PAUSED".equals(p.getString("status"));
+        });
+        assertThat(chatPaused)
+                .as("chat must reach PAUSED even when no workers exist — "
+                        + "this is the scenario the previous test missed")
+                .isTrue();
+
+        // ─── Auto-resume on user-typed steer ───
+        FootProcess.InputResult steer = foot.chat("test-correction-message");
+        // Don't assert on steer.ok() — the brain may take an LLM
+        // turn and time out the debug call. We only care that the
+        // chat-process flipped out of PAUSED on inbound user input.
+        boolean chatResumed = pollUntil(Duration.ofSeconds(15), () -> {
+            Document p = findOne("think_processes", Filters.eq("_id", chatId));
+            String status = p == null ? null : p.getString("status");
+            // Either IDLE (auto-resume happened, turn not yet running)
+            // or RUNNING (auto-resume happened and turn picked up).
+            return "IDLE".equals(status) || "RUNNING".equals(status);
+        });
+        assertThat(chatResumed)
+                .as("chat should auto-resume on inbound user steer "
+                        + "(PAUSED → IDLE → maybe RUNNING)")
+                .isTrue();
+
+        // Ignore steer's outcome — we don't depend on the LLM call.
+        Thread.sleep(100); // let any in-flight turn settle a tick
+    }
+
     @Test
     void sessionLifecycle_pause_resume_disconnect_suspendCascade() throws Exception {
         // ─── 1. Connect + open session.
@@ -179,12 +252,17 @@ class LifecycleTest {
                 .as("worker should be PAUSED after /pause fired")
                 .isTrue();
 
-        Document chatAfterStop = findOne("think_processes",
-                Filters.eq("_id", chatProcess.getObjectId("_id")));
-        assertThat(chatAfterStop).isNotNull();
-        assertThat(chatAfterStop.getString("status"))
-                .as("chat-process must NOT be touched by /pause — pause is for workers only")
-                .isEqualTo("IDLE");
+        // /pause now targets the whole session — chat included.
+        // The chat-process should also be PAUSED, so the next user
+        // input via process-steer auto-resumes (see ProcessSteerHandler).
+        boolean chatPaused = pollUntil(Duration.ofSeconds(10), () -> {
+            Document p = findOne("think_processes",
+                    Filters.eq("_id", chatProcess.getObjectId("_id")));
+            return p != null && "PAUSED".equals(p.getString("status"));
+        });
+        assertThat(chatPaused)
+                .as("chat-process should also be PAUSED — /pause halts the whole session")
+                .isTrue();
 
         // ─── 6. Idempotency — pressing /pause again is a no-op.
         FootProcess.CommandResult stopAgain = foot.command("/pause");

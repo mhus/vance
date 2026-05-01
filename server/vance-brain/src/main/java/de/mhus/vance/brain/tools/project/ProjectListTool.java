@@ -35,9 +35,9 @@ public class ProjectListTool implements Tool {
                             "description", "Include SYSTEM-kind projects "
                                     + "(e.g. the per-user Eddie hub). "
                                     + "Defaults to false."),
-                    "includeArchived", Map.of(
+                    "includeClosed", Map.of(
                             "type", "boolean",
-                            "description", "Include ARCHIVED projects. "
+                            "description", "Include CLOSED projects. "
                                     + "Defaults to false.")),
             "required", List.of());
 
@@ -71,7 +71,8 @@ public class ProjectListTool implements Tool {
             throw new ToolException("project_list requires a tenant scope");
         }
         boolean includeSystem = boolParam(params, "includeSystem", false);
-        boolean includeArchived = boolParam(params, "includeArchived", false);
+        boolean includeClosed = boolParam(params, "includeClosed", false)
+                || boolParam(params, "includeArchived", false); // legacy alias
 
         List<ProjectDocument> all = projectService.all(ctx.tenantId());
         List<Map<String, Object>> rows = new ArrayList<>(all.size());
@@ -79,8 +80,8 @@ public class ProjectListTool implements Tool {
             if (!includeSystem && p.getKind() == ProjectKind.SYSTEM) {
                 continue;
             }
-            if (!includeArchived && p.getStatus() != null
-                    && p.getStatus().name().equals("ARCHIVED")) {
+            if (!includeClosed && p.getStatus() != null
+                    && p.getStatus().name().equals("CLOSED")) {
                 continue;
             }
             Map<String, Object> row = new LinkedHashMap<>();

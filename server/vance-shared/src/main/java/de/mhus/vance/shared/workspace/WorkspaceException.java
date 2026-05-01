@@ -1,9 +1,9 @@
-package de.mhus.vance.brain.tools.workspace;
+package de.mhus.vance.shared.workspace;
 
 /**
  * Workspace-layer failure with a caller-visible message. Tool dispatch
- * wraps these as {@link de.mhus.vance.brain.tools.ToolException}s so
- * the LLM sees the message in the tool result.
+ * is expected to surface the message in the tool result so the LLM sees
+ * it.
  */
 public class WorkspaceException extends RuntimeException {
 

@@ -32,9 +32,10 @@ public class ProjectManagerService {
     private final LocationService locationService;
 
     /**
-     * Ensures the project is owned by this pod. PENDING → ACTIVE on first
-     * claim; ACTIVE on this pod refreshes the claim; ACTIVE on another pod
-     * is taken over (logged at warn). Throws on ARCHIVED or unknown.
+     * Ensures the project is owned by this pod. Refreshes podIp + claimedAt
+     * on the document; lifecycle status is left untouched (transition runs
+     * via {@code ProjectLifecycleService}). Takes over from another pod
+     * (logged at warn). Throws on CLOSED or unknown.
      */
     public ProjectDocument claimForLocalPod(String tenantId, String projectName) {
         String podIp = locationService.getPodIp();
@@ -58,9 +59,9 @@ public class ProjectManagerService {
         }
     }
 
-    /** All projects this pod currently owns — for startup reclaim. */
+    /** All RUNNING projects this pod currently owns — for startup reclaim. */
     public List<ProjectDocument> projectsOwnedByLocalPod() {
-        return projectService.findActiveByPod(locationService.getPodIp());
+        return projectService.findRunningByPod(locationService.getPodIp());
     }
 
     public static class ProjectNotOwnedException extends RuntimeException {

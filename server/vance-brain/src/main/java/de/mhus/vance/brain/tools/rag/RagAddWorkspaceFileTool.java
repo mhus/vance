@@ -4,9 +4,10 @@ import de.mhus.vance.brain.rag.RagService;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
-import de.mhus.vance.brain.tools.workspace.WorkspaceException;
-import de.mhus.vance.brain.tools.workspace.WorkspaceService;
+import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
 import de.mhus.vance.shared.rag.RagDocument;
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,11 +15,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Reads a file from the project workspace and ingests its content
+ * Reads a file from a project workspace RootDir and ingests its content
  * into a RAG. Convenience composition over {@code workspace_read} +
  * {@code rag_add_text}. {@code sourceRef} defaults to the file's
  * relative path so re-ingesting the same file replaces its prior
- * chunks instead of duplicating.
+ * chunks instead of duplicating. When {@code dirName} is omitted, the
+ * per-process temp RootDir is used.
  */
 @Component
 @RequiredArgsConstructor
@@ -35,7 +37,12 @@ public class RagAddWorkspaceFileTool implements Tool {
                             "description", "RAG name within the current project."),
                     "path", Map.of(
                             "type", "string",
-                            "description", "Relative path to a workspace file.")),
+                            "description", "Relative path to a workspace file."),
+                    "dirName", Map.of(
+                            "type", "string",
+                            "description",
+                                    "Optional RootDir name. Defaults to the "
+                                            + "current process's temp RootDir.")),
             "required", List.of("name", "path"));
 
     private final RagService ragService;
@@ -71,6 +78,7 @@ public class RagAddWorkspaceFileTool implements Tool {
         }
         String name = stringOrThrow(params, "name");
         String path = stringOrThrow(params, "path");
+        String dirName = WorkspaceDirResolver.resolve(workspaceService, ctx, stringOrNull(params, "dirName"));
 
         RagDocument rag = ragService.findByName(ctx.tenantId(), projectId, name)
                 .orElseThrow(() -> new ToolException("Unknown RAG '" + name
@@ -78,7 +86,7 @@ public class RagAddWorkspaceFileTool implements Tool {
 
         WorkspaceService.ReadResult read;
         try {
-            read = workspaceService.read(projectId, path, READ_CHAR_CAP);
+            read = workspaceService.read(projectId, dirName, path, READ_CHAR_CAP);
         } catch (WorkspaceException e) {
             throw new ToolException(e.getMessage(), e);
         }
@@ -89,6 +97,7 @@ public class RagAddWorkspaceFileTool implements Tool {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("rag", rag.getName());
             out.put("path", path);
+            out.put("dirName", dirName);
             out.put("sourceRef", path);
             out.put("chunksAdded", result.chunksAdded());
             if (replaced > 0) out.put("chunksReplaced", replaced);
@@ -105,5 +114,10 @@ public class RagAddWorkspaceFileTool implements Tool {
             throw new ToolException("'" + key + "' is required and must be a non-empty string");
         }
         return s;
+    }
+
+    private static String stringOrNull(Map<String, Object> params, String key) {
+        Object raw = params == null ? null : params.get(key);
+        return raw instanceof String s && !s.isBlank() ? s : null;
     }
 }

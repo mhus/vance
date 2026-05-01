@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.tools.exec;
 
-import de.mhus.vance.brain.tools.workspace.WorkspaceService;
+import de.mhus.vance.shared.workspace.RootDirHandle;
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import jakarta.annotation.PreDestroy;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -57,11 +59,13 @@ public class ExecManager {
 
     /**
      * Submits {@code command} and returns the job. The job starts
-     * immediately; the caller can observe progress via {@link #waitFor}
-     * or later {@link #get} calls.
+     * immediately in the named workspace RootDir; the caller can
+     * observe progress via {@link #waitFor} or later {@link #get}
+     * calls.
      */
-    public ExecJob submit(String projectId, String command) {
+    public ExecJob submit(String projectId, String dirName, String command) {
         requireProject(projectId);
+        Path cwd = resolveCwd(projectId, dirName);
         String jobId = UUID.randomUUID().toString().substring(0, 8);
         Path jobDir = jobDir(projectId, jobId);
         try {
@@ -75,9 +79,19 @@ public class ExecManager {
                 jobDir.resolve("stdout.log"),
                 jobDir.resolve("stderr.log"));
         indexJob(projectId, job);
-        Path cwd = workspaceService.projectRoot(projectId);
         workers.submit(() -> runJob(job, cwd));
         return job;
+    }
+
+    private Path resolveCwd(String projectId, String dirName) {
+        try {
+            RootDirHandle handle = workspaceService.getRootDir(projectId, dirName)
+                    .orElseThrow(() -> new ExecException(
+                            "Unknown workspace RootDir: " + projectId + "/" + dirName));
+            return handle.getPath();
+        } catch (WorkspaceException e) {
+            throw new ExecException(e.getMessage(), e);
+        }
     }
 
     /** Blocks up to {@code maxMillis} for a RUNNING job to finish. */

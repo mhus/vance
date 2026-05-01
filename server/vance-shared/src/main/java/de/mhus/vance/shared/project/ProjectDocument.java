@@ -50,6 +50,7 @@ public class ProjectDocument {
     @Builder.Default
     private List<String> teamIds = new ArrayList<>();
 
+    @Builder.Default
     private boolean enabled = true;
 
     /**
@@ -57,10 +58,12 @@ public class ProjectDocument {
      * {@link ProjectKind#SYSTEM} for hidden/protected projects such as the per-user
      * Vance Hub (see {@code specification/vance-engine.md} §2).
      */
+    @Builder.Default
     private ProjectKind kind = ProjectKind.NORMAL;
 
-    /** Pod-affinity lifecycle. PENDING until first claim, ACTIVE once owned. */
-    private ProjectStatus status = ProjectStatus.PENDING;
+    /** Lifecycle status — {@link ProjectStatus}. Pod-affinity is tracked separately via {@link #podIp}. */
+    @Builder.Default
+    private ProjectStatus status = ProjectStatus.INIT;
 
     /** IP of the pod currently owning the project, or {@code null} when unclaimed. */
     private @Nullable String podIp;

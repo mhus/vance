@@ -3,6 +3,8 @@ package de.mhus.vance.brain.tools.exec;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +28,12 @@ public class ExecRunTool implements Tool {
                                     "Shell command to run (bash via /bin/sh -c on "
                                             + "Linux/macOS, cmd.exe /c on Windows). "
                                             + "Full shell syntax allowed; cwd is the "
-                                            + "session workspace."),
+                                            + "named workspace RootDir."),
+                    "dirName", Map.of(
+                            "type", "string",
+                            "description",
+                                    "Optional RootDir name to use as cwd. Defaults "
+                                            + "to the current process's temp RootDir."),
                     "waitMs", Map.of(
                             "type", "integer",
                             "description",
@@ -37,6 +44,7 @@ public class ExecRunTool implements Tool {
 
     private final ExecManager execManager;
     private final ExecProperties properties;
+    private final WorkspaceService workspaceService;
 
     @Override
     public String name() {
@@ -74,12 +82,18 @@ public class ExecRunTool implements Tool {
         if (rawWait instanceof Number n && n.longValue() >= 0) {
             waitMs = n.longValue();
         }
+        String dirName = WorkspaceDirResolver.resolve(workspaceService, ctx, stringOrNull(params, "dirName"));
         try {
-            ExecJob job = execManager.submit(ctx.projectId(), command);
+            ExecJob job = execManager.submit(ctx.projectId(), dirName, command);
             execManager.waitFor(job, waitMs);
             return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());
         } catch (ExecException e) {
             throw new ToolException(e.getMessage(), e);
         }
+    }
+
+    private static String stringOrNull(Map<String, Object> params, String key) {
+        Object raw = params == null ? null : params.get(key);
+        return raw instanceof String s && !s.isBlank() ? s : null;
     }
 }

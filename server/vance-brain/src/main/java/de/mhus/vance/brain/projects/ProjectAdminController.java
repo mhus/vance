@@ -92,12 +92,12 @@ public class ProjectAdminController {
     }
 
     @DeleteMapping("/{name}")
-    public ProjectDto archive(
+    public ProjectDto close(
             @PathVariable("tenant") String tenant,
             @PathVariable("name") String name) {
         try {
             ProjectGroupDocument archivedGroup = projectGroupService.ensureArchivedGroup(tenant);
-            ProjectDocument saved = projectService.archive(tenant, name, archivedGroup.getName());
+            ProjectDocument saved = projectService.close(tenant, name, archivedGroup.getName());
             return toDto(saved);
         } catch (ProjectService.ProjectNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());

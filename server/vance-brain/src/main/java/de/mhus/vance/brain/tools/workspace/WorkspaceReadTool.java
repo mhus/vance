@@ -3,6 +3,9 @@ package de.mhus.vance.brain.tools.workspace;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceProperties;
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,10 +13,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Reads a UTF-8 text file from the project workspace. Truncates at
- * {@link WorkspaceProperties#getDefaultReadCharCap()} by default — the
- * result carries a {@code truncated} flag so the LLM can decide whether
- * to raise the cap via {@code maxChars}.
+ * Reads a UTF-8 text file from a project workspace RootDir. Truncates
+ * at {@link WorkspaceProperties#getDefaultReadCharCap()} by default.
+ * When {@code dirName} is omitted, the per-process temp RootDir is
+ * used.
  */
 @Component
 @RequiredArgsConstructor
@@ -24,7 +27,12 @@ public class WorkspaceReadTool implements Tool {
             "properties", Map.of(
                     "path", Map.of(
                             "type", "string",
-                            "description", "Relative path inside the workspace."),
+                            "description", "Relative path inside the RootDir."),
+                    "dirName", Map.of(
+                            "type", "string",
+                            "description",
+                                    "Optional RootDir name. Defaults to the "
+                                            + "current process's temp RootDir."),
                     "maxChars", Map.of(
                             "type", "integer",
                             "description",
@@ -42,9 +50,9 @@ public class WorkspaceReadTool implements Tool {
 
     @Override
     public String description() {
-        return "Read a text file from the project workspace. Returns the "
-                + "file content; if the file is longer than the cap, only "
-                + "the prefix is returned and 'truncated' is true.";
+        return "Read a text file from a project workspace RootDir. Returns "
+                + "the file content; if longer than the cap, only the prefix "
+                + "is returned and 'truncated' is true.";
     }
 
     @Override
@@ -60,15 +68,17 @@ public class WorkspaceReadTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String path = stringOrThrow(params, "path");
+        String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
         int cap = properties.getDefaultReadCharCap();
         Object rawMax = params == null ? null : params.get("maxChars");
         if (rawMax instanceof Number n && n.intValue() > 0) {
             cap = n.intValue();
         }
         try {
-            WorkspaceService.ReadResult r = workspace.read(ctx.projectId(), path, cap);
+            WorkspaceService.ReadResult r = workspace.read(ctx.projectId(), dirName, path, cap);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
+            out.put("dirName", dirName);
             out.put("content", r.text());
             out.put("truncated", r.truncated());
             out.put("totalChars", r.totalChars());
@@ -84,5 +94,10 @@ public class WorkspaceReadTool implements Tool {
             throw new ToolException("'" + key + "' is required and must be a non-empty string");
         }
         return s;
+    }
+
+    private static String stringOrNull(Map<String, Object> params, String key) {
+        Object raw = params == null ? null : params.get(key);
+        return raw instanceof String s && !s.isBlank() ? s : null;
     }
 }

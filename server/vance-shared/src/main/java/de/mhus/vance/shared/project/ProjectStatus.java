@@ -3,29 +3,39 @@ package de.mhus.vance.shared.project;
 /**
  * Lifecycle state of a {@link ProjectDocument}.
  *
- * <p>The flow is:
  * <pre>
- *   PENDING ──claim──► ACTIVE ──suspend──► SUSPENDED ──resume──► ACTIVE
- *                          │                                │
- *                          └────────── archive ─────────────┴──► ARCHIVED
+ *   INIT ──claim──► RECOVERING ──recover──► RUNNING ──suspend──► SUSPENDING ──► SUSPENDED
+ *                                              │                                    │
+ *                                              └────────── close ───────────────────┴──► CLOSED
+ *                                                                                  ▲
+ *                                              SUSPENDED ──claim──► RECOVERING ────┘ (resumes via init)
  * </pre>
  *
- * <p>v1 uses only {@link #PENDING} and {@link #ACTIVE} — the suspend/resume
- * and archive transitions are scaffolded in the data model so the
- * {@code ProjectManagerService} contract is stable, but the orchestration
- * for them lands later.
+ * <p>{@code RECOVERING} and {@code SUSPENDING} are transient — a healthy
+ * project never stays there long. If a pod crashes mid-transition, the
+ * next pod taking over the project re-runs the recover or suspend pass
+ * to converge.
+ *
+ * <p>Pod-affinity (which pod owns the project) is orthogonal to the
+ * lifecycle status, tracked via {@link ProjectDocument#getPodIp()}.
  */
 public enum ProjectStatus {
 
-    /** Newly created, no pod has claimed the project yet. */
-    PENDING,
+    /** Newly created, never recovered, no on-disk workspace yet. */
+    INIT,
 
-    /** A pod owns the project and serves its sessions. */
-    ACTIVE,
+    /** A pod is recovering the workspace. Transient. */
+    RECOVERING,
 
-    /** Reserved — temporarily not served, but not deleted. */
+    /** Workspace is on disk, the pod actively serves the project. */
+    RUNNING,
+
+    /** Suspend in progress: engines stopping, workspace going off-disk. Transient. */
+    SUSPENDING,
+
+    /** Workspace is off-disk, snapshots in Mongo. Resumable via {@code init}. */
     SUSPENDED,
 
-    /** Reserved — terminal state; assets retained read-only or scheduled for cleanup. */
-    ARCHIVED
+    /** Terminal — assets retained per policy, no further serving. */
+    CLOSED
 }

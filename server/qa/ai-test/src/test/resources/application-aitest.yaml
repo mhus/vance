@@ -32,7 +32,12 @@ vance:
   # Workspace + exec output go under the test's target dir so re-runs
   # start clean and the test can inspect/assert on file presence.
   workspace:
-    baseDir: target/ai-test/workspace
+    root: target/ai-test/workspace
+    # Tests run on dev laptops with arbitrary disk usage — disable
+    # the volume-pressure guard so we don't fail when the host is
+    # near-full. Quota itself is exercised in dedicated unit tests.
+    softLimitPercent: 0
+    hardLimitPercent: 0
   exec:
     baseDir: target/ai-test/exec
 

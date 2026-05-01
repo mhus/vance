@@ -3,7 +3,7 @@
  * indexes. All four read+write tools route through
  * {@link de.mhus.vance.brain.rag.RagService}; the workspace-file
  * tool composes with {@link
- * de.mhus.vance.brain.tools.workspace.WorkspaceService} to ingest
+ * de.mhus.vance.shared.workspace.WorkspaceService} to ingest
  * existing project files without requiring the LLM to read them
  * separately.
  *

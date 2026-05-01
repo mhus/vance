@@ -3,6 +3,8 @@ package de.mhus.vance.brain.tools.workspace;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.shared.workspace.WorkspaceException;
+import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,10 +13,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Creates or overwrites a UTF-8 text file in the current session's
- * workspace. Use it for fresh files and complete rewrites — it always
- * replaces the whole content. For targeted edits, expose an edit tool
- * later.
+ * Creates or overwrites a UTF-8 text file in a project workspace
+ * RootDir. Use it for fresh files and complete rewrites — it always
+ * replaces the whole content. When {@code dirName} is omitted, the
+ * per-process temp RootDir is used.
  */
 @Component
 @RequiredArgsConstructor
@@ -26,8 +28,13 @@ public class WorkspaceWriteTool implements Tool {
                     "path", Map.of(
                             "type", "string",
                             "description",
-                                    "Relative path inside the workspace, "
+                                    "Relative path inside the RootDir, "
                                             + "e.g. 'tool.js' or 'dir/tool.js'."),
+                    "dirName", Map.of(
+                            "type", "string",
+                            "description",
+                                    "Optional RootDir name. Defaults to the "
+                                            + "current process's temp RootDir."),
                     "content", Map.of(
                             "type", "string",
                             "description", "Full file content. Replaces any existing content.")),
@@ -42,9 +49,9 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public String description() {
-        return "Create or overwrite a text file in the project workspace. "
-                + "Use relative paths; parent directories are created "
-                + "automatically.";
+        return "Create or overwrite a text file in a project workspace "
+                + "RootDir. Use relative paths; parent directories are "
+                + "created automatically.";
     }
 
     @Override
@@ -64,10 +71,12 @@ public class WorkspaceWriteTool implements Tool {
         if (content == null) {
             throw new ToolException("'content' is required");
         }
+        String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
         try {
-            Path written = workspace.write(ctx.projectId(), path, content);
+            Path written = workspace.write(ctx.projectId(), dirName, path, content);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
+            out.put("dirName", dirName);
             out.put("absolutePath", written.toString());
             out.put("chars", content.length());
             return out;
@@ -82,5 +91,10 @@ public class WorkspaceWriteTool implements Tool {
             throw new ToolException("'" + key + "' is required and must be a non-empty string");
         }
         return s;
+    }
+
+    private static String stringOrNull(Map<String, Object> params, String key) {
+        Object raw = params == null ? null : params.get(key);
+        return raw instanceof String s && !s.isBlank() ? s : null;
     }
 }

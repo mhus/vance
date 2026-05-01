@@ -118,27 +118,27 @@ public class ProjectService {
     }
 
     /**
-     * Atomically claims {@code (tenantId, name)} for {@code podIp}: sets the
-     * status to {@link ProjectStatus#ACTIVE}, refreshes {@code podIp} and
-     * {@code claimedAt}. Idempotent on the same pod, takes-over from another
-     * pod (with a warning logged by the caller). Refuses to claim ARCHIVED
+     * Atomically claims {@code (tenantId, name)} for {@code podIp}: refreshes
+     * {@code podIp} and {@code claimedAt}, leaves the lifecycle status alone
+     * (lifecycle transitions go through {@link #markRecovering} /
+     * {@link #markRunning} / etc.). Idempotent on the same pod, takes-over
+     * from another pod (with a warning logged). Refuses to claim CLOSED
      * projects.
      *
      * @return the post-update document
      * @throws ProjectNotFoundException if the project does not exist
-     * @throws ProjectArchivedException if the project is ARCHIVED
+     * @throws ProjectClosedException   if the project is CLOSED
      */
     public ProjectDocument claim(String tenantId, String name, String podIp) {
         ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
                 .orElseThrow(() -> new ProjectNotFoundException(
                         "Project '" + name + "' not found in tenant '" + tenantId + "'"));
-        if (current.getStatus() == ProjectStatus.ARCHIVED) {
-            throw new ProjectArchivedException(
-                    "Project '" + name + "' is ARCHIVED — cannot claim");
+        if (current.getStatus() == ProjectStatus.CLOSED) {
+            throw new ProjectClosedException(
+                    "Project '" + name + "' is CLOSED — cannot claim");
         }
         Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
         Update update = new Update()
-                .set(F_STATUS, ProjectStatus.ACTIVE)
                 .set(F_POD_IP, podIp)
                 .set(F_CLAIMED_AT, Instant.now());
         ProjectDocument updated = mongoTemplate.findAndModify(
@@ -146,16 +146,42 @@ public class ProjectService {
                 FindAndModifyOptions.options().returnNew(true),
                 ProjectDocument.class);
         if (updated == null) {
-            // Lost a race with delete? Re-throw.
             throw new ProjectNotFoundException(
                     "Project '" + name + "' disappeared during claim");
         }
-        if (current.getStatus() == ProjectStatus.PENDING) {
-            log.info("Project '{}' claimed by pod '{}' (PENDING → ACTIVE)", name, podIp);
-        } else if (!Objects.equals(current.getPodIp(), podIp)) {
-            log.warn("Project '{}' taken over by pod '{}' from previous owner '{}'",
-                    name, podIp, current.getPodIp());
+        if (!Objects.equals(current.getPodIp(), podIp)) {
+            log.info("Project '{}' claimed by pod '{}' (was '{}', status={})",
+                    name, podIp, current.getPodIp(), current.getStatus());
         }
+        return updated;
+    }
+
+    /**
+     * Atomically transitions a project from one lifecycle status to another.
+     * Returns the updated document if the transition won the race, throws
+     * {@link ProjectStatusConflictException} if the document was in a
+     * different status. Used by {@code ProjectLifecycleService} (vance-brain)
+     * to drive the lifecycle.
+     */
+    public ProjectDocument transitionStatus(String tenantId, String name,
+                                            ProjectStatus expected, ProjectStatus target) {
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId)
+                .and(F_NAME).is(name)
+                .and(F_STATUS).is(expected));
+        Update update = new Update().set(F_STATUS, target);
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(true),
+                ProjectDocument.class);
+        if (updated == null) {
+            ProjectDocument actual = repository.findByTenantIdAndName(tenantId, name)
+                    .orElseThrow(() -> new ProjectNotFoundException(
+                            "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+            throw new ProjectStatusConflictException(
+                    "Project '" + name + "' status was " + actual.getStatus()
+                            + ", expected " + expected + " for transition to " + target);
+        }
+        log.info("Project '{}' transition {} → {}", name, expected, target);
         return updated;
     }
 
@@ -199,43 +225,46 @@ public class ProjectService {
     }
 
     /**
-     * Archives a project: status to {@link ProjectStatus#ARCHIVED} and
-     * {@code projectGroupId} replaced by {@code archivedGroupId}. Idempotent.
+     * Closes a project: status to {@link ProjectStatus#CLOSED} and
+     * {@code projectGroupId} replaced by {@code closedGroupId}. Idempotent.
      *
-     * <p>Refuses to archive {@link ProjectKind#SYSTEM} projects — those host
+     * <p>Refuses to close {@link ProjectKind#SYSTEM} projects — those host
      * infrastructure such as the per-user Vance Hub and must not disappear.
+     * Workspace cleanup is the caller's responsibility (typically via
+     * {@code ProjectLifecycleService.close} which disposes the workspace
+     * first).
      *
      * @throws ProjectNotFoundException if the project does not exist
      * @throws SystemProjectProtectedException if the project is SYSTEM
      */
-    public ProjectDocument archive(String tenantId, String name, String archivedGroupId) {
+    public ProjectDocument close(String tenantId, String name, String closedGroupId) {
         ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
                 .orElseThrow(() -> new ProjectNotFoundException(
                         "Project '" + name + "' not found in tenant '" + tenantId + "'"));
         if (current.getKind() == ProjectKind.SYSTEM) {
             throw new SystemProjectProtectedException(
-                    "Project '" + name + "' is SYSTEM — cannot archive");
+                    "Project '" + name + "' is SYSTEM — cannot close");
         }
         Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
         Update update = new Update()
-                .set(F_STATUS, ProjectStatus.ARCHIVED)
-                .set("projectGroupId", archivedGroupId);
+                .set(F_STATUS, ProjectStatus.CLOSED)
+                .set("projectGroupId", closedGroupId);
         ProjectDocument updated = mongoTemplate.findAndModify(
                 query, update,
                 FindAndModifyOptions.options().returnNew(true),
                 ProjectDocument.class);
         if (updated == null) {
             throw new ProjectNotFoundException(
-                    "Project '" + name + "' disappeared during archive");
+                    "Project '" + name + "' disappeared during close");
         }
-        log.info("Archived project tenantId='{}' name='{}' → group='{}'",
-                tenantId, name, archivedGroupId);
+        log.info("Closed project tenantId='{}' name='{}' → group='{}'",
+                tenantId, name, closedGroupId);
         return updated;
     }
 
-    /** Lists ACTIVE projects whose {@code podIp} matches — for startup reclaim. */
-    public List<ProjectDocument> findActiveByPod(String podIp) {
-        Query query = new Query(Criteria.where(F_STATUS).is(ProjectStatus.ACTIVE)
+    /** Lists RUNNING projects whose {@code podIp} matches — for startup reclaim. */
+    public List<ProjectDocument> findRunningByPod(String podIp) {
+        Query query = new Query(Criteria.where(F_STATUS).is(ProjectStatus.RUNNING)
                 .and(F_POD_IP).is(podIp));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
@@ -252,8 +281,14 @@ public class ProjectService {
         }
     }
 
-    public static class ProjectArchivedException extends RuntimeException {
-        public ProjectArchivedException(String message) {
+    public static class ProjectClosedException extends RuntimeException {
+        public ProjectClosedException(String message) {
+            super(message);
+        }
+    }
+
+    public static class ProjectStatusConflictException extends RuntimeException {
+        public ProjectStatusConflictException(String message) {
             super(message);
         }
     }

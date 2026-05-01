@@ -1,16 +1,15 @@
 /**
- * Session-scoped workspace tools.
+ * Brain-side workspace tooling. The {@code workspace_*} brain tools
+ * (read/write/list/delete + execute_workspace_javascript) plus the
+ * {@link de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver}
+ * helper that bridges {@link
+ * de.mhus.vance.brain.tools.ToolInvocationContext} to the {@code
+ * dirName} parameter on
+ * {@link de.mhus.vance.shared.workspace.WorkspaceService}.
  *
- * <p>Each session gets a private directory under
- * {@code vance.workspace.base-dir/<sessionId>/} where the LLM can
- * create, read, edit, and delete files, and execute JavaScript from
- * disk. The workspace survives process lifecycle (start/resume/stop);
- * cleanup happens later when sessions are explicitly closed.
- *
- * <p>Path handling is <em>minimally</em> sandboxed: every relative
- * path is normalised and checked with {@code startsWith(root)} to
- * block {@code ..} and absolute-path escapes. Symlinks, quotas, and
- * anything resembling a real sandbox are deferred.
+ * <p>The actual workspace orchestration (RootDirs, descriptors,
+ * temp/git handlers, lifecycle) lives in {@link
+ * de.mhus.vance.shared.workspace}.
  */
 @NullMarked
 package de.mhus.vance.brain.tools.workspace;

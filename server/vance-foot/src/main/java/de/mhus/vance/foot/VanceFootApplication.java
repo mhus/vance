@@ -21,7 +21,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  * supported; later wins on key collisions, matching Spring's location order.
  */
 @SpringBootApplication
-@ConfigurationPropertiesScan("de.mhus.vance.foot.config")
+@ConfigurationPropertiesScan({"de.mhus.vance.foot.config", "de.mhus.vance.foot.transfer"})
 public class VanceFootApplication {
 
     static void main(String[] args) {

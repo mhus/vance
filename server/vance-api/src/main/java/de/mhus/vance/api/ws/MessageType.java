@@ -142,6 +142,43 @@ public final class MessageType {
      */
     public static final String PROCESS_PROGRESS = "process-progress";
 
+    // ─── File Transfer Subsystem ────────────────────────────────
+
+    /**
+     * Sender → receiver: opens a file transfer with target path,
+     * total size, hash and optional attrs. See
+     * {@code specification/file-transfer.md} §4.
+     */
+    public static final String TRANSFER_INIT = "transfer-init";
+
+    /** Receiver → sender: ack/nack of a {@link #TRANSFER_INIT}. */
+    public static final String TRANSFER_INIT_RESPONSE = "transfer-init-response";
+
+    /**
+     * Sender → receiver: one chunk of file content. {@code last=true}
+     * marks the final chunk.
+     */
+    public static final String TRANSFER_CHUNK = "transfer-chunk";
+
+    /**
+     * Receiver → sender: signals completion (or mid-stream failure).
+     * Carries hash check result and bytes-written.
+     */
+    public static final String TRANSFER_COMPLETE = "transfer-complete";
+
+    /**
+     * Sender → receiver: closes the transfer lifecycle and lets
+     * the receiver drop the transferId from its pending map.
+     */
+    public static final String TRANSFER_FINISH = "transfer-finish";
+
+    /**
+     * Brain → Foot: trigger an upload. Foot will reply with
+     * {@link #TRANSFER_INIT} (Foot is sender) or {@link #TRANSFER_FINISH}
+     * with {@code ok=false} on local failure.
+     */
+    public static final String CLIENT_FILE_UPLOAD_REQUEST = "client-file-upload-request";
+
     private MessageType() {
     }
 }

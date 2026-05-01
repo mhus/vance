@@ -7,9 +7,12 @@ import de.mhus.vance.api.documents.DocumentKindsResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
 import de.mhus.vance.api.documents.DocumentSummary;
 import de.mhus.vance.api.documents.DocumentUpdateRequest;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.io.IOException;
@@ -56,6 +59,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final RequestAuthority authority;
 
     @GetMapping("/brain/{tenant}/documents")
     public DocumentListResponse list(
@@ -64,8 +68,10 @@ public class DocumentController {
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "50") int size,
             @RequestParam(value = "pathPrefix", required = false) @Nullable String pathPrefix,
-            @RequestParam(value = "kind", required = false) @Nullable String kind) {
+            @RequestParam(value = "kind", required = false) @Nullable String kind,
+            HttpServletRequest httpRequest) {
 
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         Page<DocumentDocument> result = documentService.listByProjectPaged(
                 tenant, projectId, page, size, pathPrefix, kind);
         return DocumentListResponse.builder()
@@ -85,7 +91,9 @@ public class DocumentController {
     @GetMapping("/brain/{tenant}/documents/folders")
     public DocumentFoldersResponse folders(
             @PathVariable("tenant") String tenant,
-            @RequestParam("projectId") String projectId) {
+            @RequestParam("projectId") String projectId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         List<String> folders = documentService.listFolders(tenant, projectId);
         return DocumentFoldersResponse.builder().folders(folders).build();
     }
@@ -99,7 +107,9 @@ public class DocumentController {
     @GetMapping("/brain/{tenant}/documents/kinds")
     public DocumentKindsResponse kinds(
             @PathVariable("tenant") String tenant,
-            @RequestParam("projectId") String projectId) {
+            @RequestParam("projectId") String projectId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
         List<String> kinds = documentService.listKinds(tenant, projectId);
         return DocumentKindsResponse.builder().kinds(kinds).build();
     }
@@ -107,7 +117,8 @@ public class DocumentController {
     @GetMapping("/brain/{tenant}/documents/{id}")
     public DocumentDto findOne(
             @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id) {
+            @PathVariable("id") String id,
+            HttpServletRequest httpRequest) {
 
         DocumentDocument doc = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
@@ -117,6 +128,8 @@ public class DocumentController {
             // tenant by guessing its id.
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
         return toDto(doc);
     }
 
@@ -127,6 +140,8 @@ public class DocumentController {
             @Valid @RequestBody DocumentCreateRequest request,
             HttpServletRequest httpRequest) {
 
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, projectId, request.getPath()), Action.CREATE);
         String username = (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
         String mimeType = request.getMimeType() == null || request.getMimeType().isBlank()
                 ? "text/markdown"
@@ -180,6 +195,8 @@ public class DocumentController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Cannot infer document path — neither `path` nor an upload filename was provided.");
         }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, projectId, resolvedPath), Action.CREATE);
         String resolvedMime = mimeType == null || mimeType.isBlank() ? file.getContentType() : mimeType;
         List<String> tags = parseTagsCsv(tagsCsv);
 
@@ -230,12 +247,15 @@ public class DocumentController {
     public ResponseEntity<InputStreamResource> content(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
-            @RequestParam(value = "download", defaultValue = "false") boolean download) {
+            @RequestParam(value = "download", defaultValue = "false") boolean download,
+            HttpServletRequest httpRequest) {
         DocumentDocument doc = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(doc.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
         InputStream stream = documentService.loadContent(doc);
         MediaType contentType = parseMimeType(doc.getMimeType());
         HttpHeaders headers = new HttpHeaders();
@@ -273,13 +293,16 @@ public class DocumentController {
     public ResponseEntity<DocumentDto> update(
             @PathVariable("tenant") String tenant,
             @PathVariable("id") String id,
-            @Valid @RequestBody DocumentUpdateRequest request) {
+            @Valid @RequestBody DocumentUpdateRequest request,
+            HttpServletRequest httpRequest) {
 
         DocumentDocument existing = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.WRITE);
 
         DocumentDocument updated;
         try {
@@ -307,12 +330,15 @@ public class DocumentController {
     @DeleteMapping("/brain/{tenant}/documents/{id}")
     public ResponseEntity<Void> delete(
             @PathVariable("tenant") String tenant,
-            @PathVariable("id") String id) {
+            @PathVariable("id") String id,
+            HttpServletRequest httpRequest) {
         DocumentDocument existing = documentService.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         if (!tenant.equals(existing.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.DELETE);
         documentService.delete(id);
         return ResponseEntity.noContent().build();
     }

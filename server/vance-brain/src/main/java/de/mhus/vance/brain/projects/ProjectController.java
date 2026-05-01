@@ -3,10 +3,14 @@ package de.mhus.vance.brain.projects;
 import de.mhus.vance.api.projects.TenantProjectsResponse;
 import de.mhus.vance.api.ws.ProjectGroupSummary;
 import de.mhus.vance.api.ws.ProjectSummary;
+import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.projectgroup.ProjectGroupDocument;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -32,9 +36,13 @@ public class ProjectController {
 
     private final ProjectService projectService;
     private final ProjectGroupService projectGroupService;
+    private final RequestAuthority authority;
 
     @GetMapping("/brain/{tenant}/projects")
-    public TenantProjectsResponse listProjectsAndGroups(@PathVariable("tenant") String tenant) {
+    public TenantProjectsResponse listProjectsAndGroups(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         List<ProjectGroupSummary> groups = projectGroupService.all(tenant).stream()
                 .sorted(Comparator.comparing(ProjectGroupDocument::getName))
                 .map(ProjectController::toSummary)

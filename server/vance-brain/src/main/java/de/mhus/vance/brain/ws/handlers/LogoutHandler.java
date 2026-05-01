@@ -2,9 +2,12 @@ package de.mhus.vance.brain.ws.handlers;
 
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -26,6 +29,7 @@ import org.springframework.web.socket.WebSocketSession;
 public class LogoutHandler implements WsHandler {
 
     private final SessionLifecycleService sessionLifecycle;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -37,6 +41,10 @@ public class LogoutHandler implements WsHandler {
             throws IOException {
         String sessionId = ctx.getSessionId();
         if (sessionId != null) {
+            authority.enforce(ctx,
+                    new Resource.Session(ctx.getTenantId(),
+                            ctx.getProjectId() == null ? "" : ctx.getProjectId(), sessionId),
+                    Action.EXECUTE);
             sessionLifecycle.closeWithCascade(sessionId);
             ctx.unbindSession();
         }

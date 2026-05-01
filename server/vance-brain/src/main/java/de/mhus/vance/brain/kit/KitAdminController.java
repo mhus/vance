@@ -5,7 +5,10 @@ import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,11 +41,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class KitAdminController {
 
     private final KitService kitService;
+    private final RequestAuthority authority;
 
     @GetMapping("/{projectId}/status")
     public ResponseEntity<KitManifestDto> status(
             @PathVariable("tenant") String tenant,
-            @PathVariable("projectId") String projectId) {
+            @PathVariable("projectId") String projectId,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.ADMIN);
         KitManifestDto manifest = kitService.status(tenant, projectId);
         if (manifest == null) {
             return ResponseEntity.noContent().build();
@@ -56,6 +62,7 @@ public class KitAdminController {
             @PathVariable("projectId") String projectId,
             @RequestBody KitImportRequestDto body,
             HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         return runImport(tenant, projectId, body, KitImportMode.INSTALL, request);
     }
 
@@ -65,6 +72,7 @@ public class KitAdminController {
             @PathVariable("projectId") String projectId,
             @RequestBody KitImportRequestDto body,
             HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         return runImport(tenant, projectId, body, KitImportMode.UPDATE, request);
     }
 
@@ -74,6 +82,7 @@ public class KitAdminController {
             @PathVariable("projectId") String projectId,
             @RequestBody KitImportRequestDto body,
             HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         return runImport(tenant, projectId, body, KitImportMode.APPLY, request);
     }
 
@@ -83,6 +92,7 @@ public class KitAdminController {
             @PathVariable("projectId") String projectId,
             @RequestBody KitExportRequestDto body,
             HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, projectId), Action.ADMIN);
         body.setProjectId(projectId);
         try {
             return kitService.export(tenant, body, actor(request));

@@ -2,7 +2,10 @@ package de.mhus.vance.brain.teams;
 
 import de.mhus.vance.api.teams.TeamListResponse;
 import de.mhus.vance.api.teams.TeamSummary;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,12 +31,14 @@ import org.springframework.web.server.ResponseStatusException;
 public class TeamController {
 
     private final TeamService teamService;
+    private final RequestAuthority authority;
 
     /** Teams the current user belongs to in this tenant. */
     @GetMapping("/brain/{tenant}/teams")
     public TeamListResponse list(
             @PathVariable("tenant") String tenant,
             HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         List<TeamDocument> teams = teamService.byMember(tenant, currentUser);
         List<TeamSummary> dtos = new ArrayList<>();

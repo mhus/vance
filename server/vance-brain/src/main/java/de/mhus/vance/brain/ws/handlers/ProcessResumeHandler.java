@@ -8,7 +8,10 @@ import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
@@ -35,6 +38,7 @@ public class ProcessResumeHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final SessionLifecycleService sessionLifecycle;
     private final ProcessEventEmitter processEventEmitter;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -70,6 +74,10 @@ public class ProcessResumeHandler implements WsHandler {
             return;
         }
         ThinkProcessDocument process = processOpt.get();
+        authority.enforce(ctx,
+                new Resource.ThinkProcess(process.getTenantId(), process.getProjectId(),
+                        process.getSessionId(), process.getId() == null ? "" : process.getId()),
+                Action.EXECUTE);
         try {
             sessionLifecycle.resumeProcess(process, processEventEmitter);
         } catch (RuntimeException e) {

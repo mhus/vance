@@ -9,9 +9,12 @@ import de.mhus.vance.api.inbox.InboxListResponse;
 import de.mhus.vance.api.inbox.InboxTagsResponse;
 import de.mhus.vance.api.inbox.ResolvedBy;
 import de.mhus.vance.brain.inbox.InboxMapper;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -60,6 +63,7 @@ public class InboxController {
 
     private final InboxItemService inboxItemService;
     private final TeamService teamService;
+    private final RequestAuthority authority;
 
     // ──────────────────── Read ────────────────────
 
@@ -82,6 +86,7 @@ public class InboxController {
             @RequestParam(value = "status", required = false) @Nullable InboxItemStatus status,
             @RequestParam(value = "tag", required = false) @Nullable String tag,
             HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         List<String> targetUsers = resolveTargetUsers(tenant, currentUser, assignedTo);
         List<InboxItemDocument> docs = inboxItemService.listFiltered(
@@ -97,6 +102,7 @@ public class InboxController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        authority.enforce(httpRequest, inboxResource(doc), Action.READ);
         return InboxMapper.toDto(doc);
     }
 
@@ -109,6 +115,7 @@ public class InboxController {
     public InboxTagsResponse tags(
             @PathVariable("tenant") String tenant,
             HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.READ);
         String currentUser = currentUser(httpRequest);
         Set<String> userScope = new LinkedHashSet<>();
         userScope.add(currentUser);
@@ -129,7 +136,8 @@ public class InboxController {
             @Valid @RequestBody InboxAnswerRequest request,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        loadAuthorized(tenant, id, httpRequest);
+        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         // The wire-DTO is flat (outcome / value / reason). Build
         // the AnswerPayload here, stamping the resolver with the
         // JWT's username claim — never trust a client-side
@@ -152,7 +160,8 @@ public class InboxController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        loadAuthorized(tenant, id, httpRequest);
+        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         InboxItemDocument updated = inboxItemService.archive(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
@@ -169,7 +178,8 @@ public class InboxController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        loadAuthorized(tenant, id, httpRequest);
+        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         InboxItemDocument updated = inboxItemService.unarchive(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
@@ -181,7 +191,8 @@ public class InboxController {
             @PathVariable("id") String id,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        loadAuthorized(tenant, id, httpRequest);
+        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         InboxItemDocument updated = inboxItemService.dismiss(tenant, id, currentUser)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         return ResponseEntity.ok(InboxMapper.toDto(updated));
@@ -194,7 +205,8 @@ public class InboxController {
             @Valid @RequestBody InboxDelegateRequest request,
             HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);
-        loadAuthorized(tenant, id, httpRequest);
+        InboxItemDocument doc = loadAuthorized(tenant, id, httpRequest);
+        authority.enforce(httpRequest, inboxResource(doc), Action.WRITE);
         if (request.getToUserId() == null || request.getToUserId().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Delegate target userId is required");
@@ -275,6 +287,13 @@ public class InboxController {
      * Loads the item, validates tenant, and checks the current
      * user is allowed to see/touch it (own inbox or shared team).
      */
+    private static Resource.InboxItem inboxResource(InboxItemDocument doc) {
+        return new Resource.InboxItem(
+                doc.getTenantId() == null ? "" : doc.getTenantId(),
+                doc.getId() == null ? "" : doc.getId(),
+                doc.getAssignedToUserId() == null ? "" : doc.getAssignedToUserId());
+    }
+
     private InboxItemDocument loadAuthorized(
             String tenant, String id, HttpServletRequest httpRequest) {
         String currentUser = currentUser(httpRequest);

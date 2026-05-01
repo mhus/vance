@@ -3,8 +3,12 @@ package de.mhus.vance.brain.servertool;
 import de.mhus.vance.api.servertools.ServerToolDto;
 import de.mhus.vance.api.servertools.ServerToolWriteRequest;
 import de.mhus.vance.api.servertools.ToolTypeDto;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.tools.types.ToolFactory;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -45,12 +49,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class ServerToolAdminController {
 
     private final ServerToolService serverToolService;
+    private final RequestAuthority authority;
 
     // ─── Tool-type discovery ───────────────────────────────────────────────
 
     @GetMapping("/server-tool-types")
     public List<ToolTypeDto> listTypes(
-            @PathVariable("tenant") String tenant) {
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         List<ToolTypeDto> out = new ArrayList<>();
         for (ToolFactory factory : serverToolService.listTypes()) {
             out.add(ToolTypeDto.builder()
@@ -67,7 +74,9 @@ public class ServerToolAdminController {
     @GetMapping("/projects/{project}/server-tools")
     public List<ServerToolDto> listProjectTools(
             @PathVariable("tenant") String tenant,
-            @PathVariable("project") String project) {
+            @PathVariable("project") String project,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.ADMIN);
         return serverToolService.listDocuments(tenant, project).stream()
                 .map(ServerToolAdminController::toDto)
                 .sorted(Comparator.comparing(ServerToolDto::getName))
@@ -78,7 +87,9 @@ public class ServerToolAdminController {
     public ServerToolDto getProjectTool(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
-            @PathVariable("name") String name) {
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.ADMIN);
         ServerToolDocument doc = serverToolService.findDocument(tenant, project, name)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "No server tool '" + name + "' in project '" + project + "'"));
@@ -90,7 +101,9 @@ public class ServerToolAdminController {
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             @PathVariable("name") String name,
-            @Valid @RequestBody ServerToolWriteRequest request) {
+            @Valid @RequestBody ServerToolWriteRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.ADMIN);
         Optional<ServerToolDocument> existing =
                 serverToolService.findDocument(tenant, project, name);
         try {
@@ -132,7 +145,9 @@ public class ServerToolAdminController {
     public ResponseEntity<Void> deleteProjectTool(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
-            @PathVariable("name") String name) {
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.ADMIN);
         if (serverToolService.findDocument(tenant, project, name).isEmpty()) {
             return ResponseEntity.notFound().build();
         }

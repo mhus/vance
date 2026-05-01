@@ -6,9 +6,12 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.memory.CompactionResult;
 import de.mhus.vance.brain.memory.MemoryCompactionService;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
@@ -38,6 +41,7 @@ public class ProcessCompactHandler implements WsHandler {
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
     private final MemoryCompactionService compactionService;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -75,9 +79,15 @@ public class ProcessCompactHandler implements WsHandler {
             return;
         }
 
+        ThinkProcessDocument process = processOpt.get();
+        authority.enforce(ctx,
+                new Resource.ThinkProcess(process.getTenantId(), process.getProjectId(),
+                        process.getSessionId(), process.getId() == null ? "" : process.getId()),
+                Action.EXECUTE);
+
         CompactionResult result;
         try {
-            result = compactionService.compact(processOpt.get());
+            result = compactionService.compact(process);
         } catch (RuntimeException e) {
             log.warn("process-compact failed for tenant='{}' session='{}' process='{}'",
                     tenantId, sessionId, request.getProcessName(), e);

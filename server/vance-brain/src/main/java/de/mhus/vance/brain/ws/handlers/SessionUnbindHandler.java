@@ -3,10 +3,13 @@ package de.mhus.vance.brain.ws.handlers;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionService;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +41,7 @@ public class SessionUnbindHandler implements WsHandler {
     private final SessionService sessionService;
     private final SessionConnectionRegistry connectionRegistry;
     private final ClientToolRegistry clientToolRegistry;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -55,6 +59,10 @@ public class SessionUnbindHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 409, "No session bound");
             return;
         }
+        authority.enforce(ctx,
+                new Resource.Session(ctx.getTenantId(),
+                        ctx.getProjectId() == null ? "" : ctx.getProjectId(), sessionId),
+                Action.EXECUTE);
         sessionService.unbind(sessionId, connectionId);
         clientToolRegistry.unregister(sessionId);
         connectionRegistry.unregister(sessionId);

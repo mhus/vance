@@ -6,9 +6,12 @@ import de.mhus.vance.api.thinkprocess.ProcessSummary;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
@@ -40,6 +43,7 @@ public class ProcessListHandler implements WsHandler {
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
     private final ObjectMapper objectMapper;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -55,6 +59,10 @@ public class ProcessListHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 500, "Session bound but sessionId missing");
             return;
         }
+        authority.enforce(ctx,
+                new Resource.Session(ctx.getTenantId(),
+                        ctx.getProjectId() == null ? "" : ctx.getProjectId(), sessionId),
+                Action.READ);
         boolean includeTerminated = false;
         if (envelope.getData() != null) {
             try {

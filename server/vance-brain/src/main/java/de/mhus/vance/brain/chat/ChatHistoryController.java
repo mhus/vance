@@ -1,9 +1,12 @@
 package de.mhus.vance.brain.chat;
 
 import de.mhus.vance.api.chat.ChatMessageDto;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -51,6 +54,7 @@ public class ChatHistoryController {
 
     private final SessionService sessionService;
     private final ChatMessageService chatMessageService;
+    private final RequestAuthority authority;
 
     @GetMapping("/{sessionId}/messages")
     public List<ChatMessageDto> listMessages(
@@ -72,6 +76,8 @@ public class ChatHistoryController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Session '" + sessionId + "' belongs to another user");
         }
+        authority.enforce(request,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.READ);
 
         String chatProcessId = session.getChatProcessId();
         if (chatProcessId == null || chatProcessId.isBlank()) {

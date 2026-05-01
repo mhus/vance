@@ -6,10 +6,13 @@ import de.mhus.vance.api.ws.SessionResumeResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.api.session.SessionStatus;
@@ -35,6 +38,7 @@ public class SessionResumeHandler implements WsHandler {
     private final ProjectManagerService projectManager;
     private final SessionConnectionRegistry connectionRegistry;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -74,6 +78,9 @@ public class SessionResumeHandler implements WsHandler {
                     "Session '" + request.getSessionId() + "' belongs to another user");
             return;
         }
+        authority.enforce(ctx,
+                new Resource.Session(doc.getTenantId(), doc.getProjectId(), doc.getSessionId()),
+                Action.START);
         projectManager.claimForLocalPod(doc.getTenantId(), doc.getProjectId());
 
         boolean bound = sessionService.tryBind(

@@ -6,11 +6,14 @@ import de.mhus.vance.api.thinkprocess.ProcessStopResponse;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
@@ -48,6 +51,7 @@ public class ProcessStopHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final SessionLifecycleService sessionLifecycle;
     private final ProgressEmitter progressEmitter;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -71,6 +75,10 @@ public class ProcessStopHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 500, "Session bound but sessionId missing");
             return;
         }
+        authority.enforce(ctx,
+                new Resource.Session(tenantId,
+                        ctx.getProjectId() == null ? "" : ctx.getProjectId(), sessionId),
+                Action.EXECUTE);
 
         String processName = request == null ? null : request.getProcessName();
         if (processName == null || processName.isBlank()) {

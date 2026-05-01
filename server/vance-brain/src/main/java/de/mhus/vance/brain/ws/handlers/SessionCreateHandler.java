@@ -7,11 +7,14 @@ import de.mhus.vance.api.ws.SessionCreateResponse;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
@@ -48,6 +51,7 @@ public class SessionCreateHandler implements WsHandler {
     private final ChatMessageService chatMessageService;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final HomeBootstrapService homeBootstrapService;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -73,6 +77,8 @@ public class SessionCreateHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 400, "projectId is required");
             return;
         }
+        authority.enforce(ctx,
+                new Resource.Project(ctx.getTenantId(), request.getProjectId()), Action.START);
 
         // Lazy Hub-provisioning: a session-create against an unknown
         // _user_<login> project where <login> is a real user triggers

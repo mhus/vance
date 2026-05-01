@@ -8,10 +8,13 @@ import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -48,6 +51,7 @@ public class ProcessCreateHandler implements WsHandler {
     private final ChatMessageService chatMessageService;
     private final RecipeResolver recipeResolver;
     private final SessionService sessionService;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -82,6 +86,9 @@ public class ProcessCreateHandler implements WsHandler {
         String projectId = sessionService.findBySessionId(sessionId)
                 .map(SessionDocument::getProjectId)
                 .orElse(null);
+        authority.enforce(ctx,
+                new Resource.Session(tenantId, projectId == null ? "" : projectId, sessionId),
+                Action.START);
 
         java.util.Optional<AppliedRecipe> applied;
         try {

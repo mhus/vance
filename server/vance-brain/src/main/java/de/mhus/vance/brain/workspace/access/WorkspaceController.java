@@ -1,10 +1,14 @@
 package de.mhus.vance.brain.workspace.access;
 
 import de.mhus.vance.api.projects.WorkspaceTreeNodeDto;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.location.LocationService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceFileSizeExceededException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.URI;
@@ -53,6 +57,7 @@ public class WorkspaceController {
     private final LocationService locationService;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final RequestAuthority authority;
     private final String internalToken;
 
     public WorkspaceController(WorkspaceService workspaceService,
@@ -60,12 +65,14 @@ public class WorkspaceController {
                                WorkspaceAccessProperties properties,
                                LocationService locationService,
                                ObjectMapper objectMapper,
+                               RequestAuthority authority,
                                @Value("${vance.internal.token:}") String internalToken) {
         this.workspaceService = workspaceService;
         this.routingCache = routingCache;
         this.properties = properties;
         this.locationService = locationService;
         this.objectMapper = objectMapper;
+        this.authority = authority;
         this.internalToken = internalToken == null ? "" : internalToken;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getConnectTimeout())
@@ -77,7 +84,9 @@ public class WorkspaceController {
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
             @RequestParam(value = "path", required = false) @Nullable String path,
-            @RequestParam(value = "depth", required = false, defaultValue = "1") int depth) {
+            @RequestParam(value = "depth", required = false, defaultValue = "1") int depth,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
         if (properties.isBypassProxy()) {
             return treeDirect(project, path, depth);
         }
@@ -95,10 +104,12 @@ public class WorkspaceController {
     public ResponseEntity<byte[]> file(
             @PathVariable("tenant") String tenant,
             @PathVariable("project") String project,
-            @RequestParam("path") String path) {
+            @RequestParam("path") String path,
+            HttpServletRequest httpRequest) {
         if (path == null || path.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "path is required");
         }
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
         if (properties.isBypassProxy()) {
             return fileDirect(project, path);
         }

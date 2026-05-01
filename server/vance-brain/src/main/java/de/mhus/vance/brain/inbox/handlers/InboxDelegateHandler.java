@@ -4,11 +4,14 @@ import de.mhus.vance.api.inbox.InboxDelegateRequest;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.inbox.InboxMapper;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import java.io.IOException;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +26,7 @@ public class InboxDelegateHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final InboxItemService inboxService;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -45,6 +49,19 @@ public class InboxDelegateHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 400, "itemId and toUserId are required");
             return;
         }
+        Optional<InboxItemDocument> existing =
+                inboxService.findById(ctx.getTenantId(), request.getItemId());
+        if (existing.isEmpty()) {
+            sender.sendError(wsSession, envelope, 404, "Inbox item not found");
+            return;
+        }
+        InboxItemDocument item = existing.get();
+        authority.enforce(ctx, new Resource.InboxItem(
+                        item.getTenantId() == null ? "" : item.getTenantId(),
+                        item.getId() == null ? "" : item.getId(),
+                        item.getAssignedToUserId() == null ? "" : item.getAssignedToUserId()),
+                Action.WRITE);
+
         Optional<InboxItemDocument> updated = inboxService.delegate(
                 ctx.getTenantId(), request.getItemId(),
                 request.getToUserId(), ctx.getUserId(), request.getNote());

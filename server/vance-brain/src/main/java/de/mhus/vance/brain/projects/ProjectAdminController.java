@@ -3,10 +3,14 @@ package de.mhus.vance.brain.projects;
 import de.mhus.vance.api.projects.ProjectCreateRequest;
 import de.mhus.vance.api.projects.ProjectDto;
 import de.mhus.vance.api.projects.ProjectUpdateRequest;
+import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.projectgroup.ProjectGroupDocument;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Comparator;
 import java.util.List;
@@ -43,9 +47,13 @@ public class ProjectAdminController {
 
     private final ProjectService projectService;
     private final ProjectGroupService projectGroupService;
+    private final RequestAuthority authority;
 
     @GetMapping
-    public List<ProjectDto> list(@PathVariable("tenant") String tenant) {
+    public List<ProjectDto> list(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return projectService.all(tenant).stream()
                 .sorted(Comparator
                         .comparing((ProjectDocument p) -> p.getProjectGroupId() == null ? "￿" : p.getProjectGroupId())
@@ -57,7 +65,9 @@ public class ProjectAdminController {
     @PostMapping
     public ResponseEntity<ProjectDto> create(
             @PathVariable("tenant") String tenant,
-            @Valid @RequestBody ProjectCreateRequest request) {
+            @Valid @RequestBody ProjectCreateRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
             ProjectDocument saved = projectService.create(
                     tenant,
@@ -75,7 +85,9 @@ public class ProjectAdminController {
     public ProjectDto update(
             @PathVariable("tenant") String tenant,
             @PathVariable("name") String name,
-            @Valid @RequestBody ProjectUpdateRequest request) {
+            @Valid @RequestBody ProjectUpdateRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
         try {
             ProjectDocument saved = projectService.update(
                     tenant,
@@ -94,7 +106,9 @@ public class ProjectAdminController {
     @DeleteMapping("/{name}")
     public ProjectDto close(
             @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name) {
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
         try {
             ProjectGroupDocument archivedGroup = projectGroupService.ensureArchivedGroup(tenant);
             ProjectDocument saved = projectService.close(tenant, name, archivedGroup.getName());

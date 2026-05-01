@@ -3,8 +3,12 @@ package de.mhus.vance.brain.users;
 import de.mhus.vance.api.users.TeamCreateRequest;
 import de.mhus.vance.api.users.TeamDto;
 import de.mhus.vance.api.users.TeamUpdateRequest;
+import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -37,9 +41,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class TeamAdminController {
 
     private final TeamService teamService;
+    private final RequestAuthority authority;
 
     @GetMapping
-    public List<TeamDto> list(@PathVariable("tenant") String tenant) {
+    public List<TeamDto> list(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return teamService.all(tenant).stream()
                 .sorted(Comparator.comparing(TeamDocument::getName))
                 .map(TeamAdminController::toDto)
@@ -49,7 +57,9 @@ public class TeamAdminController {
     @GetMapping("/{name}")
     public TeamDto get(
             @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name) {
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Team(tenant, name), Action.ADMIN);
         return teamService.findByTenantAndName(tenant, name)
                 .map(TeamAdminController::toDto)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -59,7 +69,9 @@ public class TeamAdminController {
     @PostMapping
     public ResponseEntity<TeamDto> create(
             @PathVariable("tenant") String tenant,
-            @Valid @RequestBody TeamCreateRequest request) {
+            @Valid @RequestBody TeamCreateRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
             TeamDocument saved = teamService.create(
                     tenant, request.getName(), request.getTitle(), request.getMembers());
@@ -73,7 +85,9 @@ public class TeamAdminController {
     public TeamDto update(
             @PathVariable("tenant") String tenant,
             @PathVariable("name") String name,
-            @Valid @RequestBody TeamUpdateRequest request) {
+            @Valid @RequestBody TeamUpdateRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Team(tenant, name), Action.ADMIN);
         try {
             TeamDocument saved = teamService.update(
                     tenant,
@@ -90,7 +104,9 @@ public class TeamAdminController {
     @DeleteMapping("/{name}")
     public ResponseEntity<Void> delete(
             @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name) {
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Team(tenant, name), Action.ADMIN);
         try {
             teamService.delete(tenant, name);
             return ResponseEntity.noContent().build();

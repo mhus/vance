@@ -4,9 +4,12 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.ProjectGroupListResponse;
 import de.mhus.vance.api.ws.ProjectGroupSummary;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.projectgroup.ProjectGroupDocument;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
 import java.io.IOException;
@@ -25,6 +28,7 @@ public class ProjectGroupListHandler implements WsHandler {
 
     private final WebSocketSender sender;
     private final ProjectGroupService projectGroupService;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -39,6 +43,8 @@ public class ProjectGroupListHandler implements WsHandler {
     @Override
     public void handle(ConnectionContext ctx, WebSocketSession wsSession, WebSocketEnvelope envelope)
             throws IOException {
+        authority.enforce(ctx, new Resource.Tenant(ctx.getTenantId()), Action.READ);
+
         List<ProjectGroupDocument> documents = projectGroupService.all(ctx.getTenantId());
         List<ProjectGroupSummary> summaries =
                 documents.stream().map(ProjectGroupListHandler::toSummary).toList();

@@ -7,6 +7,7 @@ import de.mhus.vance.api.ws.WelcomeData;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
+import de.mhus.vance.shared.permission.PermissionDeniedException;
 import de.mhus.vance.shared.session.SessionService;
 import java.util.HashMap;
 import java.util.List;
@@ -139,6 +140,9 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
 
         try {
             handler.handle(ctx, wsSession, envelope);
+        } catch (PermissionDeniedException e) {
+            log.debug("permission denied on '{}': {}", type, e.getMessage());
+            sender.sendError(wsSession, envelope, 403, "permission_denied");
         } catch (RuntimeException e) {
             log.warn("Handler for '{}' failed", type, e);
             sender.sendError(wsSession, envelope, 500, e.getMessage());

@@ -5,9 +5,12 @@ import de.mhus.vance.api.ws.SessionListRequest;
 import de.mhus.vance.api.ws.SessionListResponse;
 import de.mhus.vance.api.ws.SessionSummary;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import java.io.IOException;
@@ -31,6 +34,7 @@ public class SessionListHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final SessionService sessionService;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -59,6 +63,8 @@ public class SessionListHandler implements WsHandler {
                 return;
             }
         }
+
+        authority.enforce(ctx, new Resource.Tenant(ctx.getTenantId()), Action.READ);
 
         List<SessionDocument> documents = isBlank(projectId)
                 ? sessionService.listForUser(ctx.getTenantId(), ctx.getUserId())

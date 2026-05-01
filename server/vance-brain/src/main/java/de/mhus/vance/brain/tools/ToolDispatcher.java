@@ -1,6 +1,10 @@
 package de.mhus.vance.brain.tools;
 
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.PermissionService;
+import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.permission.SecurityContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,9 +28,11 @@ import org.springframework.stereotype.Service;
 public class ToolDispatcher {
 
     private final List<ToolSource> sources;
+    private final PermissionService permissionService;
 
-    public ToolDispatcher(List<ToolSource> sources) {
+    public ToolDispatcher(List<ToolSource> sources, PermissionService permissionService) {
         this.sources = List.copyOf(sources);
+        this.permissionService = permissionService;
         log.info("ToolDispatcher sources: {}",
                 sources.stream().map(ToolSource::sourceId).toList());
     }
@@ -67,6 +73,7 @@ public class ToolDispatcher {
             String name, Map<String, Object> params, ToolInvocationContext ctx) {
         Resolved r = resolve(name, ctx).orElseThrow(
                 () -> new ToolException("Unknown tool: " + name));
+        permissionService.enforce(securityContextOf(ctx), resourceOf(ctx), Action.EXECUTE);
         try {
             return r.tool().invoke(params, ctx);
         } catch (ToolException e) {
@@ -75,6 +82,43 @@ public class ToolDispatcher {
             throw new ToolException(
                     "Tool '" + name + "' failed: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Builds the {@link SecurityContext} for a tool invocation. Tool-driven
+     * work happens on behalf of whoever spawned the think-process — that
+     * userId is on {@link ToolInvocationContext}. Internal flows without a
+     * user (e.g. lifecycle listeners) get {@link SecurityContext#SYSTEM}.
+     *
+     * <p>Teams stay empty here on purpose: the AllowAll resolver doesn't
+     * read them, and a per-call Mongo lookup for every tool dispatch
+     * would be a meaningful regression. When a real role-based resolver
+     * lands, this is the place to wire team caching.
+     */
+    private static SecurityContext securityContextOf(ToolInvocationContext ctx) {
+        if (ctx.userId() == null || ctx.userId().isBlank()) {
+            return SecurityContext.SYSTEM;
+        }
+        return SecurityContext.user(ctx.userId(), ctx.tenantId(), List.of());
+    }
+
+    /**
+     * Picks the most specific {@link Resource} known for a tool invocation.
+     * The future resolver gets the deepest scope; the AllowAll default
+     * just logs it.
+     */
+    private static Resource resourceOf(ToolInvocationContext ctx) {
+        if (ctx.processId() != null && ctx.sessionId() != null && ctx.projectId() != null) {
+            return new Resource.ThinkProcess(
+                    ctx.tenantId(), ctx.projectId(), ctx.sessionId(), ctx.processId());
+        }
+        if (ctx.sessionId() != null && ctx.projectId() != null) {
+            return new Resource.Session(ctx.tenantId(), ctx.projectId(), ctx.sessionId());
+        }
+        if (ctx.projectId() != null) {
+            return new Resource.Project(ctx.tenantId(), ctx.projectId());
+        }
+        return new Resource.Tenant(ctx.tenantId());
     }
 
     /** Convenience: project resolved tools to their wire spec. */

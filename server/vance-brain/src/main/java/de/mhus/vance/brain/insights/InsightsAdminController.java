@@ -9,8 +9,11 @@ import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
 import de.mhus.vance.api.llmtrace.LlmTraceDto;
 import de.mhus.vance.api.llmtrace.LlmTraceListResponse;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.llmtrace.LlmTraceDocument;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.marvin.MarvinNodeDocument;
@@ -23,6 +26,7 @@ import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -63,6 +67,7 @@ public class InsightsAdminController {
     private final MemoryService memoryService;
     private final MarvinNodeService marvinNodeService;
     private final LlmTraceService llmTraceService;
+    private final RequestAuthority authority;
 
     // ─── Sessions ──────────────────────────────────────────────────────────
 
@@ -71,8 +76,10 @@ public class InsightsAdminController {
             @PathVariable("tenant") String tenant,
             @RequestParam(value = "projectId", required = false) @Nullable String projectId,
             @RequestParam(value = "userId", required = false) @Nullable String userId,
-            @RequestParam(value = "status", required = false) @Nullable String status) {
+            @RequestParam(value = "status", required = false) @Nullable String status,
+            HttpServletRequest httpRequest) {
 
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         List<SessionDocument> sessions;
         if (userId != null && !userId.isBlank() && projectId != null && !projectId.isBlank()) {
             sessions = sessionService.listForUserAndProject(tenant, userId, projectId);
@@ -97,24 +104,30 @@ public class InsightsAdminController {
     @GetMapping("/sessions/{sessionId}")
     public SessionInsightsDto getSession(
             @PathVariable("tenant") String tenant,
-            @PathVariable("sessionId") String sessionId) {
+            @PathVariable("sessionId") String sessionId,
+            HttpServletRequest httpRequest) {
         SessionDocument doc = sessionService.findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Session '" + sessionId + "' not found"));
+        authority.enforce(httpRequest,
+                new Resource.Session(tenant, doc.getProjectId(), doc.getSessionId()), Action.ADMIN);
         return toListDto(tenant, doc);
     }
 
     @GetMapping("/sessions/{sessionId}/processes")
     public List<ThinkProcessInsightsDto> listProcesses(
             @PathVariable("tenant") String tenant,
-            @PathVariable("sessionId") String sessionId) {
+            @PathVariable("sessionId") String sessionId,
+            HttpServletRequest httpRequest) {
         // Verify the session exists in this tenant before walking processes —
         // otherwise a wrong sessionId silently returns [].
-        sessionService.findBySessionId(sessionId)
+        SessionDocument session = sessionService.findBySessionId(sessionId)
                 .filter(s -> tenant.equals(s.getTenantId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Session '" + sessionId + "' not found"));
+        authority.enforce(httpRequest,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.ADMIN);
 
         return thinkProcessService.findBySession(tenant, sessionId).stream()
                 .sorted(Comparator
@@ -129,15 +142,20 @@ public class InsightsAdminController {
     @GetMapping("/processes/{processId}")
     public ThinkProcessInsightsDto getProcess(
             @PathVariable("tenant") String tenant,
-            @PathVariable("processId") String processId) {
-        return toDto(loadProcess(tenant, processId));
+            @PathVariable("processId") String processId,
+            HttpServletRequest httpRequest) {
+        ThinkProcessDocument process = loadProcess(tenant, processId);
+        authority.enforce(httpRequest, processResource(process), Action.ADMIN);
+        return toDto(process);
     }
 
     @GetMapping("/processes/{processId}/chat")
     public List<ChatMessageInsightsDto> listChat(
             @PathVariable("tenant") String tenant,
-            @PathVariable("processId") String processId) {
+            @PathVariable("processId") String processId,
+            HttpServletRequest httpRequest) {
         ThinkProcessDocument process = loadProcess(tenant, processId);
+        authority.enforce(httpRequest, processResource(process), Action.ADMIN);
         List<ChatMessageDocument> messages = chatMessageService.history(
                 tenant, process.getSessionId(), process.getId());
         return messages.stream()
@@ -148,8 +166,10 @@ public class InsightsAdminController {
     @GetMapping("/processes/{processId}/memory")
     public List<MemoryInsightsDto> listMemory(
             @PathVariable("tenant") String tenant,
-            @PathVariable("processId") String processId) {
+            @PathVariable("processId") String processId,
+            HttpServletRequest httpRequest) {
         ThinkProcessDocument process = loadProcess(tenant, processId);
+        authority.enforce(httpRequest, processResource(process), Action.ADMIN);
         List<MemoryDocument> memories = memoryService.listByProcess(tenant, process.getId());
         return memories.stream()
                 .sorted(Comparator
@@ -162,8 +182,10 @@ public class InsightsAdminController {
     @GetMapping("/processes/{processId}/marvin-tree")
     public List<MarvinNodeInsightsDto> listMarvinTree(
             @PathVariable("tenant") String tenant,
-            @PathVariable("processId") String processId) {
+            @PathVariable("processId") String processId,
+            HttpServletRequest httpRequest) {
         ThinkProcessDocument process = loadProcess(tenant, processId);
+        authority.enforce(httpRequest, processResource(process), Action.ADMIN);
         // Tree is only meaningful for marvin processes; for other engines we
         // simply return an empty list rather than 404, so the client can
         // unconditionally fetch the tab without conditional logic.
@@ -187,8 +209,10 @@ public class InsightsAdminController {
             @PathVariable("tenant") String tenant,
             @PathVariable("processId") String processId,
             @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "50") int size) {
+            @RequestParam(name = "size", defaultValue = "50") int size,
+            HttpServletRequest httpRequest) {
         ThinkProcessDocument process = loadProcess(tenant, processId);
+        authority.enforce(httpRequest, processResource(process), Action.ADMIN);
         org.springframework.data.domain.Page<LlmTraceDocument> result =
                 llmTraceService.listByProcess(tenant, process.getId(), page, size);
         List<LlmTraceDto> items = result.getContent().stream()
@@ -209,6 +233,11 @@ public class InsightsAdminController {
                 .filter(p -> tenant.equals(p.getTenantId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Process '" + processId + "' not found"));
+    }
+
+    private static Resource.ThinkProcess processResource(ThinkProcessDocument p) {
+        return new Resource.ThinkProcess(
+                p.getTenantId(), p.getProjectId(), p.getSessionId(), p.getId() == null ? "" : p.getId());
     }
 
     // ─── Mapping helpers ───────────────────────────────────────────────────

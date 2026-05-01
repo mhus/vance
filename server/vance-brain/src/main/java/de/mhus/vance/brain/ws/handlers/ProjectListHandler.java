@@ -5,9 +5,12 @@ import de.mhus.vance.api.ws.ProjectListRequest;
 import de.mhus.vance.api.ws.ProjectListResponse;
 import de.mhus.vance.api.ws.ProjectSummary;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.io.IOException;
@@ -30,6 +33,7 @@ public class ProjectListHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final ProjectService projectService;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -58,6 +62,8 @@ public class ProjectListHandler implements WsHandler {
                 return;
             }
         }
+
+        authority.enforce(ctx, new Resource.Tenant(ctx.getTenantId()), Action.READ);
 
         List<ProjectDocument> documents = isBlank(projectGroupId)
                 ? projectService.all(ctx.getTenantId())

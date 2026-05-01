@@ -3,9 +3,12 @@ package de.mhus.vance.brain.ws.handlers;
 import de.mhus.vance.api.ws.ClientAgentUploadRequest;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionService;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +37,7 @@ public class ClientAgentUploadHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final SessionService sessionService;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -77,6 +81,10 @@ public class ClientAgentUploadHandler implements WsHandler {
             sender.sendError(wsSession, envelope, 500, "Session bound but sessionId missing");
             return;
         }
+        authority.enforce(ctx,
+                new Resource.Session(ctx.getTenantId(),
+                        ctx.getProjectId() == null ? "" : ctx.getProjectId(), sessionId),
+                Action.WRITE);
         // Empty content clears the stored doc — same wire shape, different intent.
         sessionService.setClientAgentDoc(
                 sessionId, request.getPath(), content.isEmpty() ? null : content);

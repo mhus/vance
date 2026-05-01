@@ -4,8 +4,11 @@ import de.mhus.vance.api.users.UserCreateRequest;
 import de.mhus.vance.api.users.UserDto;
 import de.mhus.vance.api.users.UserPasswordRequest;
 import de.mhus.vance.api.users.UserUpdateRequest;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.password.PasswordService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.user.UserDocument;
 import de.mhus.vance.shared.user.UserService;
 import de.mhus.vance.shared.user.UserStatus;
@@ -48,9 +51,13 @@ public class UserAdminController {
 
     private final UserService userService;
     private final PasswordService passwordService;
+    private final RequestAuthority authority;
 
     @GetMapping
-    public List<UserDto> list(@PathVariable("tenant") String tenant) {
+    public List<UserDto> list(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return userService.all(tenant).stream()
                 .sorted(Comparator.comparing(UserDocument::getName))
                 .map(UserAdminController::toDto)
@@ -60,7 +67,9 @@ public class UserAdminController {
     @GetMapping("/{name}")
     public UserDto get(
             @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name) {
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
         return userService.findByTenantAndName(tenant, name)
                 .map(UserAdminController::toDto)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -70,7 +79,9 @@ public class UserAdminController {
     @PostMapping
     public ResponseEntity<UserDto> create(
             @PathVariable("tenant") String tenant,
-            @Valid @RequestBody UserCreateRequest request) {
+            @Valid @RequestBody UserCreateRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
             String passwordHash = (request.getPassword() == null || request.getPassword().isBlank())
                     ? null
@@ -93,6 +104,7 @@ public class UserAdminController {
             @PathVariable("name") String name,
             @Valid @RequestBody UserUpdateRequest request,
             HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
         UserStatus status = parseStatus(request.getStatus());
         // Self-protect: don't let the caller disable themselves.
         if (status == UserStatus.DISABLED && name.equals(currentUser(httpRequest))) {
@@ -112,7 +124,9 @@ public class UserAdminController {
     public ResponseEntity<Void> setPassword(
             @PathVariable("tenant") String tenant,
             @PathVariable("name") String name,
-            @Valid @RequestBody UserPasswordRequest request) {
+            @Valid @RequestBody UserPasswordRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
         try {
             String hash = passwordService.hash(request.getPassword());
             userService.setPasswordHash(tenant, name, hash);
@@ -127,6 +141,7 @@ public class UserAdminController {
             @PathVariable("tenant") String tenant,
             @PathVariable("name") String name,
             HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.User(tenant, name), Action.ADMIN);
         if (name.equals(currentUser(httpRequest))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Cannot delete your own account");

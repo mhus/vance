@@ -3,9 +3,13 @@ package de.mhus.vance.brain.settings;
 import de.mhus.vance.api.settings.SettingDto;
 import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.api.settings.SettingWriteRequest;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Optional;
@@ -58,6 +62,7 @@ public class AdminSettingsController {
     private static final String PASSWORD_MASK = "[set]";
 
     private final SettingService settingService;
+    private final RequestAuthority authority;
 
     /**
      * Lists settings in a reference scope. If both {@code referenceType} and
@@ -70,8 +75,10 @@ public class AdminSettingsController {
             @PathVariable("tenant") String tenant,
             @RequestParam(value = "referenceType", required = false) @Nullable String referenceType,
             @RequestParam(value = "referenceId", required = false) @Nullable String referenceId,
-            @RequestParam(value = "key", required = false) @Nullable String key) {
+            @RequestParam(value = "key", required = false) @Nullable String key,
+            HttpServletRequest httpRequest) {
 
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         if (referenceType != null && referenceId != null) {
             StorageRef ref = mapToStorage(referenceType, referenceId);
             return settingService.findAll(tenant, ref.type(), ref.id()).stream()
@@ -92,8 +99,11 @@ public class AdminSettingsController {
             @PathVariable("tenant") String tenant,
             @PathVariable("referenceType") String referenceType,
             @PathVariable("referenceId") String referenceId,
-            @PathVariable("key") String key) {
+            @PathVariable("key") String key,
+            HttpServletRequest httpRequest) {
 
+        authority.enforce(httpRequest,
+                new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
         StorageRef ref = mapToStorage(referenceType, referenceId);
         return settingService.find(tenant, ref.type(), ref.id(), key)
                 .map(doc -> toDto(doc, referenceType, referenceId))
@@ -107,8 +117,11 @@ public class AdminSettingsController {
             @PathVariable("referenceType") String referenceType,
             @PathVariable("referenceId") String referenceId,
             @PathVariable("key") String key,
-            @Valid @RequestBody SettingWriteRequest request) {
+            @Valid @RequestBody SettingWriteRequest request,
+            HttpServletRequest httpRequest) {
 
+        authority.enforce(httpRequest,
+                new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
         StorageRef ref = mapToStorage(referenceType, referenceId);
         SettingDocument saved = request.getType() == SettingType.PASSWORD
                 ? settingService.setEncryptedPassword(tenant, ref.type(), ref.id(), key, request.getValue())
@@ -125,8 +138,11 @@ public class AdminSettingsController {
             @PathVariable("tenant") String tenant,
             @PathVariable("referenceType") String referenceType,
             @PathVariable("referenceId") String referenceId,
-            @PathVariable("key") String key) {
+            @PathVariable("key") String key,
+            HttpServletRequest httpRequest) {
 
+        authority.enforce(httpRequest,
+                new Resource.Setting(tenant, referenceType, referenceId, key), Action.ADMIN);
         StorageRef ref = mapToStorage(referenceType, referenceId);
         Optional<SettingDocument> existing = settingService.find(tenant, ref.type(), ref.id(), key);
         if (existing.isEmpty()) {

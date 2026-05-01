@@ -3,8 +3,12 @@ package de.mhus.vance.brain.projects;
 import de.mhus.vance.api.projects.ProjectGroupCreateRequest;
 import de.mhus.vance.api.projects.ProjectGroupUpdateRequest;
 import de.mhus.vance.api.ws.ProjectGroupSummary;
+import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.projectgroup.ProjectGroupDocument;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Comparator;
 import java.util.List;
@@ -36,9 +40,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class ProjectGroupAdminController {
 
     private final ProjectGroupService projectGroupService;
+    private final RequestAuthority authority;
 
     @GetMapping
-    public List<ProjectGroupSummary> list(@PathVariable("tenant") String tenant) {
+    public List<ProjectGroupSummary> list(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         return projectGroupService.all(tenant).stream()
                 .sorted(Comparator.comparing(ProjectGroupDocument::getName))
                 .map(ProjectGroupAdminController::toSummary)
@@ -48,7 +56,9 @@ public class ProjectGroupAdminController {
     @PostMapping
     public ResponseEntity<ProjectGroupSummary> create(
             @PathVariable("tenant") String tenant,
-            @Valid @RequestBody ProjectGroupCreateRequest request) {
+            @Valid @RequestBody ProjectGroupCreateRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
             ProjectGroupDocument saved = projectGroupService.create(
                     tenant, request.getName(), request.getTitle());
@@ -62,7 +72,9 @@ public class ProjectGroupAdminController {
     public ProjectGroupSummary update(
             @PathVariable("tenant") String tenant,
             @PathVariable("name") String name,
-            @Valid @RequestBody ProjectGroupUpdateRequest request) {
+            @Valid @RequestBody ProjectGroupUpdateRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
             ProjectGroupDocument saved = projectGroupService.update(
                     tenant, name, request.getTitle(), request.getEnabled());
@@ -75,7 +87,9 @@ public class ProjectGroupAdminController {
     @DeleteMapping("/{name}")
     public ResponseEntity<Void> delete(
             @PathVariable("tenant") String tenant,
-            @PathVariable("name") String name) {
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
             projectGroupService.delete(tenant, name);
             return ResponseEntity.noContent().build();

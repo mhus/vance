@@ -2,8 +2,12 @@ package de.mhus.vance.brain.tenant;
 
 import de.mhus.vance.api.tenant.TenantDto;
 import de.mhus.vance.api.tenant.TenantUpdateRequest;
+import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.tenant.TenantDocument;
 import de.mhus.vance.shared.tenant.TenantService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,9 +36,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class TenantAdminController {
 
     private final TenantService tenantService;
+    private final RequestAuthority authority;
 
     @GetMapping
-    public TenantDto get(@PathVariable("tenant") String tenant) {
+    public TenantDto get(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         TenantDocument doc = tenantService.findByName(tenant)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Tenant '" + tenant + "' not found"));
@@ -44,7 +52,9 @@ public class TenantAdminController {
     @PutMapping
     public TenantDto update(
             @PathVariable("tenant") String tenant,
-            @Valid @RequestBody TenantUpdateRequest request) {
+            @Valid @RequestBody TenantUpdateRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
             TenantDocument saved = tenantService.update(tenant, request.getTitle(), request.getEnabled());
             return toDto(saved);

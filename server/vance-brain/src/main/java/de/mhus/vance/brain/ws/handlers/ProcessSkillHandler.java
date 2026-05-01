@@ -8,11 +8,14 @@ import de.mhus.vance.api.skills.SkillSummaryDto;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.skill.ResolvedSkill;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.skill.SkillSteerProcessor;
 import de.mhus.vance.brain.skill.UnknownSkillException;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -47,6 +50,7 @@ public class ProcessSkillHandler implements WsHandler {
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
     private final SkillSteerProcessor skillSteerProcessor;
+    private final RequestAuthority authority;
 
     @Override
     public String type() {
@@ -86,6 +90,11 @@ public class ProcessSkillHandler implements WsHandler {
         }
         ThinkProcessDocument process = processOpt.get();
         ProcessSkillCommand command = request.getCommand();
+        Action action = command == ProcessSkillCommand.LIST ? Action.READ : Action.WRITE;
+        authority.enforce(ctx,
+                new Resource.ThinkProcess(process.getTenantId(), process.getProjectId(),
+                        process.getSessionId(), process.getId() == null ? "" : process.getId()),
+                action);
 
         // Argument validation per command.
         switch (command) {

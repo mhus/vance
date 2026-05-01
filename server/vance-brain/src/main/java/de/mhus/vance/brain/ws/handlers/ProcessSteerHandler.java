@@ -8,12 +8,15 @@ import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
@@ -76,6 +79,7 @@ public class ProcessSteerHandler implements WsHandler {
     private final ChatMessageService chatMessageService;
     private final LaneScheduler laneScheduler;
     private final ProcessEventEmitter eventEmitter;
+    private final RequestAuthority authority;
 
     public ProcessSteerHandler(
             ObjectMapper objectMapper,
@@ -83,13 +87,15 @@ public class ProcessSteerHandler implements WsHandler {
             ThinkProcessService thinkProcessService,
             ChatMessageService chatMessageService,
             LaneScheduler laneScheduler,
-            ProcessEventEmitter eventEmitter) {
+            ProcessEventEmitter eventEmitter,
+            RequestAuthority authority) {
         this.objectMapper = objectMapper;
         this.sender = sender;
         this.thinkProcessService = thinkProcessService;
         this.chatMessageService = chatMessageService;
         this.laneScheduler = laneScheduler;
         this.eventEmitter = eventEmitter;
+        this.authority = authority;
     }
 
     @Override
@@ -129,6 +135,10 @@ public class ProcessSteerHandler implements WsHandler {
         }
         ThinkProcessDocument process = processOpt.get();
         String processId = process.getId();
+        authority.enforce(ctx,
+                new Resource.ThinkProcess(process.getTenantId(), process.getProjectId(),
+                        process.getSessionId(), processId == null ? "" : processId),
+                Action.EXECUTE);
 
         // Auto-resume on incoming user input. The user paused, the
         // chat went PAUSED, and now they're sending the correction.

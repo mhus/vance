@@ -1,12 +1,16 @@
 package de.mhus.vance.shared.workspace;
 
+import de.mhus.vance.api.projects.WorkspaceNodeType;
+import de.mhus.vance.api.projects.WorkspaceTreeNodeDto;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -622,6 +626,161 @@ public class WorkspaceService {
             throw new WorkspaceException("Not a regular file: " + relativePath);
         }
         return resolved;
+    }
+
+    // ---------------------------------------------------------------------
+    // Read-only tree projection (workspace-access endpoints)
+    // ---------------------------------------------------------------------
+
+    /**
+     * Build a virtual workspace-root node whose children are the project's
+     * RootDirs. Used by the workspace-access tree endpoint when no
+     * {@code path} is given. {@code maxDepth} controls how deep the listing
+     * walks <em>inside</em> each RootDir (depth {@code 1} = list RootDirs only,
+     * no contents; depth {@code 2} = list each RootDir's top-level entries;
+     * etc). RootDirs are sorted alphabetically.
+     */
+    public WorkspaceTreeNodeDto treeRoot(String projectId, int maxDepth) {
+        requireProject(projectId);
+        int depth = Math.max(1, maxDepth);
+        List<WorkspaceTreeNodeDto> children = new ArrayList<>();
+        for (RootDirHandle handle : listRootDirs(projectId)) {
+            children.add(buildDirNode(handle.getDirName(), handle.getDirName(), handle.getPath(), depth - 1));
+        }
+        return WorkspaceTreeNodeDto.builder()
+                .name("")
+                .path("")
+                .type(WorkspaceNodeType.DIR)
+                .size(0L)
+                .lastModified(null)
+                .children(children)
+                .build();
+    }
+
+    /**
+     * Build a tree projection rooted at {@code (dirName, relativePath)}.
+     * {@code relativePath} may be empty to address the RootDir itself.
+     * Throws {@link WorkspaceException} on unknown RootDir, sandbox escape,
+     * or missing target. {@code maxDepth} of {@code 0} returns the node
+     * without children; {@code 1} returns its direct children; etc.
+     */
+    public WorkspaceTreeNodeDto tree(String projectId, String dirName,
+                                     @Nullable String relativePath, int maxDepth) {
+        requireProject(projectId);
+        if (StringUtils.isBlank(dirName)) {
+            throw new WorkspaceException("dirName is required");
+        }
+        RootDirHandle handle = getRootDir(projectId, dirName)
+                .orElseThrow(() -> new WorkspaceException(
+                        "Unknown RootDir: " + projectId + "/" + dirName));
+        Path target = StringUtils.isBlank(relativePath)
+                ? handle.getPath()
+                : resolve(projectId, dirName, relativePath);
+        if (!Files.exists(target)) {
+            throw new WorkspaceException("Not found: " + dirName
+                    + (StringUtils.isBlank(relativePath) ? "" : "/" + relativePath));
+        }
+        String displayName = StringUtils.isBlank(relativePath)
+                ? dirName
+                : target.getFileName().toString();
+        String displayPath = StringUtils.isBlank(relativePath)
+                ? dirName
+                : dirName + "/" + relativePath.replace('\\', '/');
+        if (Files.isDirectory(target)) {
+            return buildDirNode(displayName, displayPath, target, Math.max(0, maxDepth));
+        }
+        return buildFileNode(displayName, displayPath, target);
+    }
+
+    /**
+     * Read a file's full bytes, refusing anything larger than {@code maxBytes}.
+     * Throws {@link WorkspaceFileSizeExceededException} when the size limit is
+     * exceeded so callers can map it to {@code 413 Payload Too Large}.
+     */
+    public byte[] readBytes(String projectId, String dirName, String relativePath, long maxBytes) {
+        Path resolved = resolve(projectId, dirName, relativePath);
+        if (!Files.isRegularFile(resolved)) {
+            throw new WorkspaceException("Not a regular file: " + relativePath);
+        }
+        long size;
+        try {
+            size = Files.size(resolved);
+        } catch (IOException e) {
+            throw new WorkspaceException("Stat failed: " + e.getMessage(), e);
+        }
+        if (maxBytes > 0 && size > maxBytes) {
+            throw new WorkspaceFileSizeExceededException(
+                    "File '" + relativePath + "' is " + size + " bytes; exceeds limit of " + maxBytes,
+                    size, maxBytes);
+        }
+        try {
+            return Files.readAllBytes(resolved);
+        } catch (IOException e) {
+            throw new WorkspaceException("Read failed: " + e.getMessage(), e);
+        }
+    }
+
+    private WorkspaceTreeNodeDto buildDirNode(String name, String path, Path dir, int remainingDepth) {
+        Instant mtime = readMtime(dir);
+        List<WorkspaceTreeNodeDto> children;
+        if (remainingDepth <= 0) {
+            children = null;
+        } else {
+            children = new ArrayList<>();
+            try (Stream<Path> entries = Files.list(dir)) {
+                List<Path> sorted = entries
+                        .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                        .toList();
+                for (Path entry : sorted) {
+                    String childName = entry.getFileName().toString();
+                    String childPath = path.isEmpty() ? childName : path + "/" + childName;
+                    if (Files.isDirectory(entry)) {
+                        children.add(buildDirNode(childName, childPath, entry, remainingDepth - 1));
+                    } else if (Files.isRegularFile(entry)) {
+                        children.add(buildFileNode(childName, childPath, entry));
+                    }
+                    // skip symlinks-to-elsewhere, sockets, etc.
+                }
+            } catch (IOException e) {
+                throw new WorkspaceException("List failed for " + path + ": " + e.getMessage(), e);
+            }
+        }
+        return WorkspaceTreeNodeDto.builder()
+                .name(name)
+                .path(path)
+                .type(WorkspaceNodeType.DIR)
+                .size(0L)
+                .lastModified(mtime)
+                .children(children)
+                .build();
+    }
+
+    private WorkspaceTreeNodeDto buildFileNode(String name, String path, Path file) {
+        long size;
+        Instant mtime;
+        try {
+            BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
+            size = attrs.size();
+            mtime = attrs.lastModifiedTime().toInstant();
+        } catch (IOException e) {
+            throw new WorkspaceException("Stat failed for " + path + ": " + e.getMessage(), e);
+        }
+        return WorkspaceTreeNodeDto.builder()
+                .name(name)
+                .path(path)
+                .type(WorkspaceNodeType.FILE)
+                .size(size)
+                .lastModified(mtime)
+                .children(null)
+                .build();
+    }
+
+    private static @Nullable Instant readMtime(Path path) {
+        try {
+            return Files.getLastModifiedTime(path).toInstant();
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     // ---------------------------------------------------------------------

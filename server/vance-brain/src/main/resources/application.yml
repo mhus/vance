@@ -32,6 +32,19 @@ vance:
     capabilities: []
   encryption:
     password: ${VANCE_ENCRYPTION_PASSWORD:changeit}
+  internal:
+    # Shared secret used by Layer 1 to authenticate against /internal/**
+    # endpoints on a peer pod. In K8s this is mounted from a Secret; the
+    # default keeps single-pod dev workable. NEVER expose Layer 2 outside
+    # the cluster.
+    token: ${VANCE_INTERNAL_TOKEN:changeit-internal}
+  workspace:
+    access:
+      bypass-proxy: false
+      max-file-size: 10485760       # 10 MiB
+      cache-ttl: 30m
+      connect-timeout: 2s
+      read-timeout: 30s
 
 management:
   endpoint:

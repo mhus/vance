@@ -64,6 +64,12 @@ public class BrainAccessFilter extends AccessFilterBase {
         if (requestUri.startsWith("/actuator/")) {
             return false;
         }
+        if (requestUri.startsWith("/internal/")) {
+            // Pod-internal routes use a shared-secret header instead of a JWT —
+            // see InternalAccessFilter. Letting them through here keeps the
+            // tenant-mismatch check below from rejecting the no-tenant URL shape.
+            return false;
+        }
         if (TOKEN_MINT_PATH.matcher(requestUri).matches()) {
             return false;
         }

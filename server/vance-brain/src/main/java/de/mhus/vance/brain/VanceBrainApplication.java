@@ -8,6 +8,7 @@ import de.mhus.vance.brain.marvin.MarvinProperties;
 import de.mhus.vance.brain.tools.exec.ExecProperties;
 import de.mhus.vance.brain.transfer.BrainTransferProperties;
 import de.mhus.vance.brain.ford.FordProperties;
+import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -41,7 +42,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         FordProperties.class,
         ArthurProperties.class,
         MarvinProperties.class,
-        BrainTransferProperties.class})
+        BrainTransferProperties.class,
+        WorkspaceAccessProperties.class})
 @EnableScheduling
 public class VanceBrainApplication {
 

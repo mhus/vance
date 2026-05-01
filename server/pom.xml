@@ -175,6 +175,48 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
+            <!--
+                Banishes Jackson 2.x runtime API (databind/core) from our own
+                source. langchain4j drags Jackson 2 in transitively, so the
+                classes resolve at compile time even though Spring Boot 4 only
+                wires up the Jackson 3 (`tools.jackson.*`) ObjectMapper bean —
+                if we accidentally `import com.fasterxml.jackson.databind.*`,
+                the Bean lookup blows up at startup, not at compile.
+
+                Annotations (`com.fasterxml.jackson.annotation.*`) stay allowed
+                because Jackson 3 understands them and our existing DTOs use
+                them throughout. Only databind/core are off-limits.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>no-jackson2-runtime-api</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <restrictImports>
+                                    <reason>Use tools.jackson.* (Jackson 3) — Spring Boot 4 only registers a Jackson 3 ObjectMapper bean. com.fasterxml.jackson.annotation.* is fine, but databind/core must not be referenced from our code.</reason>
+                                    <bannedImports>
+                                        <bannedImport>com.fasterxml.jackson.databind.**</bannedImport>
+                                        <bannedImport>com.fasterxml.jackson.core.**</bannedImport>
+                                    </bannedImports>
+                                </restrictImports>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+                <dependencies>
+                    <dependency>
+                        <groupId>de.skuzzle.enforcer</groupId>
+                        <artifactId>restrict-imports-enforcer-rule</artifactId>
+                        <version>2.6.1</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
         </plugins>
     </build>
 

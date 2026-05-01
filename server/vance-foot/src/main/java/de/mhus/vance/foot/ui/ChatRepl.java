@@ -156,16 +156,21 @@ public class ChatRepl {
 
     /**
      * Bind raw {@code ESC} to a custom widget that fires
-     * {@link ChatInputService#requestStop()}. JLine resolves multi-byte
+     * {@link ChatInputService#requestPause()}. JLine resolves multi-byte
      * sequences (arrow keys, etc.) before deciding what's a "lone" ESC,
      * so this binding only catches a real, single press.
+     *
+     * <p>ESC pauses active workers (non-CLOSED children of the
+     * chat-process) — chat keeps going. The user follows up with a
+     * correction in chat; Arthur decides via {@code process_resume}
+     * + {@code process_steer} or a fresh {@code process_create}.
      */
     private void bindEscapeStop(LineReader r) {
         KeyMap<org.jline.reader.Binding> main = r.getKeyMaps().get(LineReader.MAIN);
         if (main == null) return;
-        String widgetName = "vance-stop";
+        String widgetName = "vance-pause";
         Widget widget = () -> {
-            input.requestStop();
+            input.requestPause();
             return true;
         };
         if (r instanceof LineReaderImpl impl) {

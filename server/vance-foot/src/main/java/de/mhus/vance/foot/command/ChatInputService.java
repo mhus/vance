@@ -1,5 +1,7 @@
 package de.mhus.vance.foot.command;
 
+import de.mhus.vance.api.thinkprocess.ProcessPauseRequest;
+import de.mhus.vance.api.thinkprocess.ProcessPauseResponse;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
@@ -37,8 +39,8 @@ public class ChatInputService {
     /** Default timeout for the chat round-trip to the brain. */
     public static final Duration DEFAULT_CHAT_TIMEOUT = Duration.ofSeconds(120);
 
-    /** Timeout for fire-and-forget stop requests. Short — stop is a side-channel. */
-    public static final Duration STOP_TIMEOUT = Duration.ofSeconds(10);
+    /** Timeout for fire-and-forget pause requests. Short — pause is a side-channel. */
+    public static final Duration PAUSE_TIMEOUT = Duration.ofSeconds(10);
 
     private final CommandService commandService;
     private final ConnectionService connection;
@@ -123,33 +125,71 @@ public class ChatInputService {
     }
 
     /**
-     * Fire-and-forget {@code process-stop} for the active chat process
-     * in the bound session. Used by the foot ESC key-binding and the
-     * {@code /stop} slash-command. Async because the REPL prompt should
-     * stay responsive while the brain processes the stop.
+     * Fire-and-forget {@code process-pause} for the active workers in
+     * the bound session — workers being defined as non-CLOSED children
+     * of the chat-process. Used by the foot ESC key-binding and the
+     * {@code /stop} slash-command. The chat-process itself stays alive;
+     * the user's next chat message lets Arthur decide what to do
+     * (resume + steer, or stop + create fresh).
+     *
+     * <p>Async because the REPL prompt should stay responsive while
+     * the brain processes the pause.
+     */
+    public void requestPause() {
+        SessionService.BoundSession bound = sessions.current();
+        if (bound == null) {
+            return;
+        }
+        asyncExecutor.submit(() -> {
+            try {
+                ProcessPauseResponse response = connection.request(
+                        MessageType.PROCESS_PAUSE,
+                        ProcessPauseRequest.builder().build(), // null name = active workers
+                        ProcessPauseResponse.class,
+                        PAUSE_TIMEOUT);
+                java.util.List<String> paused = response.getPausedProcessNames();
+                if (paused == null || paused.isEmpty()) {
+                    chatTerminal.verbose("→ pause: no active workers to pause");
+                } else {
+                    chatTerminal.info("Paused " + paused.size()
+                            + " worker(s): " + paused);
+                }
+            } catch (BrainException e) {
+                chatTerminal.error("pause failed: " + e.getMessage());
+            } catch (Exception e) {
+                chatTerminal.error("pause failed: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Fire-and-forget {@code process-stop} broadcast for the active
+     * workers in the bound session. Symmetric to {@link #requestPause()}
+     * but harder: workers go to {@code CLOSED} ({@code closeReason=STOPPED})
+     * instead of {@code PAUSED}. Arthur sees the resulting STOPPED
+     * parent-notifications and can decide whether to spawn fresh.
+     * Used by the foot {@code /stop} command for "abandon this
+     * direction, start over" scenarios.
      */
     public void requestStop() {
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
             return;
         }
-        String process = sessions.activeProcess();
-        if (process == null) {
-            return;
-        }
-        final String processName = process;
         asyncExecutor.submit(() -> {
             try {
                 ProcessStopResponse response = connection.request(
                         MessageType.PROCESS_STOP,
-                        ProcessStopRequest.builder()
-                                .processName(processName)
-                                .build(),
+                        ProcessStopRequest.builder().build(), // null name = active workers
                         ProcessStopResponse.class,
-                        STOP_TIMEOUT);
-                chatTerminal.verbose("→ stop dispatched processName='" + processName
-                        + "' status=" + response.getStatus()
-                        + " closeReason=" + response.getCloseReason());
+                        PAUSE_TIMEOUT);
+                java.util.List<String> stopped = response.getStoppedProcessNames();
+                if (stopped == null || stopped.isEmpty()) {
+                    chatTerminal.verbose("→ stop: no active workers to stop");
+                } else {
+                    chatTerminal.info("Stopped " + stopped.size()
+                            + " worker(s): " + stopped);
+                }
             } catch (BrainException e) {
                 chatTerminal.error("stop failed: " + e.getMessage());
             } catch (Exception e) {

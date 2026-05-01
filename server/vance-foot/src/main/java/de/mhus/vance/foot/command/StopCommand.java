@@ -5,15 +5,18 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code /stop} — request the brain to stop the active chat-process.
- * Same effect as pressing ESC at the prompt: dispatches a
- * {@code process-stop} for the session's active process.
+ * {@code /stop} — close (terminate) active workers in the bound
+ * session. Workers transition to {@code CLOSED} with
+ * {@code closeReason=STOPPED}; the chat-process keeps going.
  *
- * <p>{@code @Lazy} on the {@link ChatInputService} dependency breaks
- * the bean-graph cycle (ChatInputService → CommandService →
- * StopCommand → ChatInputService). The cycle is genuine — slash
- * commands by design know about the chat-input service — but the
- * lazy proxy lets it resolve at first call.
+ * <p>Symmetric counterpart to {@code /pause}: same target set, but
+ * "abandon this direction" instead of "I want to redirect". Arthur
+ * sees the STOPPED parent-notifications and decides whether to
+ * spawn something new.
+ *
+ * <p>{@code @Lazy} on {@link ChatInputService} breaks the bean
+ * cycle ChatInputService → CommandService → StopCommand →
+ * ChatInputService.
  */
 @Component
 public class StopCommand implements SlashCommand {
@@ -31,7 +34,7 @@ public class StopCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Stop the active chat-process. Equivalent to pressing ESC.";
+        return "Close active workers — chat keeps going. Harder counterpart to /pause.";
     }
 
     @Override

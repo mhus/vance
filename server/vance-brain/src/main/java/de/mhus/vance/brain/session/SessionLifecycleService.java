@@ -6,6 +6,7 @@ import de.mhus.vance.api.session.SuspendCause;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -155,6 +156,128 @@ public class SessionLifecycleService {
         }
         joinAll(futures);
         sessionService.close(sessionId);
+    }
+
+    /**
+     * Pause every non-CLOSED <em>child</em> of the session's chat-process.
+     * Used by the foot ESC binding and {@code /stop} command — the
+     * intent is "halt the workers so I can correct, but keep the chat
+     * alive". Chat-process itself is never paused this way.
+     *
+     * <p>Pause runs on each child's lane, so it serialises with any
+     * in-flight {@code runTurn} on that child. The status transition
+     * to {@code PAUSED} happens at the next safe boundary (after the
+     * current turn completes) — that's the existing lane-scheduler
+     * guarantee.
+     *
+     * @return the names of the processes that were paused (empty
+     *         when no active workers existed)
+     */
+    public java.util.List<String> pauseChildrenOfChat(String sessionId) {
+        de.mhus.vance.shared.session.SessionDocument session =
+                sessionService.findBySessionId(sessionId).orElse(null);
+        if (session == null) return java.util.List.of();
+        String chatProcessId = session.getChatProcessId();
+        if (chatProcessId == null) return java.util.List.of();
+
+        java.util.List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
+                session.getTenantId(), sessionId);
+        java.util.List<String> pausedNames = new java.util.ArrayList<>();
+        java.util.List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
+        for (ThinkProcessDocument p : processes) {
+            if (!chatProcessId.equals(p.getParentProcessId())) continue;
+            ThinkProcessStatus s = p.getStatus();
+            if (s == ThinkProcessStatus.CLOSED
+                    || s == ThinkProcessStatus.PAUSED) {
+                continue;
+            }
+            pausedNames.add(p.getName());
+            futures.add(laneScheduler.submit(p.getId(), () -> {
+                thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.PAUSED);
+                return null;
+            }));
+        }
+        joinAll(futures);
+        log.info("Paused {} worker(s) under chat-process of session='{}': {}",
+                pausedNames.size(), sessionId, pausedNames);
+        return pausedNames;
+    }
+
+    /**
+     * Resume a previously paused process: status PAUSED → IDLE on the
+     * lane, then a {@code runTurn} is scheduled so any pending
+     * messages that piled up while paused get drained.
+     */
+    public void resumeProcess(ThinkProcessDocument process,
+                              ProcessEventEmitter eventEmitter) {
+        try {
+            laneScheduler.submit(process.getId(), () -> {
+                if (process.getStatus() == ThinkProcessStatus.PAUSED
+                        || process.getStatus() == ThinkProcessStatus.SUSPENDED) {
+                    thinkProcessService.updateStatus(
+                            process.getId(), ThinkProcessStatus.IDLE);
+                }
+                return null;
+            }).get();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted resuming process", ie);
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
+            throw new IllegalStateException(
+                    "resume failed: " + cause.getMessage(), cause);
+        }
+        // Drain any pending that piled up while paused. scheduleTurn is a
+        // no-op if status isn't drainable (handled inside ProcessEventEmitter).
+        eventEmitter.scheduleTurn(process.getId());
+    }
+
+    /**
+     * Stop every non-CLOSED <em>child</em> of the session's chat-process.
+     * The hard counterpart to {@link #pauseChildrenOfChat}: workers
+     * receive {@code engine.stop} on their lanes and transition to
+     * {@code CLOSED} with {@code closeReason=STOPPED}. Chat-process
+     * itself is never closed by this — use the close-cascade
+     * (logout) for that.
+     *
+     * <p>Used by the foot {@code /stop} command — "abandon the
+     * current direction, start fresh". Arthur sees the resulting
+     * STOPPED parent-notifications and decides whether to spawn
+     * something new.
+     *
+     * @return the names of the processes that were stopped (empty
+     *         when no active workers existed)
+     */
+    public java.util.List<String> stopChildrenOfChat(String sessionId) {
+        SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
+        if (session == null) return java.util.List.of();
+        String chatProcessId = session.getChatProcessId();
+        if (chatProcessId == null) return java.util.List.of();
+
+        java.util.List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
+                session.getTenantId(), sessionId);
+        ThinkEngineService engines = thinkEngineServiceProvider.getObject();
+        java.util.List<String> stoppedNames = new java.util.ArrayList<>();
+        java.util.List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
+        for (ThinkProcessDocument p : processes) {
+            if (!chatProcessId.equals(p.getParentProcessId())) continue;
+            if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
+            stoppedNames.add(p.getName());
+            futures.add(laneScheduler.submit(p.getId(), () -> {
+                try {
+                    engines.stop(p);
+                } catch (RuntimeException e) {
+                    log.warn("engine.stop failed on cascade child id='{}': {}",
+                            p.getId(), e.toString());
+                    thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
+                }
+                return null;
+            }));
+        }
+        joinAll(futures);
+        log.info("Stopped {} worker(s) under chat-process of session='{}': {}",
+                stoppedNames.size(), sessionId, stoppedNames);
+        return stoppedNames;
     }
 
     /**

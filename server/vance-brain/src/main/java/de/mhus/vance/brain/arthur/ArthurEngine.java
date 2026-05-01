@@ -107,6 +107,8 @@ public class ArthurEngine implements ThinkEngine {
             "process_create",
             "process_steer",
             "process_stop",
+            "process_pause",
+            "process_resume",
             "process_list",
             "process_status",
             "recipe_list",

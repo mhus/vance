@@ -7,7 +7,7 @@ import { ThinkProcessStatus } from './ThinkProcessStatus';
 import { CloseReason } from './CloseReason';
 
 export interface ProcessStopResponse {
-  processName: string;
-  status: ThinkProcessStatus;
+  stoppedProcessNames: string[];
+  status?: ThinkProcessStatus;
   closeReason?: CloseReason;
 }

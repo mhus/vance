@@ -31,10 +31,31 @@ public final class MessageType {
      * {@code engine.stop(...)} on the target's lane and transitions
      * the process to {@code CLOSED} with {@code closeReason=STOPPED}.
      *
-     * Foot client maps ESC to this when a chat-process is active —
-     * see {@code specification/session-lifecycle.md} §11.5.
+     * Use the softer {@link #PROCESS_PAUSE} for the "halt-and-correct"
+     * UX — full close is intended for explicit teardown.
      */
     public static final String PROCESS_STOP = "process-stop";
+
+    /**
+     * Client → brain: pause one or more running think-processes. With
+     * empty {@code processName}, the brain pauses all non-CLOSED
+     * children of the bound session's chat-process — the typical
+     * "user pressed ESC, wants to redirect" flow. Workers transition
+     * to {@code PAUSED}; the chat-process itself is untouched.
+     *
+     * <p>Resume happens through the orchestrator (Arthur via
+     * {@code process_resume} tool) once the user has clarified.
+     * See {@code specification/session-lifecycle.md} §11.2.
+     */
+    public static final String PROCESS_PAUSE = "process-pause";
+
+    /**
+     * Client → brain: resume a previously paused think-process.
+     * Symmetric counterpart to {@link #PROCESS_PAUSE}. Mostly for
+     * tests and admin UIs — the regular resume path goes through
+     * Arthur deciding via the {@code process_resume} brain-tool.
+     */
+    public static final String PROCESS_RESUME = "process-resume";
 
     /** Manual memory compaction trigger for a think-process. */
     public static final String PROCESS_COMPACT = "process-compact";

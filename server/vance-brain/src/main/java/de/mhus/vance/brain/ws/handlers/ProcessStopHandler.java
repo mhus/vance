@@ -12,26 +12,29 @@ import de.mhus.vance.brain.ws.WsHandler;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * User-driven WS counterpart to the orchestrator's {@code process_stop}
- * brain-tool. Runs the engine's {@code stop} on the target process's lane,
- * transitioning the process to {@code CLOSED} with {@code closeReason=STOPPED}.
+ * User-driven stop. Two modes, decided by {@link ProcessStopRequest#getProcessName()}:
  *
- * <p>This is the handler the foot-client wires to ESC: when the user
- * presses ESC during a running chat-process, foot sends a
- * {@code process-stop} for the chat-process name and the engine halts
- * at the next safe boundary (Tool grenze, Step-Grenze, or LLM call end).
- *
- * <p>Idempotent — stopping an already-CLOSED process returns its current
- * shape without re-running the engine hook.
+ * <ul>
+ *   <li><b>Blank/null</b> — stop every non-CLOSED child of the
+ *       session's chat-process. Symmetric counterpart to the
+ *       {@code process-pause} broadcast — same target set, but
+ *       transitions to {@code CLOSED} (with {@code closeReason=STOPPED})
+ *       instead of {@code PAUSED}. The chat-process itself is
+ *       untouched. Used by the foot {@code /stop} command — "abandon
+ *       this direction".</li>
+ *   <li><b>Set</b> — stop that single process by name. Symmetric to
+ *       the orchestrator-only {@code process_stop} brain-tool but
+ *       reachable from the user.</li>
+ * </ul>
  */
 @Component
 @RequiredArgsConstructor
@@ -59,11 +62,6 @@ public class ProcessStopHandler implements WsHandler {
                     "Invalid process-stop payload: " + e.getMessage());
             return;
         }
-        if (request == null || isBlank(request.getProcessName())) {
-            sender.sendError(wsSession, envelope, 400, "processName is required");
-            return;
-        }
-
         String tenantId = ctx.getTenantId();
         String sessionId = ctx.getSessionId();
         if (sessionId == null) {
@@ -71,17 +69,29 @@ public class ProcessStopHandler implements WsHandler {
             return;
         }
 
+        String processName = request == null ? null : request.getProcessName();
+        if (processName == null || processName.isBlank()) {
+            // Broadcast: stop active workers under the chat-process.
+            List<String> stopped = sessionLifecycle.stopChildrenOfChat(sessionId);
+            log.info("process-stop sessionId='{}' stopped={}", sessionId, stopped);
+            ProcessStopResponse response = ProcessStopResponse.builder()
+                    .stoppedProcessNames(stopped)
+                    .build();
+            sender.sendReply(wsSession, envelope, MessageType.PROCESS_STOP, response);
+            return;
+        }
+
+        // Single named process — orchestrator-tool style.
         Optional<ThinkProcessDocument> processOpt =
-                thinkProcessService.findByName(tenantId, sessionId, request.getProcessName());
+                thinkProcessService.findByName(tenantId, sessionId, processName);
         if (processOpt.isEmpty()) {
             sender.sendError(wsSession, envelope, 404,
-                    "Think-process '" + request.getProcessName() + "' not found in session '"
+                    "Think-process '" + processName + "' not found in session '"
                             + sessionId + "'");
             return;
         }
         ThinkProcessDocument process = processOpt.get();
 
-        // Already terminal — short-circuit, no engine call.
         if (process.getStatus() != ThinkProcessStatus.CLOSED) {
             try {
                 sessionLifecycle.stopProcess(process);
@@ -96,14 +106,10 @@ public class ProcessStopHandler implements WsHandler {
         ThinkProcessDocument refreshed = thinkProcessService.findById(process.getId())
                 .orElse(process);
         ProcessStopResponse response = ProcessStopResponse.builder()
-                .processName(refreshed.getName())
+                .stoppedProcessNames(List.of(refreshed.getName()))
                 .status(refreshed.getStatus())
                 .closeReason(refreshed.getCloseReason())
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.PROCESS_STOP, response);
-    }
-
-    private static boolean isBlank(@Nullable String s) {
-        return s == null || s.isBlank();
     }
 }

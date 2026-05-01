@@ -9,16 +9,14 @@ import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Body of {@code process-stop}.
+ * Body of {@code process-pause}.
  *
  * <p>If {@link #processName} is {@code null} or blank, the brain
- * stops <em>all non-CLOSED children of the session's chat-process</em>
- * — the symmetric counterpart to the {@code process-pause} broadcast.
- * The chat-process itself is never affected by the broadcast variant.
+ * pauses <em>all non-CLOSED children of the session's chat-process</em>
+ * — the typical "user pressed ESC, wants to halt activity and
+ * redirect" flow. The chat-process itself stays untouched.
  *
- * <p>If {@code processName} is set, only that single process is
- * stopped (this is the path the orchestrator-only {@code process_stop}
- * brain-tool uses).
+ * <p>If {@code processName} is set, only that single process is paused.
  */
 @Data
 @Builder
@@ -26,8 +24,8 @@ import org.jspecify.annotations.Nullable;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @GenerateTypeScript("thinkprocess")
-public class ProcessStopRequest {
+public class ProcessPauseRequest {
 
-    /** Optional — null/blank stops active workers under chat. */
+    /** Optional — null/blank pauses active workers. */
     private @Nullable String processName;
 }

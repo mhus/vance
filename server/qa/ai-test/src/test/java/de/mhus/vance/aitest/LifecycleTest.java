@@ -6,6 +6,7 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import de.mhus.vance.brain.VanceBrainApplication;
 import java.time.Duration;
+import java.time.Instant;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.AfterAll;
@@ -29,22 +30,21 @@ import org.springframework.test.context.DynamicPropertySource;
  *       bootstrap, lifecycle properties from arthur recipe's
  *       foot-profile block (onDisconnect=SUSPEND, onIdle=NONE) are
  *       persisted on the session document.</li>
- *   <li><b>Engine status mapping:</b> the chat-process is initially
- *       {@code IDLE} (post-start) — {@code INIT} is transient and the
- *       engine never sits in it long enough to observe.</li>
- *   <li><b>WS process-stop:</b> {@code /stop} triggers the
- *       {@code process-stop} WS handler; engine.stop runs on the lane;
- *       chat-process transitions to {@code CLOSED} with
- *       {@code closeReason=STOPPED}.</li>
+ *   <li><b>Pause flow:</b> a manually-inserted worker child of
+ *       Arthur's chat-process reaches {@code PAUSED} when the
+ *       {@code /pause} command (or ESC) fires; the chat-process
+ *       itself stays untouched.</li>
+ *   <li><b>Resume flow:</b> the WS {@code process-resume} handler
+ *       transitions the worker back to {@code IDLE}.</li>
  *   <li><b>Disconnect-cascade:</b> a {@code /disconnect} on a foot
- *       session triggers the suspend-cascade — engines that survived
- *       the stop go to {@code SUSPENDED}, session document gets
- *       {@code suspendCause=DISCONNECT} and a {@code deleteAt} stamp.</li>
+ *       session triggers the suspend-cascade — the session moves
+ *       to {@code SUSPENDED} with {@code suspendCause=DISCONNECT}
+ *       and a stamped {@code deleteAt}.</li>
  * </ul>
  *
- * <p>The test does not require an LLM round-trip — it asserts on
- * Mongo state right after the lifecycle hooks fire. That keeps it
- * deterministic in CI even when the model is rate-limited.
+ * <p>The test does not require an LLM round-trip — it inserts the
+ * worker directly into Mongo to keep the timing deterministic
+ * regardless of model rate-limits.
  */
 @SpringBootTest(
         classes = VanceBrainApplication.class,
@@ -58,6 +58,7 @@ class LifecycleTest {
     private static final String TENANT = "acme";
     private static final String SEED_PROJECT = "instant-hole";
     private static final String CHAT_PROCESS_NAME = "chat";
+    private static final String WORKER_NAME = "test-worker";
 
     @Autowired
     private MongoTemplate mongo;
@@ -85,7 +86,7 @@ class LifecycleTest {
     }
 
     @Test
-    void sessionLifecycle_stop_disconnect_suspendCascade() throws Exception {
+    void sessionLifecycle_pause_resume_disconnect_suspendCascade() throws Exception {
         // ─── 1. Connect + open session.
         FootProcess.CommandResult connect = foot.command("/connect");
         assertThat(connect.matched()).as("/connect should match").isTrue();
@@ -126,16 +127,12 @@ class LifecycleTest {
         assertThat(session.getString("profile"))
                 .as("session profile should be 'foot' (from aitest config)")
                 .isEqualTo("foot");
-        assertThat(session.getString("onDisconnect"))
-                .as("foot-profile session should suspend on disconnect")
-                .isEqualTo("SUSPEND");
         assertThat(session.getString("onIdle"))
                 .as("foot-profile sessions should NOT auto-suspend on idle")
                 .isEqualTo("NONE");
         assertThat(session.getString("onSuspend"))
                 .as("foot-profile session keeps suspended sessions around")
                 .isEqualTo("KEEP");
-        // suspendKeepDurationMs defaults to 24h from the recipe; safety check.
         assertThat(session.getLong("suspendKeepDurationMs"))
                 .as("suspendKeepDurationMs should come from arthur.profiles.foot.session")
                 .isEqualTo(86_400_000L);
@@ -146,32 +143,120 @@ class LifecycleTest {
             return p != null && "IDLE".equals(p.getString("status"));
         });
         assertThat(chatIdle)
-                .as("chat-process should reach IDLE shortly after start (INIT is transient)")
+                .as("chat-process should reach IDLE shortly after start")
                 .isTrue();
 
-        // ─── 4. Trigger /stop and verify CLOSED + closeReason=STOPPED.
-        FootProcess.CommandResult stop = foot.command("/stop");
-        assertThat(stop.matched()).as("/stop should match").isTrue();
+        // ─── 4. Inject a fake "worker" as a child of the chat-process so
+        //         we can exercise the pause flow without an LLM round-trip.
+        Document worker = new Document()
+                .append("tenantId", TENANT)
+                .append("projectId", SEED_PROJECT)
+                .append("sessionId", sessionId)
+                .append("name", WORKER_NAME)
+                .append("title", "Test worker")
+                .append("thinkEngine", "ford")
+                .append("status", "IDLE")
+                .append("parentProcessId", chatProcessId)
+                .append("pendingMessages", java.util.List.of())
+                .append("activeSkills", java.util.List.of())
+                .append("engineParams", new Document())
+                .append("createdAt", Instant.now())
+                .append("_class",
+                        "de.mhus.vance.shared.thinkprocess.ThinkProcessDocument");
+        mongo.getCollection("think_processes").insertOne(worker);
+        Object workerObjectId = worker.get("_id");
+        assertThat(workerObjectId).as("worker should have been assigned a Mongo id").isNotNull();
 
-        boolean chatClosed = pollUntil(Duration.ofSeconds(15), () -> {
-            Document p = findOne("think_processes", Filters.eq("_id", chatProcess.getObjectId("_id")));
+        // ─── 5. /pause pauses the active workers — chat-process untouched.
+        FootProcess.CommandResult stop = foot.command("/pause");
+        assertThat(stop.matched()).as("/pause should match").isTrue();
+
+        boolean workerPaused = pollUntil(Duration.ofSeconds(15), () -> {
+            Document p = findOne("think_processes", Filters.eq("_id", workerObjectId));
+            return p != null && "PAUSED".equals(p.getString("status"));
+        });
+        assertThat(workerPaused)
+                .as("worker should be PAUSED after /pause fired")
+                .isTrue();
+
+        Document chatAfterStop = findOne("think_processes",
+                Filters.eq("_id", chatProcess.getObjectId("_id")));
+        assertThat(chatAfterStop).isNotNull();
+        assertThat(chatAfterStop.getString("status"))
+                .as("chat-process must NOT be touched by /pause — pause is for workers only")
+                .isEqualTo("IDLE");
+
+        // ─── 6. Idempotency — pressing /pause again is a no-op.
+        FootProcess.CommandResult stopAgain = foot.command("/pause");
+        assertThat(stopAgain.matched()).isTrue();
+        // No status change expected; sleep briefly then verify worker is still PAUSED.
+        Thread.sleep(500);
+        Document workerAfterDoubleStop = findOne(
+                "think_processes", Filters.eq("_id", workerObjectId));
+        assertThat(workerAfterDoubleStop.getString("status")).isEqualTo("PAUSED");
+
+        // ─── 6b. Inject a second worker and exercise the harder /stop
+        //         broadcast: worker should go to CLOSED + STOPPED.
+        Document worker2 = new Document()
+                .append("tenantId", TENANT)
+                .append("projectId", SEED_PROJECT)
+                .append("sessionId", sessionId)
+                .append("name", "test-worker-2")
+                .append("title", "Test worker 2")
+                .append("thinkEngine", "ford")
+                .append("status", "IDLE")
+                .append("parentProcessId", chatProcessId)
+                .append("pendingMessages", java.util.List.of())
+                .append("activeSkills", java.util.List.of())
+                .append("engineParams", new Document())
+                .append("createdAt", Instant.now())
+                .append("_class",
+                        "de.mhus.vance.shared.thinkprocess.ThinkProcessDocument");
+        mongo.getCollection("think_processes").insertOne(worker2);
+        Object worker2ObjectId = worker2.get("_id");
+
+        FootProcess.CommandResult hardStop = foot.command("/stop");
+        assertThat(hardStop.matched()).as("/stop should match").isTrue();
+
+        boolean worker2Closed = pollUntil(Duration.ofSeconds(15), () -> {
+            Document p = findOne("think_processes", Filters.eq("_id", worker2ObjectId));
             return p != null
                     && "CLOSED".equals(p.getString("status"))
                     && "STOPPED".equals(p.getString("closeReason"));
         });
-        assertThat(chatClosed)
-                .as("chat-process should be CLOSED with closeReason=STOPPED after /stop")
+        assertThat(worker2Closed)
+                .as("worker-2 should be CLOSED with closeReason=STOPPED after /stop")
                 .isTrue();
 
-        // ─── 5. /disconnect — foot-profile policy is SUSPEND. With the
-        //         only chat-process already CLOSED, the cascade has
-        //         nothing to suspend at the engine level, but the
-        //         session itself transitions to SUSPENDED with
-        //         suspendCause=DISCONNECT and a stamped deleteAt.
+        // The PAUSED worker also goes to CLOSED — /stop targets all
+        // non-CLOSED children, regardless of intermediate state.
+        Document worker1AfterHardStop = findOne(
+                "think_processes", Filters.eq("_id", workerObjectId));
+        assertThat(worker1AfterHardStop.getString("status"))
+                .as("PAUSED worker should also be CLOSED by /stop")
+                .isEqualTo("CLOSED");
+
+        // Note: chat-process MAY transition to RUNNING here. The
+        // ParentNotificationListener emits a PROCESS_EVENT.STOPPED for
+        // each closed child to its parent (Arthur), which appends to
+        // Arthur's inbox and schedules a turn. That's by design — the
+        // orchestrator should know its worker is gone. The invariant
+        // is just that chat is NOT CLOSED.
+        Document chatAfterHardStop = findOne("think_processes",
+                Filters.eq("_id", chatProcess.getObjectId("_id")));
+        assertThat(chatAfterHardStop.getString("status"))
+                .as("chat-process must NOT be CLOSED by /stop — only the workers are")
+                .isNotEqualTo("CLOSED");
+
+        // ─── 7. /disconnect — foot-profile policy is SUSPEND.
         FootProcess.CommandResult disconnect = foot.command("/disconnect");
         assertThat(disconnect.matched()).as("/disconnect should match").isTrue();
 
-        boolean sessionSuspended = pollUntil(Duration.ofSeconds(15), () -> {
+        // Generous timeout: /stop triggered a parent-notification turn
+        // on Arthur (LLM call). The disconnect-cascade's engine.suspend
+        // is queued on Arthur's lane behind that in-flight runTurn and
+        // can only fire once it completes (or errors out).
+        boolean sessionSuspended = pollUntil(Duration.ofSeconds(120), () -> {
             Document s = findOne("sessions", Filters.eq("sessionId", sessionId));
             return s != null
                     && "SUSPENDED".equals(s.getString("status"))

@@ -111,6 +111,18 @@ public class ProcessEventEmitter {
             return;
         }
         ThinkProcessDocument process = processOpt.get();
+        // Status-gate: PAUSED / SUSPENDED / CLOSED do not auto-wake even if
+        // pending messages have piled up. Resume/Stop is the explicit path
+        // back to running. The pending queue itself is still appended to —
+        // callers don't lose data, the engine just doesn't drain until
+        // resumed. See specification/session-lifecycle.md §3.
+        de.mhus.vance.api.thinkprocess.ThinkProcessStatus s = process.getStatus();
+        if (s == de.mhus.vance.api.thinkprocess.ThinkProcessStatus.PAUSED
+                || s == de.mhus.vance.api.thinkprocess.ThinkProcessStatus.SUSPENDED
+                || s == de.mhus.vance.api.thinkprocess.ThinkProcessStatus.CLOSED) {
+            log.debug("runTurnNow skipped id='{}' status={}", processId, s);
+            return;
+        }
         try {
             thinkEngineServiceProvider.getObject().runTurn(process);
         } catch (RuntimeException re) {

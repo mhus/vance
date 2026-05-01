@@ -22,7 +22,6 @@
         <module>vance-shared</module>
         <module>vance-brain</module>
         <module>vance-foot</module>
-        <module>qa</module>
     </modules>
 
     <properties>

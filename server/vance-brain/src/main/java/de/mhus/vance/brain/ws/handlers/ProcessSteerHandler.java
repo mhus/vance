@@ -139,6 +139,7 @@ public class ProcessSteerHandler implements WsHandler {
             log.info("Auto-resume on user steer: process='{}' PAUSED -> IDLE",
                     request.getProcessName());
             thinkProcessService.updateStatus(processId, ThinkProcessStatus.IDLE);
+            thinkProcessService.clearHalt(processId);
         }
 
         SteerMessage.UserChatInput userInput = new SteerMessage.UserChatInput(

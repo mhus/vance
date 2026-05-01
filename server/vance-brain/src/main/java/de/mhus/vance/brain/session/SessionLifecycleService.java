@@ -192,8 +192,15 @@ public class SessionLifecycleService {
                 continue;
             }
             pausedNames.add(p.getName());
+            // Set the out-of-band halt flag IMMEDIATELY (before queuing
+            // the lane task) so engines whose runTurn drain-loops can
+            // see it and bail out — otherwise their drain would keep
+            // gobbling new pendings and the queued pause-task would
+            // never get to fire on a busy lane.
+            thinkProcessService.requestHalt(p.getId());
             futures.add(laneScheduler.submit(p.getId(), () -> {
                 thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.PAUSED);
+                thinkProcessService.clearHalt(p.getId());
                 return null;
             }));
         }
@@ -217,6 +224,7 @@ public class SessionLifecycleService {
                     thinkProcessService.updateStatus(
                             process.getId(), ThinkProcessStatus.IDLE);
                 }
+                thinkProcessService.clearHalt(process.getId());
                 return null;
             }).get();
         } catch (InterruptedException ie) {

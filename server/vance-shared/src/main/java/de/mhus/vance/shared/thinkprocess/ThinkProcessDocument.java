@@ -217,6 +217,18 @@ public class ThinkProcessDocument {
      */
     private @Nullable CloseReason closeReason;
 
+    /**
+     * Out-of-band signal for engines that drive a drain-loop inside
+     * their own {@code runTurn} (e.g. Arthur). Set immediately by
+     * {@code /pause} / {@code /stop} BEFORE the queued
+     * status-transition task fires on the lane — the engine polls
+     * this flag between iterations of its drain-loop and bails out
+     * early so the lane frees up for the queued pause-task. Without
+     * this, an engine that keeps draining new pending messages
+     * (auto-wakeup) would never let the pause-task run.
+     */
+    private boolean haltRequested = false;
+
     @Version
     private @Nullable Long version;
 

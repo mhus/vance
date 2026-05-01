@@ -267,6 +267,17 @@ public class ArthurEngine implements ThinkEngine {
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         while (true) {
+            // Cooperative halt-check between drain iterations. The
+            // pause-task on the lane is queued *behind* this runTurn
+            // — without yielding here, a busy drain-loop would keep
+            // chewing through pendings and the queued status-PAUSED
+            // task would never get to fire. See
+            // ThinkProcessDocument.haltRequested.
+            if (thinkProcessService.isHaltRequested(process.getId())) {
+                log.info("Arthur.runTurn id='{}' — halt requested, yielding",
+                        process.getId());
+                return;
+            }
             List<SteerMessage> drained = ctx.drainPending();
             if (drained.isEmpty()) {
                 return;

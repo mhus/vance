@@ -422,6 +422,43 @@ public class ThinkProcessService {
     }
 
     /**
+     * Sets the out-of-band {@code haltRequested} flag. Used by the
+     * pause/stop dispatch to ask cooperatively-yielding engines
+     * (notably Arthur's drain-loop) to bail out of their current
+     * runTurn so the queued status-transition task on the lane can
+     * actually fire. Atomic — does not race with status updates.
+     *
+     * <p>Returns {@code true} if the row exists.
+     */
+    public boolean requestHalt(String id) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("haltRequested", true);
+        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
+                .getModifiedCount() > 0;
+    }
+
+    /**
+     * Clears the {@code haltRequested} flag — called when the
+     * pause-task on the lane has actually fired (status now
+     * {@code PAUSED}, the flag served its purpose) and on resume.
+     */
+    public void clearHalt(String id) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("haltRequested", false);
+        mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class);
+    }
+
+    /**
+     * Cheap, race-free probe for the {@code haltRequested} flag —
+     * engines call this between drain-loop iterations.
+     */
+    public boolean isHaltRequested(String id) {
+        return repository.findById(id)
+                .map(ThinkProcessDocument::isHaltRequested)
+                .orElse(false);
+    }
+
+    /**
      * Cheap inspection of pending-queue length without consuming it.
      * Returns {@code 0} if the process is unknown.
      */

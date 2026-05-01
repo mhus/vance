@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.process;
 
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -114,6 +115,24 @@ public class ProcessSteerTool implements Tool {
             throw new ToolException(
                     "process_steer cannot target the current process — "
                             + "self-steer would deadlock");
+        }
+
+        // Don't auto-wake paused/closed targets. The orchestrator
+        // (Arthur) must explicitly call process_resume first if it
+        // wants the worker to act on the new content. Steering a
+        // CLOSED target is meaningless. See
+        // specification/session-lifecycle.md §11.2.
+        ThinkProcessStatus targetStatus = target.getStatus();
+        if (targetStatus == ThinkProcessStatus.CLOSED) {
+            throw new ToolException(
+                    "process_steer: target '" + name + "' is CLOSED. "
+                            + "Use process_create for a fresh worker.");
+        }
+        if (targetStatus == ThinkProcessStatus.PAUSED) {
+            throw new ToolException(
+                    "process_steer: target '" + name + "' is PAUSED. "
+                            + "Call process_resume first if you want the "
+                            + "worker to act on this message.");
         }
 
         int beforeSize = chatMessageService.history(

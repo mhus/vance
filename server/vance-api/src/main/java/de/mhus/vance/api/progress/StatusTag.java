@@ -41,6 +41,25 @@ public enum StatusTag {
     NODE_DONE,
     /** Vogon phase completed — {@link StatusPayload#getUsage()} carries the phase subtotal. */
     PHASE_DONE,
+
+    // ─── Engine lifecycle ──────────────────────────────────────────
+    // Surface state transitions of the think-process itself, not the
+    // tool calls inside a turn. Useful for the user to see "Arthur is
+    // running", "worker paused", etc. without scraping the brain log.
+
+    /** Engine started a turn (status went RUNNING). */
+    ENGINE_TURN_START,
+    /** Engine finished a turn (status went IDLE / BLOCKED after a runTurn). */
+    ENGINE_TURN_END,
+    /** Pause/stop was requested but the engine is mid-turn — applies at next boundary. */
+    ENGINE_HALT_REQUESTED,
+    /** Engine has paused (status PAUSED). */
+    ENGINE_PAUSED,
+    /** Engine resumed from pause/suspend (status back to IDLE). */
+    ENGINE_RESUMED,
+    /** Engine stopped permanently (status CLOSED). */
+    ENGINE_CLOSED,
+
     /** Catch-all for engine-emitted asides that don't fit a specific tag. */
     INFO
 }

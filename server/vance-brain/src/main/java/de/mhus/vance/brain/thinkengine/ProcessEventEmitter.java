@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
@@ -52,6 +54,7 @@ public class ProcessEventEmitter {
     private final ThinkProcessService thinkProcessService;
     private final LaneScheduler laneScheduler;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    private final ProgressEmitter progressEmitter;
 
     /**
      * Appends a {@code PROCESS_EVENT} to {@code parentProcessId}'s
@@ -123,10 +126,18 @@ public class ProcessEventEmitter {
             log.debug("runTurnNow skipped id='{}' status={}", processId, s);
             return;
         }
+        // Engine-lifecycle ping — turn boundaries on the user-progress
+        // side-channel so the user sees "[engine_turn_start] ..." in
+        // the foot client, parallel to [tool_start] / [tool_end].
+        progressEmitter.emitStatus(process, StatusTag.ENGINE_TURN_START,
+                process.getName() + " turn start");
         try {
             thinkEngineServiceProvider.getObject().runTurn(process);
         } catch (RuntimeException re) {
             log.warn("runTurn failed id='{}': {}", processId, re.toString(), re);
+        } finally {
+            progressEmitter.emitStatus(process, StatusTag.ENGINE_TURN_END,
+                    process.getName() + " turn end");
         }
     }
 }

@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.ws.handlers;
 
+import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.api.thinkprocess.ProcessPauseRequest;
 import de.mhus.vance.api.thinkprocess.ProcessPauseResponse;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.ws.ConnectionContext;
@@ -47,6 +49,7 @@ public class ProcessPauseHandler implements WsHandler {
     private final ThinkProcessService thinkProcessService;
     private final SessionLifecycleService sessionLifecycle;
     private final LaneScheduler laneScheduler;
+    private final ProgressEmitter progressEmitter;
 
     @Override
     public String type() {
@@ -75,7 +78,11 @@ public class ProcessPauseHandler implements WsHandler {
         String processName = request == null ? null : request.getProcessName();
         List<String> paused;
         if (processName == null || processName.isBlank()) {
-            // "halt active workers" semantic.
+            // Emit a "halt requested" ping for each candidate child
+            // immediately so the user sees feedback even if the
+            // engine is still mid-turn (the actual ENGINE_PAUSED
+            // ping fires once the lane reaches the next boundary).
+            emitHaltRequestedForActiveWorkers(tenantId, sessionId);
             paused = sessionLifecycle.pauseChildrenOfChat(sessionId);
         } else {
             // Single named process.
@@ -91,6 +98,8 @@ public class ProcessPauseHandler implements WsHandler {
             if (s == ThinkProcessStatus.CLOSED || s == ThinkProcessStatus.PAUSED) {
                 paused = List.of();
             } else {
+                progressEmitter.emitStatus(target, StatusTag.ENGINE_HALT_REQUESTED,
+                        target.getName() + " pause requested");
                 try {
                     laneScheduler.submit(target.getId(), () -> {
                         thinkProcessService.updateStatus(target.getId(), ThinkProcessStatus.PAUSED);
@@ -120,5 +129,31 @@ public class ProcessPauseHandler implements WsHandler {
 
     private static boolean isBlank(@Nullable String s) {
         return s == null || s.isBlank();
+    }
+
+    /**
+     * Walks the chat-process's children and emits an
+     * ENGINE_HALT_REQUESTED ping per active worker. Decoupled from
+     * the actual pause path so the user gets immediate "I heard
+     * you" feedback even when the lane queue is busy.
+     */
+    private void emitHaltRequestedForActiveWorkers(String tenantId, String sessionId) {
+        java.util.List<ThinkProcessDocument> all =
+                thinkProcessService.findBySession(tenantId, sessionId);
+        ThinkProcessDocument chat = all.stream()
+                .filter(p -> p.getParentProcessId() == null)
+                .filter(p -> "chat".equals(p.getName()))
+                .findFirst()
+                .orElse(null);
+        if (chat == null) return;
+        for (ThinkProcessDocument p : all) {
+            if (!chat.getId().equals(p.getParentProcessId())) continue;
+            ThinkProcessStatus s = p.getStatus();
+            if (s == ThinkProcessStatus.CLOSED || s == ThinkProcessStatus.PAUSED) {
+                continue;
+            }
+            progressEmitter.emitStatus(p, StatusTag.ENGINE_HALT_REQUESTED,
+                    p.getName() + " pause requested");
+        }
     }
 }

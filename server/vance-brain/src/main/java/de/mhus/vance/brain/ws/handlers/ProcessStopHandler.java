@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.ws.handlers;
 
+import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
 import de.mhus.vance.api.thinkprocess.ProcessStopResponse;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
@@ -45,6 +47,7 @@ public class ProcessStopHandler implements WsHandler {
     private final WebSocketSender sender;
     private final ThinkProcessService thinkProcessService;
     private final SessionLifecycleService sessionLifecycle;
+    private final ProgressEmitter progressEmitter;
 
     @Override
     public String type() {
@@ -71,6 +74,9 @@ public class ProcessStopHandler implements WsHandler {
 
         String processName = request == null ? null : request.getProcessName();
         if (processName == null || processName.isBlank()) {
+            // Same "halt requested" feedback as the pause path —
+            // mid-turn engines reach the next safe boundary first.
+            emitHaltRequestedForActiveWorkers(tenantId, sessionId);
             // Broadcast: stop active workers under the chat-process.
             List<String> stopped = sessionLifecycle.stopChildrenOfChat(sessionId);
             log.info("process-stop sessionId='{}' stopped={}", sessionId, stopped);
@@ -93,6 +99,8 @@ public class ProcessStopHandler implements WsHandler {
         ThinkProcessDocument process = processOpt.get();
 
         if (process.getStatus() != ThinkProcessStatus.CLOSED) {
+            progressEmitter.emitStatus(process, StatusTag.ENGINE_HALT_REQUESTED,
+                    process.getName() + " stop requested");
             try {
                 sessionLifecycle.stopProcess(process);
             } catch (RuntimeException e) {
@@ -111,5 +119,24 @@ public class ProcessStopHandler implements WsHandler {
                 .closeReason(refreshed.getCloseReason())
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.PROCESS_STOP, response);
+    }
+
+    /** Same logic as in {@code ProcessPauseHandler} — kept inline to avoid coupling. */
+    private void emitHaltRequestedForActiveWorkers(String tenantId, String sessionId) {
+        java.util.List<ThinkProcessDocument> all =
+                thinkProcessService.findBySession(tenantId, sessionId);
+        ThinkProcessDocument chat = all.stream()
+                .filter(p -> p.getParentProcessId() == null)
+                .filter(p -> "chat".equals(p.getName()))
+                .findFirst()
+                .orElse(null);
+        if (chat == null) return;
+        for (ThinkProcessDocument p : all) {
+            if (!chat.getId().equals(p.getParentProcessId())) continue;
+            ThinkProcessStatus s = p.getStatus();
+            if (s == ThinkProcessStatus.CLOSED) continue;
+            progressEmitter.emitStatus(p, StatusTag.ENGINE_HALT_REQUESTED,
+                    p.getName() + " stop requested");
+        }
     }
 }

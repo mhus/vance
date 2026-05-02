@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.eddie;
 
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.tools.Tool;
@@ -71,6 +72,7 @@ public class ProjectChatSendTool implements Tool {
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final EddieActivityService activityService;
+    private final EngineMessageRouter messageRouter;
 
     @Override
     public String name() {
@@ -138,12 +140,16 @@ public class ProjectChatSendTool implements Tool {
                 .content(message)
                 .build();
 
-        if (!thinkProcessService.appendPending(chat.getId(), msg, ctx.processId())) {
+        // EngineMessageRouter routes local-direct (Eddie and worker on the same
+        // brain process) or pushes via /internal/engine-bind (worker on a
+        // different Home Pod). Either way the chat-process's lane is woken
+        // on the receiver side; this tool returns once the receiver has
+        // durably accepted the message.
+        if (!messageRouter.dispatch(ctx.processId(), chat.getId(), msg)) {
             throw new ToolException(
-                    "Failed to enqueue message — chat-process "
-                            + chat.getId() + " disappeared");
+                    "Failed to deliver message to chat-process "
+                            + chat.getId() + " (router rejected dispatch)");
         }
-        eventEmitter.scheduleTurn(chat.getId());
 
         log.info("project_chat_send: tenant='{}' project='{}' chat='{}' chars={}",
                 ctx.tenantId(), project.getName(), chat.getId(), message.length());

@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.tools.process;
 
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
-import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -59,19 +59,19 @@ public class ProcessSteerTool implements Tool {
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final ChatMessageService chatMessageService;
     private final LaneScheduler laneScheduler;
-    private final ProcessEventEmitter eventEmitter;
+    private final EngineMessageRouter messageRouter;
 
     public ProcessSteerTool(
             ThinkProcessService thinkProcessService,
             ObjectProvider<ThinkEngineService> thinkEngineServiceProvider,
             ChatMessageService chatMessageService,
             LaneScheduler laneScheduler,
-            ProcessEventEmitter eventEmitter) {
+            EngineMessageRouter messageRouter) {
         this.thinkProcessService = thinkProcessService;
         this.thinkEngineServiceProvider = thinkEngineServiceProvider;
         this.chatMessageService = chatMessageService;
         this.laneScheduler = laneScheduler;
-        this.eventEmitter = eventEmitter;
+        this.messageRouter = messageRouter;
     }
 
     @Override
@@ -149,19 +149,20 @@ public class ProcessSteerTool implements Tool {
         ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
                 .resolveForProcess(target);
         if (targetEngine.asyncSteer()) {
-            // Async target (Marvin & co.): queue + wake without
-            // blocking on the lane. The orchestrator will see the
-            // outcome later via ProcessEvent.
-            thinkProcessService.appendPending(target.getId(),
+            // Async target (Marvin & co.): queue + wake through the router
+            // so a future Multi-Pod cross-project process_steer takes the
+            // /internal/engine-bind path automatically. Same-session
+            // process_steer stays same-pod local-direct in v1.
+            messageRouter.dispatch(
+                    ctx.processId(),
+                    target.getId(),
                     PendingMessageDocument.builder()
                             .type(PendingMessageType.USER_CHAT_INPUT)
                             .at(java.time.Instant.now())
                             .fromUser(ctx.processId() == null
                                     ? null : "process:" + ctx.processId())
                             .content(content)
-                            .build(),
-                    ctx.processId());
-            eventEmitter.scheduleTurn(target.getId());
+                            .build());
             log.info("process_steer async-queued name='{}' target={} engine='{}'",
                     name, target.getId(), targetEngine.name());
         } else {

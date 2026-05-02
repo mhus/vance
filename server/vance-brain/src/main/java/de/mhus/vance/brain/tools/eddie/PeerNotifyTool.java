@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.eddie;
 
 import de.mhus.vance.api.thinkprocess.PeerEventType;
-import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
@@ -63,7 +63,7 @@ public class PeerNotifyTool implements Tool {
 
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
-    private final ProcessEventEmitter eventEmitter;
+    private final EngineMessageRouter messageRouter;
 
     @Override
     public String name() {
@@ -112,8 +112,12 @@ public class PeerNotifyTool implements Tool {
                     .content(summary)
                     .payload(payload)
                     .build();
-            if (thinkProcessService.appendPending(peerId, msg, ctx.processId())) {
-                eventEmitter.scheduleTurn(peerId);
+            // Cross-device peer notify: when the user has a hub on another
+            // pod, the message goes through /internal/engine-bind. Same-pod
+            // peers (multiple browser tabs on the same brain) take the
+            // local-direct path. Either way, dispatch returns true once
+            // the receiver durably accepted the message.
+            if (messageRouter.dispatch(ctx.processId(), peerId, msg)) {
                 notified++;
             }
         }

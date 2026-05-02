@@ -2,6 +2,7 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
@@ -55,6 +56,14 @@ public class ProcessEventEmitter {
     private final LaneScheduler laneScheduler;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final ProgressEmitter progressEmitter;
+    /**
+     * {@link ObjectProvider} breaks the bean cycle:
+     * {@code EngineMessageRouter} depends on this emitter (it calls
+     * {@link #scheduleTurn} on the same-pod path), and routing
+     * {@link #notifyParent} cross-pod-aware would otherwise close the
+     * cycle. Lazy lookup keeps construction unidirectional.
+     */
+    private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
 
     /**
      * Appends a {@code PROCESS_EVENT} to {@code parentProcessId}'s
@@ -79,12 +88,16 @@ public class ProcessEventEmitter {
                 .payload(payload)
                 .build();
 
-        if (!thinkProcessService.appendPending(parentProcessId, doc, sourceProcessId)) {
-            log.warn("Parent notify dropped — parent process not found id='{}' (child='{}', event={})",
+        // Routes through the router so cross-project parents (Eddie listening
+        // for a worker on a different Home Pod) get the event over the
+        // /internal/engine-bind WS instead of relying on a same-Mongo
+        // wakeup that the parent's pod would never see.
+        boolean ok = messageRouterProvider.getObject().dispatch(sourceProcessId, parentProcessId, doc);
+        if (!ok) {
+            log.warn("Parent notify dropped — parent process not found / cross-pod push failed id='{}' (child='{}', event={})",
                     parentProcessId, sourceProcessId, type);
             return false;
         }
-        scheduleTurn(parentProcessId);
         return true;
     }
 

@@ -216,15 +216,13 @@ class ThinkProcessServiceTest {
     // ─── helpers ─────────────────────────────────────────────────────────
 
     private static ThinkProcessDocument process(String id) {
-        ThinkProcessDocument doc = ThinkProcessDocument.builder()
+        return ThinkProcessDocument.builder()
                 .id(id)
                 .tenantId("acme")
                 .projectId("proj")
                 .sessionId("sess-1")
                 .status(ThinkProcessStatus.INIT)
                 .build();
-        doc.setPendingMessages(new ArrayList<>());
-        return doc;
     }
 
     private static PendingMessageDocument pending() {

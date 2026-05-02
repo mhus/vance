@@ -138,7 +138,7 @@ public class ProjectChatSendTool implements Tool {
                 .content(message)
                 .build();
 
-        if (!thinkProcessService.appendPending(chat.getId(), msg)) {
+        if (!thinkProcessService.appendPending(chat.getId(), msg, ctx.processId())) {
             throw new ToolException(
                     "Failed to enqueue message — chat-process "
                             + chat.getId() + " disappeared");

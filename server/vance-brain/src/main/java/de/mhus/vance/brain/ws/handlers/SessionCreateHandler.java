@@ -9,6 +9,7 @@ import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectManagerService;
+import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
@@ -91,8 +92,16 @@ public class SessionCreateHandler implements WsHandler {
                     "Project '" + request.getProjectId() + "' not found");
             return;
         }
-        ProjectDocument claimed = projectManager.claimForLocalPod(
+        ClaimResult claim = projectManager.claimForLocalPodOrRedirect(
                 ctx.getTenantId(), project.get().getName());
+        if (claim instanceof ClaimResult.Redirect redirect) {
+            sender.sendError(wsSession, envelope, 409,
+                    "Project '" + project.get().getName()
+                            + "' is owned by another brain process ("
+                            + redirect.endpoint() + ")");
+            return;
+        }
+        ProjectDocument claimed = ((ClaimResult.Local) claim).doc();
 
         SessionDocument created = sessionService.create(
                 ctx.getTenantId(),

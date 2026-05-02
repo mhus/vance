@@ -383,22 +383,45 @@ public class ThinkProcessService {
     // for one cleanup phase and will be removed in the final migration step.
 
     /**
-     * Persists one message into the target process's inbox.
+     * Persists one message into the target process's inbox without
+     * recording a sender identity. Equivalent to
+     * {@link #appendPending(String, PendingMessageDocument, String)} with
+     * {@code senderProcessId = ""} — for legacy call-sites that don't yet
+     * thread through the originating process id.
+     */
+    public boolean appendPending(String processId, PendingMessageDocument message) {
+        return appendPending(processId, message, "");
+    }
+
+    /**
+     * Persists one message into the target process's inbox, recording
+     * {@code senderProcessId} on the resulting {@link EngineMessageDocument}.
      * Returns {@code true} if the target process exists.
      *
      * <p>Write-through: ack-on-persist semantics — the message is durable
      * (and idempotently dedup'd by {@code messageId}) the moment this returns.
+     *
+     * <p>The sender id is the {@link ThinkProcessDocument#getId()} of the
+     * process that produced the message — Eddie when she steers a worker,
+     * Arthur when he steers a sibling, the system component when there is
+     * no owning process. Pass empty string when no sender is meaningful.
+     * The receiver-side dedup logic ignores the sender; it's audit and
+     * routing metadata for future cross-pod replay.
      */
-    public boolean appendPending(String processId, PendingMessageDocument message) {
+    public boolean appendPending(String processId, PendingMessageDocument message,
+                                 @Nullable String senderProcessId) {
         Optional<ThinkProcessDocument> target = repository.findById(processId);
         if (target.isEmpty()) {
             log.warn("Pending append failed — process not found id='{}'", processId);
             return false;
         }
-        EngineMessageDocument incoming = toEngineMessage(message, processId, target.get().getTenantId());
+        EngineMessageDocument incoming = toEngineMessage(
+                message, processId, target.get().getTenantId(),
+                senderProcessId == null ? "" : senderProcessId);
         engineMessageService.acceptDelivery(incoming);
-        log.debug("Pending append id='{}' type={} messageId='{}'",
-                processId, message.getType(), incoming.getMessageId());
+        log.debug("Pending append id='{}' type={} messageId='{}' sender='{}'",
+                processId, message.getType(), incoming.getMessageId(),
+                incoming.getSenderProcessId());
         return true;
     }
 
@@ -429,7 +452,8 @@ public class ThinkProcessService {
     // removed when the engine layer adopts EngineMessage natively.
 
     private EngineMessageDocument toEngineMessage(
-            PendingMessageDocument m, String targetProcessId, String tenantId) {
+            PendingMessageDocument m, String targetProcessId, String tenantId,
+            String senderProcessId) {
         String messageId = (m.getIdempotencyKey() != null && !m.getIdempotencyKey().isBlank())
                 ? m.getIdempotencyKey()
                 : UUID.randomUUID().toString();
@@ -438,7 +462,7 @@ public class ThinkProcessService {
         return EngineMessageDocument.builder()
                 .messageId(messageId)
                 .tenantId(tenantId == null ? "" : tenantId)
-                .senderProcessId("")  // legacy callers don't supply a sender; assigned per call-site in later phases
+                .senderProcessId(senderProcessId == null ? "" : senderProcessId)
                 .targetProcessId(targetProcessId)
                 .createdAt(createdAt)
                 .type(m.getType())

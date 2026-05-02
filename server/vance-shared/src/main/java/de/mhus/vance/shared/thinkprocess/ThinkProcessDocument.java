@@ -182,20 +182,6 @@ public class ThinkProcessDocument {
     private @Nullable String parentProcessId;
 
     /**
-     * Persistent inbox: messages that arrived while the process was
-     * not in a lane-turn (or that arrived while it was running and
-     * must wait for the next one). Drained atomically by
-     * {@code ThinkProcessService.drainPending(...)} at the start of
-     * each turn.
-     *
-     * <p>Default to a mutable list so {@code $push} doesn't have to
-     * upsert on first use — a freshly-created process simply has an
-     * empty queue.
-     */
-    @Builder.Default
-    private List<PendingMessageDocument> pendingMessages = new ArrayList<>();
-
-    /**
      * Skills currently active on this process. Activations come from
      * three sources: the spawning recipe ({@code fromRecipe=true}),
      * Arthur's auto-trigger detection (implicit), and explicit user

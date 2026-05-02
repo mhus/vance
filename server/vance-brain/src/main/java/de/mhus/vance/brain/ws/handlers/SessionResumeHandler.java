@@ -8,6 +8,7 @@ import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectManagerService;
+import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
@@ -81,7 +82,15 @@ public class SessionResumeHandler implements WsHandler {
         authority.enforce(ctx,
                 new Resource.Session(doc.getTenantId(), doc.getProjectId(), doc.getSessionId()),
                 Action.START);
-        projectManager.claimForLocalPod(doc.getTenantId(), doc.getProjectId());
+        ClaimResult claim = projectManager.claimForLocalPodOrRedirect(
+                doc.getTenantId(), doc.getProjectId());
+        if (claim instanceof ClaimResult.Redirect redirect) {
+            sender.sendError(wsSession, envelope, 409,
+                    "Session '" + doc.getSessionId() + "' belongs to project '"
+                            + doc.getProjectId() + "' on another brain process ("
+                            + redirect.endpoint() + ")");
+            return;
+        }
 
         boolean bound = sessionService.tryBind(
                 doc.getSessionId(), ctx.getConnectionId());

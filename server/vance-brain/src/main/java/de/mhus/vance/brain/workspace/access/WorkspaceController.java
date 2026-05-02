@@ -157,8 +157,8 @@ public class WorkspaceController {
 
     private String proxyGet(ProjectPodKey key, String pathAndQuery) {
         for (int attempt = 0; attempt < 2; attempt++) {
-            String podIp = resolveOrThrow(key, attempt);
-            URI uri = URI.create("http://" + podIp + ":" + locationService.getServerPort() + pathAndQuery);
+            String podEndpoint = resolveOrThrow(key, attempt);
+            URI uri = URI.create("http://" + podEndpoint + pathAndQuery);
             HttpRequest request = HttpRequest.newBuilder(uri)
                     .timeout(properties.getReadTimeout())
                     .header(InternalAccessFilter.HEADER_INTERNAL_TOKEN, internalToken)
@@ -193,8 +193,8 @@ public class WorkspaceController {
 
     private ResponseEntity<byte[]> proxyFile(ProjectPodKey key, String pathAndQuery) {
         for (int attempt = 0; attempt < 2; attempt++) {
-            String podIp = resolveOrThrow(key, attempt);
-            URI uri = URI.create("http://" + podIp + ":" + locationService.getServerPort() + pathAndQuery);
+            String podEndpoint = resolveOrThrow(key, attempt);
+            URI uri = URI.create("http://" + podEndpoint + pathAndQuery);
             HttpRequest request = HttpRequest.newBuilder(uri)
                     .timeout(properties.getReadTimeout())
                     .header(InternalAccessFilter.HEADER_INTERNAL_TOKEN, internalToken)

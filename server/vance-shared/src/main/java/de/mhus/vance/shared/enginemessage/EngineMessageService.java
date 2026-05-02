@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -192,5 +194,24 @@ public class EngineMessageService {
     public long countInbox(String targetProcessId) {
         return repository.countByTargetProcessIdAndDeliveredAtNotNullAndDrainedAtIsNull(
                 targetProcessId);
+    }
+
+    /**
+     * Returns the distinct {@code targetProcessId}s of all messages that
+     * have been delivered but not yet drained — used at brain boot to
+     * find processes whose lanes need a wakeup so they catch up on work
+     * accumulated while the pod was down.
+     *
+     * <p>Iteration order is not guaranteed; callers usually filter
+     * down to processes owned by the local pod before scheduling lane
+     * turns.
+     */
+    public Set<String> findPendingTargetProcessIds() {
+        Query q = Query.query(Criteria
+                .where(F_DELIVERED_AT).ne(null)
+                .and(F_DRAINED_AT).is(null));
+        List<String> distinct = mongoTemplate.findDistinct(
+                q, "targetProcessId", EngineMessageDocument.class, String.class);
+        return new LinkedHashSet<>(distinct);
     }
 }

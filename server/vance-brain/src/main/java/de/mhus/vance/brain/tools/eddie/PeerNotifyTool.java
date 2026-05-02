@@ -112,7 +112,7 @@ public class PeerNotifyTool implements Tool {
                     .content(summary)
                     .payload(payload)
                     .build();
-            if (thinkProcessService.appendPending(peerId, msg)) {
+            if (thinkProcessService.appendPending(peerId, msg, ctx.processId())) {
                 eventEmitter.scheduleTurn(peerId);
                 notified++;
             }

@@ -32,6 +32,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 /**
@@ -71,7 +72,7 @@ public class FootTransferService {
 
     public FootTransferService(FootWorkspaceService workspace,
                                FootWorkspaceProperties properties,
-                               ConnectionService connection,
+                               @Lazy ConnectionService connection,
                                SessionService sessions) {
         this.workspace = workspace;
         this.properties = properties;

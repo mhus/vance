@@ -159,7 +159,8 @@ public class ProcessSteerTool implements Tool {
                             .fromUser(ctx.processId() == null
                                     ? null : "process:" + ctx.processId())
                             .content(content)
-                            .build());
+                            .build(),
+                    ctx.processId());
             eventEmitter.scheduleTurn(target.getId());
             log.info("process_steer async-queued name='{}' target={} engine='{}'",
                     name, target.getId(), targetEngine.name());

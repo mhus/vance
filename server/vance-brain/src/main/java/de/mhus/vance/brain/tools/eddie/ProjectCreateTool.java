@@ -173,7 +173,7 @@ public class ProjectCreateTool implements Tool {
                     .fromUser("eddie:" + ctx.processId())
                     .content(initialPrompt)
                     .build();
-            if (!thinkProcessService.appendPending(chat.getId(), msg)) {
+            if (!thinkProcessService.appendPending(chat.getId(), msg, ctx.processId())) {
                 throw new ToolException(
                         "Failed to enqueue initial prompt — chat-process "
                                 + chat.getId() + " disappeared");

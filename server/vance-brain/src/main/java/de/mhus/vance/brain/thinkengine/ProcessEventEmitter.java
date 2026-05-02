@@ -79,7 +79,7 @@ public class ProcessEventEmitter {
                 .payload(payload)
                 .build();
 
-        if (!thinkProcessService.appendPending(parentProcessId, doc)) {
+        if (!thinkProcessService.appendPending(parentProcessId, doc, sourceProcessId)) {
             log.warn("Parent notify dropped — parent process not found id='{}' (child='{}', event={})",
                     parentProcessId, sourceProcessId, type);
             return false;

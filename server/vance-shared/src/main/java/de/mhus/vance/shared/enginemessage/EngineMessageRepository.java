@@ -36,4 +36,12 @@ interface EngineMessageRepository extends MongoRepository<EngineMessageDocument,
             Collection<String> targetProcessIds);
 
     long countByTargetProcessIdAndDeliveredAtNotNullAndDrainedAtIsNull(String targetProcessId);
+
+    /**
+     * All messages that haven't been delivered yet — used at boot to drive
+     * the global outbox-replay pass. Each row's {@code senderProcessId}
+     * tells the replay loop whether it's "ours" (local pod) or someone
+     * else's job to retry.
+     */
+    List<EngineMessageDocument> findByDeliveredAtIsNullOrderByCreatedAtAsc();
 }

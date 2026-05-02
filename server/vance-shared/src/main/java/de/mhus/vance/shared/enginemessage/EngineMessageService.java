@@ -206,6 +206,17 @@ public class EngineMessageService {
      * down to processes owned by the local pod before scheduling lane
      * turns.
      */
+    /**
+     * All outboxed messages across the whole engine_messages collection —
+     * messages a sender has persisted but for which no ack has come back.
+     * Used at brain boot to find work that needs to be re-pushed; the
+     * caller filters by sender's Home Pod to avoid stealing replay duty
+     * from peers.
+     */
+    public List<EngineMessageDocument> findAllOutboxed() {
+        return repository.findByDeliveredAtIsNullOrderByCreatedAtAsc();
+    }
+
     public Set<String> findPendingTargetProcessIds() {
         Query q = Query.query(Criteria
                 .where(F_DELIVERED_AT).ne(null)

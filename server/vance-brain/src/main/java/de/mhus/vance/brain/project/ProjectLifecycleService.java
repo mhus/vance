@@ -1,11 +1,24 @@
 package de.mhus.vance.brain.project;
 
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
+import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.project.ProjectStatus;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.workspace.WorkspaceService;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
@@ -39,7 +52,141 @@ public class ProjectLifecycleService {
     private final ProjectService projectService;
     private final ProjectManagerService projectManager;
     private final WorkspaceService workspaceService;
+    private final SessionService sessionService;
     private final ApplicationEventPublisher eventPublisher;
+    /**
+     * {@link ObjectProvider} so we don't close the bean cycle:
+     * {@code SessionChatBootstrapper} → {@code SessionCreateHandler} →
+     * already touches a number of services; lazy lookup here keeps this
+     * service constructable without forcing eager wiring.
+     */
+    private final ObjectProvider<SessionChatBootstrapper> chatBootstrapperProvider;
+    /**
+     * Same lazy-lookup reasoning — the router pulls in
+     * {@code EngineWsClient} which has its own connection state we don't
+     * need to instantiate just because lifecycle is being touched.
+     */
+    private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
+
+    /**
+     * Create a new project and bring it to RUNNING in one shot —
+     * the workflow that {@link de.mhus.vance.brain.tools.eddie.ProjectCreateTool}
+     * (Eddie) and the project-create REST endpoint (Web-UI) share.
+     *
+     * <p>Returns the {@link ProjectDocument} after both steps finished:
+     * inserted into Mongo, claimed by this pod, workspace initialised,
+     * status RUNNING.
+     *
+     * <p>Session and chat-process are <em>not</em> created here — that's
+     * {@link #bootstrapChat(BootstrapChatRequest)}, called separately
+     * when the caller actually wants a worker to talk to (Eddie does;
+     * a Web-UI "new project" button might not).
+     *
+     * @throws ProjectService.ProjectAlreadyExistsException
+     *     when {@code name} already lives in this tenant.
+     * @throws ProjectService.ReservedProjectNameException
+     *     when {@code name} starts with the reserved system prefix and
+     *     {@code kind != SYSTEM}.
+     */
+    public ProjectDocument create(
+            String tenantId,
+            String name,
+            @Nullable String title,
+            @Nullable String projectGroupId,
+            @Nullable List<String> teamIds,
+            ProjectKind kind) {
+        projectService.create(tenantId, name, title, projectGroupId, teamIds, kind);
+        return bring(tenantId, name);
+    }
+
+    /**
+     * Create a session inside an existing project and spawn its standard
+     * chat-process — the second half of what
+     * {@link de.mhus.vance.brain.tools.eddie.ProjectCreateTool} does
+     * inline today, also reachable from the Web-UI / Foot once they
+     * call this through a lifecycle REST endpoint.
+     *
+     * <p>If {@link BootstrapChatRequest#initialPrompt()} is non-null,
+     * the prompt is pushed at the chat-process via
+     * {@link EngineMessageRouter} so it's already queued for the first
+     * lane turn. Same dispatch path as
+     * {@code project_chat_send} — local-direct or cross-pod-WS depending
+     * on the worker's Home Pod.
+     */
+    public BootstrapResult bootstrapChat(BootstrapChatRequest req) {
+        ProjectDocument project = projectService.findByTenantAndName(req.tenantId(), req.projectName())
+                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                        "Project '" + req.projectName() + "' not found in tenant '"
+                                + req.tenantId() + "'"));
+
+        SessionDocument session = sessionService.create(
+                req.tenantId(),
+                req.userId(),
+                project.getName(),
+                req.displayName(),
+                req.profile(),
+                req.clientVersion(),
+                req.clientName());
+
+        ThinkProcessDocument chat = chatBootstrapperProvider.getObject()
+                .ensureChatProcess(session, req.parentProcessId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Chat-process bootstrap failed for session '" + session.getSessionId() + "'"));
+
+        if (req.initialPrompt() != null && !req.initialPrompt().isBlank()) {
+            PendingMessageDocument msg = PendingMessageDocument.builder()
+                    .type(PendingMessageType.USER_CHAT_INPUT)
+                    .at(Instant.now())
+                    .fromUser(req.senderProcessId() == null
+                            ? req.userId()
+                            : "process:" + req.senderProcessId())
+                    .content(req.initialPrompt())
+                    .build();
+            boolean ok = messageRouterProvider.getObject()
+                    .dispatch(req.senderProcessId(), chat.getId(), msg);
+            if (!ok) {
+                log.warn("bootstrapChat: initialPrompt dispatch failed for chat='{}'", chat.getId());
+            }
+        }
+
+        log.info("bootstrapChat: tenant='{}' project='{}' session='{}' chat='{}' parent='{}' withPrompt={}",
+                req.tenantId(), project.getName(), session.getSessionId(),
+                chat.getId(), req.parentProcessId(),
+                req.initialPrompt() != null);
+        return new BootstrapResult(project, session, chat);
+    }
+
+    /** Parameter object for {@link #bootstrapChat(BootstrapChatRequest)}. */
+    public record BootstrapChatRequest(
+            String tenantId,
+            String projectName,
+            String userId,
+            String displayName,
+            String profile,
+            String clientVersion,
+            @Nullable String clientName,
+            /**
+             * If set, is recorded as the chat-process's {@code parentProcessId}
+             * — Eddie passes her own process id so worker
+             * {@code ProcessEvent}s route back to her via
+             * {@code ParentNotificationListener}. Web-UI / Foot leave it null.
+             */
+            @Nullable String parentProcessId,
+            /** Optional first user-chat-input pushed at the worker. */
+            @Nullable String initialPrompt,
+            /**
+             * Sender id used on the {@code initialPrompt} dispatch; only
+             * looked at when {@link #initialPrompt} is set. Eddie passes
+             * her process id so the EngineMessage carries proper sender
+             * provenance; otherwise pass null.
+             */
+            @Nullable String senderProcessId) {}
+
+    /** Triple of artefacts {@link #bootstrapChat(BootstrapChatRequest)} produces. */
+    public record BootstrapResult(
+            ProjectDocument project,
+            SessionDocument session,
+            ThinkProcessDocument chatProcess) {}
 
     /**
      * Move a project on this pod from any non-CLOSED status to RUNNING:

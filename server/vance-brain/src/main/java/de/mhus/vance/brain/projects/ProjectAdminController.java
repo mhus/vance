@@ -4,9 +4,11 @@ import de.mhus.vance.api.projects.ProjectCreateRequest;
 import de.mhus.vance.api.projects.ProjectDto;
 import de.mhus.vance.api.projects.ProjectUpdateRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
+import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.projectgroup.ProjectGroupDocument;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
@@ -47,6 +49,7 @@ public class ProjectAdminController {
 
     private final ProjectService projectService;
     private final ProjectGroupService projectGroupService;
+    private final ProjectLifecycleService lifecycleService;
     private final RequestAuthority authority;
 
     @GetMapping
@@ -69,15 +72,59 @@ public class ProjectAdminController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
         try {
-            ProjectDocument saved = projectService.create(
+            // Goes through ProjectLifecycleService.create() so the project is
+            // claimed for this pod, its workspace initialised, and its status
+            // transitions through RECOVERING into RUNNING in one step.
+            ProjectDocument saved = lifecycleService.create(
                     tenant,
                     request.getName(),
                     request.getTitle(),
                     request.getProjectGroupId(),
-                    request.getTeamIds());
+                    request.getTeamIds(),
+                    ProjectKind.NORMAL);
             return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
         } catch (ProjectService.ProjectAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
+    }
+
+    /**
+     * Suspends a RUNNING project: stops engines (event), suspends the
+     * workspace (snapshots → Mongo, folder removed), transitions to
+     * SUSPENDED. Idempotent on already-SUSPENDED projects; rejects
+     * CLOSED with 409.
+     */
+    @PostMapping("/{name}/suspend")
+    public ProjectDto suspend(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
+        try {
+            return toDto(lifecycleService.suspend(tenant, name));
+        } catch (ProjectService.ProjectNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (ProjectService.ProjectStatusConflictException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
+    }
+
+    /**
+     * Resumes a SUSPENDED (or otherwise non-RUNNING) project: claims it
+     * for this pod, recovers the workspace from snapshots if any, starts
+     * engines, transitions to RUNNING. Idempotent on already-RUNNING
+     * projects (just refreshes the pod claim).
+     */
+    @PostMapping("/{name}/resume")
+    public ProjectDto resume(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("name") String name,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
+        try {
+            return toDto(lifecycleService.bring(tenant, name));
+        } catch (ProjectService.ProjectNotFoundException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
         }
     }
 
@@ -111,7 +158,10 @@ public class ProjectAdminController {
         authority.enforce(httpRequest, new Resource.Project(tenant, name), Action.ADMIN);
         try {
             ProjectGroupDocument archivedGroup = projectGroupService.ensureArchivedGroup(tenant);
-            ProjectDocument saved = projectService.close(tenant, name, archivedGroup.getName());
+            // Goes through ProjectLifecycleService.close() so the workspace
+            // is disposed (folder + snapshots gone) before the project is
+            // moved to the archived group.
+            ProjectDocument saved = lifecycleService.close(tenant, name, archivedGroup.getName());
             return toDto(saved);
         } catch (ProjectService.ProjectNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());

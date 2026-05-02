@@ -12,7 +12,10 @@ import static org.mockito.Mockito.when;
 import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
+import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +37,7 @@ class ThinkProcessServiceTest {
     private ThinkProcessRepository repository;
     private MongoTemplate mongoTemplate;
     private ApplicationEventPublisher eventPublisher;
+    private EngineMessageService engineMessageService;
     private ThinkProcessService service;
 
     @BeforeEach
@@ -41,66 +45,56 @@ class ThinkProcessServiceTest {
         repository = mock(ThinkProcessRepository.class);
         mongoTemplate = mock(MongoTemplate.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
-        service = new ThinkProcessService(repository, mongoTemplate, eventPublisher);
+        engineMessageService = mock(EngineMessageService.class);
+        service = new ThinkProcessService(repository, mongoTemplate, eventPublisher, engineMessageService);
     }
 
-    // ─── Pending Queue ───────────────────────────────────────────────────
+    // ─── Pending Queue (façade over EngineMessageService) ───────────────
 
     @Test
-    void appendPending_atomicPushUpdate_returnsTrueOnSuccess() {
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
-                .thenReturn(UpdateResult.acknowledged(1, 1L, null));
+    void appendPending_delegatesToAcceptDelivery_whenProcessExists() {
+        when(repository.findById("p-1")).thenReturn(Optional.of(process("p-1")));
 
         boolean ok = service.appendPending("p-1", new PendingMessageDocument());
 
         assertThat(ok).isTrue();
-        verify(mongoTemplate).updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class));
+        verify(engineMessageService).acceptDelivery(any(EngineMessageDocument.class));
     }
 
     @Test
     void appendPending_returnsFalse_whenProcessUnknown() {
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class), eq(ThinkProcessDocument.class)))
-                .thenReturn(UpdateResult.acknowledged(0, 0L, null));
+        when(repository.findById("ghost")).thenReturn(Optional.empty());
 
         boolean ok = service.appendPending("ghost", new PendingMessageDocument());
 
         assertThat(ok).isFalse();
+        verify(engineMessageService, never()).acceptDelivery(any(EngineMessageDocument.class));
     }
 
     @Test
     void drainPending_returnsAccumulatedMessages_inInsertionOrder() {
-        // Mongo returns the OLD document via findAndModify(returnNew=false).
-        ThinkProcessDocument prior = process("p-1");
-        prior.setPendingMessages(new ArrayList<>(List.of(
-                pending(), pending(), pending())));
-        when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
-                .thenReturn(prior);
+        EngineMessageDocument m1 = EngineMessageDocument.builder().messageId("m1").build();
+        EngineMessageDocument m2 = EngineMessageDocument.builder().messageId("m2").build();
+        EngineMessageDocument m3 = EngineMessageDocument.builder().messageId("m3").build();
+        when(engineMessageService.drainInbox("p-1")).thenReturn(List.of(m1, m2, m3));
 
         List<PendingMessageDocument> drained = service.drainPending("p-1");
 
         assertThat(drained).hasSize(3);
+        verify(engineMessageService).markDrained(any(Collection.class));
     }
 
     @Test
-    void drainPending_emptyQueue_returnsEmptyList() {
-        ThinkProcessDocument prior = process("p-1");
-        prior.setPendingMessages(new ArrayList<>());
-        when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
-                .thenReturn(prior);
+    void drainPending_emptyQueue_returnsEmptyList_andSkipsMarkDrained() {
+        when(engineMessageService.drainInbox("p-1")).thenReturn(List.of());
 
         assertThat(service.drainPending("p-1")).isEmpty();
+        verify(engineMessageService, never()).markDrained(any(Collection.class));
     }
 
     @Test
     void drainPending_unknownProcess_returnsEmptyList_neverNull() {
-        when(mongoTemplate.findAndModify(
-                any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(ThinkProcessDocument.class)))
-                .thenReturn(null);
+        when(engineMessageService.drainInbox("ghost")).thenReturn(List.of());
 
         // Defensive: even when the process disappears mid-call, callers
         // get an empty list (not NPE).
@@ -111,17 +105,14 @@ class ThinkProcessServiceTest {
 
     @Test
     void pendingSize_returnsZero_forUnknownProcess() {
-        when(repository.findById("ghost")).thenReturn(Optional.empty());
+        when(engineMessageService.countInbox("ghost")).thenReturn(0L);
 
         assertThat(service.pendingSize("ghost")).isZero();
     }
 
     @Test
-    void pendingSize_reflectsCurrentQueueLength() {
-        ThinkProcessDocument doc = process("p-1");
-        doc.setPendingMessages(new ArrayList<>(List.of(
-                pending(), pending(), pending(), pending())));
-        when(repository.findById("p-1")).thenReturn(Optional.of(doc));
+    void pendingSize_reflectsCurrentInboxLength() {
+        when(engineMessageService.countInbox("p-1")).thenReturn(4L);
 
         assertThat(service.pendingSize("p-1")).isEqualTo(4);
     }

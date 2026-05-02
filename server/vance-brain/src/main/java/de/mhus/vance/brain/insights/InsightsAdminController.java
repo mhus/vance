@@ -12,6 +12,8 @@ import de.mhus.vance.api.llmtrace.LlmTraceListResponse;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
+import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.llmtrace.LlmTraceDocument;
@@ -23,7 +25,6 @@ import de.mhus.vance.shared.memory.MemoryService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
-import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -67,6 +68,7 @@ public class InsightsAdminController {
     private final MemoryService memoryService;
     private final MarvinNodeService marvinNodeService;
     private final LlmTraceService llmTraceService;
+    private final EngineMessageService engineMessageService;
     private final RequestAuthority authority;
 
     // ─── Sessions ──────────────────────────────────────────────────────────
@@ -133,7 +135,7 @@ public class InsightsAdminController {
                 .sorted(Comparator
                         .comparing(ThinkProcessDocument::getCreatedAt,
                                 Comparator.nullsLast(Comparator.naturalOrder())))
-                .map(InsightsAdminController::toDto)
+                .map(this::toDto)
                 .toList();
     }
 
@@ -274,7 +276,7 @@ public class InsightsAdminController {
                 .build();
     }
 
-    private static ThinkProcessInsightsDto toDto(ThinkProcessDocument p) {
+    private ThinkProcessInsightsDto toDto(ThinkProcessDocument p) {
         return ThinkProcessInsightsDto.builder()
                 .id(p.getId())
                 .sessionId(p.getSessionId())
@@ -290,7 +292,7 @@ public class InsightsAdminController {
                 .activeSkills(p.getActiveSkills().stream()
                         .map(InsightsAdminController::toDto)
                         .toList())
-                .pendingMessages(p.getPendingMessages().stream()
+                .pendingMessages(engineMessageService.drainInbox(p.getId()).stream()
                         .map(InsightsAdminController::toDto)
                         .toList())
                 .createdAt(p.getCreatedAt())
@@ -310,10 +312,13 @@ public class InsightsAdminController {
                 .build();
     }
 
-    private static PendingMessageInsightsDto toDto(PendingMessageDocument m) {
+    private static PendingMessageInsightsDto toDto(EngineMessageDocument m) {
         Map<String, Object> payload = new LinkedHashMap<>();
         putIfNotNull(payload, "content", m.getContent());
-        putIfNotNull(payload, "idempotencyKey", m.getIdempotencyKey());
+        putIfNotNull(payload, "messageId", m.getMessageId());
+        putIfNotNull(payload, "senderProcessId", m.getSenderProcessId());
+        putIfNotNull(payload, "deliveredAt", m.getDeliveredAt());
+        putIfNotNull(payload, "drainedAt", m.getDrainedAt());
         putIfNotNull(payload, "sourceProcessId", m.getSourceProcessId());
         putIfNotNull(payload, "eventType", m.getEventType());
         putIfNotNull(payload, "toolCallId", m.getToolCallId());
@@ -332,7 +337,7 @@ public class InsightsAdminController {
         }
         return PendingMessageInsightsDto.builder()
                 .type(m.getType() == null ? "" : m.getType().name())
-                .at(m.getAt())
+                .at(m.getCreatedAt())
                 .fromUser(m.getFromUser())
                 .payload(payload)
                 .build();

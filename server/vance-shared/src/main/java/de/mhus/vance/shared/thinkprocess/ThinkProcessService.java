@@ -5,6 +5,8 @@ import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
+import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -15,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -41,6 +44,7 @@ public class ThinkProcessService {
     private final ThinkProcessRepository repository;
     private final MongoTemplate mongoTemplate;
     private final ApplicationEventPublisher eventPublisher;
+    private final EngineMessageService engineMessageService;
 
     // ────────────────── Create ──────────────────
 
@@ -372,53 +376,113 @@ public class ThinkProcessService {
     }
 
     // ────────────────── Pending Queue ──────────────────
+    // Façade over EngineMessageService — the per-process inbox now lives in
+    // the engine_messages collection (see specification/engine-message-routing.md).
+    // The legacy embedded ThinkProcessDocument.pendingMessages list is no
+    // longer written or read by these methods; it remains on the document
+    // for one cleanup phase and will be removed in the final migration step.
 
     /**
-     * Atomically appends one message to the process's pending inbox.
-     * Returns {@code true} if the row exists and was updated.
+     * Persists one message into the target process's inbox.
+     * Returns {@code true} if the target process exists.
      *
-     * <p>Write-through: the append is independent of any in-flight
-     * lane-turn — the message is durable the moment this returns.
+     * <p>Write-through: ack-on-persist semantics — the message is durable
+     * (and idempotently dedup'd by {@code messageId}) the moment this returns.
      */
     public boolean appendPending(String processId, PendingMessageDocument message) {
-        Query query = new Query(Criteria.where("_id").is(processId));
-        Update update = new Update().push("pendingMessages", message);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
-        boolean ok = result.getModifiedCount() > 0;
-        if (ok) {
-            log.debug("Pending append id='{}' type={} ", processId, message.getType());
-        } else {
+        Optional<ThinkProcessDocument> target = repository.findById(processId);
+        if (target.isEmpty()) {
             log.warn("Pending append failed — process not found id='{}'", processId);
+            return false;
         }
-        return ok;
+        EngineMessageDocument incoming = toEngineMessage(message, processId, target.get().getTenantId());
+        engineMessageService.acceptDelivery(incoming);
+        log.debug("Pending append id='{}' type={} messageId='{}'",
+                processId, message.getType(), incoming.getMessageId());
+        return true;
     }
 
     /**
-     * Atomically reads and clears the pending inbox of {@code processId}.
+     * Reads and consumes the pending inbox of {@code processId}.
      *
-     * <p>Returns the messages that were queued, in insertion order.
-     * Returns an empty list if the process is unknown or had no
+     * <p>Returns the messages that were delivered but not yet drained,
+     * in insertion order. Returns an empty list if the process has no
      * pending work — never {@code null}. New messages that arrive
-     * after this call land in the freshly-emptied queue and feed the
-     * next lane-turn (Auto-Wakeup).
+     * after this call become available for the next lane-turn
+     * (Auto-Wakeup).
      */
     public List<PendingMessageDocument> drainPending(String processId) {
-        Query query = new Query(Criteria.where("_id").is(processId));
-        Update update = new Update().set("pendingMessages", new ArrayList<>());
-        ThinkProcessDocument prior = mongoTemplate.findAndModify(
-                query, update,
-                FindAndModifyOptions.options().returnNew(false),
-                ThinkProcessDocument.class);
-        if (prior == null) {
+        List<EngineMessageDocument> docs = engineMessageService.drainInbox(processId);
+        if (docs.isEmpty()) {
             return Collections.emptyList();
         }
-        List<PendingMessageDocument> drained = prior.getPendingMessages();
-        if (drained == null || drained.isEmpty()) {
-            return Collections.emptyList();
-        }
-        log.debug("Pending drain id='{}' count={}", processId, drained.size());
-        return drained;
+        List<String> ids = docs.stream().map(EngineMessageDocument::getMessageId).toList();
+        engineMessageService.markDrained(ids);
+        log.debug("Pending drain id='{}' count={}", processId, docs.size());
+        return docs.stream().map(this::toPendingMessage).toList();
+    }
+
+    // ─────────── Legacy <-> EngineMessage conversion ───────────
+    // These helpers bridge the {@link PendingMessageDocument} façade
+    // (which the engine and tool layers still pass around) to the
+    // {@link EngineMessageDocument} persistence form. They will be
+    // removed when the engine layer adopts EngineMessage natively.
+
+    private EngineMessageDocument toEngineMessage(
+            PendingMessageDocument m, String targetProcessId, String tenantId) {
+        String messageId = (m.getIdempotencyKey() != null && !m.getIdempotencyKey().isBlank())
+                ? m.getIdempotencyKey()
+                : UUID.randomUUID().toString();
+        Instant createdAt = m.getAt() == null || m.getAt().equals(Instant.EPOCH)
+                ? Instant.now() : m.getAt();
+        return EngineMessageDocument.builder()
+                .messageId(messageId)
+                .tenantId(tenantId == null ? "" : tenantId)
+                .senderProcessId("")  // legacy callers don't supply a sender; assigned per call-site in later phases
+                .targetProcessId(targetProcessId)
+                .createdAt(createdAt)
+                .type(m.getType())
+                .fromUser(m.getFromUser())
+                .content(m.getContent())
+                .sourceProcessId(m.getSourceProcessId())
+                .eventType(m.getEventType())
+                .toolCallId(m.getToolCallId())
+                .toolName(m.getToolName())
+                .toolStatus(m.getToolStatus())
+                .error(m.getError())
+                .command(m.getCommand())
+                .inboxItemId(m.getInboxItemId())
+                .inboxItemType(m.getInboxItemType())
+                .inboxAnswer(m.getInboxAnswer())
+                .sourceEddieProcessId(m.getSourceEddieProcessId())
+                .peerUserId(m.getPeerUserId())
+                .peerEventType(m.getPeerEventType())
+                .payload(m.getPayload())
+                .build();
+    }
+
+    private PendingMessageDocument toPendingMessage(EngineMessageDocument e) {
+        return PendingMessageDocument.builder()
+                .at(e.getCreatedAt())
+                .idempotencyKey(e.getMessageId())
+                .type(e.getType())
+                .fromUser(e.getFromUser())
+                .content(e.getContent())
+                .sourceProcessId(e.getSourceProcessId())
+                .eventType(e.getEventType())
+                .toolCallId(e.getToolCallId())
+                .toolName(e.getToolName())
+                .toolStatus(e.getToolStatus())
+                .error(e.getError())
+                .command(e.getCommand())
+                .inboxItemId(e.getInboxItemId())
+                .inboxItemType(e.getInboxItemType())
+                .inboxAnswer(e.getInboxAnswer())
+                .sourceEddieProcessId(e.getSourceEddieProcessId())
+                .peerUserId(e.getPeerUserId())
+                .peerEventType(e.getPeerEventType())
+                .payload(e.getPayload())
+                .build();
     }
 
     /**
@@ -463,9 +527,7 @@ public class ThinkProcessService {
      * Returns {@code 0} if the process is unknown.
      */
     public int pendingSize(String processId) {
-        return repository.findById(processId)
-                .map(d -> d.getPendingMessages() == null ? 0 : d.getPendingMessages().size())
-                .orElse(0);
+        return (int) engineMessageService.countInbox(processId);
     }
 
     public void delete(String id) {

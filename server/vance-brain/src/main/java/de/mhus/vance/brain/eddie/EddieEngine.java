@@ -89,6 +89,7 @@ public class EddieEngine implements ThinkEngine {
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             // Identity / discovery
             "whoami",
+            "respond",
             "current_time",
             "find_tools",
             "describe_tool",

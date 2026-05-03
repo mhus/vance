@@ -127,13 +127,9 @@ public class ProcessCreateHandler implements WsHandler {
             return;
         }
 
-        List<ChatMessageDocument> appended = chatMessageService.history(
-                tenantId, sessionId, created.getId());
-        for (ChatMessageDocument msg : appended) {
-            sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
-                    toDto(msg, request.getName()));
-        }
-
+        // CHAT_MESSAGE_APPENDED frames are pushed by the central
+        // ChatMessageNotificationDispatcher on every chatMessageService.append.
+        // No need to replay history here.
         ThinkProcessDocument refreshed = thinkProcessService.findById(created.getId())
                 .orElse(created);
         ProcessCreateResponse response = ProcessCreateResponse.builder()

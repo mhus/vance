@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -43,6 +44,7 @@ public class ChatMessageService {
     private final ChatMessageRepository repository;
     private final MongoTemplate mongoTemplate;
     private final SessionService sessionService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Persists {@code message}. The {@code createdAt} timestamp is filled in
@@ -64,6 +66,7 @@ public class ChatMessageService {
                 saved.getRole() == null ? null : saved.getRole().name(),
                 saved.getContent(),
                 saved.getCreatedAt());
+        eventPublisher.publishEvent(new ChatMessageAppendedEvent(saved));
         return saved;
     }
 

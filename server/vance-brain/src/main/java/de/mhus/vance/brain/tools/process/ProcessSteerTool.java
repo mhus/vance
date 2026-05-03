@@ -106,8 +106,16 @@ public class ProcessSteerTool implements Tool {
         String name = stringOrThrow(params, "name");
         String content = stringOrThrow(params, "content");
 
+        // The LLM sometimes mistakes the Mongo id (which it sees in
+        // <process-event sourceProcessId="..."> markers) for the process
+        // name. Fall back to a by-id lookup, scoped to the current
+        // session/tenant so we don't accidentally steer a stranger's
+        // process across boundaries.
         ThinkProcessDocument target = thinkProcessService
                 .findByName(ctx.tenantId(), sessionId, name)
+                .or(() -> thinkProcessService.findById(name)
+                        .filter(p -> ctx.tenantId().equals(p.getTenantId())
+                                && sessionId.equals(p.getSessionId())))
                 .orElseThrow(() -> new ToolException(
                         "Process '" + name + "' not found in current session"));
 

@@ -138,7 +138,9 @@ public class SessionCreateHandler implements WsHandler {
         try {
             chatProcess = chatBootstrapper.ensureChatProcess(created).orElse(null);
             if (chatProcess != null) {
-                pushAppendedMessages(wsSession, chatProcess);
+                // Greeting + any history frames are dispatched by
+                // ChatMessageNotificationDispatcher on chatMessageService.append.
+                // No replay needed here.
             }
         } catch (RuntimeException e) {
             log.error("Chat-process bootstrap failed for session '{}'",

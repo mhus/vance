@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.process;
 
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -7,8 +8,11 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,33 +49,49 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class ProcessCreateTool implements Tool {
 
-    private static final Map<String, Object> SCHEMA = Map.of(
-            "type", "object",
-            "properties", Map.of(
-                    "name", Map.of(
-                            "type", "string",
-                            "description", "Stable process name, unique per session."),
-                    "recipe", Map.of(
-                            "type", "string",
-                            "description", "Preferred — recipe name for cascade resolution. "
-                                    + "Use `recipe_list` to see available recipes."),
-                    "engine", Map.of(
-                            "type", "string",
-                            "description", "Direct-engine path: engine name "
-                                    + "(e.g. 'ford'). Ignored if `recipe` is set."),
-                    "title", Map.of(
-                            "type", "string",
-                            "description", "Optional human-readable title."),
-                    "goal", Map.of(
-                            "type", "string",
-                            "description", "Optional one-line goal the engine should pursue."),
-                    "params", Map.of(
-                            "type", "object",
-                            "description", "Engine-specific runtime parameters "
-                                    + "(model, validation, maxIterations, …). With a recipe, "
-                                    + "these override the recipe's defaults per-key.",
-                            "additionalProperties", true)),
-            "required", List.of("name"));
+    private static final Map<String, Object> SCHEMA;
+
+    static {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("name", Map.of(
+                "type", "string",
+                "description", "Stable process name, unique per session."));
+        properties.put("recipe", Map.of(
+                "type", "string",
+                "description", "Preferred — recipe name for cascade resolution. "
+                        + "Use `recipe_list` to see available recipes."));
+        properties.put("engine", Map.of(
+                "type", "string",
+                "description", "Direct-engine path: engine name "
+                        + "(e.g. 'ford'). Ignored if `recipe` is set."));
+        properties.put("title", Map.of(
+                "type", "string",
+                "description", "Optional human-readable title."));
+        properties.put("goal", Map.of(
+                "type", "string",
+                "description", "Optional one-line goal the engine should pursue."));
+        properties.put("steerContent", Map.of(
+                "type", "string",
+                "description", "Optional initial USER_CHAT_INPUT to push into the "
+                        + "fresh process's pending queue right after start. "
+                        + "Equivalent to a `process_steer` immediately after "
+                        + "`process_create` — saves a tool round-trip and "
+                        + "removes the trap of forgetting the steer for "
+                        + "Ford-style workers (which would otherwise sit IDLE "
+                        + "with no goal). For Marvin / Vogon engines (async, "
+                        + "task-tree driven from `goal`) this is usually "
+                        + "redundant — pass `goal` instead."));
+        properties.put("params", Map.of(
+                "type", "object",
+                "description", "Engine-specific runtime parameters "
+                        + "(model, validation, maxIterations, …). With a recipe, "
+                        + "these override the recipe's defaults per-key.",
+                "additionalProperties", true));
+        SCHEMA = Map.of(
+                "type", "object",
+                "properties", properties,
+                "required", List.of("name"));
+    }
 
     private final ThinkProcessService thinkProcessService;
     /**
@@ -82,14 +102,18 @@ public class ProcessCreateTool implements Tool {
      */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final RecipeResolver recipeResolver;
+    /** Same lazy-lookup reasoning — router pulls in EngineWsClient + emitter. */
+    private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
 
     public ProcessCreateTool(
             ThinkProcessService thinkProcessService,
             ObjectProvider<ThinkEngineService> thinkEngineServiceProvider,
-            RecipeResolver recipeResolver) {
+            RecipeResolver recipeResolver,
+            ObjectProvider<EngineMessageRouter> messageRouterProvider) {
         this.thinkProcessService = thinkProcessService;
         this.thinkEngineServiceProvider = thinkEngineServiceProvider;
         this.recipeResolver = recipeResolver;
+        this.messageRouterProvider = messageRouterProvider;
     }
 
     @Override
@@ -101,7 +125,11 @@ public class ProcessCreateTool implements Tool {
     public String description() {
         return "Create a new think-process in the current session and "
                 + "start its engine. Pick a recipe name (preferred) or an "
-                + "engine name. Returns the new process's name and status.";
+                + "engine name. Pass `steerContent` to atomically push an "
+                + "initial USER_CHAT_INPUT into the new process's pending "
+                + "queue (replaces a separate process_steer call). Returns "
+                + "the new process's name, status, engine, and whether the "
+                + "steer was queued.";
     }
 
     @Override
@@ -125,6 +153,7 @@ public class ProcessCreateTool implements Tool {
         String engineName = optString(params, "engine");
         String title = optString(params, "title");
         String goal = optString(params, "goal");
+        String steerContent = optString(params, "steerContent");
         Map<String, Object> callerParams = optMap(params, "params");
 
         if (recipeName != null && engineName != null) {
@@ -172,6 +201,28 @@ public class ProcessCreateTool implements Tool {
                     "Engine start failed for '" + name + "': " + e.getMessage(), e);
         }
 
+        // Atomic spawn-and-steer: equivalent to a separate process_steer
+        // call right after process_create. Saves the LLM a round-trip and
+        // closes the "spawned but never steered" trap for Ford-style
+        // recipes that would otherwise sit IDLE forever. Async dispatch
+        // — the caller can return immediately.
+        boolean steered = false;
+        if (steerContent != null && !steerContent.isBlank()) {
+            PendingMessageDocument msg = PendingMessageDocument.builder()
+                    .type(PendingMessageType.USER_CHAT_INPUT)
+                    .at(Instant.now())
+                    .fromUser(ctx.processId() == null
+                            ? null : "process:" + ctx.processId())
+                    .content(steerContent)
+                    .build();
+            steered = messageRouterProvider.getObject()
+                    .dispatch(ctx.processId(), fresh.getId(), msg);
+            if (!steered) {
+                log.warn("process_create: steerContent dispatch failed for '{}' (id='{}')",
+                        name, fresh.getId());
+            }
+        }
+
         ThinkProcessDocument refreshed = thinkProcessService.findById(fresh.getId())
                 .orElse(fresh);
         Map<String, Object> out = new LinkedHashMap<>();
@@ -181,6 +232,9 @@ public class ProcessCreateTool implements Tool {
         out.put("engineVersion", refreshed.getThinkEngineVersion());
         if (refreshed.getRecipeName() != null) {
             out.put("recipe", refreshed.getRecipeName());
+        }
+        if (steerContent != null) {
+            out.put("steered", steered);
         }
         return out;
     }

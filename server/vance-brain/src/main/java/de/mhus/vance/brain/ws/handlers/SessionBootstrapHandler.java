@@ -171,7 +171,7 @@ public class SessionBootstrapHandler implements WsHandler {
                 // out-of-scope for this handler; the dedicated session-resume
                 // path handles them.
                 if (sessionCreated) {
-                    pushAppendedMessages(wsSession, chatProcess, chatProcess.getName(), 0);
+                    // Pushed by ChatMessageNotificationDispatcher.
                 }
             }
         } catch (RuntimeException e) {
@@ -299,7 +299,7 @@ public class SessionBootstrapHandler implements WsHandler {
             }
 
             // Push every message the engine produced during start() — typically a greeting.
-            pushAppendedMessages(wsSession, fresh, spec.getName(), 0);
+            // Pushed by ChatMessageNotificationDispatcher.
 
             ThinkProcessDocument refreshed = thinkProcessService.findById(fresh.getId()).orElse(fresh);
             created.add(toBootstrapped(refreshed));
@@ -319,7 +319,7 @@ public class SessionBootstrapHandler implements WsHandler {
                     Instant.now(), null, ctx.getUserId(), request.getInitialMessage());
             try {
                 thinkEngineService.steer(firstProcess, userInput);
-                pushAppendedMessages(wsSession, firstProcess, firstProcess.getName(), beforeSize);
+                // Pushed by ChatMessageNotificationDispatcher.
                 steeredProcessName = firstProcess.getName();
             } catch (RuntimeException e) {
                 log.error("Initial steer failed for process id='{}'", firstProcess.getId(), e);

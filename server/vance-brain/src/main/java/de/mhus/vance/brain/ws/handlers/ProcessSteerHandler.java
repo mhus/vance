@@ -217,16 +217,12 @@ public class ProcessSteerHandler implements WsHandler {
         try {
             ThinkProcessDocument refreshed = thinkProcessService.findById(processId)
                     .orElse(null);
-            List<ChatMessageDocument> full = chatMessageService.history(
-                    tenantId, sessionId, processId);
-            for (ChatMessageDocument appended : full.subList(beforeSize, full.size())) {
-                if (appended.getRole() == ChatRole.USER) {
-                    // Sender's own echo — client renders locally.
-                    continue;
-                }
-                sender.sendNotification(wsSession, MessageType.CHAT_MESSAGE_APPENDED,
-                        toDto(appended, processName));
-            }
+            // CHAT_MESSAGE_APPENDED frames for the chat-messages produced
+            // by this turn are pushed by ChatMessageNotificationDispatcher
+            // (Spring listener on ChatMessageAppendedEvent). Doing it
+            // here too would duplicate every frame; the listener also
+            // covers chat-messages produced by Auto-Wakeup turns later
+            // on, which this synchronous path would miss.
             ProcessSteerResponse response = ProcessSteerResponse.builder()
                     .thinkProcessId(processId)
                     .processName(processName)

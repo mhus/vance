@@ -20,6 +20,7 @@ import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
+import de.mhus.vance.brain.tools.context.RespondTool;
 import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -104,6 +105,7 @@ public class ArthurEngine implements ThinkEngine {
 
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "whoami",
+            "respond",
             "process_create",
             "process_steer",
             "process_stop",
@@ -119,46 +121,34 @@ public class ArthurEngine implements ThinkEngine {
 
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
-    // ──────────────────── Validation heuristic ────────────────────
-    // Opt-in via params.validation == true. Detects "intent-without-
-    // action" — replies that announce a step ("Okay, ich weise an...",
-    // "I'll check...") without emitting a tool call. The model gets
-    // one or two corrective re-prompts before we accept whatever
-    // text came in.
+    // ──────────────────── End-of-turn marker ────────────────────
+    // The structured {@link RespondTool} is the explicit end-of-turn
+    // signal: the model emits `respond(message, awaiting_user_input)`
+    // and the tool-loop returns the message + the awaiting flag. The
+    // legacy "intent-without-action" regex validator (sprach-bias on
+    // EN/DE phrases like "I'll check" / "Soll ich") has been retired
+    // in favour of this structured signal — see
+    // specification/structured-engine-output.md.
 
-    /**
-     * Future-tense / intent markers that should be paired with a tool
-     * call. Anchored at start-of-message or at a sentence boundary so
-     * we don't fire on incidental occurrences in the middle of an
-     * actual answer.
-     */
-    private static final List<Pattern> INTENT_PATTERNS = List.of(
-            // English
-            Pattern.compile("(?im)(^|[.!?]\\s+|\\b)(I'?ll|I will|I'?m going to|Let me)\\s+\\w+"),
-            // German
-            Pattern.compile(
-                    "(?im)(^|[.!?]\\s+|\\b)"
-                            + "(Ich (werde|weise|frage|sage|prüfe|lese|starte|beauftrage)"
-                            + "|Lass mich|Soll ich|Okay,?\\s+ich (werde|weise|prüfe|frage))"
-                            + "\\b"),
-            // Action narration
-            Pattern.compile(
-                    "(?im)(^|[.!?]\\s+|\\b)"
-                            + "(I'?ll (now |just )?(ask|tell|check|fetch|read|run|call|spawn|create|stop|steer)"
-                            + "|Let me (now |just )?(ask|tell|check|fetch|read|run|call|spawn|create|stop|steer))"
-                            + "\\b"));
-
-    /**
-     * One-line fallback used only when the spawning recipe didn't
-     * override the validator message. Recipes carry the rich
-     * version; keep this minimal.
-     */
-    private static final String VALIDATION_CORRECTION_TEMPLATE =
-            "VALIDATION CHECK: your previous response stated intent "
-                    + "('%s') but emitted no tool call — emit it now or "
-                    + "ask the user a direct question.";
-
+    /** Max corrections per turn for the structural no-tool-call validator. */
     private static final int MAX_VALIDATION_CORRECTIONS = 2;
+
+    /**
+     * Language-agnostic correction for "model produced free text with
+     * no tool call". Replaces the old regex-based intent-without-action
+     * validator: the structural check is whether any tool was emitted,
+     * not what phrases the text contains.
+     */
+    private static final String NO_TOOL_CALL_CORRECTION =
+            "VALIDATION CHECK: your previous response had no tool call. "
+                    + "Every turn must end with at least one tool call: "
+                    + "the work tools first (process_create, process_steer, …), "
+                    + "then `respond(message=..., awaiting_user_input=...)` "
+                    + "as the final marker. If you were stating an intent "
+                    + "to act, emit the action tool now. If you were "
+                    + "giving a final answer, emit `respond` now. Free "
+                    + "assistant text without a tool call is never the "
+                    + "right output.";
 
     /**
      * Base cascade path for the Arthur engine prompt. Loaded via
@@ -294,6 +284,9 @@ public class ArthurEngine implements ThinkEngine {
             List<SteerMessage> inbox) {
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
+        // Default IDLE on any abnormal exit — matches legacy lifecycle.
+        // Reset to outcome.awaitingUserInput() inside the try.
+        boolean awaitingUserInput = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
 
@@ -354,9 +347,11 @@ public class ArthurEngine implements ThinkEngine {
                     config.modelName(), maxIters, validation);
 
             String modelAlias = config.provider() + ":" + config.modelName();
-            String finalText = runToolLoop(
+            TurnOutcome outcome = runToolLoop(
                     aiChat, toolSpecs, tools, messages, ctx, process,
                     maxIters, validation, modelAlias);
+            awaitingUserInput = outcome.awaitingUserInput();
+            String finalText = outcome.finalText();
 
             chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -367,20 +362,40 @@ public class ArthurEngine implements ThinkEngine {
                     .build());
 
             String preview = finalText.length() > 120 ? finalText.substring(0, 120) + "…" : finalText;
-            log.info("Arthur.turn id='{}' -> '{}'", process.getId(), preview);
+            log.info("Arthur.turn id='{}' awaiting={} -> '{}'",
+                    process.getId(), awaitingUserInput, preview);
         } finally {
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+            ThinkProcessStatus exitStatus = awaitingUserInput
+                    ? ThinkProcessStatus.BLOCKED
+                    : ThinkProcessStatus.IDLE;
+            thinkProcessService.updateStatus(process.getId(), exitStatus);
         }
     }
 
     /**
-     * Tool-call loop in streaming mode. Same shape as Ford's: each
-     * iteration drives the streaming model, captures partials into
-     * a chunk-batcher, and dispatches any tool-execution requests
-     * the model returned. The loop exits when the model returns no
-     * tool calls — that final reply text is the assistant's answer.
+     * Outcome of one tool-loop turn — final assistant text plus the
+     * explicit {@code awaiting_user_input} flag that drives the
+     * post-turn process status (BLOCKED vs IDLE).
      */
-    private String runToolLoop(
+    private record TurnOutcome(String finalText, boolean awaitingUserInput) {}
+
+    /** Parsed payload of a {@link RespondTool} call. */
+    private record RespondArgs(String message, boolean awaitingUserInput) {}
+
+    /**
+     * Tool-call loop in streaming mode. Same shape as Ford's. The
+     * {@link RespondTool} is the end-of-turn marker: when the model
+     * emits a {@code respond} call, the loop dispatches any other
+     * tool calls in the same response (so the audit trail keeps the
+     * results) and then returns the {@code respond} args as
+     * {@link TurnOutcome}.
+     *
+     * <p>Fallback: a response without any tool calls (model ignored
+     * the convention) hands back the streamed text with
+     * {@code awaitingUserInput=false}, preserving the legacy IDLE
+     * lifecycle.
+     */
+    private TurnOutcome runToolLoop(
             AiChat aiChat,
             List<ToolSpecification> toolSpecs,
             ContextToolsApi tools,
@@ -400,19 +415,19 @@ public class ArthurEngine implements ThinkEngine {
             AiMessage reply = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
 
             if (!reply.hasToolExecutionRequests()) {
+                // Model emitted free text with neither a regular tool
+                // nor `respond`. That's a contract violation: every turn
+                // must end with at least one tool call (the work, then
+                // `respond` as the final marker). Give the model a
+                // language-agnostic correction (no regex on text).
                 String text = reply.text();
-                String matchedIntent = (validation && corrections < MAX_VALIDATION_CORRECTIONS)
-                        ? matchIntent(text) : null;
-                if (matchedIntent != null) {
-                    String template = nonBlankOr(
-                            process.getIntentCorrectionOverride(),
-                            VALIDATION_CORRECTION_TEMPLATE);
+                if (validation && corrections < MAX_VALIDATION_CORRECTIONS) {
                     log.info(
-                            "Arthur id='{}' validation: intent-without-action detected (\"{}\"), correcting ({}/{})",
-                            process.getId(), matchedIntent,
+                            "Arthur id='{}' validation: free text without any tool call, correcting ({}/{})",
+                            process.getId(),
                             corrections + 1, MAX_VALIDATION_CORRECTIONS);
                     messages.add(reply);
-                    messages.add(SystemMessage.from(formatSafe(template, matchedIntent)));
+                    messages.add(SystemMessage.from(NO_TOOL_CALL_CORRECTION));
                     corrections++;
                     continue;
                 }
@@ -423,12 +438,49 @@ public class ArthurEngine implements ThinkEngine {
                     log.info("Arthur id='{}' validation: completed after {} correction(s)",
                             process.getId(), corrections);
                 }
-                return finalText.toString();
+                return new TurnOutcome(finalText.toString(), false);
             }
-            messages.add(reply);
+
+            ToolExecutionRequest respondCall = null;
+            List<ToolExecutionRequest> others = new ArrayList<>();
             for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
+                if (RespondTool.NAME.equals(call.name())) {
+                    if (respondCall == null) {
+                        respondCall = call;
+                    }
+                } else {
+                    others.add(call);
+                }
+            }
+
+            messages.add(reply);
+            for (ToolExecutionRequest call : others) {
                 String result = invokeOne(tools, call, process.getId());
                 messages.add(ToolExecutionResultMessage.from(call, result));
+            }
+            if (respondCall != null) {
+                if (!others.isEmpty()) {
+                    // Model emitted respond *together with* work tools.
+                    // The respond payload was speculative — it didn't
+                    // see the tool results yet. Synthesise a tool-result
+                    // rejection for respond and continue the loop so the
+                    // next turn produces the real synthesised answer.
+                    log.info(
+                            "Arthur id='{}' rejecting premature respond emitted alongside {} other tool(s) — looping for actual results",
+                            process.getId(), others.size());
+                    messages.add(ToolExecutionResultMessage.from(respondCall,
+                            "{\"error\":\"respond was called together with other tool calls. "
+                                    + "respond must be the LAST and ONLY tool call in a turn, "
+                                    + "after you have observed the results of all work tools. "
+                                    + "Continue the loop: read the tool results above, then "
+                                    + "call respond with the synthesised answer.\"}"));
+                    continue;
+                }
+                RespondArgs args = parseRespondArgs(respondCall);
+                if (args.message() != null && !args.message().isEmpty()) {
+                    finalText.append(args.message());
+                }
+                return new TurnOutcome(finalText.toString(), args.awaitingUserInput());
             }
         }
         throw new AiChatException(
@@ -436,23 +488,23 @@ public class ArthurEngine implements ThinkEngine {
                         + " tool iterations — aborting turn to avoid runaway.");
     }
 
-    /**
-     * Returns the first matching intent fragment, or {@code null} when
-     * the text doesn't look like a future-tense announcement. The
-     * snippet is short enough to drop into the corrective prompt so
-     * the model sees what triggered the check.
-     */
-    private static @Nullable String matchIntent(@Nullable String text) {
-        if (text == null || text.isBlank()) return null;
-        for (Pattern p : INTENT_PATTERNS) {
-            var m = p.matcher(text);
-            if (m.find()) {
-                int start = m.start();
-                int end = Math.min(text.length(), start + 60);
-                return text.substring(start, end).trim();
-            }
+    private RespondArgs parseRespondArgs(ToolExecutionRequest call) {
+        String raw = call.arguments();
+        if (raw == null || raw.isBlank()) {
+            return new RespondArgs("", true);
         }
-        return null;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed = objectMapper.readValue(raw, Map.class);
+            Object msgVal = parsed.get(RespondTool.PARAM_MESSAGE);
+            Object awaitingVal = parsed.get(RespondTool.PARAM_AWAITING_USER_INPUT);
+            String message = msgVal instanceof String s ? s : "";
+            boolean awaiting = !(awaitingVal instanceof Boolean b) || b;
+            return new RespondArgs(message, awaiting);
+        } catch (RuntimeException e) {
+            log.warn("Arthur: failed to parse respond args (raw='{}'): {}", raw, e.toString());
+            return new RespondArgs("", true);
+        }
     }
 
     private AiMessage streamOneIteration(
@@ -641,15 +693,60 @@ public class ArthurEngine implements ThinkEngine {
     }
 
     /**
+     * Looks up the process name for a {@code ProcessEvent}'s source id —
+     * used so {@code <process-event>} markers carry the human-readable
+     * name the LLM should pass to {@code process_steer / process_stop /
+     * etc.} instead of the Mongo id.
+     */
+    private @Nullable String lookupProcessName(@Nullable String processId) {
+        if (processId == null || processId.isBlank()) {
+            return null;
+        }
+        return thinkProcessService.findById(processId)
+                .map(ThinkProcessDocument::getName)
+                .orElse(null);
+    }
+
+    /** Rendering helper that needs access to the {@code thinkProcessService}. */
+    private String renderForLlm(SteerMessage m) {
+        if (m instanceof SteerMessage.ProcessEvent pe) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("<process-event sourceProcessId=\"")
+                    .append(escapeAttr(pe.sourceProcessId()))
+                    .append("\"");
+            String sourceName = lookupProcessName(pe.sourceProcessId());
+            if (sourceName != null && !sourceName.isBlank()) {
+                sb.append(" sourceProcessName=\"")
+                        .append(escapeAttr(sourceName))
+                        .append("\"");
+            }
+            sb.append(" type=\"").append(pe.type().name().toLowerCase()).append("\">");
+            if (pe.humanSummary() != null) {
+                sb.append(escapeText(pe.humanSummary()));
+            }
+            sb.append("</process-event>");
+            return sb.toString();
+        }
+        return renderStaticForLlm(m);
+    }
+
+    /**
      * Returns the LLM-facing rendering of one inbox message, or
      * {@code null} if the message has no separate rendering (the
      * UserChatInput case — already in chat history). Mirrors the
      * {@code <task-notification>} convention from Claude Code.
      */
-    private static String renderForLlm(SteerMessage m) {
+    /**
+     * Static rendering fallback for non-ProcessEvent messages. The
+     * instance method {@link #renderForLlm(SteerMessage)} dispatches
+     * here for everything that doesn't need the process-name lookup.
+     */
+    private static String renderStaticForLlm(SteerMessage m) {
         return switch (m) {
             case SteerMessage.UserChatInput uci -> null; // already in chat history
             case SteerMessage.ProcessEvent pe -> {
+                // Should never hit this branch — the instance overload
+                // above handles ProcessEvent. Keep for type-completeness.
                 StringBuilder sb = new StringBuilder();
                 sb.append("<process-event sourceProcessId=\"")
                         .append(escapeAttr(pe.sourceProcessId()))

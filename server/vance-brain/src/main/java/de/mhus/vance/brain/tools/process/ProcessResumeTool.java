@@ -75,6 +75,9 @@ public class ProcessResumeTool implements Tool {
         }
         ThinkProcessDocument target = thinkProcessService
                 .findByName(ctx.tenantId(), sessionId, name)
+                .or(() -> thinkProcessService.findById(name)
+                        .filter(p -> ctx.tenantId().equals(p.getTenantId())
+                                && sessionId.equals(p.getSessionId())))
                 .orElseThrow(() -> new ToolException(
                         "Process '" + name + "' not found in current session"));
         sessionLifecycle.resumeProcess(target, processEventEmitter);

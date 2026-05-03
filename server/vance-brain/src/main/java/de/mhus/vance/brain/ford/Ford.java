@@ -29,6 +29,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolException;
+import de.mhus.vance.brain.tools.context.RespondTool;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
@@ -124,26 +125,15 @@ public class Ford implements ThinkEngine {
     private static final int MAX_TOOL_ITERATIONS = 8;
 
     // ──────────────────── Validation heuristic ────────────────────
-    // Opt-in via params.validation == true. Two checks:
-    //   1. intent-without-action — same as Arthur's
-    //   2. reply-too-brief-after-data-fetch — Ford-specific, catches
-    //      "OK, I see the files." after a substantial tool result
+    // Opt-in via params.validation == true. One remaining check:
+    //   reply-too-brief-after-data-fetch — Ford-specific, catches
+    //   "OK, I see the files." after a substantial tool result
     //
-    // Both inject a corrective SystemMessage and let the model retry,
-    // bounded by MAX_VALIDATION_CORRECTIONS.
-
-    private static final List<Pattern> INTENT_PATTERNS = List.of(
-            Pattern.compile("(?im)(^|[.!?]\\s+|\\b)(I'?ll|I will|I'?m going to|Let me)\\s+\\w+"),
-            Pattern.compile(
-                    "(?im)(^|[.!?]\\s+|\\b)"
-                            + "(Ich (werde|weise|frage|sage|prüfe|lese|starte|beauftrage)"
-                            + "|Lass mich|Soll ich|Okay,?\\s+ich (werde|weise|prüfe|frage))"
-                            + "\\b"),
-            Pattern.compile(
-                    "(?im)(^|[.!?]\\s+|\\b)"
-                            + "(I'?ll (now |just )?(ask|tell|check|fetch|read|run|call|invoke)"
-                            + "|Let me (now |just )?(ask|tell|check|fetch|read|run|call|invoke))"
-                            + "\\b"));
+    // The intent-without-action check is gone — its role is now filled
+    // by the structured {@link RespondTool}: the engine ends every
+    // turn with a `respond` call carrying both the user-facing message
+    // and an explicit `awaiting_user_input` boolean. See
+    // specification/structured-engine-output.md.
 
     /** Tool result size (chars) above which we expect the data to be
      *  reflected in the reply. */
@@ -154,18 +144,26 @@ public class Ford implements ThinkEngine {
 
     private static final int MAX_VALIDATION_CORRECTIONS = 2;
 
-    /**
-     * One-line fallbacks used only when the spawning recipe didn't
-     * override the validator messages. Recipes carry the rich
-     * version; keep these minimal.
-     */
-    private static final String INTENT_CORRECTION_TEMPLATE =
-            "VALIDATION CHECK: stated intent ('%s') without a tool "
-                    + "call — emit the tool now or answer plainly.";
-
     private static final String DATA_RELAY_CORRECTION_TEMPLATE =
             "VALIDATION CHECK: tools returned %d chars, your reply has "
                     + "%d — paste the actual data into the reply text.";
+
+    /**
+     * Language-agnostic correction for "model produced free text with
+     * no tool call". Replaces the old regex-based intent-without-action
+     * validator: the structural check is whether any tool was emitted,
+     * not what phrases the text contains.
+     */
+    private static final String NO_TOOL_CALL_CORRECTION =
+            "VALIDATION CHECK: your previous response had no tool call. "
+                    + "Every turn must end with at least one tool call: "
+                    + "the work tools first (web_search, file_read, …), "
+                    + "then `respond(message=..., awaiting_user_input=...)` "
+                    + "as the final marker. If you were stating an intent "
+                    + "to act, emit the action tool now. If you were "
+                    + "giving a final answer, emit `respond` now. Free "
+                    + "assistant text without a tool call is never the "
+                    + "right output.";
 
     /** Provider-specific API-key setting key, e.g. {@code ai.provider.gemini.apiKey}. */
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
@@ -254,12 +252,16 @@ public class Ford implements ThinkEngine {
 
     // ──────────────────── One turn ────────────────────
 
-    private String runTurn(
+    private TurnOutcome runTurn(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             String userInput) {
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
+        // Default IDLE on any abnormal exit — matches legacy lifecycle.
+        // Set to outcome.awaitingUserInput() inside the try when the
+        // tool-loop returns cleanly.
+        boolean awaitingUserInput = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
             chatLog.append(ChatMessageDocument.builder()
@@ -342,9 +344,11 @@ public class Ford implements ThinkEngine {
                         process.getId(), maxIters);
             }
             String modelAlias = config.provider() + ":" + config.modelName();
-            String finalText = runToolLoop(
+            TurnOutcome outcome = runToolLoop(
                     aiChat, toolSpecs, tools, messages, ctx, process,
                     maxIters, validation, modelAlias);
+            awaitingUserInput = outcome.awaitingUserInput();
+            String finalText = outcome.finalText();
 
             chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
@@ -355,13 +359,17 @@ public class Ford implements ThinkEngine {
                     .build());
 
             String preview = finalText.length() > 120 ? finalText.substring(0, 120) + "…" : finalText;
-            log.info("Ford.steer id='{}' -> '{}'", process.getId(), preview);
-            return finalText;
+            log.info("Ford.steer id='{}' awaiting={} -> '{}'",
+                    process.getId(), awaitingUserInput, preview);
+            return outcome;
         } finally {
             // Drain one-shot skills before the next turn — they only
             // ever apply to the turn that activated them.
             dropOneShotSkills(process);
-            thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+            ThinkProcessStatus exitStatus = awaitingUserInput
+                    ? ThinkProcessStatus.BLOCKED
+                    : ThinkProcessStatus.IDLE;
+            thinkProcessService.updateStatus(process.getId(), exitStatus);
         }
     }
 
@@ -419,13 +427,38 @@ public class Ford implements ThinkEngine {
     }
 
     /**
+     * Outcome of one full tool-loop turn — what the engine layer needs
+     * to decide on the persistent assistant message and the next
+     * process status.
+     *
+     * <p>{@code finalText} is what gets persisted into the chat log
+     * and shown to the user. {@code awaitingUserInput} drives the
+     * post-turn status: {@code true} → BLOCKED (user must reply),
+     * {@code false} → IDLE (engine is happy to auto-wake on the next
+     * pending message — typically a worker's ProcessEvent).
+     */
+    private record TurnOutcome(String finalText, boolean awaitingUserInput) {}
+
+    /**
      * Tool-call loop in streaming mode. Each iteration drives the
      * {@link AiChat#streamingChatModel()} and funnels text partials
-     * through a {@link ChunkBatcher} into the event publisher. When
-     * the response carries tool-execution-requests, dispatch them and
-     * loop. Otherwise return the accumulated text.
+     * through a {@link ChunkBatcher} into the event publisher.
+     *
+     * <p>The {@link RespondTool} marks the end of the turn: when the
+     * model emits a {@code respond} call, the loop dispatches any
+     * other tool calls that came in the same response (so their
+     * results stay in the chat-history audit trail) and then returns
+     * the {@code respond.message} as final text plus the
+     * {@code awaiting_user_input} flag.
+     *
+     * <p>Fallback for models that ignore the {@code respond}
+     * convention: a response without any tool calls (or with tool
+     * calls but no {@code respond} after {@link #MAX_VALIDATION_CORRECTIONS}
+     * iterations) hands back the streamed text and defaults to
+     * {@code awaitingUserInput=false}, preserving the legacy behaviour
+     * of going IDLE between turns.
      */
-    private String runToolLoop(
+    private TurnOutcome runToolLoop(
             AiChat aiChat,
             List<ToolSpecification> toolSpecs,
             ContextToolsApi tools,
@@ -448,22 +481,13 @@ public class Ford implements ThinkEngine {
             AiMessage reply = streamed.message;
 
             if (!reply.hasToolExecutionRequests()) {
+                // Model emitted free text with neither a regular tool
+                // nor `respond`. That's a contract violation: every turn
+                // must end with at least one tool call (the work, then
+                // `respond` as the final marker). Give the model exactly
+                // one chance to fix that — language-agnostic, no regex.
                 String text = reply.text();
                 if (validation && corrections < MAX_VALIDATION_CORRECTIONS) {
-                    String intent = matchIntent(text);
-                    if (intent != null) {
-                        String template = nonBlankOr(
-                                process.getIntentCorrectionOverride(),
-                                INTENT_CORRECTION_TEMPLATE);
-                        log.info(
-                                "Ford id='{}' validation: intent-without-action (\"{}\"), correcting ({}/{})",
-                                process.getId(), intent,
-                                corrections + 1, MAX_VALIDATION_CORRECTIONS);
-                        messages.add(reply);
-                        messages.add(SystemMessage.from(formatSafe(template, intent)));
-                        corrections++;
-                        continue;
-                    }
                     int replyLen = text == null ? 0 : text.length();
                     if (toolDataChars >= TOOL_DATA_THRESHOLD
                             && replyLen <= REPLY_BRIEF_THRESHOLD) {
@@ -480,6 +504,14 @@ public class Ford implements ThinkEngine {
                         corrections++;
                         continue;
                     }
+                    log.info(
+                            "Ford id='{}' validation: free text without any tool call, correcting ({}/{})",
+                            process.getId(),
+                            corrections + 1, MAX_VALIDATION_CORRECTIONS);
+                    messages.add(reply);
+                    messages.add(SystemMessage.from(NO_TOOL_CALL_CORRECTION));
+                    corrections++;
+                    continue;
                 }
                 if (text != null) {
                     finalText.append(text);
@@ -488,13 +520,55 @@ public class Ford implements ThinkEngine {
                     log.info("Ford id='{}' validation: completed after {} correction(s)",
                             process.getId(), corrections);
                 }
-                return finalText.toString();
+                return new TurnOutcome(finalText.toString(), false);
             }
-            messages.add(reply);
+
+            // Tool calls present. Split off respond (if any), dispatch
+            // the rest, then either finish (respond present, no others)
+            // or loop (others present — see results before responding).
+            ToolExecutionRequest respondCall = null;
+            List<ToolExecutionRequest> others = new ArrayList<>();
             for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
+                if (RespondTool.NAME.equals(call.name())) {
+                    if (respondCall == null) {
+                        respondCall = call;  // first respond wins
+                    }
+                } else {
+                    others.add(call);
+                }
+            }
+
+            messages.add(reply);
+            for (ToolExecutionRequest call : others) {
                 String result = invokeOne(tools, call, process.getId());
                 if (result != null) toolDataChars += result.length();
                 messages.add(ToolExecutionResultMessage.from(call, result));
+            }
+            if (respondCall != null) {
+                if (!others.isEmpty()) {
+                    // Model emitted respond *together with* work tools. The
+                    // respond payload was speculative ("ich suche…") — it
+                    // didn't see the tool results yet. Synthesise a
+                    // tool-result for the respond call (so the LLM sees
+                    // its premature response was rejected) and let the
+                    // loop continue: the next turn produces the real
+                    // recipe-shaped output.
+                    log.info(
+                            "Ford id='{}' rejecting premature respond emitted alongside {} other tool(s) — looping for actual results",
+                            process.getId(), others.size());
+                    messages.add(ToolExecutionResultMessage.from(respondCall,
+                            "{\"error\":\"respond was called together with other tool calls. "
+                                    + "respond must be the LAST and ONLY tool call in a turn, "
+                                    + "after you have observed the results of all work tools. "
+                                    + "Continue the loop: read the tool results above, then "
+                                    + "call respond with the synthesised answer.\"}"));
+                    continue;
+                }
+                RespondArgs args = parseRespondArgs(respondCall);
+                if (args.message() != null && !args.message().isEmpty()) {
+                    finalText.append(args.message());
+                }
+                return new TurnOutcome(finalText.toString(), args.awaitingUserInput());
             }
         }
         throw new AiChatException(
@@ -502,21 +576,26 @@ public class Ford implements ThinkEngine {
                         + " tool iterations — aborting turn to avoid runaway.");
     }
 
-    /**
-     * Returns the matched intent fragment, or {@code null} when the
-     * text doesn't look like a future-tense announcement.
-     */
-    private static @Nullable String matchIntent(@Nullable String text) {
-        if (text == null || text.isBlank()) return null;
-        for (Pattern p : INTENT_PATTERNS) {
-            var m = p.matcher(text);
-            if (m.find()) {
-                int start = m.start();
-                int end = Math.min(text.length(), start + 60);
-                return text.substring(start, end).trim();
-            }
+    /** Parsed payload of a {@link RespondTool} call. */
+    private record RespondArgs(String message, boolean awaitingUserInput) {}
+
+    private RespondArgs parseRespondArgs(ToolExecutionRequest call) {
+        String raw = call.arguments();
+        if (raw == null || raw.isBlank()) {
+            return new RespondArgs("", true);
         }
-        return null;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed = objectMapper.readValue(raw, Map.class);
+            Object msgVal = parsed.get(RespondTool.PARAM_MESSAGE);
+            Object awaitingVal = parsed.get(RespondTool.PARAM_AWAITING_USER_INPUT);
+            String message = msgVal instanceof String s ? s : "";
+            boolean awaiting = !(awaitingVal instanceof Boolean b) || b;
+            return new RespondArgs(message, awaiting);
+        } catch (RuntimeException e) {
+            log.warn("Ford: failed to parse respond args (raw='{}'): {}", raw, e.toString());
+            return new RespondArgs("", true);  // default to BLOCKED on parse failure
+        }
     }
 
     /**

@@ -91,8 +91,14 @@ public class ProcessStopTool implements Tool {
             throw new ToolException("'name' is required and must be a non-empty string");
         }
 
+        // Fall back to by-id lookup when the LLM passes the Mongo id
+        // (which it sees in <process-event sourceProcessId="..."> markers)
+        // instead of the process name. Scoped to the same session/tenant.
         ThinkProcessDocument target = thinkProcessService
                 .findByName(ctx.tenantId(), sessionId, name)
+                .or(() -> thinkProcessService.findById(name)
+                        .filter(p -> ctx.tenantId().equals(p.getTenantId())
+                                && sessionId.equals(p.getSessionId())))
                 .orElseThrow(() -> new ToolException(
                         "Process '" + name + "' not found in current session"));
 

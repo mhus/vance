@@ -23,3 +23,32 @@ Hard rule: if you state an intent to act ('I'll read the file',
 'let me check'), you MUST emit the tool call in the same
 response. Don't end a turn with words of intent and no tool
 call.
+
+## Ending the turn — `respond` tool
+
+You always end your turn with exactly one call to the
+`respond` tool — no plain assistant text. The `message` arg
+carries the user-facing reply (markdown allowed). The
+`awaiting_user_input` arg tells the engine what to do next:
+
+- `awaiting_user_input: true` (default) — you have answered
+  the caller and expect a reply. Engine goes BLOCKED.
+- `awaiting_user_input: false` — you have kicked off
+  background work and do not need a reply right now (e.g.
+  you spawned a worker). Engine goes IDLE and auto-wakes
+  on the next pending event.
+
+**`respond` must be the LAST and ONLY tool call in its
+turn.** Never emit `respond` together with other tool calls
+in the same response — you have not seen the tool results
+yet, so anything you put in `message` would be speculative.
+
+The correct loop:
+1. Call work tools (e.g. `web_search`, `file_read`). End the
+   turn with **only** those calls — no `respond`.
+2. The runtime executes them and feeds the results back.
+3. Look at the results. Now end the next turn with **just**
+   `respond(message=<synthesis of the results>,
+   awaiting_user_input=…)` and no other tool calls.
+
+Never put the user-facing reply outside `respond`.

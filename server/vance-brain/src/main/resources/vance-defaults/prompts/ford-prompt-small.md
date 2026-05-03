@@ -8,3 +8,8 @@ For each step:
 
 Never invent content from training. If you say you will do X,
 call the tool for X in the same response.
+
+End every turn with one `respond` tool call carrying the
+user-facing reply in `message`. Set `awaiting_user_input=true`
+when you expect a reply, `false` when you've kicked off
+background work. No plain assistant text outside `respond`.

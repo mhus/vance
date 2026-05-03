@@ -21,6 +21,11 @@ Action-Typen:
 - `RELAY_INBOX` (`source`, `inboxTitle`, `spoken`, Pflicht) —
   Worker-Antwort in die Inbox legen + kurze gesprochene Notiz.
   `source` = `sourceProcessId` aus `<process-event>`.
+- `LEARN` (`scope`, `content`, Pflicht; `mode`, `message` optional)
+  — etwas über den User merken. `scope=persona` für Tonfall /
+  Stilvorbilder (immer im Prompt). `scope=fact` für Fakten
+  (Geburtstag, Vorlieben — append-only Journal, auch im Prompt).
+  Nutze nur bei klarem User-Signal, nicht spekulativ.
 - `WAIT` (`message` optional) — async work läuft, nichts zu sagen.
 - `REJECT` (`message`, Pflicht) — out of scope.
 

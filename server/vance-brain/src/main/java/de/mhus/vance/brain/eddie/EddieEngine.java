@@ -30,6 +30,8 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -197,6 +199,29 @@ public class EddieEngine extends StructuredActionEngine {
     private static final int DEFAULT_MAX_ITERATIONS = 4;
     private static final String DEFAULT_MODEL_ALIAS = "default:analyze";
 
+    /**
+     * Document path inside the per-user hub project for the
+     * persona-summary that's always loaded into Eddie's prompt.
+     * Eddie maintains this herself via {@code LEARN scope=persona}.
+     */
+    static final String PERSONA_DOC_PATH = "eddie/persona.md";
+
+    /**
+     * Document path for the append-only journal of facts about the
+     * user (preferences, dislikes, dates, etc.). Eddie writes via
+     * {@code LEARN scope=fact} and reads it back into the prompt
+     * each turn so she remembers across sessions.
+     */
+    static final String FACTS_DOC_PATH = "eddie/facts.md";
+
+    /**
+     * Soft limit on the size of the facts file that gets included in
+     * the prompt verbatim. If the file exceeds this, only the tail
+     * fits and Eddie should consolidate via persona-edits. Keeps the
+     * prompt budget bounded.
+     */
+    private static final int FACTS_PROMPT_BUDGET_CHARS = 8_000;
+
     private volatile @Nullable EngineBundledConfig cachedConfig;
 
     // ──────────────────── Dependencies ────────────────────
@@ -209,6 +234,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final EddieActivityService activityService;
     private final de.mhus.vance.shared.session.SessionService sessionService;
     private final EngineMessageRouter messageRouter;
+    private final DocumentService documentService;
 
     public EddieEngine(
             StreamingProperties streamingProperties,
@@ -221,7 +247,8 @@ public class EddieEngine extends StructuredActionEngine {
             MemoryContextLoader memoryContextLoader,
             EddieActivityService activityService,
             de.mhus.vance.shared.session.SessionService sessionService,
-            EngineMessageRouter messageRouter) {
+            EngineMessageRouter messageRouter,
+            DocumentService documentService) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -231,6 +258,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.activityService = activityService;
         this.sessionService = sessionService;
         this.messageRouter = messageRouter;
+        this.documentService = documentService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -487,6 +515,17 @@ public class EddieEngine extends StructuredActionEngine {
             ActionTurnOutcome outcome;
             if (loopResult.isAction()) {
                 outcome = handleAction(loopResult.action(), process, ctx);
+                // Post-LEARN consolidation: a small LLM pass within
+                // Eddie's lane that resolves contradictions and trims
+                // the just-updated persona / facts file. Runs ONLY
+                // after a successful LEARN — other actions don't need
+                // it. Failures are logged and left non-fatal: the raw
+                // (un-consolidated) content stays on disk and the
+                // user-facing turn is unaffected.
+                if (EddieActionSchema.TYPE_LEARN.equals(loopResult.action().type())) {
+                    runLearnConsolidation(loopResult.action(), aiChat,
+                            process, ctx, modelAlias);
+                }
             } else {
                 String text = loopResult.fallbackText();
                 outcome = new ActionTurnOutcome(
@@ -557,6 +596,7 @@ public class EddieEngine extends StructuredActionEngine {
             case EddieActionSchema.TYPE_STEER_PROJECT    -> handleSteerProject(action, process, ctx);
             case EddieActionSchema.TYPE_RELAY            -> handleRelay(action, process, ctx);
             case EddieActionSchema.TYPE_RELAY_INBOX      -> handleRelayInbox(action, process, ctx);
+            case EddieActionSchema.TYPE_LEARN            -> handleLearn(action, process);
             case EddieActionSchema.TYPE_WAIT             -> handleWait(action);
             case EddieActionSchema.TYPE_REJECT           -> handleReject(action);
             default -> {
@@ -768,6 +808,316 @@ public class EddieEngine extends StructuredActionEngine {
         return new ActionTurnOutcome(spoken, /*awaitingUserInput*/ true);
     }
 
+    /**
+     * Persists user-related context into Eddie's per-user memory.
+     * Two scopes:
+     *
+     * <ul>
+     *   <li><b>persona</b> ({@link #PERSONA_DOC_PATH}) — a freeform
+     *       summary of how Eddie should talk to this user. Always
+     *       loaded into the prompt. Mode controls whether the new
+     *       content replaces (default — clean rewrite) or appends.</li>
+     *   <li><b>fact</b> ({@link #FACTS_DOC_PATH}) — append-only
+     *       journal of factual entries (birthday, preferences,
+     *       dislikes). Each entry is timestamped on write.</li>
+     * </ul>
+     *
+     * <p>Both files live in the user's hub project ({@code _user_<login>}),
+     * which is also the {@code projectId} of Eddie's running process —
+     * no extra resolution needed.
+     */
+    private ActionTurnOutcome handleLearn(
+            EngineAction action, ThinkProcessDocument process) {
+        String scope = action.stringParam(EddieActionSchema.PARAM_SCOPE);
+        String content = action.stringParam(EddieActionSchema.PARAM_CONTENT);
+        if (scope == null || scope.isBlank()
+                || content == null || content.isBlank()) {
+            log.warn("Eddie id='{}' LEARN missing scope/content — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(
+                    "Sorry — interner Fehler: scope oder content fehlte beim "
+                            + "Lernen. (" + action.reason() + ")",
+                    true);
+        }
+        if (!EddieActionSchema.LEARN_SCOPES.contains(scope)) {
+            log.warn("Eddie id='{}' LEARN unknown scope='{}' — reason='{}'",
+                    process.getId(), scope, action.reason());
+            return new ActionTurnOutcome(
+                    "Sorry — interner Fehler: unbekannter scope '" + scope
+                            + "'. Erlaubt sind 'persona' und 'fact'.",
+                    true);
+        }
+
+        String tenantId = process.getTenantId();
+        String projectId = process.getProjectId();
+        if (projectId == null || projectId.isBlank()) {
+            log.warn("Eddie id='{}' LEARN process has no projectId — cannot persist",
+                    process.getId());
+            return new ActionTurnOutcome(
+                    "Sorry — interner Fehler: kein Hub-Projekt verfügbar.",
+                    true);
+        }
+
+        try {
+            switch (scope) {
+                case EddieActionSchema.LEARN_SCOPE_PERSONA -> {
+                    String mode = action.stringParamOr(
+                            EddieActionSchema.PARAM_MODE,
+                            EddieActionSchema.LEARN_MODE_REPLACE);
+                    String newContent = mergePersona(
+                            tenantId, projectId, content, mode);
+                    upsertDoc(tenantId, projectId, PERSONA_DOC_PATH,
+                            "Eddie persona summary",
+                            "eddie", "persona",
+                            newContent, process);
+                    log.info("Eddie id='{}' LEARN persona mode='{}' ({} chars total) reason='{}'",
+                            process.getId(), mode, newContent.length(),
+                            summariseReason(action.reason()));
+                }
+                case EddieActionSchema.LEARN_SCOPE_FACT -> {
+                    String today = java.time.LocalDate.now().toString();
+                    String entry = "[" + today + "] " + content.trim();
+                    String newContent = appendFact(tenantId, projectId, entry);
+                    upsertDoc(tenantId, projectId, FACTS_DOC_PATH,
+                            "Eddie user facts",
+                            "eddie", "facts",
+                            newContent, process);
+                    log.info("Eddie id='{}' LEARN fact ({} chars) reason='{}'",
+                            process.getId(), entry.length(),
+                            summariseReason(action.reason()));
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("Eddie id='{}' LEARN persistence failed: {}",
+                    process.getId(), e.toString());
+            return new ActionTurnOutcome(
+                    "Konnte mir das gerade nicht merken — " + e.getMessage(),
+                    true);
+        }
+
+        // Optional spoken confirmation. If absent, silent — the user
+        // notices that Eddie remembers next time, no chat noise now.
+        String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
+        return new ActionTurnOutcome(
+                message == null || message.isBlank() ? null : message,
+                /*awaitingUserInput*/ message != null && !message.isBlank());
+    }
+
+    private String mergePersona(
+            String tenantId, String projectId, String newPart, String mode) {
+        if (EddieActionSchema.LEARN_MODE_APPEND.equals(mode)) {
+            String existing = readDocText(tenantId, projectId, PERSONA_DOC_PATH);
+            if (existing == null || existing.isBlank()) {
+                return newPart.trim();
+            }
+            return existing.stripTrailing() + "\n\n" + newPart.trim();
+        }
+        // Default = REPLACE (clean rewrite by Eddie).
+        return newPart.trim();
+    }
+
+    private String appendFact(String tenantId, String projectId, String entry) {
+        String existing = readDocText(tenantId, projectId, FACTS_DOC_PATH);
+        if (existing == null || existing.isBlank()) {
+            return entry;
+        }
+        return existing.stripTrailing() + "\n" + entry;
+    }
+
+    private @Nullable String readDocText(
+            String tenantId, String projectId, String path) {
+        Optional<DocumentDocument> docOpt =
+                documentService.findByPath(tenantId, projectId, path);
+        if (docOpt.isEmpty()) {
+            return null;
+        }
+        // Eddie's user-memory docs are always inline (small text).
+        // Storage-backed (oversized) docs would need a streaming read,
+        // but we keep the user-memory schema in the inline tier on
+        // purpose — see FACTS_PROMPT_BUDGET_CHARS.
+        return docOpt.get().getInlineText();
+    }
+
+    /**
+     * System prompt for the post-LEARN consolidation pass on the
+     * persona file. Output-only (no headers, no fences) so the
+     * result can be written straight back to disk.
+     */
+    private static final String PERSONA_CONSOLIDATE_SYSTEM = """
+            You are a persona-consolidator for an AI assistant. The text below is a
+            free-form description of how the assistant should talk to a specific user.
+            Over time it accumulates: instructions get added, sometimes contradicted,
+            sometimes refined. Your job is to produce a clean, current-state version.
+
+            Rules:
+            - Resolve contradictions: the LATER instruction wins. If "be sarcastic"
+              comes after "be polite", drop "be polite".
+            - Merge complementary instructions ("be concise" + "no bullet lists" →
+              "be concise; prose over lists").
+            - Drop redundant phrasing.
+            - Keep it short — five to ten sentences max. The assistant reads this
+              every turn; bloat hurts everything.
+            - Preserve the user's voice. If they said "wie Douglas Adams", keep that
+              exact reference. Don't substitute generic synonyms.
+            - Match the language of the input (German stays German).
+
+            Output ONLY the consolidated persona text. No preamble, no explanation,
+            no Markdown headers, no code fences.
+            """;
+
+    /**
+     * System prompt for the post-LEARN consolidation pass on the
+     * facts file. Same output-only contract as persona.
+     */
+    private static final String FACTS_CONSOLIDATE_SYSTEM = """
+            You are a fact-consolidator for an AI assistant's per-user memory.
+            Below is a journal of date-stamped facts about a specific user. Over
+            time the same topic may be re-stated with new values (favourite color
+            changed, address updated, preference flipped). Your job is to produce
+            a clean current-state list.
+
+            Rules:
+            - For each topic (favourite color, birthday, dislike, role, …), keep
+              ONLY the most recent entry. Drop superseded older versions.
+            - Preserve each kept entry's original date stamp and wording.
+            - Don't merge across distinct topics. Don't invent new facts.
+            - Don't add or remove date stamps. Don't reformat dates.
+            - Order chronologically, oldest first.
+            - One fact per line.
+
+            Output ONLY the consolidated list. No preamble, no explanation, no
+            Markdown headers, no code fences.
+            """;
+
+    /**
+     * Post-LEARN consolidation. Reads the just-written persona /
+     * facts file, runs an LLM pass to resolve contradictions / drop
+     * superseded entries, writes the consolidated text back. Runs in
+     * Eddie's own lane (not a separate worker) — the user's turn has
+     * already produced the {@code spoken} confirmation, this is
+     * post-processing for the next turn's prompt.
+     */
+    private void runLearnConsolidation(
+            EngineAction action,
+            AiChat aiChat,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            String modelAlias) {
+        String scope = action.stringParam(EddieActionSchema.PARAM_SCOPE);
+        if (scope == null || scope.isBlank()) return;
+
+        String docPath;
+        String systemPrompt;
+        switch (scope) {
+            case EddieActionSchema.LEARN_SCOPE_PERSONA -> {
+                docPath = PERSONA_DOC_PATH;
+                systemPrompt = PERSONA_CONSOLIDATE_SYSTEM;
+            }
+            case EddieActionSchema.LEARN_SCOPE_FACT -> {
+                docPath = FACTS_DOC_PATH;
+                systemPrompt = FACTS_CONSOLIDATE_SYSTEM;
+            }
+            default -> {
+                return;
+            }
+        }
+
+        String tenantId = process.getTenantId();
+        String projectId = process.getProjectId();
+        String current = readDocText(tenantId, projectId, docPath);
+        if (current == null || current.isBlank()) return;
+
+        // Skip the LLM call when there's likely nothing to consolidate
+        // (single-fact / single-line persona). The threshold is small;
+        // a real second entry will exceed it easily.
+        String trimmed = current.trim();
+        if (trimmed.lines().count() < 2 && trimmed.length() < 80) {
+            return;
+        }
+
+        try {
+            List<ChatMessage> messages = List.of(
+                    SystemMessage.from(systemPrompt),
+                    UserMessage.from(current));
+            dev.langchain4j.model.chat.request.ChatRequest req =
+                    dev.langchain4j.model.chat.request.ChatRequest.builder()
+                            .messages(messages)
+                            .build();
+            AiMessage reply = streamOneIteration(aiChat, req, ctx, process, modelAlias);
+            String consolidated = reply.text();
+            if (consolidated == null || consolidated.isBlank()) {
+                log.warn("Eddie id='{}' LEARN consolidation produced no text — keeping raw",
+                        process.getId());
+                return;
+            }
+            consolidated = stripFences(consolidated.trim());
+            if (consolidated.equals(trimmed)) {
+                log.debug("Eddie id='{}' LEARN consolidation: no changes for scope='{}'",
+                        process.getId(), scope);
+                return;
+            }
+            // Persist the consolidated version. Same upsert path as
+            // handleLearn — the doc already exists at this point.
+            upsertDoc(tenantId, projectId, docPath,
+                    EddieActionSchema.LEARN_SCOPE_PERSONA.equals(scope)
+                            ? "Eddie persona summary"
+                            : "Eddie user facts",
+                    "eddie",
+                    EddieActionSchema.LEARN_SCOPE_PERSONA.equals(scope)
+                            ? "persona" : "facts",
+                    consolidated, process);
+            log.info("Eddie id='{}' LEARN consolidation scope='{}' {} → {} chars",
+                    process.getId(), scope, current.length(), consolidated.length());
+        } catch (RuntimeException e) {
+            // Non-fatal — raw content stays on disk, user already got
+            // their "Notiert." reply. Future turn just sees the
+            // un-consolidated version, which is still valid.
+            log.warn("Eddie id='{}' LEARN consolidation failed for scope='{}': {}",
+                    process.getId(), scope, e.toString());
+        }
+    }
+
+    /**
+     * Strips an outer Markdown code-fence (` ``` `) if the LLM wrapped
+     * its output despite being told not to. Defensive — some models
+     * habitually add fences for "this is text" outputs.
+     */
+    private static String stripFences(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (!t.startsWith("```")) return t;
+        // First newline ends the opening fence (with optional language).
+        int firstNl = t.indexOf('\n');
+        if (firstNl < 0) return t;
+        String inner = t.substring(firstNl + 1);
+        if (inner.endsWith("```")) {
+            inner = inner.substring(0, inner.length() - 3);
+        }
+        return inner.stripTrailing();
+    }
+
+    private void upsertDoc(
+            String tenantId, String projectId, String path,
+            String title, String tag1, String tag2,
+            String text, ThinkProcessDocument process) {
+        Optional<DocumentDocument> existing =
+                documentService.findByPath(tenantId, projectId, path);
+        if (existing.isPresent()) {
+            documentService.update(
+                    existing.get().getId(),
+                    /*newTitle*/ null,
+                    /*newTags*/ null,
+                    /*newInlineText*/ text,
+                    /*newPath*/ null);
+        } else {
+            documentService.createText(
+                    tenantId, projectId, path, title,
+                    java.util.List.of(tag1, tag2),
+                    text,
+                    "eddie:" + process.getId());
+        }
+    }
+
     private ActionTurnOutcome handleWait(EngineAction action) {
         String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
         return new ActionTurnOutcome(
@@ -890,6 +1240,14 @@ public class EddieEngine extends StructuredActionEngine {
         if (userBlock != null && !userBlock.isBlank()) {
             base = base + "\n\n" + userBlock;
         }
+        String personaBlock = composePersonaBlock(process);
+        if (personaBlock != null && !personaBlock.isBlank()) {
+            base = base + "\n\n" + personaBlock;
+        }
+        String factsBlock = composeFactsBlock(process);
+        if (factsBlock != null && !factsBlock.isBlank()) {
+            base = base + "\n\n" + factsBlock;
+        }
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             base = base + "\n\n" + memoryBlock;
@@ -956,6 +1314,58 @@ public class EddieEngine extends StructuredActionEngine {
                 + "something they just asked, when delivering a result. "
                 + "Don't tack it onto every line.");
         return sb.toString();
+    }
+
+    /**
+     * Loads {@link #PERSONA_DOC_PATH} from the user's hub project and
+     * wraps it in a "## How to talk to this user" block. Returns
+     * {@code null} when no persona document exists yet — the LLM
+     * just doesn't see the section in that case (fresh user, no
+     * persona-learning yet).
+     */
+    private @Nullable String composePersonaBlock(ThinkProcessDocument process) {
+        String projectId = process.getProjectId();
+        if (projectId == null || projectId.isBlank()) {
+            return null;
+        }
+        String text = readDocText(process.getTenantId(), projectId, PERSONA_DOC_PATH);
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        return "## How to talk to this user\n\n"
+                + text.trim()
+                + "\n\n_Maintain this via `LEARN scope=persona`._";
+    }
+
+    /**
+     * Loads {@link #FACTS_DOC_PATH} from the user's hub project and
+     * wraps it in a "## What I know about this user" block. If the
+     * file exceeds {@link #FACTS_PROMPT_BUDGET_CHARS}, only the tail
+     * fits; older entries are silently dropped from the prompt
+     * (still on disk, but a sign that Eddie should consolidate
+     * stable preferences into the persona summary).
+     */
+    private @Nullable String composeFactsBlock(ThinkProcessDocument process) {
+        String projectId = process.getProjectId();
+        if (projectId == null || projectId.isBlank()) {
+            return null;
+        }
+        String text = readDocText(process.getTenantId(), projectId, FACTS_DOC_PATH);
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String trimmed = text.stripTrailing();
+        if (trimmed.length() > FACTS_PROMPT_BUDGET_CHARS) {
+            // Drop the head — newest facts win, oldest get pushed out.
+            int from = trimmed.length() - FACTS_PROMPT_BUDGET_CHARS;
+            // Snap to the next newline so we don't cut a fact in half.
+            int nl = trimmed.indexOf('\n', from);
+            trimmed = (nl >= 0 ? trimmed.substring(nl + 1) : trimmed.substring(from))
+                    + "\n\n_(older entries omitted — consider consolidating into persona)_";
+        }
+        return "## What I know about this user\n\n"
+                + trimmed
+                + "\n\n_Append new facts via `LEARN scope=fact`._";
     }
 
     private @Nullable String lookupProcessName(@Nullable String processId) {

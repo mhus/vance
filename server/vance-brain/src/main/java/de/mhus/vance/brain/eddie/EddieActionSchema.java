@@ -33,6 +33,11 @@ import java.util.Set;
  *       the user wants something kept for later, or when speaking
  *       the full content out loud doesn't fit the situation. Eddie
  *       judges this — there is no hard size threshold.</li>
+ *   <li>{@link #TYPE_LEARN} — persist something about the user
+ *       into Eddie's per-user memory. Two scopes: {@code persona}
+ *       (how-to-talk-to-this-user summary, always in the prompt) and
+ *       {@code fact} (specific facts — birthday, preferences,
+ *       dislikes — appended to a journal).</li>
  *   <li>{@link #TYPE_WAIT} — async work in flight, nothing to add.</li>
  *   <li>{@link #TYPE_REJECT} — out of scope, explain briefly.</li>
  * </ul>
@@ -61,6 +66,7 @@ public final class EddieActionSchema {
     public static final String TYPE_STEER_PROJECT    = "STEER_PROJECT";
     public static final String TYPE_RELAY            = "RELAY";
     public static final String TYPE_RELAY_INBOX      = "RELAY_INBOX";
+    public static final String TYPE_LEARN            = "LEARN";
     public static final String TYPE_WAIT             = "WAIT";
     public static final String TYPE_REJECT           = "REJECT";
 
@@ -68,7 +74,20 @@ public final class EddieActionSchema {
             TYPE_ANSWER, TYPE_ASK_USER,
             TYPE_DELEGATE_PROJECT, TYPE_STEER_PROJECT,
             TYPE_RELAY, TYPE_RELAY_INBOX,
+            TYPE_LEARN,
             TYPE_WAIT, TYPE_REJECT);
+
+    /** LEARN scope: persistent persona summary, always loaded into Eddie's prompt. */
+    public static final String LEARN_SCOPE_PERSONA = "persona";
+
+    /** LEARN scope: factual journal entry, appended with timestamp. */
+    public static final String LEARN_SCOPE_FACT = "fact";
+
+    public static final Set<String> LEARN_SCOPES = Set.of(
+            LEARN_SCOPE_PERSONA, LEARN_SCOPE_FACT);
+
+    public static final String LEARN_MODE_APPEND  = "append";
+    public static final String LEARN_MODE_REPLACE = "replace";
 
     // ─────────────────────────────────────────────
     // Field names — public so handlers can use them
@@ -104,6 +123,12 @@ public final class EddieActionSchema {
     /** Short spoken-style chat message that announces the inbox item (RELAY_INBOX). */
     public static final String PARAM_SPOKEN       = "spoken";
 
+    /** LEARN scope discriminator: {@code persona} or {@code fact}. */
+    public static final String PARAM_SCOPE        = "scope";
+
+    /** LEARN persona-update mode: {@code append} or {@code replace} (default). */
+    public static final String PARAM_MODE         = "mode";
+
     /**
      * Schema (flat) covering all action types. Per-type required-field
      * validation lives in {@code EddieEngine.handleAction}, where the
@@ -120,6 +145,7 @@ public final class EddieActionSchema {
                 TYPE_ANSWER, TYPE_ASK_USER,
                 TYPE_DELEGATE_PROJECT, TYPE_STEER_PROJECT,
                 TYPE_RELAY, TYPE_RELAY_INBOX,
+                TYPE_LEARN,
                 TYPE_WAIT, TYPE_REJECT));
         typeProp.put("description",
                 "Which branch this turn takes. ANSWER = direct spoken "
@@ -129,8 +155,10 @@ public final class EddieActionSchema {
                         + "chat-input to an existing project's Arthur. "
                         + "RELAY = read a worker reply aloud as your voice. "
                         + "RELAY_INBOX = save a worker reply to the user's "
-                        + "inbox + announce it briefly. WAIT = async work "
-                        + "running. REJECT = out of scope.");
+                        + "inbox + announce it briefly. LEARN = persist "
+                        + "something about the user (persona summary or "
+                        + "specific fact) into per-user memory. WAIT = "
+                        + "async work running. REJECT = out of scope.");
 
         Map<String, Object> reasonProp = new LinkedHashMap<>();
         reasonProp.put("type", "string");
@@ -175,8 +203,10 @@ public final class EddieActionSchema {
         Map<String, Object> contentProp = new LinkedHashMap<>();
         contentProp.put("type", "string");
         contentProp.put("description",
-                "Chat-input to send to the existing project's Arthur. "
-                        + "Required for STEER_PROJECT.");
+                "For STEER_PROJECT: chat-input to send to the existing "
+                        + "project's Arthur. For LEARN: the persona "
+                        + "update or factual entry to persist. Required "
+                        + "for both.");
 
         Map<String, Object> sourceProp = new LinkedHashMap<>();
         sourceProp.put("type", "string");
@@ -207,6 +237,29 @@ public final class EddieActionSchema {
                         + "RELAY_INBOX. The user hears this; the long "
                         + "content goes silently to the inbox.");
 
+        Map<String, Object> scopeProp = new LinkedHashMap<>();
+        scopeProp.put("type", "string");
+        scopeProp.put("enum", List.of(LEARN_SCOPE_PERSONA, LEARN_SCOPE_FACT));
+        scopeProp.put("description",
+                "LEARN scope. 'persona' = how-to-talk-to-this-user "
+                        + "summary, always loaded into Eddie's prompt "
+                        + "(use for persona traits, communication style, "
+                        + "preferences about Eddie's behavior). 'fact' = "
+                        + "a specific user fact (birthday, favorite "
+                        + "color, dislike, hobby) appended to the journal. "
+                        + "Required for LEARN.");
+
+        Map<String, Object> modeProp = new LinkedHashMap<>();
+        modeProp.put("type", "string");
+        modeProp.put("enum", List.of(LEARN_MODE_APPEND, LEARN_MODE_REPLACE));
+        modeProp.put("description",
+                "LEARN persona update mode. 'replace' (default) overwrites "
+                        + "the entire persona summary — use when you want "
+                        + "a clean rewrite. 'append' adds to the end — use "
+                        + "when adding a new note without disturbing the "
+                        + "existing summary. Ignored for scope=fact "
+                        + "(facts are always appended).");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("type", typeProp);
         properties.put("reason", reasonProp);
@@ -220,6 +273,8 @@ public final class EddieActionSchema {
         properties.put(PARAM_PREFIX, prefixProp);
         properties.put(PARAM_INBOX_TITLE, inboxTitleProp);
         properties.put(PARAM_SPOKEN, spokenProp);
+        properties.put(PARAM_SCOPE, scopeProp);
+        properties.put(PARAM_MODE, modeProp);
 
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("type", "object");

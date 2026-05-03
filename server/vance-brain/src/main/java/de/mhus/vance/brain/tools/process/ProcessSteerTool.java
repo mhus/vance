@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
@@ -117,7 +118,7 @@ public class ProcessSteerTool implements Tool {
                         .filter(p -> ctx.tenantId().equals(p.getTenantId())
                                 && sessionId.equals(p.getSessionId())))
                 .orElseThrow(() -> new ToolException(
-                        "Process '" + name + "' not found in current session"));
+                        notFoundMessage(name, ctx.tenantId(), sessionId, ctx.processId())));
 
         if (target.getId() != null && target.getId().equals(ctx.processId())) {
             throw new ToolException(
@@ -214,5 +215,38 @@ public class ProcessSteerTool implements Tool {
             throw new ToolException("'" + key + "' is required and must be a non-empty string");
         }
         return s;
+    }
+
+    /**
+     * Builds a "process not found" error that lists the live workers
+     * in the session so the LLM can see what name it should have used
+     * — instead of just a dead-end "not found" that drives it toward
+     * "spawn a new worker from scratch".
+     */
+    private String notFoundMessage(
+            String wantedName, String tenantId, String sessionId, @Nullable String selfId) {
+        List<ThinkProcessDocument> all = thinkProcessService.findBySession(tenantId, sessionId);
+        StringBuilder sb = new StringBuilder();
+        sb.append("Process '").append(wantedName)
+                .append("' not found in current session.");
+        boolean any = false;
+        for (ThinkProcessDocument p : all) {
+            if (p.getId() == null || p.getId().equals(selfId)) continue;
+            if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
+            if (!any) {
+                sb.append(" Active workers in this session: [");
+                any = true;
+            } else {
+                sb.append(", ");
+            }
+            sb.append("name='").append(p.getName()).append("' status=")
+                    .append(p.getStatus());
+        }
+        if (any) {
+            sb.append("]. Use one of these names verbatim.");
+        } else {
+            sb.append(" No active workers — spawn a new one with process_create if needed.");
+        }
+        return sb.toString();
     }
 }

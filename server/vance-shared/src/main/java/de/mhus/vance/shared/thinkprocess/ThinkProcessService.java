@@ -296,6 +296,21 @@ public class ThinkProcessService {
     }
 
     /**
+     * Atomically sets / clears {@code activeDelegationWorkerId} on the
+     * given process. Pass {@code null} to clear. Used by chat-
+     * orchestrator engines (Arthur) to remember which child worker is
+     * currently the auto-forward target for raw user-chat-input —
+     * so the LLM never has to re-derive worker names from history.
+     */
+    public boolean updateActiveDelegationWorkerId(String id, @Nullable String workerId) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("activeDelegationWorkerId", workerId);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
      * Atomically sets {@code status} on the process with the given Mongo id.
      * For non-CLOSED transitions {@code closeReason} is cleared. For
      * CLOSED transitions, {@code closeReason} <em>must</em> be set —

@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -202,6 +203,7 @@ public class ArthurEngine implements ThinkEngine {
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
+    private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -312,6 +314,16 @@ public class ArthurEngine implements ThinkEngine {
             ThinkEngineContext ctx,
             List<SteerMessage> inbox) {
 
+        // ─── Routing-Schicht: auto-forward to the active delegated worker
+        // when the user is just answering an outstanding clarification.
+        // Bypasses the LLM round-trip entirely so worker-name halluci-
+        // nation is impossible. Falls through to the normal LLM turn
+        // when the conditions don't match (mixed inbox, no active
+        // delegation, worker no longer BLOCKED, etc.).
+        if (tryAutoForwardToDelegatedWorker(process, ctx, inbox)) {
+            return;
+        }
+
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         // Default IDLE on any abnormal exit — matches legacy lifecycle.
         // Reset to outcome.awaitingUserInput() inside the try.
@@ -397,12 +409,178 @@ public class ArthurEngine implements ThinkEngine {
             String preview = finalText.length() > 120 ? finalText.substring(0, 120) + "…" : finalText;
             log.info("Arthur.turn id='{}' awaiting={} -> '{}'",
                     process.getId(), awaitingUserInput, preview);
+
+            // Delegation-pointer maintenance: the LLM-mediated turn
+            // already happened, so we always start by clearing — a
+            // fresh decision was made. If this turn relayed exactly
+            // one BLOCKED ProcessEvent and ended awaiting user input,
+            // re-arm the pointer so the user's next reply auto-routes
+            // to the worker without an LLM round-trip.
+            updateDelegationPointer(process, inbox, awaitingUserInput);
         } finally {
             ThinkProcessStatus exitStatus = awaitingUserInput
                     ? ThinkProcessStatus.BLOCKED
                     : ThinkProcessStatus.IDLE;
             thinkProcessService.updateStatus(process.getId(), exitStatus);
         }
+    }
+
+    /**
+     * Auto-forwards user-chat-input to the currently-delegated worker
+     * when the conditions match — see
+     * {@link ThinkProcessDocument#getActiveDelegationWorkerId()} for
+     * the lifecycle. Returns {@code true} when forwarding happened
+     * (caller must skip the LLM turn).
+     *
+     * <p>Eligibility (all required):
+     * <ul>
+     *   <li>{@code activeDelegationWorkerId} is set on this process</li>
+     *   <li>The inbox contains only {@link SteerMessage.UserChatInput}
+     *       messages — anything else (ProcessEvent, ToolResult, …)
+     *       represents new state the LLM should reason about</li>
+     *   <li>The pointed worker still exists in the same tenant +
+     *       session and is in {@link ThinkProcessStatus#BLOCKED} —
+     *       a worker that finished or was stopped is no target</li>
+     * </ul>
+     */
+    private boolean tryAutoForwardToDelegatedWorker(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            List<SteerMessage> inbox) {
+        String workerId = process.getActiveDelegationWorkerId();
+        if (workerId == null || workerId.isBlank()) {
+            return false;
+        }
+        if (inbox.isEmpty()) {
+            return false;
+        }
+        StringBuilder combined = new StringBuilder();
+        for (SteerMessage m : inbox) {
+            if (!(m instanceof SteerMessage.UserChatInput uci)) {
+                return false;
+            }
+            if (uci.content() == null || uci.content().isBlank()) {
+                continue;
+            }
+            if (combined.length() > 0) combined.append('\n');
+            combined.append(uci.content());
+        }
+        if (combined.length() == 0) {
+            return false;
+        }
+        Optional<ThinkProcessDocument> targetOpt =
+                thinkProcessService.findById(workerId);
+        if (targetOpt.isEmpty()) {
+            log.info(
+                    "Arthur id='{}' delegation pointer references missing worker '{}' — clearing and falling through to LLM",
+                    process.getId(), workerId);
+            thinkProcessService.updateActiveDelegationWorkerId(process.getId(), null);
+            return false;
+        }
+        ThinkProcessDocument target = targetOpt.get();
+        if (!process.getTenantId().equals(target.getTenantId())
+                || !process.getSessionId().equals(target.getSessionId())) {
+            log.warn(
+                    "Arthur id='{}' delegation pointer crosses scope (tenant/session mismatch) — clearing",
+                    process.getId());
+            thinkProcessService.updateActiveDelegationWorkerId(process.getId(), null);
+            return false;
+        }
+        if (target.getStatus() != ThinkProcessStatus.BLOCKED) {
+            log.info(
+                    "Arthur id='{}' delegation target '{}' is {} (not BLOCKED) — clearing pointer, falling through to LLM",
+                    process.getId(), target.getName(), target.getStatus());
+            thinkProcessService.updateActiveDelegationWorkerId(process.getId(), null);
+            return false;
+        }
+
+        // Persist the user's text into Arthur's chat log so the
+        // history reflects the (passive-relay) round-trip.
+        ChatMessageService chatLog = ctx.chatMessageService();
+        chatLog.append(ChatMessageDocument.builder()
+                .tenantId(process.getTenantId())
+                .sessionId(process.getSessionId())
+                .thinkProcessId(process.getId())
+                .role(ChatRole.USER)
+                .content(combined.toString())
+                .build());
+
+        // Forward to the worker via the message router. The worker's
+        // lane wakes itself; we don't block on the worker's turn —
+        // the worker's reply (BLOCKED/DONE event) lands in our inbox
+        // through ParentNotificationListener and triggers the next
+        // (LLM-mediated) Arthur turn.
+        messageRouter.dispatch(
+                process.getId(),
+                target.getId(),
+                de.mhus.vance.shared.thinkprocess.PendingMessageDocument.builder()
+                        .type(de.mhus.vance.shared.thinkprocess.PendingMessageType.USER_CHAT_INPUT)
+                        .at(java.time.Instant.now())
+                        .fromUser("auto-route:" + process.getId())
+                        .content(combined.toString())
+                        .build());
+
+        log.info(
+                "Arthur id='{}' auto-forwarded {} chars to delegated worker '{}' (id='{}')",
+                process.getId(), combined.length(), target.getName(), target.getId());
+
+        // Status: stay BLOCKED — Arthur is still waiting (just for
+        // the worker now instead of the user). When the worker comes
+        // back via ProcessEvent, the next turn runs normally.
+        thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+        return true;
+    }
+
+    /**
+     * Sets / clears {@link ThinkProcessDocument#activeDelegationWorkerId}
+     * based on what just happened. The simple rule: pointer survives
+     * iff this turn relayed exactly one BLOCKED ProcessEvent and ended
+     * awaiting the user — i.e. Arthur is forwarding a worker's
+     * clarification question. Any other outcome clears the pointer.
+     */
+    private void updateDelegationPointer(
+            ThinkProcessDocument process,
+            List<SteerMessage> inbox,
+            boolean awaitingUserInput) {
+        String currentWorker = process.getActiveDelegationWorkerId();
+        String nextWorker = null;
+        if (awaitingUserInput) {
+            String single = singleBlockedSourceProcessId(inbox);
+            if (single != null) {
+                nextWorker = single;
+            }
+        }
+        if (java.util.Objects.equals(currentWorker, nextWorker)) {
+            return;
+        }
+        thinkProcessService.updateActiveDelegationWorkerId(process.getId(), nextWorker);
+        if (nextWorker != null) {
+            log.info("Arthur id='{}' delegation pointer set → worker id='{}'",
+                    process.getId(), nextWorker);
+        } else if (currentWorker != null) {
+            log.info("Arthur id='{}' delegation pointer cleared", process.getId());
+        }
+    }
+
+    /**
+     * Returns the {@code sourceProcessId} when the inbox contained
+     * exactly one BLOCKED-typed {@link SteerMessage.ProcessEvent},
+     * otherwise {@code null}. Multi-clarification fan-in stays
+     * LLM-mediated — disambiguating two simultaneous worker questions
+     * is a planning decision, not a routing one.
+     */
+    private static @Nullable String singleBlockedSourceProcessId(List<SteerMessage> inbox) {
+        String found = null;
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.ProcessEvent pe
+                    && pe.type() == de.mhus.vance.api.thinkprocess.ProcessEventType.BLOCKED) {
+                if (found != null) {
+                    return null;
+                }
+                found = pe.sourceProcessId();
+            }
+        }
+        return found;
     }
 
     /**

@@ -141,6 +141,29 @@ public class ThinkProcessDocument {
     private @Nullable String dataRelayCorrectionOverride;
 
     /**
+     * Routing pointer for chat-orchestrator engines (Arthur, Eddie):
+     * the id of the child worker this process is currently asking the
+     * user a clarification on behalf of. While set, raw user-chat
+     * input that arrives at this process is auto-forwarded to the
+     * pointed worker — no LLM round-trip — so the orchestrator
+     * doesn't have to remember worker names across turns and the
+     * user's answer can never reach a hallucinated wrong target.
+     *
+     * <p>Lifecycle:
+     * <ul>
+     *   <li>Set when this process drains exactly one BLOCKED
+     *       {@code ProcessEvent} from a child and ends the turn with
+     *       {@code awaiting_user_input=true}.</li>
+     *   <li>Cleared when any non-trivial drain happens (a new
+     *       {@code ProcessEvent}, an LLM-mediated turn) so a fresh
+     *       LLM-driven decision can take over.</li>
+     * </ul>
+     * Only chat-orchestrator engines populate this; workers leave it
+     * {@code null}.
+     */
+    private @Nullable String activeDelegationWorkerId;
+
+    /**
      * Effective allowed-tools set computed from the engine's default
      * plus the recipe's add/remove lists at spawn time. {@code null}
      * means "no override — use the engine default", which is the

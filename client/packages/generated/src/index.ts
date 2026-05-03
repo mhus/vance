@@ -76,6 +76,8 @@ export * from './skills/SkillTriggerDto';
 export * from './skills/SkillTriggerType';
 
 export * from './thinkprocess/BootstrappedProcess';
+export * from './thinkprocess/ProcessPauseRequest';
+export * from './thinkprocess/ProcessPauseResponse';
 export * from './thinkprocess/ProcessSpec';
 export * from './thinkprocess/ProcessSteerRequest';
 export * from './thinkprocess/ProcessSteerResponse';

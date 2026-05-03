@@ -76,9 +76,8 @@ import tools.jackson.databind.ObjectMapper;
  * publishes the set; the runtime enforces it.
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
-public class ArthurEngine implements ThinkEngine {
+public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.StructuredActionEngine {
 
     public static final String NAME = "arthur";
     public static final String VERSION = "0.1.0";
@@ -104,9 +103,25 @@ public class ArthurEngine implements ThinkEngine {
      * state doesn't change without a brain restart.
      */
 
+    /**
+     * Tools the runtime may dispatch in Arthur's scope. Two kinds:
+     *
+     * <ul>
+     *   <li><b>Read-only</b> ({@link #LLM_VISIBLE_TOOLS}) — exposed
+     *       to the LLM so it can look things up while deliberating
+     *       (recipes, manuals, sibling status, …).</li>
+     *   <li><b>Action-internal</b> ({@code process_create},
+     *       {@code process_steer}, …) — invoked by Arthur's
+     *       {@code handleAction} dispatch, never shown to the LLM.
+     *       The LLM emits a structured {@code arthur_action}
+     *       ({@code DELEGATE} / etc.); the engine layer translates
+     *       that into the corresponding tool invocation. Keeping
+     *       these in {@code ALLOWED_TOOLS} satisfies the dispatcher's
+     *       allow-filter for the engine's own programmatic calls.</li>
+     * </ul>
+     */
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "whoami",
-            "respond",
             "process_create",
             "process_steer",
             "process_stop",
@@ -120,65 +135,33 @@ public class ArthurEngine implements ThinkEngine {
             "manual_read",
             "inbox_post");
 
+    /**
+     * Subset of {@link #ALLOWED_TOOLS} the LLM is allowed to see and
+     * call directly each turn. Excludes everything that has an
+     * equivalent in the structured-action vocabulary — those are
+     * routed through {@code arthur_action} ({@code DELEGATE} etc.)
+     * instead, removing the free-form-tool / structured-action
+     * conflict.
+     */
+    private static final Set<String> LLM_VISIBLE_TOOLS = Set.of(
+            "whoami",
+            "process_list",
+            "process_status",
+            "recipe_list",
+            "recipe_describe",
+            "manual_list",
+            "manual_read",
+            "inbox_post");
+
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     // ──────────────────── End-of-turn marker ────────────────────
-    // The structured {@link RespondTool} is the explicit end-of-turn
-    // signal: the model emits `respond(message, awaiting_user_input)`
-    // and the tool-loop returns the message + the awaiting flag. The
-    // legacy "intent-without-action" regex validator (sprach-bias on
-    // EN/DE phrases like "I'll check" / "Soll ich") has been retired
-    // in favour of this structured signal — see
-    // specification/structured-engine-output.md.
-
-    /** Max corrections per turn for the structural no-tool-call validator. */
-    private static final int MAX_VALIDATION_CORRECTIONS = 2;
-
-    /** Max iterations of the format-correction sub-loop. */
-    private static final int MAX_FORMAT_CORRECTION_ITERS = 2;
-
-    /**
-     * Mini-system-prompt for the format-correction sub-loop. See
-     * Ford.FORMAT_CORRECTION_SYSTEM for the full rationale — same
-     * pattern: fresh sub-conversation, only `respond` available, no
-     * fallback into "answer the question again" territory.
-     */
-    private static final String FORMAT_CORRECTION_SYSTEM =
-            "You are a format-correction agent. Your only job is to "
-                    + "wrap the assistant text below into a `respond` "
-                    + "tool call.\n\n"
-                    + "Rules:\n"
-                    + "- Emit exactly one tool call: "
-                    + "`respond(message=<the text VERBATIM>, awaiting_user_input=true)`.\n"
-                    + "- Do NOT modify, summarise, shorten, translate, or rewrite the text.\n"
-                    + "- Do NOT add any commentary outside the tool call.\n"
-                    + "- Do NOT call any other tool.\n"
-                    + "- The text you must wrap is the assistant message that follows.";
-
-    /**
-     * Language-agnostic correction for "model produced free text with
-     * no tool call". Replaces the old regex-based intent-without-action
-     * validator: the structural check is whether any tool was emitted,
-     * not what phrases the text contains.
-     */
-    private static final String NO_TOOL_CALL_CORRECTION =
-            "VALIDATION CHECK: your previous response had no tool call. "
-                    + "Every turn must end with at least one tool call: "
-                    + "the work tools first (process_create, process_steer, …), "
-                    + "then `respond(message=..., awaiting_user_input=...)` "
-                    + "as the final marker.\n\n"
-                    + "If your previous response was a complete answer to "
-                    + "the user (any non-trivial assistant text), re-emit "
-                    + "that text VERBATIM — same wording, same length, "
-                    + "same formatting — as the `message` argument of "
-                    + "`respond`. Do not summarise it, do not shorten it, "
-                    + "do not replace it with a brief acknowledgement. "
-                    + "The text you already wrote IS the answer; just wrap "
-                    + "it in `respond(message=<that text>, awaiting_user_input=true)`.\n\n"
-                    + "If your previous response was an intent-to-act ("
-                    + "\"I will check…\"), emit the action tool now "
-                    + "instead. Free assistant text without a tool call "
-                    + "is never the right output.";
+    // Arthur drives every turn through a single structured action
+    // ({@code arthur_action}). See {@link ArthurActionSchema} for the
+    // vocabulary and {@link de.mhus.vance.brain.thinkengine.action.StructuredActionEngine}
+    // for the loop implementation. The legacy regex-based
+    // intent-validator + free-text format-correction sub-loop are
+    // gone — the structured action's JSON validation subsumes both.
 
     /**
      * Base cascade path for the Arthur engine prompt. Loaded via
@@ -193,17 +176,39 @@ public class ArthurEngine implements ThinkEngine {
     private static final String DEFAULT_PROMPT_PATH = "prompts/arthur-prompt.md";
 
     private final ThinkProcessService thinkProcessService;
-    private final ObjectMapper objectMapper;
-    private final StreamingProperties streamingProperties;
     private final ArthurProperties arthurProperties;
     private final RecipeLoader recipeLoader;
     private final ModelCatalog modelCatalog;
-    private final LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
+
+    public ArthurEngine(
+            ThinkProcessService thinkProcessService,
+            ObjectMapper objectMapper,
+            StreamingProperties streamingProperties,
+            ArthurProperties arthurProperties,
+            RecipeLoader recipeLoader,
+            ModelCatalog modelCatalog,
+            LlmCallTracker llmCallTracker,
+            de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader,
+            de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver,
+            de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory,
+            de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher,
+            de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter) {
+        super(streamingProperties, llmCallTracker, objectMapper);
+        this.thinkProcessService = thinkProcessService;
+        this.arthurProperties = arthurProperties;
+        this.recipeLoader = recipeLoader;
+        this.modelCatalog = modelCatalog;
+        this.memoryContextLoader = memoryContextLoader;
+        this.enginePromptResolver = enginePromptResolver;
+        this.engineChatFactory = engineChatFactory;
+        this.skillTriggerMatcher = skillTriggerMatcher;
+        this.messageRouter = messageRouter;
+    }
 
     // ──────────────────── Metadata ────────────────────
 
@@ -388,34 +393,61 @@ public class ArthurEngine implements ThinkEngine {
                     config.modelName(), maxIters, validation);
 
             String modelAlias = config.provider() + ":" + config.modelName();
-            TurnOutcome outcome = runToolLoop(
-                    aiChat, toolSpecs, tools, messages, ctx, process,
-                    maxIters, validation, modelAlias);
-            if (outcome.needsFormatCorrection()) {
-                outcome = runFormatCorrectionLoop(
-                        aiChat, toolSpecs, process, outcome.finalText(), modelAlias, ctx);
+
+            // Restrict the LLM-visible tool set to read-only tools
+            // (recipe_list, manual_read, …). Action-internal tools
+            // (process_create, process_steer, …) stay in the dispatcher
+            // for engine-internal invocation but are NOT shown to the
+            // LLM — orchestration goes through the structured
+            // {@code arthur_action} call instead.
+            List<ToolSpecification> readToolSpecs = toolSpecs.stream()
+                    .filter(t -> LLM_VISIBLE_TOOLS.contains(t.name()))
+                    .toList();
+
+            ActionLoopResult loopResult = runStructuredActionLoop(
+                    aiChat, readToolSpecs, tools, messages, ctx, process,
+                    maxIters, modelAlias);
+
+            ActionTurnOutcome outcome;
+            if (loopResult.isAction()) {
+                outcome = handleAction(loopResult.action(), process, ctx);
+            } else {
+                // Structural fallback: LLM never produced a valid
+                // arthur_action despite corrections. Use whatever
+                // free-text it generated as a best-effort ANSWER so
+                // the user still sees something.
+                String text = loopResult.fallbackText();
+                outcome = new ActionTurnOutcome(
+                        text == null || text.isBlank()
+                                ? "(internal: action loop produced no usable output — "
+                                        + loopResult.fallbackReason() + ")"
+                                : text,
+                        true);
             }
             awaitingUserInput = outcome.awaitingUserInput();
-            String finalText = outcome.finalText();
 
-            chatLog.append(ChatMessageDocument.builder()
-                    .tenantId(process.getTenantId())
-                    .sessionId(process.getSessionId())
-                    .thinkProcessId(process.getId())
-                    .role(ChatRole.ASSISTANT)
-                    .content(finalText)
-                    .build());
+            String chatMessage = outcome.chatMessage();
+            if (chatMessage != null && !chatMessage.isBlank()) {
+                chatLog.append(ChatMessageDocument.builder()
+                        .tenantId(process.getTenantId())
+                        .sessionId(process.getSessionId())
+                        .thinkProcessId(process.getId())
+                        .role(ChatRole.ASSISTANT)
+                        .content(chatMessage)
+                        .build());
+                String preview = chatMessage.length() > 120
+                        ? chatMessage.substring(0, 120) + "…" : chatMessage;
+                log.info("Arthur.turn id='{}' awaiting={} -> '{}'",
+                        process.getId(), awaitingUserInput, preview);
+            } else {
+                log.info("Arthur.turn id='{}' awaiting={} (silent — no chat append)",
+                        process.getId(), awaitingUserInput);
+            }
 
-            String preview = finalText.length() > 120 ? finalText.substring(0, 120) + "…" : finalText;
-            log.info("Arthur.turn id='{}' awaiting={} -> '{}'",
-                    process.getId(), awaitingUserInput, preview);
-
-            // Delegation-pointer maintenance: the LLM-mediated turn
-            // already happened, so we always start by clearing — a
-            // fresh decision was made. If this turn relayed exactly
-            // one BLOCKED ProcessEvent and ended awaiting user input,
-            // re-arm the pointer so the user's next reply auto-routes
-            // to the worker without an LLM round-trip.
+            // Delegation-pointer maintenance: same logic as before.
+            // If this turn relayed exactly one BLOCKED ProcessEvent
+            // and ended awaiting user input, re-arm the pointer so
+            // the user's next reply auto-routes to the worker.
             updateDelegationPointer(process, inbox, awaitingUserInput);
         } finally {
             ThinkProcessStatus exitStatus = awaitingUserInput
@@ -583,379 +615,155 @@ public class ArthurEngine implements ThinkEngine {
         return found;
     }
 
-    /**
-     * Outcome of one tool-loop turn — final assistant text plus the
-     * explicit {@code awaiting_user_input} flag that drives the
-     * post-turn process status (BLOCKED vs IDLE).
-     */
-    private record TurnOutcome(
-            String finalText,
-            boolean awaitingUserInput,
-            /** See Ford.TurnOutcome.needsFormatCorrection — same semantics. */
-            boolean needsFormatCorrection) {}
+    // ──────────────────── Structured-action contract ────────────────────
 
-    /** Parsed payload of a {@link RespondTool} call. */
-    private record RespondArgs(String message, boolean awaitingUserInput) {}
-
-    /**
-     * Tool-call loop in streaming mode. Same shape as Ford's. The
-     * {@link RespondTool} is the end-of-turn marker: when the model
-     * emits a {@code respond} call, the loop dispatches any other
-     * tool calls in the same response (so the audit trail keeps the
-     * results) and then returns the {@code respond} args as
-     * {@link TurnOutcome}.
-     *
-     * <p>Fallback: a response without any tool calls (model ignored
-     * the convention) hands back the streamed text with
-     * {@code awaitingUserInput=false}, preserving the legacy IDLE
-     * lifecycle.
-     */
-    private TurnOutcome runToolLoop(
-            AiChat aiChat,
-            List<ToolSpecification> toolSpecs,
-            ContextToolsApi tools,
-            List<ChatMessage> messages,
-            ThinkEngineContext ctx,
-            ThinkProcessDocument process,
-            int maxIters,
-            boolean validation,
-            String modelAlias) {
-        StringBuilder finalText = new StringBuilder();
-        int corrections = 0;
-        // Best Free-Text seen so far. Used as last-resort
-        // `respond.message` when the LLM collapses or maxIters runs
-        // out — preserves the work instead of forcing a respawn from
-        // scratch. Same pattern as Ford.runToolLoop.
-        String bestFreeText = "";
-        for (int iter = 0; iter < maxIters; iter++) {
-            ChatRequest.Builder req = ChatRequest.builder().messages(messages);
-            if (!toolSpecs.isEmpty()) {
-                req.toolSpecifications(toolSpecs);
-            }
-            AiMessage reply;
-            try {
-                reply = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
-            } catch (RuntimeException e) {
-                if (!bestFreeText.isEmpty()) {
-                    log.warn(
-                            "Arthur id='{}' tool-loop LLM failure ({}) — recovering with best Free-Text seen ({} chars), deferring to format-correction",
-                            process.getId(), e.toString(), bestFreeText.length());
-                    return new TurnOutcome(bestFreeText, true, /*needsFormatCorrection*/ true);
-                }
-                log.warn("Arthur id='{}' tool-loop LLM failure with no recoverable text",
-                        process.getId());
-                throw e;
-            }
-
-            String replyText = reply.text();
-            if (replyText != null && replyText.length() > bestFreeText.length()) {
-                bestFreeText = replyText;
-            }
-
-            if (!reply.hasToolExecutionRequests()) {
-                // Model emitted free text with no tool call. The reply
-                // IS the answer; only the wrapping `respond` is missing.
-                // Defer to the format-correction sub-loop instead of
-                // polluting the main conversation with format nudges.
-                String text = reply.text();
-                if (text != null) {
-                    finalText.append(text);
-                }
-                return new TurnOutcome(
-                        finalText.toString(), true, /*needsFormatCorrection*/ true);
-            }
-
-            ToolExecutionRequest respondCall = null;
-            List<ToolExecutionRequest> others = new ArrayList<>();
-            for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
-                if (RespondTool.NAME.equals(call.name())) {
-                    if (respondCall == null) {
-                        respondCall = call;
-                    }
-                } else {
-                    others.add(call);
-                }
-            }
-
-            messages.add(reply);
-            for (ToolExecutionRequest call : others) {
-                String result = invokeOne(tools, call, process.getId());
-                messages.add(ToolExecutionResultMessage.from(call, result));
-            }
-            if (respondCall != null) {
-                if (!others.isEmpty()) {
-                    // Model emitted respond *together with* work tools.
-                    // The respond payload was speculative — it didn't
-                    // see the tool results yet. Synthesise a tool-result
-                    // rejection for respond and continue the loop so the
-                    // next turn produces the real synthesised answer.
-                    log.info(
-                            "Arthur id='{}' rejecting premature respond emitted alongside {} other tool(s) — looping for actual results",
-                            process.getId(), others.size());
-                    messages.add(ToolExecutionResultMessage.from(respondCall,
-                            "{\"error\":\"respond was called together with other tool calls. "
-                                    + "respond must be the LAST and ONLY tool call in a turn, "
-                                    + "after you have observed the results of all work tools. "
-                                    + "Continue the loop: read the tool results above, then "
-                                    + "call respond with the synthesised answer.\"}"));
-                    continue;
-                }
-                RespondArgs args = parseRespondArgs(respondCall);
-                if (args.message() != null && !args.message().isEmpty()) {
-                    finalText.append(args.message());
-                }
-                return new TurnOutcome(
-                        finalText.toString(), args.awaitingUserInput(),
-                        /*needsFormatCorrection*/ false);
-            }
-        }
-        if (!bestFreeText.isEmpty()) {
-            log.warn(
-                    "Arthur id='{}' exceeded {} tool iterations — recovering with best Free-Text seen ({} chars), deferring to format-correction",
-                    process.getId(), maxIters, bestFreeText.length());
-            return new TurnOutcome(bestFreeText, true, /*needsFormatCorrection*/ true);
-        }
-        throw new AiChatException(
-                "Arthur exceeded " + maxIters
-                        + " tool iterations — no recoverable text, aborting turn.");
+    @Override
+    protected String actionToolName() {
+        return ArthurActionSchema.TOOL_NAME;
     }
 
-    /**
-     * Format-correction sub-loop. See Ford.runFormatCorrectionLoop —
-     * same pattern: fresh sub-conversation, only `respond` available,
-     * falls back to Free-Text-verbatim if the model still doesn't
-     * emit `respond` after {@link #MAX_FORMAT_CORRECTION_ITERS}.
-     */
-    private TurnOutcome runFormatCorrectionLoop(
-            AiChat aiChat,
-            List<ToolSpecification> mainToolSpecs,
+    @Override
+    protected String actionToolDescription() {
+        return ArthurActionSchema.TOOL_DESCRIPTION;
+    }
+
+    @Override
+    protected Map<String, Object> actionToolSchema() {
+        return ArthurActionSchema.schema();
+    }
+
+    @Override
+    protected Set<String> supportedActionTypes() {
+        return ArthurActionSchema.SUPPORTED_TYPES;
+    }
+
+    @Override
+    protected ActionTurnOutcome handleAction(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
             ThinkProcessDocument process,
-            String freeText,
-            String modelAlias,
             ThinkEngineContext ctx) {
-        if (freeText == null || freeText.isBlank()) {
-            return new TurnOutcome("", true, /*needsFormatCorrection*/ false);
-        }
-        log.info(
-                "Arthur id='{}' format-correction sub-loop starting (text {} chars)",
-                process.getId(), freeText.length());
-
-        // Gemini-compatible: end on UserMessage. Wrap-instruction +
-        // text-to-wrap go into the same UserMessage.
-        List<ChatMessage> sub = new ArrayList<>();
-        sub.add(SystemMessage.from(FORMAT_CORRECTION_SYSTEM));
-        sub.add(UserMessage.from(
-                "Wrap the following assistant text VERBATIM in a "
-                        + "`respond(message=<that text>, awaiting_user_input=true)` "
-                        + "tool call. Do not modify, summarise, or shorten the text. "
-                        + "Emit only the tool call, no other text.\n\n"
-                        + "--- BEGIN ASSISTANT TEXT ---\n"
-                        + freeText
-                        + "\n--- END ASSISTANT TEXT ---"));
-
-        List<ToolSpecification> respondOnly = new ArrayList<>();
-        for (ToolSpecification spec : mainToolSpecs) {
-            if (RespondTool.NAME.equals(spec.name())) {
-                respondOnly.add(spec);
-                break;
+        return switch (action.type()) {
+            case ArthurActionSchema.TYPE_ANSWER   -> handleAnswer(action);
+            case ArthurActionSchema.TYPE_ASK_USER -> handleAskUser(action);
+            case ArthurActionSchema.TYPE_DELEGATE -> handleDelegate(action, process, ctx);
+            case ArthurActionSchema.TYPE_WAIT     -> handleWait(action);
+            case ArthurActionSchema.TYPE_REJECT   -> handleReject(action);
+            default -> {
+                // Should never happen — the base class validates against
+                // supportedActionTypes() before reaching here. Surface as
+                // a chat message so the user sees something.
+                log.warn("Arthur id='{}' unknown action type '{}'",
+                        process.getId(), action.type());
+                yield new ActionTurnOutcome(
+                        "(internal: unknown action type '" + action.type()
+                                + "', reason was: " + action.reason() + ")",
+                        true);
             }
-        }
-        if (respondOnly.isEmpty()) {
-            log.warn(
-                    "Arthur id='{}' format-correction: respond tool not in spec list — fallback to verbatim",
-                    process.getId());
-            return new TurnOutcome(freeText, true, /*needsFormatCorrection*/ false);
-        }
-
-        for (int iter = 0; iter < MAX_FORMAT_CORRECTION_ITERS; iter++) {
-            ChatRequest req = ChatRequest.builder()
-                    .messages(sub)
-                    .toolSpecifications(respondOnly)
-                    .build();
-            AiMessage reply;
-            try {
-                reply = streamOneIteration(aiChat, req, ctx, process, modelAlias);
-            } catch (RuntimeException e) {
-                log.warn(
-                        "Arthur id='{}' format-correction LLM failure ({}) — falling back to Free-Text verbatim",
-                        process.getId(), e.toString());
-                return new TurnOutcome(freeText, true, /*needsFormatCorrection*/ false);
-            }
-
-            if (reply.hasToolExecutionRequests()) {
-                for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
-                    if (RespondTool.NAME.equals(call.name())) {
-                        RespondArgs args = parseRespondArgs(call);
-                        String message = args.message() != null && !args.message().isBlank()
-                                ? args.message()
-                                : freeText;
-                        log.info(
-                                "Arthur id='{}' format-correction succeeded after {} iter — wrapped {} chars",
-                                process.getId(), iter + 1, message.length());
-                        return new TurnOutcome(
-                                message, args.awaitingUserInput(),
-                                /*needsFormatCorrection*/ false);
-                    }
-                }
-            }
-
-            sub.add(reply);
-            sub.add(UserMessage.from(
-                    "You did not call `respond`. Call it now with the "
-                            + "assistant text from my first message as the "
-                            + "`message` argument. Emit only the tool call, "
-                            + "nothing else."));
-        }
-
-        log.warn(
-                "Arthur id='{}' format-correction exhausted {} iters — falling back to Free-Text verbatim",
-                process.getId(), MAX_FORMAT_CORRECTION_ITERS);
-        return new TurnOutcome(freeText, true, /*needsFormatCorrection*/ false);
-    }
-
-    private RespondArgs parseRespondArgs(ToolExecutionRequest call) {
-        String raw = call.arguments();
-        if (raw == null || raw.isBlank()) {
-            return new RespondArgs("", true);
-        }
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> parsed = objectMapper.readValue(raw, Map.class);
-            Object msgVal = parsed.get(RespondTool.PARAM_MESSAGE);
-            Object awaitingVal = parsed.get(RespondTool.PARAM_AWAITING_USER_INPUT);
-            String message = msgVal instanceof String s ? s : "";
-            boolean awaiting = !(awaitingVal instanceof Boolean b) || b;
-            return new RespondArgs(message, awaiting);
-        } catch (RuntimeException e) {
-            log.warn("Arthur: failed to parse respond args (raw='{}'): {}", raw, e.toString());
-            return new RespondArgs("", true);
-        }
-    }
-
-    private AiMessage streamOneIteration(
-            AiChat aiChat,
-            ChatRequest request,
-            ThinkEngineContext ctx,
-            ThinkProcessDocument process,
-            String modelAlias) {
-        CompletableFuture<ChatResponse> done = new CompletableFuture<>();
-        ClientEventPublisher events = ctx.events();
-        String sessionId = process.getSessionId();
-        long startMs = System.currentTimeMillis();
-
-        ChunkBatcher batcher = new ChunkBatcher(
-                streamingProperties.getChunkCharThreshold(),
-                streamingProperties.getChunkFlushMs(),
-                chunk -> {
-                    ChatMessageChunkData data = ChatMessageChunkData.builder()
-                            .thinkProcessId(process.getId())
-                            .processName(process.getName())
-                            .role(ChatRole.ASSISTANT)
-                            .chunk(chunk)
-                            .build();
-                    events.publish(sessionId, MessageType.CHAT_MESSAGE_STREAM_CHUNK, data);
-                });
-
-        aiChat.streamingChatModel().chat(request, new StreamingChatResponseHandler() {
-            @Override
-            public void onPartialResponse(String partial) {
-                if (partial == null || partial.isEmpty()) return;
-                try {
-                    batcher.accept(partial);
-                } catch (RuntimeException e) {
-                    log.warn("Arthur chunk-publish threw: {}", e.toString());
-                }
-            }
-
-            @Override
-            public void onCompleteResponse(ChatResponse complete) {
-                batcher.flush();
-                done.complete(complete);
-            }
-
-            @Override
-            public void onError(Throwable error) {
-                batcher.flush();
-                done.completeExceptionally(error);
-            }
-        });
-
-        try {
-            ChatResponse complete = done.get();
-            llmCallTracker.record(
-                    process, complete, System.currentTimeMillis() - startMs, modelAlias);
-            return complete.aiMessage();
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new AiChatException("Arthur streaming failed: " + cause.getMessage(), cause);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new AiChatException("Arthur streaming interrupted", e);
-        }
-    }
-
-    private String invokeOne(
-            ContextToolsApi tools, ToolExecutionRequest call, String processId) {
-        Map<String, Object> params;
-        try {
-            params = parseArgs(call.arguments());
-        } catch (RuntimeException e) {
-            log.warn("Arthur id='{}' tool='{}' bad arguments: {}",
-                    processId, call.name(), e.getMessage());
-            return errorJson("Invalid tool arguments: " + e.getMessage());
-        }
-        log.info("Arthur id='{}' tool_use {}({})",
-                processId, call.name(), summarizeArgs(params));
-        try {
-            Map<String, Object> result = tools.invoke(call.name(), params);
-            return objectMapper.writeValueAsString(result);
-        } catch (ToolException e) {
-            log.info("Arthur id='{}' tool='{}' returned error: {}",
-                    processId, call.name(), e.getMessage());
-            return errorJson(e.getMessage());
-        } catch (RuntimeException e) {
-            log.warn("Arthur id='{}' tool='{}' unexpected failure: {}",
-                    processId, call.name(), e.toString());
-            return errorJson("Tool failed: " + e.getMessage());
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> parseArgs(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return Map.of();
-        }
-        return objectMapper.readValue(raw, Map.class);
+        };
     }
 
     /**
-     * One-line projection of tool args for the log — keeps secrets and
-     * giant payloads out without losing the "what was called with what"
-     * signal that makes hangs diagnosable.
+     * Direct user-facing reply. Most common action — Arthur knows the
+     * answer (or has just synthesised one from a worker's results).
      */
-    private static String summarizeArgs(Map<String, Object> params) {
-        if (params == null || params.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder();
-        boolean first = true;
-        for (Map.Entry<String, Object> e : params.entrySet()) {
-            if (!first) sb.append(", ");
-            first = false;
-            sb.append(e.getKey()).append("=");
-            String v = String.valueOf(e.getValue());
-            if (v.length() > 80) v = v.substring(0, 77) + "...";
-            sb.append(v.replace("\n", "\\n"));
+    private ActionTurnOutcome handleAnswer(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+        String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
+        if (message == null || message.isBlank()) {
+            // No message attached but type=ANSWER. Use the reason as
+            // a fallback so the user at least sees something instead
+            // of silence.
+            message = action.reason();
         }
-        return sb.toString();
+        return new ActionTurnOutcome(message, /*awaitingUserInput*/ true);
     }
 
-    private String errorJson(String message) {
-        try {
-            Map<String, Object> err = new LinkedHashMap<>();
-            err.put("error", message);
-            return objectMapper.writeValueAsString(err);
-        } catch (RuntimeException e) {
-            return "{\"error\":\"" + message.replace("\"", "'") + "\"}";
+    /** Clarification question to the user. Identical persistence to ANSWER but semantically different. */
+    private ActionTurnOutcome handleAskUser(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+        String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
+        if (message == null || message.isBlank()) {
+            message = action.reason();
         }
+        return new ActionTurnOutcome(message, /*awaitingUserInput*/ true);
+    }
+
+    /**
+     * Spawn a worker via the {@code process_create} tool. The LLM
+     * provides the recipe preset and a self-contained prompt; the
+     * engine derives a unique worker name and invokes the spawn
+     * programmatically — no LLM-generated names, no hallucination
+     * risk. The optional {@code message} is shown to the user as a
+     * pre-announcement; absent message = silent spawn (no chat
+     * append, no filler).
+     */
+    private ActionTurnOutcome handleDelegate(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        String preset = action.stringParam(ArthurActionSchema.PARAM_PRESET);
+        String prompt = action.stringParam(ArthurActionSchema.PARAM_PROMPT);
+        if (preset == null || preset.isBlank() || prompt == null || prompt.isBlank()) {
+            log.warn("Arthur id='{}' DELEGATE missing preset/prompt — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(
+                    "Sorry — internal: tried to delegate without preset or prompt. "
+                            + "Reason was: " + action.reason(),
+                    true);
+        }
+
+        String workerName = preset + "-" + java.util.UUID.randomUUID().toString().substring(0, 6);
+        try {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("recipe", preset);
+            params.put("name", workerName);
+            params.put("goal", prompt);
+            params.put("steerContent", prompt);
+            ctx.tools().invoke("process_create", params);
+            log.info("Arthur id='{}' DELEGATE recipe='{}' worker='{}' reason='{}'",
+                    process.getId(), preset, workerName, summariseReason(action.reason()));
+        } catch (RuntimeException e) {
+            log.warn("Arthur id='{}' DELEGATE failed: {}", process.getId(), e.toString());
+            return new ActionTurnOutcome(
+                    "Internal: konnte den Worker nicht starten ("
+                            + e.getMessage() + ").",
+                    true);
+        }
+
+        // The whole point of structured DELEGATE: when message is
+        // absent, the spawn is silent — no "Okay, I'll start a
+        // worker" filler in the user-facing chat. The worker's own
+        // assistant messages will surface through the
+        // ChatMessageNotificationDispatcher when ready.
+        String preText = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
+        return new ActionTurnOutcome(
+                preText == null || preText.isBlank() ? null : preText,
+                /*awaitingUserInput*/ false);
+    }
+
+    /** Async work in flight, nothing to add. Engine goes IDLE. */
+    private ActionTurnOutcome handleWait(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+        String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
+        return new ActionTurnOutcome(
+                message == null || message.isBlank() ? null : message,
+                /*awaitingUserInput*/ false);
+    }
+
+    /** Out-of-scope refusal. */
+    private ActionTurnOutcome handleReject(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+        String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
+        if (message == null || message.isBlank()) {
+            message = "Das geht so leider nicht — " + action.reason();
+        }
+        return new ActionTurnOutcome(message, /*awaitingUserInput*/ true);
+    }
+
+    private static String summariseReason(String reason) {
+        if (reason == null) return "";
+        String oneLine = reason.replace("\n", " ").replaceAll("\\s+", " ").trim();
+        return oneLine.length() > 80 ? oneLine.substring(0, 77) + "..." : oneLine;
     }
 
     // ──────────────────── Prompt building ────────────────────

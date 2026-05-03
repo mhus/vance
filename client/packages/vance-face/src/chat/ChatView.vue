@@ -31,6 +31,7 @@ import type {
   ChatMessageChunkData,
   ChatMessageDto,
   ChatRole,
+  ProcessPauseRequest,
   ProcessProgressNotification,
   ProcessSteerRequest,
   ProcessSteerResponse,
@@ -56,6 +57,16 @@ const { messages: history, loading: historyLoading, error: historyError, load, r
 
 /** Messages received via chat-message-appended after history load. Same shape as history. */
 const liveMessages = ref<ChatMessageDto[]>([]);
+
+/**
+ * Set of {@code messageId}s that arrived from a sub-process (worker)
+ * rather than the main chat process. The bubble for these renders in
+ * the compact green worker variant of {@link MessageBubble}, mirroring
+ * the foot client's {@code worker()} channel. History from REST is
+ * filtered to the chat-process server-side, so this only ever fills
+ * for live frames.
+ */
+const workerMessageIds = ref<Set<string>>(new Set());
 
 /** Per-process buffer of streaming chunks waiting for their commit frame. */
 const streamingDrafts = ref<Map<string, { role: ChatRole; content: string; processName: string }>>(
@@ -350,6 +361,28 @@ const visibleDraft = computed(() => {
   return entry;
 });
 
+/**
+ * All currently-streaming worker drafts (sub-process chat chunks). Each
+ * one renders as a compact green {@link MessageBubble} below the main
+ * chat scrollback so the user sees the worker is alive even before its
+ * commit frame arrives.
+ */
+const visibleWorkerDrafts = computed(() => {
+  const out: Array<{ role: ChatRole; content: string; processName: string }> = [];
+  for (const [name, entry] of streamingDrafts.value.entries()) {
+    if (!entry.content) continue;
+    if (name === chatProcessName.value) continue;
+    out.push(entry);
+  }
+  return out;
+});
+
+function isWorkerProcess(processName: string | null | undefined): boolean {
+  if (!processName) return false;
+  if (!chatProcessName.value) return false;
+  return processName !== chatProcessName.value;
+}
+
 async function resolveSessionAndProcess(): Promise<void> {
   // session-list returns SessionSummary; the chatProcessName comes from
   // session-bootstrap, but on plain resume we don't have it. Fall back to
@@ -392,12 +425,16 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
     content: data.content,
     createdAt: data.createdAt,
   });
+  if (isWorkerProcess(data.processName)) {
+    workerMessageIds.value = new Set(workerMessageIds.value).add(data.chatMessageId);
+  }
   // Commit beats the pending draft of this process — clear it.
   streamingDrafts.value.delete(data.processName);
-  // Speak non-USER messages when the speaker is enabled. USER frames
-  // are the canonical echo of what the user typed — they shouldn't be
-  // read back to them.
-  if (String(data.role) !== 'USER') {
+  // Speak non-USER messages from the main chat process when the
+  // speaker is enabled. USER frames are the canonical echo of what
+  // the user typed; worker echoes are side-channel chatter — neither
+  // should be read back to the user.
+  if (String(data.role) !== 'USER' && !isWorkerProcess(data.processName)) {
     speakMessage(data.content);
   }
   scrollToBottom();
@@ -476,6 +513,31 @@ async function send(): Promise<void> {
   }
 }
 
+/**
+ * Fire-and-forget {@code process-pause} for the bound session. Mirrors
+ * {@code ChatInputService.requestPause} in the foot client: pauses
+ * everything alive in the session (chat + workers) and immediately
+ * drops the local "sending" spinner so the composer is usable again.
+ * The eventual {@code process-steer} reply still resolves in the
+ * background — its terminal write is harmless because {@code sending}
+ * is already false.
+ *
+ * <p>Goes through {@code sendNoReply} so we don't block on a server
+ * round-trip the user has explicitly said they don't want to wait for.
+ */
+function pause(): void {
+  if (!sending.value) return;
+  try {
+    props.socket.sendNoReply<ProcessPauseRequest>('process-pause', {});
+  } catch (e) {
+    // Swallow — pause is best-effort. The user gets visible feedback
+    // via the spinner clearing; if the brain ignores us they'll see
+    // chat-message-appended frames continuing.
+    sendError.value = e instanceof Error ? e.message : 'Pause failed.';
+  }
+  sending.value = false;
+}
+
 function onComposerKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Enter') return;
   if (multiline.value) {
@@ -531,8 +593,10 @@ onBeforeUnmount(() => {
 watch(() => props.sessionId, async (newId, oldId) => {
   if (!newId || newId === oldId) return;
   liveMessages.value = [];
+  workerMessageIds.value = new Set();
   streamingDrafts.value = new Map();
   progressEvents.value = [];
+  sending.value = false;
   await load(newId);
   scrollToBottom();
 });
@@ -560,12 +624,23 @@ watch(() => props.sessionId, async (newId, oldId) => {
             :role="String(msg.role)"
             :content="msg.content"
             :created-at="msg.createdAt"
+            :worker="workerMessageIds.has(msg.messageId)"
           />
 
           <MessageBubble
             v-if="visibleDraft"
             :role="String(visibleDraft.role)"
             :content="visibleDraft.content"
+            :streaming="true"
+          />
+
+          <MessageBubble
+            v-for="draft in visibleWorkerDrafts"
+            :key="`worker-draft-${draft.processName}`"
+            :role="String(draft.role)"
+            :content="draft.content"
+            :worker="true"
+            :process-name="draft.processName"
             :streaming="true"
           />
         </div>
@@ -696,6 +771,14 @@ watch(() => props.sessionId, async (newId, oldId) => {
             @click="send"
           >
             Send
+          </VButton>
+          <VButton
+            v-if="sending"
+            variant="danger"
+            title="Pause the chat (and all workers in this session)"
+            @click="pause"
+          >
+            Pause
           </VButton>
         </div>
       </footer>

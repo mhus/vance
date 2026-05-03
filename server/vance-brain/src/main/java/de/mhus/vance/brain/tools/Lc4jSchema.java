@@ -21,12 +21,12 @@ import java.util.Map;
  * author notices immediately rather than shipping a broken schema to
  * the LLM.
  */
-final class Lc4jSchema {
+public final class Lc4jSchema {
 
     private Lc4jSchema() {}
 
     @SuppressWarnings("unchecked")
-    static JsonObjectSchema toObjectSchema(Map<String, Object> schema) {
+    public static JsonObjectSchema toObjectSchema(Map<String, Object> schema) {
         JsonObjectSchema.Builder out = JsonObjectSchema.builder();
         Object description = schema.get("description");
         if (description instanceof String s && !s.isBlank()) {

@@ -1,11 +1,15 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessStatusChangedEvent;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +55,7 @@ public class ParentNotificationListener {
      */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final StopInitiatorRegistry stopInitiatorRegistry;
+    private final ChatMessageService chatMessageService;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -75,11 +80,20 @@ public class ParentNotificationListener {
             }
         }
         ParentReport report = buildReport(event.processId(), eventType, event.newStatus());
+        // Enrich the human-readable summary with the child's last
+        // ASSISTANT chat message so the parent's LLM has context
+        // about WHAT the child said, not just THAT the child
+        // transitioned. Without this, an orchestrator like Arthur
+        // sees only "Child process X status=blocked" and has to
+        // guess what the worker is asking — which leads to phantom
+        // re-spawns or endless clarification loops.
+        String enrichedSummary = enrichWithLastReply(
+                event.processId(), report.humanSummary());
         boolean queued = eventEmitter.notifyParent(
                 parentId,
                 event.processId(),
                 eventType,
-                report.humanSummary(),
+                enrichedSummary,
                 report.payload());
         if (queued) {
             log.info("Parent notify queued parent='{}' child='{}' event={}",
@@ -111,6 +125,50 @@ public class ParentNotificationListener {
             log.warn("summarizeForParent failed for child='{}' engine='{}': {}",
                     childProcessId, process.getThinkEngine(), e.toString());
             return ParentReport.of(genericSummary(childProcessId, newStatus));
+        }
+    }
+
+    /**
+     * Appends the child's last ASSISTANT chat message to the
+     * engine-supplied human summary so the parent's LLM sees the
+     * actual content the child produced — the recipe text, the
+     * clarification question, the analysis result — rather than
+     * just the lifecycle marker. Defensive: if there is no last
+     * ASSISTANT message (rare — a worker that closed without ever
+     * replying), the engine summary is returned untouched.
+     */
+    private String enrichWithLastReply(String childProcessId, String engineSummary) {
+        Optional<ThinkProcessDocument> processOpt =
+                thinkProcessService.findById(childProcessId);
+        if (processOpt.isEmpty()) {
+            return engineSummary;
+        }
+        ThinkProcessDocument process = processOpt.get();
+        try {
+            List<ChatMessageDocument> history = chatMessageService.activeHistory(
+                    process.getTenantId(), process.getSessionId(), process.getId());
+            ChatMessageDocument lastAssistant = null;
+            for (int i = history.size() - 1; i >= 0; i--) {
+                ChatMessageDocument m = history.get(i);
+                if (m.getRole() == ChatRole.ASSISTANT
+                        && m.getContent() != null
+                        && !m.getContent().isBlank()) {
+                    lastAssistant = m;
+                    break;
+                }
+            }
+            if (lastAssistant == null) {
+                return engineSummary;
+            }
+            return engineSummary
+                    + "\n\nLast assistant reply from this child (verbatim):\n"
+                    + "--- BEGIN CHILD REPLY ---\n"
+                    + lastAssistant.getContent()
+                    + "\n--- END CHILD REPLY ---";
+        } catch (RuntimeException e) {
+            log.warn("enrichWithLastReply failed for child='{}': {}",
+                    childProcessId, e.toString());
+            return engineSummary;
         }
     }
 

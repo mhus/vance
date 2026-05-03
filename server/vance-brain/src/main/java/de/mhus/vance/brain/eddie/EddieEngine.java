@@ -886,6 +886,10 @@ public class EddieEngine extends StructuredActionEngine {
                         ? GREETING
                         : process.getPromptOverride(),
                 modelSize);
+        String userBlock = composeUserContextBlock(process);
+        if (userBlock != null && !userBlock.isBlank()) {
+            base = base + "\n\n" + userBlock;
+        }
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             base = base + "\n\n" + memoryBlock;
@@ -905,6 +909,53 @@ public class EddieEngine extends StructuredActionEngine {
             }
         }
         return messages;
+    }
+
+    /**
+     * Builds a "## Your user" block that surfaces the human-readable
+     * user identity at the top of every Eddie turn. Eddie is the
+     * personal hub — addressing the user by name when it fits is part
+     * of the persona. Returns {@code null} if no useful identity is
+     * available (defensive — sessions always have a user-id, but the
+     * displayName is optional).
+     *
+     * <p>Format:
+     * <pre>
+     * ## Your user
+     *
+     * You're talking to **Mike** (login: `mike`). Use his name when it
+     * fits naturally — at the start of a fresh conversation, when
+     * confirming something he just asked, when delivering a result.
+     * Don't tack it on every line.
+     * </pre>
+     */
+    private @Nullable String composeUserContextBlock(ThinkProcessDocument process) {
+        var sessionOpt = sessionService.findBySessionId(process.getSessionId());
+        if (sessionOpt.isEmpty()) {
+            return null;
+        }
+        String displayName = sessionOpt.get().getDisplayName();
+        String userId = sessionOpt.get().getUserId();
+        boolean hasDisplay = displayName != null && !displayName.isBlank();
+        boolean hasUserId = userId != null && !userId.isBlank();
+        if (!hasDisplay && !hasUserId) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder("## Your user\n\n");
+        if (hasDisplay) {
+            sb.append("You're talking to **").append(displayName).append("**");
+            if (hasUserId && !displayName.equals(userId)) {
+                sb.append(" (login: `").append(userId).append("`)");
+            }
+            sb.append(".");
+        } else {
+            sb.append("You're talking to user `").append(userId).append("`.");
+        }
+        sb.append(" Use the user's name when it fits naturally — at the "
+                + "start of a fresh conversation, when confirming "
+                + "something they just asked, when delivering a result. "
+                + "Don't tack it onto every line.");
+        return sb.toString();
     }
 
     private @Nullable String lookupProcessName(@Nullable String processId) {

@@ -44,6 +44,29 @@ fresh decision.
   "message": "Klassisch (mit Wacholder, Rotwein) oder modern?" }
 ```
 
+### `type: "RELAY"`
+Required: `source`. Optional: `prefix`. Pass through a worker's
+last reply to the user **as your own answer**. The engine copies
+the worker's text verbatim into your chat — zero LLM tokens for
+the content. Use this when the worker just delivered a complete
+answer and you just need to show it to the user.
+
+The `source` is the worker's process name (use the
+`sourceProcessName` from the most recent `<process-event>`
+marker — never guess). The optional `prefix` adds a short Arthur
+line in front, e.g. "Hier ist das Rezept:".
+
+```
+{ "type": "RELAY",
+  "reason": "Worker delivered the recipe — passing it to user.",
+  "source": "web-research-7b9124",
+  "prefix": "Hier ist ein klassisches Rezept für Hasenbraten:" }
+```
+
+Use RELAY whenever a worker's reply IS the answer the user asked
+for. It's much cheaper than ANSWER (no token cost for re-emission)
+and avoids paraphrase drift.
+
 ### `type: "DELEGATE"`
 Required: `preset`, `prompt`. Optional: `message`. Spawn a worker
 from a recipe. The engine handles the spawn programmatically — you
@@ -141,42 +164,38 @@ success). The text **between `--- BEGIN CHILD REPLY ---` and
 recipe, the analysis, the question. Use it as-is; it is the
 ground truth the user should see.
 
-**Important — the user already sees the worker's reply.** The
-runtime streams every worker assistant message directly to the
-user's chat. Your job on a `<process-event>` is **not** to
-duplicate the worker's content; it's to decide whether anything
-*else* needs to happen on the orchestrator side.
+**Workers don't speak directly to the user.** Worker
+chat-messages live in the worker's own chat-history (which YOU
+can read via the enriched `<process-event>` marker — the
+"BEGIN CHILD REPLY / END CHILD REPLY" block). The user only
+sees what *you* emit. So when a worker delivers a result, your
+job is to deliver it onward.
 
 When you see a `<process-event>`:
 
 - **`summary`** (mid-flight progress) → almost always `WAIT`.
   The user doesn't need a play-by-play.
 - **`blocked`** → look at the child reply.
-  - If it's a clarification **question** (the worker is asking
-    something) → `WAIT`. The runtime auto-routes the user's
-    next message back to the worker. The user already sees the
-    question in the chat. You don't need to relay it.
-  - If it's a complete **answer / result** (the worker
-    finished its task and just left awaiting=true by
-    convention) → `WAIT`. The user has the answer; nothing for
-    you to add.
-  - Only `ANSWER` if you have something genuinely additional —
-    e.g. you noticed the worker missed part of the request and
-    want to flag a follow-up. Don't paraphrase the worker.
-- **`done`** → `WAIT`. The user already has the worker's final
-  reply. Only emit a short `ANSWER` pointer if the output was
-  long enough to warrant `inbox_post` (>500 chars structured
-  Markdown) — in that case, post first, then `ANSWER` with a
-  one-liner pointer ("Plan ist fertig, siehe Inbox — Hauptpunkte
-  …").
+  - If it's a clarification **question** → `RELAY` with
+    `source = sourceProcessName` and an optional short `prefix`
+    framing it as a question to the user. The user replies, and
+    the runtime auto-routes their answer back to the worker —
+    you don't need to manually steer.
+  - If it's a complete **answer / result** (the worker finished
+    its task and just left awaiting=true by convention) →
+    `RELAY` with `source` set. The user gets the answer.
+- **`done`** → `RELAY` to deliver the worker's final reply.
+  For very long structured output (>500 chars Markdown that
+  the user might want to keep), `inbox_post` it first, then
+  `ANSWER` with a one-liner pointer ("Plan ist fertig, siehe
+  Inbox — Hauptpunkte …") instead of `RELAY`.
 - **`failed` / `stopped`** → `ANSWER` with a brief explanation
-  (the user did NOT see a useful reply); consider `DELEGATE`
-  again with a refined prompt only if it makes sense.
+  (the worker may not have produced anything useful; consider
+  `DELEGATE` again with a refined prompt if it makes sense).
 
 A `<process-event>` is **not** a question from the user. It's
-context for your decision. Repeating the worker's content as
-your own `ANSWER` is wrong — it duplicates the message in the
-user's chat.
+context for your decision. Almost every event with substantive
+child-reply content turns into a `RELAY`.
 
 ## Inbox vs. chat — when to use `inbox_post`
 

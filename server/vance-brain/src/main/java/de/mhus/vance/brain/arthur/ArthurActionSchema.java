@@ -19,6 +19,11 @@ import java.util.Set;
  *       before doing more work.</li>
  *   <li>{@link #TYPE_DELEGATE} — spawn a worker via a recipe and
  *       (silently or with a brief pre-text) hand off the task.</li>
+ *   <li>{@link #TYPE_RELAY} — pass a worker's last reply through
+ *       to the user as Arthur's voice. Zero LLM tokens for the
+ *       content — engine copies the worker's text into Arthur's
+ *       chat. Use this when a worker just delivered substantive
+ *       output and the user's question is fully answered.</li>
  *   <li>{@link #TYPE_WAIT} — async work is in flight; nothing to
  *       say right now. Engine goes IDLE and auto-wakes on the
  *       worker's ProcessEvent.</li>
@@ -47,15 +52,18 @@ public final class ArthurActionSchema {
     public static final String TYPE_ANSWER     = "ANSWER";
     public static final String TYPE_ASK_USER   = "ASK_USER";
     public static final String TYPE_DELEGATE   = "DELEGATE";
+    public static final String TYPE_RELAY      = "RELAY";
     public static final String TYPE_WAIT       = "WAIT";
     public static final String TYPE_REJECT     = "REJECT";
 
     public static final Set<String> SUPPORTED_TYPES = Set.of(
-            TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_WAIT, TYPE_REJECT);
+            TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY, TYPE_WAIT, TYPE_REJECT);
 
     public static final String PARAM_MESSAGE = "message";
     public static final String PARAM_PRESET  = "preset";
     public static final String PARAM_PROMPT  = "prompt";
+    public static final String PARAM_SOURCE  = "source";
+    public static final String PARAM_PREFIX  = "prefix";
 
     /**
      * JSON schema (flat) covering all action types. Per-type
@@ -70,12 +78,15 @@ public final class ArthurActionSchema {
         Map<String, Object> typeProp = new LinkedHashMap<>();
         typeProp.put("type", "string");
         typeProp.put("enum", List.of(
-                TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_WAIT, TYPE_REJECT));
+                TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE,
+                TYPE_RELAY, TYPE_WAIT, TYPE_REJECT));
         typeProp.put("description",
                 "Which branch this turn takes. ANSWER = direct reply. "
                         + "ASK_USER = clarification question. DELEGATE = spawn "
-                        + "a worker. WAIT = async work running, no message "
-                        + "needed. REJECT = out of scope, explain and stop.");
+                        + "a worker. RELAY = pass through a worker's last "
+                        + "reply as your own answer (zero-token, the engine "
+                        + "copies the content). WAIT = async work running, "
+                        + "no message needed. REJECT = out of scope.");
 
         Map<String, Object> reasonProp = new LinkedHashMap<>();
         reasonProp.put("type", "string");
@@ -107,12 +118,29 @@ public final class ArthurActionSchema {
                         + "Required for DELEGATE. Self-contained — the worker "
                         + "doesn't see the parent's chat history by default.");
 
+        Map<String, Object> sourceProp = new LinkedHashMap<>();
+        sourceProp.put("type", "string");
+        sourceProp.put("description",
+                "Worker process name (e.g. 'web-research-7b9124') whose "
+                        + "last reply should be relayed. Required for RELAY. "
+                        + "Use the name from the most recent <process-event> "
+                        + "marker, not a guess.");
+
+        Map<String, Object> prefixProp = new LinkedHashMap<>();
+        prefixProp.put("type", "string");
+        prefixProp.put("description",
+                "Optional short prefix prepended to the relayed worker text "
+                        + "(e.g. 'Hier ist das Rezept:'). Leave empty for a "
+                        + "clean pass-through. Only meaningful for RELAY.");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("type", typeProp);
         properties.put("reason", reasonProp);
         properties.put(PARAM_MESSAGE, messageProp);
         properties.put(PARAM_PRESET, presetProp);
         properties.put(PARAM_PROMPT, promptProp);
+        properties.put(PARAM_SOURCE, sourceProp);
+        properties.put(PARAM_PREFIX, prefixProp);
 
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("type", "object");

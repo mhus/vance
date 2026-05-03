@@ -646,6 +646,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             case ArthurActionSchema.TYPE_ANSWER   -> handleAnswer(action);
             case ArthurActionSchema.TYPE_ASK_USER -> handleAskUser(action);
             case ArthurActionSchema.TYPE_DELEGATE -> handleDelegate(action, process, ctx);
+            case ArthurActionSchema.TYPE_RELAY    -> handleRelay(action, process, ctx);
             case ArthurActionSchema.TYPE_WAIT     -> handleWait(action);
             case ArthurActionSchema.TYPE_REJECT   -> handleReject(action);
             default -> {
@@ -739,6 +740,104 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return new ActionTurnOutcome(
                 preText == null || preText.isBlank() ? null : preText,
                 /*awaitingUserInput*/ false);
+    }
+
+    /**
+     * Pass a worker's last reply through to the user as Arthur's
+     * own answer. Zero LLM tokens for the content — the engine
+     * looks up the worker by name (with id fallback so the LLM can
+     * use either the {@code sourceProcessName} or the
+     * {@code sourceProcessId} from the most recent
+     * {@code <process-event>} marker), reads the worker's last
+     * substantive ASSISTANT message verbatim, and persists it as a
+     * fresh ASSISTANT message under Arthur's process id with
+     * {@code originatingProcessId} provenance.
+     *
+     * <p>The optional {@code prefix} param prepends a brief Arthur
+     * line ("Hier ist das Rezept, das ich gefunden habe:") before
+     * the relayed text — useful when Arthur wants to frame the
+     * worker's output in the conversation. Empty / missing prefix
+     * = clean pass-through.
+     */
+    private ActionTurnOutcome handleRelay(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        String source = action.stringParam(ArthurActionSchema.PARAM_SOURCE);
+        if (source == null || source.isBlank()) {
+            log.warn("Arthur id='{}' RELAY missing 'source' — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(
+                    "(internal: RELAY without 'source'. Reason was: "
+                            + action.reason() + ")",
+                    true);
+        }
+
+        // Same name-or-id resolution as the process tools so the LLM
+        // can use either sourceProcessName="web-research-7b9124" or
+        // sourceProcessId="69f7..." from the <process-event>.
+        Optional<ThinkProcessDocument> targetOpt = thinkProcessService
+                .findByName(process.getTenantId(), process.getSessionId(), source)
+                .or(() -> thinkProcessService.findById(source)
+                        .filter(p -> process.getTenantId().equals(p.getTenantId())
+                                && process.getSessionId().equals(p.getSessionId())));
+        if (targetOpt.isEmpty()) {
+            log.warn("Arthur id='{}' RELAY source '{}' not found in session",
+                    process.getId(), source);
+            return new ActionTurnOutcome(
+                    "(internal: RELAY target '" + source
+                            + "' not found in this session.)",
+                    true);
+        }
+        ThinkProcessDocument target = targetOpt.get();
+
+        // Find the worker's last substantive ASSISTANT message. We
+        // walk the active history backwards because compacted-out
+        // messages (archived into a memory) shouldn't be relayed —
+        // they're old context, not the latest reply.
+        java.util.List<de.mhus.vance.shared.chat.ChatMessageDocument> workerHistory =
+                ctx.chatMessageService().activeHistory(
+                        target.getTenantId(),
+                        target.getSessionId(),
+                        target.getId());
+        de.mhus.vance.shared.chat.ChatMessageDocument lastReply = null;
+        for (int i = workerHistory.size() - 1; i >= 0; i--) {
+            de.mhus.vance.shared.chat.ChatMessageDocument m = workerHistory.get(i);
+            if (m.getRole() == ChatRole.ASSISTANT
+                    && m.getContent() != null
+                    && !m.getContent().isBlank()) {
+                lastReply = m;
+                break;
+            }
+        }
+        if (lastReply == null) {
+            log.warn("Arthur id='{}' RELAY source '{}' has no ASSISTANT reply yet",
+                    process.getId(), source);
+            return new ActionTurnOutcome(
+                    "(internal: worker '" + source
+                            + "' has no reply to relay yet.)",
+                    true);
+        }
+
+        String prefix = action.stringParam(ArthurActionSchema.PARAM_PREFIX);
+        StringBuilder out = new StringBuilder();
+        if (prefix != null && !prefix.isBlank()) {
+            out.append(prefix.trim()).append("\n\n");
+        }
+        out.append(lastReply.getContent());
+
+        log.info(
+                "Arthur id='{}' RELAY source='{}' ({} chars) reason='{}'",
+                process.getId(), target.getName(),
+                lastReply.getContent().length(),
+                summariseReason(action.reason()));
+
+        // The engine layer (runTurnFor) appends the chat message —
+        // we just return the composed text. By going through the
+        // normal awaitingUserInput=true exit, Arthur ends the turn
+        // BLOCKED waiting for the user's next message, which is the
+        // expected state after delivering an answer.
+        return new ActionTurnOutcome(out.toString(), /*awaitingUserInput*/ true);
     }
 
     /** Async work in flight, nothing to add. Engine goes IDLE. */

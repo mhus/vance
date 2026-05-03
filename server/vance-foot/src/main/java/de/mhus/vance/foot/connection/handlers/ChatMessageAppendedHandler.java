@@ -55,6 +55,18 @@ public class ChatMessageAppendedHandler implements MessageHandler {
         }
         String role = data.getRole() == null ? "?" : data.getRole().name().toLowerCase();
         String line = "[" + data.getProcessName() + " · " + role + "] " + data.getContent();
+
+        // Only the bound main process (Arthur) writes into the main
+        // chat — that's the user-facing conversation. Workers run
+        // under the hood; their chat-messages are audit material
+        // that the orchestrator reads via {@code <process-event>}
+        // markers and surfaces via {@code RELAY}. Showing them in
+        // the main chat leads to dual-voice confusion ("[arthur]
+        // ..." right next to "[web-research-xxx] ...") and
+        // double-rendering with a subsequent RELAY. Worker rows go
+        // to the dimmed side-channel as a transparent audit trail —
+        // the user can see what the workers are doing, but not as
+        // primary conversation content.
         if (isMainProcess(data.getProcessName())) {
             terminal.chat(line);
         } else {

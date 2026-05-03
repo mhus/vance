@@ -59,10 +59,13 @@ public class StreamingDisplay {
         synchronized (state) {
             if (processName != null) state.processName = processName;
             if (role != null) state.role = role;
-            // Workers (sub-processes) never stream raw to the terminal:
-            // their reply is grey/green clutter relative to the main
-            // chat. Buffer the chunks and render the assembled text in
-            // green + truncated on commit.
+            // Only the main process (Arthur) streams raw to the
+            // terminal — its messages are the user-facing chat. Worker
+            // sub-processes buffer their chunks and surface as the
+            // dimmed side-channel on commit; the orchestrator picks up
+            // their content via the structured-action {@code RELAY}
+            // path to make it part of Arthur's voice, avoiding
+            // dual-voice confusion in the main scroll.
             boolean main = isMainProcess(state.processName);
             if (main && promptGate.isExclusive()) {
                 if (!state.headerEmitted) {
@@ -126,9 +129,11 @@ public class StreamingDisplay {
             }
             if (state.buffered.length() > 0) {
                 // Buffered stream — flush via printAbove so the prompt
-                // redraws cleanly below. Main-process replies render in
-                // default chat (white, full); worker replies render in
-                // green and truncated.
+                // redraws cleanly below. Main-process replies render
+                // in default chat (white, full); worker replies render
+                // in green and truncated as a side-channel audit
+                // trail — Arthur's RELAY pulls their content into the
+                // main chat as needed.
                 String line = header(state.processName, state.role)
                         + state.buffered;
                 if (isMainProcess(state.processName)) {

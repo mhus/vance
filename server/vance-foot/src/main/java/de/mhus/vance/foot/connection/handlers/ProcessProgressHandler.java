@@ -11,13 +11,16 @@ import de.mhus.vance.api.progress.UsageDelta;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
+import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
@@ -53,6 +56,7 @@ public class ProcessProgressHandler implements MessageHandler {
 
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
+    private final BusyIndicator busyIndicator;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     /**
@@ -64,9 +68,23 @@ public class ProcessProgressHandler implements MessageHandler {
      */
     private final Map<String, Instant> operationStarts = new ConcurrentHashMap<>();
 
-    public ProcessProgressHandler(ChatTerminal terminal, StreamingDisplay streaming) {
+    /**
+     * Set of process-ids that currently have an open
+     * {@link StatusTag#ENGINE_TURN_START} we entered into the
+     * {@link BusyIndicator}. We track them so we can both deduplicate
+     * (a duplicate START shouldn't double-enter) and exit cleanly when
+     * the matching END arrives — even if it gets delivered out of the
+     * normal pair-order under WS retries.
+     */
+    private final Set<String> activeTurns = new HashSet<>();
+
+    public ProcessProgressHandler(
+            ChatTerminal terminal,
+            StreamingDisplay streaming,
+            BusyIndicator busyIndicator) {
         this.terminal = terminal;
         this.streaming = streaming;
+        this.busyIndicator = busyIndicator;
     }
 
     @Override
@@ -79,10 +97,17 @@ public class ProcessProgressHandler implements MessageHandler {
         ProcessProgressNotification msg = json.convertValue(
                 envelope.getData(), ProcessProgressNotification.class);
         if (msg == null || msg.getKind() == null) return;
-        // Skip the whole pipeline (including the streaming-suspend
-        // newline) when the user's verbosity threshold would filter
-        // this kind out. Otherwise we'd emit a stray newline that
-        // unhooks the in-flight chat stream from its onCommit and
+        // Spinner tracking runs UNCONDITIONALLY — the user's verbosity
+        // filter only controls visible rendering, not the busy state.
+        // Otherwise a "verbosity=info" user would see a stuck spinner
+        // because the engine_turn_end was filtered out.
+        if (msg.getKind() == ProgressKind.STATUS && msg.getStatus() != null) {
+            updateBusyState(msg);
+        }
+        // Skip the visible-render pipeline (including the streaming-
+        // suspend newline) when the user's verbosity threshold would
+        // filter this kind out. Otherwise we'd emit a stray newline
+        // that unhooks the in-flight chat stream from its onCommit and
         // makes ChatMessageAppendedHandler re-render the canonical
         // text — visible duplicate.
         if (!terminal.threshold().shows(verbosityFor(msg.getKind()))) {
@@ -98,6 +123,48 @@ public class ProcessProgressHandler implements MessageHandler {
             case PLAN -> renderPlan(src, msg.getPlan());
             case STATUS -> renderStatus(src, msg.getStatus());
         }
+    }
+
+    /**
+     * Couples engine-turn STATUS messages to the
+     * {@link BusyIndicator} so the spinner stays alive while
+     * worker turns run async after the original chat round-trip
+     * has already returned.
+     *
+     * <p>Counter-based via the indicator's enter/exit; a per-process
+     * de-duplication set guards against double-START / double-END
+     * events (rare under retries / reconnect).
+     */
+    private void updateBusyState(ProcessProgressNotification msg) {
+        StatusPayload status = msg.getStatus();
+        StatusTag tag = status.getTag();
+        if (tag == null) return;
+        String processId = msg.getProcessId();
+        if (processId == null || processId.isBlank()) return;
+        switch (tag) {
+            case ENGINE_TURN_START -> {
+                synchronized (activeTurns) {
+                    if (activeTurns.add(processId)) {
+                        busyIndicator.enter("engine_turn_start:" + safeName(msg));
+                    }
+                }
+            }
+            case ENGINE_TURN_END -> {
+                synchronized (activeTurns) {
+                    if (activeTurns.remove(processId)) {
+                        busyIndicator.exit("engine_turn_end:" + safeName(msg));
+                    }
+                }
+            }
+            default -> { /* tool_start/end, plan tags etc. don't affect busy */ }
+        }
+    }
+
+    private static String safeName(ProcessProgressNotification msg) {
+        String n = msg.getProcessName();
+        if (n != null && !n.isBlank()) return n;
+        String id = msg.getProcessId();
+        return id == null ? "?" : id;
     }
 
     private static Verbosity verbosityFor(ProgressKind kind) {

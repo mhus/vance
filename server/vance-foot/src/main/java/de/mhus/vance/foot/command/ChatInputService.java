@@ -237,7 +237,7 @@ public class ChatInputService {
         // status-bar animation polls this flag and shows the user
         // that something is in flight even while the REPL prompt is
         // back and waiting for input.
-        busyIndicator.enter();
+        busyIndicator.enter("chat-roundtrip");
         try {
             ProcessSteerResponse response = connection.request(
                     MessageType.PROCESS_STEER,
@@ -262,7 +262,7 @@ public class ChatInputService {
             chatTerminal.error(msg);
             return InputResult.chat(line, false, msg);
         } finally {
-            busyIndicator.exit();
+            busyIndicator.exit("chat-roundtrip");
         }
     }
 

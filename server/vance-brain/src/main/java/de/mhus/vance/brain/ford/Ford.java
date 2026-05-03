@@ -96,8 +96,6 @@ public class Ford implements ThinkEngine {
     public static final String NAME = "ford";
     public static final String VERSION = "0.3.0";
 
-    public static final String GREETING = "Ford here. Ask me anything.";
-
     /**
      * Bare-minimum fallback when no recipe override is in play —
      * normally never used because the bundled {@code ford} (and
@@ -220,13 +218,13 @@ public class Ford implements ThinkEngine {
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Ford.start tenant='{}' session='{}' id='{}'",
                 process.getTenantId(), process.getSessionId(), process.getId());
-        ctx.chatMessageService().append(ChatMessageDocument.builder()
-                .tenantId(process.getTenantId())
-                .sessionId(process.getSessionId())
-                .thinkProcessId(process.getId())
-                .role(ChatRole.ASSISTANT)
-                .content(GREETING)
-                .build());
+        // No greeting on start. Workers spawned with steerContent
+        // (the recipe-driven default) immediately drain that input —
+        // a "Ford here. Ask me anything." message would just be
+        // filler that surfaces in the audit trail before the real
+        // work. Workers spawned without an initial steer (interactive
+        // / manual debug) start with an empty chat-history, which is
+        // fine — the user's first /process-steer drives the engine.
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 

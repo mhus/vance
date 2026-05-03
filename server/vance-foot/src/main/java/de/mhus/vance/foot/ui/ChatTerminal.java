@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.ui;
 
+import de.mhus.vance.foot.config.FootConfig;
 import java.io.PrintWriter;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -10,6 +11,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jline.reader.LineReader;
 import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStringBuilder;
+import org.jline.utils.AttributedStyle;
 import org.jline.utils.InfoCmp;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -42,6 +45,27 @@ public class ChatTerminal {
     private final PrintWriter stdoutWriter = new PrintWriter(System.out, true);
     private final Deque<Line> buffer = new ArrayDeque<>(BUFFER_LIMIT);
     private final Object bufferLock = new Object();
+    private final FootConfig config;
+
+    private final @Nullable AttributedStyle styleChat;
+    private final @Nullable AttributedStyle styleWorker;
+    private final @Nullable AttributedStyle styleInfo;
+    private final @Nullable AttributedStyle styleVerbose;
+    private final @Nullable AttributedStyle styleDebug;
+    private final @Nullable AttributedStyle styleWarn;
+    private final @Nullable AttributedStyle styleError;
+
+    public ChatTerminal(FootConfig config) {
+        this.config = config;
+        FootConfig.Colors c = config.getUi().getColors();
+        this.styleChat = StyleParser.parse(c.getChat());
+        this.styleWorker = StyleParser.parse(c.getWorker());
+        this.styleInfo = StyleParser.parse(c.getInfo());
+        this.styleVerbose = StyleParser.parse(c.getVerbose());
+        this.styleDebug = StyleParser.parse(c.getDebug());
+        this.styleWarn = StyleParser.parse(c.getWarn());
+        this.styleError = StyleParser.parse(c.getError());
+    }
 
     public Verbosity threshold() {
         return threshold.get();
@@ -73,17 +97,14 @@ public class ChatTerminal {
         if (!threshold.get().shows(level)) {
             return;
         }
-        record(level, message);
-        emit(message);
+        emitWithStyle(level, message, styleFor(level), truncates(level));
     }
 
     public void println(Verbosity level, String format, @Nullable Object... args) {
         if (!threshold.get().shows(level)) {
             return;
         }
-        String formatted = String.format(format, args);
-        record(level, formatted);
-        emit(formatted);
+        emitWithStyle(level, String.format(format, args), styleFor(level), truncates(level));
     }
 
     /**
@@ -121,6 +142,10 @@ public class ChatTerminal {
         println(Verbosity.ERROR, message);
     }
 
+    public void warn(String message) {
+        println(Verbosity.WARN, message);
+    }
+
     public void info(String message) {
         println(Verbosity.INFO, message);
     }
@@ -131,6 +156,89 @@ public class ChatTerminal {
 
     public void debug(String message) {
         println(Verbosity.DEBUG, message);
+    }
+
+    /**
+     * Renders the main-process chat reply, never truncated. Default
+     * style is unstyled (terminal default — typically white); override
+     * via {@code vance.ui.colors.chat}.
+     */
+    public void chat(String message) {
+        if (!threshold.get().shows(Verbosity.INFO)) {
+            return;
+        }
+        emitWithStyle(Verbosity.INFO, message, styleChat, false);
+    }
+
+    /**
+     * Renders a sub-process (worker) chat echo, truncated to
+     * {@code vance.ui.lineMaxChars}. Workers spawn from the main chat
+     * (e.g. {@code rezept-suche} from a recipe) and shouldn't compete
+     * with the user's main-thread reply for visual weight. Default
+     * style is green; override via {@code vance.ui.colors.worker}.
+     */
+    public void worker(String message) {
+        if (!threshold.get().shows(Verbosity.INFO)) {
+            return;
+        }
+        emitWithStyle(Verbosity.INFO, message, styleWorker, true);
+    }
+
+    private @Nullable AttributedStyle styleFor(Verbosity level) {
+        return switch (level) {
+            case ERROR -> styleError;
+            case WARN -> styleWarn;
+            case INFO -> styleInfo;
+            case VERBOSE -> styleVerbose;
+            case DEBUG, TRACE -> styleDebug;
+        };
+    }
+
+    private boolean truncates(Verbosity level) {
+        // Errors and warnings stay full-length — the user needs the
+        // detail. Side-channel info gets truncated.
+        return switch (level) {
+            case ERROR, WARN -> false;
+            case INFO, VERBOSE, DEBUG, TRACE -> true;
+        };
+    }
+
+    private void emitWithStyle(Verbosity level, String message,
+                                @Nullable AttributedStyle style, boolean truncate) {
+        String visible = truncate ? truncate(message) : message;
+        record(level, visible);
+        if (style == null) {
+            emit(visible);
+            return;
+        }
+        AttributedString styled = new AttributedStringBuilder()
+                .style(style)
+                .append(visible)
+                .toAttributedString();
+        emitStyled(styled);
+    }
+
+    private String truncate(String message) {
+        int max = config.getUi().getLineMaxChars();
+        if (max <= 0 || message == null || message.length() <= max) {
+            return message;
+        }
+        // Ellipsis takes 3 characters of the budget so the visible
+        // length stays at <= max even after the suffix is appended.
+        int cut = Math.max(0, max - 3);
+        return message.substring(0, cut) + "...";
+    }
+
+    private void emitStyled(AttributedString styled) {
+        LineReader r = jlineReader.get();
+        if (r != null) {
+            r.printAbove(styled);
+            return;
+        }
+        Terminal t = jlineTerminal.get();
+        PrintWriter w = writer();
+        w.println(t != null ? styled.toAnsi(t) : styled.toAnsi());
+        w.flush();
     }
 
     private void emit(String line) {

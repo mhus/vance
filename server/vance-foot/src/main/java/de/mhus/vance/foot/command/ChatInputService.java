@@ -254,7 +254,11 @@ public class ChatInputService {
             chatTerminal.error(e.getMessage());
             return InputResult.chat(line, false, e.getMessage());
         } catch (Exception e) {
-            String msg = "Steer failed: " + e.getMessage();
+            String detail = e.getMessage();
+            if (detail == null || detail.isBlank()) {
+                detail = e.getClass().getSimpleName();
+            }
+            String msg = "Steer failed: " + detail;
             chatTerminal.error(msg);
             return InputResult.chat(line, false, msg);
         } finally {

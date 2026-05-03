@@ -4,8 +4,10 @@ import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
+import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.StreamingDisplay;
+import java.util.Objects;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
@@ -27,11 +29,15 @@ public class ChatMessageAppendedHandler implements MessageHandler {
 
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
+    private final SessionService sessions;
     private final ObjectMapper json = JsonMapper.builder().build();
 
-    public ChatMessageAppendedHandler(ChatTerminal terminal, StreamingDisplay streaming) {
+    public ChatMessageAppendedHandler(ChatTerminal terminal,
+                                      StreamingDisplay streaming,
+                                      SessionService sessions) {
         this.terminal = terminal;
         this.streaming = streaming;
+        this.sessions = sessions;
     }
 
     @Override
@@ -48,6 +54,16 @@ public class ChatMessageAppendedHandler implements MessageHandler {
             return;
         }
         String role = data.getRole() == null ? "?" : data.getRole().name().toLowerCase();
-        terminal.info("[" + data.getProcessName() + " · " + role + "] " + data.getContent());
+        String line = "[" + data.getProcessName() + " · " + role + "] " + data.getContent();
+        if (isMainProcess(data.getProcessName())) {
+            terminal.chat(line);
+        } else {
+            terminal.worker(line);
+        }
+    }
+
+    private boolean isMainProcess(@org.jspecify.annotations.Nullable String processName) {
+        if (processName == null) return false;
+        return Objects.equals(processName, sessions.activeProcess());
     }
 }

@@ -133,6 +133,27 @@ public class ArthurEngine implements ThinkEngine {
     /** Max corrections per turn for the structural no-tool-call validator. */
     private static final int MAX_VALIDATION_CORRECTIONS = 2;
 
+    /** Max iterations of the format-correction sub-loop. */
+    private static final int MAX_FORMAT_CORRECTION_ITERS = 2;
+
+    /**
+     * Mini-system-prompt for the format-correction sub-loop. See
+     * Ford.FORMAT_CORRECTION_SYSTEM for the full rationale — same
+     * pattern: fresh sub-conversation, only `respond` available, no
+     * fallback into "answer the question again" territory.
+     */
+    private static final String FORMAT_CORRECTION_SYSTEM =
+            "You are a format-correction agent. Your only job is to "
+                    + "wrap the assistant text below into a `respond` "
+                    + "tool call.\n\n"
+                    + "Rules:\n"
+                    + "- Emit exactly one tool call: "
+                    + "`respond(message=<the text VERBATIM>, awaiting_user_input=true)`.\n"
+                    + "- Do NOT modify, summarise, shorten, translate, or rewrite the text.\n"
+                    + "- Do NOT add any commentary outside the tool call.\n"
+                    + "- Do NOT call any other tool.\n"
+                    + "- The text you must wrap is the assistant message that follows.";
+
     /**
      * Language-agnostic correction for "model produced free text with
      * no tool call". Replaces the old regex-based intent-without-action
@@ -144,11 +165,19 @@ public class ArthurEngine implements ThinkEngine {
                     + "Every turn must end with at least one tool call: "
                     + "the work tools first (process_create, process_steer, …), "
                     + "then `respond(message=..., awaiting_user_input=...)` "
-                    + "as the final marker. If you were stating an intent "
-                    + "to act, emit the action tool now. If you were "
-                    + "giving a final answer, emit `respond` now. Free "
-                    + "assistant text without a tool call is never the "
-                    + "right output.";
+                    + "as the final marker.\n\n"
+                    + "If your previous response was a complete answer to "
+                    + "the user (any non-trivial assistant text), re-emit "
+                    + "that text VERBATIM — same wording, same length, "
+                    + "same formatting — as the `message` argument of "
+                    + "`respond`. Do not summarise it, do not shorten it, "
+                    + "do not replace it with a brief acknowledgement. "
+                    + "The text you already wrote IS the answer; just wrap "
+                    + "it in `respond(message=<that text>, awaiting_user_input=true)`.\n\n"
+                    + "If your previous response was an intent-to-act ("
+                    + "\"I will check…\"), emit the action tool now "
+                    + "instead. Free assistant text without a tool call "
+                    + "is never the right output.";
 
     /**
      * Base cascade path for the Arthur engine prompt. Loaded via
@@ -350,6 +379,10 @@ public class ArthurEngine implements ThinkEngine {
             TurnOutcome outcome = runToolLoop(
                     aiChat, toolSpecs, tools, messages, ctx, process,
                     maxIters, validation, modelAlias);
+            if (outcome.needsFormatCorrection()) {
+                outcome = runFormatCorrectionLoop(
+                        aiChat, toolSpecs, process, outcome.finalText(), modelAlias, ctx);
+            }
             awaitingUserInput = outcome.awaitingUserInput();
             String finalText = outcome.finalText();
 
@@ -377,7 +410,11 @@ public class ArthurEngine implements ThinkEngine {
      * explicit {@code awaiting_user_input} flag that drives the
      * post-turn process status (BLOCKED vs IDLE).
      */
-    private record TurnOutcome(String finalText, boolean awaitingUserInput) {}
+    private record TurnOutcome(
+            String finalText,
+            boolean awaitingUserInput,
+            /** See Ford.TurnOutcome.needsFormatCorrection — same semantics. */
+            boolean needsFormatCorrection) {}
 
     /** Parsed payload of a {@link RespondTool} call. */
     private record RespondArgs(String message, boolean awaitingUserInput) {}
@@ -407,38 +444,47 @@ public class ArthurEngine implements ThinkEngine {
             String modelAlias) {
         StringBuilder finalText = new StringBuilder();
         int corrections = 0;
+        // Best Free-Text seen so far. Used as last-resort
+        // `respond.message` when the LLM collapses or maxIters runs
+        // out — preserves the work instead of forcing a respawn from
+        // scratch. Same pattern as Ford.runToolLoop.
+        String bestFreeText = "";
         for (int iter = 0; iter < maxIters; iter++) {
             ChatRequest.Builder req = ChatRequest.builder().messages(messages);
             if (!toolSpecs.isEmpty()) {
                 req.toolSpecifications(toolSpecs);
             }
-            AiMessage reply = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
+            AiMessage reply;
+            try {
+                reply = streamOneIteration(aiChat, req.build(), ctx, process, modelAlias);
+            } catch (RuntimeException e) {
+                if (!bestFreeText.isEmpty()) {
+                    log.warn(
+                            "Arthur id='{}' tool-loop LLM failure ({}) — recovering with best Free-Text seen ({} chars), deferring to format-correction",
+                            process.getId(), e.toString(), bestFreeText.length());
+                    return new TurnOutcome(bestFreeText, true, /*needsFormatCorrection*/ true);
+                }
+                log.warn("Arthur id='{}' tool-loop LLM failure with no recoverable text",
+                        process.getId());
+                throw e;
+            }
+
+            String replyText = reply.text();
+            if (replyText != null && replyText.length() > bestFreeText.length()) {
+                bestFreeText = replyText;
+            }
 
             if (!reply.hasToolExecutionRequests()) {
-                // Model emitted free text with neither a regular tool
-                // nor `respond`. That's a contract violation: every turn
-                // must end with at least one tool call (the work, then
-                // `respond` as the final marker). Give the model a
-                // language-agnostic correction (no regex on text).
+                // Model emitted free text with no tool call. The reply
+                // IS the answer; only the wrapping `respond` is missing.
+                // Defer to the format-correction sub-loop instead of
+                // polluting the main conversation with format nudges.
                 String text = reply.text();
-                if (validation && corrections < MAX_VALIDATION_CORRECTIONS) {
-                    log.info(
-                            "Arthur id='{}' validation: free text without any tool call, correcting ({}/{})",
-                            process.getId(),
-                            corrections + 1, MAX_VALIDATION_CORRECTIONS);
-                    messages.add(reply);
-                    messages.add(SystemMessage.from(NO_TOOL_CALL_CORRECTION));
-                    corrections++;
-                    continue;
-                }
                 if (text != null) {
                     finalText.append(text);
                 }
-                if (validation && corrections > 0) {
-                    log.info("Arthur id='{}' validation: completed after {} correction(s)",
-                            process.getId(), corrections);
-                }
-                return new TurnOutcome(finalText.toString(), false);
+                return new TurnOutcome(
+                        finalText.toString(), true, /*needsFormatCorrection*/ true);
             }
 
             ToolExecutionRequest respondCall = null;
@@ -480,12 +526,113 @@ public class ArthurEngine implements ThinkEngine {
                 if (args.message() != null && !args.message().isEmpty()) {
                     finalText.append(args.message());
                 }
-                return new TurnOutcome(finalText.toString(), args.awaitingUserInput());
+                return new TurnOutcome(
+                        finalText.toString(), args.awaitingUserInput(),
+                        /*needsFormatCorrection*/ false);
             }
+        }
+        if (!bestFreeText.isEmpty()) {
+            log.warn(
+                    "Arthur id='{}' exceeded {} tool iterations — recovering with best Free-Text seen ({} chars), deferring to format-correction",
+                    process.getId(), maxIters, bestFreeText.length());
+            return new TurnOutcome(bestFreeText, true, /*needsFormatCorrection*/ true);
         }
         throw new AiChatException(
                 "Arthur exceeded " + maxIters
-                        + " tool iterations — aborting turn to avoid runaway.");
+                        + " tool iterations — no recoverable text, aborting turn.");
+    }
+
+    /**
+     * Format-correction sub-loop. See Ford.runFormatCorrectionLoop —
+     * same pattern: fresh sub-conversation, only `respond` available,
+     * falls back to Free-Text-verbatim if the model still doesn't
+     * emit `respond` after {@link #MAX_FORMAT_CORRECTION_ITERS}.
+     */
+    private TurnOutcome runFormatCorrectionLoop(
+            AiChat aiChat,
+            List<ToolSpecification> mainToolSpecs,
+            ThinkProcessDocument process,
+            String freeText,
+            String modelAlias,
+            ThinkEngineContext ctx) {
+        if (freeText == null || freeText.isBlank()) {
+            return new TurnOutcome("", true, /*needsFormatCorrection*/ false);
+        }
+        log.info(
+                "Arthur id='{}' format-correction sub-loop starting (text {} chars)",
+                process.getId(), freeText.length());
+
+        // Gemini-compatible: end on UserMessage. Wrap-instruction +
+        // text-to-wrap go into the same UserMessage.
+        List<ChatMessage> sub = new ArrayList<>();
+        sub.add(SystemMessage.from(FORMAT_CORRECTION_SYSTEM));
+        sub.add(UserMessage.from(
+                "Wrap the following assistant text VERBATIM in a "
+                        + "`respond(message=<that text>, awaiting_user_input=true)` "
+                        + "tool call. Do not modify, summarise, or shorten the text. "
+                        + "Emit only the tool call, no other text.\n\n"
+                        + "--- BEGIN ASSISTANT TEXT ---\n"
+                        + freeText
+                        + "\n--- END ASSISTANT TEXT ---"));
+
+        List<ToolSpecification> respondOnly = new ArrayList<>();
+        for (ToolSpecification spec : mainToolSpecs) {
+            if (RespondTool.NAME.equals(spec.name())) {
+                respondOnly.add(spec);
+                break;
+            }
+        }
+        if (respondOnly.isEmpty()) {
+            log.warn(
+                    "Arthur id='{}' format-correction: respond tool not in spec list — fallback to verbatim",
+                    process.getId());
+            return new TurnOutcome(freeText, true, /*needsFormatCorrection*/ false);
+        }
+
+        for (int iter = 0; iter < MAX_FORMAT_CORRECTION_ITERS; iter++) {
+            ChatRequest req = ChatRequest.builder()
+                    .messages(sub)
+                    .toolSpecifications(respondOnly)
+                    .build();
+            AiMessage reply;
+            try {
+                reply = streamOneIteration(aiChat, req, ctx, process, modelAlias);
+            } catch (RuntimeException e) {
+                log.warn(
+                        "Arthur id='{}' format-correction LLM failure ({}) — falling back to Free-Text verbatim",
+                        process.getId(), e.toString());
+                return new TurnOutcome(freeText, true, /*needsFormatCorrection*/ false);
+            }
+
+            if (reply.hasToolExecutionRequests()) {
+                for (ToolExecutionRequest call : reply.toolExecutionRequests()) {
+                    if (RespondTool.NAME.equals(call.name())) {
+                        RespondArgs args = parseRespondArgs(call);
+                        String message = args.message() != null && !args.message().isBlank()
+                                ? args.message()
+                                : freeText;
+                        log.info(
+                                "Arthur id='{}' format-correction succeeded after {} iter — wrapped {} chars",
+                                process.getId(), iter + 1, message.length());
+                        return new TurnOutcome(
+                                message, args.awaitingUserInput(),
+                                /*needsFormatCorrection*/ false);
+                    }
+                }
+            }
+
+            sub.add(reply);
+            sub.add(UserMessage.from(
+                    "You did not call `respond`. Call it now with the "
+                            + "assistant text from my first message as the "
+                            + "`message` argument. Emit only the tool call, "
+                            + "nothing else."));
+        }
+
+        log.warn(
+                "Arthur id='{}' format-correction exhausted {} iters — falling back to Free-Text verbatim",
+                process.getId(), MAX_FORMAT_CORRECTION_ITERS);
+        return new TurnOutcome(freeText, true, /*needsFormatCorrection*/ false);
     }
 
     private RespondArgs parseRespondArgs(ToolExecutionRequest call) {

@@ -23,6 +23,7 @@ public class FootConfig {
     private Debug debug = new Debug();
     private History history = new History();
     private Bootstrap bootstrap = new Bootstrap();
+    private Ui ui = new Ui();
 
     @Data
     public static class Brain {
@@ -90,6 +91,42 @@ public class FootConfig {
         private List<BootstrapProcess> processes = new ArrayList<>();
         /** Optional first chat message steered to the first process. */
         private @Nullable String initialMessage;
+    }
+
+    /**
+     * Terminal output appearance. {@link #lineMaxChars} caps grey
+     * info/verbose/debug lines and green worker lines (sub-process chat
+     * echoes), so a long worker reply doesn't drown out the main chat.
+     * Set to {@code 0} to disable truncation.
+     *
+     * <p>{@link #colors} lets the user override the per-channel ANSI
+     * style. Each value follows JLine's style-expression syntax:
+     * comma-separated tokens, e.g. {@code fg:red,bold} or
+     * {@code fg:bright-black,italic}. Empty / blank value means "no
+     * styling" (terminal default — typically white). See
+     * {@link de.mhus.vance.foot.ui.StyleParser} for the full token
+     * grammar.
+     */
+    @Data
+    public static class Ui {
+        private int lineMaxChars = 140;
+        private Colors colors = new Colors();
+    }
+
+    /**
+     * Per-channel style overrides. Defaults match the original built-in
+     * palette (grey side-channel, green worker, yellow warn, red error,
+     * white/default for the main chat reply).
+     */
+    @Data
+    public static class Colors {
+        private String chat = "";
+        private String worker = "fg:green";
+        private String info = "fg:bright-black";
+        private String verbose = "fg:bright-black";
+        private String debug = "fg:bright-black";
+        private String warn = "fg:yellow";
+        private String error = "fg:red";
     }
 
     @Data

@@ -1,7 +1,9 @@
 package de.mhus.vance.foot.ui;
 
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.foot.session.SessionService;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -34,11 +36,15 @@ public class StreamingDisplay {
 
     private final ChatTerminal terminal;
     private final PromptGate promptGate;
+    private final SessionService sessions;
     private final Map<String, ProcessStream> streams = new ConcurrentHashMap<>();
 
-    public StreamingDisplay(ChatTerminal terminal, PromptGate promptGate) {
+    public StreamingDisplay(ChatTerminal terminal,
+                            PromptGate promptGate,
+                            SessionService sessions) {
         this.terminal = terminal;
         this.promptGate = promptGate;
+        this.sessions = sessions;
     }
 
     /** Append a delta to the per-process stream. */
@@ -53,17 +59,28 @@ public class StreamingDisplay {
         synchronized (state) {
             if (processName != null) state.processName = processName;
             if (role != null) state.role = role;
-            if (promptGate.isExclusive()) {
+            // Workers (sub-processes) never stream raw to the terminal:
+            // their reply is grey/green clutter relative to the main
+            // chat. Buffer the chunks and render the assembled text in
+            // green + truncated on commit.
+            boolean main = isMainProcess(state.processName);
+            if (main && promptGate.isExclusive()) {
                 if (!state.headerEmitted) {
                     terminal.streamRaw(header(state.processName, state.role));
                     state.headerEmitted = true;
                 }
                 terminal.streamRaw(chunk);
             } else {
-                // Prompt is active — must not write raw to the terminal.
+                // Either the prompt is active (must not write raw) or
+                // this is a worker (no inline streaming). Buffer.
                 state.buffered.append(chunk);
             }
         }
+    }
+
+    private boolean isMainProcess(@Nullable String processName) {
+        if (processName == null) return false;
+        return Objects.equals(processName, sessions.activeProcess());
     }
 
     /**
@@ -108,10 +125,17 @@ public class StreamingDisplay {
                 return true;
             }
             if (state.buffered.length() > 0) {
-                // Out-of-band stream — flush the assembled text via
-                // printAbove so the prompt redraws cleanly below.
-                terminal.info(header(state.processName, state.role)
-                        + state.buffered);
+                // Buffered stream — flush via printAbove so the prompt
+                // redraws cleanly below. Main-process replies render in
+                // default chat (white, full); worker replies render in
+                // green and truncated.
+                String line = header(state.processName, state.role)
+                        + state.buffered;
+                if (isMainProcess(state.processName)) {
+                    terminal.chat(line);
+                } else {
+                    terminal.worker(line);
+                }
                 return true;
             }
             return false;

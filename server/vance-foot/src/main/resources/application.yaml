@@ -8,6 +8,23 @@ vance:
     password: acme-rocket
   client:
     version: 0.1.0
+  ui:
+    # Side-channel grey/green lines (info, verbose, debug, worker) are
+    # truncated to this many characters. Set to 0 to disable.
+    line-max-chars: 140
+    # JLine style expressions per output channel. Comma-separated tokens:
+    #   fg:<color>  bg:<color>  bold  faint  italic  underline
+    #   blink  inverse  conceal  crossed-out
+    # color := default | [bright-]{black|red|green|yellow|blue|magenta|cyan|white}
+    # Empty = unstyled (terminal default — typically white).
+    colors:
+      chat: ""
+      worker: "fg:green"
+      info: "fg:bright-black"
+      verbose: "fg:bright-black"
+      debug: "fg:bright-black"
+      warn: "fg:yellow"
+      error: "fg:red"
 
 logging:
   level:

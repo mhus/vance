@@ -259,6 +259,23 @@ public class ThinkProcessService {
         return repository.findByTenantIdAndSessionIdAndStatus(tenantId, sessionId, status);
     }
 
+    /**
+     * All children of {@code parentProcessId} across all sessions of
+     * the tenant. Used by cross-project orchestrators (Eddie) that
+     * own workers in their own sessions.
+     */
+    public List<ThinkProcessDocument> findByParentProcessId(String parentProcessId) {
+        if (parentProcessId == null || parentProcessId.isBlank()) {
+            return List.of();
+        }
+        // The repository method takes tenantId for safety; resolve it
+        // from the parent itself to keep the call-site lean.
+        return repository.findById(parentProcessId)
+                .map(parent -> repository.findByTenantIdAndParentProcessId(
+                        parent.getTenantId(), parentProcessId))
+                .orElse(List.of());
+    }
+
     // ────────────────── Mutations ──────────────────
 
     /**

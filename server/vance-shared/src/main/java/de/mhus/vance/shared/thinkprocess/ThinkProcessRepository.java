@@ -19,6 +19,14 @@ interface ThinkProcessRepository extends MongoRepository<ThinkProcessDocument, S
     List<ThinkProcessDocument> findByTenantIdAndSessionIdAndStatus(
             String tenantId, String sessionId, ThinkProcessStatus status);
 
+    /**
+     * All children of {@code parentProcessId}, across sessions —
+     * used by orchestrators (Eddie) that own workers in different
+     * projects/sessions.
+     */
+    List<ThinkProcessDocument> findByTenantIdAndParentProcessId(
+            String tenantId, String parentProcessId);
+
     boolean existsByTenantIdAndSessionIdAndName(
             String tenantId, String sessionId, String name);
 

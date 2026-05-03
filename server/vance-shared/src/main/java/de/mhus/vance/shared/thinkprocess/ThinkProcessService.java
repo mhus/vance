@@ -134,7 +134,6 @@ public class ThinkProcessService {
                 thinkEngineVersion, title, goal, parentProcessId,
                 engineParams, recipeName,
                 promptOverride, /*promptOverrideSmall*/ null, promptMode,
-                /*intentCorrectionOverride*/ null,
                 /*dataRelayCorrectionOverride*/ null,
                 allowedToolsOverride,
                 /*connectionProfile*/ null,
@@ -162,7 +161,6 @@ public class ThinkProcessService {
             @Nullable String promptOverride,
             @Nullable String promptOverrideSmall,
             @Nullable PromptMode promptMode,
-            @Nullable String intentCorrectionOverride,
             @Nullable String dataRelayCorrectionOverride,
             @Nullable Set<String> allowedToolsOverride,
             @Nullable String connectionProfile,
@@ -196,7 +194,6 @@ public class ThinkProcessService {
                 .promptOverride(promptOverride)
                 .promptOverrideSmall(promptOverrideSmall)
                 .promptMode(promptMode == null ? PromptMode.APPEND : promptMode)
-                .intentCorrectionOverride(intentCorrectionOverride)
                 .dataRelayCorrectionOverride(dataRelayCorrectionOverride)
                 .allowedToolsOverride(allowed)
                 .allowedSkillsOverride(skillWhitelist)

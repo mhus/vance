@@ -29,8 +29,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code promptOverrideSmall} — variant for small models.</li>
  *   <li>{@code promptMode} — APPEND or REPLACE relative to the
  *       engine's fallback prompt.</li>
- *   <li>{@code intentCorrection} / {@code dataRelayCorrection} —
- *       optional validator templates.</li>
+ *   <li>{@code dataRelayCorrection} — optional validator template
+ *       for the data-relay-gap structural check.</li>
  *   <li>{@code allowedTools} — engine-default tool set if it differs
  *       from {@link ThinkEngine#allowedTools()}; usually
  *       {@code null} so the engine's own declaration wins.</li>
@@ -44,7 +44,6 @@ public record EngineBundledConfig(
         @Nullable String promptOverride,
         @Nullable String promptOverrideSmall,
         PromptMode promptMode,
-        @Nullable String intentCorrection,
         @Nullable String dataRelayCorrection,
         @Nullable Set<String> allowedTools) {
 }

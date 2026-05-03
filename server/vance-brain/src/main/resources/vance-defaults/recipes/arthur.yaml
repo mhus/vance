@@ -34,12 +34,6 @@ params:
   # Recipes that want a different prompt either set promptPrefix
   # directly here (highest precedence) or point promptDocument /
   # promptDocumentSmall at a different cascade path.
-intentCorrection: |
-  VALIDATION CHECK: your previous response said you would do
-  something ('%s') but emitted no tool call. The user is now
-  waiting for an action that will never happen. Pick one and
-  emit it now: (a) the corresponding tool call, or (b) a
-  direct question to the user without promising future action.
 profiles:
   # The foot CLI is the user's terminal on their own machine — local
   # files, shell, and JS run there. Reach them through client_*.

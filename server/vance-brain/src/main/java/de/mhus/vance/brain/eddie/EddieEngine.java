@@ -236,7 +236,6 @@ public class EddieEngine implements ThinkEngine {
                 prompt,
                 promptSmall,
                 PromptMode.OVERWRITE,
-                /*intentCorrection*/ null,
                 /*dataRelayCorrection*/ null,
                 /*allowedTools*/ null);
     }

@@ -255,7 +255,6 @@ public class ProcessCreateTool implements Tool {
                 applied.promptOverride(),
                 applied.promptOverrideSmall(),
                 applied.promptMode(),
-                applied.intentCorrection(),
                 applied.dataRelayCorrection(),
                 applied.effectiveAllowedTools(),
                 applied.connectionProfile(),

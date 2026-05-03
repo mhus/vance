@@ -75,12 +75,10 @@ for all sizes".
 
 ## Validator overrides
 
-### `intentCorrection`
-*string, optional* — override for the engine's "intent-without-action"
-validator message. Used when the validator fires and the engine wants
-to inject a corrective `SystemMessage`. `null` keeps the engine's
-hard-coded default.
-
 ### `dataRelayCorrection`
-*string, optional* — override for the data-relay-gap validator message
-(Ford-only today). Same semantics as `intentCorrection`.
+*string, optional* — override for the engine's data-relay-gap
+validator message (fires when tools returned a lot of data but the
+reply is brief, indicating the engine swallowed the tool result).
+`null` keeps the engine's hard-coded default. The intent-without-
+action heuristic was retired in favour of the structured `respond`
+tool — see `specification/structured-engine-output.md`.

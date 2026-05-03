@@ -68,11 +68,6 @@ promptPrefix: |
   - Keep `reason` to one short sentence.
   - When listing newTasks, prefer `recipe="marvin-worker"` for
     children unless a specialist recipe is clearly a better fit.
-intentCorrection: |
-  VALIDATION CHECK: your previous response said you would do
-  something ('%s') but emitted no tool call. Either issue the
-  tool call now, or end the turn with the JSON output object
-  summarising what you have.
 profiles:
   foot:
     promptPrefixAppend: |

@@ -26,7 +26,6 @@ public record AppliedRecipe(
         @Nullable String promptOverride,
         @Nullable String promptOverrideSmall,
         PromptMode promptMode,
-        @Nullable String intentCorrection,
         @Nullable String dataRelayCorrection,
         @Nullable Set<String> effectiveAllowedTools,
         /**

@@ -31,11 +31,6 @@ promptPrefixSmall: |
     2. Call exactly one tool.
     3. Paste the relevant tool output into your reply.
   Never make up data; if a tool isn't available, say so.
-intentCorrection: |
-  VALIDATION CHECK: your previous response said you would do
-  something ('%s') but emitted no tool call. Either issue the
-  tool call now, or rephrase as a direct answer / question
-  without promising future action.
 dataRelayCorrection: |
   VALIDATION CHECK: this turn's tools returned %d characters of
   data, but your reply has only %d. The caller cannot see tool

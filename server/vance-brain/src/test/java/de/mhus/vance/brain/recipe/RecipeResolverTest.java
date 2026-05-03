@@ -205,7 +205,7 @@ class RecipeResolverTest {
                 null, // promptPrefix
                 null, // promptPrefixSmall
                 PromptMode.APPEND,
-                null, null,
+                null, // dataRelayCorrection
                 List.of(), List.of(),
                 new HashMap<>(),
                 List.of(),

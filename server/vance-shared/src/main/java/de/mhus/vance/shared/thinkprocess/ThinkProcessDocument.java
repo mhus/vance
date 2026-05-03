@@ -135,13 +135,6 @@ public class ThinkProcessDocument {
     private PromptMode promptMode = PromptMode.APPEND;
 
     /**
-     * Recipe's override for the engine's "intent-without-action"
-     * validator message. {@code null} keeps the engine's hardcoded
-     * default.
-     */
-    private @Nullable String intentCorrectionOverride;
-
-    /**
      * Recipe's override for the data-relay-gap validator message.
      * {@code null} keeps the engine's hardcoded default.
      */

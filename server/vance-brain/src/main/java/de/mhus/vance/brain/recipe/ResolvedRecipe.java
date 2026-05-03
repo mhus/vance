@@ -19,7 +19,6 @@ public record ResolvedRecipe(
         @Nullable String promptPrefix,
         @Nullable String promptPrefixSmall,
         PromptMode promptMode,
-        @Nullable String intentCorrection,
         @Nullable String dataRelayCorrection,
         List<String> allowedToolsAdd,
         List<String> allowedToolsRemove,

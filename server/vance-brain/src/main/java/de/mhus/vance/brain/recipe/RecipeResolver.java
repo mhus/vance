@@ -140,7 +140,6 @@ public class RecipeResolver {
                 effectivePromptOverride,
                 effectivePromptOverrideSmall,
                 r.promptMode(),
-                r.intentCorrection(),
                 r.dataRelayCorrection(),
                 effectiveAllowed,
                 connectionProfile,

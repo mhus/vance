@@ -156,7 +156,6 @@ public class RecipeLoader {
         String promptPrefix = stringOrNull(spec.get("promptPrefix"));
         String promptPrefixSmall = stringOrNull(spec.get("promptPrefixSmall"));
         PromptMode promptMode = parsePromptMode(spec.get("promptMode"));
-        String intentCorrection = stringOrNull(spec.get("intentCorrection"));
         String dataRelayCorrection = stringOrNull(spec.get("dataRelayCorrection"));
         List<String> add = stringList(spec.get("allowedToolsAdd"), "allowedToolsAdd");
         List<String> remove = stringList(spec.get("allowedToolsRemove"), "allowedToolsRemove");
@@ -171,7 +170,7 @@ public class RecipeLoader {
         return new ResolvedRecipe(
                 name, description, engine, params,
                 promptPrefix, promptPrefixSmall, promptMode,
-                intentCorrection, dataRelayCorrection,
+                dataRelayCorrection,
                 add, remove, profiles,
                 defaultActiveSkills, allowedSkills,
                 locked, tags,

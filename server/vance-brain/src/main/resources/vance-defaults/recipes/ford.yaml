@@ -30,12 +30,6 @@ params:
   # Recipes that want a different prompt either set promptPrefix /
   # promptPrefixSmall directly here (highest precedence) or point
   # promptDocument / promptDocumentSmall at a different cascade path.
-intentCorrection: |
-  VALIDATION CHECK: your previous response said you would do
-  something ('%s') but emitted no tool call. Either emit the
-  tool call now, or rephrase as a direct answer / question
-  without promising future action. Do not repeat the same
-  intent-without-action sentence.
 dataRelayCorrection: |
   VALIDATION CHECK: this turn's tools returned %d characters of
   data, but your reply has only %d. The caller cannot see tool

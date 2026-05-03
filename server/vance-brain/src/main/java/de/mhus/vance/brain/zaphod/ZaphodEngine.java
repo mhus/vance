@@ -289,7 +289,6 @@ public class ZaphodEngine implements ThinkEngine {
                     applied.promptOverride(),
                     applied.promptOverrideSmall(),
                     applied.promptMode(),
-                    applied.intentCorrection(),
                     applied.dataRelayCorrection(),
                     applied.effectiveAllowedTools(),
                     applied.connectionProfile(),

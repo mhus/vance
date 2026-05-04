@@ -211,6 +211,10 @@ export default {
       clickToEdit: 'Click to edit',
       emptyItem: '(empty)',
       dragHandle: 'Drag to reorder',
+      selectedCountSingular: '{count} selected',
+      selectedCountPlural: '{count} selected',
+      deleteSelected: 'Delete selected',
+      clearSelection: 'Clear selection',
     },
     create: {
       newDocument: 'New document',

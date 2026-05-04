@@ -209,6 +209,10 @@ export default {
       clickToEdit: 'Klicken zum Bearbeiten',
       emptyItem: '(leer)',
       dragHandle: 'Ziehen zum Umsortieren',
+      selectedCountSingular: '{count} ausgewählt',
+      selectedCountPlural: '{count} ausgewählt',
+      deleteSelected: 'Auswahl löschen',
+      clearSelection: 'Auswahl aufheben',
     },
     create: {
       newDocument: 'Neues Dokument',

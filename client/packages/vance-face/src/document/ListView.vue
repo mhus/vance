@@ -37,6 +37,26 @@ const editBuffer = ref('');
 const inputRefs = ref<HTMLTextAreaElement[]>([]);
 
 /**
+ * Multi-select state. Indexed by row, mutated through Cmd/Ctrl-click
+ * (toggle a single row) or Shift-click (range from {@link selectionAnchor}
+ * to the clicked row). Cleared by every structural mutation (add /
+ * delete / drag) so dangling indices can't outlive the row they
+ * pointed at.
+ */
+const selectedIndices = ref<Set<number>>(new Set());
+/** Most recently single-clicked row — anchor for Shift-click ranges. */
+const selectionAnchor = ref<number | null>(null);
+
+function clearSelection(): void {
+  selectedIndices.value = new Set();
+  selectionAnchor.value = null;
+}
+
+function selectionCount(): number {
+  return selectedIndices.value.size;
+}
+
+/**
  * Local mutable copy of the item list — required by `vue-draggable-plus`,
  * which mutates its `v-model` array in place during a drag. CRUD
  * operations also work on this ref; every mutation calls {@link emitDoc}
@@ -110,6 +130,7 @@ function addItem(): void {
 
 function insertItemAt(idx: number): void {
   localItems.value.splice(idx, 0, { text: '', extra: {} });
+  clearSelection();
   emitDoc();
   // Open the freshly added row for editing once Vue rerenders.
   void nextTick(() => startEdit(idx));
@@ -122,16 +143,77 @@ function deleteItem(idx: number): void {
   // Cancel any in-flight edit — the indices have shifted.
   editingIndex.value = null;
   editBuffer.value = '';
+  clearSelection();
   emitDoc();
+}
+
+/**
+ * Bulk-delete every row in the current selection. Walks the indices
+ * in descending order so each splice doesn't shift the rest.
+ */
+function deleteSelected(): void {
+  if (selectedIndices.value.size === 0) return;
+  const sorted = [...selectedIndices.value].sort((a, b) => b - a);
+  for (const idx of sorted) {
+    localItems.value.splice(idx, 1);
+  }
+  editingIndex.value = null;
+  editBuffer.value = '';
+  clearSelection();
+  emitDoc();
+}
+
+// ─── Selection ──────────────────────────────────────────────────────
+//
+// Default click on an item starts the inline editor; Cmd/Ctrl-click
+// toggles the row in/out of the multi-select; Shift-click selects the
+// range from the previous anchor to the clicked row. The drag handle
+// is a separate target — clicks there belong to vue-draggable, not to
+// the editor or the selection.
+
+function onItemClick(event: MouseEvent, idx: number): void {
+  // Range select — Shift takes precedence.
+  if (event.shiftKey && selectionAnchor.value != null) {
+    const start = Math.min(selectionAnchor.value, idx);
+    const end = Math.max(selectionAnchor.value, idx);
+    const next = new Set(selectedIndices.value);
+    for (let i = start; i <= end; i++) next.add(i);
+    selectedIndices.value = next;
+    cancelEdit();
+    return;
+  }
+  // Toggle single — Cmd (Mac) / Ctrl (others).
+  if (event.metaKey || event.ctrlKey) {
+    const next = new Set(selectedIndices.value);
+    if (next.has(idx)) {
+      next.delete(idx);
+    } else {
+      next.add(idx);
+      selectionAnchor.value = idx;
+    }
+    selectedIndices.value = next;
+    cancelEdit();
+    return;
+  }
+  // Plain click — abandon any selection and switch to edit mode.
+  if (selectedIndices.value.size > 0) clearSelection();
+  selectionAnchor.value = idx;
+  startEdit(idx);
+}
+
+function isSelected(idx: number): boolean {
+  return selectedIndices.value.has(idx);
 }
 
 // ─── Drag-Reorder ───────────────────────────────────────────────────
 //
 // `vue-draggable-plus` mutates `localItems` in-place during the drag;
 // we only need to commit on drop. Cancel any in-flight edit so the
-// editing-index doesn't point at a moved row.
+// editing-index doesn't point at a moved row, and drop the selection
+// because indices may have shifted underneath us.
 function onDragStart(): void {
   cancelEdit();
+  clearSelection();
 }
 function onDragEnd(): void {
   emitDoc();
@@ -175,6 +257,26 @@ function autoGrow(event: Event): void {
 
 <template>
   <div class="list-edit">
+    <!-- Bulk-action bar — appears only while a multi-select is in
+         flight. Sits above the list to stay visible regardless of
+         scroll position; sticky so long lists keep it on screen. -->
+    <div v-if="selectionCount() > 0" class="bulk-bar">
+      <span class="bulk-count">
+        {{
+          selectionCount() === 1
+            ? t('documents.listEditor.selectedCountSingular', { count: selectionCount() })
+            : t('documents.listEditor.selectedCountPlural', { count: selectionCount() })
+        }}
+      </span>
+      <span class="grow" />
+      <VButton variant="ghost" size="sm" @click="clearSelection">
+        {{ t('documents.listEditor.clearSelection') }}
+      </VButton>
+      <VButton variant="danger" size="sm" @click="deleteSelected">
+        {{ t('documents.listEditor.deleteSelected') }}
+      </VButton>
+    </div>
+
     <VueDraggable
       v-if="localItems.length > 0"
       v-model="localItems"
@@ -192,6 +294,7 @@ function autoGrow(event: Event): void {
         v-for="(item, idx) in localItems"
         :key="idx"
         class="row"
+        :class="{ 'row--selected': isSelected(idx) }"
       >
         <span
           class="drag-handle"
@@ -214,7 +317,7 @@ function autoGrow(event: Event): void {
           type="button"
           class="text"
           :title="t('documents.listEditor.clickToEdit')"
-          @click="startEdit(idx)"
+          @click="onItemClick($event, idx)"
         >
           <span v-if="item.text" class="text-content">{{ item.text }}</span>
           <span v-else class="text-empty">{{ t('documents.listEditor.emptyItem') }}</span>
@@ -344,5 +447,35 @@ function autoGrow(event: Event): void {
 .add-row {
   margin-top: 0.5rem;
   padding-top: 0.25rem;
+}
+
+/* Multi-select bulk-action bar. Sticky so it survives scrolling on
+   long lists; sits flush above the rows. */
+.bulk-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.4rem;
+  border-radius: 0.375rem;
+  background: hsl(var(--p) / 0.1);
+  border: 1px solid hsl(var(--p) / 0.3);
+  font-size: 0.85rem;
+}
+.bulk-count {
+  font-weight: 600;
+}
+.grow {
+  flex: 1 1 auto;
+}
+
+/* Selected row highlight — left-rule + tint, distinct from the
+   chosen-class state vue-draggable applies during a drag. */
+.row--selected {
+  background: hsl(var(--p) / 0.08);
+  box-shadow: inset 3px 0 0 hsl(var(--p));
 }
 </style>

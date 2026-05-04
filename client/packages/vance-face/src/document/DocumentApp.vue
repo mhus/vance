@@ -28,6 +28,7 @@ import TreeView from './TreeView.vue';
 import MindmapView from './MindmapView.vue';
 import RecordsView from './RecordsView.vue';
 import GraphView from './GraphView.vue';
+import SheetView from './SheetView.vue';
 import {
   isListMime,
   parseList,
@@ -56,6 +57,13 @@ import {
   GraphCodecError,
   type GraphDocument,
 } from './graphCodec';
+import {
+  isSheetMime,
+  parseSheet,
+  serializeSheet,
+  SheetCodecError,
+  type SheetDocument,
+} from './sheetCodec';
 import type {
   DocumentSummary,
   DocumentUpdateRequest,
@@ -311,9 +319,10 @@ function fillEditor(): void {
   editInlineText.value = sel?.inlineText ?? '';
   editError.value = null;
   // Switching documents resets the editor mode to the kind-aware
-  // default — `graph`, `records`, `mindmap`, `list`, `tree`, then
-  // `raw` for everything else.
-  if (isGraphDocument.value) contentTab.value = 'graph';
+  // default — `sheet`, `graph`, `records`, `mindmap`, `list`,
+  // `tree`, then `raw` for everything else.
+  if (isSheetDocument.value) contentTab.value = 'sheet';
+  else if (isGraphDocument.value) contentTab.value = 'graph';
   else if (isRecordsDocument.value) contentTab.value = 'records';
   else if (isListDocument.value) contentTab.value = 'list';
   else if (isMindmapDocument.value) contentTab.value = 'mindmap';
@@ -329,7 +338,7 @@ function fillEditor(): void {
 // raw editor. The tab is in-memory only — switching does not hit the
 // server, the body just gets reparsed each time.
 
-type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap' | 'records' | 'graph';
+type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap' | 'records' | 'graph' | 'sheet';
 const contentTab = ref<ContentTab>('raw');
 
 const isListDocument = computed<boolean>(() => {
@@ -370,6 +379,15 @@ const isGraphDocument = computed<boolean>(() => {
   if (!sel?.inline) return false;
   if ((sel.kind ?? '').toLowerCase() !== 'graph') return false;
   return isGraphMime(sel.mimeType);
+});
+
+// Sheet documents: kind: sheet + json/yaml only — markdown bodies
+// fall back to the Raw editor (spec doc-kind-sheet.md §3.3).
+const isSheetDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'sheet') return false;
+  return isSheetMime(sel.mimeType);
 });
 
 interface ParsedList {
@@ -450,6 +468,25 @@ const parsedGraph = computed<ParsedGraph>(() => {
   }
 });
 
+interface ParsedSheet {
+  doc: SheetDocument | null;
+  error: string | null;
+}
+
+const parsedSheet = computed<ParsedSheet>(() => {
+  if (!isSheetDocument.value) return { doc: null, error: null };
+  try {
+    const sel = docsState.selected.value;
+    const doc = parseSheet(editInlineText.value, sel?.mimeType ?? '');
+    return { doc, error: null };
+  } catch (e) {
+    if (e instanceof SheetCodecError) {
+      return { doc: null, error: e.message };
+    }
+    return { doc: null, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
 /**
  * Bridge from the typed list editor back to the raw body. Each
  * mutation in {@code <ListView>} emits a fresh {@link ListDocument};
@@ -519,6 +556,17 @@ function onGraphChanged(updated: GraphDocument): void {
   if (!sel?.mimeType) return;
   try {
     editInlineText.value = serializeGraph(updated, sel.mimeType);
+    editError.value = null;
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+function onSheetChanged(updated: SheetDocument): void {
+  const sel = docsState.selected.value;
+  if (!sel?.mimeType) return;
+  try {
+    editInlineText.value = serializeSheet(updated, sel.mimeType);
     editError.value = null;
   } catch (e) {
     editError.value = e instanceof Error ? e.message : String(e);
@@ -669,6 +717,12 @@ function buildKindStub(kind: string, mime: string): string {
     // gets just the header and a hint to switch mime type via Raw.
     if (isJson) return '{\n  "$meta": { "kind": "graph" },\n  "graph": { "directed": true },\n  "nodes": [\n    { "id": "alice", "label": "Alice" },\n    { "id": "bob", "label": "Bob" }\n  ],\n  "edges": [\n    { "source": "alice", "target": "bob" }\n  ]\n}\n';
     if (isYaml) return 'kind: graph\n---\ngraph:\n  directed: true\nnodes:\n  - id: alice\n    label: Alice\n  - id: bob\n    label: Bob\nedges:\n  - source: alice\n    target: bob\n';
+  }
+  if (kind === 'sheet') {
+    // Markdown not supported for sheets (spec §3.3) — falls through
+    // to the schema-less branch below if md is picked.
+    if (isJson) return '{\n  "$meta": { "kind": "sheet" },\n  "schema": ["A", "B", "C"],\n  "rows": 5,\n  "cells": [\n    { "field": "A1", "data": "Item" },\n    { "field": "B1", "data": "Qty" },\n    { "field": "C1", "data": "Total" },\n    { "field": "A2", "data": "Apples" },\n    { "field": "B2", "data": "10" },\n    { "field": "C2", "data": "=B2*1.5" }\n  ]\n}\n';
+    if (isYaml) return 'kind: sheet\n---\nschema: [A, B, C]\nrows: 5\ncells:\n  - field: A1\n    data: Item\n  - field: B1\n    data: Qty\n  - field: C1\n    data: Total\n  - field: A2\n    data: Apples\n  - field: B2\n    data: "10"\n  - field: C2\n    data: "=B2*1.5"\n';
   }
   // Schema-less kinds — header only, body stays empty.
   if (isMd) return `---\nkind: ${kind}\n---\n`;
@@ -1086,6 +1140,20 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isSheetDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'sheet' }"
+                  @click="contentTab = 'sheet'"
+                >{{ $t('documents.detail.tabSheet') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
               <div v-else-if="isGraphDocument" class="content-tabs">
                 <button
                   type="button"
@@ -1157,6 +1225,17 @@ const formatBytes = (n: number): string => {
                   v-else-if="parsedList.doc"
                   :doc="parsedList.doc"
                   @update:doc="onListChanged"
+                />
+              </template>
+
+              <template v-else-if="isSheetDocument && contentTab === 'sheet'">
+                <VAlert v-if="parsedSheet.error" variant="warning">
+                  <span>{{ $t('documents.detail.sheetParseError', { message: parsedSheet.error }) }}</span>
+                </VAlert>
+                <SheetView
+                  v-else-if="parsedSheet.doc"
+                  :doc="parsedSheet.doc"
+                  @update:doc="onSheetChanged"
                 />
               </template>
 

@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { setActiveLanguage } from '@vance/shared';
+import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
 
+const { t } = useI18n();
 const { profile, loading, error, load, saveIdentity, saveSetting } = useProfile();
 
 const titleDraft = ref('');
@@ -14,16 +17,18 @@ const languageSaved = ref<string | null>(null);
 
 const LANGUAGE_KEY = 'webui.language';
 
-// Same set the chat editor exposes for the speech recogniser. Keep
-// the lists aligned manually until we centralise both.
-const languageOptions = [
-  { value: '', label: 'Browser default' },
+// "Browser default" is the only label that needs translating; the
+// other entries are language names already shown in their native
+// form so users can recognise the option independent of the current
+// UI language.
+const languageOptions = computed(() => [
+  { value: '', label: t('profile.preferences.languageBrowserDefault') },
   { value: 'de', label: 'Deutsch' },
   { value: 'en', label: 'English' },
   { value: 'fr', label: 'Français' },
   { value: 'es', label: 'Español' },
   { value: 'it', label: 'Italiano' },
-];
+]);
 
 onMounted(load);
 
@@ -44,7 +49,7 @@ async function onSaveIdentity(): Promise<void> {
     email: emailDraft.value.trim(),
   }).catch(() => undefined);
   if (!error.value) {
-    identitySaved.value = 'Profile saved.';
+    identitySaved.value = t('profile.identity.saved');
   }
 }
 
@@ -59,24 +64,27 @@ async function onLanguageChanged(value: string | null): Promise<void> {
     // no re-login, no page reload. The data cookie still carries
     // the login-time snapshot; sessionStorage wins for live reads.
     setActiveLanguage(next === '' ? null : next);
-    languageSaved.value = 'Language updated.';
+    // Switch the live i18n locale too so the page re-renders in the
+    // newly chosen language right away.
+    setUiLocale(next === '' ? null : next);
+    languageSaved.value = t('profile.preferences.languageSaved');
   }
 }
 </script>
 
 <template>
-  <EditorShell title="Profile">
+  <EditorShell :title="$t('profile.pageTitle')">
     <div class="container mx-auto px-4 py-8 max-w-3xl flex flex-col gap-6">
       <VAlert v-if="error" variant="error">{{ error }}</VAlert>
 
       <div v-if="loading && !profile" class="text-sm opacity-60">
-        Loading profile…
+        {{ $t('profile.loading') }}
       </div>
 
       <template v-else-if="profile">
         <!-- Identity ─────────────────────────────────────────────────────── -->
         <VCard>
-          <h2 class="text-lg font-semibold mb-3">Identity</h2>
+          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.identity.title') }}</h2>
           <div class="flex flex-col gap-3">
             <div class="text-sm opacity-70">
               <span class="font-mono">{{ profile.tenantId }}</span>
@@ -85,13 +93,13 @@ async function onLanguageChanged(value: string | null): Promise<void> {
             </div>
             <VInput
               v-model="titleDraft"
-              label="Display name"
+              :label="$t('profile.identity.displayName')"
               :disabled="loading"
-              placeholder="e.g. Wile E. Coyote"
+              :placeholder="$t('profile.identity.displayNamePlaceholder')"
             />
             <VInput
               v-model="emailDraft"
-              label="Email"
+              :label="$t('profile.identity.email')"
               type="email"
               :disabled="loading"
               autocomplete="email"
@@ -102,7 +110,7 @@ async function onLanguageChanged(value: string | null): Promise<void> {
                 :loading="loading"
                 @click="onSaveIdentity"
               >
-                Save
+                {{ $t('common.save') }}
               </VButton>
               <span v-if="identitySaved" class="text-success text-sm">
                 {{ identitySaved }}
@@ -113,16 +121,15 @@ async function onLanguageChanged(value: string | null): Promise<void> {
 
         <!-- Preferences ──────────────────────────────────────────────────── -->
         <VCard>
-          <h2 class="text-lg font-semibold mb-3">Preferences</h2>
+          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.preferences.title') }}</h2>
           <p class="text-sm opacity-70 mb-3">
-            Saved on your user-scope. Other clients (foot, mobile) ignore
-            keys with the <code>webui.</code> prefix.
+            {{ $t('profile.preferences.description') }}
           </p>
           <div class="flex flex-col gap-3">
             <VSelect
               :model-value="languageDraft"
               :options="languageOptions"
-              label="Language"
+              :label="$t('profile.preferences.language')"
               :disabled="loading"
               @update:model-value="onLanguageChanged"
             />
@@ -134,9 +141,9 @@ async function onLanguageChanged(value: string | null): Promise<void> {
 
         <!-- Teams ────────────────────────────────────────────────────────── -->
         <VCard>
-          <h2 class="text-lg font-semibold mb-3">Teams</h2>
+          <h2 class="text-lg font-semibold mb-3">{{ $t('profile.teams.title') }}</h2>
           <p v-if="profile.teams.length === 0" class="text-sm opacity-70">
-            You're not a member of any team in this tenant.
+            {{ $t('profile.teams.empty') }}
           </p>
           <ul v-else class="flex flex-col gap-2">
             <li
@@ -152,13 +159,17 @@ async function onLanguageChanged(value: string | null): Promise<void> {
               </div>
               <div class="flex items-center gap-2">
                 <span class="text-xs opacity-70">
-                  {{ team.members.length }} member{{ team.members.length === 1 ? '' : 's' }}
+                  {{
+                    team.members.length === 1
+                      ? $t('profile.teams.memberCountOne', { count: team.members.length })
+                      : $t('profile.teams.memberCountOther', { count: team.members.length })
+                  }}
                 </span>
                 <span
                   v-if="!team.enabled"
                   class="badge badge-warning badge-sm"
-                  title="Team disabled by an administrator"
-                >disabled</span>
+                  :title="$t('profile.teams.disabledTooltip')"
+                >{{ $t('profile.teams.disabled') }}</span>
               </div>
             </li>
           </ul>

@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
       <a
         href="/index.html"
         class="flex-none font-bold text-lg font-mono no-underline hover:opacity-80"
-        title="Back to home"
+        :title="$t('common.backToHome')"
       >vance</a>
 
       <div class="flex-1 flex items-center gap-2 text-sm">
@@ -187,8 +187,8 @@ onBeforeUnmount(() => {
             tabindex="0"
             class="dropdown-content menu bg-base-100 rounded-box z-[1] mt-2 w-48 p-2 shadow"
           >
-            <li><a href="/profile.html">Profile</a></li>
-            <li><a @click="logout">Sign out</a></li>
+            <li><a href="/profile.html">{{ $t('common.profile') }}</a></li>
+            <li><a @click="logout">{{ $t('common.signOut') }}</a></li>
           </ul>
         </div>
       </div>

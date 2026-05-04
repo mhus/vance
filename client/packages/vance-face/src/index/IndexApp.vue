@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   clearLegacyAuth,
   clearRememberedLogin,
@@ -13,7 +14,10 @@ import {
   refreshAccessCookie,
   setRememberedLogin,
 } from '@vance/shared';
+import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput } from '@/components';
+
+const { t } = useI18n();
 
 type Mode = 'login' | 'landing' | 'auto-login';
 
@@ -53,6 +57,7 @@ onMounted(async () => {
     // so editors that consult {@link getActiveLanguage} have a
     // value before the user does anything.
     hydrateActiveWebUiSettings();
+    syncUiLocaleFromSession();
     redirectAfterLogin();
     return;
   }
@@ -63,22 +68,34 @@ onMounted(async () => {
   // sees that the page loaded fresh.
   if (getSessionData() && isRefreshAlive()) {
     mode.value = 'auto-login';
-    autoLoginNotice.value = 'Sie wurden eingeloggt';
+    autoLoginNotice.value = t('login.autoLoginNotice');
     const ok = await refreshAccessCookie();
     if (ok && isAccessAlive()) {
       // Refresh re-issued the data cookie — push fresh settings
       // into sessionStorage before the redirect mounts the next
       // editor.
       hydrateActiveWebUiSettings();
+      syncUiLocaleFromSession();
       window.setTimeout(redirectAfterLogin, 1000);
       return;
     }
     // Silent refresh failed — fall through to the login form.
     autoLoginNotice.value = null;
     mode.value = 'login';
-    error.value = 'Auto-login failed. Please sign in again.';
+    error.value = t('login.autoLoginFailed');
   }
 });
+
+/**
+ * Pull the language from the just-hydrated sessionStorage / data
+ * cookie and feed it into the i18n instance. Called after every
+ * successful login or auto-login so the {@code mode === 'landing'}
+ * editor list renders in the user's chosen language.
+ */
+function syncUiLocaleFromSession(): void {
+  const lang = getSessionData()?.webUiSettings?.['webui.language'];
+  setUiLocale(lang ?? null);
+}
 
 async function onSubmit(): Promise<void> {
   error.value = null;
@@ -95,6 +112,7 @@ async function onSubmit(): Promise<void> {
     // tab's sessionStorage so live reads (language, theme) come
     // from there until the user changes them in profile.
     hydrateActiveWebUiSettings();
+    syncUiLocaleFromSession();
     // Persist or clear the (tenant, username) hint based on the
     // checkbox. Only a successful login is allowed to write — a
     // failed attempt mustn't leak its inputs into localStorage.
@@ -105,7 +123,13 @@ async function onSubmit(): Promise<void> {
     }
     redirectAfterLogin();
   } catch (e) {
-    error.value = e instanceof LoginError ? e.message : 'Login failed.';
+    if (e instanceof LoginError) {
+      error.value = e.status === 401
+        ? t('login.invalidCredentials')
+        : t('login.loginFailedWithStatus', { status: e.status });
+    } else {
+      error.value = t('login.loginFailed');
+    }
   } finally {
     submitting.value = false;
   }
@@ -165,14 +189,14 @@ function readNextParam(): string | null {
           </VAlert>
           <VInput
             v-model="tenant"
-            label="Tenant"
+            :label="$t('login.tenant')"
             required
             autocomplete="organization"
             :disabled="submitting"
           />
           <VInput
             v-model="username"
-            label="Username"
+            :label="$t('login.username')"
             required
             autocomplete="username"
             :disabled="submitting"
@@ -180,14 +204,14 @@ function readNextParam(): string | null {
           <VInput
             v-model="password"
             type="password"
-            label="Password"
+            :label="$t('login.password')"
             required
             autocomplete="current-password"
             :disabled="submitting"
           />
           <VCheckbox
             v-model="rememberUser"
-            label="Remember user"
+            :label="$t('login.rememberUser')"
             :disabled="submitting"
           />
           <VButton
@@ -197,84 +221,80 @@ function readNextParam(): string | null {
             class="mt-2"
             block
           >
-            Sign in
+            {{ $t('common.signIn') }}
           </VButton>
         </form>
       </VCard>
     </div>
   </div>
 
-  <EditorShell v-else title="Home">
+  <EditorShell v-else :title="$t('common.home')">
     <div class="container mx-auto px-4 py-8 max-w-3xl">
-      <h2 class="text-lg font-semibold mb-4">Editors</h2>
+      <h2 class="text-lg font-semibold mb-4">{{ $t('index.sectionTitle') }}</h2>
       <VCard>
         <ul class="flex flex-col gap-3">
           <li class="flex items-center justify-between gap-4">
             <div>
-              <div class="font-semibold">Chat</div>
-              <div class="text-sm opacity-70">
-                Live chat with the brain over WebSocket. Pick an existing
-                session or start a new one in any project.
-              </div>
+              <div class="font-semibold">{{ $t('index.chat.title') }}</div>
+              <div class="text-sm opacity-70">{{ $t('index.chat.description') }}</div>
             </div>
-            <VButton variant="primary" size="sm" href="/chat-editor.html">Open</VButton>
+            <VButton variant="primary" size="sm" href="/chat-editor.html">
+              {{ $t('index.open') }}
+            </VButton>
           </li>
           <li class="flex items-center justify-between gap-4">
             <div>
-              <div class="font-semibold">Documents</div>
-              <div class="text-sm opacity-70">Browse and edit project documents.</div>
+              <div class="font-semibold">{{ $t('index.documents.title') }}</div>
+              <div class="text-sm opacity-70">{{ $t('index.documents.description') }}</div>
             </div>
-            <VButton variant="primary" size="sm" href="/document-editor.html">Open</VButton>
+            <VButton variant="primary" size="sm" href="/document-editor.html">
+              {{ $t('index.open') }}
+            </VButton>
           </li>
           <li class="flex items-center justify-between gap-4">
             <div>
-              <div class="font-semibold">Inbox</div>
-              <div class="text-sm opacity-70">
-                Read items from your personal inbox and the team-inbox of every
-                team you're in. Reply, archive, delegate.
-              </div>
+              <div class="font-semibold">{{ $t('index.inbox.title') }}</div>
+              <div class="text-sm opacity-70">{{ $t('index.inbox.description') }}</div>
             </div>
-            <VButton variant="primary" size="sm" href="/inbox.html">Open</VButton>
+            <VButton variant="primary" size="sm" href="/inbox.html">
+              {{ $t('index.open') }}
+            </VButton>
           </li>
           <li class="flex items-center justify-between gap-4">
             <div>
-              <div class="font-semibold">Scopes</div>
-              <div class="text-sm opacity-70">
-                Manage the tenant, project groups and projects. Edit settings
-                at tenant or project scope.
-              </div>
+              <div class="font-semibold">{{ $t('index.scopes.title') }}</div>
+              <div class="text-sm opacity-70">{{ $t('index.scopes.description') }}</div>
             </div>
-            <VButton variant="primary" size="sm" href="/scopes.html">Open</VButton>
+            <VButton variant="primary" size="sm" href="/scopes.html">
+              {{ $t('index.open') }}
+            </VButton>
           </li>
           <li class="flex items-center justify-between gap-4">
             <div>
-              <div class="font-semibold">Server Tools</div>
-              <div class="text-sm opacity-70">
-                Configure server-side tools per project. Pick a project
-                or _vance for tenant-wide defaults.
-              </div>
+              <div class="font-semibold">{{ $t('index.tools.title') }}</div>
+              <div class="text-sm opacity-70">{{ $t('index.tools.description') }}</div>
             </div>
-            <VButton variant="primary" size="sm" href="/tools.html">Open</VButton>
+            <VButton variant="primary" size="sm" href="/tools.html">
+              {{ $t('index.open') }}
+            </VButton>
           </li>
           <li class="flex items-center justify-between gap-4">
             <div>
-              <div class="font-semibold">Insights</div>
-              <div class="text-sm opacity-70">
-                Inspect sessions, think-processes, chat history,
-                memory and Marvin trees. Read-only diagnostic view.
-              </div>
+              <div class="font-semibold">{{ $t('index.insights.title') }}</div>
+              <div class="text-sm opacity-70">{{ $t('index.insights.description') }}</div>
             </div>
-            <VButton variant="primary" size="sm" href="/insights.html">Open</VButton>
+            <VButton variant="primary" size="sm" href="/insights.html">
+              {{ $t('index.open') }}
+            </VButton>
           </li>
           <li class="flex items-center justify-between gap-4">
             <div>
-              <div class="font-semibold">Users &amp; Teams</div>
-              <div class="text-sm opacity-70">
-                Manage tenant users (create, password reset, status)
-                and teams (members, enabled flag).
-              </div>
+              <div class="font-semibold">{{ $t('index.users.title') }}</div>
+              <div class="text-sm opacity-70">{{ $t('index.users.description') }}</div>
             </div>
-            <VButton variant="primary" size="sm" href="/users.html">Open</VButton>
+            <VButton variant="primary" size="sm" href="/users.html">
+              {{ $t('index.open') }}
+            </VButton>
           </li>
         </ul>
       </VCard>

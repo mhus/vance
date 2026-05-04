@@ -1,7 +1,8 @@
 import { createApp } from 'vue';
 import { ensureAuthenticated } from '@vance/shared';
 import ProfileApp from './ProfileApp.vue';
+import { i18n } from '@/i18n';
 import '@/style/app.css';
 
 await ensureAuthenticated();
-createApp(ProfileApp).mount('#app');
+createApp(ProfileApp).use(i18n).mount('#app');

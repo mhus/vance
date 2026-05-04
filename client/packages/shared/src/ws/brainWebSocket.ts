@@ -271,14 +271,20 @@ export class BrainWebSocket {
 
 /**
  * Construct the WebSocket URL with auth + client-identity passed as
- * query parameters. Same-origin in production; in {@code vite dev} the
- * proxy upgrades to the locally running brain.
+ * query parameters. The base URL comes from
+ * {@link configurePlatform} — the host (Web's `bootWeb.ts`) is
+ * responsible for substituting `${location.protocol}//${location.host}`
+ * before binding when same-origin connections are wanted; this module
+ * never reads the platform URL itself.
  */
 function buildBrainWsUrl(options: BrainWebSocketOptions): string {
   const httpBase = brainBaseUrl();
-  // Empty string == same origin. Convert http(s):// to ws(s)://.
-  const origin = httpBase || `${window.location.protocol}//${window.location.host}`;
-  const wsOrigin = origin
+  if (!httpBase) {
+    throw new Error(
+      '@vance/shared: brain base URL is empty — call configurePlatform with a non-empty baseUrl before opening WebSocket.',
+    );
+  }
+  const wsOrigin = httpBase
     .replace(/^http:\/\//, 'ws://')
     .replace(/^https:\/\//, 'wss://');
   const params = new URLSearchParams({
@@ -286,9 +292,10 @@ function buildBrainWsUrl(options: BrainWebSocketOptions): string {
     clientVersion: options.clientVersion,
   });
   // Cookie-only callers (web UI same-origin) leave `jwt` empty; the
-  // browser ships {@code vance_access} on the upgrade request. Other
-  // callers still get the {@code ?token=} fallback for cross-origin
-  // or header-less embeds.
+  // browser ships `vance_access` on the upgrade request. Bearer
+  // callers (Mobile, cross-origin embeds) pass the access token here
+  // — it is rendered as the `?token=` query parameter because the
+  // browser WebSocket constructor cannot set custom headers.
   if (options.jwt) {
     params.set('token', options.jwt);
   }

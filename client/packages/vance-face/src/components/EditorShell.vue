@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { getTenantId, getUsername } from '@vance/shared';
 import {
   getSessionData,
-  getTenantId,
-  getUsername,
   isAccessAlive,
   isRefreshAlive,
   logout as serverLogout,
   refreshAccessCookie,
   setActiveLanguage,
-} from '@vance/shared';
+} from '@/platform';
 import { setUiLocale } from '@/i18n';
 
 /**

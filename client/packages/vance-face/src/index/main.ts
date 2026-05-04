@@ -1,3 +1,4 @@
+import '@/platform/bootWeb';
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import IndexApp from './IndexApp.vue';

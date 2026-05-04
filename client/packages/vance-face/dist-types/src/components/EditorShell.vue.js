@@ -1,6 +1,7 @@
 import { computed, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { getSessionData, getTenantId, getUsername, isAccessAlive, isRefreshAlive, logout as serverLogout, refreshAccessCookie, setActiveLanguage, } from '@vance/shared';
+import { getTenantId, getUsername } from '@vance/shared';
+import { getSessionData, isAccessAlive, isRefreshAlive, logout as serverLogout, refreshAccessCookie, setActiveLanguage, } from '@/platform';
 import { setUiLocale } from '@/i18n';
 const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],

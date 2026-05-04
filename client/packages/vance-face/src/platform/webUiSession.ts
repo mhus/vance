@@ -1,5 +1,5 @@
-// Cookie-based session helpers. The web UI no longer keeps the JWT in
-// localStorage; the server sets three cookies on login:
+// Cookie-based session helpers. The web UI keeps the JWT in an
+// HttpOnly cookie set by the server on login:
 //
 //   * vance_access  — HttpOnly, the access JWT. JavaScript cannot read
 //                     it; the browser ships it on every same-origin
@@ -15,12 +15,13 @@
 // whether to render the login form.
 
 import type { WebUiSessionData } from '@vance/generated';
+import { StorageKeys, getStorage } from '@vance/shared';
 
 const DATA_COOKIE_NAME = 'vance_data';
 
 /**
- * Read and decode the {@code vance_data} cookie. Returns {@code null}
- * when the cookie is missing, malformed, or fails to parse.
+ * Read and decode the `vance_data` cookie. Returns `null` when the
+ * cookie is missing, malformed, or fails to parse.
  */
 export function getSessionData(): WebUiSessionData | null {
   const raw = readCookie(DATA_COOKIE_NAME);
@@ -42,7 +43,7 @@ export function getSessionData(): WebUiSessionData | null {
  * (with a default 30-second safety margin so callers refresh
  * proactively before the very last second).
  *
- * Returns {@code false} when no session is present at all.
+ * Returns `false` when no session is present at all.
  */
 export function isAccessAlive(marginMs = 30_000): boolean {
   const s = getSessionData();
@@ -64,12 +65,38 @@ export function isRefreshAlive(marginMs = 5_000): boolean {
 /**
  * Best-effort client-side delete of the data cookie. The HttpOnly
  * access/refresh cookies cannot be deleted from JavaScript — the
- * server-side {@code POST /brain/{tenant}/logout} clears all three.
- * Use this only when the data cookie has gone stale and the server
- * is unreachable.
+ * server-side `POST /brain/{tenant}/logout` clears all three. Use
+ * this only when the data cookie has gone stale and the server is
+ * unreachable.
  */
 export function clearLocalSessionData(): void {
   document.cookie = `${DATA_COOKIE_NAME}=; Max-Age=0; Path=/; SameSite=Strict`;
+}
+
+// ──────────────── Identity mirror ────────────────
+//
+// `@vance/shared/auth/jwtStorage` reads tenant + username from the
+// platform-bound prefsStore. On Web the authoritative source is the
+// `vance_data` cookie; this mirror copies the relevant fields into
+// localStorage so shared modules pick them up via the same code path
+// as Mobile.
+
+/**
+ * Copy tenantId + username from the data cookie into the prefsStore.
+ * Idempotent — call after every successful login / refresh / boot.
+ * Clears the keys when the cookie is missing so a stale identity does
+ * not survive a server-side logout.
+ */
+export function hydrateIdentity(): void {
+  const prefs = getStorage().prefsStore;
+  const s = getSessionData();
+  if (s) {
+    prefs.set(StorageKeys.identityTenantId, s.tenantId);
+    prefs.set(StorageKeys.identityUsername, s.username);
+  } else {
+    prefs.remove(StorageKeys.identityTenantId);
+    prefs.remove(StorageKeys.identityUsername);
+  }
 }
 
 // ──────────────── Active webui.* settings (session-scoped) ────────────────
@@ -82,16 +109,17 @@ export function clearLocalSessionData(): void {
 
 /**
  * sessionStorage key for the live language preference. Mirrors
- * {@code webui.language} from the data cookie but updates immediately
- * when the user switches language on the profile page.
+ * `webui.language` from the data cookie but updates immediately when
+ * the user switches language on the profile page.
  */
 const SESSION_LANGUAGE_KEY = 'vance.session.webui.language';
 
 /**
- * Mirror the webui.* settings carried in the data cookie into the tab's
- * sessionStorage. Idempotent — call freely after login or after the
- * data cookie has been refreshed. Existing sessionStorage values are
- * overwritten so cross-tab cookie updates win on the next page load.
+ * Mirror the webui.* settings carried in the data cookie into the
+ * tab's sessionStorage. Idempotent — call freely after login or after
+ * the data cookie has been refreshed. Existing sessionStorage values
+ * are overwritten so cross-tab cookie updates win on the next page
+ * load.
  */
 export function hydrateActiveWebUiSettings(): void {
   const s = getSessionData();
@@ -107,9 +135,9 @@ export function hydrateActiveWebUiSettings(): void {
 /**
  * The active web-UI language. Reads the session-scoped override first
  * (set by the profile page on every change) and falls back to the
- * snapshot in the data cookie. Returns {@code null} when the user has
- * not picked a language and the server has no default — callers
- * should then defer to the browser's {@code navigator.language}.
+ * snapshot in the data cookie. Returns `null` when the user has not
+ * picked a language and the server has no default — callers should
+ * then defer to the browser's `navigator.language`.
  */
 export function getActiveLanguage(): string | null {
   const fromSession = window.sessionStorage.getItem(SESSION_LANGUAGE_KEY);
@@ -119,12 +147,12 @@ export function getActiveLanguage(): string | null {
 }
 
 /**
- * Update the active language for this tab. Called by the profile page
- * after a successful {@code PUT /profile/settings/webui.language} so
- * other components that read {@link getActiveLanguage} pick up the new
- * value without the user having to re-log in.
+ * Update the active language for this tab. Called by the profile
+ * page after a successful `PUT /profile/settings/webui.language` so
+ * other components that read {@link getActiveLanguage} pick up the
+ * new value without the user having to re-log in.
  *
- * Pass {@code null} (or empty string) to fall back to the data-cookie
+ * Pass `null` (or empty string) to fall back to the data-cookie
  * value / browser default — this is the "use server default" choice.
  */
 export function setActiveLanguage(value: string | null): void {
@@ -146,9 +174,6 @@ export function clearActiveWebUiSettings(): void {
 }
 
 function readCookie(name: string): string | null {
-  // No URL decode here — getSessionData decodes once after splitting,
-  // so the raw value goes through a single decodeURIComponent pass
-  // even if it contains '=' or ';' inside the percent-encoded JSON.
   const cookies = document.cookie.split(';');
   for (const cookie of cookies) {
     const eq = cookie.indexOf('=');

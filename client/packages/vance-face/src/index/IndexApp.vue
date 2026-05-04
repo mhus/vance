@@ -5,15 +5,18 @@ import {
   clearLegacyAuth,
   clearRememberedLogin,
   getRememberedLogin,
+  setRememberedLogin,
+} from '@vance/shared';
+import {
   getSessionData,
   hydrateActiveWebUiSettings,
+  hydrateIdentity,
   isAccessAlive,
   isRefreshAlive,
   login,
   LoginError,
   refreshAccessCookie,
-  setRememberedLogin,
-} from '@vance/shared';
+} from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput } from '@/components';
 
@@ -75,6 +78,7 @@ onMounted(async () => {
       // into sessionStorage before the redirect mounts the next
       // editor.
       hydrateActiveWebUiSettings();
+      hydrateIdentity();
       syncUiLocaleFromSession();
       window.setTimeout(redirectAfterLogin, 1000);
       return;

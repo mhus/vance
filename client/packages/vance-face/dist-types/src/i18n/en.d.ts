@@ -170,8 +170,16 @@ declare const _default: {
             tabRaw: string;
             tabList: string;
             tabTree: string;
+            tabMindmap: string;
+            tabRecords: string;
+            tabGraph: string;
+            tabSheet: string;
             listParseError: string;
             treeParseError: string;
+            mindmapParseError: string;
+            recordsParseError: string;
+            graphParseError: string;
+            sheetParseError: string;
             delete: string;
             download: string;
             cancel: string;
@@ -198,6 +206,61 @@ declare const _default: {
             dragHandle: string;
             expand: string;
             collapse: string;
+        };
+        mindmapView: {
+            panZoomHint: string;
+        };
+        sheetView: {
+            addRow: string;
+            addColumn: string;
+            deleteRow: string;
+            deleteColumn: string;
+            hint: string;
+            cellProps: string;
+            cellEmptyHint: string;
+            colorField: string;
+            backgroundField: string;
+            clear: string;
+            clearFormat: string;
+            emptySelectionHint: string;
+        };
+        graphView: {
+            addNode: string;
+            autoLayout: string;
+            autoLayoutHint: string;
+            directed: string;
+            hint: string;
+            nodeProps: string;
+            edgeProps: string;
+            labelField: string;
+            colorField: string;
+            clearColor: string;
+            deleteNode: string;
+            deleteEdge: string;
+            idEmpty: string;
+            idDuplicate: string;
+            emptySelectionHint: string;
+        };
+        recordsEditor: {
+            addRow: string;
+            deleteItem: string;
+            clickToEdit: string;
+            emptyCell: string;
+            dragHandle: string;
+            selectedCountSingular: string;
+            selectedCountPlural: string;
+            deleteSelected: string;
+            clearSelection: string;
+            overflowHint: string;
+            editSchema: string;
+            doneEditingSchema: string;
+            addColumn: string;
+            deleteColumn: string;
+            moveColumnLeft: string;
+            moveColumnRight: string;
+            schemaEmptyName: string;
+            schemaDuplicateName: string;
+            schemaMinOneColumn: string;
         };
         create: {
             newDocument: string;

@@ -6,6 +6,7 @@ function iconForKind(kind) {
         return null;
     switch (kind.toLowerCase()) {
         case 'list': return '📋';
+        case 'tree': return '🌳';
         case 'text': return '📝';
         case 'mindmap': return '🧠';
         case 'graph': return '🕸️';

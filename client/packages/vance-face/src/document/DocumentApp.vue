@@ -20,7 +20,8 @@ import {
 import { useDocuments } from '@/composables/useDocuments';
 import { useHelp } from '@/composables/useHelp';
 import { useTenantProjects } from '@/composables/useTenantProjects';
-import { consumeDocumentDraft, documentContentUrl } from '@vance/shared';
+import { documentContentUrl } from '@vance/shared';
+import { consumeDocumentDraft } from '@/platform';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
 import ListView from './ListView.vue';

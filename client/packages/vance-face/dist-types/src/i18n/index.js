@@ -14,7 +14,7 @@
 // fall through to English silently — `silentTranslationWarn: true`
 // keeps the console quiet about it.
 import { createI18n } from 'vue-i18n';
-import { getActiveLanguage } from '@vance/shared';
+import { getActiveLanguage } from '@/platform';
 import en from './en';
 import de from './de';
 const SUPPORTED_LOCALES = ['en', 'de'];

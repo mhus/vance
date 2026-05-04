@@ -1,2 +1,2 @@
-export * from './language';
-export * from './synthesis';
+export * from './preferences';
+export * from './markdown';

@@ -15,7 +15,8 @@ import {
 } from '@/components';
 import { useInbox, type AssignedToFilter, type InboxFilter } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
-import { getUsername, setDocumentDraft } from '@vance/shared';
+import { getUsername } from '@vance/shared';
+import { setDocumentDraft } from '@/platform';
 import {
   AnswerOutcome,
   Criticality,

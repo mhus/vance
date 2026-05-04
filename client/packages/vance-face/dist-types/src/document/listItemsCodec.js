@@ -10,7 +10,7 @@
 // extra fields (see `parseListMarkdown` notes).
 //
 // See `specification/doc-kind-items.md` for the schema.
-import yaml from 'js-yaml';
+import { dumpYamlMultiDoc, mergeYamlMultiDoc, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
 export class ListCodecError extends Error {
     cause;
     constructor(message, cause) {
@@ -160,40 +160,33 @@ function parseListJson(body) {
     if (!isObject(parsed)) {
         throw new ListCodecError('Top-level JSON must be an object');
     }
-    return promoteToListDocument(parsed);
+    return promoteToListDocument(unwrapJsonMeta(parsed));
 }
 function serializeListJson(doc) {
-    const obj = {
-        kind: doc.kind || 'list',
+    return JSON.stringify(wrapJsonMeta(doc.kind || 'list', {
         items: doc.items.map(itemToObject),
         ...doc.extra,
-    };
-    return JSON.stringify(obj, null, 2) + '\n';
+    }), null, 2) + '\n';
 }
 // ── YAML ─────────────────────────────────────────────────────────────
 function parseListYaml(body) {
     if (body.trim() === '') {
         return { kind: 'list', items: [], extra: {} };
     }
-    let parsed;
+    let merged;
     try {
-        parsed = yaml.load(body, { schema: yaml.JSON_SCHEMA });
+        merged = mergeYamlMultiDoc(body);
     }
     catch (e) {
         throw new ListCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
     }
-    if (!isObject(parsed)) {
-        throw new ListCodecError('Top-level YAML must be a mapping');
-    }
-    return promoteToListDocument(parsed);
+    return promoteToListDocument(merged);
 }
 function serializeListYaml(doc) {
-    const obj = {
-        kind: doc.kind || 'list',
+    return dumpYamlMultiDoc(doc.kind || 'list', {
         items: doc.items.map(itemToObject),
         ...doc.extra,
-    };
-    return yaml.dump(obj, { indent: 2, lineWidth: 100, noRefs: true });
+    });
 }
 // ── Shared promotion logic (json + yaml share their object shape) ───
 /** Lift a parsed JSON/YAML object into the typed ListDocument shape.

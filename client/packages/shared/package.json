@@ -2,7 +2,7 @@
   "name": "@vance/shared",
   "version": "1.0.0",
   "private": true,
-  "description": "Vance client-side library: auth, REST client, WebSocket connection, persistence. Framework-agnostic — no Vue, no Tailwind, no DaisyUI.",
+  "description": "Vance client-side library: auth, REST client, WebSocket connection, speech preferences. Platform-neutral — no Vue, no Tailwind, no DaisyUI, no direct browser-only APIs (storage and REST behaviour are bound by the host via configurePlatform).",
   "license": "FSL-1.1-Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,9 +20,13 @@
       "types": "./dist/rest/index.d.ts",
       "import": "./dist/rest/index.js"
     },
-    "./persistence": {
-      "types": "./dist/persistence/index.d.ts",
-      "import": "./dist/persistence/index.js"
+    "./platform": {
+      "types": "./dist/platform/index.d.ts",
+      "import": "./dist/platform/index.js"
+    },
+    "./storage": {
+      "types": "./dist/storage/keys.d.ts",
+      "import": "./dist/storage/keys.js"
     }
   },
   "files": ["dist"],

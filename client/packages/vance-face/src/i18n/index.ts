@@ -16,7 +16,7 @@
 
 import { createI18n, type I18n } from 'vue-i18n';
 import type { App } from 'vue';
-import { getActiveLanguage } from '@vance/shared';
+import { getActiveLanguage } from '@/platform';
 import en from './en';
 import de from './de';
 

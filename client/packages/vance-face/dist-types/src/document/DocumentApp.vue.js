@@ -4,13 +4,21 @@ import { EditorShell, VAlert, VBackButton, VButton, VCard, VDataList, VEmptyStat
 import { useDocuments } from '@/composables/useDocuments';
 import { useHelp } from '@/composables/useHelp';
 import { useTenantProjects } from '@/composables/useTenantProjects';
-import { consumeDocumentDraft, documentContentUrl } from '@vance/shared';
+import { documentContentUrl } from '@vance/shared';
+import { consumeDocumentDraft } from '@/platform';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
 import ListView from './ListView.vue';
 import TreeView from './TreeView.vue';
+import MindmapView from './MindmapView.vue';
+import RecordsView from './RecordsView.vue';
+import GraphView from './GraphView.vue';
+import SheetView from './SheetView.vue';
 import { isListMime, parseList, serializeList, ListCodecError, } from './listItemsCodec';
 import { isTreeMime, parseTree, serializeTree, TreeCodecError, } from './treeItemsCodec';
+import { isRecordsMime, parseRecords, serializeRecords, RecordsCodecError, } from './recordsCodec';
+import { isGraphMime, parseGraph, serializeGraph, GraphCodecError, } from './graphCodec';
+import { isSheetMime, parseSheet, serializeSheet, SheetCodecError, } from './sheetCodec';
 const PAGE_SIZE = 20;
 const { t } = useI18n();
 const projectsState = useTenantProjects();
@@ -231,10 +239,18 @@ function fillEditor() {
     editInlineText.value = sel?.inlineText ?? '';
     editError.value = null;
     // Switching documents resets the editor mode to the kind-aware
-    // default — `list` for list documents, `tree` for tree documents,
-    // `raw` for everything else.
-    if (isListDocument.value)
+    // default — `sheet`, `graph`, `records`, `mindmap`, `list`,
+    // `tree`, then `raw` for everything else.
+    if (isSheetDocument.value)
+        contentTab.value = 'sheet';
+    else if (isGraphDocument.value)
+        contentTab.value = 'graph';
+    else if (isRecordsDocument.value)
+        contentTab.value = 'records';
+    else if (isListDocument.value)
         contentTab.value = 'list';
+    else if (isMindmapDocument.value)
+        contentTab.value = 'mindmap';
     else if (isTreeDocument.value)
         contentTab.value = 'tree';
     else
@@ -257,6 +273,45 @@ const isTreeDocument = computed(() => {
         return false;
     return isTreeMime(sel.mimeType);
 });
+// Mindmap documents reuse the tree codec — same mime types, same
+// per-item shape — and add a Mindmap render tab on top of the
+// tree editor. See specification/doc-kind-mindmap.md §5.
+const isMindmapDocument = computed(() => {
+    const sel = docsState.selected.value;
+    if (!sel?.inline)
+        return false;
+    if ((sel.kind ?? '').toLowerCase() !== 'mindmap')
+        return false;
+    return isTreeMime(sel.mimeType);
+});
+const isRecordsDocument = computed(() => {
+    const sel = docsState.selected.value;
+    if (!sel?.inline)
+        return false;
+    if ((sel.kind ?? '').toLowerCase() !== 'records')
+        return false;
+    return isRecordsMime(sel.mimeType);
+});
+// Graph documents: kind: graph + json/yaml only — markdown bodies
+// fall back to the Raw editor (spec doc-kind-graph.md §3.3).
+const isGraphDocument = computed(() => {
+    const sel = docsState.selected.value;
+    if (!sel?.inline)
+        return false;
+    if ((sel.kind ?? '').toLowerCase() !== 'graph')
+        return false;
+    return isGraphMime(sel.mimeType);
+});
+// Sheet documents: kind: sheet + json/yaml only — markdown bodies
+// fall back to the Raw editor (spec doc-kind-sheet.md §3.3).
+const isSheetDocument = computed(() => {
+    const sel = docsState.selected.value;
+    if (!sel?.inline)
+        return false;
+    if ((sel.kind ?? '').toLowerCase() !== 'sheet')
+        return false;
+    return isSheetMime(sel.mimeType);
+});
 const parsedList = computed(() => {
     if (!isListDocument.value)
         return { doc: null, error: null };
@@ -273,8 +328,9 @@ const parsedList = computed(() => {
     }
 });
 const parsedTree = computed(() => {
-    if (!isTreeDocument.value)
+    if (!isTreeDocument.value && !isMindmapDocument.value) {
         return { doc: null, error: null };
+    }
     try {
         const sel = docsState.selected.value;
         const doc = parseTree(editInlineText.value, sel?.mimeType ?? '');
@@ -282,6 +338,51 @@ const parsedTree = computed(() => {
     }
     catch (e) {
         if (e instanceof TreeCodecError) {
+            return { doc: null, error: e.message };
+        }
+        return { doc: null, error: e instanceof Error ? e.message : String(e) };
+    }
+});
+const parsedRecords = computed(() => {
+    if (!isRecordsDocument.value)
+        return { doc: null, error: null };
+    try {
+        const sel = docsState.selected.value;
+        const doc = parseRecords(editInlineText.value, sel?.mimeType ?? '');
+        return { doc, error: null };
+    }
+    catch (e) {
+        if (e instanceof RecordsCodecError) {
+            return { doc: null, error: e.message };
+        }
+        return { doc: null, error: e instanceof Error ? e.message : String(e) };
+    }
+});
+const parsedGraph = computed(() => {
+    if (!isGraphDocument.value)
+        return { doc: null, error: null };
+    try {
+        const sel = docsState.selected.value;
+        const doc = parseGraph(editInlineText.value, sel?.mimeType ?? '');
+        return { doc, error: null };
+    }
+    catch (e) {
+        if (e instanceof GraphCodecError) {
+            return { doc: null, error: e.message };
+        }
+        return { doc: null, error: e instanceof Error ? e.message : String(e) };
+    }
+});
+const parsedSheet = computed(() => {
+    if (!isSheetDocument.value)
+        return { doc: null, error: null };
+    try {
+        const sel = docsState.selected.value;
+        const doc = parseSheet(editInlineText.value, sel?.mimeType ?? '');
+        return { doc, error: null };
+    }
+    catch (e) {
+        if (e instanceof SheetCodecError) {
             return { doc: null, error: e.message };
         }
         return { doc: null, error: e instanceof Error ? e.message : String(e) };
@@ -323,6 +424,55 @@ function onTreeChanged(updated) {
         return;
     try {
         editInlineText.value = serializeTree(updated, sel.mimeType);
+        editError.value = null;
+    }
+    catch (e) {
+        editError.value = e instanceof Error ? e.message : String(e);
+    }
+}
+/**
+ * Bridge from the typed records editor back to the raw body. Each
+ * mutation in {@code <RecordsView>} emits a fresh
+ * {@link RecordsDocument}; we serialise it in the document's mime
+ * type and overwrite the raw editor's text. The Save / Apply path
+ * then writes the canonical body unchanged.
+ */
+function onRecordsChanged(updated) {
+    const sel = docsState.selected.value;
+    if (!sel?.mimeType)
+        return;
+    try {
+        editInlineText.value = serializeRecords(updated, sel.mimeType);
+        editError.value = null;
+    }
+    catch (e) {
+        editError.value = e instanceof Error ? e.message : String(e);
+    }
+}
+/**
+ * Bridge from the typed graph editor back to the raw body. Same
+ * pattern as records — the editor emits a fresh
+ * {@link GraphDocument}, we serialise into the document's mime
+ * type and write into the raw editor's text.
+ */
+function onGraphChanged(updated) {
+    const sel = docsState.selected.value;
+    if (!sel?.mimeType)
+        return;
+    try {
+        editInlineText.value = serializeGraph(updated, sel.mimeType);
+        editError.value = null;
+    }
+    catch (e) {
+        editError.value = e instanceof Error ? e.message : String(e);
+    }
+}
+function onSheetChanged(updated) {
+    const sel = docsState.selected.value;
+    if (!sel?.mimeType)
+        return;
+    try {
+        editInlineText.value = serializeSheet(updated, sel.mimeType);
         editError.value = null;
     }
     catch (e) {
@@ -426,25 +576,58 @@ function buildKindStub(kind, mime) {
         if (isMd)
             return '---\nkind: list\n---\n- item 1\n- item 2\n';
         if (isJson)
-            return '{\n  "kind": "list",\n  "items": [\n    { "text": "item 1" },\n    { "text": "item 2" }\n  ]\n}\n';
+            return '{\n  "$meta": { "kind": "list" },\n  "items": [\n    { "text": "item 1" },\n    { "text": "item 2" }\n  ]\n}\n';
         if (isYaml)
-            return 'kind: list\nitems:\n  - text: item 1\n  - text: item 2\n';
+            return 'kind: list\n---\nitems:\n  - text: item 1\n  - text: item 2\n';
     }
     if (kind === 'tree') {
         if (isMd)
             return '---\nkind: tree\n---\n- parent\n  - child\n';
         if (isJson)
-            return '{\n  "kind": "tree",\n  "items": [\n    { "text": "parent", "children": [\n      { "text": "child", "children": [] }\n    ]}\n  ]\n}\n';
+            return '{\n  "$meta": { "kind": "tree" },\n  "items": [\n    { "text": "parent", "children": [\n      { "text": "child", "children": [] }\n    ]}\n  ]\n}\n';
         if (isYaml)
-            return 'kind: tree\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
+            return 'kind: tree\n---\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
+    }
+    if (kind === 'mindmap') {
+        if (isMd)
+            return '---\nkind: mindmap\n---\n- root topic\n  - branch one\n  - branch two\n';
+        if (isJson)
+            return '{\n  "$meta": { "kind": "mindmap" },\n  "items": [\n    { "text": "root topic", "children": [\n      { "text": "branch one", "children": [] },\n      { "text": "branch two", "children": [] }\n    ]}\n  ]\n}\n';
+        if (isYaml)
+            return 'kind: mindmap\n---\nitems:\n  - text: root topic\n    children:\n      - text: branch one\n        children: []\n      - text: branch two\n        children: []\n';
+    }
+    if (kind === 'records') {
+        if (isMd)
+            return '---\nkind: records\nschema: name, email, role\n---\n- Alice, alice@example.com, admin\n- Bob, bob@example.com, user\n';
+        if (isJson)
+            return '{\n  "$meta": { "kind": "records" },\n  "schema": ["name", "email", "role"],\n  "items": [\n    { "name": "Alice", "email": "alice@example.com", "role": "admin" },\n    { "name": "Bob", "email": "bob@example.com", "role": "user" }\n  ]\n}\n';
+        if (isYaml)
+            return 'kind: records\n---\nschema: [name, email, role]\nitems:\n  - name: Alice\n    email: alice@example.com\n    role: admin\n  - name: Bob\n    email: bob@example.com\n    role: user\n';
+    }
+    if (kind === 'graph') {
+        // Markdown isn't supported for graphs (spec §3.3); fall through
+        // to the schema-less branch below if md is picked, so the user
+        // gets just the header and a hint to switch mime type via Raw.
+        if (isJson)
+            return '{\n  "$meta": { "kind": "graph" },\n  "graph": { "directed": true },\n  "nodes": [\n    { "id": "alice", "label": "Alice" },\n    { "id": "bob", "label": "Bob" }\n  ],\n  "edges": [\n    { "source": "alice", "target": "bob" }\n  ]\n}\n';
+        if (isYaml)
+            return 'kind: graph\n---\ngraph:\n  directed: true\nnodes:\n  - id: alice\n    label: Alice\n  - id: bob\n    label: Bob\nedges:\n  - source: alice\n    target: bob\n';
+    }
+    if (kind === 'sheet') {
+        // Markdown not supported for sheets (spec §3.3) — falls through
+        // to the schema-less branch below if md is picked.
+        if (isJson)
+            return '{\n  "$meta": { "kind": "sheet" },\n  "schema": ["A", "B", "C"],\n  "rows": 5,\n  "cells": [\n    { "field": "A1", "data": "Item" },\n    { "field": "B1", "data": "Qty" },\n    { "field": "C1", "data": "Total" },\n    { "field": "A2", "data": "Apples" },\n    { "field": "B2", "data": "10" },\n    { "field": "C2", "data": "=B2*1.5" }\n  ]\n}\n';
+        if (isYaml)
+            return 'kind: sheet\n---\nschema: [A, B, C]\nrows: 5\ncells:\n  - field: A1\n    data: Item\n  - field: B1\n    data: Qty\n  - field: C1\n    data: Total\n  - field: A2\n    data: Apples\n  - field: B2\n    data: "10"\n  - field: C2\n    data: "=B2*1.5"\n';
     }
     // Schema-less kinds — header only, body stays empty.
     if (isMd)
         return `---\nkind: ${kind}\n---\n`;
     if (isJson)
-        return `{\n  "kind": "${kind}"\n}\n`;
+        return `{\n  "$meta": { "kind": "${kind}" }\n}\n`;
     if (isYaml)
-        return `kind: ${kind}\n`;
+        return `kind: ${kind}\n---\n`;
     return '';
 }
 // Auto-fill the body when the user picks a kind (or switches the
@@ -1049,6 +1232,245 @@ else if (__VLS_ctx.docsState.selected.value) {
             });
             (__VLS_ctx.$t('documents.detail.tabRaw'));
         }
+        else if (__VLS_ctx.isSheetDocument) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "content-tabs" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!(__VLS_ctx.isSheetDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'sheet';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'sheet' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabSheet'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!(__VLS_ctx.isSheetDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'raw';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'raw' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabRaw'));
+        }
+        else if (__VLS_ctx.isGraphDocument) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "content-tabs" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!(__VLS_ctx.isGraphDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'graph';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'graph' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabGraph'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!(__VLS_ctx.isGraphDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'raw';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'raw' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabRaw'));
+        }
+        else if (__VLS_ctx.isRecordsDocument) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "content-tabs" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!!(__VLS_ctx.isGraphDocument))
+                            return;
+                        if (!(__VLS_ctx.isRecordsDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'records';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'records' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabRecords'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!!(__VLS_ctx.isGraphDocument))
+                            return;
+                        if (!(__VLS_ctx.isRecordsDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'raw';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'raw' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabRaw'));
+        }
+        else if (__VLS_ctx.isMindmapDocument) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "content-tabs" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!!(__VLS_ctx.isGraphDocument))
+                            return;
+                        if (!!(__VLS_ctx.isRecordsDocument))
+                            return;
+                        if (!(__VLS_ctx.isMindmapDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'mindmap';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'mindmap' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabMindmap'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!!(__VLS_ctx.isGraphDocument))
+                            return;
+                        if (!!(__VLS_ctx.isRecordsDocument))
+                            return;
+                        if (!(__VLS_ctx.isMindmapDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'tree';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'tree' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabTree'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!!(__VLS_ctx.isGraphDocument))
+                            return;
+                        if (!!(__VLS_ctx.isRecordsDocument))
+                            return;
+                        if (!(__VLS_ctx.isMindmapDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'raw';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'raw' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabRaw'));
+        }
         else if (__VLS_ctx.isTreeDocument) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "content-tabs" },
@@ -1064,6 +1486,14 @@ else if (__VLS_ctx.docsState.selected.value) {
                         if (!(__VLS_ctx.docsState.selected.value.inline))
                             return;
                         if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!!(__VLS_ctx.isGraphDocument))
+                            return;
+                        if (!!(__VLS_ctx.isRecordsDocument))
+                            return;
+                        if (!!(__VLS_ctx.isMindmapDocument))
                             return;
                         if (!(__VLS_ctx.isTreeDocument))
                             return;
@@ -1085,6 +1515,14 @@ else if (__VLS_ctx.docsState.selected.value) {
                         if (!(__VLS_ctx.docsState.selected.value.inline))
                             return;
                         if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!!(__VLS_ctx.isGraphDocument))
+                            return;
+                        if (!!(__VLS_ctx.isRecordsDocument))
+                            return;
+                        if (!!(__VLS_ctx.isMindmapDocument))
                             return;
                         if (!(__VLS_ctx.isTreeDocument))
                             return;
@@ -1132,8 +1570,8 @@ else if (__VLS_ctx.docsState.selected.value) {
                 var __VLS_58;
             }
         }
-        else if (__VLS_ctx.isTreeDocument && __VLS_ctx.contentTab === 'tree') {
-            if (__VLS_ctx.parsedTree.error) {
+        else if (__VLS_ctx.isSheetDocument && __VLS_ctx.contentTab === 'sheet') {
+            if (__VLS_ctx.parsedSheet.error) {
                 const __VLS_63 = {}.VAlert;
                 /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
                 // @ts-ignore
@@ -1145,171 +1583,306 @@ else if (__VLS_ctx.docsState.selected.value) {
                 }, ...__VLS_functionalComponentArgsRest(__VLS_64));
                 __VLS_66.slots.default;
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                (__VLS_ctx.$t('documents.detail.treeParseError', { message: __VLS_ctx.parsedTree.error }));
+                (__VLS_ctx.$t('documents.detail.sheetParseError', { message: __VLS_ctx.parsedSheet.error }));
                 var __VLS_66;
             }
-            else if (__VLS_ctx.parsedTree.doc) {
-                /** @type {[typeof TreeView, ]} */ ;
+            else if (__VLS_ctx.parsedSheet.doc) {
+                /** @type {[typeof SheetView, ]} */ ;
                 // @ts-ignore
-                const __VLS_67 = __VLS_asFunctionalComponent(TreeView, new TreeView({
+                const __VLS_67 = __VLS_asFunctionalComponent(SheetView, new SheetView({
                     ...{ 'onUpdate:doc': {} },
-                    doc: (__VLS_ctx.parsedTree.doc),
+                    doc: (__VLS_ctx.parsedSheet.doc),
                 }));
                 const __VLS_68 = __VLS_67({
                     ...{ 'onUpdate:doc': {} },
-                    doc: (__VLS_ctx.parsedTree.doc),
+                    doc: (__VLS_ctx.parsedSheet.doc),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_67));
                 let __VLS_70;
                 let __VLS_71;
                 let __VLS_72;
                 const __VLS_73 = {
-                    'onUpdate:doc': (__VLS_ctx.onTreeChanged)
+                    'onUpdate:doc': (__VLS_ctx.onSheetChanged)
                 };
                 var __VLS_69;
             }
         }
+        else if (__VLS_ctx.isGraphDocument && __VLS_ctx.contentTab === 'graph') {
+            if (__VLS_ctx.parsedGraph.error) {
+                const __VLS_74 = {}.VAlert;
+                /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+                // @ts-ignore
+                const __VLS_75 = __VLS_asFunctionalComponent(__VLS_74, new __VLS_74({
+                    variant: "warning",
+                }));
+                const __VLS_76 = __VLS_75({
+                    variant: "warning",
+                }, ...__VLS_functionalComponentArgsRest(__VLS_75));
+                __VLS_77.slots.default;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                (__VLS_ctx.$t('documents.detail.graphParseError', { message: __VLS_ctx.parsedGraph.error }));
+                var __VLS_77;
+            }
+            else if (__VLS_ctx.parsedGraph.doc) {
+                /** @type {[typeof GraphView, ]} */ ;
+                // @ts-ignore
+                const __VLS_78 = __VLS_asFunctionalComponent(GraphView, new GraphView({
+                    ...{ 'onUpdate:doc': {} },
+                    doc: (__VLS_ctx.parsedGraph.doc),
+                }));
+                const __VLS_79 = __VLS_78({
+                    ...{ 'onUpdate:doc': {} },
+                    doc: (__VLS_ctx.parsedGraph.doc),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_78));
+                let __VLS_81;
+                let __VLS_82;
+                let __VLS_83;
+                const __VLS_84 = {
+                    'onUpdate:doc': (__VLS_ctx.onGraphChanged)
+                };
+                var __VLS_80;
+            }
+        }
+        else if (__VLS_ctx.isRecordsDocument && __VLS_ctx.contentTab === 'records') {
+            if (__VLS_ctx.parsedRecords.error) {
+                const __VLS_85 = {}.VAlert;
+                /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+                // @ts-ignore
+                const __VLS_86 = __VLS_asFunctionalComponent(__VLS_85, new __VLS_85({
+                    variant: "warning",
+                }));
+                const __VLS_87 = __VLS_86({
+                    variant: "warning",
+                }, ...__VLS_functionalComponentArgsRest(__VLS_86));
+                __VLS_88.slots.default;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                (__VLS_ctx.$t('documents.detail.recordsParseError', { message: __VLS_ctx.parsedRecords.error }));
+                var __VLS_88;
+            }
+            else if (__VLS_ctx.parsedRecords.doc) {
+                /** @type {[typeof RecordsView, ]} */ ;
+                // @ts-ignore
+                const __VLS_89 = __VLS_asFunctionalComponent(RecordsView, new RecordsView({
+                    ...{ 'onUpdate:doc': {} },
+                    doc: (__VLS_ctx.parsedRecords.doc),
+                }));
+                const __VLS_90 = __VLS_89({
+                    ...{ 'onUpdate:doc': {} },
+                    doc: (__VLS_ctx.parsedRecords.doc),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_89));
+                let __VLS_92;
+                let __VLS_93;
+                let __VLS_94;
+                const __VLS_95 = {
+                    'onUpdate:doc': (__VLS_ctx.onRecordsChanged)
+                };
+                var __VLS_91;
+            }
+        }
+        else if (__VLS_ctx.isMindmapDocument && __VLS_ctx.contentTab === 'mindmap') {
+            if (__VLS_ctx.parsedTree.error) {
+                const __VLS_96 = {}.VAlert;
+                /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+                // @ts-ignore
+                const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
+                    variant: "warning",
+                }));
+                const __VLS_98 = __VLS_97({
+                    variant: "warning",
+                }, ...__VLS_functionalComponentArgsRest(__VLS_97));
+                __VLS_99.slots.default;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                (__VLS_ctx.$t('documents.detail.mindmapParseError', { message: __VLS_ctx.parsedTree.error }));
+                var __VLS_99;
+            }
+            else if (__VLS_ctx.parsedTree.doc) {
+                /** @type {[typeof MindmapView, ]} */ ;
+                // @ts-ignore
+                const __VLS_100 = __VLS_asFunctionalComponent(MindmapView, new MindmapView({
+                    doc: (__VLS_ctx.parsedTree.doc),
+                }));
+                const __VLS_101 = __VLS_100({
+                    doc: (__VLS_ctx.parsedTree.doc),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_100));
+            }
+        }
+        else if ((__VLS_ctx.isTreeDocument || __VLS_ctx.isMindmapDocument) && __VLS_ctx.contentTab === 'tree') {
+            if (__VLS_ctx.parsedTree.error) {
+                const __VLS_103 = {}.VAlert;
+                /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+                // @ts-ignore
+                const __VLS_104 = __VLS_asFunctionalComponent(__VLS_103, new __VLS_103({
+                    variant: "warning",
+                }));
+                const __VLS_105 = __VLS_104({
+                    variant: "warning",
+                }, ...__VLS_functionalComponentArgsRest(__VLS_104));
+                __VLS_106.slots.default;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                (__VLS_ctx.$t('documents.detail.treeParseError', { message: __VLS_ctx.parsedTree.error }));
+                var __VLS_106;
+            }
+            else if (__VLS_ctx.parsedTree.doc) {
+                /** @type {[typeof TreeView, ]} */ ;
+                // @ts-ignore
+                const __VLS_107 = __VLS_asFunctionalComponent(TreeView, new TreeView({
+                    ...{ 'onUpdate:doc': {} },
+                    doc: (__VLS_ctx.parsedTree.doc),
+                }));
+                const __VLS_108 = __VLS_107({
+                    ...{ 'onUpdate:doc': {} },
+                    doc: (__VLS_ctx.parsedTree.doc),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_107));
+                let __VLS_110;
+                let __VLS_111;
+                let __VLS_112;
+                const __VLS_113 = {
+                    'onUpdate:doc': (__VLS_ctx.onTreeChanged)
+                };
+                var __VLS_109;
+            }
+        }
         else {
-            const __VLS_74 = {}.CodeEditor;
+            const __VLS_114 = {}.CodeEditor;
             /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
             // @ts-ignore
-            const __VLS_75 = __VLS_asFunctionalComponent(__VLS_74, new __VLS_74({
+            const __VLS_115 = __VLS_asFunctionalComponent(__VLS_114, new __VLS_114({
                 modelValue: (__VLS_ctx.editInlineText),
                 label: (__VLS_ctx.$t('documents.detail.contentLabel')),
                 rows: (20),
                 disabled: (__VLS_ctx.saving),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
             }));
-            const __VLS_76 = __VLS_75({
+            const __VLS_116 = __VLS_115({
                 modelValue: (__VLS_ctx.editInlineText),
                 label: (__VLS_ctx.$t('documents.detail.contentLabel')),
                 rows: (20),
                 disabled: (__VLS_ctx.saving),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_75));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_115));
         }
     }
     else {
         /** @type {[typeof DocumentPreview, ]} */ ;
         // @ts-ignore
-        const __VLS_78 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
+        const __VLS_118 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
             documentId: (__VLS_ctx.docsState.selected.value.id),
             mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
             inline: (false),
         }));
-        const __VLS_79 = __VLS_78({
+        const __VLS_119 = __VLS_118({
             documentId: (__VLS_ctx.docsState.selected.value.id),
             mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
             inline: (false),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_78));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_118));
     }
     {
         const { actions: __VLS_thisSlot } = __VLS_32.slots;
-        const __VLS_81 = {}.VButton;
+        const __VLS_121 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_82 = __VLS_asFunctionalComponent(__VLS_81, new __VLS_81({
+        const __VLS_122 = __VLS_asFunctionalComponent(__VLS_121, new __VLS_121({
             ...{ 'onClick': {} },
             ...{ class: "mr-auto" },
             variant: "danger",
             disabled: (__VLS_ctx.saving || __VLS_ctx.deleting),
         }));
-        const __VLS_83 = __VLS_82({
+        const __VLS_123 = __VLS_122({
             ...{ 'onClick': {} },
             ...{ class: "mr-auto" },
             variant: "danger",
             disabled: (__VLS_ctx.saving || __VLS_ctx.deleting),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_82));
-        let __VLS_85;
-        let __VLS_86;
-        let __VLS_87;
-        const __VLS_88 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_122));
+        let __VLS_125;
+        let __VLS_126;
+        let __VLS_127;
+        const __VLS_128 = {
             onClick: (__VLS_ctx.openDeleteModal)
         };
-        __VLS_84.slots.default;
+        __VLS_124.slots.default;
         (__VLS_ctx.$t('documents.detail.delete'));
-        var __VLS_84;
-        const __VLS_89 = {}.VButton;
+        var __VLS_124;
+        const __VLS_129 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
+        const __VLS_130 = __VLS_asFunctionalComponent(__VLS_129, new __VLS_129({
             variant: "ghost",
             href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
             download: (__VLS_ctx.docsState.selected.value.name || 'document'),
         }));
-        const __VLS_91 = __VLS_90({
+        const __VLS_131 = __VLS_130({
             variant: "ghost",
             href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
             download: (__VLS_ctx.docsState.selected.value.name || 'document'),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_90));
-        __VLS_92.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_130));
+        __VLS_132.slots.default;
         (__VLS_ctx.$t('documents.detail.download'));
-        var __VLS_92;
-        const __VLS_93 = {}.VButton;
+        var __VLS_132;
+        const __VLS_133 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_94 = __VLS_asFunctionalComponent(__VLS_93, new __VLS_93({
+        const __VLS_134 = __VLS_asFunctionalComponent(__VLS_133, new __VLS_133({
             ...{ 'onClick': {} },
             variant: "ghost",
             disabled: (__VLS_ctx.saving),
         }));
-        const __VLS_95 = __VLS_94({
+        const __VLS_135 = __VLS_134({
             ...{ 'onClick': {} },
             variant: "ghost",
             disabled: (__VLS_ctx.saving),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_94));
-        let __VLS_97;
-        let __VLS_98;
-        let __VLS_99;
-        const __VLS_100 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_134));
+        let __VLS_137;
+        let __VLS_138;
+        let __VLS_139;
+        const __VLS_140 = {
             onClick: (__VLS_ctx.backToList)
         };
-        __VLS_96.slots.default;
+        __VLS_136.slots.default;
         (__VLS_ctx.$t('documents.detail.cancel'));
-        var __VLS_96;
-        const __VLS_101 = {}.VButton;
+        var __VLS_136;
+        const __VLS_141 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_102 = __VLS_asFunctionalComponent(__VLS_101, new __VLS_101({
+        const __VLS_142 = __VLS_asFunctionalComponent(__VLS_141, new __VLS_141({
             ...{ 'onClick': {} },
             variant: "secondary",
             loading: (__VLS_ctx.saving),
         }));
-        const __VLS_103 = __VLS_102({
+        const __VLS_143 = __VLS_142({
             ...{ 'onClick': {} },
             variant: "secondary",
             loading: (__VLS_ctx.saving),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_102));
-        let __VLS_105;
-        let __VLS_106;
-        let __VLS_107;
-        const __VLS_108 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_142));
+        let __VLS_145;
+        let __VLS_146;
+        let __VLS_147;
+        const __VLS_148 = {
             onClick: (__VLS_ctx.apply)
         };
-        __VLS_104.slots.default;
+        __VLS_144.slots.default;
         (__VLS_ctx.$t('documents.detail.apply'));
-        var __VLS_104;
-        const __VLS_109 = {}.VButton;
+        var __VLS_144;
+        const __VLS_149 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_110 = __VLS_asFunctionalComponent(__VLS_109, new __VLS_109({
+        const __VLS_150 = __VLS_asFunctionalComponent(__VLS_149, new __VLS_149({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.saving),
         }));
-        const __VLS_111 = __VLS_110({
+        const __VLS_151 = __VLS_150({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.saving),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_110));
-        let __VLS_113;
-        let __VLS_114;
-        let __VLS_115;
-        const __VLS_116 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_150));
+        let __VLS_153;
+        let __VLS_154;
+        let __VLS_155;
+        const __VLS_156 = {
             onClick: (__VLS_ctx.save)
         };
-        __VLS_112.slots.default;
+        __VLS_152.slots.default;
         (__VLS_ctx.$t('documents.detail.save'));
-        var __VLS_112;
+        var __VLS_152;
     }
     var __VLS_32;
 }
@@ -1367,23 +1940,23 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "w-40 shrink-0" },
         });
-        const __VLS_117 = {}.VSelect;
+        const __VLS_157 = {}.VSelect;
         /** @type {[typeof __VLS_components.VSelect, ]} */ ;
         // @ts-ignore
-        const __VLS_118 = __VLS_asFunctionalComponent(__VLS_117, new __VLS_117({
+        const __VLS_158 = __VLS_asFunctionalComponent(__VLS_157, new __VLS_157({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.docsState.kindFilter.value),
             options: (__VLS_ctx.kindOptions),
         }));
-        const __VLS_119 = __VLS_118({
+        const __VLS_159 = __VLS_158({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.docsState.kindFilter.value),
             options: (__VLS_ctx.kindOptions),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_118));
-        let __VLS_121;
-        let __VLS_122;
-        let __VLS_123;
-        const __VLS_124 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_158));
+        let __VLS_161;
+        let __VLS_162;
+        let __VLS_163;
+        const __VLS_164 = {
             'onUpdate:modelValue': (...[$event]) => {
                 if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
                     return;
@@ -1396,7 +1969,7 @@ else {
                 __VLS_ctx.applyKindFilter($event ?? '');
             }
         };
-        var __VLS_120;
+        var __VLS_160;
     }
     if (__VLS_ctx.docsState.pathPrefix.value || __VLS_ctx.docsState.kindFilter.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
@@ -1418,23 +1991,23 @@ else {
         });
         (__VLS_ctx.$t('documents.clearFilter'));
     }
-    const __VLS_125 = {}.VButton;
+    const __VLS_165 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_126 = __VLS_asFunctionalComponent(__VLS_125, new __VLS_125({
+    const __VLS_166 = __VLS_asFunctionalComponent(__VLS_165, new __VLS_165({
         ...{ 'onClick': {} },
         variant: "primary",
         size: "sm",
     }));
-    const __VLS_127 = __VLS_126({
+    const __VLS_167 = __VLS_166({
         ...{ 'onClick': {} },
         variant: "primary",
         size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_126));
-    let __VLS_129;
-    let __VLS_130;
-    let __VLS_131;
-    const __VLS_132 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_166));
+    let __VLS_169;
+    let __VLS_170;
+    let __VLS_171;
+    const __VLS_172 = {
         onClick: (...[$event]) => {
             if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
                 return;
@@ -1445,56 +2018,56 @@ else {
             __VLS_ctx.openCreateModal();
         }
     };
-    __VLS_128.slots.default;
+    __VLS_168.slots.default;
     (__VLS_ctx.$t('documents.newDocument'));
-    var __VLS_128;
+    var __VLS_168;
     if (__VLS_ctx.docsState.error.value) {
-        const __VLS_133 = {}.VAlert;
+        const __VLS_173 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_134 = __VLS_asFunctionalComponent(__VLS_133, new __VLS_133({
+        const __VLS_174 = __VLS_asFunctionalComponent(__VLS_173, new __VLS_173({
             variant: "error",
             ...{ class: "mb-4" },
         }));
-        const __VLS_135 = __VLS_134({
+        const __VLS_175 = __VLS_174({
             variant: "error",
             ...{ class: "mb-4" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_134));
-        __VLS_136.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_174));
+        __VLS_176.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
         (__VLS_ctx.docsState.error.value);
-        var __VLS_136;
+        var __VLS_176;
     }
     if (!__VLS_ctx.docsState.loading.value && __VLS_ctx.docsState.items.value.length === 0) {
-        const __VLS_137 = {}.VEmptyState;
+        const __VLS_177 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_138 = __VLS_asFunctionalComponent(__VLS_137, new __VLS_137({
+        const __VLS_178 = __VLS_asFunctionalComponent(__VLS_177, new __VLS_177({
             headline: (__VLS_ctx.$t('documents.noDocumentsHeadline')),
             body: (__VLS_ctx.$t('documents.noDocumentsBody')),
         }));
-        const __VLS_139 = __VLS_138({
+        const __VLS_179 = __VLS_178({
             headline: (__VLS_ctx.$t('documents.noDocumentsHeadline')),
             body: (__VLS_ctx.$t('documents.noDocumentsBody')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_138));
-        __VLS_140.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_178));
+        __VLS_180.slots.default;
         {
-            const { action: __VLS_thisSlot } = __VLS_140.slots;
-            const __VLS_141 = {}.VButton;
+            const { action: __VLS_thisSlot } = __VLS_180.slots;
+            const __VLS_181 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
-            const __VLS_142 = __VLS_asFunctionalComponent(__VLS_141, new __VLS_141({
+            const __VLS_182 = __VLS_asFunctionalComponent(__VLS_181, new __VLS_181({
                 ...{ 'onClick': {} },
                 variant: "primary",
             }));
-            const __VLS_143 = __VLS_142({
+            const __VLS_183 = __VLS_182({
                 ...{ 'onClick': {} },
                 variant: "primary",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_142));
-            let __VLS_145;
-            let __VLS_146;
-            let __VLS_147;
-            const __VLS_148 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_182));
+            let __VLS_185;
+            let __VLS_186;
+            let __VLS_187;
+            const __VLS_188 = {
                 onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
                         return;
@@ -1507,51 +2080,51 @@ else {
                     __VLS_ctx.openCreateModal();
                 }
             };
-            __VLS_144.slots.default;
+            __VLS_184.slots.default;
             (__VLS_ctx.$t('documents.createFirstDocument'));
-            var __VLS_144;
+            var __VLS_184;
         }
-        var __VLS_140;
+        var __VLS_180;
     }
     else {
-        const __VLS_149 = {}.VDataList;
+        const __VLS_189 = {}.VDataList;
         /** @type {[typeof __VLS_components.VDataList, typeof __VLS_components.VDataList, ]} */ ;
         // @ts-ignore
-        const __VLS_150 = __VLS_asFunctionalComponent(__VLS_149, new __VLS_149({
+        const __VLS_190 = __VLS_asFunctionalComponent(__VLS_189, new __VLS_189({
             ...{ 'onSelect': {} },
             items: (__VLS_ctx.docsState.items.value),
             selectable: true,
         }));
-        const __VLS_151 = __VLS_150({
+        const __VLS_191 = __VLS_190({
             ...{ 'onSelect': {} },
             items: (__VLS_ctx.docsState.items.value),
             selectable: true,
-        }, ...__VLS_functionalComponentArgsRest(__VLS_150));
-        let __VLS_153;
-        let __VLS_154;
-        let __VLS_155;
-        const __VLS_156 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_190));
+        let __VLS_193;
+        let __VLS_194;
+        let __VLS_195;
+        const __VLS_196 = {
             onSelect: (__VLS_ctx.openDocument)
         };
-        __VLS_152.slots.default;
+        __VLS_192.slots.default;
         {
-            const { default: __VLS_thisSlot } = __VLS_152.slots;
+            const { default: __VLS_thisSlot } = __VLS_192.slots;
             const [{ item }] = __VLS_getSlotParams(__VLS_thisSlot);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "flex items-center gap-3" },
             });
             /** @type {[typeof DocumentIcon, ]} */ ;
             // @ts-ignore
-            const __VLS_157 = __VLS_asFunctionalComponent(DocumentIcon, new DocumentIcon({
+            const __VLS_197 = __VLS_asFunctionalComponent(DocumentIcon, new DocumentIcon({
                 path: (item.path),
                 mimeType: (item.mimeType),
                 kind: (item.kind),
             }));
-            const __VLS_158 = __VLS_157({
+            const __VLS_198 = __VLS_197({
                 path: (item.path),
                 mimeType: (item.mimeType),
                 kind: (item.kind),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_157));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_197));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "min-w-0 flex-1" },
             });
@@ -1597,195 +2170,195 @@ else {
                 (__VLS_ctx.$t('documents.storedNote'));
             }
         }
-        var __VLS_152;
+        var __VLS_192;
     }
     if (__VLS_ctx.docsState.totalCount.value > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "mt-4" },
         });
-        const __VLS_160 = {}.VPagination;
+        const __VLS_200 = {}.VPagination;
         /** @type {[typeof __VLS_components.VPagination, ]} */ ;
         // @ts-ignore
-        const __VLS_161 = __VLS_asFunctionalComponent(__VLS_160, new __VLS_160({
+        const __VLS_201 = __VLS_asFunctionalComponent(__VLS_200, new __VLS_200({
             ...{ 'onUpdate:page': {} },
             page: (__VLS_ctx.docsState.page.value),
             pageSize: (__VLS_ctx.docsState.pageSize.value),
             totalCount: (__VLS_ctx.docsState.totalCount.value),
         }));
-        const __VLS_162 = __VLS_161({
+        const __VLS_202 = __VLS_201({
             ...{ 'onUpdate:page': {} },
             page: (__VLS_ctx.docsState.page.value),
             pageSize: (__VLS_ctx.docsState.pageSize.value),
             totalCount: (__VLS_ctx.docsState.totalCount.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_161));
-        let __VLS_164;
-        let __VLS_165;
-        let __VLS_166;
-        const __VLS_167 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_201));
+        let __VLS_204;
+        let __VLS_205;
+        let __VLS_206;
+        const __VLS_207 = {
             'onUpdate:page': (__VLS_ctx.changePage)
         };
-        var __VLS_163;
+        var __VLS_203;
     }
 }
-const __VLS_168 = {}.VModal;
+const __VLS_208 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_169 = __VLS_asFunctionalComponent(__VLS_168, new __VLS_168({
+const __VLS_209 = __VLS_asFunctionalComponent(__VLS_208, new __VLS_208({
     modelValue: (__VLS_ctx.showDeleteModal),
     title: (__VLS_ctx.$t('documents.delete.title')),
     closeOnBackdrop: (!__VLS_ctx.deleting),
 }));
-const __VLS_170 = __VLS_169({
+const __VLS_210 = __VLS_209({
     modelValue: (__VLS_ctx.showDeleteModal),
     title: (__VLS_ctx.$t('documents.delete.title')),
     closeOnBackdrop: (!__VLS_ctx.deleting),
-}, ...__VLS_functionalComponentArgsRest(__VLS_169));
-__VLS_171.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_209));
+__VLS_211.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({});
 (__VLS_ctx.$t('documents.delete.body', { path: __VLS_ctx.docsState.selected.value?.path ?? '' }));
 {
-    const { actions: __VLS_thisSlot } = __VLS_171.slots;
-    const __VLS_172 = {}.VButton;
+    const { actions: __VLS_thisSlot } = __VLS_211.slots;
+    const __VLS_212 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_173 = __VLS_asFunctionalComponent(__VLS_172, new __VLS_172({
+    const __VLS_213 = __VLS_asFunctionalComponent(__VLS_212, new __VLS_212({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.deleting),
     }));
-    const __VLS_174 = __VLS_173({
+    const __VLS_214 = __VLS_213({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.deleting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_173));
-    let __VLS_176;
-    let __VLS_177;
-    let __VLS_178;
-    const __VLS_179 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_213));
+    let __VLS_216;
+    let __VLS_217;
+    let __VLS_218;
+    const __VLS_219 = {
         onClick: (...[$event]) => {
             __VLS_ctx.showDeleteModal = false;
         }
     };
-    __VLS_175.slots.default;
+    __VLS_215.slots.default;
     (__VLS_ctx.$t('documents.delete.cancel'));
-    var __VLS_175;
-    const __VLS_180 = {}.VButton;
+    var __VLS_215;
+    const __VLS_220 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_181 = __VLS_asFunctionalComponent(__VLS_180, new __VLS_180({
+    const __VLS_221 = __VLS_asFunctionalComponent(__VLS_220, new __VLS_220({
         ...{ 'onClick': {} },
         variant: "danger",
         loading: (__VLS_ctx.deleting),
     }));
-    const __VLS_182 = __VLS_181({
+    const __VLS_222 = __VLS_221({
         ...{ 'onClick': {} },
         variant: "danger",
         loading: (__VLS_ctx.deleting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_181));
-    let __VLS_184;
-    let __VLS_185;
-    let __VLS_186;
-    const __VLS_187 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_221));
+    let __VLS_224;
+    let __VLS_225;
+    let __VLS_226;
+    const __VLS_227 = {
         onClick: (__VLS_ctx.confirmDelete)
     };
-    __VLS_183.slots.default;
+    __VLS_223.slots.default;
     (__VLS_ctx.$t('documents.delete.confirm'));
-    var __VLS_183;
+    var __VLS_223;
 }
-var __VLS_171;
-const __VLS_188 = {}.VModal;
+var __VLS_211;
+const __VLS_228 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_189 = __VLS_asFunctionalComponent(__VLS_188, new __VLS_188({
+const __VLS_229 = __VLS_asFunctionalComponent(__VLS_228, new __VLS_228({
     modelValue: (__VLS_ctx.showCreateModal),
     title: (__VLS_ctx.$t('documents.create.newDocument')),
     closeOnBackdrop: (false),
 }));
-const __VLS_190 = __VLS_189({
+const __VLS_230 = __VLS_229({
     modelValue: (__VLS_ctx.showCreateModal),
     title: (__VLS_ctx.$t('documents.create.newDocument')),
     closeOnBackdrop: (false),
-}, ...__VLS_functionalComponentArgsRest(__VLS_189));
-__VLS_191.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_229));
+__VLS_231.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex gap-2 mb-4" },
 });
-const __VLS_192 = {}.VButton;
+const __VLS_232 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_193 = __VLS_asFunctionalComponent(__VLS_192, new __VLS_192({
+const __VLS_233 = __VLS_asFunctionalComponent(__VLS_232, new __VLS_232({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_194 = __VLS_193({
+const __VLS_234 = __VLS_233({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_193));
-let __VLS_196;
-let __VLS_197;
-let __VLS_198;
-const __VLS_199 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_233));
+let __VLS_236;
+let __VLS_237;
+let __VLS_238;
+const __VLS_239 = {
     onClick: (...[$event]) => {
         __VLS_ctx.setCreateMode('inline');
     }
 };
-__VLS_195.slots.default;
+__VLS_235.slots.default;
 (__VLS_ctx.$t('documents.create.typeContent'));
-var __VLS_195;
-const __VLS_200 = {}.VButton;
+var __VLS_235;
+const __VLS_240 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_201 = __VLS_asFunctionalComponent(__VLS_200, new __VLS_200({
+const __VLS_241 = __VLS_asFunctionalComponent(__VLS_240, new __VLS_240({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_202 = __VLS_201({
+const __VLS_242 = __VLS_241({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_201));
-let __VLS_204;
-let __VLS_205;
-let __VLS_206;
-const __VLS_207 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_241));
+let __VLS_244;
+let __VLS_245;
+let __VLS_246;
+const __VLS_247 = {
     onClick: (...[$event]) => {
         __VLS_ctx.setCreateMode('upload');
     }
 };
-__VLS_203.slots.default;
+__VLS_243.slots.default;
 (__VLS_ctx.$t('documents.create.uploadFile'));
-var __VLS_203;
+var __VLS_243;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.submitCreate) },
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.createError) {
-    const __VLS_208 = {}.VAlert;
+    const __VLS_248 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_209 = __VLS_asFunctionalComponent(__VLS_208, new __VLS_208({
+    const __VLS_249 = __VLS_asFunctionalComponent(__VLS_248, new __VLS_248({
         variant: "error",
     }));
-    const __VLS_210 = __VLS_209({
+    const __VLS_250 = __VLS_249({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_209));
-    __VLS_211.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_249));
+    __VLS_251.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.createError);
-    var __VLS_211;
+    var __VLS_251;
 }
 if (__VLS_ctx.createMode === 'inline') {
-    const __VLS_212 = {}.VInput;
+    const __VLS_252 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_213 = __VLS_asFunctionalComponent(__VLS_212, new __VLS_212({
+    const __VLS_253 = __VLS_asFunctionalComponent(__VLS_252, new __VLS_252({
         modelValue: (__VLS_ctx.createPath),
         label: (__VLS_ctx.$t('documents.create.pathLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
@@ -1793,156 +2366,156 @@ if (__VLS_ctx.createMode === 'inline') {
         disabled: (__VLS_ctx.creating),
         help: (__VLS_ctx.$t('documents.create.pathHelp')),
     }));
-    const __VLS_214 = __VLS_213({
+    const __VLS_254 = __VLS_253({
         modelValue: (__VLS_ctx.createPath),
         label: (__VLS_ctx.$t('documents.create.pathLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
         required: true,
         disabled: (__VLS_ctx.creating),
         help: (__VLS_ctx.$t('documents.create.pathHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_213));
-    const __VLS_216 = {}.VInput;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_253));
+    const __VLS_256 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_217 = __VLS_asFunctionalComponent(__VLS_216, new __VLS_216({
+    const __VLS_257 = __VLS_asFunctionalComponent(__VLS_256, new __VLS_256({
         modelValue: (__VLS_ctx.createTitle),
         label: (__VLS_ctx.$t('documents.create.titleLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_218 = __VLS_217({
+    const __VLS_258 = __VLS_257({
         modelValue: (__VLS_ctx.createTitle),
         label: (__VLS_ctx.$t('documents.create.titleLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_217));
-    const __VLS_220 = {}.VInput;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_257));
+    const __VLS_260 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_221 = __VLS_asFunctionalComponent(__VLS_220, new __VLS_220({
+    const __VLS_261 = __VLS_asFunctionalComponent(__VLS_260, new __VLS_260({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: (__VLS_ctx.$t('documents.create.tagsLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
         disabled: (__VLS_ctx.creating),
         help: (__VLS_ctx.$t('documents.create.tagsHelp')),
     }));
-    const __VLS_222 = __VLS_221({
+    const __VLS_262 = __VLS_261({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: (__VLS_ctx.$t('documents.create.tagsLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
         disabled: (__VLS_ctx.creating),
         help: (__VLS_ctx.$t('documents.create.tagsHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_221));
-    const __VLS_224 = {}.VSelect;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_261));
+    const __VLS_264 = {}.VSelect;
     /** @type {[typeof __VLS_components.VSelect, ]} */ ;
     // @ts-ignore
-    const __VLS_225 = __VLS_asFunctionalComponent(__VLS_224, new __VLS_224({
+    const __VLS_265 = __VLS_asFunctionalComponent(__VLS_264, new __VLS_264({
         modelValue: (__VLS_ctx.createMime),
         options: (__VLS_ctx.createMimeOptions),
         label: (__VLS_ctx.$t('documents.create.typeLabel')),
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_226 = __VLS_225({
+    const __VLS_266 = __VLS_265({
         modelValue: (__VLS_ctx.createMime),
         options: (__VLS_ctx.createMimeOptions),
         label: (__VLS_ctx.$t('documents.create.typeLabel')),
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_225));
-    const __VLS_228 = {}.VSelect;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_265));
+    const __VLS_268 = {}.VSelect;
     /** @type {[typeof __VLS_components.VSelect, ]} */ ;
     // @ts-ignore
-    const __VLS_229 = __VLS_asFunctionalComponent(__VLS_228, new __VLS_228({
+    const __VLS_269 = __VLS_asFunctionalComponent(__VLS_268, new __VLS_268({
         modelValue: (__VLS_ctx.createKind),
         options: (__VLS_ctx.kindCreateOptions),
         label: (__VLS_ctx.$t('documents.create.kindLabel')),
         help: (__VLS_ctx.$t('documents.create.kindHelp')),
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_230 = __VLS_229({
+    const __VLS_270 = __VLS_269({
         modelValue: (__VLS_ctx.createKind),
         options: (__VLS_ctx.kindCreateOptions),
         label: (__VLS_ctx.$t('documents.create.kindLabel')),
         help: (__VLS_ctx.$t('documents.create.kindHelp')),
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_229));
-    const __VLS_232 = {}.CodeEditor;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_269));
+    const __VLS_272 = {}.CodeEditor;
     /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
     // @ts-ignore
-    const __VLS_233 = __VLS_asFunctionalComponent(__VLS_232, new __VLS_232({
+    const __VLS_273 = __VLS_asFunctionalComponent(__VLS_272, new __VLS_272({
         modelValue: (__VLS_ctx.createContent),
         label: (__VLS_ctx.$t('documents.create.contentLabel')),
         rows: (14),
         disabled: (__VLS_ctx.creating),
         mimeType: (__VLS_ctx.createMime),
     }));
-    const __VLS_234 = __VLS_233({
+    const __VLS_274 = __VLS_273({
         modelValue: (__VLS_ctx.createContent),
         label: (__VLS_ctx.$t('documents.create.contentLabel')),
         rows: (14),
         disabled: (__VLS_ctx.creating),
         mimeType: (__VLS_ctx.createMime),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_233));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_273));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
         ...{ class: "text-xs opacity-70 -mt-1" },
     });
     (__VLS_ctx.$t('documents.create.inlineSizeNote'));
 }
 else {
-    const __VLS_236 = {}.VFileInput;
+    const __VLS_276 = {}.VFileInput;
     /** @type {[typeof __VLS_components.VFileInput, ]} */ ;
     // @ts-ignore
-    const __VLS_237 = __VLS_asFunctionalComponent(__VLS_236, new __VLS_236({
+    const __VLS_277 = __VLS_asFunctionalComponent(__VLS_276, new __VLS_276({
         modelValue: (__VLS_ctx.createFiles),
         label: (__VLS_ctx.$t('documents.create.filesLabel')),
         multiple: true,
         disabled: (__VLS_ctx.creating),
         help: (__VLS_ctx.$t('documents.create.filesHelp')),
     }));
-    const __VLS_238 = __VLS_237({
+    const __VLS_278 = __VLS_277({
         modelValue: (__VLS_ctx.createFiles),
         label: (__VLS_ctx.$t('documents.create.filesLabel')),
         multiple: true,
         disabled: (__VLS_ctx.creating),
         help: (__VLS_ctx.$t('documents.create.filesHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_237));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_277));
     if (__VLS_ctx.createFiles.length <= 1) {
-        const __VLS_240 = {}.VInput;
+        const __VLS_280 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_241 = __VLS_asFunctionalComponent(__VLS_240, new __VLS_240({
+        const __VLS_281 = __VLS_asFunctionalComponent(__VLS_280, new __VLS_280({
             modelValue: (__VLS_ctx.createPath),
             label: (__VLS_ctx.$t('documents.create.pathLabel')),
             placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholderUpload')),
             disabled: (__VLS_ctx.creating),
             help: (__VLS_ctx.$t('documents.create.pathHelpUpload')),
         }));
-        const __VLS_242 = __VLS_241({
+        const __VLS_282 = __VLS_281({
             modelValue: (__VLS_ctx.createPath),
             label: (__VLS_ctx.$t('documents.create.pathLabel')),
             placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholderUpload')),
             disabled: (__VLS_ctx.creating),
             help: (__VLS_ctx.$t('documents.create.pathHelpUpload')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_241));
-        const __VLS_244 = {}.VInput;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_281));
+        const __VLS_284 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_245 = __VLS_asFunctionalComponent(__VLS_244, new __VLS_244({
+        const __VLS_285 = __VLS_asFunctionalComponent(__VLS_284, new __VLS_284({
             modelValue: (__VLS_ctx.createTitle),
             label: (__VLS_ctx.$t('documents.create.titleLabel')),
             placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
             disabled: (__VLS_ctx.creating),
         }));
-        const __VLS_246 = __VLS_245({
+        const __VLS_286 = __VLS_285({
             modelValue: (__VLS_ctx.createTitle),
             label: (__VLS_ctx.$t('documents.create.titleLabel')),
             placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
             disabled: (__VLS_ctx.creating),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_245));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_285));
     }
-    const __VLS_248 = {}.VInput;
+    const __VLS_288 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_249 = __VLS_asFunctionalComponent(__VLS_248, new __VLS_248({
+    const __VLS_289 = __VLS_asFunctionalComponent(__VLS_288, new __VLS_288({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: (__VLS_ctx.$t('documents.create.tagsLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
@@ -1951,7 +2524,7 @@ else {
             ? __VLS_ctx.$t('documents.create.tagsHelpMulti')
             : __VLS_ctx.$t('documents.create.tagsHelp')),
     }));
-    const __VLS_250 = __VLS_249({
+    const __VLS_290 = __VLS_289({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: (__VLS_ctx.$t('documents.create.tagsLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
@@ -1959,7 +2532,7 @@ else {
         help: (__VLS_ctx.createFiles.length > 1
             ? __VLS_ctx.$t('documents.create.tagsHelpMulti')
             : __VLS_ctx.$t('documents.create.tagsHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_249));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_289));
     if (__VLS_ctx.uploadProgress.length > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
             ...{ class: "flex flex-col gap-1.5 text-sm border border-base-300 rounded-md p-3 bg-base-200" },
@@ -1996,57 +2569,57 @@ else {
     }
 }
 {
-    const { actions: __VLS_thisSlot } = __VLS_191.slots;
-    const __VLS_252 = {}.VButton;
+    const { actions: __VLS_thisSlot } = __VLS_231.slots;
+    const __VLS_292 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_253 = __VLS_asFunctionalComponent(__VLS_252, new __VLS_252({
+    const __VLS_293 = __VLS_asFunctionalComponent(__VLS_292, new __VLS_292({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_254 = __VLS_253({
+    const __VLS_294 = __VLS_293({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_253));
-    let __VLS_256;
-    let __VLS_257;
-    let __VLS_258;
-    const __VLS_259 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_293));
+    let __VLS_296;
+    let __VLS_297;
+    let __VLS_298;
+    const __VLS_299 = {
         onClick: (...[$event]) => {
             __VLS_ctx.showCreateModal = false;
         }
     };
-    __VLS_255.slots.default;
+    __VLS_295.slots.default;
     (__VLS_ctx.$t('documents.create.cancel'));
-    var __VLS_255;
-    const __VLS_260 = {}.VButton;
+    var __VLS_295;
+    const __VLS_300 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_261 = __VLS_asFunctionalComponent(__VLS_260, new __VLS_260({
+    const __VLS_301 = __VLS_asFunctionalComponent(__VLS_300, new __VLS_300({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
     }));
-    const __VLS_262 = __VLS_261({
+    const __VLS_302 = __VLS_301({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_261));
-    let __VLS_264;
-    let __VLS_265;
-    let __VLS_266;
-    const __VLS_267 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_301));
+    let __VLS_304;
+    let __VLS_305;
+    let __VLS_306;
+    const __VLS_307 = {
         onClick: (__VLS_ctx.submitCreate)
     };
-    __VLS_263.slots.default;
+    __VLS_303.slots.default;
     (__VLS_ctx.createMode === 'upload'
         ? __VLS_ctx.$t('documents.create.submitUpload')
         : __VLS_ctx.$t('documents.create.submitCreate'));
-    var __VLS_263;
+    var __VLS_303;
 }
-var __VLS_191;
+var __VLS_231;
 if (__VLS_ctx.helpResource) {
     {
         const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
@@ -2076,15 +2649,15 @@ if (__VLS_ctx.helpResource) {
             (__VLS_ctx.$t('documents.help.empty'));
         }
         else {
-            const __VLS_268 = {}.MarkdownView;
+            const __VLS_308 = {}.MarkdownView;
             /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
             // @ts-ignore
-            const __VLS_269 = __VLS_asFunctionalComponent(__VLS_268, new __VLS_268({
+            const __VLS_309 = __VLS_asFunctionalComponent(__VLS_308, new __VLS_308({
                 source: (__VLS_ctx.help.content.value),
             }));
-            const __VLS_270 = __VLS_269({
+            const __VLS_310 = __VLS_309({
                 source: (__VLS_ctx.help.content.value),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_269));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_309));
         }
     }
 }
@@ -2155,6 +2728,28 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tabs']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tabs']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tabs']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tabs']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tabs']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
@@ -2280,6 +2875,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             DocumentIcon: DocumentIcon,
             ListView: ListView,
             TreeView: TreeView,
+            MindmapView: MindmapView,
+            RecordsView: RecordsView,
+            GraphView: GraphView,
+            SheetView: SheetView,
             projectsState: projectsState,
             docsState: docsState,
             selectedProjectId: selectedProjectId,
@@ -2314,10 +2913,20 @@ const __VLS_self = (await import('vue')).defineComponent({
             contentTab: contentTab,
             isListDocument: isListDocument,
             isTreeDocument: isTreeDocument,
+            isMindmapDocument: isMindmapDocument,
+            isRecordsDocument: isRecordsDocument,
+            isGraphDocument: isGraphDocument,
+            isSheetDocument: isSheetDocument,
             parsedList: parsedList,
             parsedTree: parsedTree,
+            parsedRecords: parsedRecords,
+            parsedGraph: parsedGraph,
+            parsedSheet: parsedSheet,
             onListChanged: onListChanged,
             onTreeChanged: onTreeChanged,
+            onRecordsChanged: onRecordsChanged,
+            onGraphChanged: onGraphChanged,
+            onSheetChanged: onSheetChanged,
             help: help,
             helpResource: helpResource,
             backToList: backToList,

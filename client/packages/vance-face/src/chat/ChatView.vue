@@ -9,14 +9,10 @@ import {
   getSpeechLanguage,
   resolveSpeechLanguage,
   setSpeechLanguage,
-  buildUtterance,
   getSpeakerEnabled,
   getSpeechRate,
   getSpeechVoiceURI,
   getSpeechVolume,
-  isSpeechSynthesisSupported,
-  listVoices,
-  onVoicesChanged,
   setSpeakerEnabled,
   setSpeechRate,
   setSpeechVoiceURI,
@@ -27,6 +23,12 @@ import {
   MIN_VOLUME,
   MAX_VOLUME,
 } from '@vance/shared';
+import {
+  buildUtterance,
+  isSpeechSynthesisSupported,
+  listVoices,
+  onVoicesChanged,
+} from '../platform/speechWeb';
 import type {
   ChatMessageAppendedData,
   ChatMessageChunkData,

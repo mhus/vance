@@ -1,5 +1,6 @@
+import '@/platform/bootWeb';
 import { createApp } from 'vue';
-import { ensureAuthenticated } from '@vance/shared';
+import { ensureAuthenticated } from '@/platform/ensureAuthenticatedWeb';
 import ProfileApp from './ProfileApp.vue';
 import { i18n } from '@/i18n';
 import '@/style/app.css';

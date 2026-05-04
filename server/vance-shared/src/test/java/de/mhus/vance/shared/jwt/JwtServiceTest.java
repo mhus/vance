@@ -133,6 +133,51 @@ class JwtServiceTest {
     }
 
     @Test
+    void createToken_defaultsToAccess_whenTypeNotPassed() {
+        // The 3-arg overload is the historical API — every existing
+        // call site mints ACCESS tokens. Verify that contract.
+        String token = jwt.createToken("acme", "alice",
+                Instant.now().plusSeconds(60));
+
+        Optional<VanceJwtClaims> claims = jwt.validateToken(token);
+
+        assertThat(claims).isPresent();
+        assertThat(claims.get().tokenType()).isEqualTo(TokenType.ACCESS);
+    }
+
+    @Test
+    void createToken_withRefreshType_writesRefreshClaim() {
+        String token = jwt.createToken("acme", "alice",
+                Instant.now().plusSeconds(60), TokenType.REFRESH);
+
+        Optional<VanceJwtClaims> claims = jwt.validateToken(token);
+
+        assertThat(claims).isPresent();
+        assertThat(claims.get().tokenType()).isEqualTo(TokenType.REFRESH);
+        assertThat(claims.get().username()).isEqualTo("alice");
+        assertThat(claims.get().tenantId()).isEqualTo("acme");
+    }
+
+    @Test
+    void validate_defaultsToAccess_forLegacyTokenWithoutTtClaim() {
+        // Tokens issued before the `tt` claim existed must still parse
+        // — they are interpreted as ACCESS to keep already-issued
+        // tokens working across the upgrade.
+        String token = Jwts.builder()
+                .subject("alice")
+                .claim(VanceJwtClaims.CLAIM_TENANT_ID, "acme")
+                .issuedAt(new Date())
+                .expiration(Date.from(Instant.now().plusSeconds(60)))
+                .signWith(tenantA.getPrivate())
+                .compact();
+
+        Optional<VanceJwtClaims> claims = jwt.validateToken(token);
+
+        assertThat(claims).isPresent();
+        assertThat(claims.get().tokenType()).isEqualTo(TokenType.ACCESS);
+    }
+
+    @Test
     void createToken_withoutExpiry_producesNonExpiringToken() {
         String token = jwt.createToken("acme", "alice", null);
 

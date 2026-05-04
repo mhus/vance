@@ -1,9 +1,11 @@
 package de.mhus.vance.shared.access;
 
 import de.mhus.vance.shared.jwt.JwtService;
+import de.mhus.vance.shared.jwt.TokenType;
 import de.mhus.vance.shared.jwt.VanceJwtClaims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -118,6 +120,15 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
 
     private @Nullable VanceJwtClaims resolveClaims(HttpServletRequest request) {
         String token = extractBearer(request);
+        if (token == null) {
+            // Web UI fallback: the SPA stores its access JWT in the
+            // {@code vance_access} {@code HttpOnly} cookie set by the
+            // login controller, so JavaScript never holds the token.
+            // The browser attaches the cookie automatically on every
+            // same-origin request — accepting it here completes the
+            // cookie-based session loop.
+            token = extractAccessCookie(request);
+        }
         if (token == null
                 && allowsQueryToken(request.getRequestURI(), request.getMethod())) {
             token = extractQueryToken(request);
@@ -128,6 +139,15 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
         VanceJwtClaims claims = jwtService.validateToken(token).orElse(null);
         if (claims == null) {
             log.debug("Bearer token did not pass JWT verification for {}", request.getRequestURI());
+            return null;
+        }
+        if (claims.tokenType() != TokenType.ACCESS) {
+            // Refresh tokens are credentials for the token-mint endpoint
+            // only — they must never authenticate API requests. The
+            // mint endpoint sits behind shouldRequireAuthentication=false
+            // and validates the refresh token itself.
+            log.debug("Refresh token rejected as bearer for {} (user='{}' tenant='{}')",
+                    request.getRequestURI(), claims.username(), claims.tenantId());
             return null;
         }
         if (!isClaimsAcceptable(claims, request)) {
@@ -150,6 +170,18 @@ public abstract class AccessFilterBase extends OncePerRequestFilter {
     private static @Nullable String extractQueryToken(HttpServletRequest request) {
         String token = request.getParameter("token");
         return token == null || token.isBlank() ? null : token.trim();
+    }
+
+    private static @Nullable String extractAccessCookie(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) return null;
+        for (Cookie cookie : cookies) {
+            if (!WebUiCookies.ACCESS.equals(cookie.getName())) continue;
+            String value = cookie.getValue();
+            if (value == null || value.isBlank()) return null;
+            return value.trim();
+        }
+        return null;
     }
 
     private static void writeUnauthorized(HttpServletResponse response) throws IOException {

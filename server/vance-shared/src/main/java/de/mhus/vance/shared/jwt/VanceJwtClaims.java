@@ -13,8 +13,12 @@ public record VanceJwtClaims(
         String username,
         String tenantId,
         @Nullable Instant issuedAt,
-        @Nullable Instant expiresAt) {
+        @Nullable Instant expiresAt,
+        TokenType tokenType) {
 
     /** JWT claim name for the Vance tenant id. */
     public static final String CLAIM_TENANT_ID = "tid";
+
+    /** JWT claim name for the {@link TokenType} discriminator. */
+    public static final String CLAIM_TOKEN_TYPE = "tt";
 }

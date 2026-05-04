@@ -1,6 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { clearAuth, getTenantId, getUsername } from '@vance/shared';
+import { computed, onMounted, onBeforeUnmount } from 'vue';
+import {
+  getSessionData,
+  getTenantId,
+  getUsername,
+  isAccessAlive,
+  isRefreshAlive,
+  logout as serverLogout,
+  refreshAccessCookie,
+} from '@vance/shared';
 
 /**
  * A breadcrumb segment. Either a plain string label (immutable, no
@@ -68,10 +76,58 @@ const defaultConnectionTooltip = computed<string>(() => {
   }
 });
 
-function logout(): void {
-  clearAuth();
+async function logout(): Promise<void> {
+  const tenant = getTenantId();
+  if (tenant) {
+    await serverLogout(tenant);
+  }
   window.location.href = '/index.html';
 }
+
+/**
+ * Per-page-load access-cookie check. The shell is rendered on every
+ * editor (apart from the login page itself), so guarding here is
+ * equivalent to "guard on every page load".
+ *
+ * <p>If the access cookie has expired we try a silent refresh via the
+ * still-alive refresh cookie. On failure we redirect to the login
+ * page with the current URL as the {@code next} parameter so the user
+ * comes back to where they were after re-authenticating.
+ *
+ * <p>A timer keeps polling every 60 seconds — long-running editor
+ * sessions (chat tab left open over the lunch break) get the same
+ * guard mid-session, not only on initial mount.
+ */
+let expiryTimer: number | null = null;
+
+async function guardAccessCookie(): Promise<void> {
+  if (isAccessAlive()) return;
+  if (getSessionData() && isRefreshAlive()) {
+    const ok = await refreshAccessCookie();
+    if (ok && isAccessAlive()) return;
+  }
+  redirectToLogin();
+}
+
+function redirectToLogin(): void {
+  const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+  const next = encodeURIComponent(currentUrl);
+  window.location.href = `/index.html?next=${next}`;
+}
+
+onMounted(() => {
+  void guardAccessCookie();
+  expiryTimer = window.setInterval(() => {
+    void guardAccessCookie();
+  }, 60_000);
+});
+
+onBeforeUnmount(() => {
+  if (expiryTimer != null) {
+    window.clearInterval(expiryTimer);
+    expiryTimer = null;
+  }
+});
 </script>
 
 <template>

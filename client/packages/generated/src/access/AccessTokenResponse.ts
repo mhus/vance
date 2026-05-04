@@ -6,4 +6,6 @@
 export interface AccessTokenResponse {
   token: string;
   expiresAtTimestamp: number;
+  refreshToken?: string;
+  refreshTokenExpiresAtTimestamp?: number;
 }

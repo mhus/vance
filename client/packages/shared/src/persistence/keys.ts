@@ -22,6 +22,11 @@ export const StorageKeys = {
   speechVolume: 'vance.speechVolume',
   /** Chat speaker on/off — `'1'` enabled, anything else disabled. */
   speakerEnabled: 'vance.speakerEnabled',
+  /** Tenant + username pair pre-filled on the login form when the
+   *  user ticked "Remember user" on a previous successful login.
+   *  Stored as JSON `{tenant, username}` so future fields (display
+   *  hints, last-used login mode) can be added without a key bump. */
+  rememberedLogin: 'vance.rememberedLogin',
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];

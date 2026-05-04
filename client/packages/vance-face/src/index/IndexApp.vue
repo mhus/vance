@@ -1,9 +1,20 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { getJwt, isTokenValid, login, LoginError } from '@vance/shared';
-import { EditorShell, VAlert, VButton, VCard, VInput } from '@/components';
+import {
+  clearLegacyAuth,
+  clearRememberedLogin,
+  getRememberedLogin,
+  getSessionData,
+  isAccessAlive,
+  isRefreshAlive,
+  login,
+  LoginError,
+  refreshAccessCookie,
+  setRememberedLogin,
+} from '@vance/shared';
+import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput } from '@/components';
 
-type Mode = 'login' | 'landing';
+type Mode = 'login' | 'landing' | 'auto-login';
 
 const mode = ref<Mode>('login');
 const tenant = ref('default');
@@ -11,35 +22,91 @@ const username = ref('');
 const password = ref('');
 const submitting = ref(false);
 const error = ref<string | null>(null);
+const autoLoginNotice = ref<string | null>(null);
 
-onMounted(() => {
-  const jwt = getJwt();
-  if (jwt && isTokenValid(jwt)) {
-    const next = readNextParam();
-    if (next) {
-      window.location.replace(next);
+// "Remember user" — when checked, the (tenant, username) pair is
+// persisted to localStorage and pre-fills the form on the next visit.
+// Default-on once a remembered pair exists, default-off on a fresh
+// browser. Never persists the password — that one stays out of
+// localStorage on principle.
+const rememberUser = ref(false);
+
+onMounted(async () => {
+  // Drop any stale localStorage tokens from the pre-cookie build.
+  // Idempotent — no-op when already cleared.
+  clearLegacyAuth();
+
+  // Pre-fill the form from a previous "Remember user" tick. Tick the
+  // checkbox by default once we know the user opted in last time —
+  // unchecking it on the next login removes the entry.
+  const remembered = getRememberedLogin();
+  if (remembered) {
+    tenant.value = remembered.tenant;
+    username.value = remembered.username;
+    rememberUser.value = true;
+  }
+
+  if (isAccessAlive()) {
+    redirectAfterLogin();
+    return;
+  }
+
+  // Access cookie expired but the refresh cookie may still be alive.
+  // Try a silent re-mint — on success, flash a one-second
+  // "Sie wurden eingeloggt" notice before redirecting so the user
+  // sees that the page loaded fresh.
+  if (getSessionData() && isRefreshAlive()) {
+    mode.value = 'auto-login';
+    autoLoginNotice.value = 'Sie wurden eingeloggt';
+    const ok = await refreshAccessCookie();
+    if (ok && isAccessAlive()) {
+      window.setTimeout(redirectAfterLogin, 1000);
       return;
     }
-    mode.value = 'landing';
+    // Silent refresh failed — fall through to the login form.
+    autoLoginNotice.value = null;
+    mode.value = 'login';
+    error.value = 'Auto-login failed. Please sign in again.';
   }
 });
 
 async function onSubmit(): Promise<void> {
   error.value = null;
   submitting.value = true;
+  const trimmedTenant = tenant.value.trim();
+  const trimmedUsername = username.value.trim();
   try {
     await login({
-      tenant: tenant.value.trim(),
-      username: username.value.trim(),
+      tenant: trimmedTenant,
+      username: trimmedUsername,
       password: password.value,
     });
-    const next = readNextParam();
-    window.location.replace(next ?? '/index.html');
+    // Persist or clear the (tenant, username) hint based on the
+    // checkbox. Only a successful login is allowed to write — a
+    // failed attempt mustn't leak its inputs into localStorage.
+    if (rememberUser.value) {
+      setRememberedLogin({ tenant: trimmedTenant, username: trimmedUsername });
+    } else {
+      clearRememberedLogin();
+    }
+    redirectAfterLogin();
   } catch (e) {
     error.value = e instanceof LoginError ? e.message : 'Login failed.';
   } finally {
     submitting.value = false;
   }
+}
+
+function redirectAfterLogin(): void {
+  const next = readNextParam();
+  if (next) {
+    window.location.replace(next);
+    return;
+  }
+  // Default landing: keep this page mounted in 'landing' mode so the
+  // user lands on the editor list rather than bouncing through a
+  // separate URL.
+  mode.value = 'landing';
 }
 
 /**
@@ -62,7 +129,19 @@ function readNextParam(): string | null {
   <!-- Login is the one editor that runs *before* a tenant is known, so it
        cannot use <EditorShell> (which renders user/tenant in the topbar).
        The hero layout is the documented exception. -->
-  <div v-if="mode === 'login'" class="hero min-h-screen bg-base-200">
+  <div v-if="mode === 'auto-login'" class="hero min-h-screen bg-base-200">
+    <div class="hero-content flex-col">
+      <h1 class="text-3xl font-bold mb-4 font-mono">vance</h1>
+      <VCard class="w-full max-w-md">
+        <div class="flex items-center gap-3 py-2">
+          <span class="loading loading-spinner loading-md" />
+          <span>{{ autoLoginNotice }}</span>
+        </div>
+      </VCard>
+    </div>
+  </div>
+
+  <div v-else-if="mode === 'login'" class="hero min-h-screen bg-base-200">
     <div class="hero-content w-full max-w-md flex-col">
       <h1 class="text-3xl font-bold mb-4 font-mono">vance</h1>
       <VCard class="w-full">
@@ -90,6 +169,11 @@ function readNextParam(): string | null {
             label="Password"
             required
             autocomplete="current-password"
+            :disabled="submitting"
+          />
+          <VCheckbox
+            v-model="rememberUser"
+            label="Remember user"
             :disabled="submitting"
           />
           <VButton

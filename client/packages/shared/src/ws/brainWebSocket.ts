@@ -21,7 +21,14 @@ export type BrainWsApi = Pick<
 /** What the chat editor passes when opening a connection. */
 export interface BrainWebSocketOptions {
   tenant: string;
-  jwt: string;
+  /**
+   * Bearer JWT for the upgrade request. Optional in the web-UI build:
+   * the browser ships the {@code vance_access} cookie automatically on
+   * same-origin WebSocket upgrades, so cookie-based clients leave this
+   * blank. Cross-origin / non-cookie clients (CLI in a browser embed,
+   * test harnesses) still pass it as the {@code ?token=} query param.
+   */
+  jwt?: string;
   /**
    * Connection-profile sent on the WebSocket handshake. Open string —
    * canonical values are `'foot' | 'web' | 'mobile' | 'daemon'` (see
@@ -275,9 +282,15 @@ function buildBrainWsUrl(options: BrainWebSocketOptions): string {
     .replace(/^http:\/\//, 'ws://')
     .replace(/^https:\/\//, 'wss://');
   const params = new URLSearchParams({
-    token: options.jwt,
     profile: options.profile,
     clientVersion: options.clientVersion,
   });
+  // Cookie-only callers (web UI same-origin) leave `jwt` empty; the
+  // browser ships {@code vance_access} on the upgrade request. Other
+  // callers still get the {@code ?token=} fallback for cross-origin
+  // or header-less embeds.
+  if (options.jwt) {
+    params.set('token', options.jwt);
+  }
   return `${wsOrigin}/brain/${encodeURIComponent(options.tenant)}/ws?${params}`;
 }

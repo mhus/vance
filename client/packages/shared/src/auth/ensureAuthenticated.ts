@@ -1,36 +1,43 @@
-import { isTokenValid } from './jwtClaims';
-import { getJwt } from './jwtStorage';
-import { refreshToken } from './refreshClient';
+import { refreshAccessCookie } from './refreshClient';
+import { getSessionData, isAccessAlive, isRefreshAlive } from './webUiSession';
 
 /**
- * Editor-page guard. Call at the very top of an editor's `main.ts` before
- * mounting the Vue app:
+ * Editor-page guard. Call at the very top of an editor's `main.ts`
+ * before mounting the Vue app:
  *
  * ```ts
  * await ensureAuthenticated();
  * createApp(App).mount('#app');
  * ```
  *
- * Behaviour:
- * 1. If a valid JWT is present, return immediately.
- * 2. If a JWT is present but expiring within 30s, try to refresh. If the
- *    refresh succeeds, return.
- * 3. Otherwise redirect the browser to `index.html` with the current URL as
- *    the `next` query parameter, and never resolve — the page is being
- *    replaced.
+ * Cookie-era behaviour:
+ * 1. If the {@code vance_data} cookie shows a still-alive access
+ *    expiry (with a 30s safety margin), return immediately. The
+ *    {@code vance_access} cookie is HttpOnly so we trust the
+ *    expiry timestamp the server stamped into the data cookie at
+ *    login.
+ * 2. If access has expired but refresh is still alive, fire a silent
+ *    re-mint. On success the server issues fresh cookies and we
+ *    return.
+ * 3. Otherwise redirect to {@code index.html} with the current URL as
+ *    the {@code next} query parameter, and never resolve — the page
+ *    is being replaced.
  */
 export async function ensureAuthenticated(): Promise<void> {
-  const jwt = getJwt();
-  if (jwt && isTokenValid(jwt)) return;
+  if (isAccessAlive()) return;
 
-  if (jwt) {
-    const refreshed = await refreshToken();
-    if (refreshed && isTokenValid(refreshed)) return;
+  if (getSessionData() && isRefreshAlive()) {
+    const ok = await refreshAccessCookie();
+    if (ok && isAccessAlive()) return;
   }
 
+  redirectToLogin();
+  // The redirect is async; suspend forever so the caller does not mount.
+  return new Promise<void>(() => {});
+}
+
+function redirectToLogin(): void {
   const currentUrl = window.location.pathname + window.location.search + window.location.hash;
   const next = encodeURIComponent(currentUrl);
   window.location.href = `/index.html?next=${next}`;
-  // The redirect is async; suspend forever so the caller does not mount.
-  return new Promise<void>(() => {});
 }

@@ -1,5 +1,5 @@
-import { clearAuth, getJwt, getTenantId } from '../auth/jwtStorage';
-import { refreshToken } from '../auth/refreshClient';
+import { getTenantId } from '../auth/jwtStorage';
+import { refreshAccessCookie } from '../auth/refreshClient';
 
 export class RestError extends Error {
   constructor(
@@ -26,7 +26,14 @@ export function brainBaseUrl(): string {
 }
 
 interface RestOptions {
-  /** Append `Authorization: Bearer <jwt>`. Default `true` — only set to `false` for the login endpoint. */
+  /**
+   * Whether the request should carry credentials. Default {@code true}
+   * — fetch is called with {@code credentials: 'include'} so the
+   * browser attaches the {@code vance_access} cookie automatically.
+   * Only the login endpoint sets this to {@code false} (it carries
+   * its credentials in the JSON body and must not echo a stale
+   * cookie).
+   */
   authenticated?: boolean;
   /** Optional JSON body. */
   body?: unknown;
@@ -39,9 +46,10 @@ interface RestOptions {
  * `${baseUrl}/brain/{tenant}/`, so callers pass relative paths like
  * `'sessions'` or `'documents/abc'`.
  *
- * On `401` the helper attempts a single token refresh and retries the
- * original request once. If the retry also fails (or there is no refresh
- * possible), it clears the local auth state and redirects to the login page.
+ * On `401` the helper attempts a single silent re-mint (using the
+ * {@code vance_refresh} cookie) and retries the original request once.
+ * If the retry also fails (or no refresh is possible), it redirects
+ * to the login page.
  */
 export async function brainFetch<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
@@ -55,12 +63,11 @@ export async function brainFetch<T>(
   const response = await doFetch(url, method, options);
 
   if (response.status === 401 && options.authenticated !== false) {
-    const refreshed = await refreshToken();
+    const refreshed = await refreshAccessCookie();
     if (refreshed) {
       const retry = await doFetch(url, method, options);
       if (retry.ok) return parseJson<T>(retry);
     }
-    clearAuth();
     redirectToLogin();
     return new Promise<T>(() => {});
   }
@@ -80,15 +87,19 @@ async function doFetch(url: string, method: string, options: RestOptions): Promi
   if (options.body !== undefined && !isFormData) {
     headers['Content-Type'] = 'application/json';
   }
-  if (options.authenticated !== false) {
-    const jwt = getJwt();
-    if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
-  }
   let body: BodyInit | undefined;
   if (options.body !== undefined) {
     body = isFormData ? (options.body as FormData) : JSON.stringify(options.body);
   }
-  return fetch(url, { method, headers, body });
+  return fetch(url, {
+    method,
+    headers,
+    body,
+    // Cookies (vance_access) ride along on every authenticated call.
+    // The login route sets {@code authenticated: false} so a stale
+    // cookie can't shadow a fresh password attempt.
+    credentials: options.authenticated === false ? 'omit' : 'include',
+  });
 }
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -115,13 +126,12 @@ export async function brainFetchText(path: string): Promise<string | null> {
   if (response.status === 404) return null;
 
   if (response.status === 401) {
-    const refreshed = await refreshToken();
+    const refreshed = await refreshAccessCookie();
     if (refreshed) {
       const retry = await doFetch(url, 'GET', {});
       if (retry.status === 404) return null;
       if (retry.ok) return retry.text();
     }
-    clearAuth();
     redirectToLogin();
     return new Promise<string | null>(() => {});
   }
@@ -139,23 +149,21 @@ function redirectToLogin(): void {
 }
 
 /**
- * Build a tenant-scoped, JWT-authenticated URL for a document's
- * streaming-content endpoint. Used by `<img src>` / PDF.js viewers
- * / `<a href download>` — places where we can't inject an
- * `Authorization` header.
+ * Build a tenant-scoped URL for a document's streaming-content
+ * endpoint. Used by {@code <img src>} / PDF.js viewers / {@code <a
+ * href download>} — places where we cannot inject an
+ * {@code Authorization} header.
  *
- * <p>The Brain's {@code BrainAccessFilter} accepts {@code ?token=}
- * as a fallback for this specific GET-only route.
- *
- * @param documentId   Mongo id of the document
- * @param download     `true` adds {@code &download=1} so the brain
- *                     emits {@code Content-Disposition: attachment}
+ * <p>Same-origin {@code <img>} loads carry the {@code vance_access}
+ * cookie automatically, so no {@code ?token=} URL hack is required
+ * any more. The query parameter {@code download=1} stays purely
+ * for content-disposition.
  */
 export function documentContentUrl(documentId: string, download = false): string {
   const tenant = getTenantId();
-  const jwt = getJwt();
-  if (!tenant || !jwt) return '';
-  const params = new URLSearchParams({ token: jwt });
+  if (!tenant) return '';
+  const params = new URLSearchParams();
   if (download) params.set('download', '1');
-  return `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/documents/${encodeURIComponent(documentId)}/content?${params}`;
+  const query = params.toString();
+  return `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/documents/${encodeURIComponent(documentId)}/content${query ? '?' + query : ''}`;
 }

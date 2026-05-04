@@ -41,6 +41,10 @@ public class JwtService {
     /**
      * Creates a signed JWT for {@code username} under {@code tenantId}.
      *
+     * <p>Convenience overload that mints an {@link TokenType#ACCESS} token —
+     * the historical default. New code that mints refresh tokens must use
+     * {@link #createToken(String, String, Instant, TokenType)}.
+     *
      * @param tenantId  tenant business name (e.g. {@code "default"})
      * @param username  the human-readable user identifier that ends up as {@code sub}
      * @param expiresAt absolute expiration time, or {@code null} for a non-expiring token
@@ -48,6 +52,17 @@ public class JwtService {
      * @throws IllegalStateException if no signing key exists for the tenant
      */
     public String createToken(String tenantId, String username, Instant expiresAt) {
+        return createToken(tenantId, username, expiresAt, TokenType.ACCESS);
+    }
+
+    /**
+     * Creates a signed JWT for {@code username} under {@code tenantId} with
+     * an explicit {@link TokenType}. Refresh tokens carry {@code tt=refresh}
+     * so {@link de.mhus.vance.shared.access.AccessFilterBase} can reject
+     * them on regular API requests.
+     */
+    public String createToken(String tenantId, String username, Instant expiresAt,
+                              TokenType type) {
         PrivateKey privateKey = keyService.getLatestPrivateKey(tenantId, KeyPurpose.JWT_SIGNING)
                 .orElseThrow(() -> new IllegalStateException(
                         "No JWT signing key for tenant '" + tenantId + "'"));
@@ -61,6 +76,7 @@ public class JwtService {
         var builder = Jwts.builder()
                 .subject(username)
                 .claim(VanceJwtClaims.CLAIM_TENANT_ID, tenantId)
+                .claim(VanceJwtClaims.CLAIM_TOKEN_TYPE, type.wireValue())
                 .issuedAt(Date.from(now));
         if (expiresAt != null) {
             builder.expiration(Date.from(expiresAt));
@@ -122,12 +138,14 @@ public class JwtService {
     private VanceJwtClaims toClaims(Claims claims) {
         String username = claims.getSubject();
         String tenantId = claims.get(VanceJwtClaims.CLAIM_TENANT_ID, String.class);
+        String tt = claims.get(VanceJwtClaims.CLAIM_TOKEN_TYPE, String.class);
         Date iat = claims.getIssuedAt();
         Date exp = claims.getExpiration();
         return new VanceJwtClaims(
                 username,
                 tenantId,
                 iat == null ? null : iat.toInstant(),
-                exp == null ? null : exp.toInstant());
+                exp == null ? null : exp.toInstant(),
+                TokenType.fromWire(tt));
     }
 }

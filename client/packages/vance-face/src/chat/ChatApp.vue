@@ -3,7 +3,6 @@ import { onBeforeUnmount, onMounted, ref, computed, watch } from 'vue';
 import {
   BrainWebSocket,
   WebSocketRequestError,
-  getJwt,
   getTenantId,
   getUsername,
   setActiveSessionId,
@@ -50,13 +49,14 @@ function pushSessionIdToUrl(sessionId: string | null): void {
 
 async function openSocket(): Promise<BrainWebSocket> {
   const tenant = getTenantId();
-  const jwt = getJwt();
-  if (!tenant || !jwt) {
-    throw new Error('Missing tenant or JWT — cannot open chat connection.');
+  if (!tenant) {
+    throw new Error('Missing tenant — cannot open chat connection.');
   }
+  // Same-origin upgrade ships the {@code vance_access} cookie
+  // automatically. No JWT lookup in JS — that's the whole point of
+  // the cookie-based auth flow.
   return BrainWebSocket.connect({
     tenant,
-    jwt,
     profile: 'web',
     clientVersion: CLIENT_VERSION,
   });

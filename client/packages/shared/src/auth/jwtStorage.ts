@@ -1,19 +1,24 @@
 import { StorageKeys } from '../persistence/keys';
+import { getSessionData } from './webUiSession';
 
-// Thin wrapper around `localStorage` for the four auth-relevant values.
-// All access to those keys must go through this module — direct
-// `localStorage.getItem('vance.jwt')` calls in the UI are forbidden.
-
-export function getJwt(): string | null {
-  return localStorage.getItem(StorageKeys.jwt);
-}
+// Identity helpers that used to read from localStorage. After the
+// move to cookie-based auth, the access and refresh tokens live in
+// HttpOnly cookies that JavaScript cannot read. Identity (username,
+// tenant, display name) comes from the JS-readable {@code vance_data}
+// cookie via {@link getSessionData}.
+//
+// {@code getJwt} is gone — JavaScript never sees the JWT now. Editor
+// code that wants identity calls {@link getTenantId} /
+// {@link getUsername}; code that needs to authenticate a request just
+// uses {@code credentials: 'include'} on the fetch call so the browser
+// attaches the cookies automatically.
 
 export function getTenantId(): string | null {
-  return localStorage.getItem(StorageKeys.tenantId);
+  return getSessionData()?.tenantId ?? null;
 }
 
 export function getUsername(): string | null {
-  return localStorage.getItem(StorageKeys.username);
+  return getSessionData()?.username ?? null;
 }
 
 export function getActiveSessionId(): string | null {
@@ -29,23 +34,25 @@ export function setActiveSessionId(sessionId: string | null): void {
 }
 
 /**
- * Store a freshly-minted token together with the user/tenant it belongs to.
- * Called by `loginClient` and `refreshClient`.
+ * Migrate a localStorage install. Old builds wrote {@code vance.jwt},
+ * {@code vance.tenantId}, {@code vance.username}; the cookie shape
+ * makes those obsolete. Removing them on first load keeps a stale
+ * token from leaking back into a page that was about to be reloaded.
  */
-export function storeAuth(params: { jwt: string; tenantId: string; username: string }): void {
-  localStorage.setItem(StorageKeys.jwt, params.jwt);
-  localStorage.setItem(StorageKeys.tenantId, params.tenantId);
-  localStorage.setItem(StorageKeys.username, params.username);
-}
-
-/**
- * Wipe everything auth-related. Called on logout and on irrecoverable 401s.
- * Leaves `activeSessionId` in place so a subsequent login can resume it —
- * unless the caller explicitly wants a clean slate, in which case they
- * call `setActiveSessionId(null)` afterwards.
- */
-export function clearAuth(): void {
+export function clearLegacyAuth(): void {
   localStorage.removeItem(StorageKeys.jwt);
   localStorage.removeItem(StorageKeys.tenantId);
   localStorage.removeItem(StorageKeys.username);
+}
+
+/**
+ * No-op kept as a deprecation surface — call {@code logout(tenant)}
+ * from {@code loginClient} instead, which fires a server-side cookie
+ * clear. This stub exists only so old call sites don't break the
+ * build until they migrate.
+ *
+ * @deprecated use {@code logout(tenant)} from {@code loginClient}
+ */
+export function clearAuth(): void {
+  clearLegacyAuth();
 }

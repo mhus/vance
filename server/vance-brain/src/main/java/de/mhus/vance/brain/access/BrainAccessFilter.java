@@ -29,6 +29,14 @@ public class BrainAccessFilter extends AccessFilterBase {
     /** {@code POST /brain/{tenant}/access/{username}} — open (client has no token yet). */
     private static final Pattern TOKEN_MINT_PATH = Pattern.compile("^/brain/[^/]+/access/[^/]+/?$");
 
+    /**
+     * {@code POST /brain/{tenant}/logout} — open. Logout must succeed
+     * even when the access cookie has already expired, otherwise users
+     * get stuck in a state where the browser still has stale cookies
+     * but no way to clear them.
+     */
+    private static final Pattern LOGOUT_PATH = Pattern.compile("^/brain/[^/]+/logout/?$");
+
     /** Any tenant-scoped path: captures the tenant name in group 1. */
     private static final Pattern BRAIN_TENANT_PATH = Pattern.compile("^/brain/([^/]+)(?:/.*)?$");
 
@@ -71,6 +79,9 @@ public class BrainAccessFilter extends AccessFilterBase {
             return false;
         }
         if (TOKEN_MINT_PATH.matcher(requestUri).matches()) {
+            return false;
+        }
+        if (LOGOUT_PATH.matcher(requestUri).matches()) {
             return false;
         }
         return true;

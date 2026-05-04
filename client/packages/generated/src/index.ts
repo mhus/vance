@@ -4,6 +4,7 @@
 export * from './access/AccessTokenRequest';
 export * from './access/AccessTokenResponse';
 export * from './access/RefreshTokenResponse';
+export * from './access/WebUiSessionData';
 
 export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';

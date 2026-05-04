@@ -4,5 +4,9 @@
 */
 
 export interface AccessTokenRequest {
-  password: string;
+  password?: string;
+  refreshToken?: string;
+  requestRefreshToken: boolean;
+  requestCookies: boolean;
+  includeWebUiSettings: boolean;
 }

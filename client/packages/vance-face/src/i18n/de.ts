@@ -194,6 +194,9 @@ export default {
       pathHelp:
         'Dieses Dokument verschieben oder umbenennen. Der Pfad ist projektweit eindeutig; Konflikte werden abgelehnt.',
       contentLabel: 'Inhalt',
+      tabRaw: 'Roh',
+      tabList: 'Liste',
+      listParseError: 'List-Ansicht nicht möglich: {message}',
       delete: 'Löschen',
       download: 'Herunterladen',
       cancel: 'Abbrechen',
@@ -216,6 +219,9 @@ export default {
       tagsHelp: 'Optional, durch Kommas getrennt.',
       tagsHelpMulti: 'Werden auf jede hochgeladene Datei angewendet.',
       typeLabel: 'Typ',
+      kindLabel: 'Art',
+      kindNone: '(keine)',
+      kindHelp: 'Optional. Erzeugt eine passende Vorlage für die gewählte Art.',
       contentLabel: 'Inhalt',
       inlineSizeNote:
         'Inline-Inhalt bis 4 KB. Für größere oder binäre Dateien den Upload-Tab nutzen.',

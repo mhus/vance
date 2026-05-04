@@ -196,6 +196,9 @@ export default {
       pathHelp:
         'Move or rename this document. Path is unique within the project; conflicts are rejected.',
       contentLabel: 'Content',
+      tabRaw: 'Raw',
+      tabList: 'List',
+      listParseError: 'Cannot show list view: {message}',
       delete: 'Delete',
       download: 'Download',
       cancel: 'Cancel',
@@ -218,6 +221,9 @@ export default {
       tagsHelp: 'Optional, separated by commas.',
       tagsHelpMulti: 'Applied to every uploaded file.',
       typeLabel: 'Type',
+      kindLabel: 'Kind',
+      kindNone: '(none)',
+      kindHelp: 'Optional. Pre-fills a starter body matching the selected kind.',
       contentLabel: 'Content',
       inlineSizeNote:
         'Inline content, up to 4 KB. For larger or binary files use the upload tab.',

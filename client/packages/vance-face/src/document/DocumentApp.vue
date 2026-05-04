@@ -22,6 +22,14 @@ import { useHelp } from '@/composables/useHelp';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { consumeDocumentDraft, documentContentUrl } from '@vance/shared';
 import DocumentPreview from './DocumentPreview.vue';
+import DocumentIcon from './DocumentIcon.vue';
+import ListView from './ListView.vue';
+import {
+  isListMime,
+  parseList,
+  ListCodecError,
+  type ListDocument,
+} from './listItemsCodec';
 import type {
   DocumentSummary,
   DocumentUpdateRequest,
@@ -58,9 +66,16 @@ const createTitle = ref('');
 const createTagsRaw = ref('');
 const createMime = ref('text/markdown');
 const createContent = ref('');
+const createKind = ref<string>('');
 const createFiles = ref<File[]>([]);
 const createError = ref<string | null>(null);
 const creating = ref(false);
+
+// Tracks the most recently auto-generated stub. Only when the
+// user-visible content matches this value (or is empty) do we
+// overwrite it on subsequent kind/mime changes — anything the user
+// has typed manually stays untouched.
+let lastGeneratedStub = '';
 
 // Per-file upload outcome shown beneath the picker. Only populated while a
 // multi-upload is running and after it finishes — kept until the user closes
@@ -269,7 +284,49 @@ function fillEditor(): void {
   editPath.value = sel?.path ?? '';
   editInlineText.value = sel?.inlineText ?? '';
   editError.value = null;
+  // Switching documents resets the editor mode to the kind-aware
+  // default — `list` for list documents, `raw` for everything else.
+  // Without this a list-doc → text-doc switch would leave the user
+  // staring at an empty list view.
+  contentTab.value = isListDocument.value ? 'list' : 'raw';
 }
+
+// ─── List-document tab toggle ───────────────────────────────────────
+//
+// Documents whose `kind` is `list` and whose mime is one of md / json /
+// yaml get an additional "List" tab on top of the inline-text editor.
+// In v1 the list tab is read-only; the user keeps editing through the
+// raw editor. The tab is in-memory only — switching does not hit the
+// server, the body just gets reparsed each time.
+
+type ContentTab = 'raw' | 'list';
+const contentTab = ref<ContentTab>('raw');
+
+const isListDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'list') return false;
+  return isListMime(sel.mimeType);
+});
+
+interface ParsedList {
+  doc: ListDocument | null;
+  error: string | null;
+}
+
+const parsedList = computed<ParsedList>(() => {
+  if (!isListDocument.value) return { doc: null, error: null };
+  try {
+    const sel = docsState.selected.value;
+    const doc = parseList(editInlineText.value, sel?.mimeType ?? '');
+    return { doc, error: null };
+  } catch (e) {
+    if (e instanceof ListCodecError) {
+      return { doc: null, error: e.message };
+    }
+    return { doc: null, error: e instanceof Error ? e.message : String(e) };
+  }
+});
 
 // ─── Contextual help ────────────────────────────────────────────────────
 //
@@ -342,11 +399,83 @@ function openCreateModal(prefill?: CreateModalPrefill): void {
   createTagsRaw.value = '';
   createMime.value = prefill?.mimeType ?? 'text/markdown';
   createContent.value = prefill?.content ?? '';
+  createKind.value = '';
+  lastGeneratedStub = '';
   createFiles.value = [];
   createError.value = null;
   uploadProgress.value = [];
   showCreateModal.value = true;
 }
+
+/**
+ * Kinds the user can pick when creating a new inline document. Each
+ * one optionally pre-fills a starter body in the chosen mime type.
+ * Schema-less kinds (mindmap/graph/...) only seed the {@code kind:}
+ * header so the document is recognised by the server's
+ * {@code DocumentHeader} pipeline; the body is left blank for the
+ * user to fill in.
+ *
+ * Order picked to surface the kinds we already render specialised
+ * editors for first (`list`, later `tree`). Labels stay literal —
+ * they are domain tokens, not localisable noise.
+ */
+const KIND_CREATE_OPTIONS = [
+  'list', 'tree', 'text', 'mindmap', 'graph', 'sheet', 'data', 'records', 'schema',
+] as const;
+
+const kindCreateOptions = computed(() => [
+  { value: '', label: t('documents.create.kindNone') },
+  ...KIND_CREATE_OPTIONS.map((k) => ({ value: k, label: k })),
+]);
+
+/**
+ * Generate a starter body for the chosen {@code kind} in the chosen
+ * {@code mime} type. Returns an empty string when no template applies
+ * — caller treats that as „leave the editor blank".
+ *
+ * For kinds with a defined schema (currently only {@code list}, soon
+ * {@code tree}) we emit a minimal example so the user can see the
+ * expected shape. For schema-less kinds we emit just the header so
+ * the server still mirrors {@code kind} on save.
+ */
+function buildKindStub(kind: string, mime: string): string {
+  if (!kind) return '';
+  const isMd = mime === 'text/markdown' || mime === 'text/x-markdown';
+  const isJson = mime === 'application/json';
+  const isYaml = mime === 'application/yaml'
+    || mime === 'application/x-yaml'
+    || mime === 'text/yaml';
+
+  if (kind === 'list') {
+    if (isMd) return '---\nkind: list\n---\n- item 1\n- item 2\n';
+    if (isJson) return '{\n  "kind": "list",\n  "items": [\n    { "text": "item 1" },\n    { "text": "item 2" }\n  ]\n}\n';
+    if (isYaml) return 'kind: list\nitems:\n  - text: item 1\n  - text: item 2\n';
+  }
+  if (kind === 'tree') {
+    if (isMd) return '---\nkind: tree\n---\n- parent\n  - child\n';
+    if (isJson) return '{\n  "kind": "tree",\n  "items": [\n    { "text": "parent", "children": [\n      { "text": "child", "children": [] }\n    ]}\n  ]\n}\n';
+    if (isYaml) return 'kind: tree\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
+  }
+  // Schema-less kinds — header only, body stays empty.
+  if (isMd) return `---\nkind: ${kind}\n---\n`;
+  if (isJson) return `{\n  "kind": "${kind}"\n}\n`;
+  if (isYaml) return `kind: ${kind}\n`;
+  return '';
+}
+
+// Auto-fill the body when the user picks a kind (or switches the
+// mime type while a kind is set). Only writes when the editor is
+// empty or still holds the last auto-generated stub — anything the
+// user has typed by hand stays untouched.
+watch([createKind, createMime], ([kind, mime]) => {
+  if (!showCreateModal.value) return;
+  if (createMode.value !== 'inline') return;
+  const editorEmpty = createContent.value === '' || createContent.value === lastGeneratedStub;
+  if (!editorEmpty) return;
+  const stub = buildKindStub(kind, mime);
+  createContent.value = stub;
+  lastGeneratedStub = stub;
+});
 
 function setCreateMode(mode: CreateMode): void {
   createMode.value = mode;
@@ -664,7 +793,14 @@ const formatBytes = (n: number): string => {
 
         <VCard>
           <template #header>
-            <span class="font-mono text-sm">{{ docsState.selected.value.path }}</span>
+            <span class="flex items-center gap-2">
+              <DocumentIcon
+                :path="docsState.selected.value.path"
+                :mime-type="docsState.selected.value.mimeType"
+                :kind="docsState.selected.value.kind"
+              />
+              <span class="font-mono text-sm">{{ docsState.selected.value.path }}</span>
+            </span>
           </template>
 
           <div class="text-xs opacity-60 flex flex-wrap gap-3 items-center">
@@ -718,14 +854,41 @@ const formatBytes = (n: number): string => {
               :disabled="saving"
               :help="$t('documents.detail.pathHelp')"
             />
-            <CodeEditor
-              v-if="docsState.selected.value.inline"
-              v-model="editInlineText"
-              :label="$t('documents.detail.contentLabel')"
-              :rows="20"
-              :disabled="saving"
-              :mime-type="docsState.selected.value.mimeType"
-            />
+            <template v-if="docsState.selected.value.inline">
+              <!-- Tab bar appears only for list-kind documents in a
+                   supported mime type. Other docs jump straight to
+                   the raw editor as before. -->
+              <div v-if="isListDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'list' }"
+                  @click="contentTab = 'list'"
+                >{{ $t('documents.detail.tabList') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
+
+              <template v-if="isListDocument && contentTab === 'list'">
+                <VAlert v-if="parsedList.error" variant="warning">
+                  <span>{{ $t('documents.detail.listParseError', { message: parsedList.error }) }}</span>
+                </VAlert>
+                <ListView v-else-if="parsedList.doc" :doc="parsedList.doc" />
+              </template>
+
+              <CodeEditor
+                v-else
+                v-model="editInlineText"
+                :label="$t('documents.detail.contentLabel')"
+                :rows="20"
+                :disabled="saving"
+                :mime-type="docsState.selected.value.mimeType"
+              />
+            </template>
             <DocumentPreview
               v-else
               :document-id="docsState.selected.value.id"
@@ -830,7 +993,12 @@ const formatBytes = (n: number): string => {
           @select="openDocument"
         >
           <template #default="{ item }">
-            <div class="flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <DocumentIcon
+                :path="item.path"
+                :mime-type="item.mimeType"
+                :kind="item.kind"
+              />
               <div class="min-w-0 flex-1">
                 <div class="font-semibold truncate flex items-center gap-2">
                   <span class="truncate">{{ item.title?.trim() || item.name }}</span>
@@ -949,6 +1117,13 @@ const formatBytes = (n: number): string => {
             v-model="createMime"
             :options="createMimeOptions"
             :label="$t('documents.create.typeLabel')"
+            :disabled="creating"
+          />
+          <VSelect
+            v-model="createKind"
+            :options="kindCreateOptions"
+            :label="$t('documents.create.kindLabel')"
+            :help="$t('documents.create.kindHelp')"
             :disabled="creating"
           />
           <CodeEditor
@@ -1095,5 +1270,32 @@ const formatBytes = (n: number): string => {
 .folder-count {
   font-size: 0.7rem;
   opacity: 0.6;
+}
+
+/* Tab bar above the inline-text editor for kind-aware view modes
+   (List / Raw). Two simple buttons; reuses the active-pill look from
+   the insights editor's tab bar. */
+.content-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid hsl(var(--bc) / 0.15);
+  padding-bottom: 0.25rem;
+  margin-top: 0.25rem;
+}
+.content-tab {
+  padding: 0.3rem 0.85rem;
+  border-radius: 0.375rem;
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.content-tab:hover {
+  background: hsl(var(--bc) / 0.06);
+}
+.content-tab--active {
+  background: hsl(var(--p) / 0.12);
+  border-color: hsl(var(--p) / 0.3);
+  font-weight: 600;
 }
 </style>

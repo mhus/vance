@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { ProcessProgressNotification } from '@vance/generated';
 import { VEmptyState } from '@components/index';
+
+const { t } = useI18n();
 
 // Same enum-string-compat note as MessageBubble: Jackson serialises
 // {@code ProgressKind} / {@code StatusTag} as their enum name, while
@@ -22,15 +25,19 @@ function summarise(event: ProcessProgressNotification): string {
   switch (kindOf(event)) {
     case 'METRICS': {
       const m = event.metrics;
-      if (!m) return 'metrics';
+      if (!m) return t('chat.progress.metricsLabel');
       const inK = Math.round(m.tokensInTotal / 100) / 10;
       const outK = Math.round(m.tokensOutTotal / 100) / 10;
-      return `${m.llmCallCount} calls · ${inK}k in / ${outK}k out`;
+      return t('chat.progress.metricsLine', {
+        calls: m.llmCallCount,
+        tokensIn: inK,
+        tokensOut: outK,
+      });
     }
     case 'PLAN':
-      return event.plan?.rootNode?.title ?? 'plan updated';
+      return event.plan?.rootNode?.title ?? t('chat.progress.planUpdated');
     case 'STATUS':
-      return event.status?.text ?? 'status';
+      return event.status?.text ?? t('chat.progress.status');
     default:
       return String(event.kind);
   }
@@ -45,13 +52,13 @@ function tagOf(event: ProcessProgressNotification): string | null {
 <template>
   <div class="p-3 flex flex-col gap-3 min-h-0">
     <div class="text-xs uppercase tracking-wide opacity-60 font-semibold px-1">
-      Live progress
+      {{ $t('chat.progress.title') }}
     </div>
 
     <VEmptyState
       v-if="reversed.length === 0"
-      headline="No progress yet"
-      body="Live status from running processes shows up here."
+      :headline="$t('chat.progress.empty')"
+      :body="$t('chat.progress.emptyBody')"
     />
 
     <ol v-else class="flex flex-col gap-1.5 text-sm">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
   MarkdownView,
@@ -30,6 +31,7 @@ import {
   type ThinkProcessInsightsDto,
 } from '@vance/generated';
 
+const { t } = useI18n();
 const tenantProjects = useTenantProjects();
 const sessionsState = useInsightsSessions();
 const processesState = useSessionProcesses();
@@ -45,18 +47,20 @@ const filterUserId = ref<string>('');
 const filterStatus = ref<string | null>(null);
 
 const projectFilterOptions = computed(() => [
-  { value: '', label: '(all projects)' },
+  { value: '', label: t('insights.filters.allProjects') },
   ...tenantProjects.projects.value.map(p => ({
     value: p.name,
     label: p.title || p.name,
   })),
 ]);
 
-const statusOptions = [
-  { value: '', label: '(all)' },
+// OPEN / CLOSED labels stay as the literal server enum values — they
+// are technical identifiers, recognisable across UI languages.
+const statusOptions = computed(() => [
+  { value: '', label: t('insights.filters.all') },
   { value: 'OPEN', label: 'OPEN' },
   { value: 'CLOSED', label: 'CLOSED' },
-];
+]);
 
 // ─── Selection state ────────────────────────────────────────────────────
 type Selection =
@@ -188,11 +192,13 @@ function sessionLabel(sessionId: string): string {
   // otherwise fall back to the raw id.
   const s = sessionsState.sessions.value.find(x => x.sessionId === sessionId);
   const topic = s?.firstUserMessage;
-  if (topic && topic.length > 0) {
-    const short = topic.length > 60 ? topic.slice(0, 59) + '…' : topic;
-    return `Session: ${short}`;
-  }
-  return `Session: ${sessionId}`;
+  const label =
+    topic && topic.length > 0
+      ? topic.length > 60
+        ? topic.slice(0, 59) + '…'
+        : topic
+      : sessionId;
+  return t('insights.breadcrumbs.sessionPrefix', { label });
 }
 
 const breadcrumbs = computed<Crumb[]>(() => {
@@ -200,7 +206,7 @@ const breadcrumbs = computed<Crumb[]>(() => {
   if (!sel) return [];
   if (sel.kind === 'session') return [sessionLabel(sel.id)];
   const p = selectedProcess.value;
-  if (!p) return ['Process'];
+  if (!p) return [t('insights.breadcrumbs.processFallback')];
   // When a process is selected, the session crumb navigates back to the
   // session view — the most common "go up one level" gesture.
   return [
@@ -208,7 +214,7 @@ const breadcrumbs = computed<Crumb[]>(() => {
       text: sessionLabel(p.sessionId),
       onClick: () => { selection.value = { kind: 'session', id: p.sessionId }; },
     },
-    `Process: ${p.name}`,
+    t('insights.breadcrumbs.processPrefix', { name: p.name }),
   ];
 });
 
@@ -265,7 +271,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 </script>
 
 <template>
-  <EditorShell title="Insights" :breadcrumbs="breadcrumbs" wide-right-panel>
+  <EditorShell :title="$t('insights.pageTitle')" :breadcrumbs="breadcrumbs" wide-right-panel>
     <!-- ─── Sidebar: filter + sessions tree ─── -->
     <template #sidebar>
       <div class="flex flex-col gap-3 p-2">
@@ -273,25 +279,29 @@ function clickProcessByMongoId(id: string | undefined | null): void {
           <VSelect
             :model-value="filterProjectId ?? ''"
             :options="projectFilterOptions"
-            label="Project"
+            :label="$t('insights.filters.project')"
             @update:model-value="(v) => filterProjectId = (v ? String(v) : null)"
           />
-          <VInput v-model="filterUserId" label="User" placeholder="(optional)" />
+          <VInput
+            v-model="filterUserId"
+            :label="$t('insights.filters.user')"
+            :placeholder="$t('insights.filters.userPlaceholder')"
+          />
           <VSelect
             :model-value="filterStatus ?? ''"
             :options="statusOptions"
-            label="Status"
+            :label="$t('insights.filters.status')"
             @update:model-value="(v) => filterStatus = (v ? String(v) : null)"
           />
         </div>
 
         <div v-if="sessionsState.loading.value" class="text-xs opacity-60 px-2">
-          Loading sessions…
+          {{ $t('insights.sidebar.loadingSessions') }}
         </div>
         <VEmptyState
           v-else-if="sessionsState.sessions.value.length === 0"
-          headline="No sessions"
-          body="No sessions match the current filter."
+          :headline="$t('insights.sidebar.noSessionsHeadline')"
+          :body="$t('insights.sidebar.noSessionsBody')"
         />
 
         <nav class="flex flex-col gap-1">
@@ -364,13 +374,13 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 
       <VEmptyState
         v-if="!selection"
-        headline="Select something"
-        body="Pick a session on the left to inspect, or expand to drill into its processes."
+        :headline="$t('insights.emptyMain.headline')"
+        :body="$t('insights.emptyMain.body')"
       />
 
       <!-- ─── Session view ─── -->
       <template v-else-if="selection.kind === 'session'">
-        <div v-if="!selectedSession" class="opacity-70">Loading…</div>
+        <div v-if="!selectedSession" class="opacity-70">{{ $t('insights.loading') }}</div>
         <template v-else>
           <!-- Session header — always visible across Overview / Processes /
                Timeline tabs so the user keeps the "what session am I in"
@@ -390,7 +400,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               {{ selectedSession.firstUserMessage }}
             </h2>
             <div v-if="selectedSession.lastMessagePreview" class="text-xs opacity-70 mt-1">
-              <span class="opacity-70">last</span>
+              <span class="opacity-70">{{ $t('insights.session.lastLabel') }}</span>
               <span v-if="selectedSession.lastMessageRole">
                 · {{ selectedSession.lastMessageRole.toLowerCase() }}
               </span>
@@ -408,30 +418,34 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               class="tab"
               :class="{ 'tab--active': activeTab === 'overview' }"
               @click="activeTab = 'overview'"
-            >Overview</button>
+            >{{ $t('insights.tabs.overview') }}</button>
             <button
               class="tab"
               :class="{ 'tab--active': activeTab === 'processes' }"
               @click="activeTab = 'processes'"
-            >Processes ({{ sessionProcessesForTab.length }})</button>
+            >{{ $t('insights.tabs.processes', { count: sessionProcessesForTab.length }) }}</button>
             <button
               class="tab"
               :class="{ 'tab--active': activeTab === 'timeline' }"
               @click="activeTab = 'timeline'"
-            >Timeline</button>
+            >{{ $t('insights.tabs.timeline') }}</button>
           </div>
 
-          <VCard v-if="activeTab === 'overview'" title="Details">
+          <VCard v-if="activeTab === 'overview'" :title="$t('insights.session.detailsTitle')">
             <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-              <dt class="opacity-60">Mongo id</dt><dd class="font-mono">{{ selectedSession.id }}</dd>
-              <dt class="opacity-60">User</dt><dd>{{ selectedSession.userId }}</dd>
-              <dt class="opacity-60">Project</dt><dd>{{ selectedSession.projectId }}</dd>
-              <dt class="opacity-60">Status</dt><dd>{{ selectedSession.status }}</dd>
-              <dt class="opacity-60">Client</dt>
+              <dt class="opacity-60">{{ $t('insights.session.mongoId') }}</dt>
+              <dd class="font-mono">{{ selectedSession.id }}</dd>
+              <dt class="opacity-60">{{ $t('insights.session.user') }}</dt>
+              <dd>{{ selectedSession.userId }}</dd>
+              <dt class="opacity-60">{{ $t('insights.session.project') }}</dt>
+              <dd>{{ selectedSession.projectId }}</dd>
+              <dt class="opacity-60">{{ $t('insights.session.status') }}</dt>
+              <dd>{{ selectedSession.status }}</dd>
+              <dt class="opacity-60">{{ $t('insights.session.client') }}</dt>
               <dd>{{ selectedSession.profile }} {{ selectedSession.clientVersion }}</dd>
-              <dt class="opacity-60">Bound conn</dt>
+              <dt class="opacity-60">{{ $t('insights.session.boundConn') }}</dt>
               <dd class="font-mono text-xs">{{ fmt(selectedSession.boundConnectionId) }}</dd>
-              <dt class="opacity-60">Chat process</dt>
+              <dt class="opacity-60">{{ $t('insights.session.chatProcess') }}</dt>
               <dd>
                 <button
                   v-if="selectedSession.chatProcessId"
@@ -440,15 +454,16 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                 >{{ selectedSession.chatProcessId }}</button>
                 <span v-else>—</span>
               </dd>
-              <dt class="opacity-60">Created</dt><dd>{{ fmt(selectedSession.createdAt) }}</dd>
-              <dt class="opacity-60">Last activity</dt>
+              <dt class="opacity-60">{{ $t('insights.session.created') }}</dt>
+              <dd>{{ fmt(selectedSession.createdAt) }}</dd>
+              <dt class="opacity-60">{{ $t('insights.session.lastActivity') }}</dt>
               <dd>{{ fmt(selectedSession.lastActivityAt) }}</dd>
             </dl>
           </VCard>
 
-          <VCard v-if="activeTab === 'processes'" title="Processes in this session">
+          <VCard v-if="activeTab === 'processes'" :title="$t('insights.session.processesTitle')">
             <div v-if="sessionProcessesForTab.length === 0" class="opacity-70">
-              No processes yet.
+              {{ $t('insights.session.noProcesses') }}
             </div>
             <ul v-else class="flex flex-col divide-y divide-base-300">
               <li
@@ -480,49 +495,52 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 
       <!-- ─── Process view ─── -->
       <template v-else-if="selection.kind === 'process'">
-        <div v-if="!selectedProcess" class="opacity-70">Loading…</div>
+        <div v-if="!selectedProcess" class="opacity-70">{{ $t('insights.loading') }}</div>
         <template v-else>
           <div class="tab-bar">
             <button
               class="tab"
               :class="{ 'tab--active': activeTab === 'overview' }"
               @click="activeTab = 'overview'"
-            >Overview</button>
+            >{{ $t('insights.tabs.overview') }}</button>
             <button
               class="tab"
               :class="{ 'tab--active': activeTab === 'chat' }"
               @click="activeTab = 'chat'"
-            >Chat</button>
+            >{{ $t('insights.tabs.chat') }}</button>
             <button
               class="tab"
               :class="{ 'tab--active': activeTab === 'memory' }"
               @click="activeTab = 'memory'"
-            >Memory</button>
+            >{{ $t('insights.tabs.memory') }}</button>
             <button
               v-if="isMarvin"
               class="tab"
               :class="{ 'tab--active': activeTab === 'tree' }"
               @click="activeTab = 'tree'"
-            >Tree</button>
+            >{{ $t('insights.tabs.tree') }}</button>
             <button
               class="tab"
               :class="{ 'tab--active': activeTab === 'llm-traces' }"
               @click="activeTab = 'llm-traces'"
-            >LLM Trace</button>
+            >{{ $t('insights.tabs.llmTrace') }}</button>
           </div>
 
           <!-- Overview -->
           <template v-if="activeTab === 'overview'">
-            <VCard :title="`Process ${selectedProcess.name}`">
+            <VCard :title="$t('insights.process.titlePrefix', { name: selectedProcess.name })">
               <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                <dt class="opacity-60">Mongo id</dt>
+                <dt class="opacity-60">{{ $t('insights.process.mongoId') }}</dt>
                 <dd class="font-mono text-xs">{{ selectedProcess.id }}</dd>
-                <dt class="opacity-60">Session</dt><dd>{{ selectedProcess.sessionId }}</dd>
-                <dt class="opacity-60">Engine</dt>
+                <dt class="opacity-60">{{ $t('insights.process.session') }}</dt>
+                <dd>{{ selectedProcess.sessionId }}</dd>
+                <dt class="opacity-60">{{ $t('insights.process.engine') }}</dt>
                 <dd>{{ selectedProcess.thinkEngine }} <span class="opacity-60">{{ selectedProcess.thinkEngineVersion }}</span></dd>
-                <dt class="opacity-60">Recipe</dt><dd>{{ fmt(selectedProcess.recipeName) }}</dd>
-                <dt class="opacity-60">Status</dt><dd>{{ selectedProcess.status }}</dd>
-                <dt class="opacity-60">Parent</dt>
+                <dt class="opacity-60">{{ $t('insights.process.recipe') }}</dt>
+                <dd>{{ fmt(selectedProcess.recipeName) }}</dd>
+                <dt class="opacity-60">{{ $t('insights.process.status') }}</dt>
+                <dd>{{ selectedProcess.status }}</dd>
+                <dt class="opacity-60">{{ $t('insights.process.parent') }}</dt>
                 <dd>
                   <button
                     v-if="selectedProcess.parentProcessId"
@@ -531,19 +549,22 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   >{{ selectedProcess.parentProcessId }}</button>
                   <span v-else>—</span>
                 </dd>
-                <dt class="opacity-60">Goal</dt><dd>{{ fmt(selectedProcess.goal) }}</dd>
-                <dt class="opacity-60">Created</dt><dd>{{ fmt(selectedProcess.createdAt) }}</dd>
-                <dt class="opacity-60">Updated</dt><dd>{{ fmt(selectedProcess.updatedAt) }}</dd>
+                <dt class="opacity-60">{{ $t('insights.process.goal') }}</dt>
+                <dd>{{ fmt(selectedProcess.goal) }}</dd>
+                <dt class="opacity-60">{{ $t('insights.process.created') }}</dt>
+                <dd>{{ fmt(selectedProcess.createdAt) }}</dd>
+                <dt class="opacity-60">{{ $t('insights.process.updated') }}</dt>
+                <dd>{{ fmt(selectedProcess.updatedAt) }}</dd>
               </dl>
             </VCard>
 
-            <VCard title="Engine params">
+            <VCard :title="$t('insights.process.engineParams')">
               <pre class="json-block">{{ asJson(selectedProcess.engineParams) }}</pre>
             </VCard>
 
-            <VCard title="Active skills">
+            <VCard :title="$t('insights.process.activeSkills')">
               <div v-if="selectedProcess.activeSkills.length === 0" class="opacity-70">
-                None active.
+                {{ $t('insights.process.noneActive') }}
               </div>
               <ul v-else class="flex flex-col divide-y divide-base-300">
                 <li
@@ -554,16 +575,16 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   <span class="font-mono text-sm">{{ a.name }}</span>
                   <span class="text-xs opacity-70">
                     {{ a.resolvedFromScope }}
-                    <span v-if="a.fromRecipe">· recipe</span>
-                    <span v-if="a.oneShot">· one-shot</span>
+                    <span v-if="a.fromRecipe">· {{ $t('insights.process.fromRecipe') }}</span>
+                    <span v-if="a.oneShot">· {{ $t('insights.process.oneShot') }}</span>
                   </span>
                 </li>
               </ul>
             </VCard>
 
-            <VCard title="Pending queue">
+            <VCard :title="$t('insights.process.pendingQueue')">
               <div v-if="selectedProcess.pendingMessages.length === 0" class="opacity-70">
-                Drained.
+                {{ $t('insights.process.drained') }}
               </div>
               <ul v-else class="flex flex-col divide-y divide-base-300">
                 <li
@@ -583,11 +604,13 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 
           <!-- Chat -->
           <template v-else-if="activeTab === 'chat'">
-            <div v-if="chatState.loading.value" class="opacity-70">Loading chat…</div>
+            <div v-if="chatState.loading.value" class="opacity-70">
+              {{ $t('insights.process.chatLoading') }}
+            </div>
             <VEmptyState
               v-else-if="chatState.messages.value.length === 0"
-              headline="No messages"
-              body="This process has no chat history."
+              :headline="$t('insights.process.chatEmptyHeadline')"
+              :body="$t('insights.process.chatEmptyBody')"
             />
             <ul v-else class="flex flex-col gap-3">
               <li
@@ -606,7 +629,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   <span>
                     {{ fmt(m.createdAt) }}
                     <span v-if="m.archivedInMemoryId" class="ml-2 opacity-80">
-                      → memory {{ m.archivedInMemoryId }}
+                      {{ $t('insights.process.archivedToMemory', { id: m.archivedInMemoryId }) }}
                     </span>
                   </span>
                 </div>
@@ -617,11 +640,13 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 
           <!-- Memory -->
           <template v-else-if="activeTab === 'memory'">
-            <div v-if="memoryState.loading.value" class="opacity-70">Loading memory…</div>
+            <div v-if="memoryState.loading.value" class="opacity-70">
+              {{ $t('insights.process.memoryLoading') }}
+            </div>
             <VEmptyState
               v-else-if="memoryState.entries.value.length === 0"
-              headline="No memory"
-              body="No engine-side memory entries are scoped to this process."
+              :headline="$t('insights.process.memoryEmptyHeadline')"
+              :body="$t('insights.process.memoryEmptyBody')"
             />
             <div v-else class="flex flex-col gap-3">
               <VCard
@@ -633,15 +658,17 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   <span class="font-mono">{{ m.kind }}</span>
                   <span>{{ fmt(m.createdAt) }}</span>
                   <span v-if="m.supersededByMemoryId">
-                    superseded by {{ m.supersededByMemoryId }}
+                    {{ $t('insights.process.supersededBy', { id: m.supersededByMemoryId }) }}
                   </span>
                   <span v-if="m.sourceRefs.length > 0">
-                    sources: {{ m.sourceRefs.length }}
+                    {{ $t('insights.process.sources', { count: m.sourceRefs.length }) }}
                   </span>
                 </div>
                 <MarkdownView :source="m.content" />
                 <details v-if="Object.keys(m.metadata).length > 0" class="mt-3">
-                  <summary class="text-xs opacity-70 cursor-pointer">metadata</summary>
+                  <summary class="text-xs opacity-70 cursor-pointer">
+                    {{ $t('insights.process.metadata') }}
+                  </summary>
                   <pre class="json-block">{{ asJson(m.metadata) }}</pre>
                 </details>
               </VCard>
@@ -650,13 +677,15 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 
           <!-- Marvin tree -->
           <template v-else-if="activeTab === 'tree' && isMarvin">
-            <div v-if="treeState.loading.value" class="opacity-70">Loading tree…</div>
+            <div v-if="treeState.loading.value" class="opacity-70">
+              {{ $t('insights.process.treeLoading') }}
+            </div>
             <VEmptyState
               v-else-if="treeState.nodes.value.length === 0"
-              headline="Empty tree"
-              body="No nodes have been planned yet."
+              :headline="$t('insights.process.treeEmptyHeadline')"
+              :body="$t('insights.process.treeEmptyBody')"
             />
-            <VCard v-else title="Marvin tree">
+            <VCard v-else :title="$t('insights.process.marvinTreeTitle')">
               <ul class="marvin-tree">
                 <li v-for="root in marvinTree" :key="root.doc.id">
                   <MarvinTreeItem :node="root" @select-process="clickProcessByMongoId" />
@@ -679,13 +708,15 @@ function clickProcessByMongoId(id: string | undefined | null): void {
     <!-- ─── Right panel: help ─── -->
     <template #right-panel>
       <div class="p-4 flex flex-col gap-4">
-        <h3 class="text-xs uppercase opacity-60 mb-2">About this view</h3>
-        <div v-if="help.loading.value" class="text-xs opacity-60">Loading…</div>
+        <h3 class="text-xs uppercase opacity-60 mb-2">{{ $t('insights.help.title') }}</h3>
+        <div v-if="help.loading.value" class="text-xs opacity-60">
+          {{ $t('insights.help.loading') }}
+        </div>
         <div v-else-if="help.error.value" class="text-xs opacity-60">
-          Help unavailable: {{ help.error.value }}
+          {{ $t('insights.help.unavailable', { error: help.error.value }) }}
         </div>
         <div v-else-if="!help.content.value" class="text-xs opacity-60">
-          No help content.
+          {{ $t('insights.help.empty') }}
         </div>
         <MarkdownView v-else :source="help.content.value" />
       </div>

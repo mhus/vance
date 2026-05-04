@@ -74,14 +74,18 @@ function chatRoleClass(label: string): string {
       <button
         class="tp-name"
         type="button"
-        title="Open in process view"
+        :title="$t('insights.processTree.openInView')"
         @click="emit('select-process', node.process.id)"
       >{{ node.process.name }}</button>
       <span class="tp-engine">{{ node.process.thinkEngine }}</span>
       <span class="tp-status">{{ node.process.status }}</span>
       <span v-if="node.process.recipeName" class="tp-recipe">· {{ node.process.recipeName }}</span>
       <span class="tp-count">
-        {{ events.length }} event<span v-if="events.length !== 1">s</span>
+        {{
+          events.length === 1
+            ? $t('insights.processTree.eventCountSingular', { count: events.length })
+            : $t('insights.processTree.eventCountPlural', { count: events.length })
+        }}
       </span>
     </div>
 

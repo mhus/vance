@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   type BrainWsApi,
   WebSocketRequestError,
@@ -15,6 +16,8 @@ import type {
 } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { VAlert, VButton, VEmptyState } from '@components/index';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   socket: BrainWsApi;
@@ -75,7 +78,7 @@ async function loadSessions(projectName: string): Promise<void> {
       (a, b) => b.lastActivityAt - a.lastActivityAt);
     sessions.value = sorted;
   } catch (e) {
-    sessionsError.value = describeError(e, 'Failed to load sessions.');
+    sessionsError.value = describeError(e, t('chat.picker.failedToLoadSessions'));
     sessions.value = [];
   } finally {
     sessionsLoading.value = false;
@@ -101,7 +104,7 @@ async function bootstrapNew(): Promise<void> {
       { projectId: selectedProjectName.value, processes: [] });
     emit('session-bootstrapped', response.sessionId);
   } catch (e) {
-    bootstrapError.value = describeError(e, 'Failed to start a new session.');
+    bootstrapError.value = describeError(e, t('chat.picker.failedToStartSession'));
   } finally {
     bootstrapping.value = false;
   }
@@ -118,13 +121,13 @@ function formatRelativeTime(epochMillis: number): string {
   if (!epochMillis) return '';
   const diffMs = Date.now() - epochMillis;
   const seconds = Math.floor(diffMs / 1000);
-  if (seconds < 60) return 'just now';
+  if (seconds < 60) return t('chat.picker.relativeJustNow');
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return t('chat.picker.relativeMinutes', { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return t('chat.picker.relativeHours', { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return t('chat.picker.relativeDays', { n: days });
   return new Date(epochMillis).toLocaleDateString();
 }
 
@@ -134,7 +137,7 @@ function projectTitle(name: string): string {
 }
 
 function groupLabel(block: GroupBlock): string {
-  if (!block.group) return 'Ungrouped';
+  if (!block.group) return t('chat.picker.ungrouped');
   return block.group.title || block.group.name;
 }
 
@@ -154,9 +157,13 @@ watch(selectedProjectName, async (newName) => {
   <div class="flex h-full min-h-0">
     <!-- Sidebar: project groups → projects -->
     <aside class="w-72 shrink-0 border-r border-base-300 bg-base-100 overflow-y-auto p-4 flex flex-col gap-4">
-      <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">Projects</div>
+      <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">
+        {{ $t('chat.picker.projectsTitle') }}
+      </div>
 
-      <div v-if="projectsLoading" class="text-sm opacity-60">Loading…</div>
+      <div v-if="projectsLoading" class="text-sm opacity-60">
+        {{ $t('chat.picker.loading') }}
+      </div>
 
       <VAlert v-else-if="projectsError" variant="error">
         {{ projectsError }}
@@ -185,8 +192,8 @@ watch(selectedProjectName, async (newName) => {
 
         <VEmptyState
           v-if="projects.length === 0"
-          headline="No projects yet"
-          body="Ask an admin to create a project."
+          :headline="$t('chat.picker.noProjects')"
+          :body="$t('chat.picker.noProjectsBody')"
         />
       </template>
     </aside>
@@ -197,10 +204,12 @@ watch(selectedProjectName, async (newName) => {
         <div class="flex items-baseline justify-between">
           <div>
             <h2 class="text-lg font-semibold">
-              {{ selectedProjectName ? projectTitle(selectedProjectName) : 'Pick a project' }}
+              {{ selectedProjectName ? projectTitle(selectedProjectName) : $t('chat.picker.pickAProject') }}
             </h2>
             <p class="text-sm opacity-60">
-              <template v-if="username">Signed in as {{ username }}</template>
+              <template v-if="username">
+                {{ $t('chat.picker.signedInAs', { username }) }}
+              </template>
             </p>
           </div>
           <VButton
@@ -209,19 +218,21 @@ watch(selectedProjectName, async (newName) => {
             :loading="bootstrapping"
             @click="bootstrapNew"
           >
-            New session
+            {{ $t('chat.picker.newSession') }}
           </VButton>
         </div>
 
         <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
         <VAlert v-if="sessionsError" variant="error">{{ sessionsError }}</VAlert>
 
-        <div v-if="sessionsLoading" class="text-sm opacity-60">Loading sessions…</div>
+        <div v-if="sessionsLoading" class="text-sm opacity-60">
+          {{ $t('chat.picker.sessionsLoading') }}
+        </div>
 
         <VEmptyState
           v-else-if="!sessionsLoading && sessions.length === 0 && selectedProjectName"
-          headline="No sessions in this project"
-          body="Click 'New session' to start one."
+          :headline="$t('chat.picker.noSessions')"
+          :body="$t('chat.picker.noSessionsBody')"
         />
 
         <ul v-else class="flex flex-col gap-2">
@@ -240,7 +251,7 @@ watch(selectedProjectName, async (newName) => {
               <span
                 class="inline-block w-2.5 h-2.5 rounded-full shrink-0"
                 :class="session.bound ? 'bg-error' : 'bg-base-content/40'"
-                :title="session.bound ? 'Occupied by another connection' : 'Available'"
+                :title="session.bound ? $t('chat.picker.occupiedTooltip') : $t('chat.picker.available')"
               />
               <div class="flex-1 min-w-0">
                 <div class="font-medium truncate">
@@ -250,7 +261,9 @@ watch(selectedProjectName, async (newName) => {
                   {{ session.status }} · {{ formatRelativeTime(session.lastActivityAt) }}
                 </div>
               </div>
-              <span v-if="session.bound" class="text-xs text-error">occupied</span>
+              <span v-if="session.bound" class="text-xs text-error">
+                {{ $t('chat.picker.occupied') }}
+              </span>
             </div>
           </li>
         </ul>

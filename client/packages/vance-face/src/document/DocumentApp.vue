@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
   VAlert,
@@ -29,6 +30,7 @@ import type {
 
 const PAGE_SIZE = 20;
 
+const { t } = useI18n();
 const projectsState = useTenantProjects();
 const docsState = useDocuments(PAGE_SIZE);
 
@@ -77,22 +79,30 @@ const uploadProgress = ref<UploadProgressItem[]>([]);
 // land under one `<optgroup>`). Order roughly "most common first".
 // CodeEditor picks the matching syntax-highlighting language from
 // these mime-types — see CodeEditor.languageFor.
-const createMimeOptions = [
-  { value: 'text/markdown', label: 'Markdown (.md)', group: 'Doc & config' },
-  { value: 'text/plain', label: 'Plain text (.txt)', group: 'Doc & config' },
-  { value: 'application/json', label: 'JSON', group: 'Doc & config' },
-  { value: 'application/yaml', label: 'YAML', group: 'Doc & config' },
-  { value: 'application/xml', label: 'XML', group: 'Doc & config' },
-  { value: 'application/javascript', label: 'JavaScript (.js)', group: 'Code' },
-  { value: 'application/typescript', label: 'TypeScript (.ts)', group: 'Code' },
-  { value: 'text/x-python', label: 'Python (.py)', group: 'Code' },
-  { value: 'application/x-sh', label: 'Bash / Shell (.sh)', group: 'Code' },
-  { value: 'text/x-r', label: 'R (.r)', group: 'Code' },
-  { value: 'text/x-java-source', label: 'Java (.java)', group: 'Code' },
-  { value: 'application/sql', label: 'SQL', group: 'Code' },
-  { value: 'text/html', label: 'HTML', group: 'Web' },
-  { value: 'text/css', label: 'CSS', group: 'Web' },
-];
+// Group labels are localised per `documents.mime.*`; the option
+// labels themselves are filename-bound (`Markdown (.md)`) and stay
+// untranslated — they're recognisable across languages.
+const createMimeOptions = computed(() => {
+  const docGroup = t('documents.mime.groupDoc');
+  const codeGroup = t('documents.mime.groupCode');
+  const webGroup = t('documents.mime.groupWeb');
+  return [
+    { value: 'text/markdown', label: 'Markdown (.md)', group: docGroup },
+    { value: 'text/plain', label: 'Plain text (.txt)', group: docGroup },
+    { value: 'application/json', label: 'JSON', group: docGroup },
+    { value: 'application/yaml', label: 'YAML', group: docGroup },
+    { value: 'application/xml', label: 'XML', group: docGroup },
+    { value: 'application/javascript', label: 'JavaScript (.js)', group: codeGroup },
+    { value: 'application/typescript', label: 'TypeScript (.ts)', group: codeGroup },
+    { value: 'text/x-python', label: 'Python (.py)', group: codeGroup },
+    { value: 'application/x-sh', label: 'Bash / Shell (.sh)', group: codeGroup },
+    { value: 'text/x-r', label: 'R (.r)', group: codeGroup },
+    { value: 'text/x-java-source', label: 'Java (.java)', group: codeGroup },
+    { value: 'application/sql', label: 'SQL', group: codeGroup },
+    { value: 'text/html', label: 'HTML', group: webGroup },
+    { value: 'text/css', label: 'CSS', group: webGroup },
+  ];
+});
 
 onMounted(async () => {
   await projectsState.reload();
@@ -196,7 +206,7 @@ const projectOptions = computed<{ value: string; label: string; group?: string }
   return projectsState.projects.value.map((p: ProjectSummary) => {
     const groupLabel = p.projectGroupId
       ? groupNameById.get(p.projectGroupId) ?? p.projectGroupId
-      : 'Ungrouped';
+      : t('documents.ungrouped');
     return {
       value: p.name,
       label: p.title?.trim() || p.name,
@@ -364,8 +374,8 @@ async function submitCreate(): Promise<void> {
       .filter((t) => t.length > 0);
 
     if (createMode.value === 'inline') {
-      if (!createPath.value.trim()) { createError.value = 'Path is required.'; return; }
-      if (!createContent.value) { createError.value = 'Content is required.'; return; }
+      if (!createPath.value.trim()) { createError.value = t('documents.create.pathRequired'); return; }
+      if (!createContent.value) { createError.value = t('documents.create.contentRequired'); return; }
       const created = await docsState.create(selectedProjectId.value, {
         path: createPath.value.trim(),
         title: createTitle.value.trim() || undefined,
@@ -385,7 +395,7 @@ async function submitCreate(): Promise<void> {
 
     // Upload mode — one or many files.
     const files = createFiles.value;
-    if (files.length === 0) { createError.value = 'Pick at least one file.'; return; }
+    if (files.length === 0) { createError.value = t('documents.create.pickAtLeastOneFile'); return; }
 
     if (files.length === 1) {
       const created = await docsState.upload(selectedProjectId.value, {
@@ -424,7 +434,7 @@ async function submitCreate(): Promise<void> {
         okCount++;
       } else {
         uploadProgress.value[i].status = 'error';
-        uploadProgress.value[i].message = docsState.error.value ?? 'Upload failed.';
+        uploadProgress.value[i].message = docsState.error.value ?? t('documents.create.uploadFailed');
       }
     }
 
@@ -432,7 +442,10 @@ async function submitCreate(): Promise<void> {
       // All good — close modal and refresh the list.
       showCreateModal.value = false;
     } else {
-      createError.value = `${files.length - okCount} of ${files.length} files failed. See list below.`;
+      createError.value = t('documents.create.multiUploadFailed', {
+        failed: files.length - okCount,
+        total: files.length,
+      });
     }
   } finally {
     creating.value = false;
@@ -550,13 +563,13 @@ const headerEntries = computed<{ key: string; value: string }[]>(() => {
 
 const kindOptions = computed<{ value: string; label: string }[]>(() => {
   return [
-    { value: '', label: 'All kinds' },
+    { value: '', label: t('documents.allKinds') },
     ...docsState.kinds.value.map((k) => ({ value: k, label: k })),
   ];
 });
 
 const breadcrumbs = computed<string[]>(() => {
-  const crumbs: string[] = ['Documents'];
+  const crumbs: string[] = [t('documents.breadcrumbRoot')];
   if (selectedProjectId.value) crumbs.push(selectedProjectId.value);
   if (docsState.selected.value) crumbs.push(docsState.selected.value.path);
   return crumbs;
@@ -571,7 +584,7 @@ const formatBytes = (n: number): string => {
 
 <template>
   <EditorShell
-    title="Documents"
+    :title="$t('documents.pageTitle')"
     :breadcrumbs="breadcrumbs"
     :wide-right-panel="!!helpResource"
   >
@@ -580,7 +593,7 @@ const formatBytes = (n: number): string => {
         <VSelect
           v-model="selectedProjectId"
           :options="projectOptions"
-          placeholder="Select a project"
+          :placeholder="$t('documents.selectAProject')"
           :disabled="projectsState.loading.value || projectOptions.length === 0"
         />
       </div>
@@ -592,14 +605,16 @@ const formatBytes = (n: number): string => {
          is picked (matches the empty-state in the main panel). ─── -->
     <template v-if="selectedProjectId" #sidebar>
       <nav class="p-3 flex flex-col gap-1">
-        <h3 class="text-xs uppercase opacity-60 mb-2 px-2">Folders</h3>
+        <h3 class="text-xs uppercase opacity-60 mb-2 px-2">
+          {{ $t('documents.foldersTitle') }}
+        </h3>
         <button
           type="button"
           class="folder-item"
           :class="{ 'folder-item--active': selectedFolderKey === '' }"
           @click="selectFolder(null)"
         >
-          <span>All</span>
+          <span>{{ $t('documents.folderAll') }}</span>
           <span class="folder-count">{{ docsState.totalCount.value }}</span>
         </button>
         <button
@@ -612,12 +627,14 @@ const formatBytes = (n: number): string => {
         >
           <span>{{ folder }}/</span>
         </button>
+        <!-- The {example} placeholder is rendered as styled <code> via
+             i18n's component-interpolation could be used, but a quick
+             two-segment split keeps things simple here. -->
         <p
           v-if="topLevelFolders.length === 0"
           class="text-xs opacity-60 italic mt-2 px-2"
         >
-          No folders yet — create a document with a path like
-          <code>notes/foo.md</code> to nest it.
+          {{ $t('documents.foldersEmptyHint', { example: 'notes/foo.md' }) }}
         </p>
       </nav>
     </template>
@@ -629,20 +646,20 @@ const formatBytes = (n: number): string => {
 
       <VEmptyState
         v-if="!projectsState.loading.value && projectOptions.length === 0"
-        headline="No projects in this tenant"
-        body="Ask an administrator to create a project before you can browse documents."
+        :headline="$t('documents.noProjectsHeadline')"
+        :body="$t('documents.noProjectsBody')"
       />
 
       <VEmptyState
         v-else-if="!selectedProjectId"
-        headline="Pick a project"
-        body="Choose a project from the dropdown above to load its documents."
+        :headline="$t('documents.pickAProjectHeadline')"
+        :body="$t('documents.pickAProjectBody')"
       />
 
       <!-- Detail / edit view -->
       <template v-else-if="docsState.selected.value">
         <div class="mb-4">
-          <VBackButton label="Back to list" @click="backToList" />
+          <VBackButton :label="$t('documents.backToList')" @click="backToList" />
         </div>
 
         <VCard>
@@ -656,13 +673,13 @@ const formatBytes = (n: number): string => {
               {{ docsState.selected.value.mimeType }}
             </span>
             <span v-if="docsState.selected.value.createdBy">
-              by {{ docsState.selected.value.createdBy }}
+              {{ $t('documents.detail.sizeBy', { user: docsState.selected.value.createdBy }) }}
             </span>
             <span
               v-if="docsState.selected.value.kind"
               class="badge badge-info badge-sm"
-              title="Document kind, parsed from front matter"
-            >kind: {{ docsState.selected.value.kind }}</span>
+              :title="$t('documents.detail.kindBadgeTooltip')"
+            >{{ $t('documents.detail.kindLabel', { kind: docsState.selected.value.kind }) }}</span>
           </div>
 
           <!-- ─── Front-matter table — only when the markdown body
@@ -673,7 +690,7 @@ const formatBytes = (n: number): string => {
             class="mt-3 border border-base-300 rounded-md overflow-hidden"
           >
             <div class="px-3 py-2 bg-base-200 text-xs uppercase opacity-70">
-              Front matter
+              {{ $t('documents.detail.frontMatter') }}
             </div>
             <table class="table table-xs">
               <tbody>
@@ -686,7 +703,7 @@ const formatBytes = (n: number): string => {
           </div>
 
           <VAlert v-if="!docsState.selected.value.inline" variant="info" class="mt-3">
-            <span>Stored content — read-only in v1. Use the download button to save a local copy.</span>
+            <span>{{ $t('documents.detail.readOnlyNote') }}</span>
           </VAlert>
 
           <VAlert v-if="editError" variant="error" class="mt-3">
@@ -694,17 +711,17 @@ const formatBytes = (n: number): string => {
           </VAlert>
 
           <div class="flex flex-col gap-3 mt-3">
-            <VInput v-model="editTitle" label="Title" :disabled="saving" />
+            <VInput v-model="editTitle" :label="$t('documents.detail.titleLabel')" :disabled="saving" />
             <VInput
               v-model="editPath"
-              label="Path"
+              :label="$t('documents.detail.pathLabel')"
               :disabled="saving"
-              help="Move or rename this document. Path is unique within the project; conflicts are rejected."
+              :help="$t('documents.detail.pathHelp')"
             />
             <CodeEditor
               v-if="docsState.selected.value.inline"
               v-model="editInlineText"
-              label="Content"
+              :label="$t('documents.detail.contentLabel')"
               :rows="20"
               :disabled="saving"
               :mime-type="docsState.selected.value.mimeType"
@@ -727,15 +744,21 @@ const formatBytes = (n: number): string => {
               variant="danger"
               :disabled="saving || deleting"
               @click="openDeleteModal"
-            >Delete</VButton>
+            >{{ $t('documents.detail.delete') }}</VButton>
             <VButton
               variant="ghost"
               :href="downloadUrl(docsState.selected.value)"
               :download="docsState.selected.value.name || 'document'"
-            >Download</VButton>
-            <VButton variant="ghost" :disabled="saving" @click="backToList">Cancel</VButton>
-            <VButton variant="secondary" :loading="saving" @click="apply">Apply</VButton>
-            <VButton variant="primary" :loading="saving" @click="save">Save</VButton>
+            >{{ $t('documents.detail.download') }}</VButton>
+            <VButton variant="ghost" :disabled="saving" @click="backToList">
+              {{ $t('documents.detail.cancel') }}
+            </VButton>
+            <VButton variant="secondary" :loading="saving" @click="apply">
+              {{ $t('documents.detail.apply') }}
+            </VButton>
+            <VButton variant="primary" :loading="saving" @click="save">
+              {{ $t('documents.detail.save') }}
+            </VButton>
           </template>
         </VCard>
       </template>
@@ -751,7 +774,7 @@ const formatBytes = (n: number): string => {
             <input
               v-model="docsState.pathPrefix.value"
               type="text"
-              placeholder="Filter by folder or path prefix… (e.g. notes/, archive/2026)"
+              :placeholder="$t('documents.pathFilterPlaceholder')"
               list="folder-list"
               class="input input-bordered input-sm w-full"
               @input="applyPathFilter(docsState.pathPrefix.value)"
@@ -778,8 +801,10 @@ const formatBytes = (n: number): string => {
             type="button"
             class="btn btn-ghost btn-sm"
             @click="applyPathFilter('', true); applyKindFilter('');"
-          >Clear filter</button>
-          <VButton variant="primary" size="sm" @click="openCreateModal()">+ New document</VButton>
+          >{{ $t('documents.clearFilter') }}</button>
+          <VButton variant="primary" size="sm" @click="openCreateModal()">
+            {{ $t('documents.newDocument') }}
+          </VButton>
         </div>
 
         <VAlert v-if="docsState.error.value" variant="error" class="mb-4">
@@ -788,11 +813,13 @@ const formatBytes = (n: number): string => {
 
         <VEmptyState
           v-if="!docsState.loading.value && docsState.items.value.length === 0"
-          headline="No documents"
-          body="This project has no documents yet."
+          :headline="$t('documents.noDocumentsHeadline')"
+          :body="$t('documents.noDocumentsBody')"
         >
           <template #action>
-            <VButton variant="primary" @click="openCreateModal()">Create first document</VButton>
+            <VButton variant="primary" @click="openCreateModal()">
+              {{ $t('documents.createFirstDocument') }}
+            </VButton>
           </template>
         </VEmptyState>
 
@@ -824,7 +851,9 @@ const formatBytes = (n: number): string => {
               </div>
               <div class="text-right text-xs opacity-60 shrink-0">
                 <div>{{ formatBytes(item.size) }}</div>
-                <div v-if="!item.inline" class="text-warning">stored</div>
+                <div v-if="!item.inline" class="text-warning">
+                  {{ $t('documents.storedNote') }}
+                </div>
               </div>
             </div>
           </template>
@@ -845,22 +874,25 @@ const formatBytes = (n: number): string => {
          see specification/web-ui.md §7.7.1 (destructive actions). -->
     <VModal
       v-model="showDeleteModal"
-      title="Delete document"
+      :title="$t('documents.delete.title')"
       :close-on-backdrop="!deleting"
     >
+      <!-- Path is rendered as <code> via the i18n placeholder.
+           {path} is interpolated as plain text — wrapping it in a
+           styled <span> would require component-interpolation; for
+           a confirmation modal, plain text is good enough. -->
       <p>
-        Delete
-        <span class="font-mono">{{ docsState.selected.value?.path }}</span>?
-        This removes the document and its stored content. The action
-        cannot be undone.
+        {{ $t('documents.delete.body', { path: docsState.selected.value?.path ?? '' }) }}
       </p>
       <template #actions>
         <VButton
           variant="ghost"
           :disabled="deleting"
           @click="showDeleteModal = false"
-        >Cancel</VButton>
-        <VButton variant="danger" :loading="deleting" @click="confirmDelete">Delete</VButton>
+        >{{ $t('documents.delete.cancel') }}</VButton>
+        <VButton variant="danger" :loading="deleting" @click="confirmDelete">
+          {{ $t('documents.delete.confirm') }}
+        </VButton>
       </template>
     </VModal>
 
@@ -868,7 +900,7 @@ const formatBytes = (n: number): string => {
          mounted across view switches and its open-state is independent. -->
     <VModal
       v-model="showCreateModal"
-      title="New document"
+      :title="$t('documents.create.newDocument')"
       :close-on-backdrop="false"
     >
       <div class="flex gap-2 mb-4">
@@ -877,13 +909,13 @@ const formatBytes = (n: number): string => {
           size="sm"
           :disabled="creating"
           @click="setCreateMode('inline')"
-        >Type content</VButton>
+        >{{ $t('documents.create.typeContent') }}</VButton>
         <VButton
           :variant="createMode === 'upload' ? 'primary' : 'ghost'"
           size="sm"
           :disabled="creating"
           @click="setCreateMode('upload')"
-        >Upload file</VButton>
+        >{{ $t('documents.create.uploadFile') }}</VButton>
       </div>
 
       <form class="flex flex-col gap-3" @submit.prevent="submitCreate">
@@ -894,50 +926,50 @@ const formatBytes = (n: number): string => {
         <template v-if="createMode === 'inline'">
           <VInput
             v-model="createPath"
-            label="Path"
-            placeholder="notes/example.md"
+            :label="$t('documents.create.pathLabel')"
+            :placeholder="$t('documents.create.pathPlaceholder')"
             required
             :disabled="creating"
-            help="Virtual path inside the project. Must be unique."
+            :help="$t('documents.create.pathHelp')"
           />
           <VInput
             v-model="createTitle"
-            label="Title"
-            placeholder="Optional display title"
+            :label="$t('documents.create.titleLabel')"
+            :placeholder="$t('documents.create.titlePlaceholder')"
             :disabled="creating"
           />
           <VInput
             v-model="createTagsRaw"
-            label="Tags"
-            placeholder="comma, separated, tags"
+            :label="$t('documents.create.tagsLabel')"
+            :placeholder="$t('documents.create.tagsPlaceholder')"
             :disabled="creating"
-            help="Optional, separated by commas."
+            :help="$t('documents.create.tagsHelp')"
           />
           <VSelect
             v-model="createMime"
             :options="createMimeOptions"
-            label="Type"
+            :label="$t('documents.create.typeLabel')"
             :disabled="creating"
           />
           <CodeEditor
             v-model="createContent"
-            label="Content"
+            :label="$t('documents.create.contentLabel')"
             :rows="14"
             :disabled="creating"
             :mime-type="createMime"
           />
           <p class="text-xs opacity-70 -mt-1">
-            Inline content, up to 4 KB. For larger or binary files use the upload tab.
+            {{ $t('documents.create.inlineSizeNote') }}
           </p>
         </template>
 
         <template v-else>
           <VFileInput
             v-model="createFiles"
-            label="Files"
+            :label="$t('documents.create.filesLabel')"
             multiple
             :disabled="creating"
-            help="Drop one or more files. Server picks inline vs. storage automatically per file."
+            :help="$t('documents.create.filesHelp')"
           />
 
           <!-- Path and title only make sense for a single file — they would
@@ -947,27 +979,27 @@ const formatBytes = (n: number): string => {
           <template v-if="createFiles.length <= 1">
             <VInput
               v-model="createPath"
-              label="Path"
-              placeholder="(defaults to file name)"
+              :label="$t('documents.create.pathLabel')"
+              :placeholder="$t('documents.create.pathPlaceholderUpload')"
               :disabled="creating"
-              help="Override the destination path inside the project. Optional."
+              :help="$t('documents.create.pathHelpUpload')"
             />
             <VInput
               v-model="createTitle"
-              label="Title"
-              placeholder="Optional display title"
+              :label="$t('documents.create.titleLabel')"
+              :placeholder="$t('documents.create.titlePlaceholder')"
               :disabled="creating"
             />
           </template>
 
           <VInput
             v-model="createTagsRaw"
-            label="Tags"
-            placeholder="comma, separated, tags"
+            :label="$t('documents.create.tagsLabel')"
+            :placeholder="$t('documents.create.tagsPlaceholder')"
             :disabled="creating"
             :help="createFiles.length > 1
-              ? 'Applied to every uploaded file.'
-              : 'Optional, separated by commas.'"
+              ? $t('documents.create.tagsHelpMulti')
+              : $t('documents.create.tagsHelp')"
           />
 
           <!-- Per-file progress — only populated during/after a multi-upload. -->
@@ -1002,12 +1034,14 @@ const formatBytes = (n: number): string => {
           variant="ghost"
           :disabled="creating"
           @click="showCreateModal = false"
-        >Cancel</VButton>
+        >{{ $t('documents.create.cancel') }}</VButton>
         <VButton
           variant="primary"
           :loading="creating"
           @click="submitCreate"
-        >{{ createMode === 'upload' ? 'Upload' : 'Create' }}</VButton>
+        >{{ createMode === 'upload'
+          ? $t('documents.create.submitUpload')
+          : $t('documents.create.submitCreate') }}</VButton>
       </template>
     </VModal>
 
@@ -1017,15 +1051,17 @@ const formatBytes = (n: number): string => {
          right aside disappears completely when no help applies. ─── -->
     <template v-if="helpResource" #right-panel>
       <div class="p-4 flex flex-col gap-4">
-        <h3 class="text-xs uppercase opacity-60 mb-2">Field reference</h3>
+        <h3 class="text-xs uppercase opacity-60 mb-2">
+          {{ $t('documents.help.title') }}
+        </h3>
         <div v-if="help.loading.value" class="text-xs opacity-60">
-          Loading…
+          {{ $t('documents.help.loading') }}
         </div>
         <div v-else-if="help.error.value" class="text-xs opacity-60">
-          Help unavailable: {{ help.error.value }}
+          {{ $t('documents.help.unavailable', { error: help.error.value }) }}
         </div>
         <div v-else-if="!help.content.value" class="text-xs opacity-60">
-          No help content for this resource.
+          {{ $t('documents.help.empty') }}
         </div>
         <MarkdownView v-else :source="help.content.value" />
       </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { VAlert, VEmptyState } from '@/components';
 import ProcessTreeBlock, {
   type ProcessEvent,
@@ -12,6 +13,8 @@ import type {
   MemoryInsightsDto,
   ThinkProcessInsightsDto,
 } from '@vance/generated';
+
+const { t } = useI18n();
 
 const props = defineProps<{
   /** All processes in the selected session — already loaded by InsightsApp. */
@@ -53,7 +56,7 @@ async function loadAll(list: ThinkProcessInsightsDto[]): Promise<void> {
     for (const b of fetched) map.set(b.process.id, b);
     bundles.value = map;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load timeline data.';
+    error.value = e instanceof Error ? e.message : t('insights.timeline.failedToLoad');
   } finally {
     loading.value = false;
   }
@@ -119,8 +122,10 @@ function eventsFor(bundle: ProcessBundle): ProcessEvent[] {
     kind: 'spawn',
     at: instantStr(bundle.process.createdAt),
     id: 'spawn',
-    label: `Process spawned · engine ${bundle.process.thinkEngine}`,
-    tag: bundle.process.recipeName ? `recipe ${bundle.process.recipeName}` : undefined,
+    label: t('insights.timeline.eventSpawn', { engine: bundle.process.thinkEngine }),
+    tag: bundle.process.recipeName
+      ? t('insights.timeline.tagRecipe', { name: bundle.process.recipeName })
+      : undefined,
     detail: JSON.stringify({
       name: bundle.process.name,
       engine: bundle.process.thinkEngine,
@@ -137,8 +142,11 @@ function eventsFor(bundle: ProcessBundle): ProcessEvent[] {
       kind: 'chat',
       at: instantStr(m.createdAt),
       id: 'chat:' + m.id,
-      label: `${m.role}: ${truncate(m.content, 90)}`,
-      tag: m.archivedInMemoryId ? 'archived' : undefined,
+      label: t('insights.timeline.eventChat', {
+        role: m.role,
+        preview: truncate(m.content, 90),
+      }),
+      tag: m.archivedInMemoryId ? t('insights.timeline.tagArchived') : undefined,
       detail: m.content,
       detailIsMarkdown: true,
     });
@@ -149,8 +157,10 @@ function eventsFor(bundle: ProcessBundle): ProcessEvent[] {
       kind: 'memory',
       at: instantStr(mem.createdAt),
       id: 'mem:' + mem.id,
-      label: `memory · ${mem.kind}${mem.title ? ' · ' + mem.title : ''}`,
-      tag: mem.supersededByMemoryId ? 'superseded' : undefined,
+      label: mem.title
+        ? t('insights.timeline.eventMemoryWithTitle', { kind: mem.kind, title: mem.title })
+        : t('insights.timeline.eventMemory', { kind: mem.kind }),
+      tag: mem.supersededByMemoryId ? t('insights.timeline.tagSuperseded') : undefined,
       detail: mem.content,
       detailIsMarkdown: true,
     });
@@ -161,7 +171,10 @@ function eventsFor(bundle: ProcessBundle): ProcessEvent[] {
       kind: 'marvin',
       at: instantStr(n.createdAt),
       id: 'mn:' + n.id,
-      label: `node · ${n.taskKind} · ${truncate(n.goal || '(no goal)', 80)}`,
+      label: t('insights.timeline.eventMarvinNode', {
+        taskKind: n.taskKind,
+        goal: truncate(n.goal || t('insights.timeline.noGoal'), 80),
+      }),
       tag: n.status,
       detail: JSON.stringify({
         goal: n.goal,
@@ -181,8 +194,8 @@ function eventsFor(bundle: ProcessBundle): ProcessEvent[] {
       kind: 'pending',
       at: instantStr(m.at),
       id: 'pm:' + idx,
-      label: `pending · ${m.type}`,
-      tag: 'queued',
+      label: t('insights.timeline.eventPending', { type: m.type }),
+      tag: t('insights.timeline.tagQueued'),
       detail: JSON.stringify(m.payload ?? {}, null, 2),
       detailIsMarkdown: false,
     });
@@ -240,12 +253,12 @@ function truncate(s: string, max: number): string {
       <span>{{ error }}</span>
     </VAlert>
 
-    <div v-if="loading" class="opacity-70">Loading timeline…</div>
+    <div v-if="loading" class="opacity-70">{{ $t('insights.timeline.loading') }}</div>
 
     <VEmptyState
       v-else-if="processes.length === 0"
-      headline="No processes yet"
-      body="This session has no think-processes — nothing to time-line."
+      :headline="$t('insights.timeline.noProcessesHeadline')"
+      :body="$t('insights.timeline.noProcessesBody')"
     />
 
     <ul v-else class="timeline-tree">

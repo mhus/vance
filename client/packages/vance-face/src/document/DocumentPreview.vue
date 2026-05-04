@@ -132,8 +132,12 @@ defineExpose({ downloadUrl });
 
     <!-- PDF rendered with PDF.js — pages stacked vertically. -->
     <div v-else-if="kind === 'pdf'" class="flex flex-col items-center gap-3">
-      <div v-if="pdfLoading" class="text-sm opacity-70">Rendering PDF…</div>
-      <div v-if="pdfError" class="text-sm text-error">PDF error: {{ pdfError }}</div>
+      <div v-if="pdfLoading" class="text-sm opacity-70">
+        {{ $t('documents.preview.pdfRendering') }}
+      </div>
+      <div v-if="pdfError" class="text-sm text-error">
+        {{ $t('documents.preview.pdfError', { error: pdfError }) }}
+      </div>
       <div
         v-for="(canvas, idx) in pdfPages"
         :key="idx"
@@ -145,7 +149,7 @@ defineExpose({ downloadUrl });
     <!-- Binary: nothing useful to render in-page. The parent shows
          a Download button. -->
     <div v-else class="text-sm opacity-70 italic">
-      Binary file — use the download button to fetch it.
+      {{ $t('documents.preview.binary') }}
     </div>
   </div>
 </template>

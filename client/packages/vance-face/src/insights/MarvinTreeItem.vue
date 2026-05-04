@@ -15,16 +15,16 @@ const emit = defineEmits<{ (e: 'select-process', id: string): void }>();
     <div class="marvin-node-head">
       <span class="marvin-kind">{{ node.doc.taskKind }}</span>
       <span class="marvin-status">{{ node.doc.status }}</span>
-      <span class="marvin-goal">{{ node.doc.goal || '(no goal)' }}</span>
+      <span class="marvin-goal">{{ node.doc.goal || $t('insights.marvin.noGoal') }}</span>
       <button
         v-if="node.doc.spawnedProcessId"
         class="link ml-2"
         type="button"
         @click="emit('select-process', node.doc.spawnedProcessId!)"
-      >→ worker</button>
+      >{{ $t('insights.marvin.toWorker') }}</button>
     </div>
     <div v-if="node.doc.failureReason" class="marvin-failure">
-      failure: {{ node.doc.failureReason }}
+      {{ $t('insights.marvin.failure', { reason: node.doc.failureReason }) }}
     </div>
     <ul v-if="node.children.length > 0" class="marvin-children">
       <li v-for="child in node.children" :key="child.doc.id">

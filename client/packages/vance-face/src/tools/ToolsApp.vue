@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   CodeEditor,
   EditorShell,
@@ -24,6 +25,7 @@ import type {
 const VANCE_PROJECT = '_vance';
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_]*$/;
 
+const { t } = useI18n();
 const tenantProjects = useTenantProjects();
 const toolsState = useAdminServerTools();
 
@@ -34,14 +36,14 @@ const selectedName = ref<string | null>(null);
 
 const projectOptions = computed(() => {
   const list: Array<{ value: string; label: string; group?: string }> = [
-    { value: VANCE_PROJECT, label: '_vance — system defaults' },
+    { value: VANCE_PROJECT, label: t('tools.vanceProjectLabel') },
   ];
   for (const p of tenantProjects.projects.value) {
     if (p.name === VANCE_PROJECT) continue;
     list.push({
       value: p.name,
       label: (p.title ? p.title + ' ' : '') + '(' + p.name + ')',
-      group: 'Projects',
+      group: t('tools.projectsGroup'),
     });
   }
   return list;
@@ -90,8 +92,8 @@ const selectedTypeSchema = computed<ToolTypeDto | null>(() => {
 
 const breadcrumbs = computed<string[]>(() => {
   const projectLabel = isVanceProject.value
-    ? '_vance (system)'
-    : 'Project: ' + selectedProject.value;
+    ? t('tools.vanceSystemLabel')
+    : t('tools.breadcrumbProjectPrefix', { name: selectedProject.value });
   return selectedName.value
     ? [projectLabel, selectedName.value]
     : [projectLabel];
@@ -157,19 +159,21 @@ function formatJson(obj: unknown): string {
 function buildWriteRequest(): ServerToolWriteRequest | null {
   const type = form.type.trim();
   const description = form.description.trim();
-  if (!type) { formError.value = 'Type is required.'; return null; }
-  if (!description) { formError.value = 'Description is required.'; return null; }
+  if (!type) { formError.value = t('tools.errors.typeRequired'); return null; }
+  if (!description) { formError.value = t('tools.errors.descriptionRequired'); return null; }
 
   let parameters: Record<string, unknown>;
   try {
     const parsed = JSON.parse(form.parametersJson || '{}');
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      formError.value = 'Parameters must be a JSON object.';
+      formError.value = t('tools.errors.parametersMustBeObject');
       return null;
     }
     parameters = parsed as Record<string, unknown>;
   } catch (e) {
-    formError.value = 'Parameters: invalid JSON — ' + (e instanceof Error ? e.message : 'parse error');
+    formError.value = t('tools.errors.parametersInvalidJson', {
+      message: e instanceof Error ? e.message : 'parse error',
+    });
     return null;
   }
 
@@ -202,7 +206,7 @@ async function save(): Promise<void> {
   if (!req) return;
   try {
     await toolsState.upsert(selectedProject.value, selectedName.value, req);
-    banner.value = 'Saved.';
+    banner.value = t('tools.banners.saved');
   } catch {
     /* error in toolsState.error */
   }
@@ -210,11 +214,11 @@ async function save(): Promise<void> {
 
 async function deleteTool(): Promise<void> {
   if (!selectedName.value) return;
-  if (!confirm(`Delete server tool "${selectedName.value}"? Bundled bean tools with the same name will become visible again through the cascade fallback.`)) return;
+  if (!confirm(t('tools.confirmDelete', { name: selectedName.value }))) return;
   try {
     await toolsState.remove(selectedProject.value, selectedName.value);
     selectedName.value = null;
-    banner.value = 'Deleted.';
+    banner.value = t('tools.banners.deleted');
   } catch {
     /* error */
   }
@@ -233,20 +237,20 @@ async function submitNewTool(): Promise<void> {
   newError.value = null;
   const name = newName.value.trim();
   const type = newType.value.trim();
-  if (!name) { newError.value = 'Name is required.'; return; }
+  if (!name) { newError.value = t('tools.errors.nameRequired'); return; }
   if (!NAME_PATTERN.test(name)) {
-    newError.value = 'Name must be lower-case alphanumerics with optional "_" (snake_case).';
+    newError.value = t('tools.errors.namePattern');
     return;
   }
-  if (toolsState.tools.value.some(t => t.name === name)) {
-    newError.value = `A tool named "${name}" already exists in this project.`;
+  if (toolsState.tools.value.some(tool => tool.name === name)) {
+    newError.value = t('tools.errors.nameAlreadyExists', { name });
     return;
   }
-  if (!type) { newError.value = 'Type is required.'; return; }
+  if (!type) { newError.value = t('tools.errors.typeRequired'); return; }
 
   const stub: ServerToolWriteRequest = {
     type,
-    description: name + ' — TODO description',
+    description: t('tools.stubDescription', { name }),
     parameters: {},
     labels: [],
     enabled: true,
@@ -256,9 +260,9 @@ async function submitNewTool(): Promise<void> {
     await toolsState.upsert(selectedProject.value, name, stub);
     showNewModal.value = false;
     selectedName.value = name;
-    banner.value = `Created tool "${name}". Fill in the parameters and description.`;
+    banner.value = t('tools.banners.created', { name });
   } catch (e) {
-    newError.value = e instanceof Error ? e.message : 'Failed to create tool.';
+    newError.value = e instanceof Error ? e.message : t('tools.errors.createFailed');
   }
 }
 
@@ -270,7 +274,7 @@ function selectTool(name: string): void {
 </script>
 
 <template>
-  <EditorShell title="Server Tools" :breadcrumbs="breadcrumbs" wide-right-panel>
+  <EditorShell :title="$t('tools.pageTitle')" :breadcrumbs="breadcrumbs" wide-right-panel>
     <template #topbar-extra>
       <VSelect
         v-model="selectedProject"
@@ -283,36 +287,38 @@ function selectTool(name: string): void {
       <nav class="flex flex-col gap-1 p-2">
         <div class="flex items-center justify-between px-2 mb-1">
           <span class="text-xs uppercase opacity-50">
-            {{ isVanceProject ? '_vance (system)' : selectedProject }}
+            {{ isVanceProject ? $t('tools.vanceSystemLabel') : selectedProject }}
           </span>
-          <VButton variant="ghost" size="sm" @click="openNewTool">+ New</VButton>
+          <VButton variant="ghost" size="sm" @click="openNewTool">
+            {{ $t('tools.sidebar.addNew') }}
+          </VButton>
         </div>
 
         <div v-if="toolsState.loading.value" class="px-2 text-xs opacity-60">
-          Loading…
+          {{ $t('tools.loading') }}
         </div>
         <VEmptyState
           v-else-if="toolsState.tools.value.length === 0"
-          headline="No tools"
-          body="Click + New to create one."
+          :headline="$t('tools.sidebar.noToolsHeadline')"
+          :body="$t('tools.sidebar.noToolsBody')"
         />
 
         <button
-          v-for="t in toolsState.tools.value"
-          :key="t.name"
+          v-for="tool in toolsState.tools.value"
+          :key="tool.name"
           class="tool-item"
-          :class="{ 'tool-item--active': selectedName === t.name }"
+          :class="{ 'tool-item--active': selectedName === tool.name }"
           type="button"
-          @click="selectTool(t.name)"
+          @click="selectTool(tool.name)"
         >
           <div class="flex items-center justify-between gap-2">
-            <span class="font-mono text-sm truncate">{{ t.name }}</span>
-            <span class="text-xs px-1.5 py-0.5 rounded badge-type">{{ t.type }}</span>
+            <span class="font-mono text-sm truncate">{{ tool.name }}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded badge-type">{{ tool.type }}</span>
           </div>
           <div class="flex items-center gap-2 text-xs opacity-60">
-            <span v-if="!t.enabled" class="badge-disabled">disabled</span>
-            <span v-if="t.primary" class="badge-primary">primary</span>
-            <span class="truncate">{{ t.description }}</span>
+            <span v-if="!tool.enabled" class="badge-disabled">{{ $t('tools.sidebar.disabled') }}</span>
+            <span v-if="tool.primary" class="badge-primary">{{ $t('tools.sidebar.primary') }}</span>
+            <span class="truncate">{{ tool.description }}</span>
           </div>
         </button>
       </nav>
@@ -332,8 +338,8 @@ function selectTool(name: string): void {
 
       <VEmptyState
         v-if="!selectedTool"
-        headline="Select a tool"
-        body="Pick one from the list, or click + New to create one in this project."
+        :headline="$t('tools.empty.headline')"
+        :body="$t('tools.empty.body')"
       />
 
       <template v-else>
@@ -342,10 +348,12 @@ function selectTool(name: string): void {
             <div>
               <div class="font-mono text-lg">{{ selectedTool.name }}</div>
               <div class="text-sm opacity-70">
-                Project <strong>{{ selectedProject }}</strong>
+                {{ $t('tools.detail.projectLabel') }}
+                <strong>{{ selectedProject }}</strong>
                 <span v-if="selectedTool.updatedAtTimestamp">
-                  · last edit
-                  {{ new Date(selectedTool.updatedAtTimestamp).toLocaleString() }}
+                  {{ $t('tools.detail.lastEdit', {
+                    at: new Date(selectedTool.updatedAtTimestamp).toLocaleString(),
+                  }) }}
                 </span>
               </div>
             </div>
@@ -354,53 +362,46 @@ function selectTool(name: string): void {
                 variant="danger"
                 :loading="toolsState.busy.value"
                 @click="deleteTool"
-              >Delete</VButton>
+              >{{ $t('tools.detail.delete') }}</VButton>
               <VButton
                 variant="primary"
                 :loading="toolsState.busy.value"
                 @click="save"
-              >Save</VButton>
+              >{{ $t('tools.detail.save') }}</VButton>
             </div>
           </div>
           <VAlert v-if="isVanceProject" variant="info" class="mt-3">
-            <span>
-              You are editing the <strong>_vance</strong> system project —
-              changes here are tenant-wide defaults. User projects shadow
-              individual tools by re-creating them with the same name.
-            </span>
+            <span>{{ $t('tools.detail.vanceNote') }}</span>
           </VAlert>
         </VCard>
 
-        <VCard title="Identity">
+        <VCard :title="$t('tools.cards.identityTitle')">
           <div class="flex flex-col gap-3">
             <VSelect
               v-model="form.type"
               :options="typeOptions"
-              label="Type"
+              :label="$t('tools.fields.type')"
               required
             />
             <VTextarea
               v-model="form.description"
-              label="Description"
-              help="Shown to the LLM. One short paragraph, plain text."
+              :label="$t('tools.fields.description')"
+              :help="$t('tools.fields.descriptionHelp')"
               :rows="3"
               required
             />
             <div class="grid grid-cols-2 gap-3">
-              <VCheckbox v-model="form.enabled" label="Enabled" />
+              <VCheckbox v-model="form.enabled" :label="$t('tools.fields.enabled')" />
               <VCheckbox
                 v-model="form.primary"
-                label="Primary (advertised on every turn)"
+                :label="$t('tools.fields.primary')"
               />
             </div>
           </div>
         </VCard>
 
-        <VCard title="Parameters (JSON)">
-          <p class="text-xs opacity-70 mb-2">
-            Type-specific configuration. The factory's parameter schema
-            is shown in the help panel.
-          </p>
+        <VCard :title="$t('tools.cards.parametersTitle')">
+          <p class="text-xs opacity-70 mb-2">{{ $t('tools.cards.parametersHelp') }}</p>
           <CodeEditor
             v-model="form.parametersJson"
             mime-type="application/json"
@@ -408,11 +409,11 @@ function selectTool(name: string): void {
           />
         </VCard>
 
-        <VCard title="Labels">
+        <VCard :title="$t('tools.cards.labelsTitle')">
           <VTextarea
             v-model="form.labelsText"
-            label="Labels"
-            help="One per line (or comma-separated). Recipes can target labels via @<label>."
+            :label="$t('tools.fields.labels')"
+            :help="$t('tools.fields.labelsHelp')"
             :rows="4"
           />
         </VCard>
@@ -423,9 +424,9 @@ function selectTool(name: string): void {
     <template #right-panel>
       <div class="p-4 flex flex-col gap-4">
         <section>
-          <h3 class="text-xs uppercase opacity-60 mb-2">Type schema</h3>
+          <h3 class="text-xs uppercase opacity-60 mb-2">{{ $t('tools.rightPanel.typeSchemaTitle') }}</h3>
           <div v-if="!selectedTypeSchema" class="text-xs opacity-60">
-            Pick a type to see its parameter schema.
+            {{ $t('tools.rightPanel.pickTypeHint') }}
           </div>
           <div v-else>
             <div class="font-mono text-sm mb-1">{{ selectedTypeSchema.typeId }}</div>
@@ -436,47 +437,42 @@ function selectTool(name: string): void {
         </section>
 
         <section>
-          <h3 class="text-xs uppercase opacity-60 mb-2">Cascade</h3>
-          <p class="text-xs opacity-70">
-            At runtime tools resolve through
-            <code>project → _vance → built-in beans</code>.
-            Disabled documents stop the cascade — that's how you hide
-            a system tool inside a single project.
-          </p>
+          <h3 class="text-xs uppercase opacity-60 mb-2">{{ $t('tools.rightPanel.cascadeTitle') }}</h3>
+          <p class="text-xs opacity-70">{{ $t('tools.rightPanel.cascadeBody') }}</p>
         </section>
       </div>
     </template>
 
     <!-- ─── New-tool modal ─── -->
-    <VModal v-model="showNewModal" title="New server tool">
+    <VModal v-model="showNewModal" :title="$t('tools.newModal.title')">
       <div class="flex flex-col gap-3">
         <VAlert v-if="newError" variant="error">
           <span>{{ newError }}</span>
         </VAlert>
         <VInput
           v-model="newName"
-          label="Name"
+          :label="$t('tools.newModal.nameLabel')"
           required
-          help="Lower-case alphanumerics + '_'. Snake_case, like the bundled tools (e.g. doc_getting_started)."
+          :help="$t('tools.newModal.nameHelp')"
         />
         <VSelect
           v-model="newType"
           :options="typeOptions"
-          label="Type"
+          :label="$t('tools.fields.type')"
           required
         />
         <p class="text-xs opacity-70">
-          A stub will be created in
-          <strong>{{ selectedProject }}</strong>. Fill in description,
-          parameters and labels afterwards.
+          {{ $t('tools.newModal.stubInfo', { project: selectedProject }) }}
         </p>
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showNewModal = false">Cancel</VButton>
+          <VButton variant="ghost" @click="showNewModal = false">
+            {{ $t('tools.newModal.cancel') }}
+          </VButton>
           <VButton
             variant="primary"
             :loading="toolsState.busy.value"
             @click="submitNewTool"
-          >Create</VButton>
+          >{{ $t('tools.newModal.create') }}</VButton>
         </div>
       </div>
     </VModal>

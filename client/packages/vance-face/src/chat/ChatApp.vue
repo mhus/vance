@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, computed, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   BrainWebSocket,
   WebSocketRequestError,
@@ -15,6 +16,8 @@ import type {
 import { EditorShell, VAlert, VButton } from '@components/index';
 import PickerView from './PickerView.vue';
 import ChatView from './ChatView.vue';
+
+const { t } = useI18n();
 
 const CLIENT_VERSION = '0.1.0';
 
@@ -76,23 +79,23 @@ async function resumeSessionId(sessionId: string): Promise<void> {
       switch (e.errorCode) {
         case 409:
           mode.value = 'occupied';
-          errorMessage.value = `Session "${sessionId}" is held by another connection.`;
+          errorMessage.value = t('chat.sessionOccupiedBy', { id: sessionId });
           return;
         case 404:
           // Stale sessionId (closed or never existed) — drop it and fall back to picker.
           setActiveSessionId(null);
           pushSessionIdToUrl(null);
           mode.value = 'picker';
-          errorMessage.value = `Session "${sessionId}" no longer exists. Pick another.`;
+          errorMessage.value = t('chat.sessionNotFound', { id: sessionId });
           return;
         case 403:
           mode.value = 'failed';
-          errorMessage.value = `Session "${sessionId}" belongs to another user.`;
+          errorMessage.value = t('chat.sessionForbidden', { id: sessionId });
           return;
       }
     }
     mode.value = 'failed';
-    errorMessage.value = e instanceof Error ? e.message : 'Failed to resume session.';
+    errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
   }
 }
 
@@ -116,8 +119,7 @@ async function leaveLive(): Promise<void> {
   // intentional — a modal dialog buys polish but adds component
   // weight, and this is the only confirmation surface in the chat
   // editor for now.
-  const ok = window.confirm(
-    'Leave this chat session? The connection will be released and any unsent draft is lost.');
+  const ok = window.confirm(t('chat.confirmLeave'));
   if (!ok) return;
   if (socket.value && !socket.value.closed()) {
     socket.value.sendNoReply('session-unbind');
@@ -158,17 +160,17 @@ onMounted(async () => {
     socket.value = await openSocket();
   } catch (e) {
     mode.value = 'failed';
-    errorMessage.value = e instanceof Error ? e.message : 'Failed to open WebSocket.';
+    errorMessage.value = e instanceof Error ? e.message : t('chat.failedToOpen');
     return;
   }
 
   socket.value.onClose(() => {
     if (mode.value === 'live') {
       mode.value = 'failed';
-      errorMessage.value = 'Connection lost. Reload to reconnect.';
+      errorMessage.value = t('chat.connectionLost');
     } else if (mode.value === 'picker' || mode.value === 'occupied') {
       mode.value = 'failed';
-      errorMessage.value = 'Connection closed.';
+      errorMessage.value = t('chat.connectionClosed');
     }
   });
 
@@ -189,7 +191,7 @@ onBeforeUnmount(() => {
 
 <template>
   <EditorShell
-    title="Chat"
+    :title="$t('chat.pageTitle')"
     :connection-state="connectionState"
     :full-height="true"
   >
@@ -199,15 +201,19 @@ onBeforeUnmount(() => {
           {{ errorMessage }}
           <template v-if="mode === 'occupied'">
             <div class="mt-2 flex gap-2">
-              <VButton variant="secondary" @click="backToPicker">Pick another session</VButton>
+              <VButton variant="secondary" @click="backToPicker">
+                {{ $t('chat.pickAnotherSession') }}
+              </VButton>
               <VButton variant="ghost" @click="resumeSessionId(activeSessionId ?? '')">
-                Try again
+                {{ $t('chat.tryAgain') }}
               </VButton>
             </div>
           </template>
           <template v-else-if="mode === 'failed'">
             <div class="mt-2">
-              <VButton variant="secondary" @click="backToPicker">Back to picker</VButton>
+              <VButton variant="secondary" @click="backToPicker">
+                {{ $t('chat.backToPicker') }}
+              </VButton>
             </div>
           </template>
         </VAlert>
@@ -230,7 +236,7 @@ onBeforeUnmount(() => {
         />
 
         <div v-else-if="mode === 'connecting'" class="p-6 text-sm opacity-60">
-          Connecting to brain…
+          {{ $t('chat.connecting') }}
         </div>
       </div>
     </div>

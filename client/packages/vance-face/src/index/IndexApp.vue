@@ -247,7 +247,7 @@ function readNextParam(): string | null {
               <div class="font-semibold">{{ $t('index.documents.title') }}</div>
               <div class="text-sm opacity-70">{{ $t('index.documents.description') }}</div>
             </div>
-            <VButton variant="primary" size="sm" href="/document-editor.html">
+            <VButton variant="primary" size="sm" href="/documents.html">
               {{ $t('index.open') }}
             </VButton>
           </li>

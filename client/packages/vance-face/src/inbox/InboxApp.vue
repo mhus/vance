@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
   MarkdownView,
@@ -23,6 +24,7 @@ import {
   type InboxItemDto,
 } from '@vance/generated';
 
+const { t } = useI18n();
 const inbox = useInbox();
 const teamsState = useTeams();
 
@@ -239,7 +241,7 @@ async function toDocument(): Promise<void> {
   }
   // Same-tab navigation — the Document editor mounts fresh and
   // consumes the draft on its first onMounted.
-  window.location.href = '/document-editor.html?createDraft=1';
+  window.location.href = '/documents.html?createDraft=1';
 }
 
 async function dismissItem(): Promise<void> {
@@ -301,18 +303,18 @@ function decisionOptions(item: InboxItemDto): string[] {
 }
 
 const breadcrumbs = computed<string[]>(() => {
-  const c: string[] = ['Inbox'];
+  const c: string[] = [t('inbox.breadcrumbInbox')];
   const s = selection.value;
   if (s.kind === 'inbox' && s.tag) c.push('#' + s.tag);
-  if (s.kind === 'archive') c.push('Archive');
-  if (s.kind === 'team') c.push('Team: ' + s.teamName);
+  if (s.kind === 'archive') c.push(t('inbox.breadcrumbArchive'));
+  if (s.kind === 'team') c.push(t('inbox.breadcrumbTeam', { team: s.teamName }));
   if (inbox.selected.value) c.push(shortPreview(inbox.selected.value.title, 40));
   return c;
 });
 </script>
 
 <template>
-  <EditorShell title="Inbox" :breadcrumbs="breadcrumbs">
+  <EditorShell :title="$t('inbox.pageTitle')" :breadcrumbs="breadcrumbs">
     <div class="inbox-grid">
       <!-- ─── Sidebar ─── -->
       <aside class="inbox-sidebar">
@@ -322,7 +324,7 @@ const breadcrumbs = computed<string[]>(() => {
             :class="{ 'sidebar-item--active': isSelected({ kind: 'inbox', tag: null }) }"
             type="button"
             @click="selectInbox(null)"
-          >Inbox</button>
+          >{{ $t('inbox.sidebar.inbox') }}</button>
 
           <button
             v-for="tag in inbox.tags.value"
@@ -338,14 +340,16 @@ const breadcrumbs = computed<string[]>(() => {
             :class="{ 'sidebar-item--active': isSelected({ kind: 'archive' }) }"
             type="button"
             @click="selectArchive"
-          >Archive</button>
+          >{{ $t('inbox.sidebar.archive') }}</button>
 
-          <div class="mt-3 text-xs uppercase opacity-50 px-2">Team Inbox</div>
+          <div class="mt-3 text-xs uppercase opacity-50 px-2">
+            {{ $t('inbox.sidebar.teamInbox') }}
+          </div>
           <div v-if="teamsState.loading.value" class="px-2 text-xs opacity-60">
-            Loading teams…
+            {{ $t('inbox.sidebar.loadingTeams') }}
           </div>
           <div v-else-if="teamsState.teams.value.length === 0" class="px-2 text-xs opacity-60">
-            No teams
+            {{ $t('inbox.sidebar.noTeams') }}
           </div>
           <button
             v-for="team in teamsState.teams.value"
@@ -365,8 +369,8 @@ const breadcrumbs = computed<string[]>(() => {
         </VAlert>
         <VEmptyState
           v-if="!inbox.loading.value && inbox.items.value.length === 0"
-          headline="Empty"
-          body="No items in this view."
+          :headline="$t('inbox.list.emptyHeadline')"
+          :body="$t('inbox.list.emptyBody')"
         />
         <ul class="flex flex-col gap-1">
           <li
@@ -377,7 +381,9 @@ const breadcrumbs = computed<string[]>(() => {
             @click="openItem(item)"
           >
             <div class="flex items-center justify-between gap-2">
-              <span class="font-medium truncate">{{ item.title || '(no title)' }}</span>
+              <span class="font-medium truncate">
+                {{ item.title || $t('inbox.list.noTitle') }}
+              </span>
               <span class="text-xs opacity-60 shrink-0">{{ formatTimestamp(item.createdAt) }}</span>
             </div>
             <div class="flex items-center gap-2 text-xs opacity-70">
@@ -403,23 +409,25 @@ const breadcrumbs = computed<string[]>(() => {
       <section class="inbox-detail">
         <VEmptyState
           v-if="!inbox.selected.value"
-          headline="Pick an item"
-          body="Select an inbox item from the list to see its content and reply."
+          :headline="$t('inbox.detail.pickAnItem')"
+          :body="$t('inbox.detail.pickAnItemBody')"
         />
         <VCard v-else>
           <template #header>
             <div class="flex items-center justify-between gap-2">
-              <span class="font-semibold truncate">{{ inbox.selected.value.title || '(no title)' }}</span>
+              <span class="font-semibold truncate">
+                {{ inbox.selected.value.title || $t('inbox.detail.noTitle') }}
+              </span>
               <span class="text-xs opacity-60">{{ inbox.selected.value.type }}</span>
             </div>
           </template>
 
           <div class="text-xs opacity-60 flex flex-wrap gap-3 mb-3">
-            <span>From: {{ inbox.selected.value.originatorUserId }}</span>
-            <span>To: {{ inbox.selected.value.assignedToUserId }}</span>
-            <span>Status: {{ inbox.selected.value.status }}</span>
+            <span>{{ $t('inbox.detail.fromLabel', { user: inbox.selected.value.originatorUserId }) }}</span>
+            <span>{{ $t('inbox.detail.toLabel', { user: inbox.selected.value.assignedToUserId }) }}</span>
+            <span>{{ $t('inbox.detail.statusLabel', { status: inbox.selected.value.status }) }}</span>
             <span v-if="inbox.selected.value.criticality !== Criticality.NORMAL">
-              Criticality: {{ inbox.selected.value.criticality }}
+              {{ $t('inbox.detail.criticalityLabel', { criticality: inbox.selected.value.criticality }) }}
             </span>
             <span>{{ formatTimestamp(inbox.selected.value.createdAt) }}</span>
           </div>
@@ -428,14 +436,14 @@ const breadcrumbs = computed<string[]>(() => {
             v-if="inbox.selected.value.body"
             :source="inbox.selected.value.body"
           />
-          <div v-else class="opacity-60 italic">(no body)</div>
+          <div v-else class="opacity-60 italic">{{ $t('inbox.detail.noBody') }}</div>
 
           <div
             v-if="inbox.selected.value.payload && Object.keys(inbox.selected.value.payload).length > 0"
             class="mt-3 text-xs"
           >
             <details>
-              <summary class="cursor-pointer opacity-70">Payload</summary>
+              <summary class="cursor-pointer opacity-70">{{ $t('inbox.detail.payload') }}</summary>
               <pre class="text-xs bg-base-200 p-2 rounded mt-1 overflow-auto">{{ JSON.stringify(inbox.selected.value.payload, null, 2) }}</pre>
             </details>
           </div>
@@ -444,16 +452,17 @@ const breadcrumbs = computed<string[]>(() => {
             v-if="inbox.selected.value.answer"
             class="mt-3 p-3 rounded bg-base-200 text-sm"
           >
-            <div class="opacity-70 text-xs mb-1">Answer</div>
-            <div>Outcome: {{ inbox.selected.value.answer.outcome }}</div>
+            <div class="opacity-70 text-xs mb-1">{{ $t('inbox.detail.answer') }}</div>
+            <div>{{ $t('inbox.detail.answerOutcome', { outcome: inbox.selected.value.answer.outcome }) }}</div>
             <div v-if="inbox.selected.value.answer.value">
-              Value: <code>{{ JSON.stringify(inbox.selected.value.answer.value) }}</code>
+              {{ $t('inbox.detail.answerValue') }}
+              <code>{{ JSON.stringify(inbox.selected.value.answer.value) }}</code>
             </div>
             <div v-if="inbox.selected.value.answer.reason">
-              Reason: {{ inbox.selected.value.answer.reason }}
+              {{ $t('inbox.detail.answerReason', { reason: inbox.selected.value.answer.reason }) }}
             </div>
             <div class="opacity-60 text-xs mt-1">
-              by {{ inbox.selected.value.answer.answeredBy }}
+              {{ $t('inbox.detail.answerBy', { user: inbox.selected.value.answer.answeredBy }) }}
             </div>
           </div>
 
@@ -462,11 +471,17 @@ const breadcrumbs = computed<string[]>(() => {
             <div class="flex flex-wrap gap-2 w-full">
               <!-- APPROVAL: Yes / No / Cancel -->
               <template v-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.APPROVAL">
-                <VButton variant="primary" :loading="submitting" @click="submitApproval(true)">Yes</VButton>
-                <VButton variant="ghost" :loading="submitting" @click="submitApproval(false)">No</VButton>
+                <VButton variant="primary" :loading="submitting" @click="submitApproval(true)">
+                  {{ $t('inbox.actions.yes') }}
+                </VButton>
+                <VButton variant="ghost" :loading="submitting" @click="submitApproval(false)">
+                  {{ $t('inbox.actions.no') }}
+                </VButton>
               </template>
 
-              <!-- DECISION: option-buttons -->
+              <!-- DECISION: option-buttons. Option labels come from the
+                   server-side payload — they're domain text the engine
+                   chose and shouldn't be translated here. -->
               <template v-else-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.DECISION">
                 <VButton
                   v-for="opt in decisionOptions(inbox.selected.value)"
@@ -476,7 +491,7 @@ const breadcrumbs = computed<string[]>(() => {
                   @click="submitDecision(opt)"
                 >{{ opt }}</VButton>
                 <span v-if="decisionOptions(inbox.selected.value).length === 0" class="text-xs opacity-60">
-                  (no options in payload — use the text reply below)
+                  {{ $t('inbox.actions.noOptionsHint') }}
                 </span>
               </template>
 
@@ -495,22 +510,22 @@ const breadcrumbs = computed<string[]>(() => {
                   :loading="submitting"
                   :disabled="!feedbackText.trim()"
                   @click="submitFeedback"
-                >Send</VButton>
+                >{{ $t('inbox.actions.send') }}</VButton>
               </template>
 
               <!-- Always available when asking: insufficient / undecidable -->
               <template v-if="isAsk(inbox.selected.value)">
                 <VInput
                   v-model="reasonText"
-                  placeholder="Reason (optional, used by 'insufficient' / 'undecidable')"
+                  :placeholder="$t('inbox.actions.reasonPlaceholder')"
                   :disabled="submitting"
                   class="flex-1 min-w-[14rem]"
                 />
                 <VButton variant="ghost" :loading="submitting" @click="submitInsufficientInfo">
-                  Insufficient info
+                  {{ $t('inbox.actions.insufficientInfo') }}
                 </VButton>
                 <VButton variant="ghost" :loading="submitting" @click="submitUndecidable">
-                  Undecidable
+                  {{ $t('inbox.actions.undecidable') }}
                 </VButton>
               </template>
 
@@ -520,30 +535,30 @@ const breadcrumbs = computed<string[]>(() => {
                 variant="ghost"
                 :disabled="submitting"
                 @click="toDocument"
-              >To Document</VButton>
+              >{{ $t('inbox.actions.toDocument') }}</VButton>
               <VButton
                 variant="ghost"
                 :disabled="submitting"
                 @click="openDelegateModal"
-              >Delegate</VButton>
+              >{{ $t('inbox.actions.delegate') }}</VButton>
               <VButton
                 v-if="inbox.selected.value.status !== InboxItemStatus.DISMISSED"
                 variant="ghost"
                 :disabled="submitting"
                 @click="dismissItem"
-              >Dismiss</VButton>
+              >{{ $t('inbox.actions.dismiss') }}</VButton>
               <VButton
                 v-if="inbox.selected.value.status === InboxItemStatus.ARCHIVED"
                 variant="primary"
                 :loading="submitting"
                 @click="unarchiveItem"
-              >Unarchive</VButton>
+              >{{ $t('inbox.actions.unarchive') }}</VButton>
               <VButton
                 v-else
                 variant="primary"
                 :loading="submitting"
                 @click="archiveItem"
-              >Archive</VButton>
+              >{{ $t('inbox.actions.archive') }}</VButton>
             </div>
           </template>
         </VCard>
@@ -553,35 +568,34 @@ const breadcrumbs = computed<string[]>(() => {
     <!-- Delegate modal -->
     <VModal
       v-model="delegateOpen"
-      title="Delegate to teammate"
+      :title="$t('inbox.delegate.title')"
       :close-on-backdrop="!delegating"
     >
-      <p class="text-sm opacity-80 mb-3">
-        Hand this item to another team member. They will see it in their inbox and
-        can answer / archive on your behalf.
-      </p>
+      <p class="text-sm opacity-80 mb-3">{{ $t('inbox.delegate.body') }}</p>
       <div class="flex flex-col gap-3">
         <VSelect
           v-model="delegateTarget"
           :options="delegateOptions"
-          label="Recipient"
+          :label="$t('inbox.delegate.recipient')"
           :disabled="delegating || delegateOptions.length === 0"
         />
         <VTextarea
           v-model="delegateNote"
-          label="Note (optional)"
+          :label="$t('inbox.delegate.note')"
           :rows="3"
           :disabled="delegating"
         />
       </div>
       <template #actions>
-        <VButton variant="ghost" :disabled="delegating" @click="delegateOpen = false">Cancel</VButton>
+        <VButton variant="ghost" :disabled="delegating" @click="delegateOpen = false">
+          {{ $t('inbox.delegate.cancel') }}
+        </VButton>
         <VButton
           variant="primary"
           :loading="delegating"
           :disabled="!delegateTarget || delegateOptions.length === 0"
           @click="confirmDelegate"
-        >Delegate</VButton>
+        >{{ $t('inbox.delegate.confirm') }}</VButton>
       </template>
     </VModal>
   </EditorShell>

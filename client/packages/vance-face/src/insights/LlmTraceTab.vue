@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { VAlert, VButton, VEmptyState, VPagination } from '@/components';
+import { useI18n } from 'vue-i18n';
+import { VAlert, VEmptyState, VPagination } from '@/components';
 import { useLlmTraces, type LlmTraceTurn } from '@/composables/useLlmTraces';
 import type { LlmTraceDto } from '@vance/generated';
 
@@ -8,6 +9,8 @@ const props = defineProps<{
   /** Mongo id of the process whose trace history to load. */
   processId: string;
 }>();
+
+const { t } = useI18n();
 
 const traces = useLlmTraces();
 
@@ -66,25 +69,34 @@ function fmtTime(iso: string | null): string {
   }
 }
 
-function turnLabel(t: LlmTraceTurn): string {
+function turnLabel(turn: LlmTraceTurn): string {
   // Short prefix of the turnId — enough to differentiate but doesn't
   // dominate the header.
-  const id = t.turnId.startsWith('__loose:')
-    ? '(orphan)'
-    : t.turnId.slice(0, 8);
+  const id = turn.turnId.startsWith('__loose:')
+    ? t('insights.llmTrace.orphan')
+    : turn.turnId.slice(0, 8);
   return id;
 }
 
 function legBadge(leg: LlmTraceDto): { label: string; cls: string } {
+  // input/output direction labels stay as the wire values — they
+  // are role identifiers (USER/ASSISTANT/SYSTEM) on the input
+  // side, and a fixed token on the output side.
   switch (leg.direction) {
     case 'input':
       return { label: leg.role ?? 'input', cls: 'leg--input' };
     case 'output':
       return { label: 'output', cls: 'leg--output' };
     case 'tool_call':
-      return { label: `tool-call: ${leg.toolName ?? '?'}`, cls: 'leg--tool-call' };
+      return {
+        label: t('insights.llmTrace.toolCall', { name: leg.toolName ?? '?' }),
+        cls: 'leg--tool-call',
+      };
     case 'tool_result':
-      return { label: `tool-result: ${leg.toolName ?? '?'}`, cls: 'leg--tool-result' };
+      return {
+        label: t('insights.llmTrace.toolResult', { name: leg.toolName ?? '?' }),
+        cls: 'leg--tool-result',
+      };
     default:
       return { label: leg.direction || '?', cls: 'leg--default' };
   }
@@ -98,13 +110,13 @@ function legBadge(leg: LlmTraceDto): { label: string; cls: string } {
     </VAlert>
 
     <div v-if="traces.loading.value && traces.items.value.length === 0" class="opacity-70">
-      Loading LLM traces…
+      {{ $t('insights.llmTrace.loading') }}
     </div>
 
     <VEmptyState
       v-else-if="!traces.loading.value && traces.items.value.length === 0"
-      headline="No LLM traces"
-      body="Either tracing.llm was off when this process ran, or all rows have aged out (90-day TTL)."
+      :headline="$t('insights.llmTrace.emptyHeadline')"
+      :body="$t('insights.llmTrace.emptyBody')"
     />
 
     <ul v-else class="flex flex-col gap-2">
@@ -127,14 +139,23 @@ function legBadge(leg: LlmTraceDto): { label: string; cls: string } {
           <span class="turn-meta">
             <span v-if="turn.modelAlias">{{ turn.modelAlias }}</span>
             <span v-if="turn.tokensIn != null || turn.tokensOut != null">
-              {{ fmtTokens(turn.tokensIn) }} in / {{ fmtTokens(turn.tokensOut) }} out
+              {{ $t('insights.llmTrace.tokensInOut', {
+                tokensIn: fmtTokens(turn.tokensIn),
+                tokensOut: fmtTokens(turn.tokensOut),
+              }) }}
             </span>
             <span v-if="turn.elapsedMs != null">{{ fmtMs(turn.elapsedMs) }}</span>
             <span v-if="turn.toolCallCount > 0" class="turn-tools">
-              · {{ turn.toolCallCount }} tool-call{{ turn.toolCallCount === 1 ? '' : 's' }}
+              {{
+                turn.toolCallCount === 1
+                  ? $t('insights.llmTrace.toolCallSingular', { count: turn.toolCallCount })
+                  : $t('insights.llmTrace.toolCallPlural', { count: turn.toolCallCount })
+              }}
             </span>
           </span>
-          <span class="turn-leg-count">{{ turn.legs.length }} legs</span>
+          <span class="turn-leg-count">
+            {{ $t('insights.llmTrace.legCount', { count: turn.legs.length }) }}
+          </span>
         </button>
 
         <div v-if="expanded.has(turn.turnId)" class="turn-body">
@@ -147,12 +168,12 @@ function legBadge(leg: LlmTraceDto): { label: string; cls: string } {
             <div class="leg-header">
               <span class="leg-badge">{{ legBadge(leg).label }}</span>
               <span v-if="leg.toolCallId" class="leg-tool-id">
-                id={{ leg.toolCallId }}
+                {{ $t('insights.llmTrace.idLabel', { id: leg.toolCallId }) }}
               </span>
-              <span class="leg-seq">seq {{ leg.sequence }}</span>
+              <span class="leg-seq">{{ $t('insights.llmTrace.seqLabel', { seq: leg.sequence }) }}</span>
             </div>
             <pre v-if="leg.content" class="leg-content">{{ leg.content }}</pre>
-            <div v-else class="leg-empty">(empty)</div>
+            <div v-else class="leg-empty">{{ $t('insights.llmTrace.emptyLeg') }}</div>
           </div>
         </div>
       </li>

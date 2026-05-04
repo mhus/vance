@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   type BrainWsApi,
   WebSocketRequestError,
@@ -48,6 +49,8 @@ const props = defineProps<{
   sessionId: string;
 }>();
 
+const { t } = useI18n();
+
 const emit = defineEmits<{ (event: 'leave'): void }>();
 
 const PROGRESS_CAP = 50;
@@ -87,8 +90,8 @@ const multiline = ref(false);
 const composerRows = computed(() => (multiline.value ? 4 : 1));
 const composerPlaceholder = computed(() =>
   multiline.value
-    ? 'Type a message — Ctrl/Cmd+Enter to send, Enter for newline'
-    : 'Type a message — Enter to send, Shift+Enter for newline');
+    ? t('chat.composerPlaceholderMulti')
+    : t('chat.composerPlaceholderSingle'));
 
 /** Sequence for optimistic temp message ids — never collides with server ids. */
 let optimisticSeq = 0;
@@ -161,7 +164,7 @@ function initSpeechRecognition(): void {
     // Common errors: 'not-allowed' (permission denied), 'no-speech',
     // 'audio-capture' (no mic), 'network'. Show the raw code; the
     // browser localises the user-facing prompt for `not-allowed`.
-    speechError.value = `Microphone error: ${event.error}`;
+    speechError.value = t('chat.speech.microphoneError', { error: event.error });
     speechRecording.value = false;
   };
   instance.onend = () => {
@@ -186,7 +189,7 @@ function toggleSpeech(): void {
     // start() throws if the recognizer is already running — usually
     // a desync with our own state. Reset and surface.
     speechRecording.value = false;
-    speechError.value = e instanceof Error ? e.message : 'Failed to start recording.';
+    speechError.value = e instanceof Error ? e.message : t('chat.speech.recordStartFailed');
   }
 }
 
@@ -251,10 +254,10 @@ function refreshVoiceOptions(): void {
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
   voiceOptions.value = [
-    { value: '__auto__', label: 'Auto (default voice for language)' },
+    { value: '__auto__', label: t('chat.speech.voiceAuto') },
     ...matching.map((v) => ({
       value: v.voiceURI,
-      label: `${v.name} (${v.lang})${v.default ? ' · default' : ''}`,
+      label: `${v.name} (${v.lang})${v.default ? t('chat.speech.voiceDefaultSuffix') : ''}`,
     })),
   ];
 }
@@ -506,7 +509,7 @@ async function send(): Promise<void> {
     if (e instanceof WebSocketRequestError) {
       sendError.value = `${e.message} (code ${e.errorCode})`;
     } else {
-      sendError.value = e instanceof Error ? e.message : 'Failed to send.';
+      sendError.value = e instanceof Error ? e.message : t('chat.failedToSend');
     }
   } finally {
     sending.value = false;
@@ -607,7 +610,9 @@ watch(() => props.sessionId, async (newId, oldId) => {
     <!-- Main chat column -->
     <section class="flex-1 min-w-0 min-h-0 flex flex-col">
       <header class="px-6 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3">
-        <VButton variant="ghost" size="sm" @click="emit('leave')">← Sessions</VButton>
+        <VButton variant="ghost" size="sm" @click="emit('leave')">
+          {{ $t('chat.backToSessions') }}
+        </VButton>
         <div class="flex-1 min-w-0 truncate">
           <span class="font-medium">{{ sessionDisplay ?? sessionId }}</span>
         </div>
@@ -615,7 +620,9 @@ watch(() => props.sessionId, async (newId, oldId) => {
 
       <div ref="messageContainer" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
         <div class="max-w-3xl mx-auto flex flex-col gap-3">
-          <div v-if="historyLoading" class="text-sm opacity-60">Loading history…</div>
+          <div v-if="historyLoading" class="text-sm opacity-60">
+            {{ $t('chat.historyLoading') }}
+          </div>
           <VAlert v-else-if="historyError" variant="error">{{ historyError }}</VAlert>
 
           <MessageBubble
@@ -654,7 +661,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
           <VButton
             variant="ghost"
             size="sm"
-            :title="multiline ? 'Switch to single-line input' : 'Switch to multi-line input'"
+            :title="multiline ? $t('chat.multilineToggleSingle') : $t('chat.multilineToggleMulti')"
             @click="multiline = !multiline"
           >
             {{ multiline ? '▲' : '▼' }}
@@ -666,7 +673,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
                 variant="ghost"
                 size="sm"
                 :class="speechRecording ? 'text-error animate-pulse' : ''"
-                :title="speechRecording ? 'Stop speech-to-text' : 'Start speech-to-text'"
+                :title="speechRecording ? $t('chat.speech.stopSpeechToText') : $t('chat.speech.startSpeechToText')"
                 @click="toggleSpeech"
               >
                 🎤
@@ -676,7 +683,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
                 variant="ghost"
                 size="sm"
                 :class="speakerEnabled ? (speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : ''"
-                :title="speakerEnabled ? 'Mute incoming messages' : 'Read incoming messages aloud'"
+                :title="speakerEnabled ? $t('chat.speech.muteIncoming') : $t('chat.speech.readAloud')"
                 @click="toggleSpeaker"
               >
                 {{ speakerEnabled ? '🔊' : '🔇' }}
@@ -684,7 +691,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
               <VButton
                 variant="ghost"
                 size="sm"
-                title="Speech settings"
+                :title="$t('chat.speech.settings')"
                 @click="speechSettingsOpen = !speechSettingsOpen"
               >
                 ⚙
@@ -696,7 +703,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
             >
               <div>
                 <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
-                  Language
+                  {{ $t('chat.speech.language') }}
                 </div>
                 <VSelect
                   :model-value="speechLanguageStored"
@@ -708,7 +715,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
               <template v-if="speakerSupported">
                 <div>
                   <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1">
-                    Voice
+                    {{ $t('chat.speech.voice') }}
                   </div>
                   <VSelect
                     :model-value="speechVoiceUri ?? '__auto__'"
@@ -719,7 +726,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
 
                 <div>
                   <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between">
-                    <span>Rate</span>
+                    <span>{{ $t('chat.speech.rate') }}</span>
                     <span class="opacity-70">{{ speechRate.toFixed(2) }}×</span>
                   </div>
                   <input
@@ -735,7 +742,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
 
                 <div>
                   <div class="text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between">
-                    <span>Volume</span>
+                    <span>{{ $t('chat.speech.volume') }}</span>
                     <span class="opacity-70">{{ Math.round(speechVolume * 100) }}%</span>
                   </div>
                   <input
@@ -751,8 +758,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
               </template>
 
               <p class="text-xs opacity-60">
-                Saved locally. Used by the chat speaker now and any future
-                read-aloud feature.
+                {{ $t('chat.speech.savedLocally') }}
               </p>
             </div>
           </div>
@@ -770,15 +776,15 @@ watch(() => props.sessionId, async (newId, oldId) => {
             :loading="sending"
             @click="send"
           >
-            Send
+            {{ $t('chat.send') }}
           </VButton>
           <VButton
             v-if="sending"
             variant="danger"
-            title="Pause the chat (and all workers in this session)"
+            :title="$t('chat.pauseTooltip')"
             @click="pause"
           >
-            Pause
+            {{ $t('chat.pause') }}
           </VButton>
         </div>
       </footer>

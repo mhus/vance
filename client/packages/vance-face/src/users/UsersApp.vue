@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
   MarkdownView,
@@ -25,12 +26,15 @@ import {
   type UserDto,
 } from '@vance/generated';
 
+const { t } = useI18n();
 const usersState = useAdminUsers();
 const teamsState = useAdminTeams();
 const settingsState = useScopeSettings();
 const help = useHelp();
 const currentUsername = getUsername() ?? '';
 
+// SettingType labels are the wire-enum values themselves — they're
+// recognisable across UI languages, no translation needed.
 const settingTypeOptions = [
   { value: SettingType.STRING, label: 'STRING' },
   { value: SettingType.INT, label: 'INT' },
@@ -116,7 +120,11 @@ const isOwnAccount = computed(() =>
 const breadcrumbs = computed<string[]>(() => {
   const sel = selection.value;
   if (!sel) return [];
-  return [sel.kind === 'user' ? `User: ${sel.name}` : `Team: ${sel.name}`];
+  return [
+    sel.kind === 'user'
+      ? t('users.breadcrumbs.userPrefix', { name: sel.name })
+      : t('users.breadcrumbs.teamPrefix', { name: sel.name }),
+  ];
 });
 
 const combinedError = computed<string | null>(() =>
@@ -202,7 +210,7 @@ async function saveEditUserSetting(s: SettingDto): Promise<void> {
 
 async function deleteUserSetting(s: SettingDto): Promise<void> {
   if (selection.value?.kind !== 'user') return;
-  if (!confirm(`Delete setting "${s.key}"?`)) return;
+  if (!confirm(t('users.user.settings.confirmDelete', { key: s.key }))) return;
   try {
     await settingsState.remove('user', selection.value.name, s.key);
   } catch {
@@ -252,7 +260,7 @@ async function saveUser(): Promise<void> {
   formError.value = null;
   banner.value = null;
   if (userForm.status === 'DISABLED' && selection.value.name === currentUsername) {
-    formError.value = 'You cannot disable your own account.';
+    formError.value = t('users.user.cantDisableSelf');
     return;
   }
   try {
@@ -261,7 +269,7 @@ async function saveUser(): Promise<void> {
       email: userForm.email,
       status: userForm.status,
     });
-    banner.value = 'User saved.';
+    banner.value = t('users.user.saved');
   } catch {
     /* error in usersState.error */
   }
@@ -270,15 +278,15 @@ async function saveUser(): Promise<void> {
 async function deleteUser(): Promise<void> {
   if (selection.value?.kind !== 'user') return;
   if (selection.value.name === currentUsername) {
-    formError.value = 'You cannot delete your own account.';
+    formError.value = t('users.user.cantDeleteSelf');
     return;
   }
-  if (!confirm(`Delete user "${selection.value.name}"? Memberships in teams are not auto-cleaned.`)) return;
+  if (!confirm(t('users.user.confirmDelete', { name: selection.value.name }))) return;
   const name = selection.value.name;
   try {
     await usersState.remove(name);
     selection.value = null;
-    banner.value = `User "${name}" deleted.`;
+    banner.value = t('users.user.deleted', { name });
   } catch { /* state.error */ }
 }
 
@@ -292,18 +300,18 @@ async function saveTeam(): Promise<void> {
       enabled: teamForm.enabled,
       members: splitLines(teamForm.membersText),
     });
-    banner.value = 'Team saved.';
+    banner.value = t('users.team.saved');
   } catch { /* state.error */ }
 }
 
 async function deleteTeam(): Promise<void> {
   if (selection.value?.kind !== 'team') return;
-  if (!confirm(`Delete team "${selection.value.name}"?`)) return;
+  if (!confirm(t('users.team.confirmDelete', { name: selection.value.name }))) return;
   const name = selection.value.name;
   try {
     await teamsState.remove(name);
     selection.value = null;
-    banner.value = `Team "${name}" deleted.`;
+    banner.value = t('users.team.deleted', { name });
   } catch { /* state.error */ }
 }
 
@@ -322,11 +330,11 @@ async function submitCreateUser(): Promise<void> {
   newUserError.value = null;
   const name = newUserName.value.trim();
   if (!name || !NAME_PATTERN_USER.test(name)) {
-    newUserError.value = 'Name must be lower-case alphanumerics with optional ".", "-" or "_".';
+    newUserError.value = t('users.createUser.nameInvalid');
     return;
   }
   if (usersState.users.value.some(u => u.name === name)) {
-    newUserError.value = `A user named "${name}" already exists.`;
+    newUserError.value = t('users.createUser.alreadyExists', { name });
     return;
   }
   try {
@@ -338,9 +346,9 @@ async function submitCreateUser(): Promise<void> {
     });
     showCreateUser.value = false;
     selectUser(name);
-    banner.value = `User "${name}" created.`;
+    banner.value = t('users.createUser.created', { name });
   } catch (e) {
-    newUserError.value = e instanceof Error ? e.message : 'Failed to create user.';
+    newUserError.value = e instanceof Error ? e.message : t('users.createUser.createFailed');
   }
 }
 
@@ -356,11 +364,11 @@ async function submitCreateTeam(): Promise<void> {
   newTeamError.value = null;
   const name = newTeamName.value.trim();
   if (!name || !NAME_PATTERN_TEAM.test(name)) {
-    newTeamError.value = 'Name must be lower-case alphanumerics with optional "-" or "_".';
+    newTeamError.value = t('users.createTeam.nameInvalid');
     return;
   }
-  if (teamsState.teams.value.some(t => t.name === name)) {
-    newTeamError.value = `A team named "${name}" already exists.`;
+  if (teamsState.teams.value.some(team => team.name === name)) {
+    newTeamError.value = t('users.createTeam.alreadyExists', { name });
     return;
   }
   try {
@@ -371,9 +379,9 @@ async function submitCreateTeam(): Promise<void> {
     });
     showCreateTeam.value = false;
     selectTeam(name);
-    banner.value = `Team "${name}" created.`;
+    banner.value = t('users.createTeam.created', { name });
   } catch (e) {
-    newTeamError.value = e instanceof Error ? e.message : 'Failed to create team.';
+    newTeamError.value = e instanceof Error ? e.message : t('users.createTeam.createFailed');
   }
 }
 
@@ -391,19 +399,19 @@ async function submitSetPassword(): Promise<void> {
   passwordError.value = null;
   const pw = passwordPlaintext.value;
   if (!pw) {
-    passwordError.value = 'Password is required.';
+    passwordError.value = t('users.setPassword.required');
     return;
   }
   if (pw !== passwordPlaintextRepeat.value) {
-    passwordError.value = 'Passwords do not match.';
+    passwordError.value = t('users.setPassword.mismatch');
     return;
   }
   try {
     await usersState.setPassword(selection.value.name, pw);
     showSetPassword.value = false;
-    banner.value = `Password updated for "${selection.value.name}".`;
+    banner.value = t('users.setPassword.updated', { name: selection.value.name });
   } catch (e) {
-    passwordError.value = e instanceof Error ? e.message : 'Failed to set password.';
+    passwordError.value = e instanceof Error ? e.message : t('users.setPassword.failed');
   }
 }
 
@@ -424,17 +432,19 @@ function fmt(value: unknown): string {
 </script>
 
 <template>
-  <EditorShell title="Users & Teams" :breadcrumbs="breadcrumbs" wide-right-panel>
+  <EditorShell :title="$t('users.pageTitle')" :breadcrumbs="breadcrumbs" wide-right-panel>
     <!-- ─── Sidebar ─── -->
     <template #sidebar>
       <nav class="flex flex-col gap-3 p-2">
         <section>
           <div class="flex items-center justify-between px-2 mb-1">
-            <span class="text-xs uppercase opacity-50">Users</span>
-            <VButton variant="ghost" size="sm" @click="openCreateUser">+ User</VButton>
+            <span class="text-xs uppercase opacity-50">{{ $t('users.sidebar.usersTitle') }}</span>
+            <VButton variant="ghost" size="sm" @click="openCreateUser">
+              {{ $t('users.sidebar.addUser') }}
+            </VButton>
           </div>
           <div v-if="usersState.loading.value" class="px-2 text-xs opacity-60">
-            Loading…
+            {{ $t('users.loading') }}
           </div>
           <button
             v-for="u in usersState.users.value"
@@ -463,27 +473,35 @@ function fmt(value: unknown): string {
 
         <section>
           <div class="flex items-center justify-between px-2 mb-1">
-            <span class="text-xs uppercase opacity-50">Teams</span>
-            <VButton variant="ghost" size="sm" @click="openCreateTeam">+ Team</VButton>
+            <span class="text-xs uppercase opacity-50">{{ $t('users.sidebar.teamsTitle') }}</span>
+            <VButton variant="ghost" size="sm" @click="openCreateTeam">
+              {{ $t('users.sidebar.addTeam') }}
+            </VButton>
           </div>
           <div v-if="teamsState.loading.value" class="px-2 text-xs opacity-60">
-            Loading…
+            {{ $t('users.loading') }}
           </div>
           <button
-            v-for="t in teamsState.teams.value"
-            :key="'t-' + t.name"
+            v-for="team in teamsState.teams.value"
+            :key="'t-' + team.name"
             type="button"
             class="row-item"
-            :class="{ 'row-item--active': isSelectedTeam(t) }"
-            @click="selectTeam(t.name)"
+            :class="{ 'row-item--active': isSelectedTeam(team) }"
+            @click="selectTeam(team.name)"
           >
             <div class="flex items-center justify-between gap-2">
-              <span class="font-mono text-sm truncate">{{ t.name }}</span>
-              <span class="text-xs opacity-60">{{ t.members.length }} member<span v-if="t.members.length !== 1">s</span></span>
+              <span class="font-mono text-sm truncate">{{ team.name }}</span>
+              <span class="text-xs opacity-60">
+                {{
+                  team.members.length === 1
+                    ? $t('users.sidebar.memberCountSingular', { count: team.members.length })
+                    : $t('users.sidebar.memberCountPlural', { count: team.members.length })
+                }}
+              </span>
             </div>
             <div class="text-xs opacity-60 truncate">
-              {{ t.title }}
-              <span v-if="!t.enabled">· disabled</span>
+              {{ team.title }}
+              <span v-if="!team.enabled">{{ ' ' + $t('users.sidebar.disabledSuffix') }}</span>
             </div>
           </button>
         </section>
@@ -504,35 +522,36 @@ function fmt(value: unknown): string {
 
       <VEmptyState
         v-if="!selection"
-        headline="Pick a user or team"
-        body="Use the lists on the left, or create a new entry with + User / + Team."
+        :headline="$t('users.empty.headline')"
+        :body="$t('users.empty.body')"
       />
 
       <!-- ─── User detail ─── -->
       <template v-else-if="selection.kind === 'user'">
-        <div v-if="!selectedUser" class="opacity-70">Loading…</div>
+        <div v-if="!selectedUser" class="opacity-70">{{ $t('users.loading') }}</div>
         <template v-else>
-          <VCard :title="`User: ${selectedUser.name}`">
+          <VCard :title="$t('users.user.cardTitle', { name: selectedUser.name })">
             <VAlert v-if="isOwnAccount" variant="info" class="mb-3">
-              <span>This is your own account. Disable / delete are blocked here.</span>
+              <span>{{ $t('users.user.ownAccountNote') }}</span>
             </VAlert>
             <div class="flex flex-col gap-3">
               <VInput
                 :model-value="selectedUser.name"
-                label="Name"
+                :label="$t('users.user.nameLabel')"
                 disabled
-                help="User name is immutable."
+                :help="$t('users.user.nameImmutable')"
                 @update:model-value="() => {}"
               />
-              <VInput v-model="userForm.title" label="Title" />
-              <VInput v-model="userForm.email" label="Email" type="email" />
+              <VInput v-model="userForm.title" :label="$t('users.user.titleLabel')" />
+              <VInput v-model="userForm.email" :label="$t('users.user.emailLabel')" type="email" />
               <VSelect
                 v-model="userForm.status"
                 :options="userStatusOptions"
-                label="Status"
+                :label="$t('users.user.statusLabel')"
               />
               <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm opacity-80">
-                <dt class="opacity-60">Created</dt><dd>{{ fmt(selectedUser.createdAt) }}</dd>
+                <dt class="opacity-60">{{ $t('users.user.createdLabel') }}</dt>
+                <dd>{{ fmt(selectedUser.createdAt) }}</dd>
               </dl>
               <div class="flex justify-between">
                 <div class="flex gap-2">
@@ -541,30 +560,28 @@ function fmt(value: unknown): string {
                     :disabled="isOwnAccount"
                     :loading="usersState.busy.value"
                     @click="deleteUser"
-                  >Delete</VButton>
-                  <VButton variant="ghost" @click="openSetPassword">Set password…</VButton>
+                  >{{ $t('users.user.delete') }}</VButton>
+                  <VButton variant="ghost" @click="openSetPassword">
+                    {{ $t('users.user.setPassword') }}
+                  </VButton>
                 </div>
                 <VButton variant="primary" :loading="usersState.busy.value" @click="saveUser">
-                  Save
+                  {{ $t('users.user.save') }}
                 </VButton>
               </div>
             </div>
           </VCard>
 
           <!-- ─── User settings ─── -->
-          <VCard title="User settings">
+          <VCard :title="$t('users.user.settings.cardTitle')">
             <p class="text-xs opacity-70 mb-3">
-              Per-user settings live on the synthetic
-              <code>_user_{{ selectedUser.name }}</code> system project.
-              They take precedence over project and tenant settings in
-              the cascade — useful for per-user model preferences, API
-              keys, language defaults.
+              {{ $t('users.user.settings.intro', { name: selectedUser.name }) }}
             </p>
 
             <VEmptyState
               v-if="!settingsState.loading.value && settingsState.settings.value.length === 0"
-              headline="No settings"
-              body="Add a key/value below to override tenant defaults for this user."
+              :headline="$t('users.user.settings.noSettingsHeadline')"
+              :body="$t('users.user.settings.noSettingsBody')"
             />
 
             <ul class="flex flex-col divide-y divide-base-300">
@@ -581,62 +598,86 @@ function fmt(value: unknown): string {
                   <VInput
                     v-if="s.type !== SettingType.PASSWORD"
                     v-model="editValue"
-                    label="Value"
+                    :label="$t('users.user.settings.valueLabel')"
                   />
                   <VInput
                     v-else
                     v-model="editValue"
                     type="password"
-                    label="New password"
-                    placeholder="(leave empty to clear)"
+                    :label="$t('users.user.settings.newPasswordLabel')"
+                    :placeholder="$t('users.user.settings.passwordEmptyToClear')"
                   />
-                  <VTextarea v-model="editDescription" label="Description" :rows="2" />
+                  <VTextarea
+                    v-model="editDescription"
+                    :label="$t('users.user.settings.descriptionLabel')"
+                    :rows="2"
+                  />
                   <div class="flex justify-end gap-2 mt-1">
-                    <VButton variant="ghost" size="sm" @click="cancelEditUserSetting">Cancel</VButton>
+                    <VButton variant="ghost" size="sm" @click="cancelEditUserSetting">
+                      {{ $t('users.user.settings.cancel') }}
+                    </VButton>
                     <VButton
                       variant="primary"
                       size="sm"
                       :loading="settingsState.busy.value"
                       @click="saveEditUserSetting(s)"
-                    >Save</VButton>
+                    >{{ $t('users.user.settings.save') }}</VButton>
                   </div>
                 </template>
                 <template v-else>
                   <div class="text-sm break-words">
-                    <span class="opacity-70">{{ s.value ?? '(empty)' }}</span>
+                    <span class="opacity-70">{{ s.value ?? $t('users.user.settings.empty') }}</span>
                   </div>
                   <div v-if="s.description" class="text-xs opacity-60">{{ s.description }}</div>
                   <div class="flex justify-end gap-2 mt-1">
-                    <VButton variant="ghost" size="sm" @click="startEditUserSetting(s)">Edit</VButton>
-                    <VButton variant="ghost" size="sm" @click="deleteUserSetting(s)">Delete</VButton>
+                    <VButton variant="ghost" size="sm" @click="startEditUserSetting(s)">
+                      {{ $t('users.user.settings.edit') }}
+                    </VButton>
+                    <VButton variant="ghost" size="sm" @click="deleteUserSetting(s)">
+                      {{ $t('users.user.settings.delete') }}
+                    </VButton>
                   </div>
                 </template>
               </li>
             </ul>
 
             <div class="border-t border-base-300 pt-3 mt-2 flex flex-col gap-2">
-              <h4 class="text-xs uppercase opacity-60">Add setting</h4>
-              <VInput v-model="newSettingKey" label="Key" placeholder="e.g. ai.default.model" />
-              <VSelect v-model="newSettingType" label="Type" :options="settingTypeOptions" />
+              <h4 class="text-xs uppercase opacity-60">
+                {{ $t('users.user.settings.addTitle') }}
+              </h4>
+              <VInput
+                v-model="newSettingKey"
+                :label="$t('users.user.settings.keyLabel')"
+                :placeholder="$t('users.user.settings.keyPlaceholder')"
+              />
+              <VSelect
+                v-model="newSettingType"
+                :label="$t('users.user.settings.typeLabel')"
+                :options="settingTypeOptions"
+              />
               <VInput
                 v-if="newSettingType !== SettingType.PASSWORD"
                 v-model="newSettingValue"
-                label="Value"
+                :label="$t('users.user.settings.valueLabel')"
               />
               <VInput
                 v-else
                 v-model="newSettingValue"
                 type="password"
-                label="Password"
+                :label="$t('users.user.settings.passwordLabel')"
               />
-              <VTextarea v-model="newSettingDescription" label="Description (optional)" :rows="2" />
+              <VTextarea
+                v-model="newSettingDescription"
+                :label="$t('users.user.settings.descriptionOptional')"
+                :rows="2"
+              />
               <VButton
                 variant="primary"
                 size="sm"
                 :disabled="!newSettingKey.trim()"
                 :loading="settingsState.busy.value"
                 @click="addUserSetting"
-              >Add</VButton>
+              >{{ $t('users.user.settings.add') }}</VButton>
             </div>
           </VCard>
         </template>
@@ -644,39 +685,40 @@ function fmt(value: unknown): string {
 
       <!-- ─── Team detail ─── -->
       <template v-else-if="selection.kind === 'team'">
-        <div v-if="!selectedTeam" class="opacity-70">Loading…</div>
+        <div v-if="!selectedTeam" class="opacity-70">{{ $t('users.loading') }}</div>
         <template v-else>
-          <VCard :title="`Team: ${selectedTeam.name}`">
+          <VCard :title="$t('users.team.cardTitle', { name: selectedTeam.name })">
             <div class="flex flex-col gap-3">
               <VInput
                 :model-value="selectedTeam.name"
-                label="Name"
+                :label="$t('users.team.nameLabel')"
                 disabled
-                help="Team name is immutable."
+                :help="$t('users.team.nameImmutable')"
                 @update:model-value="() => {}"
               />
-              <VInput v-model="teamForm.title" label="Title" />
-              <VCheckbox v-model="teamForm.enabled" label="Enabled" />
+              <VInput v-model="teamForm.title" :label="$t('users.team.titleLabel')" />
+              <VCheckbox v-model="teamForm.enabled" :label="$t('users.team.enabledLabel')" />
               <VTextarea
                 v-model="teamForm.membersText"
-                label="Members"
-                placeholder="One username per line. Removing a line drops the member."
+                :label="$t('users.team.membersLabel')"
+                :placeholder="$t('users.team.membersPlaceholder')"
                 :rows="6"
-                :help="`${splitLines(teamForm.membersText).length} member${
-                  splitLines(teamForm.membersText).length === 1 ? '' : 's'
-                }`"
+                :help="splitLines(teamForm.membersText).length === 1
+                  ? $t('users.team.memberHelpSingular', { count: splitLines(teamForm.membersText).length })
+                  : $t('users.team.memberHelpPlural', { count: splitLines(teamForm.membersText).length })"
               />
               <dl class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm opacity-80">
-                <dt class="opacity-60">Created</dt><dd>{{ fmt(selectedTeam.createdAt) }}</dd>
+                <dt class="opacity-60">{{ $t('users.team.createdLabel') }}</dt>
+                <dd>{{ fmt(selectedTeam.createdAt) }}</dd>
               </dl>
               <div class="flex justify-between">
                 <VButton
                   variant="danger"
                   :loading="teamsState.busy.value"
                   @click="deleteTeam"
-                >Delete</VButton>
+                >{{ $t('users.team.delete') }}</VButton>
                 <VButton variant="primary" :loading="teamsState.busy.value" @click="saveTeam">
-                  Save
+                  {{ $t('users.team.save') }}
                 </VButton>
               </div>
             </div>
@@ -688,111 +730,119 @@ function fmt(value: unknown): string {
     <!-- ─── Right panel: help ─── -->
     <template #right-panel>
       <div class="p-4 flex flex-col gap-4">
-        <h3 class="text-xs uppercase opacity-60 mb-2">User & team admin</h3>
-        <div v-if="help.loading.value" class="text-xs opacity-60">Loading…</div>
+        <h3 class="text-xs uppercase opacity-60 mb-2">{{ $t('users.helpPanel.title') }}</h3>
+        <div v-if="help.loading.value" class="text-xs opacity-60">
+          {{ $t('users.helpPanel.loading') }}
+        </div>
         <div v-else-if="help.error.value" class="text-xs opacity-60">
-          Help unavailable: {{ help.error.value }}
+          {{ $t('users.helpPanel.unavailable', { error: help.error.value }) }}
         </div>
         <div v-else-if="!help.content.value" class="text-xs opacity-60">
-          No help content.
+          {{ $t('users.helpPanel.empty') }}
         </div>
         <MarkdownView v-else :source="help.content.value" />
       </div>
     </template>
 
     <!-- ─── Create-user modal ─── -->
-    <VModal v-model="showCreateUser" title="New user">
+    <VModal v-model="showCreateUser" :title="$t('users.createUser.title')">
       <div class="flex flex-col gap-3">
         <VAlert v-if="newUserError" variant="error">
           <span>{{ newUserError }}</span>
         </VAlert>
         <VInput
           v-model="newUserName"
-          label="Name"
+          :label="$t('users.createUser.nameLabel')"
           required
-          help="Lower-case alphanumerics with optional '.', '-' or '_'."
+          :help="$t('users.createUser.nameHelp')"
         />
-        <VInput v-model="newUserTitle" label="Title" />
-        <VInput v-model="newUserEmail" label="Email" type="email" />
+        <VInput v-model="newUserTitle" :label="$t('users.createUser.titleLabel')" />
+        <VInput v-model="newUserEmail" :label="$t('users.createUser.emailLabel')" type="email" />
         <VInput
           v-model="newUserPassword"
-          label="Password (optional)"
+          :label="$t('users.createUser.passwordLabel')"
           type="password"
-          help="Empty creates a passwordless account that cannot log in until you set one."
+          :help="$t('users.createUser.passwordHelp')"
         />
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showCreateUser = false">Cancel</VButton>
+          <VButton variant="ghost" @click="showCreateUser = false">
+            {{ $t('users.createUser.cancel') }}
+          </VButton>
           <VButton
             variant="primary"
             :loading="usersState.busy.value"
             @click="submitCreateUser"
-          >Create</VButton>
+          >{{ $t('users.createUser.create') }}</VButton>
         </div>
       </div>
     </VModal>
 
     <!-- ─── Create-team modal ─── -->
-    <VModal v-model="showCreateTeam" title="New team">
+    <VModal v-model="showCreateTeam" :title="$t('users.createTeam.title')">
       <div class="flex flex-col gap-3">
         <VAlert v-if="newTeamError" variant="error">
           <span>{{ newTeamError }}</span>
         </VAlert>
         <VInput
           v-model="newTeamName"
-          label="Name"
+          :label="$t('users.createTeam.nameLabel')"
           required
-          help="Lower-case alphanumerics with optional '-' or '_'."
+          :help="$t('users.createTeam.nameHelp')"
         />
-        <VInput v-model="newTeamTitle" label="Title" />
+        <VInput v-model="newTeamTitle" :label="$t('users.createTeam.titleLabel')" />
         <VTextarea
           v-model="newTeamMembersText"
-          label="Initial members"
-          placeholder="One username per line."
+          :label="$t('users.createTeam.membersLabel')"
+          :placeholder="$t('users.createTeam.membersPlaceholder')"
           :rows="4"
         />
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showCreateTeam = false">Cancel</VButton>
+          <VButton variant="ghost" @click="showCreateTeam = false">
+            {{ $t('users.createTeam.cancel') }}
+          </VButton>
           <VButton
             variant="primary"
             :loading="teamsState.busy.value"
             @click="submitCreateTeam"
-          >Create</VButton>
+          >{{ $t('users.createTeam.create') }}</VButton>
         </div>
       </div>
     </VModal>
 
     <!-- ─── Set-password modal ─── -->
-    <VModal v-model="showSetPassword" title="Set password">
+    <VModal v-model="showSetPassword" :title="$t('users.setPassword.title')">
       <div class="flex flex-col gap-3">
         <VAlert v-if="passwordError" variant="error">
           <span>{{ passwordError }}</span>
         </VAlert>
         <p class="text-sm opacity-80">
-          Replaces the password for
-          <strong>{{ selection?.kind === 'user' ? selection.name : '' }}</strong>.
-          Plaintext is hashed server-side.
+          {{ $t('users.setPassword.intro', {
+            name: selection?.kind === 'user' ? selection.name : '',
+          }) }}
         </p>
         <VInput
           v-model="passwordPlaintext"
-          label="New password"
+          :label="$t('users.setPassword.newPasswordLabel')"
           type="password"
           required
           autocomplete="new-password"
         />
         <VInput
           v-model="passwordPlaintextRepeat"
-          label="Repeat password"
+          :label="$t('users.setPassword.repeatPasswordLabel')"
           type="password"
           required
           autocomplete="new-password"
         />
         <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showSetPassword = false">Cancel</VButton>
+          <VButton variant="ghost" @click="showSetPassword = false">
+            {{ $t('users.setPassword.cancel') }}
+          </VButton>
           <VButton
             variant="primary"
             :loading="usersState.busy.value"
             @click="submitSetPassword"
-          >Set password</VButton>
+          >{{ $t('users.setPassword.submit') }}</VButton>
         </div>
       </div>
     </VModal>

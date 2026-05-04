@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   getSessionData,
   getTenantId,
@@ -8,7 +9,9 @@ import {
   isRefreshAlive,
   logout as serverLogout,
   refreshAccessCookie,
+  setActiveLanguage,
 } from '@vance/shared';
+import { setUiLocale } from '@/i18n';
 
 /**
  * A breadcrumb segment. Either a plain string label (immutable, no
@@ -64,17 +67,44 @@ function crumbOnClick(c: Crumb): (() => void) | null {
   return typeof c === 'string' ? null : (c.onClick ?? null);
 }
 
+const { t, locale } = useI18n();
+
 const tenantId = computed<string | null>(() => getTenantId());
 const username = computed<string | null>(() => getUsername());
 
 const defaultConnectionTooltip = computed<string>(() => {
   switch (props.connectionState) {
-    case 'connected': return 'Connected — live';
-    case 'occupied':  return 'Session is occupied by another connection';
-    case 'idle':      return 'Pick a session to start';
+    case 'connected': return t('header.connection.connected');
+    case 'occupied':  return t('header.connection.occupied');
+    case 'idle':      return t('header.connection.idle');
     default:          return '';
   }
 });
+
+/**
+ * Quick language switcher in the user-menu — flips the active locale
+ * for this tab without a server round-trip. Persistence-on-server
+ * stays in the profile page; this is the "I want to read this page in
+ * the other language right now" shortcut.
+ *
+ * Mirrors the value into sessionStorage via {@link setActiveLanguage}
+ * so other components that read {@code getActiveLanguage} pick it up.
+ */
+interface LanguageOption {
+  code: 'en' | 'de';
+  label: string;
+}
+const LANGUAGES: readonly LanguageOption[] = [
+  { code: 'en', label: 'English' },
+  { code: 'de', label: 'Deutsch' },
+];
+
+const currentLocale = computed<string>(() => String(locale.value));
+
+function selectLanguage(code: LanguageOption['code']): void {
+  setActiveLanguage(code);
+  setUiLocale(code);
+}
 
 async function logout(): Promise<void> {
   const tenant = getTenantId();
@@ -187,6 +217,19 @@ onBeforeUnmount(() => {
             tabindex="0"
             class="dropdown-content menu bg-base-100 rounded-box z-[1] mt-2 w-48 p-2 shadow"
           >
+            <li class="menu-title">
+              <span>{{ $t('header.menu.languageHeader') }}</span>
+            </li>
+            <li v-for="lang in LANGUAGES" :key="lang.code">
+              <a
+                :class="{ active: currentLocale === lang.code }"
+                @click="selectLanguage(lang.code)"
+              >
+                <span class="font-mono text-xs opacity-50 w-6">{{ lang.code.toUpperCase() }}</span>
+                <span>{{ lang.label }}</span>
+              </a>
+            </li>
+            <li class="divider-row"><div class="divider my-1" /></li>
             <li><a href="/profile.html">{{ $t('common.profile') }}</a></li>
             <li><a @click="logout">{{ $t('common.signOut') }}</a></li>
           </ul>

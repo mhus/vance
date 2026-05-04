@@ -26,6 +26,7 @@ import DocumentIcon from './DocumentIcon.vue';
 import ListView from './ListView.vue';
 import TreeView from './TreeView.vue';
 import MindmapView from './MindmapView.vue';
+import RecordsView from './RecordsView.vue';
 import {
   isListMime,
   parseList,
@@ -40,6 +41,13 @@ import {
   TreeCodecError,
   type TreeDocument,
 } from './treeItemsCodec';
+import {
+  isRecordsMime,
+  parseRecords,
+  serializeRecords,
+  RecordsCodecError,
+  type RecordsDocument,
+} from './recordsCodec';
 import type {
   DocumentSummary,
   DocumentUpdateRequest,
@@ -295,9 +303,10 @@ function fillEditor(): void {
   editInlineText.value = sel?.inlineText ?? '';
   editError.value = null;
   // Switching documents resets the editor mode to the kind-aware
-  // default — `mindmap` for mindmap documents, `list` for list,
-  // `tree` for tree, `raw` for everything else.
-  if (isListDocument.value) contentTab.value = 'list';
+  // default — `records` for records, `mindmap` for mindmap, `list`
+  // for list, `tree` for tree, `raw` for everything else.
+  if (isRecordsDocument.value) contentTab.value = 'records';
+  else if (isListDocument.value) contentTab.value = 'list';
   else if (isMindmapDocument.value) contentTab.value = 'mindmap';
   else if (isTreeDocument.value) contentTab.value = 'tree';
   else contentTab.value = 'raw';
@@ -311,7 +320,7 @@ function fillEditor(): void {
 // raw editor. The tab is in-memory only — switching does not hit the
 // server, the body just gets reparsed each time.
 
-type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap';
+type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap' | 'records';
 const contentTab = ref<ContentTab>('raw');
 
 const isListDocument = computed<boolean>(() => {
@@ -336,6 +345,13 @@ const isMindmapDocument = computed<boolean>(() => {
   if (!sel?.inline) return false;
   if ((sel.kind ?? '').toLowerCase() !== 'mindmap') return false;
   return isTreeMime(sel.mimeType);
+});
+
+const isRecordsDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'records') return false;
+  return isRecordsMime(sel.mimeType);
 });
 
 interface ParsedList {
@@ -378,6 +394,25 @@ const parsedTree = computed<ParsedTree>(() => {
   }
 });
 
+interface ParsedRecords {
+  doc: RecordsDocument | null;
+  error: string | null;
+}
+
+const parsedRecords = computed<ParsedRecords>(() => {
+  if (!isRecordsDocument.value) return { doc: null, error: null };
+  try {
+    const sel = docsState.selected.value;
+    const doc = parseRecords(editInlineText.value, sel?.mimeType ?? '');
+    return { doc, error: null };
+  } catch (e) {
+    if (e instanceof RecordsCodecError) {
+      return { doc: null, error: e.message };
+    }
+    return { doc: null, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
 /**
  * Bridge from the typed list editor back to the raw body. Each
  * mutation in {@code <ListView>} emits a fresh {@link ListDocument};
@@ -412,6 +447,24 @@ function onTreeChanged(updated: TreeDocument): void {
   if (!sel?.mimeType) return;
   try {
     editInlineText.value = serializeTree(updated, sel.mimeType);
+    editError.value = null;
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+/**
+ * Bridge from the typed records editor back to the raw body. Each
+ * mutation in {@code <RecordsView>} emits a fresh
+ * {@link RecordsDocument}; we serialise it in the document's mime
+ * type and overwrite the raw editor's text. The Save / Apply path
+ * then writes the canonical body unchanged.
+ */
+function onRecordsChanged(updated: RecordsDocument): void {
+  const sel = docsState.selected.value;
+  if (!sel?.mimeType) return;
+  try {
+    editInlineText.value = serializeRecords(updated, sel.mimeType);
     editError.value = null;
   } catch (e) {
     editError.value = e instanceof Error ? e.message : String(e);
@@ -550,6 +603,11 @@ function buildKindStub(kind: string, mime: string): string {
     if (isMd) return '---\nkind: mindmap\n---\n- root topic\n  - branch one\n  - branch two\n';
     if (isJson) return '{\n  "kind": "mindmap",\n  "items": [\n    { "text": "root topic", "children": [\n      { "text": "branch one", "children": [] },\n      { "text": "branch two", "children": [] }\n    ]}\n  ]\n}\n';
     if (isYaml) return 'kind: mindmap\nitems:\n  - text: root topic\n    children:\n      - text: branch one\n        children: []\n      - text: branch two\n        children: []\n';
+  }
+  if (kind === 'records') {
+    if (isMd) return '---\nkind: records\nschema: name, email, role\n---\n- Alice, alice@example.com, admin\n- Bob, bob@example.com, user\n';
+    if (isJson) return '{\n  "kind": "records",\n  "schema": ["name", "email", "role"],\n  "items": [\n    { "name": "Alice", "email": "alice@example.com", "role": "admin" },\n    { "name": "Bob", "email": "bob@example.com", "role": "user" }\n  ]\n}\n';
+    if (isYaml) return 'kind: records\nschema: [name, email, role]\nitems:\n  - name: Alice\n    email: alice@example.com\n    role: admin\n  - name: Bob\n    email: bob@example.com\n    role: user\n';
   }
   // Schema-less kinds — header only, body stays empty.
   if (isMd) return `---\nkind: ${kind}\n---\n`;
@@ -967,6 +1025,20 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isRecordsDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'records' }"
+                  @click="contentTab = 'records'"
+                >{{ $t('documents.detail.tabRecords') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
               <div v-else-if="isMindmapDocument" class="content-tabs">
                 <button
                   type="button"
@@ -1010,6 +1082,17 @@ const formatBytes = (n: number): string => {
                   v-else-if="parsedList.doc"
                   :doc="parsedList.doc"
                   @update:doc="onListChanged"
+                />
+              </template>
+
+              <template v-else-if="isRecordsDocument && contentTab === 'records'">
+                <VAlert v-if="parsedRecords.error" variant="warning">
+                  <span>{{ $t('documents.detail.recordsParseError', { message: parsedRecords.error }) }}</span>
+                </VAlert>
+                <RecordsView
+                  v-else-if="parsedRecords.doc"
+                  :doc="parsedRecords.doc"
+                  @update:doc="onRecordsChanged"
                 />
               </template>
 

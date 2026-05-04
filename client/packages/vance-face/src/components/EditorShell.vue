@@ -187,6 +187,7 @@ onBeforeUnmount(() => {
             tabindex="0"
             class="dropdown-content menu bg-base-100 rounded-box z-[1] mt-2 w-48 p-2 shadow"
           >
+            <li><a href="/profile.html">Profile</a></li>
             <li><a @click="logout">Sign out</a></li>
           </ul>
         </div>

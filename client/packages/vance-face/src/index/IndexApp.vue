@@ -5,6 +5,7 @@ import {
   clearRememberedLogin,
   getRememberedLogin,
   getSessionData,
+  hydrateActiveWebUiSettings,
   isAccessAlive,
   isRefreshAlive,
   login,
@@ -47,6 +48,11 @@ onMounted(async () => {
   }
 
   if (isAccessAlive()) {
+    // Already-alive cookie path (user opened a fresh tab while
+    // logged in) — mirror the webui.* settings into sessionStorage
+    // so editors that consult {@link getActiveLanguage} have a
+    // value before the user does anything.
+    hydrateActiveWebUiSettings();
     redirectAfterLogin();
     return;
   }
@@ -60,6 +66,10 @@ onMounted(async () => {
     autoLoginNotice.value = 'Sie wurden eingeloggt';
     const ok = await refreshAccessCookie();
     if (ok && isAccessAlive()) {
+      // Refresh re-issued the data cookie — push fresh settings
+      // into sessionStorage before the redirect mounts the next
+      // editor.
+      hydrateActiveWebUiSettings();
       window.setTimeout(redirectAfterLogin, 1000);
       return;
     }
@@ -81,6 +91,10 @@ async function onSubmit(): Promise<void> {
       username: trimmedUsername,
       password: password.value,
     });
+    // Cookies are now set; mirror the webui.* settings into the
+    // tab's sessionStorage so live reads (language, theme) come
+    // from there until the user changes them in profile.
+    hydrateActiveWebUiSettings();
     // Persist or clear the (tenant, username) hint based on the
     // checkbox. Only a successful login is allowed to write — a
     // failed attempt mustn't leak its inputs into localStorage.

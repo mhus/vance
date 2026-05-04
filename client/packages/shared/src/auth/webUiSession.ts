@@ -72,6 +72,79 @@ export function clearLocalSessionData(): void {
   document.cookie = `${DATA_COOKIE_NAME}=; Max-Age=0; Path=/; SameSite=Strict`;
 }
 
+// ──────────────── Active webui.* settings (session-scoped) ────────────────
+//
+// The data cookie carries the webui.* setting snapshot from the moment
+// of login. Mid-session edits (e.g. switching language on the profile
+// page) need to take effect without re-logging in. We mirror the
+// settings into sessionStorage and prefer that on every read; the
+// data cookie stays authoritative across tabs/sessions.
+
+/**
+ * sessionStorage key for the live language preference. Mirrors
+ * {@code webui.language} from the data cookie but updates immediately
+ * when the user switches language on the profile page.
+ */
+const SESSION_LANGUAGE_KEY = 'vance.session.webui.language';
+
+/**
+ * Mirror the webui.* settings carried in the data cookie into the tab's
+ * sessionStorage. Idempotent — call freely after login or after the
+ * data cookie has been refreshed. Existing sessionStorage values are
+ * overwritten so cross-tab cookie updates win on the next page load.
+ */
+export function hydrateActiveWebUiSettings(): void {
+  const s = getSessionData();
+  if (!s || !s.webUiSettings) return;
+  const language = s.webUiSettings['webui.language'];
+  if (language != null) {
+    window.sessionStorage.setItem(SESSION_LANGUAGE_KEY, language);
+  } else {
+    window.sessionStorage.removeItem(SESSION_LANGUAGE_KEY);
+  }
+}
+
+/**
+ * The active web-UI language. Reads the session-scoped override first
+ * (set by the profile page on every change) and falls back to the
+ * snapshot in the data cookie. Returns {@code null} when the user has
+ * not picked a language and the server has no default — callers
+ * should then defer to the browser's {@code navigator.language}.
+ */
+export function getActiveLanguage(): string | null {
+  const fromSession = window.sessionStorage.getItem(SESSION_LANGUAGE_KEY);
+  if (fromSession != null && fromSession.length > 0) return fromSession;
+  const fromCookie = getSessionData()?.webUiSettings?.['webui.language'];
+  return fromCookie && fromCookie.length > 0 ? fromCookie : null;
+}
+
+/**
+ * Update the active language for this tab. Called by the profile page
+ * after a successful {@code PUT /profile/settings/webui.language} so
+ * other components that read {@link getActiveLanguage} pick up the new
+ * value without the user having to re-log in.
+ *
+ * Pass {@code null} (or empty string) to fall back to the data-cookie
+ * value / browser default — this is the "use server default" choice.
+ */
+export function setActiveLanguage(value: string | null): void {
+  if (value == null || value.length === 0) {
+    window.sessionStorage.removeItem(SESSION_LANGUAGE_KEY);
+    return;
+  }
+  window.sessionStorage.setItem(SESSION_LANGUAGE_KEY, value);
+}
+
+/**
+ * Wipe the session-scoped UI overrides. Called from the logout path
+ * so a subsequent login on the same tab cleanly picks up the next
+ * user's settings instead of inheriting the previous session's
+ * language.
+ */
+export function clearActiveWebUiSettings(): void {
+  window.sessionStorage.removeItem(SESSION_LANGUAGE_KEY);
+}
+
 function readCookie(name: string): string | null {
   // No URL decode here — getSessionData decodes once after splitting,
   // so the raw value goes through a single decodeURIComponent pass

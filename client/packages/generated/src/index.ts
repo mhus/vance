@@ -6,6 +6,10 @@ export * from './access/AccessTokenResponse';
 export * from './access/RefreshTokenResponse';
 export * from './access/WebUiSessionData';
 
+export * from './profile/ProfileDto';
+export * from './profile/ProfileSettingWriteRequest';
+export * from './profile/ProfileUpdateRequest';
+
 export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';
 export * from './documents/DocumentFoldersResponse';

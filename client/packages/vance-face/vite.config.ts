@@ -13,6 +13,7 @@ const editorEntries = {
   tools: resolve(__dirname, 'tools.html'),
   insights: resolve(__dirname, 'insights.html'),
   users: resolve(__dirname, 'users.html'),
+  profile: resolve(__dirname, 'profile.html'),
 };
 
 export default defineConfig({

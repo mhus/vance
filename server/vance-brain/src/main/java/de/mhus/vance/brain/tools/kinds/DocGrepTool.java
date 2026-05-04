@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -55,6 +56,8 @@ public class DocGrepTool implements Tool {
                 + "Pattern is Java regex; literal substring is fine.";
     }
     @Override public boolean primary() { return true; }
+    @Override public Set<String> labels() { return Set.of("text-search", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

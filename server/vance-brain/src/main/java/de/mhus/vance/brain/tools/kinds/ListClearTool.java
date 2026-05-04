@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.kind.ListDocument;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +31,8 @@ public class ListClearTool implements Tool {
     }
 
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("kind-list", "eddie"); }
+
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

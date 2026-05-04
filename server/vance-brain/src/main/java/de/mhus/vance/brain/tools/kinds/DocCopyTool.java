@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -18,10 +19,13 @@ import org.springframework.stereotype.Component;
  * source's pending buffered changes (if any) are flushed first so
  * the copy reflects the latest in-flight state, not stale disk
  * content.
+ *
+ * <p>Cross-project copy is a separate {@code cross_doc_copy} tool —
+ * different blast radius, different default availability.
  */
 @Component
 @RequiredArgsConstructor
-public class DocSaveAsTool implements Tool {
+public class DocCopyTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -39,23 +43,21 @@ public class DocSaveAsTool implements Tool {
 
     private final KindToolSupport support;
 
-    @Override public String name() { return "doc_save_as"; }
+    @Override public String name() { return "doc_copy"; }
     @Override public String description() {
-        return "Copy a document to a new path. The source remains; the copy gets its own id. "
-                + "Pending in-flight changes on the source are flushed before the copy is made.";
+        return "Copy a document to a new path within the same project. The source remains; the "
+                + "copy gets its own id. Pending in-flight changes on the source are flushed first.";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("doc-management", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         DocumentDocument source = support.loadDocument(params, ctx);
         support.requireInline(source);
-        // Flush any pending writes so the copy sees the latest content.
         support.buffer().flush(ctx.processId(), source.getId());
-        // Re-read so we get the (now-flushed) inline body via the
-        // buffer's projection — defensive against the rare case the
-        // flush was a no-op but the in-memory body still differs.
         DocumentDocument fresh = support.buffer().read(ctx.processId(), source.getId());
         if (fresh == null) throw new ToolException("Source document disappeared during copy");
         String newPath = KindToolSupport.requireString(params, "newPath");
@@ -80,7 +82,7 @@ public class DocSaveAsTool implements Tool {
         out.put("sourcePath", fresh.getPath());
         out.put("newId", copy.getId());
         out.put("newPath", copy.getPath());
-        out.put("kind", copy.getKind());
+        if (copy.getKind() != null) out.put("kind", copy.getKind());
         return out;
     }
 }

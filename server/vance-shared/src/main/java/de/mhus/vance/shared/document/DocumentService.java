@@ -578,6 +578,11 @@ public class DocumentService {
     /**
      * Removes the document and its storage blob (soft-delete on storage).
      * No-op if the id is unknown.
+     *
+     * <p>This is the <b>hard</b> delete path — the document row is gone.
+     * For the recoverable LLM-tool delete, use {@link #trash(String)}
+     * instead, which moves the document to {@value #TRASH_FOLDER_PREFIX}
+     * inside the same project.
      */
     public void delete(String id) {
         repository.findById(id).ifPresent(doc -> {
@@ -593,6 +598,117 @@ public class DocumentService {
             repository.delete(doc);
             log.info("Deleted document id='{}' path='{}'", id, doc.getPath());
         });
+    }
+
+    /** Trash-folder convention: every project has a virtual
+     *  {@code _vance/bin/} folder that holds soft-deleted documents.
+     *  Names there always carry a UUID prefix so collisions with
+     *  active documents (or earlier trash entries with the same
+     *  basename) are impossible. */
+    public static final String TRASH_FOLDER_PREFIX = "_vance/bin/";
+
+    /** Header key used by {@link #trash(String)} to remember where a
+     *  trashed document lived before, so {@link #restore} can put it
+     *  back without the caller having to track that separately. */
+    public static final String TRASH_ORIGINAL_PATH_HEADER = "_trash-original-path";
+
+    /**
+     * Soft-delete a document by moving it into the project's trash
+     * folder ({@value #TRASH_FOLDER_PREFIX}). The document keeps its
+     * id, body and metadata; only {@link DocumentDocument#getPath()}
+     * and {@link DocumentDocument#getName()} change. The original
+     * path is recorded in the document's header map under
+     * {@link #TRASH_ORIGINAL_PATH_HEADER} so {@link #restore} can
+     * find it.
+     *
+     * <p>Trashing an already-trashed document is a no-op (returns the
+     * existing trash entry unchanged); the trash path is collision-
+     * free by construction (UUID prefix), so a second trash would
+     * just rewrite the same row.
+     *
+     * @return the document at its new trash path.
+     * @throws IllegalArgumentException if the id is unknown.
+     */
+    public DocumentDocument trash(String id) {
+        DocumentDocument doc = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+        if (isTrash(doc.getPath())) {
+            log.debug("Document id='{}' is already in trash at path='{}'", id, doc.getPath());
+            return doc;
+        }
+        String originalPath = doc.getPath();
+        String basename = extractName(originalPath);
+        String uuid = java.util.UUID.randomUUID().toString();
+        String trashPath = TRASH_FOLDER_PREFIX + uuid + "_" + basename;
+
+        // Remember the original path so restore() can reconstruct.
+        // headers is a LinkedHashMap by Lombok default; mutate in
+        // place is fine — applyHeader doesn't run for path-only
+        // updates.
+        java.util.Map<String, String> headers = doc.getHeaders();
+        if (headers == null) {
+            headers = new java.util.LinkedHashMap<>();
+            doc.setHeaders(headers);
+        }
+        headers.put(TRASH_ORIGINAL_PATH_HEADER, originalPath);
+
+        doc.setPath(trashPath);
+        doc.setName(extractName(trashPath));
+        DocumentDocument saved = repository.save(doc);
+        log.info("Trashed document id='{}' from path='{}' to '{}'", id, originalPath, trashPath);
+        return saved;
+    }
+
+    /**
+     * Restore a trashed document. When {@code newPath} is
+     * {@code null}, restoration uses the
+     * {@link #TRASH_ORIGINAL_PATH_HEADER} value the trash step
+     * recorded; pass an explicit path to override.
+     *
+     * <p>If the destination path is occupied (the original location
+     * has been re-used since the trash), the call throws
+     * {@link DocumentAlreadyExistsException}; the caller can pick a
+     * different path and retry.
+     *
+     * @return the restored document.
+     * @throws IllegalArgumentException when the id is unknown or when
+     *         the document isn't in the trash folder.
+     */
+    public DocumentDocument restore(String id, @Nullable String newPath) {
+        DocumentDocument doc = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
+        if (!isTrash(doc.getPath())) {
+            throw new IllegalArgumentException(
+                    "Document id='" + id + "' is not in the trash folder (path='"
+                            + doc.getPath() + "')");
+        }
+        java.util.Map<String, String> headers = doc.getHeaders();
+        String original = headers != null ? headers.get(TRASH_ORIGINAL_PATH_HEADER) : null;
+        String target = newPath != null && !newPath.isBlank()
+                ? normalizePath(newPath)
+                : (original != null ? normalizePath(original) : null);
+        if (target == null) {
+            throw new IllegalArgumentException(
+                    "Cannot restore: no original path recorded and no newPath given for id='" + id + "'");
+        }
+        if (repository.existsByTenantIdAndProjectIdAndPath(
+                doc.getTenantId(), doc.getProjectId(), target)) {
+            throw new DocumentAlreadyExistsException(
+                    "Cannot restore to '" + target + "' — a document already lives there. "
+                            + "Pass a different newPath.");
+        }
+        doc.setPath(target);
+        doc.setName(extractName(target));
+        if (headers != null) headers.remove(TRASH_ORIGINAL_PATH_HEADER);
+        DocumentDocument saved = repository.save(doc);
+        log.info("Restored document id='{}' from trash to path='{}'", id, target);
+        return saved;
+    }
+
+    /** {@code true} when the path lives under the project's trash
+     *  folder. Useful for filtering trash out of regular listings. */
+    public static boolean isTrash(@Nullable String path) {
+        return path != null && path.startsWith(TRASH_FOLDER_PREFIX);
     }
 
     /**

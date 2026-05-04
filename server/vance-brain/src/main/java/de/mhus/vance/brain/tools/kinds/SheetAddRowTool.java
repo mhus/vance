@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.kind.SheetDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,8 @@ public class SheetAddRowTool implements Tool {
         return "Append one row to the sheet's visible row count. Cells in the new row are empty until set via sheet_set_cell.";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

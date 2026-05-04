@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +39,8 @@ public class RecordsUpdateFieldTool implements Tool {
         return "Update one cell in a `kind: records` document — set `field` of `rowIndex` to `value`.";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("kind-records", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

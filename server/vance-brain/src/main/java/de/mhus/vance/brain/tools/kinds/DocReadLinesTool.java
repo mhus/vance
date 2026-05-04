@@ -7,6 +7,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -47,6 +48,8 @@ public class DocReadLinesTool implements Tool {
                 + "large bodies without loading the whole thing into context.";
     }
     @Override public boolean primary() { return true; }
+    @Override public Set<String> labels() { return Set.of("text-search", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

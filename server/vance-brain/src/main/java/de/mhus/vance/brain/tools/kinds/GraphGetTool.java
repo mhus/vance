@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +31,8 @@ public class GraphGetTool implements Tool {
         return "Read a `kind: graph` document. Returns the directed flag, all nodes (id/label/color/position), and all edges (source/target/label/color).";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

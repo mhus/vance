@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -66,6 +67,8 @@ public class DocGrepPathTool implements Tool {
                 + "list of files containing at least one match. Capped at " + MAX_LIMIT + " matches.";
     }
     @Override public boolean primary() { return true; }
+    @Override public Set<String> labels() { return Set.of("text-search", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

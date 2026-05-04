@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +39,8 @@ public class ListAppendTool implements Tool {
     }
 
     @Override public boolean primary() { return true; }
+    @Override public Set<String> labels() { return Set.of("kind-list", "eddie"); }
+
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -43,6 +44,8 @@ public class SheetSetCellTool implements Tool {
                 + "Replaces the cell if it already exists; creates it otherwise.";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

@@ -10,6 +10,7 @@ import de.mhus.vance.shared.document.kind.SheetDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -37,6 +38,8 @@ public class SheetGetCellTool implements Tool {
                 + "Returns the cell's data (value or formula string), color and background if set.";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

@@ -7,6 +7,7 @@ import de.mhus.vance.shared.document.DocumentDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -52,6 +53,8 @@ public class DocReplaceLinesTool implements Tool {
                 + "constraints of doc_edit.";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("text-edit", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -52,6 +53,8 @@ public class DocCreateKindTool implements Tool {
                 + "Returns the new document id. Pass `body` to override the default stub.";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("doc-management", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

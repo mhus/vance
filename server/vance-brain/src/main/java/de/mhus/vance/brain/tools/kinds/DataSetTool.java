@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.kind.DataDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -39,6 +40,8 @@ public class DataSetTool implements Tool {
                 + "Creates intermediate objects on demand. Use '-' as the last token to append to an array.";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("kind-data", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

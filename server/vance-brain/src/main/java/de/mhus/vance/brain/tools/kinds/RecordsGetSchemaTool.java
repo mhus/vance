@@ -8,6 +8,7 @@ import de.mhus.vance.shared.document.kind.RecordsDocument;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,8 @@ public class RecordsGetSchemaTool implements Tool {
         return "Return the schema (ordered list of field names) of a `kind: records` document.";
     }
     @Override public boolean primary() { return false; }
+    @Override public Set<String> labels() { return Set.of("kind-records", "eddie"); }
+
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
     @Override

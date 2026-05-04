@@ -28,6 +28,7 @@ function iconForKind(kind: string | null | undefined): string | null {
   if (!kind) return null;
   switch (kind.toLowerCase()) {
     case 'list': return '📋';
+    case 'tree': return '🌳';
     case 'text': return '📝';
     case 'mindmap': return '🧠';
     case 'graph': return '🕸️';

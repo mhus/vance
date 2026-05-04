@@ -74,9 +74,17 @@ public class EddieContext {
 
     /**
      * Resolves the project for a tool call. Order: explicit param →
-     * active slot → fail. Validates existence and SYSTEM-kind. Returns
-     * the {@link ProjectDocument} so callers can pass {@code id},
+     * active slot → ctx.projectId() (session's project) → fail.
+     * Validates existence and SYSTEM-kind. Returns the
+     * {@link ProjectDocument} so callers can pass {@code id},
      * {@code name}, etc. straight into downstream services.
+     *
+     * <p>The {@code ctx.projectId()} fallback covers Arthur/Ford
+     * sessions that are bound to a single project: there is no need
+     * for the LLM to call {@code project_switch} first. Eddie hub
+     * sessions live in a SYSTEM project, so the fallback would
+     * resolve {@code _user_<X>} — but the SYSTEM-rejection branch
+     * below catches that and the user gets the right error.
      *
      * @param params       tool params, may carry a {@code projectId}
      *                     entry (string, project name)
@@ -91,11 +99,14 @@ public class EddieContext {
         String explicit = paramString(params, "projectId");
         String name = explicit != null
                 ? explicit
-                : readActiveProject(ctx).orElseThrow(() ->
-                        new ToolException(
-                                "No project specified and no active project set. "
-                                        + "Use project_switch(name) first, or pass "
-                                        + "the projectId parameter explicitly."));
+                : readActiveProject(ctx)
+                        .or(() -> Optional.ofNullable(ctx.projectId())
+                                .filter(s -> !s.isBlank()))
+                        .orElseThrow(() ->
+                                new ToolException(
+                                        "No project specified and no active project set. "
+                                                + "Use project_switch(name) first, or pass "
+                                                + "the projectId parameter explicitly."));
         ProjectDocument project = projectService.findByTenantAndName(ctx.tenantId(), name)
                 .orElseThrow(() -> new ToolException(
                         "Project '" + name + "' not found in tenant '"

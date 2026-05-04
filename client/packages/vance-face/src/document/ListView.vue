@@ -301,7 +301,6 @@ function autoGrow(event: Event): void {
           :title="t('documents.listEditor.dragHandle')"
           aria-hidden="true"
         >⠿</span>
-        <span class="bullet" aria-hidden="true">•</span>
         <textarea
           v-if="editingIndex === idx"
           :ref="(el) => { if (el) inputRefs[idx] = el as HTMLTextAreaElement; }"
@@ -350,7 +349,7 @@ function autoGrow(event: Event): void {
 }
 .row {
   display: grid;
-  grid-template-columns: 1rem 1.25rem 1fr auto;
+  grid-template-columns: 1rem 1fr auto;
   gap: 0.5rem;
   align-items: start;
   padding: 0.4rem 0.25rem;
@@ -371,12 +370,6 @@ function autoGrow(event: Event): void {
 }
 .drag-handle:hover { opacity: 0.7; }
 .drag-handle:active { cursor: grabbing; }
-.bullet {
-  opacity: 0.5;
-  text-align: center;
-  user-select: none;
-  padding-top: 0.15rem;
-}
 /* Source row visual while it's being dragged. */
 .row--ghost {
   opacity: 0.35;

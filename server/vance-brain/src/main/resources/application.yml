@@ -9,6 +9,15 @@ spring:
       enabled: true
       max-file-size: 50MB
       max-request-size: 50MB
+  jackson:
+    # Jackson 3 (Spring Boot 4) flips FAIL_ON_NULL_FOR_PRIMITIVES on by
+    # default — Jackson 2 had it off. Several DTOs (e.g. AccessTokenRequest
+    # with its boolean primitives) were written under the Jackson-2
+    # assumption and JSON bodies sending {"requestRefreshToken": null}
+    # now trigger HTTP 400. Restoring the previous default keeps
+    # existing clients working.
+    deserialization:
+      fail-on-null-for-primitives: false
 
 server:
   port: 9990

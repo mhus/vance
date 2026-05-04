@@ -1,1 +1,1 @@
-{"version":3,"file":"ChatView.vue.d.ts","sourceRoot":"","sources":["../../../src/chat/ChatView.vue"],"names":[],"mappings":"AA2xBA,OAAO,EACL,KAAK,UAAU,EAwBhB,MAAM,eAAe,CAAC;AAkBvB,KAAK,WAAW,GAAG;IACjB,MAAM,EAAE,UAAU,CAAC;IACnB,SAAS,EAAE,MAAM,CAAC;CACnB,CAAC;;;;;;AAkrCF,wBAOG"}
+{"version":3,"file":"ChatView.vue.d.ts","sourceRoot":"","sources":["../../../src/chat/ChatView.vue"],"names":[],"mappings":"AAkyBA,OAAO,EACL,KAAK,UAAU,EAwBhB,MAAM,eAAe,CAAC;AAkBvB,KAAK,WAAW,GAAG;IACjB,MAAM,EAAE,UAAU,CAAC;IACnB,SAAS,EAAE,MAAM,CAAC;CACnB,CAAC;;;;;;AA6rCF,wBAOG"}

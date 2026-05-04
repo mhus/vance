@@ -20,10 +20,10 @@ declare const __VLS_component: import("vue").DefineComponent<Props, {}, {}, {}, 
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
     onClick?: ((event: MouseEvent) => any) | undefined;
 }>, {
+    disabled: boolean;
     type: "button" | "submit" | "reset";
     variant: Variant;
     loading: boolean;
-    disabled: boolean;
     block: boolean;
     size: "sm" | "md";
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;

@@ -1,0 +1,186 @@
+import { computed } from 'vue';
+const props = defineProps();
+/** kind → glyph. Lower-case match; unknown returns null. */
+function iconForKind(kind) {
+    if (!kind)
+        return null;
+    switch (kind.toLowerCase()) {
+        case 'list': return '📋';
+        case 'text': return '📝';
+        case 'mindmap': return '🧠';
+        case 'graph': return '🕸️';
+        case 'sheet': return '📊';
+        case 'data': return '🗃️';
+        case 'records': return '📇';
+        case 'schema': return '🧬';
+        default: return null;
+    }
+}
+/** mime type prefix/exact match → glyph. */
+function iconForMime(mime) {
+    if (!mime)
+        return null;
+    const m = mime.toLowerCase();
+    if (m === 'application/pdf')
+        return '📕';
+    if (m === 'text/markdown')
+        return '📝';
+    if (m === 'application/json')
+        return '🧾';
+    if (m === 'application/yaml' || m === 'application/x-yaml' || m === 'text/yaml')
+        return '🧾';
+    if (m === 'application/xml' || m === 'text/xml')
+        return '🧾';
+    if (m === 'text/html')
+        return '🌐';
+    if (m === 'text/css')
+        return '🎨';
+    if (m === 'application/sql')
+        return '🗄️';
+    if (m.startsWith('image/'))
+        return '🖼️';
+    if (m.startsWith('video/'))
+        return '🎬';
+    if (m.startsWith('audio/'))
+        return '🎵';
+    if (m.startsWith('text/'))
+        return '📄';
+    if (m === 'application/zip' || m === 'application/x-tar' || m === 'application/gzip')
+        return '📦';
+    if (m.startsWith('application/javascript')
+        || m.startsWith('application/typescript')
+        || m === 'text/x-python'
+        || m === 'application/x-sh'
+        || m === 'text/x-r'
+        || m === 'text/x-java-source')
+        return '⌨️';
+    return null;
+}
+/** Map well-known extensions to a glyph; complementary to mime. */
+function iconForExtension(path) {
+    if (!path)
+        return null;
+    const dot = path.lastIndexOf('.');
+    if (dot < 0 || dot === path.length - 1)
+        return null;
+    const ext = path.slice(dot + 1).toLowerCase();
+    switch (ext) {
+        case 'md':
+        case 'markdown':
+            return '📝';
+        case 'json':
+        case 'yaml':
+        case 'yml':
+        case 'xml':
+        case 'toml':
+            return '🧾';
+        case 'pdf': return '📕';
+        case 'png':
+        case 'jpg':
+        case 'jpeg':
+        case 'gif':
+        case 'webp':
+        case 'svg':
+        case 'bmp':
+            return '🖼️';
+        case 'mp4':
+        case 'webm':
+        case 'mov':
+        case 'mkv':
+            return '🎬';
+        case 'mp3':
+        case 'wav':
+        case 'flac':
+        case 'ogg':
+            return '🎵';
+        case 'zip':
+        case 'tar':
+        case 'gz':
+        case '7z':
+        case 'rar':
+            return '📦';
+        case 'js':
+        case 'mjs':
+        case 'ts':
+        case 'tsx':
+        case 'jsx':
+        case 'py':
+        case 'sh':
+        case 'java':
+        case 'kt':
+        case 'go':
+        case 'rs':
+        case 'c':
+        case 'cpp':
+        case 'h':
+        case 'r':
+            return '⌨️';
+        case 'html':
+        case 'htm':
+            return '🌐';
+        case 'css':
+        case 'scss':
+        case 'sass':
+            return '🎨';
+        case 'sql':
+            return '🗄️';
+        case 'csv':
+        case 'tsv':
+            return '📊';
+        case 'txt':
+        case 'log':
+            return '📄';
+        default:
+            return null;
+    }
+}
+const glyph = computed(() => {
+    return iconForKind(props.kind)
+        ?? iconForMime(props.mimeType)
+        ?? iconForExtension(props.path)
+        ?? '📄';
+});
+/**
+ * Tooltip describing the resolution path — useful hover info for a
+ * dense list, but never the only thing the user sees (the glyph
+ * itself carries the meaning).
+ */
+const tooltip = computed(() => {
+    const parts = [];
+    if (props.kind)
+        parts.push(`kind: ${props.kind}`);
+    if (props.mimeType)
+        parts.push(props.mimeType);
+    return parts.join(' · ');
+});
+debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
+const __VLS_ctx = {};
+let __VLS_components;
+let __VLS_directives;
+// CSS variable injection 
+// CSS variable injection end 
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+    ...{ class: "doc-icon" },
+    title: (__VLS_ctx.tooltip || undefined),
+    'aria-hidden': "true",
+});
+(__VLS_ctx.glyph);
+/** @type {__VLS_StyleScopedClasses['doc-icon']} */ ;
+var __VLS_dollars;
+const __VLS_self = (await import('vue')).defineComponent({
+    setup() {
+        return {
+            glyph: glyph,
+            tooltip: tooltip,
+        };
+    },
+    __typeProps: {},
+});
+export default (await import('vue')).defineComponent({
+    setup() {
+        return {};
+    },
+    __typeProps: {},
+});
+; /* PartiallyEnd: #4569/main.vue */
+//# sourceMappingURL=DocumentIcon.vue.js.map

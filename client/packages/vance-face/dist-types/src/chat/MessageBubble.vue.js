@@ -1,8 +1,9 @@
 import { computed } from 'vue';
 import { MarkdownView } from '@components/index';
+import { uiTheme, paletteStyle } from '@composables/useUiTheme';
 const props = withDefaults(defineProps(), {
     worker: false,
-    lineMaxChars: 140,
+    lineMaxChars: () => uiTheme.lineMaxChars,
 });
 const isUser = computed(() => props.role === 'USER');
 const isAssistant = computed(() => props.role === 'ASSISTANT');
@@ -27,10 +28,26 @@ const formatted = computed(() => {
         return '';
     return d.toLocaleTimeString();
 });
+// Inline-style overrides from env. Resolved at module load (Vite
+// inlines `import.meta.env` at build time), so these don't need to
+// be reactive.
+const workerStyle = computed(() => paletteStyle(uiTheme.worker));
+const userStyle = computed(() => paletteStyle(uiTheme.user));
+const assistantStyle = computed(() => paletteStyle(uiTheme.assistant));
+const systemStyle = computed(() => paletteStyle(uiTheme.system));
+const bubbleStyle = computed(() => {
+    if (isUser.value)
+        return userStyle.value;
+    if (isAssistant.value)
+        return assistantStyle.value;
+    if (isSystem.value)
+        return systemStyle.value;
+    return null;
+});
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
     worker: false,
-    lineMaxChars: 140,
+    lineMaxChars: () => uiTheme.lineMaxChars,
 });
 const __VLS_ctx = {};
 let __VLS_components;
@@ -40,7 +57,9 @@ if (__VLS_ctx.worker) {
         ...{ class: "flex justify-start" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "max-w-[85%] text-xs text-success/80 truncate flex items-center gap-2" },
+        ...{ class: "max-w-[85%] text-xs truncate flex items-center gap-2" },
+        ...{ class: (__VLS_ctx.workerStyle ? '' : 'text-success/80') },
+        ...{ style: (__VLS_ctx.workerStyle ?? undefined) },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "font-mono opacity-70" },
@@ -65,10 +84,11 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm" },
         ...{ class: ([
-                __VLS_ctx.isUser ? 'bg-primary text-primary-content' : '',
-                __VLS_ctx.isAssistant ? 'bg-base-100 border border-base-300' : '',
-                __VLS_ctx.isSystem ? 'bg-base-200 text-sm italic opacity-80' : '',
+                __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isUser ? 'bg-primary text-primary-content' : ''),
+                __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isAssistant ? 'bg-base-100 border border-base-300' : ''),
+                __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isSystem ? 'bg-base-200 text-sm italic opacity-80' : ''),
             ]) },
+        ...{ style: (__VLS_ctx.bubbleStyle ?? undefined) },
     });
     if (!__VLS_ctx.isUser) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -102,7 +122,6 @@ else {
 /** @type {__VLS_StyleScopedClasses['justify-start']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-w-[85%]']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-success/80']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
@@ -146,6 +165,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             isSystem: isSystem,
             workerText: workerText,
             formatted: formatted,
+            workerStyle: workerStyle,
+            bubbleStyle: bubbleStyle,
         };
     },
     __typeProps: {},

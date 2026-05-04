@@ -24,6 +24,7 @@ import { consumeDocumentDraft, documentContentUrl } from '@vance/shared';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
 import ListView from './ListView.vue';
+import TreeView from './TreeView.vue';
 import {
   isListMime,
   parseList,
@@ -31,6 +32,13 @@ import {
   ListCodecError,
   type ListDocument,
 } from './listItemsCodec';
+import {
+  isTreeMime,
+  parseTree,
+  serializeTree,
+  TreeCodecError,
+  type TreeDocument,
+} from './treeItemsCodec';
 import type {
   DocumentSummary,
   DocumentUpdateRequest,
@@ -286,10 +294,11 @@ function fillEditor(): void {
   editInlineText.value = sel?.inlineText ?? '';
   editError.value = null;
   // Switching documents resets the editor mode to the kind-aware
-  // default — `list` for list documents, `raw` for everything else.
-  // Without this a list-doc → text-doc switch would leave the user
-  // staring at an empty list view.
-  contentTab.value = isListDocument.value ? 'list' : 'raw';
+  // default — `list` for list documents, `tree` for tree documents,
+  // `raw` for everything else.
+  if (isListDocument.value) contentTab.value = 'list';
+  else if (isTreeDocument.value) contentTab.value = 'tree';
+  else contentTab.value = 'raw';
 }
 
 // ─── List-document tab toggle ───────────────────────────────────────
@@ -300,7 +309,7 @@ function fillEditor(): void {
 // raw editor. The tab is in-memory only — switching does not hit the
 // server, the body just gets reparsed each time.
 
-type ContentTab = 'raw' | 'list';
+type ContentTab = 'raw' | 'list' | 'tree';
 const contentTab = ref<ContentTab>('raw');
 
 const isListDocument = computed<boolean>(() => {
@@ -308,6 +317,13 @@ const isListDocument = computed<boolean>(() => {
   if (!sel?.inline) return false;
   if ((sel.kind ?? '').toLowerCase() !== 'list') return false;
   return isListMime(sel.mimeType);
+});
+
+const isTreeDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'tree') return false;
+  return isTreeMime(sel.mimeType);
 });
 
 interface ParsedList {
@@ -323,6 +339,25 @@ const parsedList = computed<ParsedList>(() => {
     return { doc, error: null };
   } catch (e) {
     if (e instanceof ListCodecError) {
+      return { doc: null, error: e.message };
+    }
+    return { doc: null, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+interface ParsedTree {
+  doc: TreeDocument | null;
+  error: string | null;
+}
+
+const parsedTree = computed<ParsedTree>(() => {
+  if (!isTreeDocument.value) return { doc: null, error: null };
+  try {
+    const sel = docsState.selected.value;
+    const doc = parseTree(editInlineText.value, sel?.mimeType ?? '');
+    return { doc, error: null };
+  } catch (e) {
+    if (e instanceof TreeCodecError) {
       return { doc: null, error: e.message };
     }
     return { doc: null, error: e instanceof Error ? e.message : String(e) };
@@ -345,6 +380,24 @@ function onListChanged(updated: ListDocument): void {
   if (!sel?.mimeType) return;
   try {
     editInlineText.value = serializeList(updated, sel.mimeType);
+    editError.value = null;
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+/**
+ * Same bridge as {@link onListChanged} but for tree documents.
+ * The {@code <TreeView>} component owns the editor state internally
+ * and emits a fresh {@link TreeDocument} on every mutation; we
+ * re-serialise into the document's mime type so the existing Save
+ * pathway picks up the canonical form unchanged.
+ */
+function onTreeChanged(updated: TreeDocument): void {
+  const sel = docsState.selected.value;
+  if (!sel?.mimeType) return;
+  try {
+    editInlineText.value = serializeTree(updated, sel.mimeType);
     editError.value = null;
   } catch (e) {
     editError.value = e instanceof Error ? e.message : String(e);
@@ -878,7 +931,7 @@ const formatBytes = (n: number): string => {
               :help="$t('documents.detail.pathHelp')"
             />
             <template v-if="docsState.selected.value.inline">
-              <!-- Tab bar appears only for list-kind documents in a
+              <!-- Tab bar appears for list/tree-kind documents in a
                    supported mime type. Other docs jump straight to
                    the raw editor as before. -->
               <div v-if="isListDocument" class="content-tabs">
@@ -895,6 +948,20 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isTreeDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'tree' }"
+                  @click="contentTab = 'tree'"
+                >{{ $t('documents.detail.tabTree') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
 
               <template v-if="isListDocument && contentTab === 'list'">
                 <VAlert v-if="parsedList.error" variant="warning">
@@ -904,6 +971,17 @@ const formatBytes = (n: number): string => {
                   v-else-if="parsedList.doc"
                   :doc="parsedList.doc"
                   @update:doc="onListChanged"
+                />
+              </template>
+
+              <template v-else-if="isTreeDocument && contentTab === 'tree'">
+                <VAlert v-if="parsedTree.error" variant="warning">
+                  <span>{{ $t('documents.detail.treeParseError', { message: parsedTree.error }) }}</span>
+                </VAlert>
+                <TreeView
+                  v-else-if="parsedTree.doc"
+                  :doc="parsedTree.doc"
+                  @update:doc="onTreeChanged"
                 />
               </template>
 

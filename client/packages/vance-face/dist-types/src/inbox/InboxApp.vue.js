@@ -1,9 +1,11 @@
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { EditorShell, MarkdownView, VAlert, VButton, VCard, VEmptyState, VInput, VModal, VSelect, VTextarea, } from '@/components';
 import { useInbox } from '@/composables/useInbox';
 import { useTeams } from '@/composables/useTeams';
 import { getUsername, setDocumentDraft } from '@vance/shared';
 import { AnswerOutcome, Criticality, InboxItemStatus, InboxItemType, } from '@vance/generated';
+const { t } = useI18n();
 const inbox = useInbox();
 const teamsState = useTeams();
 const currentUser = getUsername() ?? 'unknown';
@@ -212,7 +214,7 @@ async function toDocument() {
     }
     // Same-tab navigation — the Document editor mounts fresh and
     // consumes the draft on its first onMounted.
-    window.location.href = '/document-editor.html?createDraft=1';
+    window.location.href = '/documents.html?createDraft=1';
 }
 async function dismissItem() {
     const sel = inbox.selected.value;
@@ -273,14 +275,14 @@ function decisionOptions(item) {
     return [];
 }
 const breadcrumbs = computed(() => {
-    const c = ['Inbox'];
+    const c = [t('inbox.breadcrumbInbox')];
     const s = selection.value;
     if (s.kind === 'inbox' && s.tag)
         c.push('#' + s.tag);
     if (s.kind === 'archive')
-        c.push('Archive');
+        c.push(t('inbox.breadcrumbArchive'));
     if (s.kind === 'team')
-        c.push('Team: ' + s.teamName);
+        c.push(t('inbox.breadcrumbTeam', { team: s.teamName }));
     if (inbox.selected.value)
         c.push(shortPreview(inbox.selected.value.title, 40));
     return c;
@@ -298,11 +300,11 @@ const __VLS_0 = {}.EditorShell;
 /** @type {[typeof __VLS_components.EditorShell, typeof __VLS_components.EditorShell, ]} */ ;
 // @ts-ignore
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-    title: "Inbox",
+    title: (__VLS_ctx.$t('inbox.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
 }));
 const __VLS_2 = __VLS_1({
-    title: "Inbox",
+    title: (__VLS_ctx.$t('inbox.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 var __VLS_4 = {};
@@ -324,6 +326,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElement
     ...{ class: ({ 'sidebar-item--active': __VLS_ctx.isSelected({ kind: 'inbox', tag: null }) }) },
     type: "button",
 });
+(__VLS_ctx.$t('inbox.sidebar.inbox'));
 for (const [tag] of __VLS_getVForSourceType((__VLS_ctx.inbox.tags.value))) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
@@ -342,18 +345,22 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElement
     ...{ class: ({ 'sidebar-item--active': __VLS_ctx.isSelected({ kind: 'archive' }) }) },
     type: "button",
 });
+(__VLS_ctx.$t('inbox.sidebar.archive'));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "mt-3 text-xs uppercase opacity-50 px-2" },
 });
+(__VLS_ctx.$t('inbox.sidebar.teamInbox'));
 if (__VLS_ctx.teamsState.loading.value) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "px-2 text-xs opacity-60" },
     });
+    (__VLS_ctx.$t('inbox.sidebar.loadingTeams'));
 }
 else if (__VLS_ctx.teamsState.teams.value.length === 0) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "px-2 text-xs opacity-60" },
     });
+    (__VLS_ctx.$t('inbox.sidebar.noTeams'));
 }
 for (const [team] of __VLS_getVForSourceType((__VLS_ctx.teamsState.teams.value))) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
@@ -392,12 +399,12 @@ if (!__VLS_ctx.inbox.loading.value && __VLS_ctx.inbox.items.value.length === 0) 
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_10 = __VLS_asFunctionalComponent(__VLS_9, new __VLS_9({
-        headline: "Empty",
-        body: "No items in this view.",
+        headline: (__VLS_ctx.$t('inbox.list.emptyHeadline')),
+        body: (__VLS_ctx.$t('inbox.list.emptyBody')),
     }));
     const __VLS_11 = __VLS_10({
-        headline: "Empty",
-        body: "No items in this view.",
+        headline: (__VLS_ctx.$t('inbox.list.emptyHeadline')),
+        body: (__VLS_ctx.$t('inbox.list.emptyBody')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_10));
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
@@ -418,7 +425,7 @@ for (const [item] of __VLS_getVForSourceType((__VLS_ctx.inbox.items.value))) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "font-medium truncate" },
     });
-    (item.title || '(no title)');
+    (item.title || __VLS_ctx.$t('inbox.list.noTitle'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "text-xs opacity-60 shrink-0" },
     });
@@ -467,12 +474,12 @@ if (!__VLS_ctx.inbox.selected.value) {
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_14 = __VLS_asFunctionalComponent(__VLS_13, new __VLS_13({
-        headline: "Pick an item",
-        body: "Select an inbox item from the list to see its content and reply.",
+        headline: (__VLS_ctx.$t('inbox.detail.pickAnItem')),
+        body: (__VLS_ctx.$t('inbox.detail.pickAnItemBody')),
     }));
     const __VLS_15 = __VLS_14({
-        headline: "Pick an item",
-        body: "Select an inbox item from the list to see its content and reply.",
+        headline: (__VLS_ctx.$t('inbox.detail.pickAnItem')),
+        body: (__VLS_ctx.$t('inbox.detail.pickAnItemBody')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_14));
 }
 else {
@@ -490,7 +497,7 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "font-semibold truncate" },
         });
-        (__VLS_ctx.inbox.selected.value.title || '(no title)');
+        (__VLS_ctx.inbox.selected.value.title || __VLS_ctx.$t('inbox.detail.noTitle'));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "text-xs opacity-60" },
         });
@@ -500,14 +507,14 @@ else {
         ...{ class: "text-xs opacity-60 flex flex-wrap gap-3 mb-3" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-    (__VLS_ctx.inbox.selected.value.originatorUserId);
+    (__VLS_ctx.$t('inbox.detail.fromLabel', { user: __VLS_ctx.inbox.selected.value.originatorUserId }));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-    (__VLS_ctx.inbox.selected.value.assignedToUserId);
+    (__VLS_ctx.$t('inbox.detail.toLabel', { user: __VLS_ctx.inbox.selected.value.assignedToUserId }));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-    (__VLS_ctx.inbox.selected.value.status);
+    (__VLS_ctx.$t('inbox.detail.statusLabel', { status: __VLS_ctx.inbox.selected.value.status }));
     if (__VLS_ctx.inbox.selected.value.criticality !== __VLS_ctx.Criticality.NORMAL) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-        (__VLS_ctx.inbox.selected.value.criticality);
+        (__VLS_ctx.$t('inbox.detail.criticalityLabel', { criticality: __VLS_ctx.inbox.selected.value.criticality }));
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.formatTimestamp(__VLS_ctx.inbox.selected.value.createdAt));
@@ -526,6 +533,7 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "opacity-60 italic" },
         });
+        (__VLS_ctx.$t('inbox.detail.noBody'));
     }
     if (__VLS_ctx.inbox.selected.value.payload && Object.keys(__VLS_ctx.inbox.selected.value.payload).length > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -535,6 +543,7 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.summary, __VLS_intrinsicElements.summary)({
             ...{ class: "cursor-pointer opacity-70" },
         });
+        (__VLS_ctx.$t('inbox.detail.payload'));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
             ...{ class: "text-xs bg-base-200 p-2 rounded mt-1 overflow-auto" },
         });
@@ -547,21 +556,23 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "opacity-70 text-xs mb-1" },
         });
+        (__VLS_ctx.$t('inbox.detail.answer'));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
-        (__VLS_ctx.inbox.selected.value.answer.outcome);
+        (__VLS_ctx.$t('inbox.detail.answerOutcome', { outcome: __VLS_ctx.inbox.selected.value.answer.outcome }));
         if (__VLS_ctx.inbox.selected.value.answer.value) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+            (__VLS_ctx.$t('inbox.detail.answerValue'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.code, __VLS_intrinsicElements.code)({});
             (JSON.stringify(__VLS_ctx.inbox.selected.value.answer.value));
         }
         if (__VLS_ctx.inbox.selected.value.answer.reason) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
-            (__VLS_ctx.inbox.selected.value.answer.reason);
+            (__VLS_ctx.$t('inbox.detail.answerReason', { reason: __VLS_ctx.inbox.selected.value.answer.reason }));
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "opacity-60 text-xs mt-1" },
         });
-        (__VLS_ctx.inbox.selected.value.answer.answeredBy);
+        (__VLS_ctx.$t('inbox.detail.answerBy', { user: __VLS_ctx.inbox.selected.value.answer.answeredBy }));
     }
     {
         const { actions: __VLS_thisSlot } = __VLS_20.slots;
@@ -595,6 +606,7 @@ else {
                 }
             };
             __VLS_28.slots.default;
+            (__VLS_ctx.$t('inbox.actions.yes'));
             var __VLS_28;
             const __VLS_33 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -622,6 +634,7 @@ else {
                 }
             };
             __VLS_36.slots.default;
+            (__VLS_ctx.$t('inbox.actions.no'));
             var __VLS_36;
         }
         else if (__VLS_ctx.isAsk(__VLS_ctx.inbox.selected.value) && __VLS_ctx.inbox.selected.value.type === __VLS_ctx.InboxItemType.DECISION) {
@@ -663,6 +676,7 @@ else {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                     ...{ class: "text-xs opacity-60" },
                 });
+                (__VLS_ctx.$t('inbox.actions.noOptionsHint'));
             }
         }
         else if (__VLS_ctx.isAsk(__VLS_ctx.inbox.selected.value) && __VLS_ctx.inbox.selected.value.type === __VLS_ctx.InboxItemType.FEEDBACK) {
@@ -706,6 +720,7 @@ else {
                 onClick: (__VLS_ctx.submitFeedback)
             };
             __VLS_56.slots.default;
+            (__VLS_ctx.$t('inbox.actions.send'));
             var __VLS_56;
         }
         if (__VLS_ctx.isAsk(__VLS_ctx.inbox.selected.value)) {
@@ -714,13 +729,13 @@ else {
             // @ts-ignore
             const __VLS_62 = __VLS_asFunctionalComponent(__VLS_61, new __VLS_61({
                 modelValue: (__VLS_ctx.reasonText),
-                placeholder: "Reason (optional, used by 'insufficient' / 'undecidable')",
+                placeholder: (__VLS_ctx.$t('inbox.actions.reasonPlaceholder')),
                 disabled: (__VLS_ctx.submitting),
                 ...{ class: "flex-1 min-w-[14rem]" },
             }));
             const __VLS_63 = __VLS_62({
                 modelValue: (__VLS_ctx.reasonText),
-                placeholder: "Reason (optional, used by 'insufficient' / 'undecidable')",
+                placeholder: (__VLS_ctx.$t('inbox.actions.reasonPlaceholder')),
                 disabled: (__VLS_ctx.submitting),
                 ...{ class: "flex-1 min-w-[14rem]" },
             }, ...__VLS_functionalComponentArgsRest(__VLS_62));
@@ -744,6 +759,7 @@ else {
                 onClick: (__VLS_ctx.submitInsufficientInfo)
             };
             __VLS_68.slots.default;
+            (__VLS_ctx.$t('inbox.actions.insufficientInfo'));
             var __VLS_68;
             const __VLS_73 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -765,6 +781,7 @@ else {
                 onClick: (__VLS_ctx.submitUndecidable)
             };
             __VLS_76.slots.default;
+            (__VLS_ctx.$t('inbox.actions.undecidable'));
             var __VLS_76;
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
@@ -790,6 +807,7 @@ else {
             onClick: (__VLS_ctx.toDocument)
         };
         __VLS_84.slots.default;
+        (__VLS_ctx.$t('inbox.actions.toDocument'));
         var __VLS_84;
         const __VLS_89 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -811,6 +829,7 @@ else {
             onClick: (__VLS_ctx.openDelegateModal)
         };
         __VLS_92.slots.default;
+        (__VLS_ctx.$t('inbox.actions.delegate'));
         var __VLS_92;
         if (__VLS_ctx.inbox.selected.value.status !== __VLS_ctx.InboxItemStatus.DISMISSED) {
             const __VLS_97 = {}.VButton;
@@ -833,6 +852,7 @@ else {
                 onClick: (__VLS_ctx.dismissItem)
             };
             __VLS_100.slots.default;
+            (__VLS_ctx.$t('inbox.actions.dismiss'));
             var __VLS_100;
         }
         if (__VLS_ctx.inbox.selected.value.status === __VLS_ctx.InboxItemStatus.ARCHIVED) {
@@ -856,6 +876,7 @@ else {
                 onClick: (__VLS_ctx.unarchiveItem)
             };
             __VLS_108.slots.default;
+            (__VLS_ctx.$t('inbox.actions.unarchive'));
             var __VLS_108;
         }
         else {
@@ -879,6 +900,7 @@ else {
                 onClick: (__VLS_ctx.archiveItem)
             };
             __VLS_116.slots.default;
+            (__VLS_ctx.$t('inbox.actions.archive'));
             var __VLS_116;
         }
     }
@@ -889,18 +911,19 @@ const __VLS_121 = {}.VModal;
 // @ts-ignore
 const __VLS_122 = __VLS_asFunctionalComponent(__VLS_121, new __VLS_121({
     modelValue: (__VLS_ctx.delegateOpen),
-    title: "Delegate to teammate",
+    title: (__VLS_ctx.$t('inbox.delegate.title')),
     closeOnBackdrop: (!__VLS_ctx.delegating),
 }));
 const __VLS_123 = __VLS_122({
     modelValue: (__VLS_ctx.delegateOpen),
-    title: "Delegate to teammate",
+    title: (__VLS_ctx.$t('inbox.delegate.title')),
     closeOnBackdrop: (!__VLS_ctx.delegating),
 }, ...__VLS_functionalComponentArgsRest(__VLS_122));
 __VLS_124.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
     ...{ class: "text-sm opacity-80 mb-3" },
 });
+(__VLS_ctx.$t('inbox.delegate.body'));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex flex-col gap-3" },
 });
@@ -910,13 +933,13 @@ const __VLS_125 = {}.VSelect;
 const __VLS_126 = __VLS_asFunctionalComponent(__VLS_125, new __VLS_125({
     modelValue: (__VLS_ctx.delegateTarget),
     options: (__VLS_ctx.delegateOptions),
-    label: "Recipient",
+    label: (__VLS_ctx.$t('inbox.delegate.recipient')),
     disabled: (__VLS_ctx.delegating || __VLS_ctx.delegateOptions.length === 0),
 }));
 const __VLS_127 = __VLS_126({
     modelValue: (__VLS_ctx.delegateTarget),
     options: (__VLS_ctx.delegateOptions),
-    label: "Recipient",
+    label: (__VLS_ctx.$t('inbox.delegate.recipient')),
     disabled: (__VLS_ctx.delegating || __VLS_ctx.delegateOptions.length === 0),
 }, ...__VLS_functionalComponentArgsRest(__VLS_126));
 const __VLS_129 = {}.VTextarea;
@@ -924,13 +947,13 @@ const __VLS_129 = {}.VTextarea;
 // @ts-ignore
 const __VLS_130 = __VLS_asFunctionalComponent(__VLS_129, new __VLS_129({
     modelValue: (__VLS_ctx.delegateNote),
-    label: "Note (optional)",
+    label: (__VLS_ctx.$t('inbox.delegate.note')),
     rows: (3),
     disabled: (__VLS_ctx.delegating),
 }));
 const __VLS_131 = __VLS_130({
     modelValue: (__VLS_ctx.delegateNote),
-    label: "Note (optional)",
+    label: (__VLS_ctx.$t('inbox.delegate.note')),
     rows: (3),
     disabled: (__VLS_ctx.delegating),
 }, ...__VLS_functionalComponentArgsRest(__VLS_130));
@@ -958,6 +981,7 @@ const __VLS_131 = __VLS_130({
         }
     };
     __VLS_136.slots.default;
+    (__VLS_ctx.$t('inbox.delegate.cancel'));
     var __VLS_136;
     const __VLS_141 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -981,6 +1005,7 @@ const __VLS_131 = __VLS_130({
         onClick: (__VLS_ctx.confirmDelegate)
     };
     __VLS_144.slots.default;
+    (__VLS_ctx.$t('inbox.delegate.confirm'));
     var __VLS_144;
 }
 var __VLS_124;

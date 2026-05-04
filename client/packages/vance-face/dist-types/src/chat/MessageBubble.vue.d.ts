@@ -16,7 +16,8 @@ type __VLS_Props = {
     worker?: boolean;
     /** Optional sub-process name shown as a prefix in worker mode. */
     processName?: string;
-    /** Max characters for worker truncation (0 = disabled). */
+    /** Max characters for worker truncation (0 = disabled). Defaults to
+     *  the env-configured {@code uiTheme.lineMaxChars}. */
     lineMaxChars?: number;
 };
 declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{}>, {

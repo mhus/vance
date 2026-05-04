@@ -1,7 +1,9 @@
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { VAlert, VEmptyState } from '@/components';
 import ProcessTreeBlock from './ProcessTreeBlock.vue';
 import { brainFetch } from '@vance/shared';
+const { t } = useI18n();
 const props = defineProps();
 const emit = defineEmits();
 const bundles = ref(new Map());
@@ -28,7 +30,7 @@ async function loadAll(list) {
         bundles.value = map;
     }
     catch (e) {
-        error.value = e instanceof Error ? e.message : 'Failed to load timeline data.';
+        error.value = e instanceof Error ? e.message : t('insights.timeline.failedToLoad');
     }
     finally {
         loading.value = false;
@@ -85,8 +87,10 @@ function eventsFor(bundle) {
         kind: 'spawn',
         at: instantStr(bundle.process.createdAt),
         id: 'spawn',
-        label: `Process spawned · engine ${bundle.process.thinkEngine}`,
-        tag: bundle.process.recipeName ? `recipe ${bundle.process.recipeName}` : undefined,
+        label: t('insights.timeline.eventSpawn', { engine: bundle.process.thinkEngine }),
+        tag: bundle.process.recipeName
+            ? t('insights.timeline.tagRecipe', { name: bundle.process.recipeName })
+            : undefined,
         detail: JSON.stringify({
             name: bundle.process.name,
             engine: bundle.process.thinkEngine,
@@ -102,8 +106,11 @@ function eventsFor(bundle) {
             kind: 'chat',
             at: instantStr(m.createdAt),
             id: 'chat:' + m.id,
-            label: `${m.role}: ${truncate(m.content, 90)}`,
-            tag: m.archivedInMemoryId ? 'archived' : undefined,
+            label: t('insights.timeline.eventChat', {
+                role: m.role,
+                preview: truncate(m.content, 90),
+            }),
+            tag: m.archivedInMemoryId ? t('insights.timeline.tagArchived') : undefined,
             detail: m.content,
             detailIsMarkdown: true,
         });
@@ -113,8 +120,10 @@ function eventsFor(bundle) {
             kind: 'memory',
             at: instantStr(mem.createdAt),
             id: 'mem:' + mem.id,
-            label: `memory · ${mem.kind}${mem.title ? ' · ' + mem.title : ''}`,
-            tag: mem.supersededByMemoryId ? 'superseded' : undefined,
+            label: mem.title
+                ? t('insights.timeline.eventMemoryWithTitle', { kind: mem.kind, title: mem.title })
+                : t('insights.timeline.eventMemory', { kind: mem.kind }),
+            tag: mem.supersededByMemoryId ? t('insights.timeline.tagSuperseded') : undefined,
             detail: mem.content,
             detailIsMarkdown: true,
         });
@@ -124,7 +133,10 @@ function eventsFor(bundle) {
             kind: 'marvin',
             at: instantStr(n.createdAt),
             id: 'mn:' + n.id,
-            label: `node · ${n.taskKind} · ${truncate(n.goal || '(no goal)', 80)}`,
+            label: t('insights.timeline.eventMarvinNode', {
+                taskKind: n.taskKind,
+                goal: truncate(n.goal || t('insights.timeline.noGoal'), 80),
+            }),
             tag: n.status,
             detail: JSON.stringify({
                 goal: n.goal,
@@ -143,8 +155,8 @@ function eventsFor(bundle) {
             kind: 'pending',
             at: instantStr(m.at),
             id: 'pm:' + idx,
-            label: `pending · ${m.type}`,
-            tag: 'queued',
+            label: t('insights.timeline.eventPending', { type: m.type }),
+            tag: t('insights.timeline.tagQueued'),
             detail: JSON.stringify(m.payload ?? {}, null, 2),
             detailIsMarkdown: false,
         });
@@ -223,18 +235,19 @@ if (__VLS_ctx.loading) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "opacity-70" },
     });
+    (__VLS_ctx.$t('insights.timeline.loading'));
 }
 else if (__VLS_ctx.processes.length === 0) {
     const __VLS_4 = {}.VEmptyState;
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
-        headline: "No processes yet",
-        body: "This session has no think-processes — nothing to time-line.",
+        headline: (__VLS_ctx.$t('insights.timeline.noProcessesHeadline')),
+        body: (__VLS_ctx.$t('insights.timeline.noProcessesBody')),
     }));
     const __VLS_6 = __VLS_5({
-        headline: "No processes yet",
-        body: "This session has no think-processes — nothing to time-line.",
+        headline: (__VLS_ctx.$t('insights.timeline.noProcessesHeadline')),
+        body: (__VLS_ctx.$t('insights.timeline.noProcessesBody')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_5));
 }
 else {

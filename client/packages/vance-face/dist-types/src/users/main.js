@@ -1,7 +1,8 @@
 import { createApp } from 'vue';
 import { ensureAuthenticated } from '@vance/shared';
 import UsersApp from './UsersApp.vue';
+import { i18n } from '@/i18n';
 import '@/style/app.css';
 await ensureAuthenticated();
-createApp(UsersApp).mount('#app');
+createApp(UsersApp).use(i18n).mount('#app');
 //# sourceMappingURL=main.js.map

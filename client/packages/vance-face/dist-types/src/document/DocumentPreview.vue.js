@@ -138,12 +138,13 @@ export default await (async () => {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "text-sm opacity-70" },
             });
+            (__VLS_ctx.$t('documents.preview.pdfRendering'));
         }
         if (__VLS_ctx.pdfError) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "text-sm text-error" },
             });
-            (__VLS_ctx.pdfError);
+            (__VLS_ctx.$t('documents.preview.pdfError', { error: __VLS_ctx.pdfError }));
         }
         for (const [canvas, idx] of __VLS_getVForSourceType((__VLS_ctx.pdfPages))) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
@@ -157,6 +158,7 @@ export default await (async () => {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-sm opacity-70 italic" },
         });
+        (__VLS_ctx.$t('documents.preview.binary'));
     }
     /** @type {__VLS_StyleScopedClasses['document-preview']} */ ;
     /** @type {__VLS_StyleScopedClasses['flex']} */ ;

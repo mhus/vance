@@ -1,10 +1,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { WebSocketRequestError, AUTO_LANGUAGE, SUPPORTED_SPEECH_LANGUAGES, getSpeechLanguage, resolveSpeechLanguage, setSpeechLanguage, buildUtterance, getSpeakerEnabled, getSpeechRate, getSpeechVoiceURI, getSpeechVolume, isSpeechSynthesisSupported, listVoices, onVoicesChanged, setSpeakerEnabled, setSpeechRate, setSpeechVoiceURI, setSpeechVolume, stripMarkdown, MIN_RATE, MAX_RATE, MIN_VOLUME, MAX_VOLUME, } from '@vance/shared';
 import { useChatHistory } from '@composables/useChatHistory';
 import { VAlert, VButton, VSelect, VTextarea } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
 import ProgressFeed from './ProgressFeed.vue';
 const props = defineProps();
+const { t } = useI18n();
 const emit = defineEmits();
 const PROGRESS_CAP = 50;
 const { messages: history, loading: historyLoading, error: historyError, load, reset } = useChatHistory();
@@ -33,8 +35,8 @@ const sendError = ref(null);
 const multiline = ref(false);
 const composerRows = computed(() => (multiline.value ? 4 : 1));
 const composerPlaceholder = computed(() => multiline.value
-    ? 'Type a message — Ctrl/Cmd+Enter to send, Enter for newline'
-    : 'Type a message — Enter to send, Shift+Enter for newline');
+    ? t('chat.composerPlaceholderMulti')
+    : t('chat.composerPlaceholderSingle'));
 /** Sequence for optimistic temp message ids — never collides with server ids. */
 let optimisticSeq = 0;
 const OPTIMISTIC_PREFIX = 'tmp_';
@@ -75,7 +77,7 @@ function initSpeechRecognition() {
         // Common errors: 'not-allowed' (permission denied), 'no-speech',
         // 'audio-capture' (no mic), 'network'. Show the raw code; the
         // browser localises the user-facing prompt for `not-allowed`.
-        speechError.value = `Microphone error: ${event.error}`;
+        speechError.value = t('chat.speech.microphoneError', { error: event.error });
         speechRecording.value = false;
     };
     instance.onend = () => {
@@ -101,7 +103,7 @@ function toggleSpeech() {
         // start() throws if the recognizer is already running — usually
         // a desync with our own state. Reset and surface.
         speechRecording.value = false;
-        speechError.value = e instanceof Error ? e.message : 'Failed to start recording.';
+        speechError.value = e instanceof Error ? e.message : t('chat.speech.recordStartFailed');
     }
 }
 function onLanguageChanged(code) {
@@ -157,10 +159,10 @@ function refreshVoiceOptions() {
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name));
     voiceOptions.value = [
-        { value: '__auto__', label: 'Auto (default voice for language)' },
+        { value: '__auto__', label: t('chat.speech.voiceAuto') },
         ...matching.map((v) => ({
             value: v.voiceURI,
-            label: `${v.name} (${v.lang})${v.default ? ' · default' : ''}`,
+            label: `${v.name} (${v.lang})${v.default ? t('chat.speech.voiceDefaultSuffix') : ''}`,
         })),
     ];
 }
@@ -409,7 +411,7 @@ async function send() {
             sendError.value = `${e.message} (code ${e.errorCode})`;
         }
         else {
-            sendError.value = e instanceof Error ? e.message : 'Failed to send.';
+            sendError.value = e instanceof Error ? e.message : t('chat.failedToSend');
         }
     }
     finally {
@@ -538,6 +540,7 @@ const __VLS_7 = {
     }
 };
 __VLS_3.slots.default;
+(__VLS_ctx.$t('chat.backToSessions'));
 var __VLS_3;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1 min-w-0 truncate" },
@@ -558,6 +561,7 @@ if (__VLS_ctx.historyLoading) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "text-sm opacity-60" },
     });
+    (__VLS_ctx.$t('chat.historyLoading'));
 }
 else if (__VLS_ctx.historyError) {
     const __VLS_8 = {}.VAlert;
@@ -686,13 +690,13 @@ const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
-    title: (__VLS_ctx.multiline ? 'Switch to single-line input' : 'Switch to multi-line input'),
+    title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
 }));
 const __VLS_35 = __VLS_34({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
-    title: (__VLS_ctx.multiline ? 'Switch to single-line input' : 'Switch to multi-line input'),
+    title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_34));
 let __VLS_37;
 let __VLS_38;
@@ -721,14 +725,14 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
-            title: (__VLS_ctx.speechRecording ? 'Stop speech-to-text' : 'Start speech-to-text'),
+            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
         }));
         const __VLS_43 = __VLS_42({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
-            title: (__VLS_ctx.speechRecording ? 'Stop speech-to-text' : 'Start speech-to-text'),
+            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_42));
         let __VLS_45;
         let __VLS_46;
@@ -748,14 +752,14 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
-            title: (__VLS_ctx.speakerEnabled ? 'Mute incoming messages' : 'Read incoming messages aloud'),
+            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
         }));
         const __VLS_51 = __VLS_50({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
-            title: (__VLS_ctx.speakerEnabled ? 'Mute incoming messages' : 'Read incoming messages aloud'),
+            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_50));
         let __VLS_53;
         let __VLS_54;
@@ -774,13 +778,13 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
-        title: "Speech settings",
+        title: (__VLS_ctx.$t('chat.speech.settings')),
     }));
     const __VLS_59 = __VLS_58({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
-        title: "Speech settings",
+        title: (__VLS_ctx.$t('chat.speech.settings')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_58));
     let __VLS_61;
     let __VLS_62;
@@ -802,6 +806,7 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
         });
+        (__VLS_ctx.$t('chat.speech.language'));
         const __VLS_65 = {}.VSelect;
         /** @type {[typeof __VLS_components.VSelect, ]} */ ;
         // @ts-ignore
@@ -827,6 +832,7 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
             });
+            (__VLS_ctx.$t('chat.speech.voice'));
             const __VLS_73 = {}.VSelect;
             /** @type {[typeof __VLS_components.VSelect, ]} */ ;
             // @ts-ignore
@@ -852,6 +858,7 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
                 ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between" },
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            (__VLS_ctx.$t('chat.speech.rate'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "opacity-70" },
             });
@@ -870,6 +877,7 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
                 ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between" },
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            (__VLS_ctx.$t('chat.speech.volume'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "opacity-70" },
             });
@@ -887,6 +895,7 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
             ...{ class: "text-xs opacity-60" },
         });
+        (__VLS_ctx.$t('chat.speech.savedLocally'));
     }
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -936,6 +945,7 @@ const __VLS_96 = {
     onClick: (__VLS_ctx.send)
 };
 __VLS_92.slots.default;
+(__VLS_ctx.$t('chat.send'));
 var __VLS_92;
 if (__VLS_ctx.sending) {
     const __VLS_97 = {}.VButton;
@@ -944,12 +954,12 @@ if (__VLS_ctx.sending) {
     const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
         ...{ 'onClick': {} },
         variant: "danger",
-        title: "Pause the chat (and all workers in this session)",
+        title: (__VLS_ctx.$t('chat.pauseTooltip')),
     }));
     const __VLS_99 = __VLS_98({
         ...{ 'onClick': {} },
         variant: "danger",
-        title: "Pause the chat (and all workers in this session)",
+        title: (__VLS_ctx.$t('chat.pauseTooltip')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_98));
     let __VLS_101;
     let __VLS_102;
@@ -958,6 +968,7 @@ if (__VLS_ctx.sending) {
         onClick: (__VLS_ctx.pause)
     };
     __VLS_100.slots.default;
+    (__VLS_ctx.$t('chat.pause'));
     var __VLS_100;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({

@@ -1,8 +1,10 @@
 import { onBeforeUnmount, onMounted, ref, computed, watch } from 'vue';
-import { BrainWebSocket, WebSocketRequestError, getJwt, getTenantId, getUsername, setActiveSessionId, getActiveSessionId, } from '@vance/shared';
+import { useI18n } from 'vue-i18n';
+import { BrainWebSocket, WebSocketRequestError, getTenantId, getUsername, setActiveSessionId, getActiveSessionId, } from '@vance/shared';
 import { EditorShell, VAlert, VButton } from '@components/index';
 import PickerView from './PickerView.vue';
 import ChatView from './ChatView.vue';
+const { t } = useI18n();
 const CLIENT_VERSION = '0.1.0';
 const mode = ref('connecting');
 const errorMessage = ref(null);
@@ -33,13 +35,14 @@ function pushSessionIdToUrl(sessionId) {
 }
 async function openSocket() {
     const tenant = getTenantId();
-    const jwt = getJwt();
-    if (!tenant || !jwt) {
-        throw new Error('Missing tenant or JWT — cannot open chat connection.');
+    if (!tenant) {
+        throw new Error('Missing tenant — cannot open chat connection.');
     }
+    // Same-origin upgrade ships the {@code vance_access} cookie
+    // automatically. No JWT lookup in JS — that's the whole point of
+    // the cookie-based auth flow.
     return BrainWebSocket.connect({
         tenant,
-        jwt,
         profile: 'web',
         clientVersion: CLIENT_VERSION,
     });
@@ -59,23 +62,23 @@ async function resumeSessionId(sessionId) {
             switch (e.errorCode) {
                 case 409:
                     mode.value = 'occupied';
-                    errorMessage.value = `Session "${sessionId}" is held by another connection.`;
+                    errorMessage.value = t('chat.sessionOccupiedBy', { id: sessionId });
                     return;
                 case 404:
                     // Stale sessionId (closed or never existed) — drop it and fall back to picker.
                     setActiveSessionId(null);
                     pushSessionIdToUrl(null);
                     mode.value = 'picker';
-                    errorMessage.value = `Session "${sessionId}" no longer exists. Pick another.`;
+                    errorMessage.value = t('chat.sessionNotFound', { id: sessionId });
                     return;
                 case 403:
                     mode.value = 'failed';
-                    errorMessage.value = `Session "${sessionId}" belongs to another user.`;
+                    errorMessage.value = t('chat.sessionForbidden', { id: sessionId });
                     return;
             }
         }
         mode.value = 'failed';
-        errorMessage.value = e instanceof Error ? e.message : 'Failed to resume session.';
+        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
     }
 }
 async function onSessionPicked(sessionId) {
@@ -96,7 +99,7 @@ async function leaveLive() {
     // intentional — a modal dialog buys polish but adds component
     // weight, and this is the only confirmation surface in the chat
     // editor for now.
-    const ok = window.confirm('Leave this chat session? The connection will be released and any unsent draft is lost.');
+    const ok = window.confirm(t('chat.confirmLeave'));
     if (!ok)
         return;
     if (socket.value && !socket.value.closed()) {
@@ -136,17 +139,17 @@ onMounted(async () => {
     }
     catch (e) {
         mode.value = 'failed';
-        errorMessage.value = e instanceof Error ? e.message : 'Failed to open WebSocket.';
+        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToOpen');
         return;
     }
     socket.value.onClose(() => {
         if (mode.value === 'live') {
             mode.value = 'failed';
-            errorMessage.value = 'Connection lost. Reload to reconnect.';
+            errorMessage.value = t('chat.connectionLost');
         }
         else if (mode.value === 'picker' || mode.value === 'occupied') {
             mode.value = 'failed';
-            errorMessage.value = 'Connection closed.';
+            errorMessage.value = t('chat.connectionClosed');
         }
     });
     // Resume hint: URL param wins over localStorage.
@@ -170,12 +173,12 @@ const __VLS_0 = {}.EditorShell;
 /** @type {[typeof __VLS_components.EditorShell, typeof __VLS_components.EditorShell, ]} */ ;
 // @ts-ignore
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-    title: "Chat",
+    title: (__VLS_ctx.$t('chat.pageTitle')),
     connectionState: (__VLS_ctx.connectionState),
     fullHeight: (true),
 }));
 const __VLS_2 = __VLS_1({
-    title: "Chat",
+    title: (__VLS_ctx.$t('chat.pageTitle')),
     connectionState: (__VLS_ctx.connectionState),
     fullHeight: (true),
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
@@ -221,6 +224,7 @@ if (__VLS_ctx.errorMessage) {
             onClick: (__VLS_ctx.backToPicker)
         };
         __VLS_12.slots.default;
+        (__VLS_ctx.$t('chat.pickAnotherSession'));
         var __VLS_12;
         const __VLS_17 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -246,6 +250,7 @@ if (__VLS_ctx.errorMessage) {
             }
         };
         __VLS_20.slots.default;
+        (__VLS_ctx.$t('chat.tryAgain'));
         var __VLS_20;
     }
     else if (__VLS_ctx.mode === 'failed') {
@@ -270,6 +275,7 @@ if (__VLS_ctx.errorMessage) {
             onClick: (__VLS_ctx.backToPicker)
         };
         __VLS_28.slots.default;
+        (__VLS_ctx.$t('chat.backToPicker'));
         var __VLS_28;
     }
     var __VLS_8;
@@ -328,6 +334,7 @@ else if (__VLS_ctx.mode === 'connecting') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "p-6 text-sm opacity-60" },
     });
+    (__VLS_ctx.$t('chat.connecting'));
 }
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;

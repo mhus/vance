@@ -1,5 +1,7 @@
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { VEmptyState } from '@components/index';
+const { t } = useI18n();
 const props = defineProps();
 const reversed = computed(() => props.events.slice().reverse());
 function kindOf(event) {
@@ -10,15 +12,19 @@ function summarise(event) {
         case 'METRICS': {
             const m = event.metrics;
             if (!m)
-                return 'metrics';
+                return t('chat.progress.metricsLabel');
             const inK = Math.round(m.tokensInTotal / 100) / 10;
             const outK = Math.round(m.tokensOutTotal / 100) / 10;
-            return `${m.llmCallCount} calls · ${inK}k in / ${outK}k out`;
+            return t('chat.progress.metricsLine', {
+                calls: m.llmCallCount,
+                tokensIn: inK,
+                tokensOut: outK,
+            });
         }
         case 'PLAN':
-            return event.plan?.rootNode?.title ?? 'plan updated';
+            return event.plan?.rootNode?.title ?? t('chat.progress.planUpdated');
         case 'STATUS':
-            return event.status?.text ?? 'status';
+            return event.status?.text ?? t('chat.progress.status');
         default:
             return String(event.kind);
     }
@@ -38,17 +44,18 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold px-1" },
 });
+(__VLS_ctx.$t('chat.progress.title'));
 if (__VLS_ctx.reversed.length === 0) {
     const __VLS_0 = {}.VEmptyState;
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-        headline: "No progress yet",
-        body: "Live status from running processes shows up here.",
+        headline: (__VLS_ctx.$t('chat.progress.empty')),
+        body: (__VLS_ctx.$t('chat.progress.emptyBody')),
     }));
     const __VLS_2 = __VLS_1({
-        headline: "No progress yet",
-        body: "Live status from running processes shows up here.",
+        headline: (__VLS_ctx.$t('chat.progress.empty')),
+        body: (__VLS_ctx.$t('chat.progress.emptyBody')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 }
 else {

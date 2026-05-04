@@ -1,4 +1,5 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { EditorShell, MarkdownView, VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea, } from '@/components';
 import { useAdminUsers } from '@/composables/useAdminUsers';
 import { useAdminTeams } from '@/composables/useAdminTeams';
@@ -6,11 +7,14 @@ import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useHelp } from '@/composables/useHelp';
 import { getUsername } from '@vance/shared';
 import { SettingType, } from '@vance/generated';
+const { t } = useI18n();
 const usersState = useAdminUsers();
 const teamsState = useAdminTeams();
 const settingsState = useScopeSettings();
 const help = useHelp();
 const currentUsername = getUsername() ?? '';
+// SettingType labels are the wire-enum values themselves — they're
+// recognisable across UI languages, no translation needed.
 const settingTypeOptions = [
     { value: SettingType.STRING, label: 'STRING' },
     { value: SettingType.INT, label: 'INT' },
@@ -82,7 +86,11 @@ const breadcrumbs = computed(() => {
     const sel = selection.value;
     if (!sel)
         return [];
-    return [sel.kind === 'user' ? `User: ${sel.name}` : `Team: ${sel.name}`];
+    return [
+        sel.kind === 'user'
+            ? t('users.breadcrumbs.userPrefix', { name: sel.name })
+            : t('users.breadcrumbs.teamPrefix', { name: sel.name }),
+    ];
 });
 const combinedError = computed(() => usersState.error.value || teamsState.error.value || settingsState.error.value);
 // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -150,7 +158,7 @@ async function saveEditUserSetting(s) {
 async function deleteUserSetting(s) {
     if (selection.value?.kind !== 'user')
         return;
-    if (!confirm(`Delete setting "${s.key}"?`))
+    if (!confirm(t('users.user.settings.confirmDelete', { key: s.key })))
         return;
     try {
         await settingsState.remove('user', selection.value.name, s.key);
@@ -199,7 +207,7 @@ async function saveUser() {
     formError.value = null;
     banner.value = null;
     if (userForm.status === 'DISABLED' && selection.value.name === currentUsername) {
-        formError.value = 'You cannot disable your own account.';
+        formError.value = t('users.user.cantDisableSelf');
         return;
     }
     try {
@@ -208,7 +216,7 @@ async function saveUser() {
             email: userForm.email,
             status: userForm.status,
         });
-        banner.value = 'User saved.';
+        banner.value = t('users.user.saved');
     }
     catch {
         /* error in usersState.error */
@@ -218,16 +226,16 @@ async function deleteUser() {
     if (selection.value?.kind !== 'user')
         return;
     if (selection.value.name === currentUsername) {
-        formError.value = 'You cannot delete your own account.';
+        formError.value = t('users.user.cantDeleteSelf');
         return;
     }
-    if (!confirm(`Delete user "${selection.value.name}"? Memberships in teams are not auto-cleaned.`))
+    if (!confirm(t('users.user.confirmDelete', { name: selection.value.name })))
         return;
     const name = selection.value.name;
     try {
         await usersState.remove(name);
         selection.value = null;
-        banner.value = `User "${name}" deleted.`;
+        banner.value = t('users.user.deleted', { name });
     }
     catch { /* state.error */ }
 }
@@ -242,20 +250,20 @@ async function saveTeam() {
             enabled: teamForm.enabled,
             members: splitLines(teamForm.membersText),
         });
-        banner.value = 'Team saved.';
+        banner.value = t('users.team.saved');
     }
     catch { /* state.error */ }
 }
 async function deleteTeam() {
     if (selection.value?.kind !== 'team')
         return;
-    if (!confirm(`Delete team "${selection.value.name}"?`))
+    if (!confirm(t('users.team.confirmDelete', { name: selection.value.name })))
         return;
     const name = selection.value.name;
     try {
         await teamsState.remove(name);
         selection.value = null;
-        banner.value = `Team "${name}" deleted.`;
+        banner.value = t('users.team.deleted', { name });
     }
     catch { /* state.error */ }
 }
@@ -272,11 +280,11 @@ async function submitCreateUser() {
     newUserError.value = null;
     const name = newUserName.value.trim();
     if (!name || !NAME_PATTERN_USER.test(name)) {
-        newUserError.value = 'Name must be lower-case alphanumerics with optional ".", "-" or "_".';
+        newUserError.value = t('users.createUser.nameInvalid');
         return;
     }
     if (usersState.users.value.some(u => u.name === name)) {
-        newUserError.value = `A user named "${name}" already exists.`;
+        newUserError.value = t('users.createUser.alreadyExists', { name });
         return;
     }
     try {
@@ -288,10 +296,10 @@ async function submitCreateUser() {
         });
         showCreateUser.value = false;
         selectUser(name);
-        banner.value = `User "${name}" created.`;
+        banner.value = t('users.createUser.created', { name });
     }
     catch (e) {
-        newUserError.value = e instanceof Error ? e.message : 'Failed to create user.';
+        newUserError.value = e instanceof Error ? e.message : t('users.createUser.createFailed');
     }
 }
 function openCreateTeam() {
@@ -305,11 +313,11 @@ async function submitCreateTeam() {
     newTeamError.value = null;
     const name = newTeamName.value.trim();
     if (!name || !NAME_PATTERN_TEAM.test(name)) {
-        newTeamError.value = 'Name must be lower-case alphanumerics with optional "-" or "_".';
+        newTeamError.value = t('users.createTeam.nameInvalid');
         return;
     }
-    if (teamsState.teams.value.some(t => t.name === name)) {
-        newTeamError.value = `A team named "${name}" already exists.`;
+    if (teamsState.teams.value.some(team => team.name === name)) {
+        newTeamError.value = t('users.createTeam.alreadyExists', { name });
         return;
     }
     try {
@@ -320,10 +328,10 @@ async function submitCreateTeam() {
         });
         showCreateTeam.value = false;
         selectTeam(name);
-        banner.value = `Team "${name}" created.`;
+        banner.value = t('users.createTeam.created', { name });
     }
     catch (e) {
-        newTeamError.value = e instanceof Error ? e.message : 'Failed to create team.';
+        newTeamError.value = e instanceof Error ? e.message : t('users.createTeam.createFailed');
     }
 }
 // ─── Set password ───────────────────────────────────────────────────────
@@ -339,20 +347,20 @@ async function submitSetPassword() {
     passwordError.value = null;
     const pw = passwordPlaintext.value;
     if (!pw) {
-        passwordError.value = 'Password is required.';
+        passwordError.value = t('users.setPassword.required');
         return;
     }
     if (pw !== passwordPlaintextRepeat.value) {
-        passwordError.value = 'Passwords do not match.';
+        passwordError.value = t('users.setPassword.mismatch');
         return;
     }
     try {
         await usersState.setPassword(selection.value.name, pw);
         showSetPassword.value = false;
-        banner.value = `Password updated for "${selection.value.name}".`;
+        banner.value = t('users.setPassword.updated', { name: selection.value.name });
     }
     catch (e) {
-        passwordError.value = e instanceof Error ? e.message : 'Failed to set password.';
+        passwordError.value = e instanceof Error ? e.message : t('users.setPassword.failed');
     }
 }
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -380,12 +388,12 @@ const __VLS_0 = {}.EditorShell;
 /** @type {[typeof __VLS_components.EditorShell, typeof __VLS_components.EditorShell, ]} */ ;
 // @ts-ignore
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-    title: "Users & Teams",
+    title: (__VLS_ctx.$t('users.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
     wideRightPanel: true,
 }));
 const __VLS_2 = __VLS_1({
-    title: "Users & Teams",
+    title: (__VLS_ctx.$t('users.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
     wideRightPanel: true,
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
@@ -403,6 +411,7 @@ __VLS_3.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "text-xs uppercase opacity-50" },
     });
+    (__VLS_ctx.$t('users.sidebar.usersTitle'));
     const __VLS_5 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
@@ -423,11 +432,13 @@ __VLS_3.slots.default;
         onClick: (__VLS_ctx.openCreateUser)
     };
     __VLS_8.slots.default;
+    (__VLS_ctx.$t('users.sidebar.addUser'));
     var __VLS_8;
     if (__VLS_ctx.usersState.loading.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "px-2 text-xs opacity-60" },
         });
+        (__VLS_ctx.$t('users.loading'));
     }
     for (const [u] of __VLS_getVForSourceType((__VLS_ctx.usersState.users.value))) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
@@ -473,6 +484,7 @@ __VLS_3.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "text-xs uppercase opacity-50" },
     });
+    (__VLS_ctx.$t('users.sidebar.teamsTitle'));
     const __VLS_13 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
@@ -493,21 +505,23 @@ __VLS_3.slots.default;
         onClick: (__VLS_ctx.openCreateTeam)
     };
     __VLS_16.slots.default;
+    (__VLS_ctx.$t('users.sidebar.addTeam'));
     var __VLS_16;
     if (__VLS_ctx.teamsState.loading.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "px-2 text-xs opacity-60" },
         });
+        (__VLS_ctx.$t('users.loading'));
     }
-    for (const [t] of __VLS_getVForSourceType((__VLS_ctx.teamsState.teams.value))) {
+    for (const [team] of __VLS_getVForSourceType((__VLS_ctx.teamsState.teams.value))) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
-                    __VLS_ctx.selectTeam(t.name);
+                    __VLS_ctx.selectTeam(team.name);
                 } },
-            key: ('t-' + t.name),
+            key: ('t-' + team.name),
             type: "button",
             ...{ class: "row-item" },
-            ...{ class: ({ 'row-item--active': __VLS_ctx.isSelectedTeam(t) }) },
+            ...{ class: ({ 'row-item--active': __VLS_ctx.isSelectedTeam(team) }) },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex items-center justify-between gap-2" },
@@ -515,20 +529,20 @@ __VLS_3.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "font-mono text-sm truncate" },
         });
-        (t.name);
+        (team.name);
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "text-xs opacity-60" },
         });
-        (t.members.length);
-        if (t.members.length !== 1) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-        }
+        (team.members.length === 1
+            ? __VLS_ctx.$t('users.sidebar.memberCountSingular', { count: team.members.length })
+            : __VLS_ctx.$t('users.sidebar.memberCountPlural', { count: team.members.length }));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60 truncate" },
         });
-        (t.title);
-        if (!t.enabled) {
+        (team.title);
+        if (!team.enabled) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            (' ' + __VLS_ctx.$t('users.sidebar.disabledSuffix'));
         }
     }
 }
@@ -585,12 +599,12 @@ if (!__VLS_ctx.selection) {
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
-        headline: "Pick a user or team",
-        body: "Use the lists on the left, or create a new entry with + User / + Team.",
+        headline: (__VLS_ctx.$t('users.empty.headline')),
+        body: (__VLS_ctx.$t('users.empty.body')),
     }));
     const __VLS_35 = __VLS_34({
-        headline: "Pick a user or team",
-        body: "Use the lists on the left, or create a new entry with + User / + Team.",
+        headline: (__VLS_ctx.$t('users.empty.headline')),
+        body: (__VLS_ctx.$t('users.empty.body')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_34));
 }
 else if (__VLS_ctx.selection.kind === 'user') {
@@ -598,16 +612,17 @@ else if (__VLS_ctx.selection.kind === 'user') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "opacity-70" },
         });
+        (__VLS_ctx.$t('users.loading'));
     }
     else {
         const __VLS_37 = {}.VCard;
         /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
         // @ts-ignore
         const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
-            title: (`User: ${__VLS_ctx.selectedUser.name}`),
+            title: (__VLS_ctx.$t('users.user.cardTitle', { name: __VLS_ctx.selectedUser.name })),
         }));
         const __VLS_39 = __VLS_38({
-            title: (`User: ${__VLS_ctx.selectedUser.name}`),
+            title: (__VLS_ctx.$t('users.user.cardTitle', { name: __VLS_ctx.selectedUser.name })),
         }, ...__VLS_functionalComponentArgsRest(__VLS_38));
         __VLS_40.slots.default;
         if (__VLS_ctx.isOwnAccount) {
@@ -624,6 +639,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
             }, ...__VLS_functionalComponentArgsRest(__VLS_42));
             __VLS_44.slots.default;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            (__VLS_ctx.$t('users.user.ownAccountNote'));
             var __VLS_44;
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -635,16 +651,16 @@ else if (__VLS_ctx.selection.kind === 'user') {
         const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedUser.name),
-            label: "Name",
+            label: (__VLS_ctx.$t('users.user.nameLabel')),
             disabled: true,
-            help: "User name is immutable.",
+            help: (__VLS_ctx.$t('users.user.nameImmutable')),
         }));
         const __VLS_47 = __VLS_46({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedUser.name),
-            label: "Name",
+            label: (__VLS_ctx.$t('users.user.nameLabel')),
             disabled: true,
-            help: "User name is immutable.",
+            help: (__VLS_ctx.$t('users.user.nameImmutable')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_46));
         let __VLS_49;
         let __VLS_50;
@@ -658,23 +674,23 @@ else if (__VLS_ctx.selection.kind === 'user') {
         // @ts-ignore
         const __VLS_54 = __VLS_asFunctionalComponent(__VLS_53, new __VLS_53({
             modelValue: (__VLS_ctx.userForm.title),
-            label: "Title",
+            label: (__VLS_ctx.$t('users.user.titleLabel')),
         }));
         const __VLS_55 = __VLS_54({
             modelValue: (__VLS_ctx.userForm.title),
-            label: "Title",
+            label: (__VLS_ctx.$t('users.user.titleLabel')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_54));
         const __VLS_57 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
         const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({
             modelValue: (__VLS_ctx.userForm.email),
-            label: "Email",
+            label: (__VLS_ctx.$t('users.user.emailLabel')),
             type: "email",
         }));
         const __VLS_59 = __VLS_58({
             modelValue: (__VLS_ctx.userForm.email),
-            label: "Email",
+            label: (__VLS_ctx.$t('users.user.emailLabel')),
             type: "email",
         }, ...__VLS_functionalComponentArgsRest(__VLS_58));
         const __VLS_61 = {}.VSelect;
@@ -683,12 +699,12 @@ else if (__VLS_ctx.selection.kind === 'user') {
         const __VLS_62 = __VLS_asFunctionalComponent(__VLS_61, new __VLS_61({
             modelValue: (__VLS_ctx.userForm.status),
             options: (__VLS_ctx.userStatusOptions),
-            label: "Status",
+            label: (__VLS_ctx.$t('users.user.statusLabel')),
         }));
         const __VLS_63 = __VLS_62({
             modelValue: (__VLS_ctx.userForm.status),
             options: (__VLS_ctx.userStatusOptions),
-            label: "Status",
+            label: (__VLS_ctx.$t('users.user.statusLabel')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_62));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
             ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm opacity-80" },
@@ -696,6 +712,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
             ...{ class: "opacity-60" },
         });
+        (__VLS_ctx.$t('users.user.createdLabel'));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
         (__VLS_ctx.fmt(__VLS_ctx.selectedUser.createdAt));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -726,6 +743,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
             onClick: (__VLS_ctx.deleteUser)
         };
         __VLS_68.slots.default;
+        (__VLS_ctx.$t('users.user.delete'));
         var __VLS_68;
         const __VLS_73 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -745,6 +763,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
             onClick: (__VLS_ctx.openSetPassword)
         };
         __VLS_76.slots.default;
+        (__VLS_ctx.$t('users.user.setPassword'));
         var __VLS_76;
         const __VLS_81 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -766,34 +785,34 @@ else if (__VLS_ctx.selection.kind === 'user') {
             onClick: (__VLS_ctx.saveUser)
         };
         __VLS_84.slots.default;
+        (__VLS_ctx.$t('users.user.save'));
         var __VLS_84;
         var __VLS_40;
         const __VLS_89 = {}.VCard;
         /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
         // @ts-ignore
         const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
-            title: "User settings",
+            title: (__VLS_ctx.$t('users.user.settings.cardTitle')),
         }));
         const __VLS_91 = __VLS_90({
-            title: "User settings",
+            title: (__VLS_ctx.$t('users.user.settings.cardTitle')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_90));
         __VLS_92.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
             ...{ class: "text-xs opacity-70 mb-3" },
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.code, __VLS_intrinsicElements.code)({});
-        (__VLS_ctx.selectedUser.name);
+        (__VLS_ctx.$t('users.user.settings.intro', { name: __VLS_ctx.selectedUser.name }));
         if (!__VLS_ctx.settingsState.loading.value && __VLS_ctx.settingsState.settings.value.length === 0) {
             const __VLS_93 = {}.VEmptyState;
             /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
             // @ts-ignore
             const __VLS_94 = __VLS_asFunctionalComponent(__VLS_93, new __VLS_93({
-                headline: "No settings",
-                body: "Add a key/value below to override tenant defaults for this user.",
+                headline: (__VLS_ctx.$t('users.user.settings.noSettingsHeadline')),
+                body: (__VLS_ctx.$t('users.user.settings.noSettingsBody')),
             }));
             const __VLS_95 = __VLS_94({
-                headline: "No settings",
-                body: "Add a key/value below to override tenant defaults for this user.",
+                headline: (__VLS_ctx.$t('users.user.settings.noSettingsHeadline')),
+                body: (__VLS_ctx.$t('users.user.settings.noSettingsBody')),
             }, ...__VLS_functionalComponentArgsRest(__VLS_94));
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
@@ -822,11 +841,11 @@ else if (__VLS_ctx.selection.kind === 'user') {
                     // @ts-ignore
                     const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
                         modelValue: (__VLS_ctx.editValue),
-                        label: "Value",
+                        label: (__VLS_ctx.$t('users.user.settings.valueLabel')),
                     }));
                     const __VLS_99 = __VLS_98({
                         modelValue: (__VLS_ctx.editValue),
-                        label: "Value",
+                        label: (__VLS_ctx.$t('users.user.settings.valueLabel')),
                     }, ...__VLS_functionalComponentArgsRest(__VLS_98));
                 }
                 else {
@@ -836,14 +855,14 @@ else if (__VLS_ctx.selection.kind === 'user') {
                     const __VLS_102 = __VLS_asFunctionalComponent(__VLS_101, new __VLS_101({
                         modelValue: (__VLS_ctx.editValue),
                         type: "password",
-                        label: "New password",
-                        placeholder: "(leave empty to clear)",
+                        label: (__VLS_ctx.$t('users.user.settings.newPasswordLabel')),
+                        placeholder: (__VLS_ctx.$t('users.user.settings.passwordEmptyToClear')),
                     }));
                     const __VLS_103 = __VLS_102({
                         modelValue: (__VLS_ctx.editValue),
                         type: "password",
-                        label: "New password",
-                        placeholder: "(leave empty to clear)",
+                        label: (__VLS_ctx.$t('users.user.settings.newPasswordLabel')),
+                        placeholder: (__VLS_ctx.$t('users.user.settings.passwordEmptyToClear')),
                     }, ...__VLS_functionalComponentArgsRest(__VLS_102));
                 }
                 const __VLS_105 = {}.VTextarea;
@@ -851,12 +870,12 @@ else if (__VLS_ctx.selection.kind === 'user') {
                 // @ts-ignore
                 const __VLS_106 = __VLS_asFunctionalComponent(__VLS_105, new __VLS_105({
                     modelValue: (__VLS_ctx.editDescription),
-                    label: "Description",
+                    label: (__VLS_ctx.$t('users.user.settings.descriptionLabel')),
                     rows: (2),
                 }));
                 const __VLS_107 = __VLS_106({
                     modelValue: (__VLS_ctx.editDescription),
-                    label: "Description",
+                    label: (__VLS_ctx.$t('users.user.settings.descriptionLabel')),
                     rows: (2),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_106));
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -882,6 +901,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
                     onClick: (__VLS_ctx.cancelEditUserSetting)
                 };
                 __VLS_112.slots.default;
+                (__VLS_ctx.$t('users.user.settings.cancel'));
                 var __VLS_112;
                 const __VLS_117 = {}.VButton;
                 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -915,6 +935,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
                     }
                 };
                 __VLS_120.slots.default;
+                (__VLS_ctx.$t('users.user.settings.save'));
                 var __VLS_120;
             }
             else {
@@ -924,7 +945,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                     ...{ class: "opacity-70" },
                 });
-                (s.value ?? '(empty)');
+                (s.value ?? __VLS_ctx.$t('users.user.settings.empty'));
                 if (s.description) {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "text-xs opacity-60" },
@@ -964,6 +985,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
                     }
                 };
                 __VLS_128.slots.default;
+                (__VLS_ctx.$t('users.user.settings.edit'));
                 var __VLS_128;
                 const __VLS_133 = {}.VButton;
                 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -995,6 +1017,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
                     }
                 };
                 __VLS_136.slots.default;
+                (__VLS_ctx.$t('users.user.settings.delete'));
                 var __VLS_136;
             }
         }
@@ -1004,30 +1027,31 @@ else if (__VLS_ctx.selection.kind === 'user') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.h4, __VLS_intrinsicElements.h4)({
             ...{ class: "text-xs uppercase opacity-60" },
         });
+        (__VLS_ctx.$t('users.user.settings.addTitle'));
         const __VLS_141 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
         const __VLS_142 = __VLS_asFunctionalComponent(__VLS_141, new __VLS_141({
             modelValue: (__VLS_ctx.newSettingKey),
-            label: "Key",
-            placeholder: "e.g. ai.default.model",
+            label: (__VLS_ctx.$t('users.user.settings.keyLabel')),
+            placeholder: (__VLS_ctx.$t('users.user.settings.keyPlaceholder')),
         }));
         const __VLS_143 = __VLS_142({
             modelValue: (__VLS_ctx.newSettingKey),
-            label: "Key",
-            placeholder: "e.g. ai.default.model",
+            label: (__VLS_ctx.$t('users.user.settings.keyLabel')),
+            placeholder: (__VLS_ctx.$t('users.user.settings.keyPlaceholder')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_142));
         const __VLS_145 = {}.VSelect;
         /** @type {[typeof __VLS_components.VSelect, ]} */ ;
         // @ts-ignore
         const __VLS_146 = __VLS_asFunctionalComponent(__VLS_145, new __VLS_145({
             modelValue: (__VLS_ctx.newSettingType),
-            label: "Type",
+            label: (__VLS_ctx.$t('users.user.settings.typeLabel')),
             options: (__VLS_ctx.settingTypeOptions),
         }));
         const __VLS_147 = __VLS_146({
             modelValue: (__VLS_ctx.newSettingType),
-            label: "Type",
+            label: (__VLS_ctx.$t('users.user.settings.typeLabel')),
             options: (__VLS_ctx.settingTypeOptions),
         }, ...__VLS_functionalComponentArgsRest(__VLS_146));
         if (__VLS_ctx.newSettingType !== __VLS_ctx.SettingType.PASSWORD) {
@@ -1036,11 +1060,11 @@ else if (__VLS_ctx.selection.kind === 'user') {
             // @ts-ignore
             const __VLS_150 = __VLS_asFunctionalComponent(__VLS_149, new __VLS_149({
                 modelValue: (__VLS_ctx.newSettingValue),
-                label: "Value",
+                label: (__VLS_ctx.$t('users.user.settings.valueLabel')),
             }));
             const __VLS_151 = __VLS_150({
                 modelValue: (__VLS_ctx.newSettingValue),
-                label: "Value",
+                label: (__VLS_ctx.$t('users.user.settings.valueLabel')),
             }, ...__VLS_functionalComponentArgsRest(__VLS_150));
         }
         else {
@@ -1050,12 +1074,12 @@ else if (__VLS_ctx.selection.kind === 'user') {
             const __VLS_154 = __VLS_asFunctionalComponent(__VLS_153, new __VLS_153({
                 modelValue: (__VLS_ctx.newSettingValue),
                 type: "password",
-                label: "Password",
+                label: (__VLS_ctx.$t('users.user.settings.passwordLabel')),
             }));
             const __VLS_155 = __VLS_154({
                 modelValue: (__VLS_ctx.newSettingValue),
                 type: "password",
-                label: "Password",
+                label: (__VLS_ctx.$t('users.user.settings.passwordLabel')),
             }, ...__VLS_functionalComponentArgsRest(__VLS_154));
         }
         const __VLS_157 = {}.VTextarea;
@@ -1063,12 +1087,12 @@ else if (__VLS_ctx.selection.kind === 'user') {
         // @ts-ignore
         const __VLS_158 = __VLS_asFunctionalComponent(__VLS_157, new __VLS_157({
             modelValue: (__VLS_ctx.newSettingDescription),
-            label: "Description (optional)",
+            label: (__VLS_ctx.$t('users.user.settings.descriptionOptional')),
             rows: (2),
         }));
         const __VLS_159 = __VLS_158({
             modelValue: (__VLS_ctx.newSettingDescription),
-            label: "Description (optional)",
+            label: (__VLS_ctx.$t('users.user.settings.descriptionOptional')),
             rows: (2),
         }, ...__VLS_functionalComponentArgsRest(__VLS_158));
         const __VLS_161 = {}.VButton;
@@ -1095,6 +1119,7 @@ else if (__VLS_ctx.selection.kind === 'user') {
             onClick: (__VLS_ctx.addUserSetting)
         };
         __VLS_164.slots.default;
+        (__VLS_ctx.$t('users.user.settings.add'));
         var __VLS_164;
         var __VLS_92;
     }
@@ -1104,16 +1129,17 @@ else if (__VLS_ctx.selection.kind === 'team') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "opacity-70" },
         });
+        (__VLS_ctx.$t('users.loading'));
     }
     else {
         const __VLS_169 = {}.VCard;
         /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
         // @ts-ignore
         const __VLS_170 = __VLS_asFunctionalComponent(__VLS_169, new __VLS_169({
-            title: (`Team: ${__VLS_ctx.selectedTeam.name}`),
+            title: (__VLS_ctx.$t('users.team.cardTitle', { name: __VLS_ctx.selectedTeam.name })),
         }));
         const __VLS_171 = __VLS_170({
-            title: (`Team: ${__VLS_ctx.selectedTeam.name}`),
+            title: (__VLS_ctx.$t('users.team.cardTitle', { name: __VLS_ctx.selectedTeam.name })),
         }, ...__VLS_functionalComponentArgsRest(__VLS_170));
         __VLS_172.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1125,16 +1151,16 @@ else if (__VLS_ctx.selection.kind === 'team') {
         const __VLS_174 = __VLS_asFunctionalComponent(__VLS_173, new __VLS_173({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedTeam.name),
-            label: "Name",
+            label: (__VLS_ctx.$t('users.team.nameLabel')),
             disabled: true,
-            help: "Team name is immutable.",
+            help: (__VLS_ctx.$t('users.team.nameImmutable')),
         }));
         const __VLS_175 = __VLS_174({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedTeam.name),
-            label: "Name",
+            label: (__VLS_ctx.$t('users.team.nameLabel')),
             disabled: true,
-            help: "Team name is immutable.",
+            help: (__VLS_ctx.$t('users.team.nameImmutable')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_174));
         let __VLS_177;
         let __VLS_178;
@@ -1148,39 +1174,43 @@ else if (__VLS_ctx.selection.kind === 'team') {
         // @ts-ignore
         const __VLS_182 = __VLS_asFunctionalComponent(__VLS_181, new __VLS_181({
             modelValue: (__VLS_ctx.teamForm.title),
-            label: "Title",
+            label: (__VLS_ctx.$t('users.team.titleLabel')),
         }));
         const __VLS_183 = __VLS_182({
             modelValue: (__VLS_ctx.teamForm.title),
-            label: "Title",
+            label: (__VLS_ctx.$t('users.team.titleLabel')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_182));
         const __VLS_185 = {}.VCheckbox;
         /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
         // @ts-ignore
         const __VLS_186 = __VLS_asFunctionalComponent(__VLS_185, new __VLS_185({
             modelValue: (__VLS_ctx.teamForm.enabled),
-            label: "Enabled",
+            label: (__VLS_ctx.$t('users.team.enabledLabel')),
         }));
         const __VLS_187 = __VLS_186({
             modelValue: (__VLS_ctx.teamForm.enabled),
-            label: "Enabled",
+            label: (__VLS_ctx.$t('users.team.enabledLabel')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_186));
         const __VLS_189 = {}.VTextarea;
         /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
         // @ts-ignore
         const __VLS_190 = __VLS_asFunctionalComponent(__VLS_189, new __VLS_189({
             modelValue: (__VLS_ctx.teamForm.membersText),
-            label: "Members",
-            placeholder: "One username per line. Removing a line drops the member.",
+            label: (__VLS_ctx.$t('users.team.membersLabel')),
+            placeholder: (__VLS_ctx.$t('users.team.membersPlaceholder')),
             rows: (6),
-            help: (`${__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length} member${__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length === 1 ? '' : 's'}`),
+            help: (__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length === 1
+                ? __VLS_ctx.$t('users.team.memberHelpSingular', { count: __VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length })
+                : __VLS_ctx.$t('users.team.memberHelpPlural', { count: __VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length })),
         }));
         const __VLS_191 = __VLS_190({
             modelValue: (__VLS_ctx.teamForm.membersText),
-            label: "Members",
-            placeholder: "One username per line. Removing a line drops the member.",
+            label: (__VLS_ctx.$t('users.team.membersLabel')),
+            placeholder: (__VLS_ctx.$t('users.team.membersPlaceholder')),
             rows: (6),
-            help: (`${__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length} member${__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length === 1 ? '' : 's'}`),
+            help: (__VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length === 1
+                ? __VLS_ctx.$t('users.team.memberHelpSingular', { count: __VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length })
+                : __VLS_ctx.$t('users.team.memberHelpPlural', { count: __VLS_ctx.splitLines(__VLS_ctx.teamForm.membersText).length })),
         }, ...__VLS_functionalComponentArgsRest(__VLS_190));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
             ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm opacity-80" },
@@ -1188,6 +1218,7 @@ else if (__VLS_ctx.selection.kind === 'team') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
             ...{ class: "opacity-60" },
         });
+        (__VLS_ctx.$t('users.team.createdLabel'));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
         (__VLS_ctx.fmt(__VLS_ctx.selectedTeam.createdAt));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1213,6 +1244,7 @@ else if (__VLS_ctx.selection.kind === 'team') {
             onClick: (__VLS_ctx.deleteTeam)
         };
         __VLS_196.slots.default;
+        (__VLS_ctx.$t('users.team.delete'));
         var __VLS_196;
         const __VLS_201 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -1234,6 +1266,7 @@ else if (__VLS_ctx.selection.kind === 'team') {
             onClick: (__VLS_ctx.saveTeam)
         };
         __VLS_204.slots.default;
+        (__VLS_ctx.$t('users.team.save'));
         var __VLS_204;
         var __VLS_172;
     }
@@ -1246,21 +1279,24 @@ else if (__VLS_ctx.selection.kind === 'team') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h3, __VLS_intrinsicElements.h3)({
         ...{ class: "text-xs uppercase opacity-60 mb-2" },
     });
+    (__VLS_ctx.$t('users.helpPanel.title'));
     if (__VLS_ctx.help.loading.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60" },
         });
+        (__VLS_ctx.$t('users.helpPanel.loading'));
     }
     else if (__VLS_ctx.help.error.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60" },
         });
-        (__VLS_ctx.help.error.value);
+        (__VLS_ctx.$t('users.helpPanel.unavailable', { error: __VLS_ctx.help.error.value }));
     }
     else if (!__VLS_ctx.help.content.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60" },
         });
+        (__VLS_ctx.$t('users.helpPanel.empty'));
     }
     else {
         const __VLS_209 = {}.MarkdownView;
@@ -1279,11 +1315,11 @@ const __VLS_213 = {}.VModal;
 // @ts-ignore
 const __VLS_214 = __VLS_asFunctionalComponent(__VLS_213, new __VLS_213({
     modelValue: (__VLS_ctx.showCreateUser),
-    title: "New user",
+    title: (__VLS_ctx.$t('users.createUser.title')),
 }));
 const __VLS_215 = __VLS_214({
     modelValue: (__VLS_ctx.showCreateUser),
-    title: "New user",
+    title: (__VLS_ctx.$t('users.createUser.title')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_214));
 __VLS_216.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1309,38 +1345,38 @@ const __VLS_221 = {}.VInput;
 // @ts-ignore
 const __VLS_222 = __VLS_asFunctionalComponent(__VLS_221, new __VLS_221({
     modelValue: (__VLS_ctx.newUserName),
-    label: "Name",
+    label: (__VLS_ctx.$t('users.createUser.nameLabel')),
     required: true,
-    help: "Lower-case alphanumerics with optional '.', '-' or '_'.",
+    help: (__VLS_ctx.$t('users.createUser.nameHelp')),
 }));
 const __VLS_223 = __VLS_222({
     modelValue: (__VLS_ctx.newUserName),
-    label: "Name",
+    label: (__VLS_ctx.$t('users.createUser.nameLabel')),
     required: true,
-    help: "Lower-case alphanumerics with optional '.', '-' or '_'.",
+    help: (__VLS_ctx.$t('users.createUser.nameHelp')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_222));
 const __VLS_225 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
 const __VLS_226 = __VLS_asFunctionalComponent(__VLS_225, new __VLS_225({
     modelValue: (__VLS_ctx.newUserTitle),
-    label: "Title",
+    label: (__VLS_ctx.$t('users.createUser.titleLabel')),
 }));
 const __VLS_227 = __VLS_226({
     modelValue: (__VLS_ctx.newUserTitle),
-    label: "Title",
+    label: (__VLS_ctx.$t('users.createUser.titleLabel')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_226));
 const __VLS_229 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
 const __VLS_230 = __VLS_asFunctionalComponent(__VLS_229, new __VLS_229({
     modelValue: (__VLS_ctx.newUserEmail),
-    label: "Email",
+    label: (__VLS_ctx.$t('users.createUser.emailLabel')),
     type: "email",
 }));
 const __VLS_231 = __VLS_230({
     modelValue: (__VLS_ctx.newUserEmail),
-    label: "Email",
+    label: (__VLS_ctx.$t('users.createUser.emailLabel')),
     type: "email",
 }, ...__VLS_functionalComponentArgsRest(__VLS_230));
 const __VLS_233 = {}.VInput;
@@ -1348,15 +1384,15 @@ const __VLS_233 = {}.VInput;
 // @ts-ignore
 const __VLS_234 = __VLS_asFunctionalComponent(__VLS_233, new __VLS_233({
     modelValue: (__VLS_ctx.newUserPassword),
-    label: "Password (optional)",
+    label: (__VLS_ctx.$t('users.createUser.passwordLabel')),
     type: "password",
-    help: "Empty creates a passwordless account that cannot log in until you set one.",
+    help: (__VLS_ctx.$t('users.createUser.passwordHelp')),
 }));
 const __VLS_235 = __VLS_234({
     modelValue: (__VLS_ctx.newUserPassword),
-    label: "Password (optional)",
+    label: (__VLS_ctx.$t('users.createUser.passwordLabel')),
     type: "password",
-    help: "Empty creates a passwordless account that cannot log in until you set one.",
+    help: (__VLS_ctx.$t('users.createUser.passwordHelp')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_234));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2" },
@@ -1381,6 +1417,7 @@ const __VLS_244 = {
     }
 };
 __VLS_240.slots.default;
+(__VLS_ctx.$t('users.createUser.cancel'));
 var __VLS_240;
 const __VLS_245 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -1402,6 +1439,7 @@ const __VLS_252 = {
     onClick: (__VLS_ctx.submitCreateUser)
 };
 __VLS_248.slots.default;
+(__VLS_ctx.$t('users.createUser.create'));
 var __VLS_248;
 var __VLS_216;
 const __VLS_253 = {}.VModal;
@@ -1409,11 +1447,11 @@ const __VLS_253 = {}.VModal;
 // @ts-ignore
 const __VLS_254 = __VLS_asFunctionalComponent(__VLS_253, new __VLS_253({
     modelValue: (__VLS_ctx.showCreateTeam),
-    title: "New team",
+    title: (__VLS_ctx.$t('users.createTeam.title')),
 }));
 const __VLS_255 = __VLS_254({
     modelValue: (__VLS_ctx.showCreateTeam),
-    title: "New team",
+    title: (__VLS_ctx.$t('users.createTeam.title')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_254));
 __VLS_256.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1439,40 +1477,40 @@ const __VLS_261 = {}.VInput;
 // @ts-ignore
 const __VLS_262 = __VLS_asFunctionalComponent(__VLS_261, new __VLS_261({
     modelValue: (__VLS_ctx.newTeamName),
-    label: "Name",
+    label: (__VLS_ctx.$t('users.createTeam.nameLabel')),
     required: true,
-    help: "Lower-case alphanumerics with optional '-' or '_'.",
+    help: (__VLS_ctx.$t('users.createTeam.nameHelp')),
 }));
 const __VLS_263 = __VLS_262({
     modelValue: (__VLS_ctx.newTeamName),
-    label: "Name",
+    label: (__VLS_ctx.$t('users.createTeam.nameLabel')),
     required: true,
-    help: "Lower-case alphanumerics with optional '-' or '_'.",
+    help: (__VLS_ctx.$t('users.createTeam.nameHelp')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_262));
 const __VLS_265 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
 const __VLS_266 = __VLS_asFunctionalComponent(__VLS_265, new __VLS_265({
     modelValue: (__VLS_ctx.newTeamTitle),
-    label: "Title",
+    label: (__VLS_ctx.$t('users.createTeam.titleLabel')),
 }));
 const __VLS_267 = __VLS_266({
     modelValue: (__VLS_ctx.newTeamTitle),
-    label: "Title",
+    label: (__VLS_ctx.$t('users.createTeam.titleLabel')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_266));
 const __VLS_269 = {}.VTextarea;
 /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
 // @ts-ignore
 const __VLS_270 = __VLS_asFunctionalComponent(__VLS_269, new __VLS_269({
     modelValue: (__VLS_ctx.newTeamMembersText),
-    label: "Initial members",
-    placeholder: "One username per line.",
+    label: (__VLS_ctx.$t('users.createTeam.membersLabel')),
+    placeholder: (__VLS_ctx.$t('users.createTeam.membersPlaceholder')),
     rows: (4),
 }));
 const __VLS_271 = __VLS_270({
     modelValue: (__VLS_ctx.newTeamMembersText),
-    label: "Initial members",
-    placeholder: "One username per line.",
+    label: (__VLS_ctx.$t('users.createTeam.membersLabel')),
+    placeholder: (__VLS_ctx.$t('users.createTeam.membersPlaceholder')),
     rows: (4),
 }, ...__VLS_functionalComponentArgsRest(__VLS_270));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1498,6 +1536,7 @@ const __VLS_280 = {
     }
 };
 __VLS_276.slots.default;
+(__VLS_ctx.$t('users.createTeam.cancel'));
 var __VLS_276;
 const __VLS_281 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -1519,6 +1558,7 @@ const __VLS_288 = {
     onClick: (__VLS_ctx.submitCreateTeam)
 };
 __VLS_284.slots.default;
+(__VLS_ctx.$t('users.createTeam.create'));
 var __VLS_284;
 var __VLS_256;
 const __VLS_289 = {}.VModal;
@@ -1526,11 +1566,11 @@ const __VLS_289 = {}.VModal;
 // @ts-ignore
 const __VLS_290 = __VLS_asFunctionalComponent(__VLS_289, new __VLS_289({
     modelValue: (__VLS_ctx.showSetPassword),
-    title: "Set password",
+    title: (__VLS_ctx.$t('users.setPassword.title')),
 }));
 const __VLS_291 = __VLS_290({
     modelValue: (__VLS_ctx.showSetPassword),
-    title: "Set password",
+    title: (__VLS_ctx.$t('users.setPassword.title')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_290));
 __VLS_292.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1554,21 +1594,22 @@ if (__VLS_ctx.passwordError) {
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
     ...{ class: "text-sm opacity-80" },
 });
-__VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
-(__VLS_ctx.selection?.kind === 'user' ? __VLS_ctx.selection.name : '');
+(__VLS_ctx.$t('users.setPassword.intro', {
+    name: __VLS_ctx.selection?.kind === 'user' ? __VLS_ctx.selection.name : '',
+}));
 const __VLS_297 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
 const __VLS_298 = __VLS_asFunctionalComponent(__VLS_297, new __VLS_297({
     modelValue: (__VLS_ctx.passwordPlaintext),
-    label: "New password",
+    label: (__VLS_ctx.$t('users.setPassword.newPasswordLabel')),
     type: "password",
     required: true,
     autocomplete: "new-password",
 }));
 const __VLS_299 = __VLS_298({
     modelValue: (__VLS_ctx.passwordPlaintext),
-    label: "New password",
+    label: (__VLS_ctx.$t('users.setPassword.newPasswordLabel')),
     type: "password",
     required: true,
     autocomplete: "new-password",
@@ -1578,14 +1619,14 @@ const __VLS_301 = {}.VInput;
 // @ts-ignore
 const __VLS_302 = __VLS_asFunctionalComponent(__VLS_301, new __VLS_301({
     modelValue: (__VLS_ctx.passwordPlaintextRepeat),
-    label: "Repeat password",
+    label: (__VLS_ctx.$t('users.setPassword.repeatPasswordLabel')),
     type: "password",
     required: true,
     autocomplete: "new-password",
 }));
 const __VLS_303 = __VLS_302({
     modelValue: (__VLS_ctx.passwordPlaintextRepeat),
-    label: "Repeat password",
+    label: (__VLS_ctx.$t('users.setPassword.repeatPasswordLabel')),
     type: "password",
     required: true,
     autocomplete: "new-password",
@@ -1613,6 +1654,7 @@ const __VLS_312 = {
     }
 };
 __VLS_308.slots.default;
+(__VLS_ctx.$t('users.setPassword.cancel'));
 var __VLS_308;
 const __VLS_313 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -1634,6 +1676,7 @@ const __VLS_320 = {
     onClick: (__VLS_ctx.submitSetPassword)
 };
 __VLS_316.slots.default;
+(__VLS_ctx.$t('users.setPassword.submit'));
 var __VLS_316;
 var __VLS_292;
 var __VLS_3;

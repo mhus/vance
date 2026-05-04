@@ -1,7 +1,9 @@
 import { ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { VAlert, VEmptyState, VPagination } from '@/components';
 import { useLlmTraces } from '@/composables/useLlmTraces';
 const props = defineProps();
+const { t } = useI18n();
 const traces = useLlmTraces();
 // Per-turn open/closed state — tracked client-side, not from the
 // server. Fresh page-load defaults to all collapsed; the user can
@@ -55,24 +57,33 @@ function fmtTime(iso) {
         return iso;
     }
 }
-function turnLabel(t) {
+function turnLabel(turn) {
     // Short prefix of the turnId — enough to differentiate but doesn't
     // dominate the header.
-    const id = t.turnId.startsWith('__loose:')
-        ? '(orphan)'
-        : t.turnId.slice(0, 8);
+    const id = turn.turnId.startsWith('__loose:')
+        ? t('insights.llmTrace.orphan')
+        : turn.turnId.slice(0, 8);
     return id;
 }
 function legBadge(leg) {
+    // input/output direction labels stay as the wire values — they
+    // are role identifiers (USER/ASSISTANT/SYSTEM) on the input
+    // side, and a fixed token on the output side.
     switch (leg.direction) {
         case 'input':
             return { label: leg.role ?? 'input', cls: 'leg--input' };
         case 'output':
             return { label: 'output', cls: 'leg--output' };
         case 'tool_call':
-            return { label: `tool-call: ${leg.toolName ?? '?'}`, cls: 'leg--tool-call' };
+            return {
+                label: t('insights.llmTrace.toolCall', { name: leg.toolName ?? '?' }),
+                cls: 'leg--tool-call',
+            };
         case 'tool_result':
-            return { label: `tool-result: ${leg.toolName ?? '?'}`, cls: 'leg--tool-result' };
+            return {
+                label: t('insights.llmTrace.toolResult', { name: leg.toolName ?? '?' }),
+                cls: 'leg--tool-result',
+            };
         default:
             return { label: leg.direction || '?', cls: 'leg--default' };
     }
@@ -106,18 +117,19 @@ if (__VLS_ctx.traces.loading.value && __VLS_ctx.traces.items.value.length === 0)
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "opacity-70" },
     });
+    (__VLS_ctx.$t('insights.llmTrace.loading'));
 }
 else if (!__VLS_ctx.traces.loading.value && __VLS_ctx.traces.items.value.length === 0) {
     const __VLS_4 = {}.VEmptyState;
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
-        headline: "No LLM traces",
-        body: "Either tracing.llm was off when this process ran, or all rows have aged out (90-day TTL).",
+        headline: (__VLS_ctx.$t('insights.llmTrace.emptyHeadline')),
+        body: (__VLS_ctx.$t('insights.llmTrace.emptyBody')),
     }));
     const __VLS_6 = __VLS_5({
-        headline: "No LLM traces",
-        body: "Either tracing.llm was off when this process ran, or all rows have aged out (90-day TTL).",
+        headline: (__VLS_ctx.$t('insights.llmTrace.emptyHeadline')),
+        body: (__VLS_ctx.$t('insights.llmTrace.emptyBody')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_5));
 }
 else {
@@ -162,8 +174,10 @@ else {
         }
         if (turn.tokensIn != null || turn.tokensOut != null) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-            (__VLS_ctx.fmtTokens(turn.tokensIn));
-            (__VLS_ctx.fmtTokens(turn.tokensOut));
+            (__VLS_ctx.$t('insights.llmTrace.tokensInOut', {
+                tokensIn: __VLS_ctx.fmtTokens(turn.tokensIn),
+                tokensOut: __VLS_ctx.fmtTokens(turn.tokensOut),
+            }));
         }
         if (turn.elapsedMs != null) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
@@ -173,13 +187,14 @@ else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "turn-tools" },
             });
-            (turn.toolCallCount);
-            (turn.toolCallCount === 1 ? '' : 's');
+            (turn.toolCallCount === 1
+                ? __VLS_ctx.$t('insights.llmTrace.toolCallSingular', { count: turn.toolCallCount })
+                : __VLS_ctx.$t('insights.llmTrace.toolCallPlural', { count: turn.toolCallCount }));
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "turn-leg-count" },
         });
-        (turn.legs.length);
+        (__VLS_ctx.$t('insights.llmTrace.legCount', { count: turn.legs.length }));
         if (__VLS_ctx.expanded.has(turn.turnId)) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "turn-body" },
@@ -201,12 +216,12 @@ else {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                         ...{ class: "leg-tool-id" },
                     });
-                    (leg.toolCallId);
+                    (__VLS_ctx.$t('insights.llmTrace.idLabel', { id: leg.toolCallId }));
                 }
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                     ...{ class: "leg-seq" },
                 });
-                (leg.sequence);
+                (__VLS_ctx.$t('insights.llmTrace.seqLabel', { seq: leg.sequence }));
                 if (leg.content) {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
                         ...{ class: "leg-content" },
@@ -217,6 +232,7 @@ else {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "leg-empty" },
                     });
+                    (__VLS_ctx.$t('insights.llmTrace.emptyLeg'));
                 }
             }
         }

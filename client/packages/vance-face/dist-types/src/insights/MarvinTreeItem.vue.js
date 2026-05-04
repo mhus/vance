@@ -23,7 +23,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ class: "marvin-goal" },
 });
-(__VLS_ctx.node.doc.goal || '(no goal)');
+(__VLS_ctx.node.doc.goal || __VLS_ctx.$t('insights.marvin.noGoal'));
 if (__VLS_ctx.node.doc.spawnedProcessId) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
@@ -34,12 +34,13 @@ if (__VLS_ctx.node.doc.spawnedProcessId) {
         ...{ class: "link ml-2" },
         type: "button",
     });
+    (__VLS_ctx.$t('insights.marvin.toWorker'));
 }
 if (__VLS_ctx.node.doc.failureReason) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "marvin-failure" },
     });
-    (__VLS_ctx.node.doc.failureReason);
+    (__VLS_ctx.$t('insights.marvin.failure', { reason: __VLS_ctx.node.doc.failureReason }));
 }
 if (__VLS_ctx.node.children.length > 0) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({

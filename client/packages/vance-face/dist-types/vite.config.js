@@ -5,13 +5,14 @@ import { resolve } from 'node:path';
 // are implemented — see specification/web-ui.md §3 for the full list.
 const editorEntries = {
     index: resolve(__dirname, 'index.html'),
-    document: resolve(__dirname, 'document-editor.html'),
+    documents: resolve(__dirname, 'documents.html'),
     inbox: resolve(__dirname, 'inbox.html'),
     chat: resolve(__dirname, 'chat-editor.html'),
     scopes: resolve(__dirname, 'scopes.html'),
     tools: resolve(__dirname, 'tools.html'),
     insights: resolve(__dirname, 'insights.html'),
     users: resolve(__dirname, 'users.html'),
+    profile: resolve(__dirname, 'profile.html'),
 };
 export default defineConfig({
     plugins: [vue()],

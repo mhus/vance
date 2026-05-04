@@ -1,5 +1,7 @@
-import { computed } from 'vue';
-import { clearAuth, getTenantId, getUsername } from '@vance/shared';
+import { computed, onMounted, onBeforeUnmount } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { getSessionData, getTenantId, getUsername, isAccessAlive, isRefreshAlive, logout as serverLogout, refreshAccessCookie, setActiveLanguage, } from '@vance/shared';
+import { setUiLocale } from '@/i18n';
 const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     wideRightPanel: false,
@@ -11,20 +13,75 @@ function crumbText(c) {
 function crumbOnClick(c) {
     return typeof c === 'string' ? null : (c.onClick ?? null);
 }
+const { t, locale } = useI18n();
 const tenantId = computed(() => getTenantId());
 const username = computed(() => getUsername());
 const defaultConnectionTooltip = computed(() => {
     switch (props.connectionState) {
-        case 'connected': return 'Connected — live';
-        case 'occupied': return 'Session is occupied by another connection';
-        case 'idle': return 'Pick a session to start';
+        case 'connected': return t('header.connection.connected');
+        case 'occupied': return t('header.connection.occupied');
+        case 'idle': return t('header.connection.idle');
         default: return '';
     }
 });
-function logout() {
-    clearAuth();
+const LANGUAGES = [
+    { code: 'en', label: 'English' },
+    { code: 'de', label: 'Deutsch' },
+];
+const currentLocale = computed(() => String(locale.value));
+function selectLanguage(code) {
+    setActiveLanguage(code);
+    setUiLocale(code);
+}
+async function logout() {
+    const tenant = getTenantId();
+    if (tenant) {
+        await serverLogout(tenant);
+    }
     window.location.href = '/index.html';
 }
+/**
+ * Per-page-load access-cookie check. The shell is rendered on every
+ * editor (apart from the login page itself), so guarding here is
+ * equivalent to "guard on every page load".
+ *
+ * <p>If the access cookie has expired we try a silent refresh via the
+ * still-alive refresh cookie. On failure we redirect to the login
+ * page with the current URL as the {@code next} parameter so the user
+ * comes back to where they were after re-authenticating.
+ *
+ * <p>A timer keeps polling every 60 seconds — long-running editor
+ * sessions (chat tab left open over the lunch break) get the same
+ * guard mid-session, not only on initial mount.
+ */
+let expiryTimer = null;
+async function guardAccessCookie() {
+    if (isAccessAlive())
+        return;
+    if (getSessionData() && isRefreshAlive()) {
+        const ok = await refreshAccessCookie();
+        if (ok && isAccessAlive())
+            return;
+    }
+    redirectToLogin();
+}
+function redirectToLogin() {
+    const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+    const next = encodeURIComponent(currentUrl);
+    window.location.href = `/index.html?next=${next}`;
+}
+onMounted(() => {
+    void guardAccessCookie();
+    expiryTimer = window.setInterval(() => {
+        void guardAccessCookie();
+    }, 60_000);
+});
+onBeforeUnmount(() => {
+    if (expiryTimer != null) {
+        window.clearInterval(expiryTimer);
+        expiryTimer = null;
+    }
+});
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
     breadcrumbs: () => [],
@@ -46,7 +103,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.header, __VLS_intrinsicElement
 __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
     href: "/index.html",
     ...{ class: "flex-none font-bold text-lg font-mono no-underline hover:opacity-80" },
-    title: "Back to home",
+    title: (__VLS_ctx.$t('common.backToHome')),
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1 flex items-center gap-2 text-sm" },
@@ -126,10 +183,44 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul
     tabindex: "0",
     ...{ class: "dropdown-content menu bg-base-100 rounded-box z-[1] mt-2 w-48 p-2 shadow" },
 });
+__VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+    ...{ class: "menu-title" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+(__VLS_ctx.$t('header.menu.languageHeader'));
+for (const [lang] of __VLS_getVForSourceType((__VLS_ctx.LANGUAGES))) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+        key: (lang.code),
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ onClick: (...[$event]) => {
+                __VLS_ctx.selectLanguage(lang.code);
+            } },
+        ...{ class: ({ active: __VLS_ctx.currentLocale === lang.code }) },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "font-mono text-xs opacity-50 w-6" },
+    });
+    (lang.code.toUpperCase());
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    (lang.label);
+}
+__VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+    ...{ class: "divider-row" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+    ...{ class: "divider my-1" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+    href: "/profile.html",
+});
+(__VLS_ctx.$t('common.profile'));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
     ...{ onClick: (__VLS_ctx.logout) },
 });
+(__VLS_ctx.$t('common.signOut'));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1 flex min-h-0" },
 });
@@ -209,6 +300,15 @@ if (__VLS_ctx.$slots['right-panel']) {
 /** @type {__VLS_StyleScopedClasses['w-48']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['shadow']} */ ;
+/** @type {__VLS_StyleScopedClasses['menu-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['active']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-6']} */ ;
+/** @type {__VLS_StyleScopedClasses['divider-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['divider']} */ ;
+/** @type {__VLS_StyleScopedClasses['my-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
@@ -237,6 +337,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             tenantId: tenantId,
             username: username,
             defaultConnectionTooltip: defaultConnectionTooltip,
+            LANGUAGES: LANGUAGES,
+            currentLocale: currentLocale,
+            selectLanguage: selectLanguage,
             logout: logout,
         };
     },

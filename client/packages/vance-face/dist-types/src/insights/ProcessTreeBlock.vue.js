@@ -54,7 +54,7 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElement
         } },
     ...{ class: "tp-name" },
     type: "button",
-    title: "Open in process view",
+    title: (__VLS_ctx.$t('insights.processTree.openInView')),
 });
 (__VLS_ctx.node.process.name);
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
@@ -74,10 +74,9 @@ if (__VLS_ctx.node.process.recipeName) {
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ class: "tp-count" },
 });
-(__VLS_ctx.events.length);
-if (__VLS_ctx.events.length !== 1) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-}
+(__VLS_ctx.events.length === 1
+    ? __VLS_ctx.$t('insights.processTree.eventCountSingular', { count: __VLS_ctx.events.length })
+    : __VLS_ctx.$t('insights.processTree.eventCountPlural', { count: __VLS_ctx.events.length }));
 if (!__VLS_ctx.collapsed) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
         ...{ class: "tp-events" },

@@ -1,9 +1,11 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { CodeEditor, EditorShell, VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea, } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useAdminServerTools } from '@/composables/useAdminServerTools';
 const VANCE_PROJECT = '_vance';
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_]*$/;
+const { t } = useI18n();
 const tenantProjects = useTenantProjects();
 const toolsState = useAdminServerTools();
 // ─── Project selection ──────────────────────────────────────────────────
@@ -11,7 +13,7 @@ const selectedProject = ref(VANCE_PROJECT);
 const selectedName = ref(null);
 const projectOptions = computed(() => {
     const list = [
-        { value: VANCE_PROJECT, label: '_vance — system defaults' },
+        { value: VANCE_PROJECT, label: t('tools.vanceProjectLabel') },
     ];
     for (const p of tenantProjects.projects.value) {
         if (p.name === VANCE_PROJECT)
@@ -19,7 +21,7 @@ const projectOptions = computed(() => {
         list.push({
             value: p.name,
             label: (p.title ? p.title + ' ' : '') + '(' + p.name + ')',
-            group: 'Projects',
+            group: t('tools.projectsGroup'),
         });
     }
     return list;
@@ -57,8 +59,8 @@ const selectedTypeSchema = computed(() => {
 });
 const breadcrumbs = computed(() => {
     const projectLabel = isVanceProject.value
-        ? '_vance (system)'
-        : 'Project: ' + selectedProject.value;
+        ? t('tools.vanceSystemLabel')
+        : t('tools.breadcrumbProjectPrefix', { name: selectedProject.value });
     return selectedName.value
         ? [projectLabel, selectedName.value]
         : [projectLabel];
@@ -115,24 +117,26 @@ function buildWriteRequest() {
     const type = form.type.trim();
     const description = form.description.trim();
     if (!type) {
-        formError.value = 'Type is required.';
+        formError.value = t('tools.errors.typeRequired');
         return null;
     }
     if (!description) {
-        formError.value = 'Description is required.';
+        formError.value = t('tools.errors.descriptionRequired');
         return null;
     }
     let parameters;
     try {
         const parsed = JSON.parse(form.parametersJson || '{}');
         if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            formError.value = 'Parameters must be a JSON object.';
+            formError.value = t('tools.errors.parametersMustBeObject');
             return null;
         }
         parameters = parsed;
     }
     catch (e) {
-        formError.value = 'Parameters: invalid JSON — ' + (e instanceof Error ? e.message : 'parse error');
+        formError.value = t('tools.errors.parametersInvalidJson', {
+            message: e instanceof Error ? e.message : 'parse error',
+        });
         return null;
     }
     const labels = splitLines(form.labelsText);
@@ -162,7 +166,7 @@ async function save() {
         return;
     try {
         await toolsState.upsert(selectedProject.value, selectedName.value, req);
-        banner.value = 'Saved.';
+        banner.value = t('tools.banners.saved');
     }
     catch {
         /* error in toolsState.error */
@@ -171,12 +175,12 @@ async function save() {
 async function deleteTool() {
     if (!selectedName.value)
         return;
-    if (!confirm(`Delete server tool "${selectedName.value}"? Bundled bean tools with the same name will become visible again through the cascade fallback.`))
+    if (!confirm(t('tools.confirmDelete', { name: selectedName.value })))
         return;
     try {
         await toolsState.remove(selectedProject.value, selectedName.value);
         selectedName.value = null;
-        banner.value = 'Deleted.';
+        banner.value = t('tools.banners.deleted');
     }
     catch {
         /* error */
@@ -194,24 +198,24 @@ async function submitNewTool() {
     const name = newName.value.trim();
     const type = newType.value.trim();
     if (!name) {
-        newError.value = 'Name is required.';
+        newError.value = t('tools.errors.nameRequired');
         return;
     }
     if (!NAME_PATTERN.test(name)) {
-        newError.value = 'Name must be lower-case alphanumerics with optional "_" (snake_case).';
+        newError.value = t('tools.errors.namePattern');
         return;
     }
-    if (toolsState.tools.value.some(t => t.name === name)) {
-        newError.value = `A tool named "${name}" already exists in this project.`;
+    if (toolsState.tools.value.some(tool => tool.name === name)) {
+        newError.value = t('tools.errors.nameAlreadyExists', { name });
         return;
     }
     if (!type) {
-        newError.value = 'Type is required.';
+        newError.value = t('tools.errors.typeRequired');
         return;
     }
     const stub = {
         type,
-        description: name + ' — TODO description',
+        description: t('tools.stubDescription', { name }),
         parameters: {},
         labels: [],
         enabled: true,
@@ -221,10 +225,10 @@ async function submitNewTool() {
         await toolsState.upsert(selectedProject.value, name, stub);
         showNewModal.value = false;
         selectedName.value = name;
-        banner.value = `Created tool "${name}". Fill in the parameters and description.`;
+        banner.value = t('tools.banners.created', { name });
     }
     catch (e) {
-        newError.value = e instanceof Error ? e.message : 'Failed to create tool.';
+        newError.value = e instanceof Error ? e.message : t('tools.errors.createFailed');
     }
 }
 // ─── Sidebar selection ──────────────────────────────────────────────────
@@ -242,12 +246,12 @@ const __VLS_0 = {}.EditorShell;
 /** @type {[typeof __VLS_components.EditorShell, typeof __VLS_components.EditorShell, ]} */ ;
 // @ts-ignore
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-    title: "Server Tools",
+    title: (__VLS_ctx.$t('tools.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
     wideRightPanel: true,
 }));
 const __VLS_2 = __VLS_1({
-    title: "Server Tools",
+    title: (__VLS_ctx.$t('tools.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
     wideRightPanel: true,
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
@@ -278,7 +282,7 @@ __VLS_3.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
         ...{ class: "text-xs uppercase opacity-50" },
     });
-    (__VLS_ctx.isVanceProject ? '_vance (system)' : __VLS_ctx.selectedProject);
+    (__VLS_ctx.isVanceProject ? __VLS_ctx.$t('tools.vanceSystemLabel') : __VLS_ctx.selectedProject);
     const __VLS_9 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
@@ -299,33 +303,35 @@ __VLS_3.slots.default;
         onClick: (__VLS_ctx.openNewTool)
     };
     __VLS_12.slots.default;
+    (__VLS_ctx.$t('tools.sidebar.addNew'));
     var __VLS_12;
     if (__VLS_ctx.toolsState.loading.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "px-2 text-xs opacity-60" },
         });
+        (__VLS_ctx.$t('tools.loading'));
     }
     else if (__VLS_ctx.toolsState.tools.value.length === 0) {
         const __VLS_17 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
         const __VLS_18 = __VLS_asFunctionalComponent(__VLS_17, new __VLS_17({
-            headline: "No tools",
-            body: "Click + New to create one.",
+            headline: (__VLS_ctx.$t('tools.sidebar.noToolsHeadline')),
+            body: (__VLS_ctx.$t('tools.sidebar.noToolsBody')),
         }));
         const __VLS_19 = __VLS_18({
-            headline: "No tools",
-            body: "Click + New to create one.",
+            headline: (__VLS_ctx.$t('tools.sidebar.noToolsHeadline')),
+            body: (__VLS_ctx.$t('tools.sidebar.noToolsBody')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_18));
     }
-    for (const [t] of __VLS_getVForSourceType((__VLS_ctx.toolsState.tools.value))) {
+    for (const [tool] of __VLS_getVForSourceType((__VLS_ctx.toolsState.tools.value))) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
-                    __VLS_ctx.selectTool(t.name);
+                    __VLS_ctx.selectTool(tool.name);
                 } },
-            key: (t.name),
+            key: (tool.name),
             ...{ class: "tool-item" },
-            ...{ class: ({ 'tool-item--active': __VLS_ctx.selectedName === t.name }) },
+            ...{ class: ({ 'tool-item--active': __VLS_ctx.selectedName === tool.name }) },
             type: "button",
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -334,28 +340,30 @@ __VLS_3.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "font-mono text-sm truncate" },
         });
-        (t.name);
+        (tool.name);
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "text-xs px-1.5 py-0.5 rounded badge-type" },
         });
-        (t.type);
+        (tool.type);
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex items-center gap-2 text-xs opacity-60" },
         });
-        if (!t.enabled) {
+        if (!tool.enabled) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "badge-disabled" },
             });
+            (__VLS_ctx.$t('tools.sidebar.disabled'));
         }
-        if (t.primary) {
+        if (tool.primary) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "badge-primary" },
             });
+            (__VLS_ctx.$t('tools.sidebar.primary'));
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "truncate" },
         });
-        (t.description);
+        (tool.description);
     }
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -411,12 +419,12 @@ if (!__VLS_ctx.selectedTool) {
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
-        headline: "Select a tool",
-        body: "Pick one from the list, or click + New to create one in this project.",
+        headline: (__VLS_ctx.$t('tools.empty.headline')),
+        body: (__VLS_ctx.$t('tools.empty.body')),
     }));
     const __VLS_35 = __VLS_34({
-        headline: "Select a tool",
-        body: "Pick one from the list, or click + New to create one in this project.",
+        headline: (__VLS_ctx.$t('tools.empty.headline')),
+        body: (__VLS_ctx.$t('tools.empty.body')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_34));
 }
 else {
@@ -437,11 +445,14 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "text-sm opacity-70" },
     });
+    (__VLS_ctx.$t('tools.detail.projectLabel'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
     (__VLS_ctx.selectedProject);
     if (__VLS_ctx.selectedTool.updatedAtTimestamp) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-        (new Date(__VLS_ctx.selectedTool.updatedAtTimestamp).toLocaleString());
+        (__VLS_ctx.$t('tools.detail.lastEdit', {
+            at: new Date(__VLS_ctx.selectedTool.updatedAtTimestamp).toLocaleString(),
+        }));
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex gap-2" },
@@ -466,6 +477,7 @@ else {
         onClick: (__VLS_ctx.deleteTool)
     };
     __VLS_44.slots.default;
+    (__VLS_ctx.$t('tools.detail.delete'));
     var __VLS_44;
     const __VLS_49 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -487,6 +499,7 @@ else {
         onClick: (__VLS_ctx.save)
     };
     __VLS_52.slots.default;
+    (__VLS_ctx.$t('tools.detail.save'));
     var __VLS_52;
     if (__VLS_ctx.isVanceProject) {
         const __VLS_57 = {}.VAlert;
@@ -502,7 +515,7 @@ else {
         }, ...__VLS_functionalComponentArgsRest(__VLS_58));
         __VLS_60.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+        (__VLS_ctx.$t('tools.detail.vanceNote'));
         var __VLS_60;
     }
     var __VLS_40;
@@ -510,10 +523,10 @@ else {
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
     const __VLS_62 = __VLS_asFunctionalComponent(__VLS_61, new __VLS_61({
-        title: "Identity",
+        title: (__VLS_ctx.$t('tools.cards.identityTitle')),
     }));
     const __VLS_63 = __VLS_62({
-        title: "Identity",
+        title: (__VLS_ctx.$t('tools.cards.identityTitle')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_62));
     __VLS_64.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -525,13 +538,13 @@ else {
     const __VLS_66 = __VLS_asFunctionalComponent(__VLS_65, new __VLS_65({
         modelValue: (__VLS_ctx.form.type),
         options: (__VLS_ctx.typeOptions),
-        label: "Type",
+        label: (__VLS_ctx.$t('tools.fields.type')),
         required: true,
     }));
     const __VLS_67 = __VLS_66({
         modelValue: (__VLS_ctx.form.type),
         options: (__VLS_ctx.typeOptions),
-        label: "Type",
+        label: (__VLS_ctx.$t('tools.fields.type')),
         required: true,
     }, ...__VLS_functionalComponentArgsRest(__VLS_66));
     const __VLS_69 = {}.VTextarea;
@@ -539,15 +552,15 @@ else {
     // @ts-ignore
     const __VLS_70 = __VLS_asFunctionalComponent(__VLS_69, new __VLS_69({
         modelValue: (__VLS_ctx.form.description),
-        label: "Description",
-        help: "Shown to the LLM. One short paragraph, plain text.",
+        label: (__VLS_ctx.$t('tools.fields.description')),
+        help: (__VLS_ctx.$t('tools.fields.descriptionHelp')),
         rows: (3),
         required: true,
     }));
     const __VLS_71 = __VLS_70({
         modelValue: (__VLS_ctx.form.description),
-        label: "Description",
-        help: "Shown to the LLM. One short paragraph, plain text.",
+        label: (__VLS_ctx.$t('tools.fields.description')),
+        help: (__VLS_ctx.$t('tools.fields.descriptionHelp')),
         rows: (3),
         required: true,
     }, ...__VLS_functionalComponentArgsRest(__VLS_70));
@@ -559,37 +572,38 @@ else {
     // @ts-ignore
     const __VLS_74 = __VLS_asFunctionalComponent(__VLS_73, new __VLS_73({
         modelValue: (__VLS_ctx.form.enabled),
-        label: "Enabled",
+        label: (__VLS_ctx.$t('tools.fields.enabled')),
     }));
     const __VLS_75 = __VLS_74({
         modelValue: (__VLS_ctx.form.enabled),
-        label: "Enabled",
+        label: (__VLS_ctx.$t('tools.fields.enabled')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_74));
     const __VLS_77 = {}.VCheckbox;
     /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
     // @ts-ignore
     const __VLS_78 = __VLS_asFunctionalComponent(__VLS_77, new __VLS_77({
         modelValue: (__VLS_ctx.form.primary),
-        label: "Primary (advertised on every turn)",
+        label: (__VLS_ctx.$t('tools.fields.primary')),
     }));
     const __VLS_79 = __VLS_78({
         modelValue: (__VLS_ctx.form.primary),
-        label: "Primary (advertised on every turn)",
+        label: (__VLS_ctx.$t('tools.fields.primary')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_78));
     var __VLS_64;
     const __VLS_81 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
     const __VLS_82 = __VLS_asFunctionalComponent(__VLS_81, new __VLS_81({
-        title: "Parameters (JSON)",
+        title: (__VLS_ctx.$t('tools.cards.parametersTitle')),
     }));
     const __VLS_83 = __VLS_82({
-        title: "Parameters (JSON)",
+        title: (__VLS_ctx.$t('tools.cards.parametersTitle')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_82));
     __VLS_84.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
         ...{ class: "text-xs opacity-70 mb-2" },
     });
+    (__VLS_ctx.$t('tools.cards.parametersHelp'));
     const __VLS_85 = {}.CodeEditor;
     /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
     // @ts-ignore
@@ -608,10 +622,10 @@ else {
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
     const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
-        title: "Labels",
+        title: (__VLS_ctx.$t('tools.cards.labelsTitle')),
     }));
     const __VLS_91 = __VLS_90({
-        title: "Labels",
+        title: (__VLS_ctx.$t('tools.cards.labelsTitle')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_90));
     __VLS_92.slots.default;
     const __VLS_93 = {}.VTextarea;
@@ -619,14 +633,14 @@ else {
     // @ts-ignore
     const __VLS_94 = __VLS_asFunctionalComponent(__VLS_93, new __VLS_93({
         modelValue: (__VLS_ctx.form.labelsText),
-        label: "Labels",
-        help: "One per line (or comma-separated). Recipes can target labels via @<label>.",
+        label: (__VLS_ctx.$t('tools.fields.labels')),
+        help: (__VLS_ctx.$t('tools.fields.labelsHelp')),
         rows: (4),
     }));
     const __VLS_95 = __VLS_94({
         modelValue: (__VLS_ctx.form.labelsText),
-        label: "Labels",
-        help: "One per line (or comma-separated). Recipes can target labels via @<label>.",
+        label: (__VLS_ctx.$t('tools.fields.labels')),
+        help: (__VLS_ctx.$t('tools.fields.labelsHelp')),
         rows: (4),
     }, ...__VLS_functionalComponentArgsRest(__VLS_94));
     var __VLS_92;
@@ -640,10 +654,12 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h3, __VLS_intrinsicElements.h3)({
         ...{ class: "text-xs uppercase opacity-60 mb-2" },
     });
+    (__VLS_ctx.$t('tools.rightPanel.typeSchemaTitle'));
     if (!__VLS_ctx.selectedTypeSchema) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60" },
         });
+        (__VLS_ctx.$t('tools.rightPanel.pickTypeHint'));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
@@ -660,21 +676,22 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h3, __VLS_intrinsicElements.h3)({
         ...{ class: "text-xs uppercase opacity-60 mb-2" },
     });
+    (__VLS_ctx.$t('tools.rightPanel.cascadeTitle'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
         ...{ class: "text-xs opacity-70" },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.code, __VLS_intrinsicElements.code)({});
+    (__VLS_ctx.$t('tools.rightPanel.cascadeBody'));
 }
 const __VLS_97 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
 const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
     modelValue: (__VLS_ctx.showNewModal),
-    title: "New server tool",
+    title: (__VLS_ctx.$t('tools.newModal.title')),
 }));
 const __VLS_99 = __VLS_98({
     modelValue: (__VLS_ctx.showNewModal),
-    title: "New server tool",
+    title: (__VLS_ctx.$t('tools.newModal.title')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_98));
 __VLS_100.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -700,15 +717,15 @@ const __VLS_105 = {}.VInput;
 // @ts-ignore
 const __VLS_106 = __VLS_asFunctionalComponent(__VLS_105, new __VLS_105({
     modelValue: (__VLS_ctx.newName),
-    label: "Name",
+    label: (__VLS_ctx.$t('tools.newModal.nameLabel')),
     required: true,
-    help: "Lower-case alphanumerics + '_'. Snake_case, like the bundled tools (e.g. doc_getting_started).",
+    help: (__VLS_ctx.$t('tools.newModal.nameHelp')),
 }));
 const __VLS_107 = __VLS_106({
     modelValue: (__VLS_ctx.newName),
-    label: "Name",
+    label: (__VLS_ctx.$t('tools.newModal.nameLabel')),
     required: true,
-    help: "Lower-case alphanumerics + '_'. Snake_case, like the bundled tools (e.g. doc_getting_started).",
+    help: (__VLS_ctx.$t('tools.newModal.nameHelp')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_106));
 const __VLS_109 = {}.VSelect;
 /** @type {[typeof __VLS_components.VSelect, ]} */ ;
@@ -716,20 +733,19 @@ const __VLS_109 = {}.VSelect;
 const __VLS_110 = __VLS_asFunctionalComponent(__VLS_109, new __VLS_109({
     modelValue: (__VLS_ctx.newType),
     options: (__VLS_ctx.typeOptions),
-    label: "Type",
+    label: (__VLS_ctx.$t('tools.fields.type')),
     required: true,
 }));
 const __VLS_111 = __VLS_110({
     modelValue: (__VLS_ctx.newType),
     options: (__VLS_ctx.typeOptions),
-    label: "Type",
+    label: (__VLS_ctx.$t('tools.fields.type')),
     required: true,
 }, ...__VLS_functionalComponentArgsRest(__VLS_110));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
     ...{ class: "text-xs opacity-70" },
 });
-__VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
-(__VLS_ctx.selectedProject);
+(__VLS_ctx.$t('tools.newModal.stubInfo', { project: __VLS_ctx.selectedProject }));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2" },
 });
@@ -753,6 +769,7 @@ const __VLS_120 = {
     }
 };
 __VLS_116.slots.default;
+(__VLS_ctx.$t('tools.newModal.cancel'));
 var __VLS_116;
 const __VLS_121 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -774,6 +791,7 @@ const __VLS_128 = {
     onClick: (__VLS_ctx.submitNewTool)
 };
 __VLS_124.slots.default;
+(__VLS_ctx.$t('tools.newModal.create'));
 var __VLS_124;
 var __VLS_100;
 var __VLS_3;

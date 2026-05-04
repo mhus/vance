@@ -1,7 +1,9 @@
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { WebSocketRequestError, } from '@vance/shared';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import { VAlert, VButton, VEmptyState } from '@components/index';
+const { t } = useI18n();
 const props = defineProps();
 const emit = defineEmits();
 const { groups, projects, loading: projectsLoading, error: projectsError, reload: loadProjects } = useTenantProjects();
@@ -46,7 +48,7 @@ async function loadSessions(projectName) {
         sessions.value = sorted;
     }
     catch (e) {
-        sessionsError.value = describeError(e, 'Failed to load sessions.');
+        sessionsError.value = describeError(e, t('chat.picker.failedToLoadSessions'));
         sessions.value = [];
     }
     finally {
@@ -71,7 +73,7 @@ async function bootstrapNew() {
         emit('session-bootstrapped', response.sessionId);
     }
     catch (e) {
-        bootstrapError.value = describeError(e, 'Failed to start a new session.');
+        bootstrapError.value = describeError(e, t('chat.picker.failedToStartSession'));
     }
     finally {
         bootstrapping.value = false;
@@ -89,16 +91,16 @@ function formatRelativeTime(epochMillis) {
     const diffMs = Date.now() - epochMillis;
     const seconds = Math.floor(diffMs / 1000);
     if (seconds < 60)
-        return 'just now';
+        return t('chat.picker.relativeJustNow');
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60)
-        return `${minutes}m ago`;
+        return t('chat.picker.relativeMinutes', { n: minutes });
     const hours = Math.floor(minutes / 60);
     if (hours < 24)
-        return `${hours}h ago`;
+        return t('chat.picker.relativeHours', { n: hours });
     const days = Math.floor(hours / 24);
     if (days < 7)
-        return `${days}d ago`;
+        return t('chat.picker.relativeDays', { n: days });
     return new Date(epochMillis).toLocaleDateString();
 }
 function projectTitle(name) {
@@ -107,7 +109,7 @@ function projectTitle(name) {
 }
 function groupLabel(block) {
     if (!block.group)
-        return 'Ungrouped';
+        return t('chat.picker.ungrouped');
     return block.group.title || block.group.name;
 }
 onMounted(async () => {
@@ -133,10 +135,12 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold" },
 });
+(__VLS_ctx.$t('chat.picker.projectsTitle'));
 if (__VLS_ctx.projectsLoading) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "text-sm opacity-60" },
     });
+    (__VLS_ctx.$t('chat.picker.loading'));
 }
 else if (__VLS_ctx.projectsError) {
     const __VLS_0 = {}.VAlert;
@@ -186,12 +190,12 @@ else {
         /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
         const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
-            headline: "No projects yet",
-            body: "Ask an admin to create a project.",
+            headline: (__VLS_ctx.$t('chat.picker.noProjects')),
+            body: (__VLS_ctx.$t('chat.picker.noProjectsBody')),
         }));
         const __VLS_6 = __VLS_5({
-            headline: "No projects yet",
-            body: "Ask an admin to create a project.",
+            headline: (__VLS_ctx.$t('chat.picker.noProjects')),
+            body: (__VLS_ctx.$t('chat.picker.noProjectsBody')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_5));
     }
 }
@@ -208,12 +212,12 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
     ...{ class: "text-lg font-semibold" },
 });
-(__VLS_ctx.selectedProjectName ? __VLS_ctx.projectTitle(__VLS_ctx.selectedProjectName) : 'Pick a project');
+(__VLS_ctx.selectedProjectName ? __VLS_ctx.projectTitle(__VLS_ctx.selectedProjectName) : __VLS_ctx.$t('chat.picker.pickAProject'));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
     ...{ class: "text-sm opacity-60" },
 });
 if (__VLS_ctx.username) {
-    (__VLS_ctx.username);
+    (__VLS_ctx.$t('chat.picker.signedInAs', { username: __VLS_ctx.username }));
 }
 const __VLS_8 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -237,6 +241,7 @@ const __VLS_15 = {
     onClick: (__VLS_ctx.bootstrapNew)
 };
 __VLS_11.slots.default;
+(__VLS_ctx.$t('chat.picker.newSession'));
 var __VLS_11;
 if (__VLS_ctx.bootstrapError) {
     const __VLS_16 = {}.VAlert;
@@ -270,18 +275,19 @@ if (__VLS_ctx.sessionsLoading) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "text-sm opacity-60" },
     });
+    (__VLS_ctx.$t('chat.picker.sessionsLoading'));
 }
 else if (!__VLS_ctx.sessionsLoading && __VLS_ctx.sessions.length === 0 && __VLS_ctx.selectedProjectName) {
     const __VLS_24 = {}.VEmptyState;
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
-        headline: "No sessions in this project",
-        body: "Click 'New session' to start one.",
+        headline: (__VLS_ctx.$t('chat.picker.noSessions')),
+        body: (__VLS_ctx.$t('chat.picker.noSessionsBody')),
     }));
     const __VLS_26 = __VLS_25({
-        headline: "No sessions in this project",
-        body: "Click 'New session' to start one.",
+        headline: (__VLS_ctx.$t('chat.picker.noSessions')),
+        body: (__VLS_ctx.$t('chat.picker.noSessionsBody')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_25));
 }
 else {
@@ -311,7 +317,7 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
             ...{ class: "inline-block w-2.5 h-2.5 rounded-full shrink-0" },
             ...{ class: (session.bound ? 'bg-error' : 'bg-base-content/40') },
-            title: (session.bound ? 'Occupied by another connection' : 'Available'),
+            title: (session.bound ? __VLS_ctx.$t('chat.picker.occupiedTooltip') : __VLS_ctx.$t('chat.picker.available')),
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex-1 min-w-0" },
@@ -329,6 +335,7 @@ else {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "text-xs text-error" },
             });
+            (__VLS_ctx.$t('chat.picker.occupied'));
         }
     }
 }

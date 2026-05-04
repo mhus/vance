@@ -1,4 +1,5 @@
 import { computed, onMounted, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { EditorShell, MarkdownView, VAlert, VCard, VEmptyState, VInput, VSelect, } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import { useInsightsSessions, useSessionProcesses, useProcessDetail, useProcessChat, useProcessMemory, useMarvinTree, } from '@/composables/useInsights';
@@ -7,6 +8,7 @@ import MarvinTreeItem from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
 import LlmTraceTab from './LlmTraceTab.vue';
 import { ChatRole, } from '@vance/generated';
+const { t } = useI18n();
 const tenantProjects = useTenantProjects();
 const sessionsState = useInsightsSessions();
 const processesState = useSessionProcesses();
@@ -20,17 +22,19 @@ const filterProjectId = ref(null);
 const filterUserId = ref('');
 const filterStatus = ref(null);
 const projectFilterOptions = computed(() => [
-    { value: '', label: '(all projects)' },
+    { value: '', label: t('insights.filters.allProjects') },
     ...tenantProjects.projects.value.map(p => ({
         value: p.name,
         label: p.title || p.name,
     })),
 ]);
-const statusOptions = [
-    { value: '', label: '(all)' },
+// OPEN / CLOSED labels stay as the literal server enum values — they
+// are technical identifiers, recognisable across UI languages.
+const statusOptions = computed(() => [
+    { value: '', label: t('insights.filters.all') },
     { value: 'OPEN', label: 'OPEN' },
     { value: 'CLOSED', label: 'CLOSED' },
-];
+]);
 const selection = ref(null);
 /** Sessions whose processes-list is open in the sidebar. Loaded lazily. */
 const expanded = ref(new Set());
@@ -141,11 +145,12 @@ function sessionLabel(sessionId) {
     // otherwise fall back to the raw id.
     const s = sessionsState.sessions.value.find(x => x.sessionId === sessionId);
     const topic = s?.firstUserMessage;
-    if (topic && topic.length > 0) {
-        const short = topic.length > 60 ? topic.slice(0, 59) + '…' : topic;
-        return `Session: ${short}`;
-    }
-    return `Session: ${sessionId}`;
+    const label = topic && topic.length > 0
+        ? topic.length > 60
+            ? topic.slice(0, 59) + '…'
+            : topic
+        : sessionId;
+    return t('insights.breadcrumbs.sessionPrefix', { label });
 }
 const breadcrumbs = computed(() => {
     const sel = selection.value;
@@ -155,7 +160,7 @@ const breadcrumbs = computed(() => {
         return [sessionLabel(sel.id)];
     const p = selectedProcess.value;
     if (!p)
-        return ['Process'];
+        return [t('insights.breadcrumbs.processFallback')];
     // When a process is selected, the session crumb navigates back to the
     // session view — the most common "go up one level" gesture.
     return [
@@ -163,7 +168,7 @@ const breadcrumbs = computed(() => {
             text: sessionLabel(p.sessionId),
             onClick: () => { selection.value = { kind: 'session', id: p.sessionId }; },
         },
-        `Process: ${p.name}`,
+        t('insights.breadcrumbs.processPrefix', { name: p.name }),
     ];
 });
 const combinedError = computed(() => sessionsState.error.value
@@ -227,12 +232,12 @@ const __VLS_0 = {}.EditorShell;
 /** @type {[typeof __VLS_components.EditorShell, typeof __VLS_components.EditorShell, ]} */ ;
 // @ts-ignore
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-    title: "Insights",
+    title: (__VLS_ctx.$t('insights.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
     wideRightPanel: true,
 }));
 const __VLS_2 = __VLS_1({
-    title: "Insights",
+    title: (__VLS_ctx.$t('insights.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
     wideRightPanel: true,
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
@@ -253,13 +258,13 @@ __VLS_3.slots.default;
         ...{ 'onUpdate:modelValue': {} },
         modelValue: (__VLS_ctx.filterProjectId ?? ''),
         options: (__VLS_ctx.projectFilterOptions),
-        label: "Project",
+        label: (__VLS_ctx.$t('insights.filters.project')),
     }));
     const __VLS_7 = __VLS_6({
         ...{ 'onUpdate:modelValue': {} },
         modelValue: (__VLS_ctx.filterProjectId ?? ''),
         options: (__VLS_ctx.projectFilterOptions),
-        label: "Project",
+        label: (__VLS_ctx.$t('insights.filters.project')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_6));
     let __VLS_9;
     let __VLS_10;
@@ -273,13 +278,13 @@ __VLS_3.slots.default;
     // @ts-ignore
     const __VLS_14 = __VLS_asFunctionalComponent(__VLS_13, new __VLS_13({
         modelValue: (__VLS_ctx.filterUserId),
-        label: "User",
-        placeholder: "(optional)",
+        label: (__VLS_ctx.$t('insights.filters.user')),
+        placeholder: (__VLS_ctx.$t('insights.filters.userPlaceholder')),
     }));
     const __VLS_15 = __VLS_14({
         modelValue: (__VLS_ctx.filterUserId),
-        label: "User",
-        placeholder: "(optional)",
+        label: (__VLS_ctx.$t('insights.filters.user')),
+        placeholder: (__VLS_ctx.$t('insights.filters.userPlaceholder')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_14));
     const __VLS_17 = {}.VSelect;
     /** @type {[typeof __VLS_components.VSelect, ]} */ ;
@@ -288,13 +293,13 @@ __VLS_3.slots.default;
         ...{ 'onUpdate:modelValue': {} },
         modelValue: (__VLS_ctx.filterStatus ?? ''),
         options: (__VLS_ctx.statusOptions),
-        label: "Status",
+        label: (__VLS_ctx.$t('insights.filters.status')),
     }));
     const __VLS_19 = __VLS_18({
         ...{ 'onUpdate:modelValue': {} },
         modelValue: (__VLS_ctx.filterStatus ?? ''),
         options: (__VLS_ctx.statusOptions),
-        label: "Status",
+        label: (__VLS_ctx.$t('insights.filters.status')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_18));
     let __VLS_21;
     let __VLS_22;
@@ -307,18 +312,19 @@ __VLS_3.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60 px-2" },
         });
+        (__VLS_ctx.$t('insights.sidebar.loadingSessions'));
     }
     else if (__VLS_ctx.sessionsState.sessions.value.length === 0) {
         const __VLS_25 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
         const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
-            headline: "No sessions",
-            body: "No sessions match the current filter.",
+            headline: (__VLS_ctx.$t('insights.sidebar.noSessionsHeadline')),
+            body: (__VLS_ctx.$t('insights.sidebar.noSessionsBody')),
         }));
         const __VLS_27 = __VLS_26({
-            headline: "No sessions",
-            body: "No sessions match the current filter.",
+            headline: (__VLS_ctx.$t('insights.sidebar.noSessionsHeadline')),
+            body: (__VLS_ctx.$t('insights.sidebar.noSessionsBody')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_26));
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.nav, __VLS_intrinsicElements.nav)({
@@ -440,12 +446,12 @@ if (!__VLS_ctx.selection) {
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
     const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
-        headline: "Select something",
-        body: "Pick a session on the left to inspect, or expand to drill into its processes.",
+        headline: (__VLS_ctx.$t('insights.emptyMain.headline')),
+        body: (__VLS_ctx.$t('insights.emptyMain.body')),
     }));
     const __VLS_35 = __VLS_34({
-        headline: "Select something",
-        body: "Pick a session on the left to inspect, or expand to drill into its processes.",
+        headline: (__VLS_ctx.$t('insights.emptyMain.headline')),
+        body: (__VLS_ctx.$t('insights.emptyMain.body')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_34));
 }
 else if (__VLS_ctx.selection.kind === 'session') {
@@ -453,6 +459,7 @@ else if (__VLS_ctx.selection.kind === 'session') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "opacity-70" },
         });
+        (__VLS_ctx.$t('insights.loading'));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.header, __VLS_intrinsicElements.header)({
@@ -488,6 +495,7 @@ else if (__VLS_ctx.selection.kind === 'session') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "opacity-70" },
             });
+            (__VLS_ctx.$t('insights.session.lastLabel'));
             if (__VLS_ctx.selectedSession.lastMessageRole) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
                 (__VLS_ctx.selectedSession.lastMessageRole.toLowerCase());
@@ -518,6 +526,7 @@ else if (__VLS_ctx.selection.kind === 'session') {
             ...{ class: "tab" },
             ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'overview' }) },
         });
+        (__VLS_ctx.$t('insights.tabs.overview'));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.selection))
@@ -531,7 +540,7 @@ else if (__VLS_ctx.selection.kind === 'session') {
             ...{ class: "tab" },
             ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'processes' }) },
         });
-        (__VLS_ctx.sessionProcessesForTab.length);
+        (__VLS_ctx.$t('insights.tabs.processes', { count: __VLS_ctx.sessionProcessesForTab.length }));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.selection))
@@ -545,15 +554,16 @@ else if (__VLS_ctx.selection.kind === 'session') {
             ...{ class: "tab" },
             ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'timeline' }) },
         });
+        (__VLS_ctx.$t('insights.tabs.timeline'));
         if (__VLS_ctx.activeTab === 'overview') {
             const __VLS_37 = {}.VCard;
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
             const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
-                title: "Details",
+                title: (__VLS_ctx.$t('insights.session.detailsTitle')),
             }));
             const __VLS_39 = __VLS_38({
-                title: "Details",
+                title: (__VLS_ctx.$t('insights.session.detailsTitle')),
             }, ...__VLS_functionalComponentArgsRest(__VLS_38));
             __VLS_40.slots.default;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
@@ -562,6 +572,7 @@ else if (__VLS_ctx.selection.kind === 'session') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.session.mongoId'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
                 ...{ class: "font-mono" },
             });
@@ -569,27 +580,32 @@ else if (__VLS_ctx.selection.kind === 'session') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.session.user'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.selectedSession.userId);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.session.project'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.selectedSession.projectId);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.session.status'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.selectedSession.status);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.session.client'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.selectedSession.profile);
             (__VLS_ctx.selectedSession.clientVersion);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.session.boundConn'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
                 ...{ class: "font-mono text-xs" },
             });
@@ -597,6 +613,7 @@ else if (__VLS_ctx.selection.kind === 'session') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.session.chatProcess'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             if (__VLS_ctx.selectedSession.chatProcessId) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
@@ -623,11 +640,13 @@ else if (__VLS_ctx.selection.kind === 'session') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.session.created'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.fmt(__VLS_ctx.selectedSession.createdAt));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.session.lastActivity'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.fmt(__VLS_ctx.selectedSession.lastActivityAt));
             var __VLS_40;
@@ -637,16 +656,17 @@ else if (__VLS_ctx.selection.kind === 'session') {
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
             const __VLS_42 = __VLS_asFunctionalComponent(__VLS_41, new __VLS_41({
-                title: "Processes in this session",
+                title: (__VLS_ctx.$t('insights.session.processesTitle')),
             }));
             const __VLS_43 = __VLS_42({
-                title: "Processes in this session",
+                title: (__VLS_ctx.$t('insights.session.processesTitle')),
             }, ...__VLS_functionalComponentArgsRest(__VLS_42));
             __VLS_44.slots.default;
             if (__VLS_ctx.sessionProcessesForTab.length === 0) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "opacity-70" },
                 });
+                (__VLS_ctx.$t('insights.session.noProcesses'));
             }
             else {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
@@ -723,6 +743,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "opacity-70" },
         });
+        (__VLS_ctx.$t('insights.loading'));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -743,6 +764,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
             ...{ class: "tab" },
             ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'overview' }) },
         });
+        (__VLS_ctx.$t('insights.tabs.overview'));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.selection))
@@ -758,6 +780,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
             ...{ class: "tab" },
             ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'chat' }) },
         });
+        (__VLS_ctx.$t('insights.tabs.chat'));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.selection))
@@ -773,6 +796,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
             ...{ class: "tab" },
             ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'memory' }) },
         });
+        (__VLS_ctx.$t('insights.tabs.memory'));
         if (__VLS_ctx.isMarvin) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
@@ -791,6 +815,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 ...{ class: "tab" },
                 ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'tree' }) },
             });
+            (__VLS_ctx.$t('insights.tabs.tree'));
         }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
             ...{ onClick: (...[$event]) => {
@@ -807,15 +832,16 @@ else if (__VLS_ctx.selection.kind === 'process') {
             ...{ class: "tab" },
             ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'llm-traces' }) },
         });
+        (__VLS_ctx.$t('insights.tabs.llmTrace'));
         if (__VLS_ctx.activeTab === 'overview') {
             const __VLS_52 = {}.VCard;
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
             const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
-                title: (`Process ${__VLS_ctx.selectedProcess.name}`),
+                title: (__VLS_ctx.$t('insights.process.titlePrefix', { name: __VLS_ctx.selectedProcess.name })),
             }));
             const __VLS_54 = __VLS_53({
-                title: (`Process ${__VLS_ctx.selectedProcess.name}`),
+                title: (__VLS_ctx.$t('insights.process.titlePrefix', { name: __VLS_ctx.selectedProcess.name })),
             }, ...__VLS_functionalComponentArgsRest(__VLS_53));
             __VLS_55.slots.default;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
@@ -824,6 +850,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.process.mongoId'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
                 ...{ class: "font-mono text-xs" },
             });
@@ -831,11 +858,13 @@ else if (__VLS_ctx.selection.kind === 'process') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.process.session'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.selectedProcess.sessionId);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.process.engine'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.selectedProcess.thinkEngine);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
@@ -845,16 +874,19 @@ else if (__VLS_ctx.selection.kind === 'process') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.process.recipe'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.recipeName));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.process.status'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.selectedProcess.status);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.process.parent'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             if (__VLS_ctx.selectedProcess.parentProcessId) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
@@ -883,16 +915,19 @@ else if (__VLS_ctx.selection.kind === 'process') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.process.goal'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.goal));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.process.created'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.createdAt));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
                 ...{ class: "opacity-60" },
             });
+            (__VLS_ctx.$t('insights.process.updated'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.updatedAt));
             var __VLS_55;
@@ -900,10 +935,10 @@ else if (__VLS_ctx.selection.kind === 'process') {
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
             const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
-                title: "Engine params",
+                title: (__VLS_ctx.$t('insights.process.engineParams')),
             }));
             const __VLS_58 = __VLS_57({
-                title: "Engine params",
+                title: (__VLS_ctx.$t('insights.process.engineParams')),
             }, ...__VLS_functionalComponentArgsRest(__VLS_57));
             __VLS_59.slots.default;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
@@ -915,16 +950,17 @@ else if (__VLS_ctx.selection.kind === 'process') {
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
             const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
-                title: "Active skills",
+                title: (__VLS_ctx.$t('insights.process.activeSkills')),
             }));
             const __VLS_62 = __VLS_61({
-                title: "Active skills",
+                title: (__VLS_ctx.$t('insights.process.activeSkills')),
             }, ...__VLS_functionalComponentArgsRest(__VLS_61));
             __VLS_63.slots.default;
             if (__VLS_ctx.selectedProcess.activeSkills.length === 0) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "opacity-70" },
                 });
+                (__VLS_ctx.$t('insights.process.noneActive'));
             }
             else {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
@@ -945,9 +981,11 @@ else if (__VLS_ctx.selection.kind === 'process') {
                     (a.resolvedFromScope);
                     if (a.fromRecipe) {
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                        (__VLS_ctx.$t('insights.process.fromRecipe'));
                     }
                     if (a.oneShot) {
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                        (__VLS_ctx.$t('insights.process.oneShot'));
                     }
                 }
             }
@@ -956,16 +994,17 @@ else if (__VLS_ctx.selection.kind === 'process') {
             /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
             // @ts-ignore
             const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
-                title: "Pending queue",
+                title: (__VLS_ctx.$t('insights.process.pendingQueue')),
             }));
             const __VLS_66 = __VLS_65({
-                title: "Pending queue",
+                title: (__VLS_ctx.$t('insights.process.pendingQueue')),
             }, ...__VLS_functionalComponentArgsRest(__VLS_65));
             __VLS_67.slots.default;
             if (__VLS_ctx.selectedProcess.pendingMessages.length === 0) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "opacity-70" },
                 });
+                (__VLS_ctx.$t('insights.process.drained'));
             }
             else {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
@@ -1000,18 +1039,19 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "opacity-70" },
                 });
+                (__VLS_ctx.$t('insights.process.chatLoading'));
             }
             else if (__VLS_ctx.chatState.messages.value.length === 0) {
                 const __VLS_68 = {}.VEmptyState;
                 /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                 // @ts-ignore
                 const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
-                    headline: "No messages",
-                    body: "This process has no chat history.",
+                    headline: (__VLS_ctx.$t('insights.process.chatEmptyHeadline')),
+                    body: (__VLS_ctx.$t('insights.process.chatEmptyBody')),
                 }));
                 const __VLS_70 = __VLS_69({
-                    headline: "No messages",
-                    body: "This process has no chat history.",
+                    headline: (__VLS_ctx.$t('insights.process.chatEmptyHeadline')),
+                    body: (__VLS_ctx.$t('insights.process.chatEmptyBody')),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_69));
             }
             else {
@@ -1042,7 +1082,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                             ...{ class: "ml-2 opacity-80" },
                         });
-                        (m.archivedInMemoryId);
+                        (__VLS_ctx.$t('insights.process.archivedToMemory', { id: m.archivedInMemoryId }));
                     }
                     const __VLS_72 = {}.MarkdownView;
                     /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
@@ -1061,18 +1101,19 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "opacity-70" },
                 });
+                (__VLS_ctx.$t('insights.process.memoryLoading'));
             }
             else if (__VLS_ctx.memoryState.entries.value.length === 0) {
                 const __VLS_76 = {}.VEmptyState;
                 /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                 // @ts-ignore
                 const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
-                    headline: "No memory",
-                    body: "No engine-side memory entries are scoped to this process.",
+                    headline: (__VLS_ctx.$t('insights.process.memoryEmptyHeadline')),
+                    body: (__VLS_ctx.$t('insights.process.memoryEmptyBody')),
                 }));
                 const __VLS_78 = __VLS_77({
-                    headline: "No memory",
-                    body: "No engine-side memory entries are scoped to this process.",
+                    headline: (__VLS_ctx.$t('insights.process.memoryEmptyHeadline')),
+                    body: (__VLS_ctx.$t('insights.process.memoryEmptyBody')),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_77));
             }
             else {
@@ -1103,11 +1144,11 @@ else if (__VLS_ctx.selection.kind === 'process') {
                     (__VLS_ctx.fmt(m.createdAt));
                     if (m.supersededByMemoryId) {
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                        (m.supersededByMemoryId);
+                        (__VLS_ctx.$t('insights.process.supersededBy', { id: m.supersededByMemoryId }));
                     }
                     if (m.sourceRefs.length > 0) {
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                        (m.sourceRefs.length);
+                        (__VLS_ctx.$t('insights.process.sources', { count: m.sourceRefs.length }));
                     }
                     const __VLS_84 = {}.MarkdownView;
                     /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
@@ -1125,6 +1166,7 @@ else if (__VLS_ctx.selection.kind === 'process') {
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.summary, __VLS_intrinsicElements.summary)({
                             ...{ class: "text-xs opacity-70 cursor-pointer" },
                         });
+                        (__VLS_ctx.$t('insights.process.metadata'));
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
                             ...{ class: "json-block" },
                         });
@@ -1139,18 +1181,19 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "opacity-70" },
                 });
+                (__VLS_ctx.$t('insights.process.treeLoading'));
             }
             else if (__VLS_ctx.treeState.nodes.value.length === 0) {
                 const __VLS_88 = {}.VEmptyState;
                 /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                 // @ts-ignore
                 const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
-                    headline: "Empty tree",
-                    body: "No nodes have been planned yet.",
+                    headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
+                    body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
                 }));
                 const __VLS_90 = __VLS_89({
-                    headline: "Empty tree",
-                    body: "No nodes have been planned yet.",
+                    headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
+                    body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_89));
             }
             else {
@@ -1158,10 +1201,10 @@ else if (__VLS_ctx.selection.kind === 'process') {
                 /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                 // @ts-ignore
                 const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
-                    title: "Marvin tree",
+                    title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
                 }));
                 const __VLS_94 = __VLS_93({
-                    title: "Marvin tree",
+                    title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_93));
                 __VLS_95.slots.default;
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
@@ -1212,21 +1255,24 @@ else if (__VLS_ctx.selection.kind === 'process') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h3, __VLS_intrinsicElements.h3)({
         ...{ class: "text-xs uppercase opacity-60 mb-2" },
     });
+    (__VLS_ctx.$t('insights.help.title'));
     if (__VLS_ctx.help.loading.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60" },
         });
+        (__VLS_ctx.$t('insights.help.loading'));
     }
     else if (__VLS_ctx.help.error.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60" },
         });
-        (__VLS_ctx.help.error.value);
+        (__VLS_ctx.$t('insights.help.unavailable', { error: __VLS_ctx.help.error.value }));
     }
     else if (!__VLS_ctx.help.content.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60" },
         });
+        (__VLS_ctx.$t('insights.help.empty'));
     }
     else {
         const __VLS_106 = {}.MarkdownView;

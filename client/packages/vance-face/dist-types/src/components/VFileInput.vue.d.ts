@@ -19,8 +19,8 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
     "onUpdate:modelValue"?: ((files: File[]) => any) | undefined;
 }>, {
-    required: boolean;
     disabled: boolean;
+    required: boolean;
     multiple: boolean;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;

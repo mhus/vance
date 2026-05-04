@@ -203,6 +203,13 @@ export default {
       apply: 'Anwenden',
       save: 'Speichern',
     },
+    listEditor: {
+      addItem: 'Eintrag hinzufügen',
+      deleteItem: 'Eintrag löschen',
+      clickToEdit: 'Klicken zum Bearbeiten',
+      emptyItem: '(leer)',
+      dragHandle: 'Ziehen zum Umsortieren',
+    },
     create: {
       newDocument: 'Neues Dokument',
       typeContent: 'Inhalt eingeben',

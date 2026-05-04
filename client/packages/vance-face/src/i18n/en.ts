@@ -205,6 +205,13 @@ export default {
       apply: 'Apply',
       save: 'Save',
     },
+    listEditor: {
+      addItem: 'Add item',
+      deleteItem: 'Delete item',
+      clickToEdit: 'Click to edit',
+      emptyItem: '(empty)',
+      dragHandle: 'Drag to reorder',
+    },
     create: {
       newDocument: 'New document',
       typeContent: 'Type content',

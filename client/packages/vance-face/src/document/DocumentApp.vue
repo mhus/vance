@@ -27,6 +27,7 @@ import ListView from './ListView.vue';
 import {
   isListMime,
   parseList,
+  serializeList,
   ListCodecError,
   type ListDocument,
 } from './listItemsCodec';
@@ -327,6 +328,28 @@ const parsedList = computed<ParsedList>(() => {
     return { doc: null, error: e instanceof Error ? e.message : String(e) };
   }
 });
+
+/**
+ * Bridge from the typed list editor back to the raw body. Each
+ * mutation in {@code <ListView>} emits a fresh {@link ListDocument};
+ * we serialise it in the document's mime type and overwrite the raw
+ * editor's text. The existing Save / Apply buttons then write the
+ * canonical body to the server unchanged.
+ *
+ * The Raw editor's text becomes the canonical re-emit on the very
+ * first list edit — small whitespace differences against the
+ * originally loaded body are expected and intentional.
+ */
+function onListChanged(updated: ListDocument): void {
+  const sel = docsState.selected.value;
+  if (!sel?.mimeType) return;
+  try {
+    editInlineText.value = serializeList(updated, sel.mimeType);
+    editError.value = null;
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : String(e);
+  }
+}
 
 // ─── Contextual help ────────────────────────────────────────────────────
 //
@@ -877,7 +900,11 @@ const formatBytes = (n: number): string => {
                 <VAlert v-if="parsedList.error" variant="warning">
                   <span>{{ $t('documents.detail.listParseError', { message: parsedList.error }) }}</span>
                 </VAlert>
-                <ListView v-else-if="parsedList.doc" :doc="parsedList.doc" />
+                <ListView
+                  v-else-if="parsedList.doc"
+                  :doc="parsedList.doc"
+                  @update:doc="onListChanged"
+                />
               </template>
 
               <CodeEditor

@@ -25,6 +25,7 @@ import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
 import ListView from './ListView.vue';
 import TreeView from './TreeView.vue';
+import MindmapView from './MindmapView.vue';
 import {
   isListMime,
   parseList,
@@ -294,9 +295,10 @@ function fillEditor(): void {
   editInlineText.value = sel?.inlineText ?? '';
   editError.value = null;
   // Switching documents resets the editor mode to the kind-aware
-  // default — `list` for list documents, `tree` for tree documents,
-  // `raw` for everything else.
+  // default — `mindmap` for mindmap documents, `list` for list,
+  // `tree` for tree, `raw` for everything else.
   if (isListDocument.value) contentTab.value = 'list';
+  else if (isMindmapDocument.value) contentTab.value = 'mindmap';
   else if (isTreeDocument.value) contentTab.value = 'tree';
   else contentTab.value = 'raw';
 }
@@ -309,7 +311,7 @@ function fillEditor(): void {
 // raw editor. The tab is in-memory only — switching does not hit the
 // server, the body just gets reparsed each time.
 
-type ContentTab = 'raw' | 'list' | 'tree';
+type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap';
 const contentTab = ref<ContentTab>('raw');
 
 const isListDocument = computed<boolean>(() => {
@@ -323,6 +325,16 @@ const isTreeDocument = computed<boolean>(() => {
   const sel = docsState.selected.value;
   if (!sel?.inline) return false;
   if ((sel.kind ?? '').toLowerCase() !== 'tree') return false;
+  return isTreeMime(sel.mimeType);
+});
+
+// Mindmap documents reuse the tree codec — same mime types, same
+// per-item shape — and add a Mindmap render tab on top of the
+// tree editor. See specification/doc-kind-mindmap.md §5.
+const isMindmapDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'mindmap') return false;
   return isTreeMime(sel.mimeType);
 });
 
@@ -351,7 +363,9 @@ interface ParsedTree {
 }
 
 const parsedTree = computed<ParsedTree>(() => {
-  if (!isTreeDocument.value) return { doc: null, error: null };
+  if (!isTreeDocument.value && !isMindmapDocument.value) {
+    return { doc: null, error: null };
+  }
   try {
     const sel = docsState.selected.value;
     const doc = parseTree(editInlineText.value, sel?.mimeType ?? '');
@@ -531,6 +545,11 @@ function buildKindStub(kind: string, mime: string): string {
     if (isMd) return '---\nkind: tree\n---\n- parent\n  - child\n';
     if (isJson) return '{\n  "kind": "tree",\n  "items": [\n    { "text": "parent", "children": [\n      { "text": "child", "children": [] }\n    ]}\n  ]\n}\n';
     if (isYaml) return 'kind: tree\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
+  }
+  if (kind === 'mindmap') {
+    if (isMd) return '---\nkind: mindmap\n---\n- root topic\n  - branch one\n  - branch two\n';
+    if (isJson) return '{\n  "kind": "mindmap",\n  "items": [\n    { "text": "root topic", "children": [\n      { "text": "branch one", "children": [] },\n      { "text": "branch two", "children": [] }\n    ]}\n  ]\n}\n';
+    if (isYaml) return 'kind: mindmap\nitems:\n  - text: root topic\n    children:\n      - text: branch one\n        children: []\n      - text: branch two\n        children: []\n';
   }
   // Schema-less kinds — header only, body stays empty.
   if (isMd) return `---\nkind: ${kind}\n---\n`;
@@ -948,6 +967,26 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isMindmapDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'mindmap' }"
+                  @click="contentTab = 'mindmap'"
+                >{{ $t('documents.detail.tabMindmap') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'tree' }"
+                  @click="contentTab = 'tree'"
+                >{{ $t('documents.detail.tabTree') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
               <div v-else-if="isTreeDocument" class="content-tabs">
                 <button
                   type="button"
@@ -974,7 +1013,14 @@ const formatBytes = (n: number): string => {
                 />
               </template>
 
-              <template v-else-if="isTreeDocument && contentTab === 'tree'">
+              <template v-else-if="isMindmapDocument && contentTab === 'mindmap'">
+                <VAlert v-if="parsedTree.error" variant="warning">
+                  <span>{{ $t('documents.detail.mindmapParseError', { message: parsedTree.error }) }}</span>
+                </VAlert>
+                <MindmapView v-else-if="parsedTree.doc" :doc="parsedTree.doc" />
+              </template>
+
+              <template v-else-if="(isTreeDocument || isMindmapDocument) && contentTab === 'tree'">
                 <VAlert v-if="parsedTree.error" variant="warning">
                   <span>{{ $t('documents.detail.treeParseError', { message: parsedTree.error }) }}</span>
                 </VAlert>

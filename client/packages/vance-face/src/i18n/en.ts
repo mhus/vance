@@ -199,8 +199,10 @@ export default {
       tabRaw: 'Raw',
       tabList: 'List',
       tabTree: 'Tree',
+      tabMindmap: 'Mindmap',
       listParseError: 'Cannot show list view: {message}',
       treeParseError: 'Cannot show tree view: {message}',
+      mindmapParseError: 'Cannot show mindmap view: {message}',
       delete: 'Delete',
       download: 'Download',
       cancel: 'Cancel',
@@ -227,6 +229,9 @@ export default {
       dragHandle: 'Drag to reorder within the same level',
       expand: 'Expand',
       collapse: 'Collapse',
+    },
+    mindmapView: {
+      panZoomHint: 'Scroll to zoom · Drag to pan · Click a node to fold',
     },
     create: {
       newDocument: 'New document',

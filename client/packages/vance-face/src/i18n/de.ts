@@ -197,8 +197,10 @@ export default {
       tabRaw: 'Roh',
       tabList: 'Liste',
       tabTree: 'Baum',
+      tabMindmap: 'Mindmap',
       listParseError: 'List-Ansicht nicht möglich: {message}',
       treeParseError: 'Baum-Ansicht nicht möglich: {message}',
+      mindmapParseError: 'Mindmap-Ansicht nicht möglich: {message}',
       delete: 'Löschen',
       download: 'Herunterladen',
       cancel: 'Abbrechen',
@@ -225,6 +227,9 @@ export default {
       dragHandle: 'Ziehen zum Umsortieren innerhalb derselben Ebene',
       expand: 'Ausklappen',
       collapse: 'Einklappen',
+    },
+    mindmapView: {
+      panZoomHint: 'Scrollen zum Zoomen · Ziehen zum Verschieben · Klick auf Knoten zum Einklappen',
     },
     create: {
       newDocument: 'Neues Dokument',

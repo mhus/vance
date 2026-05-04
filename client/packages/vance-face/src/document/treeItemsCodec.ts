@@ -6,7 +6,12 @@
 // See `specification/doc-kind-tree.md` for the schema and the
 // markdown indent-nesting rules.
 
-import yaml from 'js-yaml';
+import {
+  dumpYamlMultiDoc,
+  mergeYamlMultiDoc,
+  unwrapJsonMeta,
+  wrapJsonMeta,
+} from './documentHeaderCodec';
 
 /** A tree item. Extra fields are preserved across round-trip for
  *  json/yaml; markdown can only carry `text` + nesting. */
@@ -218,16 +223,14 @@ function parseTreeJson(body: string): TreeDocument {
   if (!isObject(parsed)) {
     throw new TreeCodecError('Top-level JSON must be an object');
   }
-  return promoteToTreeDocument(parsed);
+  return promoteToTreeDocument(unwrapJsonMeta(parsed));
 }
 
 function serializeTreeJson(doc: TreeDocument): string {
-  const obj: Record<string, unknown> = {
-    kind: doc.kind || 'tree',
+  return JSON.stringify(wrapJsonMeta(doc.kind || 'tree', {
     items: doc.items.map(itemToObject),
     ...doc.extra,
-  };
-  return JSON.stringify(obj, null, 2) + '\n';
+  }), null, 2) + '\n';
 }
 
 // ── YAML ─────────────────────────────────────────────────────────────
@@ -236,25 +239,20 @@ function parseTreeYaml(body: string): TreeDocument {
   if (body.trim() === '') {
     return { kind: 'tree', items: [], extra: {} };
   }
-  let parsed: unknown;
+  let merged: Record<string, unknown>;
   try {
-    parsed = yaml.load(body, { schema: yaml.JSON_SCHEMA });
+    merged = mergeYamlMultiDoc(body);
   } catch (e) {
     throw new TreeCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
   }
-  if (!isObject(parsed)) {
-    throw new TreeCodecError('Top-level YAML must be a mapping');
-  }
-  return promoteToTreeDocument(parsed);
+  return promoteToTreeDocument(merged);
 }
 
 function serializeTreeYaml(doc: TreeDocument): string {
-  const obj: Record<string, unknown> = {
-    kind: doc.kind || 'tree',
+  return dumpYamlMultiDoc(doc.kind || 'tree', {
     items: doc.items.map(itemToObject),
     ...doc.extra,
-  };
-  return yaml.dump(obj, { indent: 2, lineWidth: 100, noRefs: true });
+  });
 }
 
 // ── Shared promotion logic (json + yaml share the object shape) ─────

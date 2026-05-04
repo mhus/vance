@@ -8,7 +8,12 @@
 // schema-declaration semantics, the resilience rules (missing field
 // → empty), and the markdown CSV-light grammar.
 
-import yaml from 'js-yaml';
+import {
+  dumpYamlMultiDoc,
+  mergeYamlMultiDoc,
+  unwrapJsonMeta,
+  wrapJsonMeta,
+} from './documentHeaderCodec';
 
 /** A single record. `values` holds the schema-field-keyed strings.
  *  `extra` keeps unknown json/yaml keys for round-trip; `overflow`
@@ -295,20 +300,18 @@ function parseRecordsJson(body: string): RecordsDocument {
   if (!isObject(parsed)) {
     throw new RecordsCodecError('Top-level JSON must be an object');
   }
-  return promoteToRecordsDocument(parsed);
+  return promoteToRecordsDocument(unwrapJsonMeta(parsed));
 }
 
 function serializeRecordsJson(doc: RecordsDocument): string {
   if (doc.schema.length === 0) {
     throw new RecordsCodecError('Cannot serialise records without a schema');
   }
-  const obj: Record<string, unknown> = {
-    kind: doc.kind || 'records',
+  return JSON.stringify(wrapJsonMeta(doc.kind || 'records', {
     schema: doc.schema,
     items: doc.items.map((item) => itemToObject(item, doc.schema)),
     ...doc.extra,
-  };
-  return JSON.stringify(obj, null, 2) + '\n';
+  }), null, 2) + '\n';
 }
 
 // ── YAML ─────────────────────────────────────────────────────────────
@@ -317,29 +320,24 @@ function parseRecordsYaml(body: string): RecordsDocument {
   if (body.trim() === '') {
     throw new RecordsCodecError('Empty YAML body — `kind: records` requires a schema');
   }
-  let parsed: unknown;
+  let merged: Record<string, unknown>;
   try {
-    parsed = yaml.load(body, { schema: yaml.JSON_SCHEMA });
+    merged = mergeYamlMultiDoc(body);
   } catch (e) {
     throw new RecordsCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
   }
-  if (!isObject(parsed)) {
-    throw new RecordsCodecError('Top-level YAML must be a mapping');
-  }
-  return promoteToRecordsDocument(parsed);
+  return promoteToRecordsDocument(merged);
 }
 
 function serializeRecordsYaml(doc: RecordsDocument): string {
   if (doc.schema.length === 0) {
     throw new RecordsCodecError('Cannot serialise records without a schema');
   }
-  const obj: Record<string, unknown> = {
-    kind: doc.kind || 'records',
+  return dumpYamlMultiDoc(doc.kind || 'records', {
     schema: doc.schema,
     items: doc.items.map((item) => itemToObject(item, doc.schema)),
     ...doc.extra,
-  };
-  return yaml.dump(obj, { indent: 2, lineWidth: 100, noRefs: true });
+  });
 }
 
 // ── Shared promotion logic (json + yaml share the object shape) ─────

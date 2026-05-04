@@ -27,6 +27,7 @@ import ListView from './ListView.vue';
 import TreeView from './TreeView.vue';
 import MindmapView from './MindmapView.vue';
 import RecordsView from './RecordsView.vue';
+import GraphView from './GraphView.vue';
 import {
   isListMime,
   parseList,
@@ -48,6 +49,13 @@ import {
   RecordsCodecError,
   type RecordsDocument,
 } from './recordsCodec';
+import {
+  isGraphMime,
+  parseGraph,
+  serializeGraph,
+  GraphCodecError,
+  type GraphDocument,
+} from './graphCodec';
 import type {
   DocumentSummary,
   DocumentUpdateRequest,
@@ -303,9 +311,10 @@ function fillEditor(): void {
   editInlineText.value = sel?.inlineText ?? '';
   editError.value = null;
   // Switching documents resets the editor mode to the kind-aware
-  // default — `records` for records, `mindmap` for mindmap, `list`
-  // for list, `tree` for tree, `raw` for everything else.
-  if (isRecordsDocument.value) contentTab.value = 'records';
+  // default — `graph`, `records`, `mindmap`, `list`, `tree`, then
+  // `raw` for everything else.
+  if (isGraphDocument.value) contentTab.value = 'graph';
+  else if (isRecordsDocument.value) contentTab.value = 'records';
   else if (isListDocument.value) contentTab.value = 'list';
   else if (isMindmapDocument.value) contentTab.value = 'mindmap';
   else if (isTreeDocument.value) contentTab.value = 'tree';
@@ -320,7 +329,7 @@ function fillEditor(): void {
 // raw editor. The tab is in-memory only — switching does not hit the
 // server, the body just gets reparsed each time.
 
-type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap' | 'records';
+type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap' | 'records' | 'graph';
 const contentTab = ref<ContentTab>('raw');
 
 const isListDocument = computed<boolean>(() => {
@@ -352,6 +361,15 @@ const isRecordsDocument = computed<boolean>(() => {
   if (!sel?.inline) return false;
   if ((sel.kind ?? '').toLowerCase() !== 'records') return false;
   return isRecordsMime(sel.mimeType);
+});
+
+// Graph documents: kind: graph + json/yaml only — markdown bodies
+// fall back to the Raw editor (spec doc-kind-graph.md §3.3).
+const isGraphDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'graph') return false;
+  return isGraphMime(sel.mimeType);
 });
 
 interface ParsedList {
@@ -413,6 +431,25 @@ const parsedRecords = computed<ParsedRecords>(() => {
   }
 });
 
+interface ParsedGraph {
+  doc: GraphDocument | null;
+  error: string | null;
+}
+
+const parsedGraph = computed<ParsedGraph>(() => {
+  if (!isGraphDocument.value) return { doc: null, error: null };
+  try {
+    const sel = docsState.selected.value;
+    const doc = parseGraph(editInlineText.value, sel?.mimeType ?? '');
+    return { doc, error: null };
+  } catch (e) {
+    if (e instanceof GraphCodecError) {
+      return { doc: null, error: e.message };
+    }
+    return { doc: null, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
 /**
  * Bridge from the typed list editor back to the raw body. Each
  * mutation in {@code <ListView>} emits a fresh {@link ListDocument};
@@ -465,6 +502,23 @@ function onRecordsChanged(updated: RecordsDocument): void {
   if (!sel?.mimeType) return;
   try {
     editInlineText.value = serializeRecords(updated, sel.mimeType);
+    editError.value = null;
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+/**
+ * Bridge from the typed graph editor back to the raw body. Same
+ * pattern as records — the editor emits a fresh
+ * {@link GraphDocument}, we serialise into the document's mime
+ * type and write into the raw editor's text.
+ */
+function onGraphChanged(updated: GraphDocument): void {
+  const sel = docsState.selected.value;
+  if (!sel?.mimeType) return;
+  try {
+    editInlineText.value = serializeGraph(updated, sel.mimeType);
     editError.value = null;
   } catch (e) {
     editError.value = e instanceof Error ? e.message : String(e);
@@ -591,28 +645,35 @@ function buildKindStub(kind: string, mime: string): string {
 
   if (kind === 'list') {
     if (isMd) return '---\nkind: list\n---\n- item 1\n- item 2\n';
-    if (isJson) return '{\n  "kind": "list",\n  "items": [\n    { "text": "item 1" },\n    { "text": "item 2" }\n  ]\n}\n';
-    if (isYaml) return 'kind: list\nitems:\n  - text: item 1\n  - text: item 2\n';
+    if (isJson) return '{\n  "$meta": { "kind": "list" },\n  "items": [\n    { "text": "item 1" },\n    { "text": "item 2" }\n  ]\n}\n';
+    if (isYaml) return 'kind: list\n---\nitems:\n  - text: item 1\n  - text: item 2\n';
   }
   if (kind === 'tree') {
     if (isMd) return '---\nkind: tree\n---\n- parent\n  - child\n';
-    if (isJson) return '{\n  "kind": "tree",\n  "items": [\n    { "text": "parent", "children": [\n      { "text": "child", "children": [] }\n    ]}\n  ]\n}\n';
-    if (isYaml) return 'kind: tree\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
+    if (isJson) return '{\n  "$meta": { "kind": "tree" },\n  "items": [\n    { "text": "parent", "children": [\n      { "text": "child", "children": [] }\n    ]}\n  ]\n}\n';
+    if (isYaml) return 'kind: tree\n---\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
   }
   if (kind === 'mindmap') {
     if (isMd) return '---\nkind: mindmap\n---\n- root topic\n  - branch one\n  - branch two\n';
-    if (isJson) return '{\n  "kind": "mindmap",\n  "items": [\n    { "text": "root topic", "children": [\n      { "text": "branch one", "children": [] },\n      { "text": "branch two", "children": [] }\n    ]}\n  ]\n}\n';
-    if (isYaml) return 'kind: mindmap\nitems:\n  - text: root topic\n    children:\n      - text: branch one\n        children: []\n      - text: branch two\n        children: []\n';
+    if (isJson) return '{\n  "$meta": { "kind": "mindmap" },\n  "items": [\n    { "text": "root topic", "children": [\n      { "text": "branch one", "children": [] },\n      { "text": "branch two", "children": [] }\n    ]}\n  ]\n}\n';
+    if (isYaml) return 'kind: mindmap\n---\nitems:\n  - text: root topic\n    children:\n      - text: branch one\n        children: []\n      - text: branch two\n        children: []\n';
   }
   if (kind === 'records') {
     if (isMd) return '---\nkind: records\nschema: name, email, role\n---\n- Alice, alice@example.com, admin\n- Bob, bob@example.com, user\n';
-    if (isJson) return '{\n  "kind": "records",\n  "schema": ["name", "email", "role"],\n  "items": [\n    { "name": "Alice", "email": "alice@example.com", "role": "admin" },\n    { "name": "Bob", "email": "bob@example.com", "role": "user" }\n  ]\n}\n';
-    if (isYaml) return 'kind: records\nschema: [name, email, role]\nitems:\n  - name: Alice\n    email: alice@example.com\n    role: admin\n  - name: Bob\n    email: bob@example.com\n    role: user\n';
+    if (isJson) return '{\n  "$meta": { "kind": "records" },\n  "schema": ["name", "email", "role"],\n  "items": [\n    { "name": "Alice", "email": "alice@example.com", "role": "admin" },\n    { "name": "Bob", "email": "bob@example.com", "role": "user" }\n  ]\n}\n';
+    if (isYaml) return 'kind: records\n---\nschema: [name, email, role]\nitems:\n  - name: Alice\n    email: alice@example.com\n    role: admin\n  - name: Bob\n    email: bob@example.com\n    role: user\n';
+  }
+  if (kind === 'graph') {
+    // Markdown isn't supported for graphs (spec §3.3); fall through
+    // to the schema-less branch below if md is picked, so the user
+    // gets just the header and a hint to switch mime type via Raw.
+    if (isJson) return '{\n  "$meta": { "kind": "graph" },\n  "graph": { "directed": true },\n  "nodes": [\n    { "id": "alice", "label": "Alice" },\n    { "id": "bob", "label": "Bob" }\n  ],\n  "edges": [\n    { "source": "alice", "target": "bob" }\n  ]\n}\n';
+    if (isYaml) return 'kind: graph\n---\ngraph:\n  directed: true\nnodes:\n  - id: alice\n    label: Alice\n  - id: bob\n    label: Bob\nedges:\n  - source: alice\n    target: bob\n';
   }
   // Schema-less kinds — header only, body stays empty.
   if (isMd) return `---\nkind: ${kind}\n---\n`;
-  if (isJson) return `{\n  "kind": "${kind}"\n}\n`;
-  if (isYaml) return `kind: ${kind}\n`;
+  if (isJson) return `{\n  "$meta": { "kind": "${kind}" }\n}\n`;
+  if (isYaml) return `kind: ${kind}\n---\n`;
   return '';
 }
 
@@ -1025,6 +1086,20 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isGraphDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'graph' }"
+                  @click="contentTab = 'graph'"
+                >{{ $t('documents.detail.tabGraph') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
               <div v-else-if="isRecordsDocument" class="content-tabs">
                 <button
                   type="button"
@@ -1082,6 +1157,17 @@ const formatBytes = (n: number): string => {
                   v-else-if="parsedList.doc"
                   :doc="parsedList.doc"
                   @update:doc="onListChanged"
+                />
+              </template>
+
+              <template v-else-if="isGraphDocument && contentTab === 'graph'">
+                <VAlert v-if="parsedGraph.error" variant="warning">
+                  <span>{{ $t('documents.detail.graphParseError', { message: parsedGraph.error }) }}</span>
+                </VAlert>
+                <GraphView
+                  v-else-if="parsedGraph.doc"
+                  :doc="parsedGraph.doc"
+                  @update:doc="onGraphChanged"
                 />
               </template>
 

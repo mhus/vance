@@ -11,7 +11,12 @@
 //
 // See `specification/doc-kind-items.md` for the schema.
 
-import yaml from 'js-yaml';
+import {
+  dumpYamlMultiDoc,
+  mergeYamlMultiDoc,
+  unwrapJsonMeta,
+  wrapJsonMeta,
+} from './documentHeaderCodec';
 
 /** A single list item. Extra fields are preserved across round-trip
  *  for json/yaml; markdown can only carry `text`. */
@@ -180,16 +185,14 @@ function parseListJson(body: string): ListDocument {
   if (!isObject(parsed)) {
     throw new ListCodecError('Top-level JSON must be an object');
   }
-  return promoteToListDocument(parsed);
+  return promoteToListDocument(unwrapJsonMeta(parsed));
 }
 
 function serializeListJson(doc: ListDocument): string {
-  const obj: Record<string, unknown> = {
-    kind: doc.kind || 'list',
+  return JSON.stringify(wrapJsonMeta(doc.kind || 'list', {
     items: doc.items.map(itemToObject),
     ...doc.extra,
-  };
-  return JSON.stringify(obj, null, 2) + '\n';
+  }), null, 2) + '\n';
 }
 
 // ── YAML ─────────────────────────────────────────────────────────────
@@ -198,25 +201,20 @@ function parseListYaml(body: string): ListDocument {
   if (body.trim() === '') {
     return { kind: 'list', items: [], extra: {} };
   }
-  let parsed: unknown;
+  let merged: Record<string, unknown>;
   try {
-    parsed = yaml.load(body, { schema: yaml.JSON_SCHEMA });
+    merged = mergeYamlMultiDoc(body);
   } catch (e) {
     throw new ListCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
   }
-  if (!isObject(parsed)) {
-    throw new ListCodecError('Top-level YAML must be a mapping');
-  }
-  return promoteToListDocument(parsed);
+  return promoteToListDocument(merged);
 }
 
 function serializeListYaml(doc: ListDocument): string {
-  const obj: Record<string, unknown> = {
-    kind: doc.kind || 'list',
+  return dumpYamlMultiDoc(doc.kind || 'list', {
     items: doc.items.map(itemToObject),
     ...doc.extra,
-  };
-  return yaml.dump(obj, { indent: 2, lineWidth: 100, noRefs: true });
+  });
 }
 
 // ── Shared promotion logic (json + yaml share their object shape) ───

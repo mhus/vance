@@ -84,7 +84,7 @@ public class WorkspaceToDocTool implements Tool {
 
         WorkspaceService.ReadResult read;
         try {
-            read = workspace.read(ctx.projectId(), dirName, workspacePath, MAX_IMPORT_CHARS);
+            read = workspace.read(ctx.tenantId(), ctx.projectId(), dirName, workspacePath, MAX_IMPORT_CHARS);
         } catch (RuntimeException e) {
             throw new ToolException("Cannot read workspace file: " + e.getMessage(), e);
         }

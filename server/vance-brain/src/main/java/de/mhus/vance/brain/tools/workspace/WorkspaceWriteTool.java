@@ -73,7 +73,7 @@ public class WorkspaceWriteTool implements Tool {
         }
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
         try {
-            Path written = workspace.write(ctx.projectId(), dirName, path, content);
+            Path written = workspace.write(ctx.tenantId(), ctx.projectId(), dirName, path, content);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
             out.put("dirName", dirName);

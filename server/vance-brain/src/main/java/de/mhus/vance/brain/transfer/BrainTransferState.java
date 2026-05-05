@@ -54,6 +54,7 @@ class BrainTransferState {
     /** For uploads: brain pre-fills these so frame handlers can resolve at TransferInit time. */
     private @Nullable String dirName;
     private @Nullable String remotePath;
+    private @Nullable String tenantId;
     private @Nullable String projectId;
     private @Nullable TransferFileAttrs pendingAttrs;
 

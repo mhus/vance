@@ -19,6 +19,8 @@ import lombok.ToString;
 @ToString
 public class RootDirHandle {
 
+    private final String tenantId;
+
     private final String projectId;
 
     private final String dirName;

@@ -22,7 +22,11 @@ public final class WorkspaceDirResolver {
     public static String resolve(WorkspaceService workspace,
                                  ToolInvocationContext ctx,
                                  @Nullable String explicit) {
+        String tenantId = ctx.tenantId();
         String projectId = ctx.projectId();
+        if (StringUtils.isBlank(tenantId)) {
+            throw new ToolException("Workspace tools require a tenant scope");
+        }
         if (StringUtils.isBlank(projectId)) {
             throw new ToolException("Workspace tools require a project scope");
         }
@@ -38,7 +42,7 @@ public final class WorkspaceDirResolver {
                     "Workspace tool needs a process or session scope when 'dirName' is not provided");
         }
         final String creator = resolvedCreator;
-        return workspace.getWorkingDir(projectId, creator)
-                .orElseGet(() -> workspace.getOrCreateTempRootDir(projectId, creator).getDirName());
+        return workspace.getWorkingDir(tenantId, projectId, creator)
+                .orElseGet(() -> workspace.getOrCreateTempRootDir(tenantId, projectId, creator).getDirName());
     }
 }

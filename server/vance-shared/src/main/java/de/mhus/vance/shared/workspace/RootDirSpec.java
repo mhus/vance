@@ -16,6 +16,9 @@ import org.jspecify.annotations.Nullable;
 @ToString
 public class RootDirSpec {
 
+    /** Tenant the RootDir's project belongs to. Required. */
+    private final String tenantId;
+
     /** Project under which the RootDir is created. Required. */
     private final String projectId;
 

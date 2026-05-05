@@ -88,7 +88,7 @@ public class WorkspaceController {
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
         if (properties.isBypassProxy()) {
-            return treeDirect(project, path, depth);
+            return treeDirect(tenant, project, path, depth);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
         String body = proxyGet(key, buildInternalPath(tenant, project, "tree", path, depth));
@@ -111,7 +111,7 @@ public class WorkspaceController {
         }
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
         if (properties.isBypassProxy()) {
-            return fileDirect(project, path);
+            return fileDirect(tenant, project, path);
         }
         ProjectPodKey key = new ProjectPodKey(tenant, project);
         return proxyFile(key, buildInternalPath(tenant, project, "file", path, -1));
@@ -121,19 +121,19 @@ public class WorkspaceController {
     // Bypass path — direct WorkspaceService call (test/dev only)
     // ------------------------------------------------------------------
 
-    private WorkspaceTreeNodeDto treeDirect(String project, @Nullable String path, int depth) {
+    private WorkspaceTreeNodeDto treeDirect(String tenant, String project, @Nullable String path, int depth) {
         try {
             if (path == null || path.isBlank()) {
-                return workspaceService.treeRoot(project, depth);
+                return workspaceService.treeRoot(tenant, project, depth);
             }
             String[] split = WorkspaceInternalController.splitDirAndRelative(path);
-            return workspaceService.tree(project, split[0], split[1], depth);
+            return workspaceService.tree(tenant, project, split[0], split[1], depth);
         } catch (WorkspaceException e) {
             throw mapException(e);
         }
     }
 
-    private ResponseEntity<byte[]> fileDirect(String project, String path) {
+    private ResponseEntity<byte[]> fileDirect(String tenant, String project, String path) {
         String[] split = WorkspaceInternalController.splitDirAndRelative(path);
         if (split[1] == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -141,7 +141,7 @@ public class WorkspaceController {
         }
         byte[] bytes;
         try {
-            bytes = workspaceService.readBytes(project, split[0], split[1], properties.getMaxFileSize());
+            bytes = workspaceService.readBytes(tenant, project, split[0], split[1], properties.getMaxFileSize());
         } catch (WorkspaceException e) {
             throw mapException(e);
         }

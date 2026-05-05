@@ -246,7 +246,7 @@ public class ProjectLifecycleService {
         }
         eventPublisher.publishEvent(new ProjectEnginesStopRequested(tenantId, projectName));
         try {
-            workspaceService.suspendAll(projectName);
+            workspaceService.suspendAll(tenantId, projectName);
         } catch (RuntimeException e) {
             log.error("Workspace suspendAll failed for '{}/{}' (status remains SUSPENDING): {}",
                     tenantId, projectName, e.toString());
@@ -268,7 +268,7 @@ public class ProjectLifecycleService {
      * if needed).
      */
     public ProjectDocument close(String tenantId, String projectName, String closedGroupId) {
-        workspaceService.dispose(projectName);
+        workspaceService.dispose(tenantId, projectName);
         ProjectDocument doc = projectService.close(tenantId, projectName, closedGroupId);
         log.info("Project '{}/{}' closed → group '{}'", tenantId, projectName, closedGroupId);
         return doc;

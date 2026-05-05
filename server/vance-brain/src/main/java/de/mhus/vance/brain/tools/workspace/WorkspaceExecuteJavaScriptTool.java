@@ -92,7 +92,7 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
         Duration timeout = resolveTimeout(params);
         try {
-            Path file = workspace.readablePath(ctx.projectId(), dirName, path);
+            Path file = workspace.readablePath(ctx.tenantId(), ctx.projectId(), dirName, path);
             ScriptResult result = scriptExecutor.runFile(file, tools, timeout);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);

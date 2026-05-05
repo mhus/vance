@@ -87,10 +87,10 @@ class BrainTransferServiceTest {
         Path source = brainRoot.resolve("source.bin");
         byte[] payload = "hello-world-this-is-a-payload".getBytes();
         Files.write(source, payload);
-        when(workspace.resolve("p1", "outbox", "out.bin")).thenReturn(source);
+        when(workspace.resolve("t1", "p1", "outbox", "out.bin")).thenReturn(source);
 
         var future = service.startDownload(
-                "s1", "p1", "outbox", "out.bin", "client/local.bin", null);
+                "s1", "t1", "p1", "outbox", "out.bin", "client/local.bin", null);
 
         // First frame: TransferInit with totalSize + hash
         TransferInit init = waitForFrame(MessageType.TRANSFER_INIT, TransferInit.class);
@@ -130,10 +130,10 @@ class BrainTransferServiceTest {
     void downloadInitDeclined() throws Exception {
         Path source = brainRoot.resolve("source.bin");
         Files.write(source, new byte[]{1, 2, 3});
-        when(workspace.resolve("p1", "outbox", "out.bin")).thenReturn(source);
+        when(workspace.resolve("t1", "p1", "outbox", "out.bin")).thenReturn(source);
 
         var future = service.startDownload(
-                "s1", "p1", "outbox", "out.bin", "client/local.bin", null);
+                "s1", "t1", "p1", "outbox", "out.bin", "client/local.bin", null);
         TransferInit init = waitForFrame(MessageType.TRANSFER_INIT, TransferInit.class);
 
         service.onTransferInitResponse(TransferInitResponse.builder()
@@ -147,11 +147,11 @@ class BrainTransferServiceTest {
     @Test
     void uploadHappyPath() throws Exception {
         Path target = brainRoot.resolve("uploaded.bin");
-        when(workspace.getRootDir("p1", "uploads")).thenReturn(Optional.of(stubHandle(brainRoot)));
-        when(workspace.resolve("p1", "uploads", "u.bin")).thenReturn(target);
+        when(workspace.getRootDir("t1", "p1", "uploads")).thenReturn(Optional.of(stubHandle(brainRoot)));
+        when(workspace.resolve("t1", "p1", "uploads", "u.bin")).thenReturn(target);
 
         var future = service.startUpload(
-                "s1", "p1", "uploads", "u.bin", "client/source.bin", null);
+                "s1", "t1", "p1", "uploads", "u.bin", "client/source.bin", null);
 
         // Brain triggers foot via ClientFileUploadRequest
         waitForFrame(MessageType.CLIENT_FILE_UPLOAD_REQUEST, Object.class);
@@ -198,11 +198,11 @@ class BrainTransferServiceTest {
     @Test
     void uploadHashMismatchDeletesPartial() throws Exception {
         Path target = brainRoot.resolve("bad.bin");
-        when(workspace.getRootDir("p1", "uploads")).thenReturn(Optional.of(stubHandle(brainRoot)));
-        when(workspace.resolve("p1", "uploads", "bad.bin")).thenReturn(target);
+        when(workspace.getRootDir("t1", "p1", "uploads")).thenReturn(Optional.of(stubHandle(brainRoot)));
+        when(workspace.resolve("t1", "p1", "uploads", "bad.bin")).thenReturn(target);
 
         var future = service.startUpload(
-                "s1", "p1", "uploads", "bad.bin", "client/source.bin", null);
+                "s1", "t1", "p1", "uploads", "bad.bin", "client/source.bin", null);
         waitForFrame(MessageType.CLIENT_FILE_UPLOAD_REQUEST, Object.class);
         String transferId = lastTransferIdFromUploadRequest();
 
@@ -234,10 +234,10 @@ class BrainTransferServiceTest {
     void downloadEmptyFileSendsSingleLastChunk() throws Exception {
         Path source = brainRoot.resolve("empty.bin");
         Files.createFile(source);
-        when(workspace.resolve("p1", "outbox", "empty.bin")).thenReturn(source);
+        when(workspace.resolve("t1", "p1", "outbox", "empty.bin")).thenReturn(source);
 
         var future = service.startDownload(
-                "s1", "p1", "outbox", "empty.bin", "client/empty.bin", null);
+                "s1", "t1", "p1", "outbox", "empty.bin", "client/empty.bin", null);
         TransferInit init = waitForFrame(MessageType.TRANSFER_INIT, TransferInit.class);
         assertThat(init.getTotalSize()).isZero();
 
@@ -257,11 +257,11 @@ class BrainTransferServiceTest {
 
     @Test
     void downloadMissingSourceFails() throws Exception {
-        when(workspace.resolve("p1", "outbox", "missing.bin"))
+        when(workspace.resolve("t1", "p1", "outbox", "missing.bin"))
                 .thenReturn(brainRoot.resolve("missing.bin"));
 
         TransferResult result = service.startDownload(
-                "s1", "p1", "outbox", "missing.bin", "client/x.bin", null)
+                "s1", "t1", "p1", "outbox", "missing.bin", "client/x.bin", null)
                 .get(2, TimeUnit.SECONDS);
         assertThat(result.ok()).isFalse();
         assertThat(result.error()).contains("not found");
@@ -269,10 +269,10 @@ class BrainTransferServiceTest {
 
     @Test
     void uploadUnknownDirNameFails() throws Exception {
-        when(workspace.getRootDir("p1", "ghost")).thenReturn(Optional.empty());
+        when(workspace.getRootDir("t1", "p1", "ghost")).thenReturn(Optional.empty());
 
         TransferResult result = service.startUpload(
-                "s1", "p1", "ghost", "x.bin", "client/x.bin", null)
+                "s1", "t1", "p1", "ghost", "x.bin", "client/x.bin", null)
                 .get(2, TimeUnit.SECONDS);
         assertThat(result.ok()).isFalse();
         assertThat(result.error()).contains("unknown RootDir");
@@ -283,7 +283,7 @@ class BrainTransferServiceTest {
         when(connections.find("s2")).thenReturn(Optional.empty());
 
         TransferResult result = service.startDownload(
-                "s2", "p1", "outbox", "x.bin", "client/x.bin", null)
+                "s2", "t1", "p1", "outbox", "x.bin", "client/x.bin", null)
                 .get(2, TimeUnit.SECONDS);
         assertThat(result.ok()).isFalse();
         assertThat(result.error()).contains("no active connection");

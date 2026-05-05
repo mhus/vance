@@ -63,11 +63,13 @@ public class ExecManager {
      * observe progress via {@link #waitFor} or later {@link #get}
      * calls.
      */
-    public ExecJob submit(String projectId, String dirName, String command) {
+    public ExecJob submit(String tenantId, String projectId, String dirName, String command) {
+        requireTenant(tenantId);
         requireProject(projectId);
-        Path cwd = resolveCwd(projectId, dirName);
+        Path cwd = resolveCwd(tenantId, projectId, dirName);
         String jobId = UUID.randomUUID().toString().substring(0, 8);
-        Path jobDir = jobDir(projectId, jobId);
+        String scopeKey = scopeKey(tenantId, projectId);
+        Path jobDir = jobDir(scopeKey, jobId);
         try {
             Files.createDirectories(jobDir);
         } catch (IOException e) {
@@ -78,20 +80,25 @@ public class ExecManager {
                 jobId, projectId, command,
                 jobDir.resolve("stdout.log"),
                 jobDir.resolve("stderr.log"));
-        indexJob(projectId, job);
+        indexJob(scopeKey, job);
         workers.submit(() -> runJob(job, cwd));
         return job;
     }
 
-    private Path resolveCwd(String projectId, String dirName) {
+    private Path resolveCwd(String tenantId, String projectId, String dirName) {
         try {
-            RootDirHandle handle = workspaceService.getRootDir(projectId, dirName)
+            RootDirHandle handle = workspaceService.getRootDir(tenantId, projectId, dirName)
                     .orElseThrow(() -> new ExecException(
-                            "Unknown workspace RootDir: " + projectId + "/" + dirName));
+                            "Unknown workspace RootDir: "
+                                    + tenantId + "/" + projectId + "/" + dirName));
             return handle.getPath();
         } catch (WorkspaceException e) {
             throw new ExecException(e.getMessage(), e);
         }
+    }
+
+    private static String scopeKey(String tenantId, String projectId) {
+        return tenantId + "/" + projectId;
     }
 
     /** Blocks up to {@code maxMillis} for a RUNNING job to finish. */
@@ -108,22 +115,22 @@ public class ExecManager {
         return job;
     }
 
-    /** Look up a job by project + id. */
-    public Optional<ExecJob> get(String projectId, String jobId) {
-        Map<String, ExecJob> perProject = jobs.get(projectId);
+    /** Look up a job by tenant + project + id. */
+    public Optional<ExecJob> get(String tenantId, String projectId, String jobId) {
+        Map<String, ExecJob> perProject = jobs.get(scopeKey(tenantId, projectId));
         if (perProject == null) return Optional.empty();
         return Optional.ofNullable(perProject.get(jobId));
     }
 
     /** All jobs for a project, insertion-ordered (oldest first). */
-    public Collection<ExecJob> listByProject(String projectId) {
-        Map<String, ExecJob> perProject = jobs.get(projectId);
+    public Collection<ExecJob> listByProject(String tenantId, String projectId) {
+        Map<String, ExecJob> perProject = jobs.get(scopeKey(tenantId, projectId));
         return perProject == null ? java.util.List.of() : perProject.values();
     }
 
     /** Force-kill a still-running job. Returns {@code false} if already terminal. */
-    public boolean kill(String projectId, String jobId) {
-        ExecJob job = get(projectId, jobId).orElse(null);
+    public boolean kill(String tenantId, String projectId, String jobId) {
+        ExecJob job = get(tenantId, projectId, jobId).orElse(null);
         if (job == null || job.isTerminal()) return false;
         Process p = job.process();
         if (p == null) return false;
@@ -137,8 +144,8 @@ public class ExecManager {
      * Force-kills every running job for a project — used by
      * {@code ProjectManagerService.archive(...)} once that lands.
      */
-    public int killAllForProject(String projectId) {
-        Map<String, ExecJob> perProject = jobs.get(projectId);
+    public int killAllForProject(String tenantId, String projectId) {
+        Map<String, ExecJob> perProject = jobs.get(scopeKey(tenantId, projectId));
         if (perProject == null) return 0;
         int killed = 0;
         synchronized (perProject) {
@@ -230,9 +237,9 @@ public class ExecManager {
 
     // ──────────────────── Indexing ────────────────────
 
-    private void indexJob(String projectId, ExecJob job) {
+    private void indexJob(String scopeKey, ExecJob job) {
         Map<String, ExecJob> perProject = jobs.computeIfAbsent(
-                projectId, k -> java.util.Collections.synchronizedMap(new LinkedHashMap<>()));
+                scopeKey, k -> java.util.Collections.synchronizedMap(new LinkedHashMap<>()));
         synchronized (perProject) {
             perProject.put(job.id(), job);
             int cap = properties.getMaxJobsPerProject();
@@ -252,9 +259,15 @@ public class ExecManager {
         }
     }
 
-    private Path jobDir(String projectId, String jobId) {
+    private Path jobDir(String scopeKey, String jobId) {
         return Path.of(properties.getBaseDir()).toAbsolutePath().normalize()
-                .resolve(projectId).resolve(jobId);
+                .resolve(scopeKey).resolve(jobId);
+    }
+
+    private static void requireTenant(@Nullable String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new ExecException("Exec tools require a tenant scope");
+        }
     }
 
     private static void requireProject(@Nullable String projectId) {

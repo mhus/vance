@@ -57,7 +57,7 @@ public class WorkspaceListTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
         try {
-            List<String> files = workspace.list(ctx.projectId(), dirName);
+            List<String> files = workspace.list(ctx.tenantId(), ctx.projectId(), dirName);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("dirName", dirName);
             out.put("files", files);

@@ -91,7 +91,7 @@ public class ClientFileUploadTool implements Tool {
         TransferResult result;
         try {
             result = transfers.startUpload(
-                    ctx.sessionId(), ctx.projectId(), dirName, remotePath, localPath, attrs)
+                    ctx.sessionId(), ctx.tenantId(), ctx.projectId(), dirName, remotePath, localPath, attrs)
                     .get(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             throw new ToolException("transfer timed out");

@@ -31,9 +31,11 @@ import tools.jackson.databind.json.JsonMapper;
  * Per-project workspace orchestrator. See
  * {@code specification/workspace-management.md}.
  *
- * <p>Owns the layout {@code <root>/<projectId>/<dirName>/} with sibling
- * descriptor {@code <dirName>.json}. Delegates type-specific behaviour
- * to {@link WorkspaceContentHandler}s, addressed by
+ * <p>Owns the layout {@code <root>/<tenantId>/<projectId>/<dirName>/}
+ * with sibling descriptor {@code <dirName>.json}. The tenant prefix
+ * prevents cross-tenant collisions when two tenants happen to use the
+ * same project name. Delegates type-specific behaviour to
+ * {@link WorkspaceContentHandler}s, addressed by
  * {@link WorkspaceDescriptor#getType()}.
  *
  * <p>Phase 0/1 surface: workspace + RootDir lifecycle, sandboxed
@@ -55,10 +57,10 @@ public class WorkspaceService {
     private final ObjectMapper objectMapper;
     private final WorkspaceSnapshotRepository snapshotRepository;
 
-    /** Lazy temp-RootDir per {@code (projectId, creatorProcessId)} pair — see §7.3. */
+    /** Lazy temp-RootDir per {@code (tenantId, projectId, creatorProcessId)} triple — see §7.3. */
     private final Map<String, String> tempDirCache = new ConcurrentHashMap<>();
 
-    /** Per-{@code (projectId, creatorProcessId)} working RootDir — see §7.4. */
+    /** Per-{@code (tenantId, projectId, creatorProcessId)} working RootDir — see §7.4. */
     private final Map<String, String> workingDirByCreator = new ConcurrentHashMap<>();
 
     public WorkspaceService(WorkspaceProperties properties,
@@ -85,15 +87,6 @@ public class WorkspaceService {
     // ---------------------------------------------------------------------
 
     /**
-     * Initialize (or load) a workspace without an explicit tenant —
-     * convenience for callers that don't track tenancy yet. Tenant
-     * field is recorded as empty string.
-     */
-    public Workspace init(String projectId) {
-        return init("", projectId);
-    }
-
-    /**
      * Initialize (or load) the workspace for a project. Creates the
      * folder lazily and writes {@code workspace.json} on first call.
      * If snapshots exist (project was suspended or crashed mid-suspend),
@@ -101,6 +94,7 @@ public class WorkspaceService {
      * indistinguishable from one that never suspended. Idempotent.
      */
     public Workspace init(String tenantId, String projectId) {
+        requireTenant(tenantId);
         requireProject(projectId);
         List<WorkspaceSnapshotDocument> snapshots = snapshotRepository.findByProjectId(projectId);
         if (!snapshots.isEmpty()) {
@@ -110,7 +104,7 @@ public class WorkspaceService {
     }
 
     private Workspace initEmpty(String tenantId, String projectId) {
-        Path root = projectFolder(projectId);
+        Path root = projectFolder(tenantId, projectId);
         try {
             Files.createDirectories(root);
         } catch (IOException e) {
@@ -124,7 +118,7 @@ public class WorkspaceService {
             return existing;
         }
         Workspace ws = Workspace.builder()
-                .tenant(tenantId == null ? "" : tenantId)
+                .tenant(tenantId)
                 .projectId(projectId)
                 .createdAt(Instant.now().toString())
                 .root(root)
@@ -135,9 +129,10 @@ public class WorkspaceService {
     }
 
     /** Look up an existing workspace without creating one. */
-    public Optional<Workspace> get(String projectId) {
+    public Optional<Workspace> get(String tenantId, String projectId) {
+        requireTenant(tenantId);
         requireProject(projectId);
-        Path root = projectFolder(projectId);
+        Path root = projectFolder(tenantId, projectId);
         Path metaFile = root.resolve(WORKSPACE_FILE);
         if (!Files.exists(metaFile)) {
             return Optional.empty();
@@ -152,26 +147,29 @@ public class WorkspaceService {
      * folder. After this, the workspace must be {@link #init} again
      * before further use.
      */
-    public void dispose(String projectId) {
+    public void dispose(String tenantId, String projectId) {
+        requireTenant(tenantId);
         requireProject(projectId);
-        Path root = projectFolder(projectId);
+        Path root = projectFolder(tenantId, projectId);
         if (!Files.exists(root)) {
             return;
         }
-        for (RootDirHandle h : listRootDirs(projectId)) {
+        for (RootDirHandle h : listRootDirs(tenantId, projectId)) {
             try {
-                disposeRootDir(projectId, h.getDirName());
+                disposeRootDir(tenantId, projectId, h.getDirName());
             } catch (RuntimeException e) {
-                log.warn("Failed to dispose RootDir {}/{}: {}", projectId, h.getDirName(), e.toString());
+                log.warn("Failed to dispose RootDir {}/{}/{}: {}",
+                        tenantId, projectId, h.getDirName(), e.toString());
             }
         }
         // Drop creator-cache entries for this project.
-        tempDirCache.keySet().removeIf(k -> k.startsWith(projectId + ":"));
-        workingDirByCreator.keySet().removeIf(k -> k.startsWith(projectId + ":"));
+        String prefix = creatorCachePrefix(tenantId, projectId);
+        tempDirCache.keySet().removeIf(k -> k.startsWith(prefix));
+        workingDirByCreator.keySet().removeIf(k -> k.startsWith(prefix));
         // Snapshots (if any from prior suspends) are also gone — dispose is terminal.
         snapshotRepository.deleteByProjectId(projectId);
         deleteRecursively(root);
-        log.info("Workspace disposed: projectId={}", projectId);
+        log.info("Workspace disposed: tenant={} projectId={}", tenantId, projectId);
     }
 
     // ---------------------------------------------------------------------
@@ -185,17 +183,19 @@ public class WorkspaceService {
      * it from the snapshots. Caller is expected to have stopped all
      * engines first (Project-Lifecycle §11.3).
      */
-    public void suspendAll(String projectId) {
+    public void suspendAll(String tenantId, String projectId) {
+        requireTenant(tenantId);
         requireProject(projectId);
-        Path root = projectFolder(projectId);
+        Path root = projectFolder(tenantId, projectId);
         if (!Files.exists(root)) {
-            log.debug("suspendAll: workspace folder missing for {}, nothing to suspend", projectId);
+            log.debug("suspendAll: workspace folder missing for {}/{}, nothing to suspend",
+                    tenantId, projectId);
             return;
         }
-        Workspace ws = get(projectId).orElse(null);
-        String tenant = ws == null ? "" : ws.getTenant();
+        Workspace ws = get(tenantId, projectId).orElse(null);
+        String tenant = ws == null ? tenantId : ws.getTenant();
         Instant now = Instant.now();
-        for (RootDirHandle handle : listRootDirs(projectId)) {
+        for (RootDirHandle handle : listRootDirs(tenantId, projectId)) {
             WorkspaceContentHandler handler = handlersByType.get(handle.getType());
             if (handler == null) {
                 throw new WorkspaceException(
@@ -222,8 +222,9 @@ public class WorkspaceService {
             }
         }
         // Forget per-creator caches for this project.
-        tempDirCache.keySet().removeIf(k -> k.startsWith(projectId + ":"));
-        workingDirByCreator.keySet().removeIf(k -> k.startsWith(projectId + ":"));
+        String prefix = creatorCachePrefix(tenantId, projectId);
+        tempDirCache.keySet().removeIf(k -> k.startsWith(prefix));
+        workingDirByCreator.keySet().removeIf(k -> k.startsWith(prefix));
         // Strip workspace.json + folder so a later init() rehydrates from snapshots.
         try {
             Files.deleteIfExists(root.resolve(WORKSPACE_FILE));
@@ -231,7 +232,7 @@ public class WorkspaceService {
             log.warn("Failed to delete workspace meta on suspend: {}", e.toString());
         }
         deleteRecursively(root);
-        log.info("Workspace suspended: projectId={}", projectId);
+        log.info("Workspace suspended: tenant={} projectId={}", tenantId, projectId);
     }
 
     /**
@@ -240,22 +241,23 @@ public class WorkspaceService {
      * snapshots, so this is mostly an alias with explicit semantics.
      * Idempotent — no-op when no snapshots exist.
      */
-    public void recoverAll(String projectId) {
+    public void recoverAll(String tenantId, String projectId) {
+        requireTenant(tenantId);
         requireProject(projectId);
         List<WorkspaceSnapshotDocument> snapshots = snapshotRepository.findByProjectId(projectId);
         if (snapshots.isEmpty()) {
             return;
         }
-        String tenant = snapshots.get(0).getTenant();
-        recoverFromSnapshots(tenant, projectId, snapshots);
+        recoverFromSnapshots(tenantId, projectId, snapshots);
     }
 
     private Workspace recoverFromSnapshots(String tenantId, String projectId,
                                            List<WorkspaceSnapshotDocument> snapshots) {
-        Path root = projectFolder(projectId);
+        Path root = projectFolder(tenantId, projectId);
         // Blow away any partial folder state from a crashed previous attempt.
         if (Files.exists(root)) {
-            log.info("recover: clearing existing workspace folder for {} before re-applying snapshots", projectId);
+            log.info("recover: clearing existing workspace folder for {}/{} before re-applying snapshots",
+                    tenantId, projectId);
             deleteRecursively(root);
         }
         try {
@@ -303,6 +305,7 @@ public class WorkspaceService {
                         "Cannot stage RootDir on recover: " + e.getMessage(), e);
             }
             RootDirHandle handle = RootDirHandle.builder()
+                    .tenantId(effectiveTenant)
                     .projectId(projectId)
                     .dirName(dirName)
                     .type(descriptor.getType())
@@ -327,7 +330,8 @@ public class WorkspaceService {
             rewriteDescriptor(descriptorFile, handle.getDescriptor());
         }
         snapshotRepository.deleteByProjectId(projectId);
-        log.info("Workspace recovered from {} snapshot(s): projectId={}", snapshots.size(), projectId);
+        log.info("Workspace recovered from {} snapshot(s): tenant={} projectId={}",
+                snapshots.size(), tenantId, projectId);
         return ws;
     }
 
@@ -350,9 +354,11 @@ public class WorkspaceService {
     /**
      * Create a new RootDir. Resolves a unique {@code dirName} (worker
      * hint preferred, UUID fallback), writes the descriptor, creates
-     * the folder, then dispatches to the handler.
+     * the folder, then dispatches to the handler. The spec must carry
+     * both {@code tenantId} and {@code projectId}.
      */
     public RootDirHandle createRootDir(RootDirSpec spec) {
+        requireTenant(spec.getTenantId());
         requireProject(spec.getProjectId());
         if (StringUtils.isBlank(spec.getType())) {
             throw new WorkspaceException("RootDirSpec.type is required");
@@ -360,12 +366,12 @@ public class WorkspaceService {
         if (StringUtils.isBlank(spec.getCreatorProcessId())) {
             throw new WorkspaceException("RootDirSpec.creatorProcessId is required");
         }
-        checkDiskPressure(spec.getProjectId(), "createRootDir");
+        checkDiskPressure(spec.getTenantId(), spec.getProjectId(), "createRootDir");
         WorkspaceContentHandler handler = handlersByType.get(spec.getType());
         if (handler == null) {
             throw new WorkspaceException("No handler registered for type '" + spec.getType() + "'");
         }
-        Workspace ws = ensureWorkspaceFor(spec.getProjectId());
+        Workspace ws = ensureWorkspaceFor(spec.getTenantId(), spec.getProjectId());
         Path root = requireRoot(ws);
 
         String dirName = resolveDirName(root, spec.getLabelHint());
@@ -401,6 +407,7 @@ public class WorkspaceService {
         }
 
         RootDirHandle handle = RootDirHandle.builder()
+                .tenantId(spec.getTenantId())
                 .projectId(spec.getProjectId())
                 .dirName(dirName)
                 .type(spec.getType())
@@ -425,15 +432,16 @@ public class WorkspaceService {
         }
         // Handler may have enriched the descriptor (e.g. GitHandler records the actual HEAD).
         rewriteDescriptor(descriptorFile, handle.getDescriptor());
-        log.debug("RootDir created: projectId={} dirName={} type={} creator={}",
-                spec.getProjectId(), dirName, spec.getType(), spec.getCreatorProcessId());
+        log.debug("RootDir created: tenant={} projectId={} dirName={} type={} creator={}",
+                spec.getTenantId(), spec.getProjectId(), dirName, spec.getType(), spec.getCreatorProcessId());
         return handle;
     }
 
     /** Tear down a single RootDir. No-op if the folder is gone already. */
-    public void disposeRootDir(String projectId, String dirName) {
+    public void disposeRootDir(String tenantId, String projectId, String dirName) {
+        requireTenant(tenantId);
         requireProject(projectId);
-        Optional<RootDirHandle> opt = getRootDir(projectId, dirName);
+        Optional<RootDirHandle> opt = getRootDir(tenantId, projectId, dirName);
         if (opt.isEmpty()) {
             return;
         }
@@ -443,11 +451,12 @@ public class WorkspaceService {
             try {
                 handler.close(handle);
             } catch (RuntimeException e) {
-                log.warn("Handler '{}' close failed for {}/{}: {}",
-                        handle.getType(), projectId, dirName, e.toString());
+                log.warn("Handler '{}' close failed for {}/{}/{}: {}",
+                        handle.getType(), tenantId, projectId, dirName, e.toString());
             }
         } else {
-            log.warn("No handler registered for type '{}' on close of {}/{}", handle.getType(), projectId, dirName);
+            log.warn("No handler registered for type '{}' on close of {}/{}/{}",
+                    handle.getType(), tenantId, projectId, dirName);
         }
         deleteRecursively(handle.getPath());
         Path descriptorFile = handle.getPath().getParent().resolve(dirName + DESCRIPTOR_SUFFIX);
@@ -457,25 +466,27 @@ public class WorkspaceService {
             log.warn("Failed to delete descriptor {}: {}", descriptorFile, e.toString());
         }
         // Remove temp-cache and working-dir entries pointing to this dirName.
+        String prefix = creatorCachePrefix(tenantId, projectId);
         tempDirCache.entrySet().removeIf(en ->
-                en.getKey().startsWith(projectId + ":") && dirName.equals(en.getValue()));
+                en.getKey().startsWith(prefix) && dirName.equals(en.getValue()));
         workingDirByCreator.entrySet().removeIf(en ->
-                en.getKey().startsWith(projectId + ":") && dirName.equals(en.getValue()));
-        log.debug("RootDir disposed: projectId={} dirName={}", projectId, dirName);
+                en.getKey().startsWith(prefix) && dirName.equals(en.getValue()));
+        log.debug("RootDir disposed: tenant={} projectId={} dirName={}", tenantId, projectId, dirName);
     }
 
     /**
      * Dispose all RootDirs of a creator that have
      * {@code deleteOnCreatorClose=true}. Safe to call repeatedly.
      */
-    public void disposeByCreator(String projectId, String creatorProcessId) {
+    public void disposeByCreator(String tenantId, String projectId, String creatorProcessId) {
+        requireTenant(tenantId);
         requireProject(projectId);
         if (StringUtils.isBlank(creatorProcessId)) {
             throw new WorkspaceException("creatorProcessId is required");
         }
-        for (RootDirHandle h : listRootDirs(projectId)) {
+        for (RootDirHandle h : listRootDirs(tenantId, projectId)) {
             if (creatorProcessId.equals(h.creatorProcessId()) && h.deleteOnCreatorClose()) {
-                disposeRootDir(projectId, h.getDirName());
+                disposeRootDir(tenantId, projectId, h.getDirName());
             }
         }
     }
@@ -485,9 +496,10 @@ public class WorkspaceService {
      * descriptor) and orphan descriptors (without folder), logging at
      * warn level.
      */
-    public List<RootDirHandle> listRootDirs(String projectId) {
+    public List<RootDirHandle> listRootDirs(String tenantId, String projectId) {
+        requireTenant(tenantId);
         requireProject(projectId);
-        Path root = projectFolder(projectId);
+        Path root = projectFolder(tenantId, projectId);
         if (!Files.exists(root)) {
             return List.of();
         }
@@ -495,27 +507,29 @@ public class WorkspaceService {
             return stream
                     .filter(p -> p.getFileName().toString().endsWith(DESCRIPTOR_SUFFIX))
                     .filter(p -> !p.getFileName().toString().equals(WORKSPACE_FILE))
-                    .map(this::loadHandleFromDescriptor)
+                    .map(p -> loadHandleFromDescriptor(tenantId, p))
                     .filter(java.util.Objects::nonNull)
                     .sorted(Comparator.comparing(RootDirHandle::getDirName))
                     .toList();
         } catch (IOException e) {
-            throw new WorkspaceException("Cannot list RootDirs for " + projectId + ": " + e.getMessage(), e);
+            throw new WorkspaceException("Cannot list RootDirs for "
+                    + tenantId + "/" + projectId + ": " + e.getMessage(), e);
         }
     }
 
     /** Look up a single RootDir by name. */
-    public Optional<RootDirHandle> getRootDir(String projectId, String dirName) {
+    public Optional<RootDirHandle> getRootDir(String tenantId, String projectId, String dirName) {
+        requireTenant(tenantId);
         requireProject(projectId);
         if (StringUtils.isBlank(dirName)) {
             throw new WorkspaceException("dirName is required");
         }
-        Path root = projectFolder(projectId);
+        Path root = projectFolder(tenantId, projectId);
         Path descriptorFile = root.resolve(dirName + DESCRIPTOR_SUFFIX);
         if (!Files.exists(descriptorFile)) {
             return Optional.empty();
         }
-        return Optional.ofNullable(loadHandleFromDescriptor(descriptorFile));
+        return Optional.ofNullable(loadHandleFromDescriptor(tenantId, descriptorFile));
     }
 
     // ---------------------------------------------------------------------
@@ -523,16 +537,16 @@ public class WorkspaceService {
     // ---------------------------------------------------------------------
 
     /** Sandboxed path resolution; throws on escape attempts or unknown RootDir. */
-    public Path resolve(String projectId, String dirName, String relativePath) {
+    public Path resolve(String tenantId, String projectId, String dirName, String relativePath) {
         if (StringUtils.isBlank(relativePath)) {
             throw new WorkspaceException("Path is required");
         }
         if (relativePath.indexOf('\0') >= 0) {
             throw new WorkspaceException("Path contains NUL byte");
         }
-        RootDirHandle handle = getRootDir(projectId, dirName)
+        RootDirHandle handle = getRootDir(tenantId, projectId, dirName)
                 .orElseThrow(() -> new WorkspaceException(
-                        "Unknown RootDir: " + projectId + "/" + dirName));
+                        "Unknown RootDir: " + tenantId + "/" + projectId + "/" + dirName));
         Path base = handle.getPath();
         Path resolved = base.resolve(relativePath).normalize();
         if (!resolved.startsWith(base)) {
@@ -545,8 +559,9 @@ public class WorkspaceService {
      * Write text content at {@code relativePath} inside the named
      * RootDir, creating parents and overwriting.
      */
-    public Path write(String projectId, String dirName, String relativePath, @Nullable String content) {
-        Path resolved = resolve(projectId, dirName, relativePath);
+    public Path write(String tenantId, String projectId, String dirName, String relativePath,
+                      @Nullable String content) {
+        Path resolved = resolve(tenantId, projectId, dirName, relativePath);
         try {
             if (resolved.getParent() != null) {
                 Files.createDirectories(resolved.getParent());
@@ -565,8 +580,9 @@ public class WorkspaceService {
      * Read text content at {@code relativePath} as UTF-8. Truncates to
      * {@code maxChars} ({@code <= 0} = unlimited).
      */
-    public ReadResult read(String projectId, String dirName, String relativePath, int maxChars) {
-        Path resolved = resolve(projectId, dirName, relativePath);
+    public ReadResult read(String tenantId, String projectId, String dirName,
+                           String relativePath, int maxChars) {
+        Path resolved = resolve(tenantId, projectId, dirName, relativePath);
         if (!Files.exists(resolved)) {
             throw new WorkspaceException("Not found: " + relativePath);
         }
@@ -585,10 +601,10 @@ public class WorkspaceService {
     }
 
     /** Recursive file list inside a RootDir, paths relative to it, sorted. */
-    public List<String> list(String projectId, String dirName) {
-        RootDirHandle handle = getRootDir(projectId, dirName)
+    public List<String> list(String tenantId, String projectId, String dirName) {
+        RootDirHandle handle = getRootDir(tenantId, projectId, dirName)
                 .orElseThrow(() -> new WorkspaceException(
-                        "Unknown RootDir: " + projectId + "/" + dirName));
+                        "Unknown RootDir: " + tenantId + "/" + projectId + "/" + dirName));
         Path base = handle.getPath();
         try (Stream<Path> s = Files.walk(base)) {
             return s.filter(Files::isRegularFile)
@@ -602,8 +618,8 @@ public class WorkspaceService {
     }
 
     /** Delete a single file. Returns false if it wasn't there. */
-    public boolean delete(String projectId, String dirName, String relativePath) {
-        Path resolved = resolve(projectId, dirName, relativePath);
+    public boolean delete(String tenantId, String projectId, String dirName, String relativePath) {
+        Path resolved = resolve(tenantId, projectId, dirName, relativePath);
         try {
             if (Files.isDirectory(resolved)) {
                 throw new WorkspaceException(
@@ -620,8 +636,8 @@ public class WorkspaceService {
      * file. Used by JS-eval and similar tools that need a {@link Path}
      * for native I/O.
      */
-    public Path readablePath(String projectId, String dirName, String relativePath) {
-        Path resolved = resolve(projectId, dirName, relativePath);
+    public Path readablePath(String tenantId, String projectId, String dirName, String relativePath) {
+        Path resolved = resolve(tenantId, projectId, dirName, relativePath);
         if (!Files.isRegularFile(resolved)) {
             throw new WorkspaceException("Not a regular file: " + relativePath);
         }
@@ -640,11 +656,12 @@ public class WorkspaceService {
      * no contents; depth {@code 2} = list each RootDir's top-level entries;
      * etc). RootDirs are sorted alphabetically.
      */
-    public WorkspaceTreeNodeDto treeRoot(String projectId, int maxDepth) {
+    public WorkspaceTreeNodeDto treeRoot(String tenantId, String projectId, int maxDepth) {
+        requireTenant(tenantId);
         requireProject(projectId);
         int depth = Math.max(1, maxDepth);
         List<WorkspaceTreeNodeDto> children = new ArrayList<>();
-        for (RootDirHandle handle : listRootDirs(projectId)) {
+        for (RootDirHandle handle : listRootDirs(tenantId, projectId)) {
             children.add(buildDirNode(handle.getDirName(), handle.getDirName(), handle.getPath(), depth - 1));
         }
         return WorkspaceTreeNodeDto.builder()
@@ -664,18 +681,19 @@ public class WorkspaceService {
      * or missing target. {@code maxDepth} of {@code 0} returns the node
      * without children; {@code 1} returns its direct children; etc.
      */
-    public WorkspaceTreeNodeDto tree(String projectId, String dirName,
+    public WorkspaceTreeNodeDto tree(String tenantId, String projectId, String dirName,
                                      @Nullable String relativePath, int maxDepth) {
+        requireTenant(tenantId);
         requireProject(projectId);
         if (StringUtils.isBlank(dirName)) {
             throw new WorkspaceException("dirName is required");
         }
-        RootDirHandle handle = getRootDir(projectId, dirName)
+        RootDirHandle handle = getRootDir(tenantId, projectId, dirName)
                 .orElseThrow(() -> new WorkspaceException(
-                        "Unknown RootDir: " + projectId + "/" + dirName));
+                        "Unknown RootDir: " + tenantId + "/" + projectId + "/" + dirName));
         Path target = StringUtils.isBlank(relativePath)
                 ? handle.getPath()
-                : resolve(projectId, dirName, relativePath);
+                : resolve(tenantId, projectId, dirName, relativePath);
         if (!Files.exists(target)) {
             throw new WorkspaceException("Not found: " + dirName
                     + (StringUtils.isBlank(relativePath) ? "" : "/" + relativePath));
@@ -697,8 +715,9 @@ public class WorkspaceService {
      * Throws {@link WorkspaceFileSizeExceededException} when the size limit is
      * exceeded so callers can map it to {@code 413 Payload Too Large}.
      */
-    public byte[] readBytes(String projectId, String dirName, String relativePath, long maxBytes) {
-        Path resolved = resolve(projectId, dirName, relativePath);
+    public byte[] readBytes(String tenantId, String projectId, String dirName,
+                            String relativePath, long maxBytes) {
+        Path resolved = resolve(tenantId, projectId, dirName, relativePath);
         if (!Files.isRegularFile(resolved)) {
             throw new WorkspaceException("Not a regular file: " + relativePath);
         }
@@ -794,7 +813,9 @@ public class WorkspaceService {
      * when the creator process closes (via the brain-side listener)
      * or explicitly via {@link #clearWorkingDir}.
      */
-    public void setWorkingDir(String projectId, String creatorProcessId, String dirName) {
+    public void setWorkingDir(String tenantId, String projectId,
+                              String creatorProcessId, String dirName) {
+        requireTenant(tenantId);
         requireProject(projectId);
         if (StringUtils.isBlank(creatorProcessId)) {
             throw new WorkspaceException("creatorProcessId is required");
@@ -802,27 +823,31 @@ public class WorkspaceService {
         if (StringUtils.isBlank(dirName)) {
             throw new WorkspaceException("dirName is required");
         }
-        if (getRootDir(projectId, dirName).isEmpty()) {
+        if (getRootDir(tenantId, projectId, dirName).isEmpty()) {
             throw new WorkspaceException(
-                    "Cannot set working RootDir to non-existent " + projectId + "/" + dirName);
+                    "Cannot set working RootDir to non-existent "
+                            + tenantId + "/" + projectId + "/" + dirName);
         }
-        workingDirByCreator.put(projectId + ":" + creatorProcessId, dirName);
+        workingDirByCreator.put(creatorCacheKey(tenantId, projectId, creatorProcessId), dirName);
     }
 
     /** Look up the working RootDir name for a creator, if set. */
-    public Optional<String> getWorkingDir(String projectId, String creatorProcessId) {
-        if (StringUtils.isBlank(projectId) || StringUtils.isBlank(creatorProcessId)) {
+    public Optional<String> getWorkingDir(String tenantId, String projectId, String creatorProcessId) {
+        if (StringUtils.isBlank(tenantId) || StringUtils.isBlank(projectId)
+                || StringUtils.isBlank(creatorProcessId)) {
             return Optional.empty();
         }
-        return Optional.ofNullable(workingDirByCreator.get(projectId + ":" + creatorProcessId));
+        return Optional.ofNullable(
+                workingDirByCreator.get(creatorCacheKey(tenantId, projectId, creatorProcessId)));
     }
 
     /** Clear the working RootDir mapping for a creator. */
-    public void clearWorkingDir(String projectId, String creatorProcessId) {
-        if (StringUtils.isBlank(projectId) || StringUtils.isBlank(creatorProcessId)) {
+    public void clearWorkingDir(String tenantId, String projectId, String creatorProcessId) {
+        if (StringUtils.isBlank(tenantId) || StringUtils.isBlank(projectId)
+                || StringUtils.isBlank(creatorProcessId)) {
             return;
         }
-        workingDirByCreator.remove(projectId + ":" + creatorProcessId);
+        workingDirByCreator.remove(creatorCacheKey(tenantId, projectId, creatorProcessId));
     }
 
     // ---------------------------------------------------------------------
@@ -831,21 +856,23 @@ public class WorkspaceService {
 
     /**
      * Returns the lazy temp RootDir for a creator, creating it on first
-     * call. Subsequent calls with the same {@code (projectId,
-     * creatorProcessId)} pair reuse the same handle. The handle has
+     * call. Subsequent calls with the same {@code (tenantId, projectId,
+     * creatorProcessId)} triple reuse the same handle. The handle has
      * {@code deleteOnCreatorClose=true} — call
      * {@link #disposeByCreator} on creator-close to clean up.
      */
-    public RootDirHandle getOrCreateTempRootDir(String projectId, String creatorProcessId) {
-        ensureTempRootDir(projectId, creatorProcessId);
-        String dirName = tempDirCache.get(projectId + ":" + creatorProcessId);
+    public RootDirHandle getOrCreateTempRootDir(String tenantId, String projectId,
+                                                String creatorProcessId) {
+        ensureTempRootDir(tenantId, projectId, creatorProcessId);
+        String dirName = tempDirCache.get(creatorCacheKey(tenantId, projectId, creatorProcessId));
         if (dirName == null) {
             throw new WorkspaceException(
                     "Temp RootDir cache missing after ensure for "
-                            + projectId + "/" + creatorProcessId);
+                            + tenantId + "/" + projectId + "/" + creatorProcessId);
         }
-        return getRootDir(projectId, dirName).orElseThrow(() -> new WorkspaceException(
-                "Temp RootDir vanished for " + projectId + "/" + creatorProcessId));
+        return getRootDir(tenantId, projectId, dirName).orElseThrow(() -> new WorkspaceException(
+                "Temp RootDir vanished for "
+                        + tenantId + "/" + projectId + "/" + creatorProcessId));
     }
 
     /**
@@ -853,10 +880,10 @@ public class WorkspaceService {
      * RootDir is created lazily and removed when the creator process
      * is disposed via {@link #disposeByCreator}.
      */
-    public Path createTempFile(String projectId, String creatorProcessId,
+    public Path createTempFile(String tenantId, String projectId, String creatorProcessId,
                                @Nullable String prefix, @Nullable String suffix) {
-        Path tempRoot = ensureTempRootDir(projectId, creatorProcessId);
-        checkDiskPressure(projectId, "createTempFile");
+        Path tempRoot = ensureTempRootDir(tenantId, projectId, creatorProcessId);
+        checkDiskPressure(tenantId, projectId, "createTempFile");
         try {
             return Files.createTempFile(tempRoot,
                     prefix == null ? "tmp" : prefix,
@@ -867,9 +894,10 @@ public class WorkspaceService {
     }
 
     /** Like {@link #createTempFile} but returns a directory. */
-    public Path createTempDirectory(String projectId, String creatorProcessId, @Nullable String prefix) {
-        Path tempRoot = ensureTempRootDir(projectId, creatorProcessId);
-        checkDiskPressure(projectId, "createTempDirectory");
+    public Path createTempDirectory(String tenantId, String projectId, String creatorProcessId,
+                                    @Nullable String prefix) {
+        Path tempRoot = ensureTempRootDir(tenantId, projectId, creatorProcessId);
+        checkDiskPressure(tenantId, projectId, "createTempDirectory");
         try {
             return Files.createTempDirectory(tempRoot, prefix == null ? "tmp" : prefix);
         } catch (IOException e) {
@@ -881,14 +909,14 @@ public class WorkspaceService {
     // Internals
     // ---------------------------------------------------------------------
 
-    private Path ensureTempRootDir(String projectId, String creatorProcessId) {
+    private Path ensureTempRootDir(String tenantId, String projectId, String creatorProcessId) {
         if (StringUtils.isBlank(creatorProcessId)) {
             throw new WorkspaceException("creatorProcessId is required");
         }
-        String key = projectId + ":" + creatorProcessId;
+        String key = creatorCacheKey(tenantId, projectId, creatorProcessId);
         String dirName = tempDirCache.get(key);
         if (dirName != null) {
-            Optional<RootDirHandle> existing = getRootDir(projectId, dirName);
+            Optional<RootDirHandle> existing = getRootDir(tenantId, projectId, dirName);
             if (existing.isPresent()) {
                 return existing.get().getPath();
             }
@@ -897,13 +925,14 @@ public class WorkspaceService {
         synchronized (tempDirCache) {
             dirName = tempDirCache.get(key);
             if (dirName != null) {
-                Optional<RootDirHandle> existing = getRootDir(projectId, dirName);
+                Optional<RootDirHandle> existing = getRootDir(tenantId, projectId, dirName);
                 if (existing.isPresent()) {
                     return existing.get().getPath();
                 }
                 tempDirCache.remove(key);
             }
             RootDirSpec spec = RootDirSpec.builder()
+                    .tenantId(tenantId)
                     .projectId(projectId)
                     .type(TempHandler.TYPE)
                     .creatorProcessId(creatorProcessId)
@@ -916,12 +945,25 @@ public class WorkspaceService {
         }
     }
 
-    private Workspace ensureWorkspaceFor(String projectId) {
-        return get(projectId).orElseGet(() -> init(projectId));
+    private Workspace ensureWorkspaceFor(String tenantId, String projectId) {
+        return get(tenantId, projectId).orElseGet(() -> init(tenantId, projectId));
     }
 
-    private Path projectFolder(String projectId) {
-        return Path.of(properties.getRoot()).toAbsolutePath().normalize().resolve(projectId).normalize();
+    private Path projectFolder(String tenantId, String projectId) {
+        return Path.of(properties.getRoot())
+                .toAbsolutePath()
+                .normalize()
+                .resolve(tenantId)
+                .resolve(projectId)
+                .normalize();
+    }
+
+    private static String creatorCacheKey(String tenantId, String projectId, String creatorProcessId) {
+        return tenantId + "/" + projectId + ":" + creatorProcessId;
+    }
+
+    private static String creatorCachePrefix(String tenantId, String projectId) {
+        return tenantId + "/" + projectId + ":";
     }
 
     /**
@@ -930,7 +972,7 @@ public class WorkspaceService {
      * warning at soft, throws at hard. Quiet on filesystems that
      * don't report sizes (sandboxed envs, network mounts).
      */
-    private void checkDiskPressure(String projectId, String op) {
+    private void checkDiskPressure(String tenantId, String projectId, String op) {
         int hard = properties.getHardLimitPercent();
         int soft = properties.getSoftLimitPercent();
         if (hard <= 0 && soft <= 0) {
@@ -961,11 +1003,12 @@ public class WorkspaceService {
         if (hard > 0 && usedPercent >= hard) {
             throw new WorkspaceQuotaExceededException(
                     op + " refused: workspace volume " + usedPercent
-                            + "% used (hard limit " + hard + "%, projectId=" + projectId + ")");
+                            + "% used (hard limit " + hard + "%, tenantId="
+                            + tenantId + ", projectId=" + projectId + ")");
         }
         if (soft > 0 && usedPercent >= soft) {
-            log.warn("Workspace volume at {}% used (soft limit {}%) — op={} projectId={} root={}",
-                    usedPercent, soft, op, projectId, existing);
+            log.warn("Workspace volume at {}% used (soft limit {}%) — op={} tenantId={} projectId={} root={}",
+                    usedPercent, soft, op, tenantId, projectId, existing);
         }
     }
 
@@ -1023,7 +1066,7 @@ public class WorkspaceService {
         }
     }
 
-    private @Nullable RootDirHandle loadHandleFromDescriptor(Path descriptorFile) {
+    private @Nullable RootDirHandle loadHandleFromDescriptor(String tenantId, Path descriptorFile) {
         WorkspaceDescriptor d;
         try {
             d = objectMapper.readValue(Files.readString(descriptorFile, StandardCharsets.UTF_8),
@@ -1043,6 +1086,7 @@ public class WorkspaceService {
             return null;
         }
         return RootDirHandle.builder()
+                .tenantId(tenantId)
                 .projectId(d.getProjectId())
                 .dirName(d.getDirName())
                 .type(d.getType())

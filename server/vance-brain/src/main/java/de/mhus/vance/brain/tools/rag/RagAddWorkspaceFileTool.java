@@ -86,7 +86,7 @@ public class RagAddWorkspaceFileTool implements Tool {
 
         WorkspaceService.ReadResult read;
         try {
-            read = workspaceService.read(projectId, dirName, path, READ_CHAR_CAP);
+            read = workspaceService.read(ctx.tenantId(), projectId, dirName, path, READ_CHAR_CAP);
         } catch (WorkspaceException e) {
             throw new ToolException(e.getMessage(), e);
         }

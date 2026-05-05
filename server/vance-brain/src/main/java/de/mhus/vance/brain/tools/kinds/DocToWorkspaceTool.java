@@ -68,7 +68,7 @@ public class DocToWorkspaceTool implements Tool {
         String body = fresh.getInlineText();
 
         try {
-            Path written = workspace.write(ctx.projectId(), dirName, workspacePath, body);
+            Path written = workspace.write(ctx.tenantId(), ctx.projectId(), dirName, workspacePath, body);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("documentId", fresh.getId());
             out.put("documentPath", fresh.getPath());

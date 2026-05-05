@@ -64,7 +64,7 @@ public class WorkspaceDeleteTool implements Tool {
         }
         String dirName = WorkspaceDirResolver.resolve(workspace, ctx, stringOrNull(params, "dirName"));
         try {
-            boolean deleted = workspace.delete(ctx.projectId(), dirName, path);
+            boolean deleted = workspace.delete(ctx.tenantId(), ctx.projectId(), dirName, path);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
             out.put("dirName", dirName);

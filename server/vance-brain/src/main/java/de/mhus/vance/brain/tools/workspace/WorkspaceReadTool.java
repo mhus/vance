@@ -75,7 +75,7 @@ public class WorkspaceReadTool implements Tool {
             cap = n.intValue();
         }
         try {
-            WorkspaceService.ReadResult r = workspace.read(ctx.projectId(), dirName, path, cap);
+            WorkspaceService.ReadResult r = workspace.read(ctx.tenantId(), ctx.projectId(), dirName, path, cap);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", path);
             out.put("dirName", dirName);

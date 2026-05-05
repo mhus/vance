@@ -31,15 +31,17 @@ public class WorkspaceCreatorCleanupListener {
             return;
         }
         thinkProcessService.findById(event.processId())
-                .map(p -> p.getProjectId())
-                .filter(StringUtils::isNotBlank)
-                .ifPresent(projectId -> {
+                .filter(p -> StringUtils.isNotBlank(p.getTenantId())
+                        && StringUtils.isNotBlank(p.getProjectId()))
+                .ifPresent(p -> {
+                    String tenantId = p.getTenantId();
+                    String projectId = p.getProjectId();
                     try {
-                        workspaceService.clearWorkingDir(projectId, event.processId());
-                        workspaceService.disposeByCreator(projectId, event.processId());
+                        workspaceService.clearWorkingDir(tenantId, projectId, event.processId());
+                        workspaceService.disposeByCreator(tenantId, projectId, event.processId());
                     } catch (RuntimeException e) {
-                        log.warn("disposeByCreator failed for {}/{}: {}",
-                                projectId, event.processId(), e.toString());
+                        log.warn("disposeByCreator failed for {}/{}/{}: {}",
+                                tenantId, projectId, event.processId(), e.toString());
                     }
                 });
     }

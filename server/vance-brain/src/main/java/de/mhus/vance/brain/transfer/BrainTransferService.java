@@ -105,6 +105,7 @@ public class BrainTransferService {
     /** Brain → Foot push. Reads source from workspace, streams chunks. */
     public CompletableFuture<TransferResult> startDownload(
             String sessionId,
+            String tenantId,
             String projectId,
             String dirName,
             String remotePath,
@@ -117,7 +118,7 @@ public class BrainTransferService {
         }
         Path source;
         try {
-            source = workspace.resolve(projectId, dirName, remotePath);
+            source = workspace.resolve(tenantId, projectId, dirName, remotePath);
         } catch (WorkspaceException e) {
             return CompletableFuture.completedFuture(TransferResult.fail(e.getMessage()));
         }
@@ -168,6 +169,7 @@ public class BrainTransferService {
     /** Brain triggers Foot upload, becomes receiver. */
     public CompletableFuture<TransferResult> startUpload(
             String sessionId,
+            String tenantId,
             String projectId,
             String dirName,
             String remotePath,
@@ -180,7 +182,7 @@ public class BrainTransferService {
         }
         // Validate target dirName exists; reject early so the LLM gets a
         // crisp error before we touch the wire.
-        if (workspace.getRootDir(projectId, dirName).isEmpty()) {
+        if (workspace.getRootDir(tenantId, projectId, dirName).isEmpty()) {
             return CompletableFuture.completedFuture(TransferResult.fail(
                     "unknown RootDir: " + dirName));
         }
@@ -188,6 +190,7 @@ public class BrainTransferService {
         CompletableFuture<TransferResult> future = new CompletableFuture<>();
         BrainTransferState state = new BrainTransferState(
                 transferId, BrainTransferState.Role.RECEIVER, sessionId, ws, future);
+        state.setTenantId(tenantId);
         state.setProjectId(projectId);
         state.setDirName(dirName);
         state.setRemotePath(remotePath);
@@ -235,7 +238,7 @@ public class BrainTransferService {
         }
         Path target;
         try {
-            target = workspace.resolve(state.getProjectId(),
+            target = workspace.resolve(state.getTenantId(), state.getProjectId(),
                     state.getDirName(), state.getRemotePath());
         } catch (WorkspaceException e) {
             sendInitResponse(ws, transferId, false, e.getMessage());

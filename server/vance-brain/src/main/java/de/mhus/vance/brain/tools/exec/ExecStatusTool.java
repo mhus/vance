@@ -54,7 +54,7 @@ public class ExecStatusTool implements Tool {
         if (!(raw instanceof String id) || id.isBlank()) {
             throw new ToolException("'id' is required");
         }
-        ExecJob job = execManager.get(ctx.projectId(), id)
+        ExecJob job = execManager.get(ctx.tenantId(), ctx.projectId(), id)
                 .orElseThrow(() -> new ToolException(
                         "Unknown exec job: '" + id + "' (not in this project)"));
         return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());

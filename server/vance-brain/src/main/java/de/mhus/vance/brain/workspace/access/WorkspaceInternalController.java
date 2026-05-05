@@ -54,10 +54,10 @@ public class WorkspaceInternalController {
             @RequestParam(value = "depth", required = false, defaultValue = "1") int depth) {
         try {
             if (path == null || path.isBlank()) {
-                return workspaceService.treeRoot(project, depth);
+                return workspaceService.treeRoot(tenant, project, depth);
             }
             String[] split = splitDirAndRelative(path);
-            return workspaceService.tree(project, split[0], split[1], depth);
+            return workspaceService.tree(tenant, project, split[0], split[1], depth);
         } catch (WorkspaceException e) {
             throw mapException(e);
         }
@@ -78,7 +78,7 @@ public class WorkspaceInternalController {
         }
         byte[] bytes;
         try {
-            bytes = workspaceService.readBytes(project, split[0], split[1], properties.getMaxFileSize());
+            bytes = workspaceService.readBytes(tenant, project, split[0], split[1], properties.getMaxFileSize());
         } catch (WorkspaceException e) {
             throw mapException(e);
         }

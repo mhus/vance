@@ -55,7 +55,7 @@ public class ExecKillTool implements Tool {
         if (!(raw instanceof String id) || id.isBlank()) {
             throw new ToolException("'id' is required");
         }
-        boolean killed = execManager.kill(ctx.projectId(), id);
+        boolean killed = execManager.kill(ctx.tenantId(), ctx.projectId(), id);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", id);
         out.put("killed", killed);

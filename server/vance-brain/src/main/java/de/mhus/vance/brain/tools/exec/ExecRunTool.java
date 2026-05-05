@@ -84,7 +84,7 @@ public class ExecRunTool implements Tool {
         }
         String dirName = WorkspaceDirResolver.resolve(workspaceService, ctx, stringOrNull(params, "dirName"));
         try {
-            ExecJob job = execManager.submit(ctx.projectId(), dirName, command);
+            ExecJob job = execManager.submit(ctx.tenantId(), ctx.projectId(), dirName, command);
             execManager.waitFor(job, waitMs);
             return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());
         } catch (ExecException e) {

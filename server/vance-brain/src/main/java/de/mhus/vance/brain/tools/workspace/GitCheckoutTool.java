@@ -80,7 +80,11 @@ public class GitCheckoutTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+        String tenantId = ctx.tenantId();
         String projectId = ctx.projectId();
+        if (StringUtils.isBlank(tenantId)) {
+            throw new ToolException("git_checkout requires a tenant scope");
+        }
         if (StringUtils.isBlank(projectId)) {
             throw new ToolException("git_checkout requires a project scope");
         }
@@ -104,6 +108,7 @@ public class GitCheckoutTool implements Tool {
         if (credentialAlias != null) metadata.put(GitHandler.META_CREDENTIAL_ALIAS, credentialAlias);
 
         RootDirSpec spec = RootDirSpec.builder()
+                .tenantId(tenantId)
                 .projectId(projectId)
                 .type(GitHandler.TYPE)
                 .creatorProcessId(creator)
@@ -121,7 +126,7 @@ public class GitCheckoutTool implements Tool {
             throw new ToolException(e.getMessage(), e);
         }
         if (asWorkingDir) {
-            workspaceService.setWorkingDir(projectId, creator, handle.getDirName());
+            workspaceService.setWorkingDir(tenantId, projectId, creator, handle.getDirName());
         }
 
         Map<String, Object> out = new LinkedHashMap<>();

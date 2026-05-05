@@ -7,7 +7,7 @@ const editorEntries = {
     index: resolve(__dirname, 'index.html'),
     documents: resolve(__dirname, 'documents.html'),
     inbox: resolve(__dirname, 'inbox.html'),
-    chat: resolve(__dirname, 'chat-editor.html'),
+    chat: resolve(__dirname, 'chat.html'),
     scopes: resolve(__dirname, 'scopes.html'),
     tools: resolve(__dirname, 'tools.html'),
     insights: resolve(__dirname, 'insights.html'),

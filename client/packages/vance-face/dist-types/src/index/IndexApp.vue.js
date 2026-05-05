@@ -350,12 +350,12 @@ else {
     const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
         variant: "primary",
         size: "sm",
-        href: "/chat-editor.html",
+        href: "/chat.html",
     }));
     const __VLS_42 = __VLS_41({
         variant: "primary",
         size: "sm",
-        href: "/chat-editor.html",
+        href: "/chat.html",
     }, ...__VLS_functionalComponentArgsRest(__VLS_41));
     __VLS_43.slots.default;
     (__VLS_ctx.$t('index.open'));

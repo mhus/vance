@@ -171,6 +171,33 @@ public class StrategyResolver {
                             + "': loop-phase must not also declare worker/"
                             + "checkpoint/scorer/decider");
         }
+        // Phase J — outputSchema + postActions on the worker phase.
+        Map<String, Object> outputSchema = null;
+        Object outputSchemaRaw = spec.get("outputSchema");
+        if (outputSchemaRaw instanceof Map<?, ?> osm) {
+            outputSchema = toStringMap(osm);
+        }
+        List<BranchAction> postActions = null;
+        Object postActionsRaw = spec.get("postActions");
+        if (postActionsRaw instanceof List<?> paList && !paList.isEmpty()) {
+            postActions = parseActionList(paList,
+                    trail + " phase '" + name + "' postActions");
+        }
+        Integer maxOutputCorrections = optInt(spec.get("maxOutputCorrections"));
+        if (maxOutputCorrections != null && maxOutputCorrections < 0) {
+            throw new IllegalStateException(
+                    trail + " phase '" + name
+                            + "': maxOutputCorrections must be >= 0");
+        }
+        if ((outputSchema != null || postActions != null)
+                && (scorer != null || decider != null)) {
+            // outputSchema + scorer/decider would mean two competing
+            // ways to consume the worker reply on the same phase.
+            throw new IllegalStateException(
+                    trail + " phase '" + name + "': outputSchema/postActions "
+                            + "and scorer/decider are mutually exclusive on "
+                            + "the same phase");
+        }
         return PhaseSpec.builder()
                 .name(name)
                 .worker(optString(spec.get("worker")))
@@ -180,6 +207,9 @@ public class StrategyResolver {
                 .loop(loop)
                 .scorer(scorer)
                 .decider(decider)
+                .outputSchema(outputSchema)
+                .postActions(postActions)
+                .maxOutputCorrections(maxOutputCorrections)
                 .build();
     }
 
@@ -473,6 +503,80 @@ public class StrategyResolver {
             }
             case "exitLoop" -> new BranchAction.ExitLoop(parseExitOutcome(value, trail));
             case "exitStrategy" -> new BranchAction.ExitStrategy(parseExitOutcome(value, trail));
+            case "doc_create_text" -> {
+                if (!(value instanceof Map<?, ?> m)) {
+                    throw new IllegalStateException(
+                            trail + " must be a map with 'path' and 'content'");
+                }
+                Map<String, Object> dm = toStringMap(m);
+                yield new BranchAction.DocCreateText(
+                        requireString(dm, "path", trail),
+                        requireString(dm, "content", trail),
+                        optString(dm.get("title")),
+                        asStringList(dm.get("tags")));
+            }
+            case "doc_create_kind" -> {
+                if (!(value instanceof Map<?, ?> m)) {
+                    throw new IllegalStateException(
+                            trail + " must be a map with 'path' and 'kind'");
+                }
+                Map<String, Object> dm = toStringMap(m);
+                List<Map<String, Object>> items = null;
+                if (dm.get("items") instanceof List<?> il) {
+                    items = new ArrayList<>();
+                    for (Object it : il) {
+                        if (it instanceof Map<?, ?> im) items.add(toStringMap(im));
+                    }
+                }
+                yield new BranchAction.DocCreateKind(
+                        requireString(dm, "path", trail),
+                        requireString(dm, "kind", trail),
+                        optString(dm.get("title")),
+                        asStringList(dm.get("tags")),
+                        items,
+                        optString(dm.get("itemsFromOutput")));
+            }
+            case "list_append" -> {
+                if (!(value instanceof Map<?, ?> m)) {
+                    throw new IllegalStateException(
+                            trail + " must be a map with 'path' and 'text'");
+                }
+                Map<String, Object> dm = toStringMap(m);
+                yield new BranchAction.ListAppend(
+                        requireString(dm, "path", trail),
+                        requireString(dm, "text", trail));
+            }
+            case "doc_concat" -> {
+                if (!(value instanceof Map<?, ?> m)) {
+                    throw new IllegalStateException(
+                            trail + " must be a map with 'sources' and 'target'");
+                }
+                Map<String, Object> dm = toStringMap(m);
+                List<String> sources = asStringList(dm.get("sources"));
+                if (sources.isEmpty()) {
+                    throw new IllegalStateException(
+                            trail + ".sources must be a non-empty list");
+                }
+                yield new BranchAction.DocConcat(
+                        sources,
+                        requireString(dm, "target", trail),
+                        optString(dm.get("separator")),
+                        optString(dm.get("header")),
+                        optString(dm.get("footer")),
+                        optString(dm.get("title")));
+            }
+            case "inbox_post" -> {
+                if (!(value instanceof Map<?, ?> m)) {
+                    throw new IllegalStateException(
+                            trail + " must be a map with 'type' and 'title'");
+                }
+                Map<String, Object> dm = toStringMap(m);
+                yield new BranchAction.InboxPost(
+                        requireString(dm, "type", trail),
+                        requireString(dm, "title", trail),
+                        optString(dm.get("body")),
+                        optString(dm.get("criticality")));
+            }
             default -> throw new IllegalStateException(
                     trail + " unknown action '" + key + "'");
         };

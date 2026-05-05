@@ -1,9 +1,20 @@
 package de.mhus.vance.brain.vogon;
 
+import de.mhus.vance.api.inbox.Criticality;
+import de.mhus.vance.api.inbox.InboxItemStatus;
+import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.vogon.BranchAction;
 import de.mhus.vance.api.vogon.PhaseSpec;
 import de.mhus.vance.api.vogon.StrategySpec;
 import de.mhus.vance.api.vogon.StrategyState;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,6 +86,22 @@ final class BranchActionExecutor {
         EXIT_STRATEGY
     }
 
+    /**
+     * Carries the engine services + process context branch actions
+     * may need (Doc-actions reach into {@link DocumentService}, the
+     * inbox post into {@link InboxItemService}). Pure flag- and
+     * flow-actions ignore the services. Pass {@link Ctx#empty()} when
+     * only flow-control actions are expected.
+     */
+    record Ctx(
+            @Nullable ThinkProcessDocument process,
+            @Nullable DocumentService documentService,
+            @Nullable InboxItemService inboxItemService) {
+        public static Ctx empty() {
+            return new Ctx(null, null, null);
+        }
+    }
+
     private BranchActionExecutor() {}
 
     /**
@@ -88,11 +115,22 @@ final class BranchActionExecutor {
             StrategySpec strategy,
             StrategyState state,
             List<BranchAction> actions) {
+        return execute(strategy, state, actions, Ctx.empty());
+    }
+
+    /** Same as {@link #execute(StrategySpec, StrategyState, List)} but
+     *  passes a {@link Ctx} so Doc-actions / inbox-post can reach the
+     *  engine services. */
+    static Result execute(
+            StrategySpec strategy,
+            StrategyState state,
+            List<BranchAction> actions,
+            Ctx ctx) {
         if (actions == null || actions.isEmpty()) {
             return Result.continueRunning();
         }
         for (BranchAction action : actions) {
-            Result terminal = applyOne(strategy, state, action);
+            Result terminal = applyOne(strategy, state, action, ctx);
             if (terminal != null) return terminal;
         }
         return Result.continueRunning();
@@ -101,7 +139,7 @@ final class BranchActionExecutor {
     /** Returns non-null when {@code action} is terminal; null for
      *  flag-mutating non-terminals. */
     private static @Nullable Result applyOne(
-            StrategySpec strategy, StrategyState state, BranchAction action) {
+            StrategySpec strategy, StrategyState state, BranchAction action, Ctx ctx) {
         if (action instanceof BranchAction.SetFlag sf) {
             state.getFlags().put(sf.name(), sf.value());
             return null;
@@ -149,7 +187,151 @@ final class BranchActionExecutor {
         if (action instanceof BranchAction.ExitStrategy es) {
             return Result.exitedStrategy(es.outcome());
         }
+        if (action instanceof BranchAction.DocCreateText d) {
+            requireDocService(ctx, "doc_create_text");
+            String tenantId = ctx.process().getTenantId();
+            String projectId = ctx.process().getProjectId();
+            ctx.documentService().createText(
+                    tenantId,
+                    projectId,
+                    d.path(),
+                    d.title(),
+                    d.tags(),
+                    d.content() == null ? "" : d.content(),
+                    /*createdBy*/ null);
+            return null;
+        }
+        if (action instanceof BranchAction.DocCreateKind d) {
+            requireDocService(ctx, "doc_create_kind");
+            String tenantId = ctx.process().getTenantId();
+            String projectId = ctx.process().getProjectId();
+            // Render the kind-document as YAML front-matter + body
+            // matching DocCreateKindTool's on-disk layout. The
+            // simplest approach: build a minimal YAML by hand for
+            // the supported kinds. v1 supports kind=list with items
+            // (others get an empty body).
+            String body = renderKindBody(d);
+            ctx.documentService().create(
+                    tenantId,
+                    projectId,
+                    d.path(),
+                    d.title(),
+                    d.tags(),
+                    "text/markdown",
+                    new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
+                    /*createdBy*/ null);
+            return null;
+        }
+        if (action instanceof BranchAction.ListAppend la) {
+            requireDocService(ctx, "list_append");
+            String tenantId = ctx.process().getTenantId();
+            String projectId = ctx.process().getProjectId();
+            DocumentDocument existing = ctx.documentService()
+                    .findByPath(tenantId, projectId, la.path())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "list_append: target document '" + la.path()
+                                    + "' does not exist — create it with "
+                                    + "doc_create_kind first"));
+            String current = existing.getInlineText() == null
+                    ? "" : existing.getInlineText();
+            String updated = current.endsWith("\n") || current.isEmpty()
+                    ? current : current + "\n";
+            updated += "- " + la.text() + "\n";
+            ctx.documentService().update(
+                    existing.getId(),
+                    /*newTitle*/ null,
+                    /*newTags*/ null,
+                    updated,
+                    /*newPath*/ null);
+            return null;
+        }
+        if (action instanceof BranchAction.DocConcat dc) {
+            requireDocService(ctx, "doc_concat");
+            String tenantId = ctx.process().getTenantId();
+            String projectId = ctx.process().getProjectId();
+            String separator = dc.separator() == null ? "\n\n" : dc.separator();
+            StringBuilder sb = new StringBuilder();
+            if (dc.header() != null) sb.append(dc.header());
+            for (int i = 0; i < dc.sources().size(); i++) {
+                String path = dc.sources().get(i);
+                DocumentDocument src = ctx.documentService()
+                        .findByPath(tenantId, projectId, path)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "doc_concat: source '" + path
+                                        + "' not found in project '" + projectId + "'"));
+                if (i > 0 || dc.header() != null) sb.append(separator);
+                sb.append(src.getInlineText() == null ? "" : src.getInlineText());
+            }
+            if (dc.footer() != null) sb.append(separator).append(dc.footer());
+            ctx.documentService().createText(
+                    tenantId,
+                    projectId,
+                    dc.target(),
+                    dc.title(),
+                    /*tags*/ null,
+                    sb.toString(),
+                    /*createdBy*/ null);
+            return null;
+        }
+        if (action instanceof BranchAction.InboxPost ip) {
+            requireInboxService(ctx, "inbox_post");
+            String tenantId = ctx.process().getTenantId();
+            InboxItemType type = parseEnum(ip.type(), InboxItemType.FEEDBACK,
+                    InboxItemType.class);
+            Criticality crit = parseEnum(ip.criticality(), Criticality.LOW,
+                    Criticality.class);
+            InboxItemDocument item = InboxItemDocument.builder()
+                    .tenantId(tenantId)
+                    .type(type)
+                    .status(InboxItemStatus.PENDING)
+                    .criticality(crit)
+                    .title(ip.title())
+                    .body(ip.body())
+                    .originProcessId(ctx.process().getId())
+                    .build();
+            ctx.inboxItemService().create(item);
+            return null;
+        }
         throw new IllegalStateException("Unknown branch action: " + action);
+    }
+
+    private static void requireDocService(Ctx ctx, String actionName) {
+        if (ctx == null || ctx.documentService() == null || ctx.process() == null) {
+            throw new IllegalStateException(
+                    actionName + " action requires DocumentService + process context "
+                            + "in the executor Ctx — engine wiring missing.");
+        }
+    }
+
+    private static void requireInboxService(Ctx ctx, String actionName) {
+        if (ctx == null || ctx.inboxItemService() == null || ctx.process() == null) {
+            throw new IllegalStateException(
+                    actionName + " action requires InboxItemService + process context "
+                            + "in the executor Ctx — engine wiring missing.");
+        }
+    }
+
+    private static <E extends Enum<E>> E parseEnum(
+            @Nullable String value, E fallback, Class<E> type) {
+        if (value == null || value.isBlank()) return fallback;
+        try {
+            return Enum.valueOf(type, value.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
+    }
+
+    private static String renderKindBody(BranchAction.DocCreateKind d) {
+        StringBuilder sb = new StringBuilder("---\nkind: ").append(d.kind()).append("\n---\n");
+        if ("list".equalsIgnoreCase(d.kind()) && d.items() != null && !d.items().isEmpty()) {
+            for (Map<String, Object> item : d.items()) {
+                Object text = item.get("text");
+                if (text == null) text = item.get("title");
+                if (text == null) text = item.toString();
+                sb.append("- ").append(String.valueOf(text)).append("\n");
+            }
+        }
+        return sb.toString();
     }
 
     private static boolean phaseExists(StrategySpec strategy, String name) {

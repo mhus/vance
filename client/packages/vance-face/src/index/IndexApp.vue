@@ -242,7 +242,7 @@ function readNextParam(): string | null {
               <div class="font-semibold">{{ $t('index.chat.title') }}</div>
               <div class="text-sm opacity-70">{{ $t('index.chat.description') }}</div>
             </div>
-            <VButton variant="primary" size="sm" href="/chat-editor.html">
+            <VButton variant="primary" size="sm" href="/chat.html">
               {{ $t('index.open') }}
             </VButton>
           </li>

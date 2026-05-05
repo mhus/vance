@@ -25,7 +25,12 @@ public sealed interface BranchAction
                 BranchAction.JumpToPhase,
                 BranchAction.Pause,
                 BranchAction.ExitLoop,
-                BranchAction.ExitStrategy {
+                BranchAction.ExitStrategy,
+                BranchAction.DocCreateText,
+                BranchAction.DocCreateKind,
+                BranchAction.ListAppend,
+                BranchAction.DocConcat,
+                BranchAction.InboxPost {
 
     /** {@code true} for actions that hand control off and abort the
      *  rest of the {@code do:} list. */
@@ -107,5 +112,81 @@ public sealed interface BranchAction
      */
     record ExitStrategy(ExitOutcome outcome) implements BranchAction {
         @Override public boolean terminal() { return true; }
+    }
+
+    // ──────────────────── Document / inbox actions ────────────────────
+    //
+    // These are the executive actions that previously had to be tool-
+    // called by an LLM worker. Phase J moves them to the engine: a
+    // recipe-author declares them as `postActions` on a phase, and the
+    // worker only delivers the structured input via {@code outputSchema}.
+    // Path / content fields are templated — engine substitutes
+    // {@code ${output.X}} / {@code ${params.X}} before executing.
+
+    /** Create a text document at {@code path} with {@code content}. */
+    record DocCreateText(
+            String path,
+            String content,
+            @Nullable String title,
+            @Nullable List<String> tags) implements BranchAction {
+        @Override public boolean terminal() { return false; }
+    }
+
+    /**
+     * Create a typed document ({@code kind: list|tree|records|graph|sheet}).
+     * Items can be specified two ways (mutually exclusive): inline via
+     * {@link #items} (statically declared in the YAML) or
+     * {@link #itemsFromOutput} (dot-path into the worker's structured
+     * output, resolved at execute-time). The latter is the common case
+     * for executive workers — the LLM produces the list, the engine
+     * populates the document.
+     *
+     * <p>For {@code kind: list} every item's {@code text} (or {@code title})
+     * field becomes one list line. Other kinds get an empty default
+     * body in v1.
+     */
+    record DocCreateKind(
+            String path,
+            String kind,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            @Nullable List<Map<String, Object>> items,
+            @Nullable String itemsFromOutput) implements BranchAction {
+        @Override public boolean terminal() { return false; }
+    }
+
+    /** Append one entry to a {@code kind: list} document. */
+    record ListAppend(String path, String text) implements BranchAction {
+        @Override public boolean terminal() { return false; }
+    }
+
+    /**
+     * Concatenate N source documents verbatim into one target document
+     * (matches the {@code doc_concat} tool). Optional {@code separator}
+     * (default {@code "\n\n"}), {@code header}, {@code footer}.
+     */
+    record DocConcat(
+            List<String> sources,
+            String target,
+            @Nullable String separator,
+            @Nullable String header,
+            @Nullable String footer,
+            @Nullable String title) implements BranchAction {
+        @Override public boolean terminal() { return false; }
+    }
+
+    /**
+     * Post an inbox notification for the session-owner. {@code type}
+     * is the {@link de.mhus.vance.api.inbox.InboxItemType} name
+     * ({@code NOTICE} / {@code APPROVAL} / {@code DECISION} /
+     * {@code FEEDBACK}). For pipeline pings {@code NOTICE} is the
+     * standard.
+     */
+    record InboxPost(
+            String type,
+            String title,
+            @Nullable String body,
+            @Nullable String criticality) implements BranchAction {
+        @Override public boolean terminal() { return false; }
     }
 }

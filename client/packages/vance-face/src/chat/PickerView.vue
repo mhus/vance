@@ -247,21 +247,31 @@ watch(selectedProjectName, async (newName) => {
             ]"
             @click="pickSession(session)"
           >
-            <div class="card-body p-4 flex flex-row items-center gap-3">
+            <div class="card-body p-4 flex flex-row items-start gap-3">
               <span
-                class="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                class="inline-block w-2.5 h-2.5 rounded-full shrink-0 mt-1.5"
                 :class="session.bound ? 'bg-error' : 'bg-base-content/40'"
                 :title="session.bound ? $t('chat.picker.occupiedTooltip') : $t('chat.picker.available')"
               />
               <div class="flex-1 min-w-0">
-                <div class="font-medium truncate">
-                  {{ session.displayName || session.sessionId }}
+                <div
+                  class="font-medium truncate"
+                  :title="session.firstUserMessage ?? session.displayName ?? session.sessionId"
+                >
+                  {{ session.firstUserMessage || session.displayName || session.sessionId }}
                 </div>
-                <div class="text-xs opacity-60 truncate">
+                <div
+                  v-if="session.lastMessagePreview"
+                  class="text-xs opacity-70 truncate mt-0.5"
+                  :title="session.lastMessagePreview"
+                >
+                  {{ session.lastMessagePreview }}
+                </div>
+                <div class="text-xs opacity-60 truncate mt-0.5">
                   {{ session.status }} · {{ formatRelativeTime(session.lastActivityAt) }}
                 </div>
               </div>
-              <span v-if="session.bound" class="text-xs text-error">
+              <span v-if="session.bound" class="text-xs text-error shrink-0 mt-1">
                 {{ $t('chat.picker.occupied') }}
               </span>
             </div>

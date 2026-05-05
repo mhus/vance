@@ -1,5 +1,7 @@
 package de.mhus.vance.api.vogon;
 
+import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -62,4 +64,42 @@ public class PhaseSpec {
     /** Categorical match evaluated after worker DONE. Mutually
      *  exclusive with {@link #scorer}. */
     private @Nullable DeciderSpec decider;
+
+    /**
+     * Phase J — JSON schema (small subset; see
+     * {@code de.mhus.vance.shared.util.JsonSchemaLight}) the worker's
+     * structured reply must satisfy before {@link #postActions} run.
+     * On schema violation the engine re-prompts the worker up to
+     * {@link #getMaxOutputCorrections()} times, then fails the phase.
+     *
+     * <p>Replaces the hand-written reply for executive worker
+     * patterns: instead of telling the LLM "now call doc_create_text",
+     * the recipe says "produce a JSON with {chapterText, slug}", and
+     * the engine deterministically persists via post-actions.
+     */
+    @Builder.Default
+    private @Nullable Map<String, Object> outputSchema = null;
+
+    /**
+     * Phase J — deterministic actions executed after worker DONE
+     * (and after {@link #outputSchema} validation, when set).
+     * Substitutions over the worker's parsed output via
+     * {@code ${output.X}} and the strategy state via
+     * {@code ${params.X}} / {@code ${flags.X}} / {@code ${phases.X.…}}.
+     *
+     * <p>Vocabulary: see {@link BranchAction} sealed hierarchy
+     * (Doc-actions: {@link BranchAction.DocCreateText},
+     * {@link BranchAction.DocCreateKind},
+     * {@link BranchAction.ListAppend},
+     * {@link BranchAction.DocConcat},
+     * {@link BranchAction.InboxPost}; plus the existing flow-control
+     * actions like {@link BranchAction.SetFlag}).
+     */
+    @Builder.Default
+    private @Nullable List<BranchAction> postActions = null;
+
+    /** Re-prompt cap when the worker reply doesn't validate against
+     *  {@link #outputSchema}. Default 2 (matches scorer/decider). */
+    @Builder.Default
+    private @Nullable Integer maxOutputCorrections = null;
 }

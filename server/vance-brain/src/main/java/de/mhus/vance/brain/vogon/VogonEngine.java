@@ -605,12 +605,19 @@ public class VogonEngine implements ThinkEngine {
             // a structured verdict from the reply and may force a branch
             // (exitLoop / exitStrategy / jumpToPhase / escalateTo).
             // Scorer / decider are mutually exclusive — strategy-load
-            // validation already enforces that.
+            // validation already enforces that. Phase J adds a third
+            // option: outputSchema + postActions for executive workers
+            // (worker delivers structured JSON, engine persists
+            // deterministically via post-actions).
             if (phase.getScorer() != null) {
                 branchResult = evaluateScorerWithCorrections(
                         process, child, strategy, state, phase, phaseKey, reply);
             } else if (phase.getDecider() != null) {
                 branchResult = evaluateDeciderWithCorrections(
+                        process, child, strategy, state, phase, phaseKey, reply);
+            } else if (phase.getOutputSchema() != null
+                    || phase.getPostActions() != null) {
+                evaluateOutputSchemaAndPostActions(
                         process, child, strategy, state, phase, phaseKey, reply);
             }
         } catch (RuntimeException e) {
@@ -922,6 +929,260 @@ public class VogonEngine implements ThinkEngine {
             if (!any) return false;
         }
         return true;
+    }
+
+    /**
+     * Phase J — extract the worker's structured JSON output, validate
+     * it against {@code phase.outputSchema} (re-prompting up to
+     * {@code maxOutputCorrections} times), then run
+     * {@code phase.postActions} with {@code ${output.X}} /
+     * {@code ${flags.X}} / {@code ${params.X}} substitutions.
+     *
+     * <p>Designed for executive worker patterns: the worker only
+     * delivers content, the engine deterministically persists it.
+     */
+    private void evaluateOutputSchemaAndPostActions(
+            ThinkProcessDocument process,
+            ThinkProcessDocument child,
+            StrategySpec strategy,
+            StrategyState state,
+            PhaseSpec phase,
+            String phaseKey,
+            @Nullable String initialReply) {
+        Map<String, Object> schema = phase.getOutputSchema();
+        int maxCorrections = phase.getMaxOutputCorrections() == null
+                ? 2 : phase.getMaxOutputCorrections();
+        Map<String, Object> output = null;
+        String reply = initialReply;
+        int attempts = 0;
+        // Only enter the validate-loop when a schema is set; otherwise
+        // we have actions but no contract — still attempt a parse so
+        // ${output.X} substitutions work, but don't fail the phase
+        // if parsing fails.
+        if (schema != null) {
+            while (true) {
+                de.mhus.vance.shared.util.JsonSchemaLight.Result vr;
+                Map<String, Object> parsed = parseJsonReply(reply);
+                if (parsed == null) {
+                    vr = de.mhus.vance.shared.util.JsonSchemaLight.Result.fail(
+                            java.util.List.of(
+                                    "no JSON object found at the end of the reply"));
+                } else {
+                    vr = de.mhus.vance.shared.util.JsonSchemaLight.validate(parsed, schema);
+                }
+                if (vr.valid()) {
+                    output = parsed;
+                    break;
+                }
+                if (attempts >= maxCorrections) {
+                    log.warn("Vogon id='{}' phase '{}' outputSchema invalid after {} "
+                                    + "correction attempts: {}",
+                            process.getId(), phase.getName(), attempts, vr.errorsJoined());
+                    state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
+                    persistState(process, state);
+                    return;
+                }
+                attempts++;
+                log.info("Vogon id='{}' phase '{}' output correction {}/{}: {}",
+                        process.getId(), phase.getName(),
+                        attempts, maxCorrections, vr.errorsJoined());
+                try {
+                    driveWorkerTurn(child, process.getId(),
+                            "Your last reply did not match the required schema: "
+                                    + vr.errorsJoined()
+                                    + "\nRe-emit the final JSON object correctly.");
+                    reply = readLastAssistantText(process.getTenantId(),
+                            process.getSessionId(), child.getId());
+                } catch (RuntimeException e) {
+                    log.warn("Vogon id='{}' phase '{}' correction reprompt failed: {}",
+                            process.getId(), phase.getName(), e.toString());
+                    state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
+                    persistState(process, state);
+                    return;
+                }
+            }
+        } else {
+            output = parseJsonReply(reply);
+        }
+
+        // Persist the parsed output as part of the phase artefact for
+        // audit + cross-phase ${phases.X.output.Y} substitution.
+        Map<String, Object> artifact = state.getPhaseArtifacts().get(phaseKey);
+        if (artifact == null) {
+            artifact = new LinkedHashMap<>();
+            state.getPhaseArtifacts().put(phaseKey, artifact);
+        }
+        if (output != null) {
+            artifact.put("output", output);
+        }
+        persistState(process, state);
+
+        // Run postActions with full substitution context (output +
+        // params + flags + phases).
+        java.util.List<de.mhus.vance.api.vogon.BranchAction> actions = phase.getPostActions();
+        if (actions == null || actions.isEmpty()) return;
+        Map<String, Object> params = effectiveParams(process, strategy);
+        VogonSubstitutor sub = new VogonSubstitutor(params, state);
+        java.util.List<de.mhus.vance.api.vogon.BranchAction> resolved =
+                substitutePostActions(actions, sub, output);
+        BranchActionExecutor.Ctx execCtx = new BranchActionExecutor.Ctx(
+                process, documentService, inboxItemService);
+        try {
+            BranchActionExecutor.execute(strategy, state, resolved, execCtx);
+            persistState(process, state);
+            log.info("Vogon id='{}' phase '{}' postActions executed ({} actions)",
+                    process.getId(), phase.getName(), resolved.size());
+        } catch (RuntimeException e) {
+            log.warn("Vogon id='{}' phase '{}' postAction failed: {}",
+                    process.getId(), phase.getName(), e.toString());
+            state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
+            persistState(process, state);
+        }
+    }
+
+    /** Extract the last top-level JSON object from a free-form
+     *  worker reply. Null when reply is blank or contains no JSON. */
+    private @Nullable Map<String, Object> parseJsonReply(@Nullable String reply) {
+        if (reply == null || reply.isBlank()) return null;
+        String json = de.mhus.vance.shared.util.JsonReplyExtractor.extractLastObject(reply);
+        if (json == null) return null;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed = objectMapper.readValue(json, Map.class);
+            return parsed;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** Substitute {@code ${output.X}} / {@code ${params.X}} /
+     *  {@code ${flags.X}} / {@code ${phases.X.…}} into all string
+     *  fields of the post-actions. Output is a new list with rendered
+     *  records — input list is not mutated. */
+    private static java.util.List<de.mhus.vance.api.vogon.BranchAction> substitutePostActions(
+            java.util.List<de.mhus.vance.api.vogon.BranchAction> actions,
+            VogonSubstitutor sub,
+            @Nullable Map<String, Object> output) {
+        java.util.List<de.mhus.vance.api.vogon.BranchAction> out =
+                new java.util.ArrayList<>(actions.size());
+        for (de.mhus.vance.api.vogon.BranchAction a : actions) {
+            out.add(substituteOne(a, sub, output));
+        }
+        return out;
+    }
+
+    private static de.mhus.vance.api.vogon.BranchAction substituteOne(
+            de.mhus.vance.api.vogon.BranchAction a,
+            VogonSubstitutor sub,
+            @Nullable Map<String, Object> output) {
+        if (a instanceof de.mhus.vance.api.vogon.BranchAction.DocCreateText d) {
+            return new de.mhus.vance.api.vogon.BranchAction.DocCreateText(
+                    renderTemplate(d.path(), sub, output),
+                    renderTemplate(d.content(), sub, output),
+                    renderTemplate(d.title(), sub, output),
+                    d.tags());
+        }
+        if (a instanceof de.mhus.vance.api.vogon.BranchAction.DocCreateKind d) {
+            // If `itemsFromOutput` is set, resolve a list-shaped value
+            // from the output and pass it as `items`.
+            java.util.List<Map<String, Object>> resolvedItems = d.items();
+            if (d.itemsFromOutput() != null && output != null) {
+                Object resolved = resolvePath(output, d.itemsFromOutput());
+                if (resolved instanceof java.util.List<?> list) {
+                    resolvedItems = new java.util.ArrayList<>();
+                    for (Object o : list) {
+                        if (o instanceof Map<?, ?> m) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> mm = (Map<String, Object>) m;
+                            resolvedItems.add(mm);
+                        } else if (o instanceof String s) {
+                            // Bare string → wrap as {text: s}.
+                            resolvedItems.add(java.util.Map.of("text", s));
+                        }
+                    }
+                }
+            }
+            return new de.mhus.vance.api.vogon.BranchAction.DocCreateKind(
+                    renderTemplate(d.path(), sub, output),
+                    d.kind(),
+                    renderTemplate(d.title(), sub, output),
+                    d.tags(),
+                    resolvedItems,
+                    d.itemsFromOutput());
+        }
+        if (a instanceof de.mhus.vance.api.vogon.BranchAction.ListAppend la) {
+            return new de.mhus.vance.api.vogon.BranchAction.ListAppend(
+                    renderTemplate(la.path(), sub, output),
+                    renderTemplate(la.text(), sub, output));
+        }
+        if (a instanceof de.mhus.vance.api.vogon.BranchAction.DocConcat dc) {
+            java.util.List<String> sources = new java.util.ArrayList<>(dc.sources().size());
+            for (String s : dc.sources()) sources.add(renderTemplate(s, sub, output));
+            return new de.mhus.vance.api.vogon.BranchAction.DocConcat(
+                    sources,
+                    renderTemplate(dc.target(), sub, output),
+                    dc.separator(),
+                    renderTemplate(dc.header(), sub, output),
+                    renderTemplate(dc.footer(), sub, output),
+                    renderTemplate(dc.title(), sub, output));
+        }
+        if (a instanceof de.mhus.vance.api.vogon.BranchAction.InboxPost ip) {
+            return new de.mhus.vance.api.vogon.BranchAction.InboxPost(
+                    ip.type(),
+                    renderTemplate(ip.title(), sub, output),
+                    renderTemplate(ip.body(), sub, output),
+                    ip.criticality());
+        }
+        // Flow-control actions (setFlag / setFlags / notifyParent / …)
+        // are passed through unchanged — substitution is for
+        // executive payloads.
+        return a;
+    }
+
+    /** Render a template string with the standard {@code ${X}}
+     *  substituator, additionally exposing {@code ${output.X}} from
+     *  {@code output}. */
+    private static @Nullable String renderTemplate(
+            @Nullable String template, VogonSubstitutor sub,
+            @Nullable Map<String, Object> output) {
+        if (template == null) return null;
+        // Apply ${output.X} first by simple inline replace; the
+        // VogonSubstitutor handles ${params.X} / ${flags.X} / ${phases.X.…}.
+        String rendered = renderOutputRefs(template, output);
+        return sub.apply(rendered);
+    }
+
+    private static String renderOutputRefs(
+            String template, @Nullable Map<String, Object> output) {
+        if (output == null || output.isEmpty()) return template;
+        // Simple ${output.fieldName} replacement. Supports nested
+        // dot-paths: ${output.parent.child}.
+        java.util.regex.Matcher m =
+                OUTPUT_PLACEHOLDER.matcher(template);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            String path = m.group(1);
+            Object resolved = resolvePath(output, path);
+            m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(
+                    resolved == null ? "" : String.valueOf(resolved)));
+        }
+        m.appendTail(sb);
+        return sb.toString();
+    }
+
+    private static final java.util.regex.Pattern OUTPUT_PLACEHOLDER =
+            java.util.regex.Pattern.compile("\\$\\{output\\.([a-zA-Z0-9_.]+)\\}");
+
+    @SuppressWarnings("unchecked")
+    private static @Nullable Object resolvePath(Map<String, Object> root, String path) {
+        Object cur = root;
+        for (String seg : path.split("\\.")) {
+            if (cur instanceof Map<?, ?> m) {
+                cur = ((Map<String, Object>) m).get(seg);
+            } else return null;
+            if (cur == null) return null;
+        }
+        return cur;
     }
 
     /**

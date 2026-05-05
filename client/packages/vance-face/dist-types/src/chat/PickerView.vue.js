@@ -312,10 +312,10 @@ else {
                 ]) },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "card-body p-4 flex flex-row items-center gap-3" },
+            ...{ class: "card-body p-4 flex flex-row items-start gap-3" },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-            ...{ class: "inline-block w-2.5 h-2.5 rounded-full shrink-0" },
+            ...{ class: "inline-block w-2.5 h-2.5 rounded-full shrink-0 mt-1.5" },
             ...{ class: (session.bound ? 'bg-error' : 'bg-base-content/40') },
             title: (session.bound ? __VLS_ctx.$t('chat.picker.occupiedTooltip') : __VLS_ctx.$t('chat.picker.available')),
         });
@@ -324,16 +324,24 @@ else {
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "font-medium truncate" },
+            title: (session.firstUserMessage ?? session.displayName ?? session.sessionId),
         });
-        (session.displayName || session.sessionId);
+        (session.firstUserMessage || session.displayName || session.sessionId);
+        if (session.lastMessagePreview) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs opacity-70 truncate mt-0.5" },
+                title: (session.lastMessagePreview),
+            });
+            (session.lastMessagePreview);
+        }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "text-xs opacity-60 truncate" },
+            ...{ class: "text-xs opacity-60 truncate mt-0.5" },
         });
         (session.status);
         (__VLS_ctx.formatRelativeTime(session.lastActivityAt));
         if (session.bound) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "text-xs text-error" },
+                ...{ class: "text-xs text-error shrink-0 mt-1" },
             });
             (__VLS_ctx.$t('chat.picker.occupied'));
         }
@@ -401,22 +409,30 @@ else {
 /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-row']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-start']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['inline-block']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-2.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-2.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-0.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-error']} */ ;
+/** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {

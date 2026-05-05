@@ -1080,7 +1080,8 @@ public class VogonEngine implements ThinkEngine {
                     renderTemplate(d.path(), sub, output),
                     renderTemplate(d.content(), sub, output),
                     renderTemplate(d.title(), sub, output),
-                    d.tags());
+                    d.tags(),
+                    d.overwrite());
         }
         if (a instanceof de.mhus.vance.api.vogon.BranchAction.DocCreateKind d) {
             // If `itemsFromOutput` is set, resolve a list-shaped value
@@ -1108,7 +1109,8 @@ public class VogonEngine implements ThinkEngine {
                     renderTemplate(d.title(), sub, output),
                     d.tags(),
                     resolvedItems,
-                    d.itemsFromOutput());
+                    d.itemsFromOutput(),
+                    d.overwrite());
         }
         if (a instanceof de.mhus.vance.api.vogon.BranchAction.ListAppend la) {
             return new de.mhus.vance.api.vogon.BranchAction.ListAppend(

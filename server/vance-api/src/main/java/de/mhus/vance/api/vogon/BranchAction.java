@@ -123,12 +123,21 @@ public sealed interface BranchAction
     // Path / content fields are templated — engine substitutes
     // {@code ${output.X}} / {@code ${params.X}} before executing.
 
-    /** Create a text document at {@code path} with {@code content}. */
+    /**
+     * Create a text document at {@code path} with {@code content}.
+     *
+     * <p>{@code overwrite} controls behaviour when the path already
+     * exists: {@code true} (default) updates the existing document
+     * — required by lector-revision loops that re-emit the same
+     * postAction. {@code false} throws {@code DocumentAlreadyExistsException}
+     * — used when the recipe wants strict create-once semantics.
+     */
     record DocCreateText(
             String path,
             String content,
             @Nullable String title,
-            @Nullable List<String> tags) implements BranchAction {
+            @Nullable List<String> tags,
+            boolean overwrite) implements BranchAction {
         @Override public boolean terminal() { return false; }
     }
 
@@ -151,7 +160,8 @@ public sealed interface BranchAction
             @Nullable String title,
             @Nullable List<String> tags,
             @Nullable List<Map<String, Object>> items,
-            @Nullable String itemsFromOutput) implements BranchAction {
+            @Nullable String itemsFromOutput,
+            boolean overwrite) implements BranchAction {
         @Override public boolean terminal() { return false; }
     }
 

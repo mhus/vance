@@ -235,6 +235,49 @@ class MarvinNodeServiceTest {
     }
 
     @Test
+    void findNextActionable_recipeDefaultExecutionMode_overridesKindDefault() {
+        // engineParams.defaultExecutionMode=PARALLEL flips the
+        // hardcoded PLAN→SEQUENTIAL default. A blocked sibling no
+        // longer pins the group.
+        MarvinNodeDocument root = planNode("root", null, 0, NodeStatus.DONE);
+        MarvinNodeDocument a = node("a", "root", 0, NodeStatus.RUNNING);
+        MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
+        stubTree("p", root, a, b);
+
+        Map<String, Object> engineParams = Map.of("defaultExecutionMode", "PARALLEL");
+        assertThat(service.findNextActionableNode("p", engineParams)).hasValue(b);
+    }
+
+    @Test
+    void findNextActionable_perKindOverride_winsOverGlobalDefault() {
+        // defaultExecutionModePerKind: { PLAN: SEQUENTIAL } overrides
+        // a global defaultExecutionMode: PARALLEL for PLAN parents.
+        MarvinNodeDocument root = planNode("root", null, 0, NodeStatus.DONE);
+        MarvinNodeDocument a = node("a", "root", 0, NodeStatus.RUNNING);
+        MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
+        stubTree("p", root, a, b);
+
+        Map<String, Object> engineParams = Map.of(
+                "defaultExecutionMode", "PARALLEL",
+                "defaultExecutionModePerKind", Map.of("PLAN", "SEQUENTIAL"));
+        assertThat(service.findNextActionableNode("p", engineParams)).isEmpty();
+    }
+
+    @Test
+    void findNextActionable_perNodeOverride_winsOverRecipeDefault() {
+        // taskSpec.executionMode on the node is the highest-priority
+        // signal — ignores the recipe default.
+        MarvinNodeDocument root = planNodeWithMode("root", null, 0,
+                NodeStatus.DONE, "PARALLEL");
+        MarvinNodeDocument a = node("a", "root", 0, NodeStatus.RUNNING);
+        MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
+        stubTree("p", root, a, b);
+
+        Map<String, Object> engineParams = Map.of("defaultExecutionMode", "SEQUENTIAL");
+        assertThat(service.findNextActionableNode("p", engineParams)).hasValue(b);
+    }
+
+    @Test
     void findNextActionable_planParent_doneSiblingThenRunningSubtree_blocksNextSibling() {
         // PLAN root → A(DONE) → A1(RUNNING)
         //          → B(PENDING)

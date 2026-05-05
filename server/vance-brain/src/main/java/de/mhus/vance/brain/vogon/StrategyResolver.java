@@ -513,7 +513,8 @@ public class StrategyResolver {
                         requireString(dm, "path", trail),
                         requireString(dm, "content", trail),
                         optString(dm.get("title")),
-                        asStringList(dm.get("tags")));
+                        asStringList(dm.get("tags")),
+                        optBool(dm.get("overwrite"), true));
             }
             case "doc_create_kind" -> {
                 if (!(value instanceof Map<?, ?> m)) {
@@ -534,7 +535,8 @@ public class StrategyResolver {
                         optString(dm.get("title")),
                         asStringList(dm.get("tags")),
                         items,
-                        optString(dm.get("itemsFromOutput")));
+                        optString(dm.get("itemsFromOutput")),
+                        optBool(dm.get("overwrite"), true));
             }
             case "list_append" -> {
                 if (!(value instanceof Map<?, ?> m)) {
@@ -701,5 +703,14 @@ public class StrategyResolver {
 
     private static String optStringOrEmpty(@Nullable Object raw) {
         return raw instanceof String s ? s : "";
+    }
+
+    private static boolean optBool(@Nullable Object raw, boolean fallback) {
+        if (raw instanceof Boolean b) return b;
+        if (raw instanceof String s) {
+            if ("true".equalsIgnoreCase(s.trim())) return true;
+            if ("false".equalsIgnoreCase(s.trim())) return false;
+        }
+        return fallback;
     }
 }

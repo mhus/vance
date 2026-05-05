@@ -193,23 +193,24 @@ final class BranchActionExecutor {
             String tenantId = ctx.process().getTenantId();
             String projectId = ctx.process().getProjectId();
             String content = d.content() == null ? "" : d.content();
-            // Idempotent on existing path: a Vogon lector-revision
-            // loop re-runs the writer which re-emits the same
-            // postAction, so create-or-update is the only sensible
-            // semantic here. Strict-create stays the default for
-            // tool calls (separate code path).
-            Optional<DocumentDocument> existing = ctx.documentService()
-                    .findByPath(tenantId, projectId, d.path());
-            if (existing.isPresent()) {
-                ctx.documentService().update(
-                        existing.get().getId(),
-                        d.title(), d.tags(), content, /*newPath*/ null);
-            } else {
-                ctx.documentService().createText(
-                        tenantId, projectId, d.path(),
-                        d.title(), d.tags(), content,
-                        /*createdBy*/ null);
+            // overwrite=true (default): idempotent — find-or-update,
+            // required by lector-revision loops that re-emit the
+            // same postAction. overwrite=false: strict create —
+            // throws DocumentAlreadyExistsException on re-emit.
+            if (d.overwrite()) {
+                Optional<DocumentDocument> existing = ctx.documentService()
+                        .findByPath(tenantId, projectId, d.path());
+                if (existing.isPresent()) {
+                    ctx.documentService().update(
+                            existing.get().getId(),
+                            d.title(), d.tags(), content, /*newPath*/ null);
+                    return null;
+                }
             }
+            ctx.documentService().createText(
+                    tenantId, projectId, d.path(),
+                    d.title(), d.tags(), content,
+                    /*createdBy*/ null);
             return null;
         }
         if (action instanceof BranchAction.DocCreateKind d) {
@@ -222,22 +223,22 @@ final class BranchActionExecutor {
             // the supported kinds. v1 supports kind=list with items
             // (others get an empty body).
             String body = renderKindBody(d);
-            // Same idempotent semantics as DocCreateText — outline.md
-            // gets rewritten on lector revisions.
-            Optional<DocumentDocument> existing = ctx.documentService()
-                    .findByPath(tenantId, projectId, d.path());
-            if (existing.isPresent()) {
-                ctx.documentService().update(
-                        existing.get().getId(),
-                        d.title(), d.tags(), body, /*newPath*/ null);
-            } else {
-                ctx.documentService().create(
-                        tenantId, projectId, d.path(),
-                        d.title(), d.tags(),
-                        "text/markdown",
-                        new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
-                        /*createdBy*/ null);
+            if (d.overwrite()) {
+                Optional<DocumentDocument> existing = ctx.documentService()
+                        .findByPath(tenantId, projectId, d.path());
+                if (existing.isPresent()) {
+                    ctx.documentService().update(
+                            existing.get().getId(),
+                            d.title(), d.tags(), body, /*newPath*/ null);
+                    return null;
+                }
             }
+            ctx.documentService().create(
+                    tenantId, projectId, d.path(),
+                    d.title(), d.tags(),
+                    "text/markdown",
+                    new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
+                    /*createdBy*/ null);
             return null;
         }
         if (action instanceof BranchAction.ListAppend la) {

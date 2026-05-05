@@ -477,7 +477,8 @@ public class MarvinEngine implements ThinkEngine {
 
             // 2. Pick the next actionable node.
             Optional<MarvinNodeDocument> nextOpt =
-                    nodeService.findNextActionableNode(process.getId());
+                    nodeService.findNextActionableNode(
+                            process.getId(), process.getEngineParams());
             if (nextOpt.isEmpty()) {
                 finalizeIdle(process);
                 return;

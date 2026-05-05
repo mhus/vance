@@ -209,6 +209,19 @@ public class MarvinNodeService {
      * recovery strategy decides what to do, not the traversal.
      */
     public Optional<MarvinNodeDocument> findNextActionableNode(String processId) {
+        return findNextActionableNode(processId, null);
+    }
+
+    /**
+     * Process-aware overload: when {@code engineParams} is non-null,
+     * the walker reads {@code defaultExecutionMode} (or
+     * {@code defaultExecutionModePerKind}) from it as a recipe-level
+     * fallback when the per-node {@code taskSpec.executionMode} is
+     * absent. Falls back to the hardcoded TaskKind-default
+     * (PLAN→SEQUENTIAL, EXPAND_FROM_DOC→PARALLEL) if neither is set.
+     */
+    public Optional<MarvinNodeDocument> findNextActionableNode(
+            String processId, @Nullable Map<String, Object> engineParams) {
         List<MarvinNodeDocument> all = repository.findByProcessIdOrderByPositionAsc(processId);
         if (all.isEmpty()) return Optional.empty();
 
@@ -226,7 +239,7 @@ public class MarvinNodeService {
         for (List<MarvinNodeDocument> kids : childrenByParent.values()) {
             kids.sort((a, b) -> Integer.compare(a.getPosition(), b.getPosition()));
         }
-        return dfs(root, childrenByParent).hit();
+        return dfs(root, childrenByParent, engineParams).hit();
     }
 
     /**
@@ -251,7 +264,8 @@ public class MarvinNodeService {
 
     private WalkResult dfs(
             MarvinNodeDocument node,
-            Map<String, List<MarvinNodeDocument>> childrenByParent) {
+            Map<String, List<MarvinNodeDocument>> childrenByParent,
+            @Nullable Map<String, Object> engineParams) {
         switch (node.getStatus()) {
             case PENDING -> {
                 return WalkResult.hit(node);
@@ -265,10 +279,10 @@ public class MarvinNodeService {
             }
         }
         List<MarvinNodeDocument> kids = childrenByParent.getOrDefault(node.getId(), List.of());
-        boolean parentSequential = isSequentialParent(node);
+        boolean parentSequential = isSequentialParent(node, engineParams);
         boolean anyKidBlocked = false;
         for (MarvinNodeDocument k : kids) {
-            WalkResult r = dfs(k, childrenByParent);
+            WalkResult r = dfs(k, childrenByParent, engineParams);
             if (r.hit().isPresent()) return r;
             if (r.blocked()) {
                 anyKidBlocked = true;
@@ -289,17 +303,40 @@ public class MarvinNodeService {
     /**
      * Decides whether a node's children must be executed strictly
      * in position order (SEQUENTIAL) or may run in parallel
-     * (PARALLEL). Reads the {@code executionMode} entry from the
-     * node's {@code taskSpec}; if absent, falls back to the
-     * task-kind default — {@code EXPAND_FROM_DOC} fans out so its
-     * children default to PARALLEL, every other kind defaults to
-     * SEQUENTIAL.
+     * (PARALLEL). Resolution order:
+     * <ol>
+     *   <li>{@code taskSpec.executionMode} on the node itself
+     *       (per-node override, highest priority);</li>
+     *   <li>{@code engineParams.defaultExecutionModePerKind[<TaskKind>]}
+     *       (recipe-level default per task-kind);</li>
+     *   <li>{@code engineParams.defaultExecutionMode}
+     *       (recipe-level default for all kinds);</li>
+     *   <li>hardcoded fallback — {@code EXPAND_FROM_DOC} fans out
+     *       so its children default to PARALLEL, every other kind
+     *       defaults to SEQUENTIAL.</li>
+     * </ol>
      */
-    private static boolean isSequentialParent(MarvinNodeDocument node) {
+    @SuppressWarnings("unchecked")
+    private static boolean isSequentialParent(
+            MarvinNodeDocument node,
+            @Nullable Map<String, Object> engineParams) {
         Map<String, Object> spec = node.getTaskSpec();
         Object override = spec == null ? null : spec.get("executionMode");
         if (override instanceof String s && !s.isBlank()) {
             return !"PARALLEL".equalsIgnoreCase(s.trim());
+        }
+        if (engineParams != null) {
+            Object perKind = engineParams.get("defaultExecutionModePerKind");
+            if (perKind instanceof Map<?, ?> m) {
+                Object byKind = ((Map<String, Object>) m).get(node.getTaskKind().name());
+                if (byKind instanceof String ks && !ks.isBlank()) {
+                    return !"PARALLEL".equalsIgnoreCase(ks.trim());
+                }
+            }
+            Object def = engineParams.get("defaultExecutionMode");
+            if (def instanceof String ds && !ds.isBlank()) {
+                return !"PARALLEL".equalsIgnoreCase(ds.trim());
+            }
         }
         return node.getTaskKind() != TaskKind.EXPAND_FROM_DOC;
     }

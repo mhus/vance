@@ -72,6 +72,20 @@ public class ArchitectState {
     /** Set after FRAMING. */
     private @Nullable FramedGoal goal;
 
+    /** Output of CONFIRMING — the unified working set of criteria
+     *  the rest of the plan must satisfy. Always contains every
+     *  {@link FramedGoal#getStatedCriteria()} entry; for assumed
+     *  criteria the entry is included iff its
+     *  {@link Criterion#getConfidence()} is at least
+     *  {@link #getConfirmationThreshold()} (high-confidence
+     *  pass-through) or its {@link Criterion#getOrigin()} flipped
+     *  to {@link CriterionOrigin#USER_CONFIRMED} via inbox. Low-
+     *  confidence assumed entries that the user did not confirm
+     *  are absent from this list and recorded in
+     *  {@link #validationReport} as informational drops. */
+    @Builder.Default
+    private List<Criterion> acceptanceCriteria = new ArrayList<>();
+
     /** Populated incrementally during GATHERING. */
     @Builder.Default
     private List<EvidenceSource> evidenceSources = new ArrayList<>();

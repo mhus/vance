@@ -15,6 +15,7 @@ import de.mhus.vance.api.slartibartfast.ValidationCheck;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -81,6 +82,7 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
     private final FramingPhase framingPhase;
+    private final ConfirmingPhase confirmingPhase;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -249,8 +251,12 @@ public class SlartibartfastEngine implements ThinkEngine {
                 }
             }
             case CONFIRMING -> {
-                SlartibartfastPhases.stubConfirming(state);
-                state.setStatus(ArchitectStatus.GATHERING);
+                confirmingPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
+                } else {
+                    state.setStatus(ArchitectStatus.GATHERING);
+                }
             }
             case GATHERING -> {
                 SlartibartfastPhases.stubGathering(state);

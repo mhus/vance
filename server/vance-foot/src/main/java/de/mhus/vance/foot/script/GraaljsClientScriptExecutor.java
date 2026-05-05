@@ -43,7 +43,13 @@ public class GraaljsClientScriptExecutor implements ClientScriptExecutor {
     private final HostAccess hostAccess;
     private final long statementLimit;
 
-    public GraaljsClientScriptExecutor(Engine clientScriptEngine, ClientToolService toolService) {
+    public GraaljsClientScriptExecutor(
+            Engine clientScriptEngine,
+            // @Lazy breaks the constructor cycle clientToolService ↔
+            // clientJavascriptTool ↔ graaljsClientScriptExecutor — the
+            // executor only calls toolService at script-run time, never
+            // during bean construction.
+            @org.springframework.context.annotation.Lazy ClientToolService toolService) {
         this.engine = clientScriptEngine;
         this.toolService = toolService;
         this.hostAccess = HostAccess.newBuilder()

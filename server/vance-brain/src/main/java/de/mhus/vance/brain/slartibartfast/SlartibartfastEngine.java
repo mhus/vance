@@ -15,8 +15,10 @@ import de.mhus.vance.api.slartibartfast.ValidationCheck;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.slartibartfast.phases.BindingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ClassifyingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
+import de.mhus.vance.brain.slartibartfast.phases.DecomposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -87,6 +89,8 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final ConfirmingPhase confirmingPhase;
     private final GatheringPhase gatheringPhase;
     private final ClassifyingPhase classifyingPhase;
+    private final DecomposingPhase decomposingPhase;
+    private final BindingPhase bindingPhase;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -242,6 +246,41 @@ public class SlartibartfastEngine implements ThinkEngine {
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             ArchitectState state) {
+
+        // Recovery handling first — a downstream gate may have set
+        // pendingRecovery on the previous turn. We honour it (flip
+        // status to the requested phase) until the recovery budget
+        // is exhausted; past that we ESCALATE so the user can
+        // weigh in instead of looping forever.
+        de.mhus.vance.api.slartibartfast.RecoveryRequest consumedRecovery =
+                state.getPendingRecovery();
+        if (consumedRecovery != null) {
+            int newCount = state.getRecoveryCount() + 1;
+            state.setRecoveryCount(newCount);
+            if (newCount > state.getMaxRecoveries()) {
+                log.info("Slartibartfast id='{}' exceeded maxRecoveries={} "
+                                + "— ESCALATING (last reason: {})",
+                        process.getId(), state.getMaxRecoveries(),
+                        consumedRecovery.getReason());
+                state.setStatus(ArchitectStatus.ESCALATED);
+                state.setPendingRecovery(null);
+                return;
+            }
+            log.info("Slartibartfast id='{}' recovery {}/{}: {} → {} "
+                            + "(reason: {})",
+                    process.getId(), newCount, state.getMaxRecoveries(),
+                    consumedRecovery.getFromPhase(),
+                    consumedRecovery.getToPhase(),
+                    consumedRecovery.getReason());
+            // Status flip happens here; the actual rollback (re-run
+            // of the target phase) happens on this same turn below.
+            // Phases that care about a recovery hint read
+            // state.getPendingRecovery() at the top of their
+            // execute() before the engine's safety-net clear at
+            // the end of this method.
+            state.setStatus(consumedRecovery.getToPhase());
+        }
+
         switch (state.getStatus()) {
             case READY -> {
                 state.setStatus(ArchitectStatus.FRAMING);
@@ -279,14 +318,25 @@ public class SlartibartfastEngine implements ThinkEngine {
                 }
             }
             case DECOMPOSING -> {
-                SlartibartfastPhases.stubDecomposing(state);
-                state.setStatus(ArchitectStatus.BINDING);
+                decomposingPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
+                } else {
+                    state.setStatus(ArchitectStatus.BINDING);
+                }
             }
             case BINDING -> {
-                SlartibartfastPhases.stubBinding(state);
-                // Stub: assume validation passes — real impl re-prompts
-                // DECOMPOSING on failure up to maxBindingRetries.
-                state.setStatus(ArchitectStatus.PROPOSING);
+                bindingPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
+                } else if (state.getPendingRecovery() != null) {
+                    // Stay in BINDING — the next runTurn picks up
+                    // the recovery and rolls back to DECOMPOSING.
+                    // (advanceOnePhase's recovery-first block does
+                    // the actual flip.)
+                } else {
+                    state.setStatus(ArchitectStatus.PROPOSING);
+                }
             }
             case PROPOSING -> {
                 SlartibartfastPhases.stubProposing(state);
@@ -304,6 +354,17 @@ public class SlartibartfastEngine implements ThinkEngine {
             case DONE, FAILED, ESCALATED -> {
                 // no-op
             }
+        }
+
+        // Safety-net: clear the consumed recovery if the dispatched
+        // phase didn't (e.g. stub or no-op phase). Real LLM-driven
+        // phases like DecomposingPhase clear it as part of their
+        // execute() when they incorporate the hint into the prompt;
+        // this catch-all prevents a stale pendingRecovery from
+        // triggering an immediate second rollback on the next turn.
+        if (consumedRecovery != null
+                && state.getPendingRecovery() == consumedRecovery) {
+            state.setPendingRecovery(null);
         }
     }
 

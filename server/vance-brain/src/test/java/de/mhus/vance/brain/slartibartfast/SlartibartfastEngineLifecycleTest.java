@@ -16,8 +16,10 @@ import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.PhaseIteration;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.slartibartfast.phases.BindingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ClassifyingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
+import de.mhus.vance.brain.slartibartfast.phases.DecomposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -49,6 +51,8 @@ class SlartibartfastEngineLifecycleTest {
     private ConfirmingPhase confirmingPhase;
     private GatheringPhase gatheringPhase;
     private ClassifyingPhase classifyingPhase;
+    private DecomposingPhase decomposingPhase;
+    private BindingPhase bindingPhase;
     private ThinkEngineContext ctx;
 
     private SlartibartfastEngine engine;
@@ -63,6 +67,8 @@ class SlartibartfastEngineLifecycleTest {
         confirmingPhase = mock(ConfirmingPhase.class);
         gatheringPhase = mock(GatheringPhase.class);
         classifyingPhase = mock(ClassifyingPhase.class);
+        decomposingPhase = mock(DecomposingPhase.class);
+        bindingPhase = mock(BindingPhase.class);
         ctx = mock(ThinkEngineContext.class);
         when(ctx.drainPending()).thenReturn(List.<SteerMessage>of());
 
@@ -100,10 +106,23 @@ class SlartibartfastEngineLifecycleTest {
             return null;
         }).when(classifyingPhase).execute(any(), any(), any());
 
+        doAnswer(inv -> {
+            de.mhus.vance.api.slartibartfast.ArchitectState s = inv.getArgument(0);
+            de.mhus.vance.brain.slartibartfast.SlartibartfastPhases.stubDecomposing(s);
+            return null;
+        }).when(decomposingPhase).execute(any(), any(), any());
+
+        doAnswer(inv -> {
+            de.mhus.vance.api.slartibartfast.ArchitectState s = inv.getArgument(0);
+            de.mhus.vance.brain.slartibartfast.SlartibartfastPhases.stubBinding(s);
+            return null;
+        }).when(bindingPhase).execute(any(), any(), any());
+
         engine = new SlartibartfastEngine(
                 thinkProcessService, eventEmitter, laneScheduler,
                 objectMapper, framingPhase, confirmingPhase,
-                gatheringPhase, classifyingPhase);
+                gatheringPhase, classifyingPhase,
+                decomposingPhase, bindingPhase);
     }
 
     @Test
@@ -205,6 +224,78 @@ class SlartibartfastEngineLifecycleTest {
                         ArchitectStatus.CLASSIFYING,
                         ArchitectStatus.DECOMPOSING,
                         ArchitectStatus.PROPOSING);
+    }
+
+    @Test
+    void pendingRecovery_rollsBackStatusAndIncrementsCount() {
+        // Configure bindingPhase mock to set pendingRecovery on
+        // first call, then leave it null on second call (simulating
+        // a successful re-decompose).
+        java.util.concurrent.atomic.AtomicInteger bindingCalls =
+                new java.util.concurrent.atomic.AtomicInteger();
+        org.mockito.Mockito.doAnswer(inv -> {
+            de.mhus.vance.api.slartibartfast.ArchitectState s = inv.getArgument(0);
+            int n = bindingCalls.incrementAndGet();
+            if (n == 1) {
+                // First BINDING fails — request rollback to DECOMPOSING.
+                s.setPendingRecovery(de.mhus.vance.api.slartibartfast.RecoveryRequest.builder()
+                        .fromPhase(de.mhus.vance.api.slartibartfast.ArchitectStatus.BINDING)
+                        .toPhase(de.mhus.vance.api.slartibartfast.ArchitectStatus.DECOMPOSING)
+                        .reason("test-rule")
+                        .hint("test-hint")
+                        .build());
+            }
+            return null;
+        }).when(bindingPhase).execute(any(), any(), any());
+
+        ThinkProcessDocument process = newProcess();
+        engine.start(process, ctx);
+        drainTurns(process, 30);
+
+        ArchitectState finalState = readState(process);
+        assertThat(finalState.getStatus())
+                .as("after recovery+retry, run should still reach DONE")
+                .isEqualTo(ArchitectStatus.DONE);
+        assertThat(finalState.getRecoveryCount()).isEqualTo(1);
+        // DECOMPOSING phase iterations: initial + recovery = 2.
+        assertThat(finalState.getIterations())
+                .filteredOn(it -> it.getPhase() == ArchitectStatus.DECOMPOSING)
+                .hasSize(2);
+    }
+
+    @Test
+    void pendingRecoveryPastBudget_escalates() {
+        // Configure bindingPhase to ALWAYS fail — engine eventually
+        // gives up after maxRecoveries attempts and ESCALATES.
+        org.mockito.Mockito.doAnswer(inv -> {
+            de.mhus.vance.api.slartibartfast.ArchitectState s = inv.getArgument(0);
+            s.setPendingRecovery(de.mhus.vance.api.slartibartfast.RecoveryRequest.builder()
+                    .fromPhase(de.mhus.vance.api.slartibartfast.ArchitectStatus.BINDING)
+                    .toPhase(de.mhus.vance.api.slartibartfast.ArchitectStatus.DECOMPOSING)
+                    .reason("forever-fail")
+                    .hint("forever-fail")
+                    .build());
+            return null;
+        }).when(bindingPhase).execute(any(), any(), any());
+
+        ThinkProcessDocument process = newProcess();
+        // Reduce budget so the test stays quick.
+        engine.start(process, ctx);
+        ArchitectState s = readState(process);
+        s.setMaxRecoveries(2);
+        // Re-persist via a bogus turn — easiest path is to write
+        // back via the process.engineParams directly.
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> ep = (java.util.Map<String, Object>) process.getEngineParams();
+        ep.put(SlartibartfastEngine.STATE_KEY,
+                objectMapper.convertValue(s, java.util.Map.class));
+
+        drainTurns(process, 30);
+
+        ArchitectState finalState = readState(process);
+        assertThat(finalState.getStatus())
+                .isEqualTo(ArchitectStatus.ESCALATED);
+        assertThat(finalState.getRecoveryCount()).isGreaterThan(2);
     }
 
     @Test

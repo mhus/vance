@@ -231,6 +231,30 @@ public class DocumentExpander {
                 taskSpec.put(key, substituteAny(e.getValue(), vars, strictMissing));
             }
         }
+        // Tolerate flat childTemplate format: a model that puts
+        // `recipe` / `recipeParams` / `steerContent` etc. directly on
+        // the childTemplate (a popular shape because it reads more
+        // naturally) gets them merged into taskSpec instead of
+        // silently dropped. Two normalisations:
+        //   1. `recipeParams` is the user-friendly alias for the
+        //      taskSpec key Marvin's runWorker actually reads —
+        //      `params`. Rename so Marvin sees the param map.
+        //   2. Anything that's not goal/taskKind/taskSpec falls
+        //      through into taskSpec with the same name.
+        for (Map.Entry<String, Object> e : childTemplate.entrySet()) {
+            String key = e.getKey();
+            if (key == null) continue;
+            if (key.equals("goal") || key.equals("taskKind") || key.equals("taskSpec")) {
+                continue;
+            }
+            String mappedKey = key.equals("recipeParams") ? "params" : key;
+            // Don't clobber values already supplied via the explicit
+            // taskSpec block — that one wins.
+            if (!taskSpec.containsKey(mappedKey)) {
+                taskSpec.put(mappedKey,
+                        substituteAny(e.getValue(), vars, strictMissing));
+            }
+        }
         return new NodeSpec(goal, taskKind, taskSpec);
     }
 

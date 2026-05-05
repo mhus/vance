@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -191,14 +192,24 @@ final class BranchActionExecutor {
             requireDocService(ctx, "doc_create_text");
             String tenantId = ctx.process().getTenantId();
             String projectId = ctx.process().getProjectId();
-            ctx.documentService().createText(
-                    tenantId,
-                    projectId,
-                    d.path(),
-                    d.title(),
-                    d.tags(),
-                    d.content() == null ? "" : d.content(),
-                    /*createdBy*/ null);
+            String content = d.content() == null ? "" : d.content();
+            // Idempotent on existing path: a Vogon lector-revision
+            // loop re-runs the writer which re-emits the same
+            // postAction, so create-or-update is the only sensible
+            // semantic here. Strict-create stays the default for
+            // tool calls (separate code path).
+            Optional<DocumentDocument> existing = ctx.documentService()
+                    .findByPath(tenantId, projectId, d.path());
+            if (existing.isPresent()) {
+                ctx.documentService().update(
+                        existing.get().getId(),
+                        d.title(), d.tags(), content, /*newPath*/ null);
+            } else {
+                ctx.documentService().createText(
+                        tenantId, projectId, d.path(),
+                        d.title(), d.tags(), content,
+                        /*createdBy*/ null);
+            }
             return null;
         }
         if (action instanceof BranchAction.DocCreateKind d) {
@@ -211,15 +222,22 @@ final class BranchActionExecutor {
             // the supported kinds. v1 supports kind=list with items
             // (others get an empty body).
             String body = renderKindBody(d);
-            ctx.documentService().create(
-                    tenantId,
-                    projectId,
-                    d.path(),
-                    d.title(),
-                    d.tags(),
-                    "text/markdown",
-                    new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
-                    /*createdBy*/ null);
+            // Same idempotent semantics as DocCreateText — outline.md
+            // gets rewritten on lector revisions.
+            Optional<DocumentDocument> existing = ctx.documentService()
+                    .findByPath(tenantId, projectId, d.path());
+            if (existing.isPresent()) {
+                ctx.documentService().update(
+                        existing.get().getId(),
+                        d.title(), d.tags(), body, /*newPath*/ null);
+            } else {
+                ctx.documentService().create(
+                        tenantId, projectId, d.path(),
+                        d.title(), d.tags(),
+                        "text/markdown",
+                        new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8)),
+                        /*createdBy*/ null);
+            }
             return null;
         }
         if (action instanceof BranchAction.ListAppend la) {

@@ -330,6 +330,7 @@ public class DocumentExpander {
             @Nullable String parentGoal, Map<String, String> rootVars) {
         Map<String, String> vars = new LinkedHashMap<>(rootVars);
         vars.put("index", Integer.toString(index));
+        vars.put("index1", Integer.toString(index + 1));
         vars.put("parent.goal", parentGoal == null ? "" : parentGoal);
         vars.put("item.text", item.text());
         for (Map.Entry<String, Object> e : item.extra().entrySet()) {
@@ -343,6 +344,7 @@ public class DocumentExpander {
             @Nullable String parentGoal, Map<String, String> rootVars) {
         Map<String, String> vars = new LinkedHashMap<>(rootVars);
         vars.put("index", Integer.toString(index));
+        vars.put("index1", Integer.toString(index + 1));
         vars.put("parent.goal", parentGoal == null ? "" : parentGoal);
         vars.put("item.text", item.text());
         for (Map.Entry<String, Object> e : item.extra().entrySet()) {
@@ -356,6 +358,7 @@ public class DocumentExpander {
             @Nullable String parentGoal, Map<String, String> rootVars) {
         Map<String, String> vars = new LinkedHashMap<>(rootVars);
         vars.put("index", Integer.toString(index));
+        vars.put("index1", Integer.toString(index + 1));
         vars.put("parent.goal", parentGoal == null ? "" : parentGoal);
         for (Map.Entry<String, String> e : rec.values().entrySet()) {
             vars.put("record." + e.getKey(), e.getValue() == null ? "" : e.getValue());

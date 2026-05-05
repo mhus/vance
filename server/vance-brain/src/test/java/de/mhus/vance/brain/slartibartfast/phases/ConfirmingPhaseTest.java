@@ -118,6 +118,31 @@ class ConfirmingPhaseTest {
     }
 
     @Test
+    void keepAllMode_acceptsLowConfWithoutDropping() {
+        ArchitectState state = ArchitectState.builder()
+                .runId("run1")
+                .confirmationThreshold(0.85)
+                .confirmationMode(de.mhus.vance.api.slartibartfast.ConfirmationMode.KEEP_ALL)
+                .goal(FramedGoal.builder()
+                        .framed("essay")
+                        .statedCriteria(List.of(stated("cr1", "essay must exist")))
+                        .assumedCriteria(List.of(
+                                assumed("cr2", "high-conf inference", 0.95, "rt1"),
+                                assumed("cr3", "low-conf guess", 0.40, "rt2")))
+                        .build())
+                .build();
+
+        phase.execute(state, process, ctx);
+
+        assertThat(state.getAcceptanceCriteria())
+                .extracting(Criterion::getId)
+                .containsExactly("cr1", "cr2", "cr3");
+        assertThat(state.getValidationReport())
+                .filteredOn(c -> "low-confidence-criterion-dropped".equals(c.getRule()))
+                .isEmpty();
+    }
+
+    @Test
     void emptyAssumed_yieldsAcceptedEqualsStated() {
         ArchitectState state = ArchitectState.builder()
                 .runId("run1")

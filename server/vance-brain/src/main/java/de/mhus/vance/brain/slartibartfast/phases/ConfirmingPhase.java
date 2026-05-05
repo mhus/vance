@@ -2,6 +2,7 @@ package de.mhus.vance.brain.slartibartfast.phases;
 
 import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.ArchitectStatus;
+import de.mhus.vance.api.slartibartfast.ConfirmationMode;
 import de.mhus.vance.api.slartibartfast.Criterion;
 import de.mhus.vance.api.slartibartfast.CriterionOrigin;
 import de.mhus.vance.api.slartibartfast.FramedGoal;
@@ -76,6 +77,8 @@ public class ConfirmingPhase {
         }
 
         double threshold = state.getConfirmationThreshold();
+        ConfirmationMode mode = state.getConfirmationMode() == null
+                ? ConfirmationMode.DROP_LOW_CONF : state.getConfirmationMode();
 
         List<Criterion> accepted = new ArrayList<>();
         List<Criterion> dropped = new ArrayList<>();
@@ -83,16 +86,32 @@ public class ConfirmingPhase {
         // 1. Every stated criterion passes through unconditionally.
         accepted.addAll(goal.getStatedCriteria());
 
-        // 2. Assumed criteria split by confidence.
+        // 2. Assumed criteria — partition depends on mode.
         for (Criterion c : goal.getAssumedCriteria()) {
-            // USER_CONFIRMED entries (set by a future M6 inbox flow)
-            // pass regardless of recorded confidence — the user
-            // said yes.
-            if (c.getOrigin() == CriterionOrigin.USER_CONFIRMED
-                    || c.getConfidence() >= threshold) {
+            // USER_CONFIRMED entries pass regardless of recorded
+            // confidence — the user already said yes (M6.2 inbox
+            // flow flips inferred → confirmed; with that flip done,
+            // the criterion is treated as authoritative).
+            boolean isConfirmed = c.getOrigin() == CriterionOrigin.USER_CONFIRMED;
+            boolean isHighConf = c.getConfidence() >= threshold;
+            if (isConfirmed || isHighConf) {
                 accepted.add(c);
-            } else {
-                dropped.add(c);
+                continue;
+            }
+            switch (mode) {
+                case KEEP_ALL -> accepted.add(c);
+                case DROP_LOW_CONF -> dropped.add(c);
+                case ASK_LOW_CONF -> {
+                    // M6.2: post inbox item, park, on answer flip
+                    // origin to USER_CONFIRMED or drop. Until M6.2
+                    // ships, fall back to DROP_LOW_CONF so the
+                    // mode is at least selectable safely.
+                    log.warn("Slartibartfast id='{}' confirmationMode=ASK_LOW_CONF "
+                                    + "not yet implemented (M6.2) — falling back "
+                                    + "to DROP_LOW_CONF for criterion '{}'",
+                            process.getId(), c.getId());
+                    dropped.add(c);
+                }
             }
         }
 
@@ -109,8 +128,8 @@ public class ConfirmingPhase {
                 .message(accepted.size() + " accepted ("
                         + goal.getStatedCriteria().size() + " stated, "
                         + (accepted.size() - goal.getStatedCriteria().size())
-                        + " high-conf assumed); " + dropped.size()
-                        + " low-conf assumed dropped")
+                        + " assumed); " + dropped.size()
+                        + " low-conf assumed dropped (mode=" + mode + ")")
                 .build());
         for (Criterion d : dropped) {
             report.add(ValidationCheck.builder()

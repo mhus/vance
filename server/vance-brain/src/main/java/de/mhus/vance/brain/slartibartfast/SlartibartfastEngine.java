@@ -84,6 +84,16 @@ public class SlartibartfastEngine implements ThinkEngine {
      *  request. Falls back to {@code ThinkProcessDocument.goal}. */
     public static final String USER_DESCRIPTION_KEY = "userDescription";
 
+    /** {@code engineParams[CONFIRMATION_MODE_KEY]} — name of a
+     *  {@link de.mhus.vance.api.slartibartfast.ConfirmationMode}
+     *  value. Default {@code DROP_LOW_CONF}. */
+    public static final String CONFIRMATION_MODE_KEY = "confirmationMode";
+
+    /** {@code engineParams[ESCALATION_MODE_KEY]} — name of an
+     *  {@link de.mhus.vance.api.slartibartfast.EscalationMode}
+     *  value. Default {@code FAIL}. */
+    public static final String ESCALATION_MODE_KEY = "escalationMode";
+
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
@@ -264,11 +274,28 @@ public class SlartibartfastEngine implements ThinkEngine {
             int newCount = state.getRecoveryCount() + 1;
             state.setRecoveryCount(newCount);
             if (newCount > state.getMaxRecoveries()) {
+                de.mhus.vance.api.slartibartfast.EscalationMode escMode =
+                        state.getEscalationMode() == null
+                                ? de.mhus.vance.api.slartibartfast.EscalationMode.FAIL
+                                : state.getEscalationMode();
                 log.info("Slartibartfast id='{}' exceeded maxRecoveries={} "
-                                + "— ESCALATING (last reason: {})",
+                                + "— escalation mode={}, last reason: {}",
                         process.getId(), state.getMaxRecoveries(),
-                        consumedRecovery.getReason());
-                state.setStatus(ArchitectStatus.ESCALATED);
+                        escMode, consumedRecovery.getReason());
+                switch (escMode) {
+                    case FAIL -> state.setStatus(ArchitectStatus.ESCALATED);
+                    case ASK_USER -> {
+                        // M6.2: post inbox with validationReport, park
+                        // until user answers. Until M6.2 ships, fall
+                        // back to FAIL so the mode is at least
+                        // selectable safely.
+                        log.warn("Slartibartfast id='{}' escalationMode=ASK_USER "
+                                        + "not yet implemented (M6.2) — falling "
+                                        + "back to FAIL",
+                                process.getId());
+                        state.setStatus(ArchitectStatus.ESCALATED);
+                    }
+                }
                 state.setPendingRecovery(null);
                 return;
             }
@@ -400,12 +427,48 @@ public class SlartibartfastEngine implements ThinkEngine {
             userDescription = process.getGoal() == null ? "" : process.getGoal();
         }
         OutputSchemaType schemaType = parseSchemaType(stringParam(p, OUTPUT_SCHEMA_TYPE_KEY));
+        de.mhus.vance.api.slartibartfast.ConfirmationMode confirmationMode =
+                parseConfirmationMode(stringParam(p, CONFIRMATION_MODE_KEY));
+        de.mhus.vance.api.slartibartfast.EscalationMode escalationMode =
+                parseEscalationMode(stringParam(p, ESCALATION_MODE_KEY));
         return ArchitectState.builder()
                 .runId(generateRunId())
                 .userDescription(userDescription)
                 .outputSchemaType(schemaType)
+                .confirmationMode(confirmationMode)
+                .escalationMode(escalationMode)
                 .status(ArchitectStatus.READY)
                 .build();
+    }
+
+    private static de.mhus.vance.api.slartibartfast.ConfirmationMode parseConfirmationMode(
+            String raw) {
+        if (raw.isBlank()) {
+            return de.mhus.vance.api.slartibartfast.ConfirmationMode.DROP_LOW_CONF;
+        }
+        String norm = raw.trim().toUpperCase().replace('-', '_');
+        try {
+            return de.mhus.vance.api.slartibartfast.ConfirmationMode.valueOf(norm);
+        } catch (IllegalArgumentException e) {
+            log.warn("Slartibartfast unknown confirmationMode '{}', "
+                            + "defaulting to DROP_LOW_CONF", raw);
+            return de.mhus.vance.api.slartibartfast.ConfirmationMode.DROP_LOW_CONF;
+        }
+    }
+
+    private static de.mhus.vance.api.slartibartfast.EscalationMode parseEscalationMode(
+            String raw) {
+        if (raw.isBlank()) {
+            return de.mhus.vance.api.slartibartfast.EscalationMode.FAIL;
+        }
+        String norm = raw.trim().toUpperCase().replace('-', '_');
+        try {
+            return de.mhus.vance.api.slartibartfast.EscalationMode.valueOf(norm);
+        } catch (IllegalArgumentException e) {
+            log.warn("Slartibartfast unknown escalationMode '{}', "
+                            + "defaulting to FAIL", raw);
+            return de.mhus.vance.api.slartibartfast.EscalationMode.FAIL;
+        }
     }
 
     @SuppressWarnings("unchecked")

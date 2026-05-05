@@ -159,9 +159,26 @@ public class ArchitectState {
     /** Lower bound for {@link Criterion#getConfidence()} that
      *  bypasses CONFIRMING. Inferred criteria with confidence
      *  &gt;= this threshold are taken for granted (with audit);
-     *  below threshold they go to the user via inbox. */
+     *  below threshold the {@link #confirmationMode} decides
+     *  what happens. */
     @Builder.Default
     private double confirmationThreshold = 0.85;
+
+    /** How CONFIRMING handles low-confidence assumed criteria.
+     *  Engine-param steerable via the recipe / spawn-time
+     *  {@code engineParams.confirmationMode}. Default
+     *  {@link ConfirmationMode#DROP_LOW_CONF} preserves the M3.1
+     *  silent-drop behaviour. */
+    @Builder.Default
+    private ConfirmationMode confirmationMode = ConfirmationMode.DROP_LOW_CONF;
+
+    /** How the engine handles recovery-budget exhaustion.
+     *  Engine-param steerable via
+     *  {@code engineParams.escalationMode}. Default
+     *  {@link EscalationMode#FAIL} preserves the M4.1 ESCALATED-
+     *  close behaviour. */
+    @Builder.Default
+    private EscalationMode escalationMode = EscalationMode.FAIL;
 
     /** Maximum fraction of {@link #subgoals} that may be
      *  {@code speculative}. The VALIDATING speculation-bound check

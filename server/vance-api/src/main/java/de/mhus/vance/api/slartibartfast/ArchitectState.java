@@ -206,10 +206,24 @@ public class ArchitectState {
     /** Set when {@link #status} is {@link ArchitectStatus#FAILED}. */
     private @Nullable String failureReason;
 
-    /** Inbox-item id created when {@link #status} is
-     *  {@link ArchitectStatus#CONFIRMING} (low-confidence
-     *  inferred criteria) or {@link ArchitectStatus#ESCALATED}
-     *  (validation gave up). The user's answer triggers
-     *  re-entry. */
+    /** Inbox-item id of an outstanding dialog. Set when CONFIRMING
+     *  (mode=ASK_LOW_CONF) or the engine's escalation handler
+     *  (mode=ASK_USER) post an inbox item; cleared by
+     *  {@code SlartibartfastEngine.runTurnInner}'s
+     *  drain-pending-handler once the user's
+     *  {@link de.mhus.vance.api.inbox.AnswerPayload} arrives. */
+    private @Nullable String pendingInboxItemId;
+
+    /** Discriminator that tells the engine how to interpret a
+     *  pending inbox answer. {@link PendingInboxKind#NONE} when
+     *  no dialog is in flight. */
+    @Builder.Default
+    private PendingInboxKind pendingInboxKind = PendingInboxKind.NONE;
+
+    /** @deprecated Pre-M6.2 alias for {@link #pendingInboxItemId}.
+     *  Kept for back-compat with audit dumps that still reference
+     *  the old name. New code should use
+     *  {@link #pendingInboxItemId}. */
+    @Deprecated
     private @Nullable String escalationInboxItemId;
 }

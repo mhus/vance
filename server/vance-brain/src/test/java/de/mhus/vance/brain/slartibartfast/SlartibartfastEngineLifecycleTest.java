@@ -59,6 +59,7 @@ class SlartibartfastEngineLifecycleTest {
     private ProposingPhase proposingPhase;
     private ValidatingPhase validatingPhase;
     private PersistingPhase persistingPhase;
+    private de.mhus.vance.shared.inbox.InboxItemService inboxItemService;
     private ThinkEngineContext ctx;
 
     private SlartibartfastEngine engine;
@@ -78,6 +79,7 @@ class SlartibartfastEngineLifecycleTest {
         proposingPhase = mock(ProposingPhase.class);
         validatingPhase = mock(ValidatingPhase.class);
         persistingPhase = mock(PersistingPhase.class);
+        inboxItemService = mock(de.mhus.vance.shared.inbox.InboxItemService.class);
         ctx = mock(ThinkEngineContext.class);
         when(ctx.drainPending()).thenReturn(List.<SteerMessage>of());
 
@@ -147,7 +149,8 @@ class SlartibartfastEngineLifecycleTest {
 
         engine = new SlartibartfastEngine(
                 thinkProcessService, eventEmitter, laneScheduler,
-                objectMapper, framingPhase, confirmingPhase,
+                objectMapper, inboxItemService,
+                framingPhase, confirmingPhase,
                 gatheringPhase, classifyingPhase,
                 decomposingPhase, bindingPhase,
                 proposingPhase, validatingPhase, persistingPhase);

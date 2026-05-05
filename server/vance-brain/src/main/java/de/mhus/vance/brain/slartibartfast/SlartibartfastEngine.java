@@ -14,6 +14,13 @@ import de.mhus.vance.api.slartibartfast.Subgoal;
 import de.mhus.vance.api.slartibartfast.ValidationCheck;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.inbox.AnswerOutcome;
+import de.mhus.vance.api.inbox.AnswerPayload;
+import de.mhus.vance.api.inbox.Criticality;
+import de.mhus.vance.api.inbox.InboxItemType;
+import de.mhus.vance.api.slartibartfast.Criterion;
+import de.mhus.vance.api.slartibartfast.CriterionOrigin;
+import de.mhus.vance.api.slartibartfast.PendingInboxKind;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.slartibartfast.phases.BindingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ClassifyingPhase;
@@ -28,6 +35,8 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
@@ -98,6 +107,7 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
+    private final InboxItemService inboxItemService;
     private final FramingPhase framingPhase;
     private final ConfirmingPhase confirmingPhase;
     private final GatheringPhase gatheringPhase;
@@ -209,13 +219,33 @@ public class SlartibartfastEngine implements ThinkEngine {
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         try {
-            // Drain — M1 has no inbound messages but defensively consume.
-            for (SteerMessage ignored : ctx.drainPending()) {
-                // discard
+            // Drain pending — InboxAnswer messages on the
+            // currently-tracked dialog flip state in place.
+            for (SteerMessage msg : ctx.drainPending()) {
+                if (msg instanceof SteerMessage.InboxAnswer ia) {
+                    handleInboxAnswer(state, ia, process);
+                }
             }
 
             advanceOnePhase(process, ctx, state);
             persistState(process, state);
+
+            // Park check: if the phase posted an inbox dialog and
+            // status didn't move to a terminal, BLOCK the process
+            // until the inbox answer arrives via drainPending on a
+            // future turn.
+            if (state.getPendingInboxItemId() != null
+                    && state.getPendingInboxKind() != PendingInboxKind.NONE
+                    && state.getStatus() != ArchitectStatus.DONE
+                    && state.getStatus() != ArchitectStatus.FAILED
+                    && state.getStatus() != ArchitectStatus.ESCALATED) {
+                log.info("Slartibartfast id='{}' parking on inbox '{}' (kind={})",
+                        process.getId(), state.getPendingInboxItemId(),
+                        state.getPendingInboxKind());
+                thinkProcessService.updateStatus(
+                        process.getId(), ThinkProcessStatus.BLOCKED);
+                return;
+            }
 
             if (state.getStatus() == ArchitectStatus.DONE) {
                 log.info("Slartibartfast id='{}' DONE — recipe at '{}'",
@@ -244,6 +274,153 @@ public class SlartibartfastEngine implements ThinkEngine {
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
         }
+    }
+
+    /**
+     * Apply an incoming {@link SteerMessage.InboxAnswer} to the
+     * pending dialog tracked by
+     * {@link ArchitectState#getPendingInboxItemId()}. Mismatching
+     * ids are warned and ignored. The {@link PendingInboxKind}
+     * decides what shape the answer takes.
+     */
+    private void handleInboxAnswer(
+            ArchitectState state,
+            SteerMessage.InboxAnswer ia,
+            ThinkProcessDocument process) {
+        String pendingId = state.getPendingInboxItemId();
+        if (pendingId == null || !pendingId.equals(ia.inboxItemId())) {
+            log.warn("Slartibartfast id='{}' got InboxAnswer for unexpected "
+                            + "item='{}' (pending='{}'). Ignoring.",
+                    process.getId(), ia.inboxItemId(), pendingId);
+            return;
+        }
+        AnswerPayload answer = ia.answer();
+        boolean approved = answer.getOutcome() == AnswerOutcome.DECIDED
+                && readApproved(answer.getValue());
+        log.info("Slartibartfast id='{}' inbox answer kind={} approved={} "
+                        + "outcome={}",
+                process.getId(), state.getPendingInboxKind(), approved,
+                answer.getOutcome());
+
+        switch (state.getPendingInboxKind()) {
+            case CONFIRMATION -> applyConfirmationAnswer(state, approved);
+            case ESCALATION -> applyEscalationAnswer(state, approved);
+            case NONE -> log.warn("Slartibartfast id='{}' answer arrived but "
+                            + "pendingInboxKind=NONE — ignored",
+                    process.getId());
+        }
+        state.setPendingInboxItemId(null);
+        state.setPendingInboxKind(PendingInboxKind.NONE);
+    }
+
+    /**
+     * Approval flag from an APPROVAL-typed answer payload. The
+     * shape (per AnswerPayload doc) is {@code {"approved": <bool>}};
+     * {@code null} or non-bool resolves to {@code false}.
+     */
+    private static boolean readApproved(java.util.@org.jspecify.annotations.Nullable
+            Map<String, Object> value) {
+        if (value == null) return false;
+        Object v = value.get("approved");
+        return v instanceof Boolean b && b;
+    }
+
+    /**
+     * Confirmation answer: when approved, every low-conf assumed
+     * criterion has its origin flipped to {@code USER_CONFIRMED}
+     * — ConfirmingPhase's next pass treats them as authoritative.
+     * On rejection the originals stay (still low-conf, still
+     * INFERRED_*) and ConfirmingPhase drops them in the standard
+     * threshold partition.
+     */
+    private void applyConfirmationAnswer(ArchitectState state, boolean approved) {
+        if (state.getGoal() == null) return;
+        if (!approved) return;
+        java.util.List<Criterion> updated = new java.util.ArrayList<>(
+                state.getGoal().getAssumedCriteria().size());
+        for (Criterion c : state.getGoal().getAssumedCriteria()) {
+            if (c.getConfidence() < state.getConfirmationThreshold()
+                    && c.getOrigin() != CriterionOrigin.USER_CONFIRMED) {
+                updated.add(Criterion.builder()
+                        .id(c.getId()).text(c.getText())
+                        .origin(CriterionOrigin.USER_CONFIRMED)
+                        .confidence(c.getConfidence())
+                        .rationaleId(c.getRationaleId())
+                        .testHint(c.getTestHint())
+                        .build());
+            } else {
+                updated.add(c);
+            }
+        }
+        state.getGoal().setAssumedCriteria(updated);
+    }
+
+    /**
+     * Escalation answer: when approved (retry), reset
+     * {@link ArchitectState#getRecoveryCount()} so the engine has
+     * a fresh budget; the status goes back to the recovery
+     * target. On rejection (abort) the engine transitions to
+     * ESCALATED.
+     */
+    private void applyEscalationAnswer(ArchitectState state, boolean approved) {
+        if (approved) {
+            // Fresh budget. Status was ESCALATING; flip it to the
+            // last recovery's target if available, else go back
+            // through the normal lifecycle from PROPOSING.
+            state.setRecoveryCount(0);
+            state.setStatus(ArchitectStatus.PROPOSING);
+        } else {
+            state.setStatus(ArchitectStatus.ESCALATED);
+        }
+    }
+
+    /**
+     * Build and post the escalation inbox APPROVAL — used by the
+     * recovery handler when {@code escalationMode=ASK_USER}.
+     */
+    private void postEscalationInbox(
+            ThinkProcessDocument process,
+            ArchitectState state,
+            de.mhus.vance.api.slartibartfast.RecoveryRequest lastRecovery) {
+        StringBuilder body = new StringBuilder();
+        body.append("Validation hat trotz ")
+                .append(state.getMaxRecoveries())
+                .append(" Korrektur-Versuchen keinen brauchbaren Plan ")
+                .append("produziert. Letzter Fehler-Grund: ")
+                .append(lastRecovery.getReason()).append("\n\n");
+        body.append("Letzter Hinweis an den Planner:\n")
+                .append(lastRecovery.getHint()).append("\n\n");
+        body.append("Antwort: yes → frischer Recovery-Versuch (Budget "
+                + "wird zurückgesetzt); no → Lauf als ESCALATED beenden.");
+
+        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("kind", "slartibartfast.escalation");
+        payload.put("runId", state.getRunId());
+        payload.put("validationReport", state.getValidationReport());
+        payload.put("recipeDraft", state.getProposedRecipe());
+        payload.put("recoveryReason", lastRecovery.getReason());
+
+        InboxItemDocument toCreate = InboxItemDocument.builder()
+                .tenantId(process.getTenantId())
+                .originatorUserId("slartibartfast:" + process.getId())
+                .assignedToUserId(null)
+                .originProcessId(process.getId())
+                .originSessionId(process.getSessionId())
+                .type(InboxItemType.APPROVAL)
+                .criticality(Criticality.CRITICAL)
+                .title("Slartibartfast: Recovery-Budget erschöpft — retry?")
+                .body(body.toString())
+                .payload(payload)
+                .requiresAction(true)
+                .build();
+        InboxItemDocument saved = inboxItemService.create(toCreate);
+        state.setPendingInboxItemId(saved.getId());
+        state.setPendingInboxKind(PendingInboxKind.ESCALATION);
+        state.setStatus(ArchitectStatus.ESCALATING);
+
+        log.info("Slartibartfast id='{}' ESCALATION inbox posted '{}' — "
+                        + "parking on user verdict",
+                process.getId(), saved.getId());
     }
 
     /**
@@ -284,17 +461,8 @@ public class SlartibartfastEngine implements ThinkEngine {
                         escMode, consumedRecovery.getReason());
                 switch (escMode) {
                     case FAIL -> state.setStatus(ArchitectStatus.ESCALATED);
-                    case ASK_USER -> {
-                        // M6.2: post inbox with validationReport, park
-                        // until user answers. Until M6.2 ships, fall
-                        // back to FAIL so the mode is at least
-                        // selectable safely.
-                        log.warn("Slartibartfast id='{}' escalationMode=ASK_USER "
-                                        + "not yet implemented (M6.2) — falling "
-                                        + "back to FAIL",
-                                process.getId());
-                        state.setStatus(ArchitectStatus.ESCALATED);
-                    }
+                    case ASK_USER -> postEscalationInbox(
+                            process, state, consumedRecovery);
                 }
                 state.setPendingRecovery(null);
                 return;
@@ -397,6 +565,12 @@ public class SlartibartfastEngine implements ThinkEngine {
                 } else {
                     state.setStatus(ArchitectStatus.DONE);
                 }
+            }
+            case ESCALATING -> {
+                // Parked waiting for the escalation inbox answer
+                // (escalationMode=ASK_USER). drainPending will
+                // flip status when the user answers; this turn
+                // is a no-op.
             }
             // Handled by terminal-check at top of runTurn.
             case DONE, FAILED, ESCALATED -> {

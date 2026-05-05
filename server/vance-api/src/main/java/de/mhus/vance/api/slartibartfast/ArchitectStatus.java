@@ -61,6 +61,15 @@ public enum ArchitectStatus {
      *  {@code audit.json} with the full evidence chain. */
     PERSISTING,
 
+    /** {@link EscalationMode#ASK_USER}: max recoveries hit, inbox
+     *  item posted, engine parks waiting for the user's verdict.
+     *  On answer the engine either resets {@code recoveryCount}
+     *  and resumes from the failed phase ({@code retry}) or
+     *  transitions to {@link #ESCALATED} ({@code abort}). Only
+     *  reachable when the recipe explicitly opts in via
+     *  {@code engineParams.escalationMode=ASK_USER}. */
+    ESCALATING,
+
     /** Validation kept failing past the retry budget. Inbox-item
      *  posted to the user with the validation report and the last
      *  recipe draft; user decides revise vs. discard. */

@@ -13,6 +13,7 @@ const editorEntries = {
     insights: resolve(__dirname, 'insights.html'),
     users: resolve(__dirname, 'users.html'),
     profile: resolve(__dirname, 'profile.html'),
+    workspace: resolve(__dirname, 'workspace.html'),
 };
 export default defineConfig({
     plugins: [vue()],

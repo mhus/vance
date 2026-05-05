@@ -126,7 +126,17 @@ public class MarvinEngine implements ThinkEngine {
                        Use this when the plan ALREADY EXISTS as a document
                        (chapter outline, requirements list, …) — it iterates
                        items and creates one child per item via a template,
-                       no LLM call. taskSpec.documentRef = {name|path|id};
+                       no LLM call.
+                       taskSpec.documentRef = {"path": "<exact-path>"} OR
+                                              {"id":   "<mongo-id>"}.
+                       The path/id MUST be one that already exists or that
+                       a prior sibling will write — copy it verbatim from
+                       the recipe / parent-goal context. NEVER fabricate
+                       paths like "tasks/<x>/output.md", "outline_document",
+                       "previous_step_result.md", etc. — those are
+                       hallucinations and lookup will fail. If the recipe
+                       tells you the outline lives at "essay/outline.md",
+                       use exactly that string.
                        taskSpec.childTemplate = {goal, taskKind, taskSpec}
                        with {{item.text}} / {{record.<field>}} / {{index}}
                        / {{root.title}} / {{parent.goal}} placeholders.
@@ -875,13 +885,24 @@ public class MarvinEngine implements ThinkEngine {
 
             int maxChildren = paramInt(node, "maxChildren", properties.getPlanMaxChildren());
             String customPrompt = paramString(node, "prompt", null);
-            // Phase H: Recipe-deklarierte Whitelist von Sub-Task-Recipes.
-            // Wenn gesetzt, MUSS der LLM nur diese Recipes für WORKER-
-            // Children vorschlagen — sonst Re-Prompt-Loop.
+            // Phase H/L: Recipe-deklarierte Constraints für PLAN-Children.
+            // - allowedSubTaskRecipes: Whitelist erlaubter Recipe-Namen
+            //   für WORKER-Children.
+            // - recipesOnlyViaExpand: Recipes die NUR im EXPAND_FROM_DOC
+            //   childTemplate auftauchen dürfen, nicht als direct WORKER.
+            // - requiredParamsPerRecipe: pro Recipe Pflicht-Param-Keys
+            //   in taskSpec.params (wenn als direct WORKER gespawnt).
+            // Verstöße triggern den Re-Prompt-Loop.
             List<String> allowedSubTaskRecipes = readAllowedSubTaskRecipes(process);
+            List<String> recipesOnlyViaExpand = readRecipesOnlyViaExpand(process);
+            Map<String, List<String>> requiredParamsPerRecipe =
+                    readRequiredParamsPerRecipe(process);
+            boolean anyConstraint = allowedSubTaskRecipes != null
+                    || recipesOnlyViaExpand != null
+                    || requiredParamsPerRecipe != null;
             int maxPlanCorrections = paramInt(
                     node, "maxPlanCorrections",
-                    allowedSubTaskRecipes == null ? 0 : 2);
+                    anyConstraint ? 2 : 0);
 
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(enginePromptResolver.resolveTiered(
@@ -920,8 +941,10 @@ public class MarvinEngine implements ThinkEngine {
                 children = parsePlanChildren(text, maxChildren);
                 if (children.isEmpty()) {
                     validationError = "PLAN produced 0 children";
-                } else if (allowedSubTaskRecipes != null) {
-                    validationError = validateSubTaskRecipes(children, allowedSubTaskRecipes);
+                } else if (anyConstraint) {
+                    validationError = validatePlanChildren(
+                            children, allowedSubTaskRecipes,
+                            recipesOnlyViaExpand, requiredParamsPerRecipe);
                 } else {
                     validationError = null;
                 }
@@ -933,14 +956,56 @@ public class MarvinEngine implements ThinkEngine {
                     // Append model's bad output and a corrective user message —
                     // standard format-correction shape.
                     messages.add(AiMessage.from(text));
-                    messages.add(UserMessage.from(
-                            "Your last plan was rejected: " + validationError + "\n\n"
-                                    + "Re-emit the plan JSON. WORKER children MUST use ONLY "
-                                    + "these recipes (verbatim names): "
-                                    + String.join(", ", allowedSubTaskRecipes)
-                                    + ". Other taskKinds (PLAN / EXPAND_FROM_DOC / "
-                                    + "USER_INPUT / AGGREGATE) don't need a recipe and stay "
-                                    + "free."));
+                    StringBuilder hint = new StringBuilder();
+                    hint.append("Your last plan was rejected: ").append(validationError)
+                            .append("\n\nRe-emit the plan JSON respecting these rules:\n");
+                    if (allowedSubTaskRecipes != null) {
+                        hint.append("- WORKER children MUST use ONLY these recipes ")
+                                .append("(verbatim names): ")
+                                .append(String.join(", ", allowedSubTaskRecipes))
+                                .append(".\n");
+                    }
+                    if (recipesOnlyViaExpand != null && !recipesOnlyViaExpand.isEmpty()) {
+                        hint.append("- These recipes MUST appear ONLY inside an ")
+                                .append("EXPAND_FROM_DOC childTemplate, never as a ")
+                                .append("direct top-level WORKER child: ")
+                                .append(String.join(", ", recipesOnlyViaExpand))
+                                .append(". (Your last plan placed at least one of them ")
+                                .append("at the top level. Move it into an EXPAND_FROM_DOC ")
+                                .append("with the appropriate documentRef + childTemplate.)\n");
+                    }
+                    hint.append("- Every EXPAND_FROM_DOC child MUST declare ")
+                            .append("taskSpec.documentRef as a MAP with one of ")
+                            .append("name|path|id (NOT a bare string), AND ")
+                            .append("taskSpec.childTemplate (with at least ")
+                            .append("`taskKind: WORKER` and `recipe: <name>`).\n")
+                            .append("Example EXPAND_FROM_DOC child shape:\n")
+                            .append("  {\n")
+                            .append("    \"taskKind\": \"EXPAND_FROM_DOC\",\n")
+                            .append("    \"goal\": \"...\",\n")
+                            .append("    \"taskSpec\": {\n")
+                            .append("      \"documentRef\": { \"path\": \"essay/outline.md\" },\n")
+                            .append("      \"treeMode\": \"FLAT\",\n")
+                            .append("      \"childTemplate\": {\n")
+                            .append("        \"taskKind\": \"WORKER\",\n")
+                            .append("        \"recipe\": \"<allowed-recipe-here>\",\n")
+                            .append("        \"goal\": \"...\",\n")
+                            .append("        \"recipeParams\": { ... }\n")
+                            .append("      }\n")
+                            .append("    }\n")
+                            .append("  }\n");
+                    if (requiredParamsPerRecipe != null && !requiredParamsPerRecipe.isEmpty()) {
+                        hint.append("- For these recipes, taskSpec.params MUST contain ")
+                                .append("the listed keys when used as a direct WORKER:\n");
+                        for (Map.Entry<String, List<String>> e
+                                : requiredParamsPerRecipe.entrySet()) {
+                            hint.append("    ").append(e.getKey()).append(" → ")
+                                    .append(String.join(", ", e.getValue())).append("\n");
+                        }
+                    }
+                    hint.append("Other taskKinds (PLAN / EXPAND_FROM_DOC / USER_INPUT / ")
+                            .append("AGGREGATE) don't need a recipe and stay free.");
+                    messages.add(UserMessage.from(hint.toString()));
                 }
             }
 
@@ -984,22 +1049,148 @@ public class MarvinEngine implements ThinkEngine {
         return out.isEmpty() ? null : out;
     }
 
-    /** Validate that every WORKER child references an allowed recipe.
-     *  Returns null when valid, an error string when invalid. */
-    private static @Nullable String validateSubTaskRecipes(
-            List<NodeSpec> children, List<String> allowed) {
+    /**
+     * Read the optional {@code recipesOnlyViaExpand} engineParam.
+     * Recipes in this list must appear only inside an
+     * {@code EXPAND_FROM_DOC} childTemplate, never as a direct
+     * top-level WORKER child. Re-prompt when violated.
+     */
+    private static @Nullable List<String> readRecipesOnlyViaExpand(ThinkProcessDocument process) {
+        Object raw = processParam(process, "recipesOnlyViaExpand");
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
+        List<String> out = new ArrayList<>(list.size());
+        for (Object o : list) {
+            if (o instanceof String s && !s.isBlank()) out.add(s.trim());
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    /**
+     * Read the optional {@code requiredParamsPerRecipe} engineParam.
+     * Map of {@code recipe-name → [paramKey, …]}. When a direct
+     * top-level WORKER child uses a recipe in this map, its
+     * {@code taskSpec.params} MUST contain every listed key.
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable Map<String, List<String>> readRequiredParamsPerRecipe(
+            ThinkProcessDocument process) {
+        Object raw = processParam(process, "requiredParamsPerRecipe");
+        if (!(raw instanceof Map<?, ?> m) || m.isEmpty()) return null;
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            if (!(e.getKey() instanceof String recipe) || recipe.isBlank()) continue;
+            List<String> required = new ArrayList<>();
+            if (e.getValue() instanceof List<?> reqs) {
+                for (Object r : reqs) {
+                    if (r instanceof String s && !s.isBlank()) required.add(s.trim());
+                }
+            }
+            if (!required.isEmpty()) out.put(recipe.trim(), required);
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    /**
+     * Validate the PLAN's children against the configured constraints.
+     * Returns null when all constraints hold, an error string listing
+     * every violation otherwise.
+     *
+     * <p>Always-on checks (independent of recipe-supplied constraints):
+     * EXPAND_FROM_DOC children must declare {@code taskSpec.documentRef}
+     * and a {@code taskSpec.childTemplate} with a {@code recipe} —
+     * the empty form is structurally useless and the LLM occasionally
+     * emits it after a "move chapter_loop into EXPAND" correction.
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable String validatePlanChildren(
+            List<NodeSpec> children,
+            @Nullable List<String> allowed,
+            @Nullable List<String> onlyViaExpand,
+            @Nullable Map<String, List<String>> requiredParams) {
         List<String> violations = new ArrayList<>();
         for (NodeSpec ns : children) {
+            // Always-on check: EXPAND_FROM_DOC must be fully formed.
+            // documentRef is a MAP {name|path|id: …}, not a String —
+            // Marvin's runExpandFromDoc reads it via paramMap.
+            if (ns.taskKind() == TaskKind.EXPAND_FROM_DOC) {
+                Map<String, Object> spec = ns.taskSpec() == null
+                        ? Map.of() : ns.taskSpec();
+                Object docRef = spec.get("documentRef");
+                if (!(docRef instanceof Map<?, ?> drm) || drm.isEmpty()) {
+                    violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                            + "' is missing taskSpec.documentRef "
+                            + "(must be a map with `path` or `id`)");
+                } else {
+                    Map<String, Object> drMap = (Map<String, Object>) drm;
+                    boolean hasPath = drMap.get("path") instanceof String p
+                            && !p.isBlank();
+                    boolean hasId = drMap.get("id") instanceof String i
+                            && !i.isBlank();
+                    if (!hasPath && !hasId) {
+                        // `name`-only is ambiguous (LLMs love to put
+                        // hallucinated short labels there). Require
+                        // path or id explicitly to anchor the lookup.
+                        violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                                + "' must declare taskSpec.documentRef.path "
+                                + "(or .id) — `name` alone is rejected to "
+                                + "avoid lookup ambiguity");
+                    }
+                }
+                Object tmpl = spec.get("childTemplate");
+                if (!(tmpl instanceof Map<?, ?> tm) || tm.isEmpty()) {
+                    violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                            + "' is missing taskSpec.childTemplate");
+                } else {
+                    Object tmplRecipe = ((Map<String, Object>) tm).get("recipe");
+                    if (!(tmplRecipe instanceof String rs) || rs.isBlank()) {
+                        violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                                + "' is missing taskSpec.childTemplate.recipe");
+                    } else if (allowed != null && !allowed.contains(rs.trim())) {
+                        violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                                + "' uses childTemplate.recipe '" + rs.trim()
+                                + "' which is not in the allowed list");
+                    }
+                }
+                continue;
+            }
             if (ns.taskKind() != TaskKind.WORKER) continue;
             Object recipeRaw = ns.taskSpec() == null ? null : ns.taskSpec().get("recipe");
             String recipe = recipeRaw instanceof String s ? s.trim() : null;
             if (recipe == null || recipe.isBlank()) {
                 violations.add("WORKER child '" + ns.goal()
                         + "' is missing taskSpec.recipe");
-            } else if (!allowed.contains(recipe)) {
+                continue;
+            }
+            if (allowed != null && !allowed.contains(recipe)) {
                 violations.add("WORKER child '" + ns.goal()
                         + "' uses recipe '" + recipe
                         + "' which is not in the allowed list");
+                continue;
+            }
+            if (onlyViaExpand != null && onlyViaExpand.contains(recipe)) {
+                violations.add("WORKER child '" + ns.goal()
+                        + "' uses recipe '" + recipe
+                        + "' which may appear only inside an EXPAND_FROM_DOC "
+                        + "childTemplate, not as a direct top-level WORKER");
+                continue;
+            }
+            if (requiredParams != null) {
+                List<String> req = requiredParams.get(recipe);
+                if (req != null && !req.isEmpty()) {
+                    Object paramsRaw = ns.taskSpec().get("params");
+                    Map<String, Object> params = paramsRaw instanceof Map<?, ?> mm
+                            ? (Map<String, Object>) mm : Map.of();
+                    for (String key : req) {
+                        Object v = params.get(key);
+                        if (v == null
+                                || (v instanceof String vs && vs.isBlank())) {
+                            violations.add("WORKER child '" + ns.goal()
+                                    + "' (recipe '" + recipe
+                                    + "') missing required taskSpec.params['"
+                                    + key + "']");
+                        }
+                    }
+                }
             }
         }
         return violations.isEmpty() ? null : String.join("; ", violations);

@@ -42,6 +42,10 @@ declare const _default: {
             title: string;
             description: string;
         };
+        workspace: {
+            title: string;
+            description: string;
+        };
         inbox: {
             title: string;
             description: string;
@@ -889,6 +893,32 @@ declare const _default: {
             memberCountOther: string;
             disabled: string;
             disabledTooltip: string;
+        };
+    };
+    workspace: {
+        pageTitle: string;
+        loadingFile: string;
+        sidebar: {
+            projectLabel: string;
+            noProjectsHeadline: string;
+            noProjectsBody: string;
+        };
+        empty: {
+            pickProjectHeadline: string;
+            pickProjectBody: string;
+            emptyTreeHeadline: string;
+            emptyTreeBody: string;
+        };
+        preview: {
+            pickFileHeadline: string;
+            pickFileBody: string;
+            binaryHeadline: string;
+            binaryBody: string;
+            download: string;
+        };
+        footer: {
+            podHint: string;
+            refresh: string;
         };
     };
 };

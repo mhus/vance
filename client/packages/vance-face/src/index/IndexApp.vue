@@ -257,6 +257,15 @@ function readNextParam(): string | null {
           </li>
           <li class="flex items-center justify-between gap-4">
             <div>
+              <div class="font-semibold">{{ $t('index.workspace.title') }}</div>
+              <div class="text-sm opacity-70">{{ $t('index.workspace.description') }}</div>
+            </div>
+            <VButton variant="primary" size="sm" href="/workspace.html">
+              {{ $t('index.open') }}
+            </VButton>
+          </li>
+          <li class="flex items-center justify-between gap-4">
+            <div>
               <div class="font-semibold">{{ $t('index.inbox.title') }}</div>
               <div class="text-sm opacity-70">{{ $t('index.inbox.description') }}</div>
             </div>

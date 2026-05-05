@@ -46,6 +46,10 @@ export default {
             title: 'Dokumente',
             description: 'Projektdokumente durchsuchen und bearbeiten.',
         },
+        workspace: {
+            title: 'Workspace',
+            description: 'Workspace-Dateisystem des Projekts auf dem Home-Pod ansehen (read-only).',
+        },
         inbox: {
             title: 'Posteingang',
             description: 'Einträge aus dem persönlichen Posteingang und dem Team-Posteingang jedes Teams lesen, beantworten, archivieren und delegieren.',
@@ -893,6 +897,32 @@ export default {
             memberCountOther: '{count} Mitglieder',
             disabled: 'deaktiviert',
             disabledTooltip: 'Team von einem Administrator deaktiviert',
+        },
+    },
+    workspace: {
+        pageTitle: 'Workspace',
+        loadingFile: 'Datei wird geladen…',
+        sidebar: {
+            projectLabel: 'Projekt',
+            noProjectsHeadline: 'Keine Projekte',
+            noProjectsBody: 'Sie haben in diesem Mandanten keinen Projekt-Zugriff.',
+        },
+        empty: {
+            pickProjectHeadline: 'Projekt wählen',
+            pickProjectBody: 'Wählen Sie links ein Projekt, um dessen Workspace anzusehen.',
+            emptyTreeHeadline: 'Leerer Workspace',
+            emptyTreeBody: 'Dieses Projekt hat noch keine Dateien im Workspace.',
+        },
+        preview: {
+            pickFileHeadline: 'Keine Datei gewählt',
+            pickFileBody: 'Klicken Sie links eine Datei im Baum, um sie hier anzusehen.',
+            binaryHeadline: 'Binärdatei',
+            binaryBody: 'Vorschau für diesen Dateityp nicht möglich — bitte herunterladen.',
+            download: 'Herunterladen',
+        },
+        footer: {
+            podHint: 'Live-Ansicht vom Project-Home-Pod.',
+            refresh: 'Neu laden',
         },
     },
 };

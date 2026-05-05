@@ -27,6 +27,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -70,8 +71,25 @@ public class VogonEngine implements ThinkEngine {
      *  {@link StrategyState} for this process. */
     public static final String STATE_KEY = "strategyState";
 
-    /** {@code engineParams[STRATEGY_KEY]} — strategy name to run. */
+    /** {@code engineParams[STRATEGY_KEY]} — strategy name to run.
+     *  Resolved once via {@link StrategyResolver} at {@link #start};
+     *  the resolved plan is then frozen under {@link #PLAN_KEY}. */
     public static final String STRATEGY_KEY = "strategy";
+
+    /**
+     * {@code engineParams[PLAN_KEY]} — frozen YAML snapshot of the
+     * strategy plan. Populated at {@link #start} from either the
+     * resolved plan ({@link #STRATEGY_KEY} present) or an inline
+     * YAML string supplied by the caller (so callers can spawn a
+     * one-off strategy without first persisting a document).
+     *
+     * <p>Format: a YAML string identical to what
+     * {@code StrategyResolver.parseStrategy} accepts. Storing as
+     * text keeps the snapshot human-readable in MongoDB and lets the
+     * existing parser handle the polymorphic {@code BranchAction}
+     * sealed hierarchy without bespoke Jackson plumbing.
+     */
+    public static final String PLAN_KEY = "strategyPlanYaml";
 
     /**
      * Separator used for synthetic flag keys ({@code <phase>_completed}
@@ -131,6 +149,7 @@ public class VogonEngine implements ThinkEngine {
     private static final String SETTINGS_REF_TYPE = "tenant";
 
     private final StrategyResolver strategyResolver;
+    private final DocumentService documentService;
     private final de.mhus.vance.shared.session.SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;
@@ -188,19 +207,10 @@ public class VogonEngine implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        String strategyName = stringParam(process, STRATEGY_KEY, null);
-        if (strategyName == null) {
-            throw new IllegalStateException(
-                    "Vogon.start requires engineParams.strategy — id='"
-                            + process.getId() + "'");
-        }
-        StrategySpec strategy = strategyResolver.find(
-                strategyName, process.getTenantId(), resolveProjectId(process))
-                .orElseThrow(() -> new IllegalStateException(
-                        "Unknown strategy '" + strategyName + "'"));
+        StrategySpec strategy = resolveAndFreezePlan(process);
         if (strategy.getPhases().isEmpty()) {
             throw new IllegalStateException(
-                    "Strategy '" + strategyName + "' has no phases");
+                    "Strategy '" + strategy.getName() + "' has no phases");
         }
         StrategyState state = StrategyState.builder()
                 .strategy(strategy.getName())
@@ -214,6 +224,122 @@ public class VogonEngine implements ThinkEngine {
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         // Trigger first turn on Vogon's own lane.
         eventEmitter.scheduleTurn(process.getId());
+    }
+
+    /**
+     * Resolve the strategy for {@code process} and freeze it as a
+     * YAML snapshot under {@link #PLAN_KEY}. Two valid input modes:
+     *
+     * <ul>
+     *   <li><b>By name</b> — {@code engineParams.strategy = "<name>"}
+     *       (cascade lookup via {@link StrategyResolver}).</li>
+     *   <li><b>Inline</b> — {@code engineParams.strategyPlanYaml =
+     *       "<yaml-string>"} (parsed directly, no document needed).</li>
+     * </ul>
+     *
+     * <p>Setting both is rejected. Snapshot semantics: subsequent
+     * runTurn-calls read exclusively from the frozen YAML string,
+     * even if the underlying document is edited mid-run.
+     */
+    private StrategySpec resolveAndFreezePlan(ThinkProcessDocument process) {
+        String strategyName = stringParam(process, STRATEGY_KEY, null);
+        Object inlineRaw = process.getEngineParams() == null
+                ? null : process.getEngineParams().get(PLAN_KEY);
+        if (strategyName != null && inlineRaw != null) {
+            throw new IllegalArgumentException(
+                    "Vogon.start: engineParams.strategy and engineParams.strategyPlanYaml "
+                            + "are mutually exclusive — id='" + process.getId() + "'");
+        }
+        if (strategyName == null && inlineRaw == null) {
+            throw new IllegalStateException(
+                    "Vogon.start requires engineParams.strategy or engineParams.strategyPlanYaml — id='"
+                            + process.getId() + "'");
+        }
+
+        StrategySpec strategy;
+        String planYaml;
+        if (inlineRaw != null) {
+            if (!(inlineRaw instanceof String inlineYaml) || inlineYaml.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Vogon.start: engineParams.strategyPlanYaml must be a non-blank "
+                                + "YAML string — id='" + process.getId() + "'");
+            }
+            strategy = StrategyResolver.parseStrategy(inlineYaml, "inline-plan");
+            planYaml = inlineYaml;
+        } else {
+            strategy = strategyResolver.find(
+                    strategyName, process.getTenantId(), resolveProjectId(process))
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Unknown strategy '" + strategyName + "'"));
+            planYaml = readStrategyDocument(strategyName,
+                    process.getTenantId(), resolveProjectId(process));
+        }
+        // Freeze the YAML snapshot on engineParams so runTurn never
+        // re-reads the document.
+        Map<String, Object> params = process.getEngineParams() == null
+                ? new LinkedHashMap<>() : process.getEngineParams();
+        params.put(PLAN_KEY, planYaml);
+        process.setEngineParams(params);
+        thinkProcessService.replaceEngineParams(process.getId(), params);
+        return strategy;
+    }
+
+    /**
+     * Re-parse the frozen YAML snapshot from
+     * {@code engineParams.strategyPlanYaml}. Lazy-migration fallback:
+     * if the snapshot field is missing (legacy process started before
+     * the snapshot-fix landed) and {@link StrategyState#getStrategy}
+     * carries a name, resolve from the document cascade once and
+     * persist the snapshot — the next turn will hit the fast path.
+     */
+    private StrategySpec loadStrategySnapshot(
+            ThinkProcessDocument process, StrategyState state) {
+        Map<String, Object> params = process.getEngineParams();
+        Object snapshotRaw = params == null ? null : params.get(PLAN_KEY);
+        if (snapshotRaw instanceof String yaml && !yaml.isBlank()) {
+            return StrategyResolver.parseStrategy(yaml, "snapshot");
+        }
+        // Legacy / lazy migration path.
+        String name = state.getStrategy();
+        if (name == null || name.isBlank()) {
+            throw new IllegalStateException(
+                    "Vogon process has neither strategyPlanYaml snapshot nor "
+                            + "strategyState.strategy — id='" + process.getId() + "'");
+        }
+        StrategySpec resolved = strategyResolver.find(
+                        name, process.getTenantId(), resolveProjectId(process))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Strategy '" + name + "' missing at runtime "
+                                + "(no snapshot, document gone)"));
+        String yaml = readStrategyDocument(name,
+                process.getTenantId(), resolveProjectId(process));
+        Map<String, Object> updated = params == null ? new LinkedHashMap<>() : params;
+        updated.put(PLAN_KEY, yaml);
+        process.setEngineParams(updated);
+        thinkProcessService.replaceEngineParams(process.getId(), updated);
+        log.info("Vogon id='{}' strategy snapshot lazy-migrated from name='{}'",
+                process.getId(), name);
+        return resolved;
+    }
+
+    /**
+     * Read the YAML text of {@code name}'s strategy document — the
+     * same document {@link StrategyResolver} just resolved against,
+     * so the lookup must succeed. We capture the on-disk YAML
+     * verbatim instead of bean-dumping the parsed {@link StrategySpec}
+     * (the {@code BranchAction} sealed hierarchy resists naive
+     * bean-conversion, and the on-disk text is already the
+     * authoritative form).
+     */
+    private String readStrategyDocument(
+            String name, String tenantId, @Nullable String projectId) {
+        String path = StrategyResolver.STRATEGIES_PREFIX
+                + name.toLowerCase().trim() + ".yaml";
+        return documentService.lookupCascade(tenantId, projectId, path)
+                .map(de.mhus.vance.shared.document.LookupResult::content)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Strategy document '" + path
+                                + "' vanished between resolve and snapshot"));
     }
 
     @Override
@@ -244,10 +370,7 @@ public class VogonEngine implements ThinkEngine {
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
         StrategyState initialState = loadState(process);
-        StrategySpec strategy = strategyResolver.find(
-                initialState.getStrategy(), process.getTenantId(), resolveProjectId(process))
-                .orElseThrow(() -> new IllegalStateException(
-                        "Strategy '" + initialState.getStrategy() + "' missing at runtime"));
+        StrategySpec strategy = loadStrategySnapshot(process, initialState);
         StrategyState state = initialState;
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         try {

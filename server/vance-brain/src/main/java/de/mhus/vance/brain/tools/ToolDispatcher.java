@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -71,11 +72,27 @@ public class ToolDispatcher {
      */
     public Map<String, Object> invoke(
             String name, Map<String, Object> params, ToolInvocationContext ctx) {
+        return invoke(name, params, ctx, null);
+    }
+
+    /**
+     * Variant that propagates the engine's bound {@link ContextToolsApi}
+     * to tools that want to call sibling tools through the same
+     * allow-filter (e.g. the script executor). Pass {@code null} when
+     * no surface should be exposed.
+     */
+    public Map<String, Object> invoke(
+            String name,
+            Map<String, Object> params,
+            ToolInvocationContext ctx,
+            @Nullable ContextToolsApi tools) {
         Resolved r = resolve(name, ctx).orElseThrow(
                 () -> new ToolException("Unknown tool: " + name));
         permissionService.enforce(securityContextOf(ctx), resourceOf(ctx), Action.EXECUTE);
         try {
-            return r.tool().invoke(params, ctx);
+            return tools == null
+                    ? r.tool().invoke(params, ctx)
+                    : r.tool().invoke(params, ctx, tools);
         } catch (ToolException e) {
             throw e;
         } catch (RuntimeException e) {

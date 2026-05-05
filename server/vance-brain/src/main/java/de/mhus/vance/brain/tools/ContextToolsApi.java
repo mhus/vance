@@ -85,7 +85,7 @@ public final class ContextToolsApi {
         listener.before(name);
         long startMs = System.currentTimeMillis();
         try {
-            Map<String, Object> result = dispatcher.invoke(name, params, ctx);
+            Map<String, Object> result = dispatcher.invoke(name, params, ctx, this);
             listener.after(name, System.currentTimeMillis() - startMs, null);
             return result;
         } catch (RuntimeException e) {

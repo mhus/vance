@@ -81,6 +81,11 @@ public class ClientToolService {
         return byName.keySet().stream().sorted().toList();
     }
 
+    /** Direct lookup — returns {@code null} when no tool of that name is registered. */
+    public @org.jspecify.annotations.Nullable ClientTool find(String name) {
+        return byName.get(name);
+    }
+
     /**
      * Announces every registered tool to the brain. Safe to call when
      * disconnected (becomes a no-op); concurrent calls are coalesced

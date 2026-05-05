@@ -43,6 +43,19 @@ public interface Tool {
     Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx);
 
     /**
+     * Variant for tools that want to invoke sibling tools through the
+     * same allow-filter and listener path the engine uses. Default
+     * forwards to the 2-arg form, so existing tools are unaffected.
+     * Override only if the tool actually needs the bound surface.
+     */
+    default Map<String, Object> invoke(
+            Map<String, Object> params,
+            ToolInvocationContext ctx,
+            ContextToolsApi tools) {
+        return invoke(params, ctx);
+    }
+
+    /**
      * Selector tags. Recipes can reference tools collectively via
      * {@code @<label>}. Built-in beans return an empty set by default;
      * configured tools override with the values from

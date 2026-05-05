@@ -65,10 +65,6 @@
             <artifactId>js-community</artifactId>
             <type>pom</type>
         </dependency>
-        <dependency>
-            <groupId>org.mozilla</groupId>
-            <artifactId>rhino-engine</artifactId>
-        </dependency>
 
         <!-- Git operations for the kit subsystem. -->
         <dependency>

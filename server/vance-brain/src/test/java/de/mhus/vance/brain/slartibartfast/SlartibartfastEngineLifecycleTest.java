@@ -18,6 +18,7 @@ import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
+import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -45,6 +46,7 @@ class SlartibartfastEngineLifecycleTest {
     private ObjectMapper objectMapper;
     private FramingPhase framingPhase;
     private ConfirmingPhase confirmingPhase;
+    private GatheringPhase gatheringPhase;
     private ThinkEngineContext ctx;
 
     private SlartibartfastEngine engine;
@@ -57,6 +59,7 @@ class SlartibartfastEngineLifecycleTest {
         objectMapper = JsonMapper.builder().build();
         framingPhase = mock(FramingPhase.class);
         confirmingPhase = mock(ConfirmingPhase.class);
+        gatheringPhase = mock(GatheringPhase.class);
         ctx = mock(ThinkEngineContext.class);
         when(ctx.drainPending()).thenReturn(List.<SteerMessage>of());
 
@@ -82,9 +85,15 @@ class SlartibartfastEngineLifecycleTest {
             return null;
         }).when(confirmingPhase).execute(any(), any(), any());
 
+        doAnswer(inv -> {
+            de.mhus.vance.api.slartibartfast.ArchitectState s = inv.getArgument(0);
+            de.mhus.vance.brain.slartibartfast.SlartibartfastPhases.stubGathering(s);
+            return null;
+        }).when(gatheringPhase).execute(any(), any(), any());
+
         engine = new SlartibartfastEngine(
                 thinkProcessService, eventEmitter, laneScheduler,
-                objectMapper, framingPhase, confirmingPhase);
+                objectMapper, framingPhase, confirmingPhase, gatheringPhase);
     }
 
     @Test

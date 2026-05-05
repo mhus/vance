@@ -8,10 +8,12 @@ import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.vogon.BranchAction;
 import de.mhus.vance.api.vogon.CheckpointSpec;
 import de.mhus.vance.api.vogon.CheckpointType;
 import de.mhus.vance.api.vogon.GateSpec;
 import de.mhus.vance.api.vogon.PhaseSpec;
+import de.mhus.vance.api.vogon.ScorerSpec;
 import de.mhus.vance.api.vogon.StrategySpec;
 import de.mhus.vance.api.vogon.StrategyState;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
@@ -83,6 +85,47 @@ public class VogonEngine implements ThinkEngine {
 
     private static String phaseFlag(String phaseName, String suffix) {
         return phaseName + FLAG_SEP + suffix;
+    }
+
+    /**
+     * Top of {@link StrategyState#getCurrentPhasePath()} — the phase
+     * Vogon is currently working on. {@code null} when the strategy
+     * has finished and no phase is active anymore.
+     *
+     * <p>For linear strategies the path is always one element deep,
+     * so this is equivalent to "the current phase". Loop sub-phases
+     * (Phase B+) carry deeper paths.
+     */
+    static @Nullable String currentLeafPhaseName(StrategyState state) {
+        java.util.List<String> path = state.getCurrentPhasePath();
+        return path == null || path.isEmpty() ? null : path.get(path.size() - 1);
+    }
+
+    /**
+     * Replace the leaf segment of the path with {@code newName} —
+     * used for "advance to the next phase on the same level".
+     */
+    static void replaceLeafPhase(StrategyState state, String newName) {
+        java.util.List<String> path = state.getCurrentPhasePath();
+        if (path.isEmpty()) {
+            path.add(newName);
+        } else {
+            path.set(path.size() - 1, newName);
+        }
+    }
+
+    /**
+     * Qualified storage key for a phase. Top-level phases use their
+     * bare name; sub-phases inside a loop use {@code <loopName>/<subName>}
+     * so a sub-phase can't collide with an unrelated top-level phase
+     * (and so loop-body invalidation can drop everything by prefix).
+     */
+    static String qualifiedPhaseKey(StrategyState state, PhaseSpec phase) {
+        java.util.List<String> path = state.getCurrentPhasePath();
+        if (path.size() > 1 && phase.getName().equals(path.get(path.size() - 1))) {
+            return path.get(0) + PhaseAdvancer.QUALIFIED_KEY_SEP + phase.getName();
+        }
+        return phase.getName();
     }
 
     private static final String SETTINGS_REF_TYPE = "tenant";
@@ -162,12 +205,12 @@ public class VogonEngine implements ThinkEngine {
         StrategyState state = StrategyState.builder()
                 .strategy(strategy.getName())
                 .strategyVersion(strategy.getVersion())
-                .currentPhaseName(strategy.getPhases().get(0).getName())
                 .build();
+        state.getCurrentPhasePath().add(strategy.getPhases().get(0).getName());
         persistState(process, state);
         log.info("Vogon.start tenant='{}' session='{}' id='{}' strategy='{}' phase='{}'",
                 process.getTenantId(), process.getSessionId(), process.getId(),
-                strategy.getName(), state.getCurrentPhaseName());
+                strategy.getName(), currentLeafPhaseName(state));
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         // Trigger first turn on Vogon's own lane.
         eventEmitter.scheduleTurn(process.getId());
@@ -246,13 +289,21 @@ public class VogonEngine implements ThinkEngine {
             }
 
             // 3. Pick the current phase. Null = no current → done.
-            PhaseSpec phase = findPhase(strategy, state.getCurrentPhaseName());
+            //    `resolveActivePhase` drills into a loop's first
+            //    sub-phase on first encounter (and bumps its counter
+            //    to 1), so the rest of runTurn always sees a runnable
+            //    leaf phase, never the loop wrapper.
+            PhaseSpec phase = PhaseAdvancer.resolveActivePhase(strategy, state);
             if (phase == null) {
                 state.setStrategyComplete(true);
                 persistState(process, state);
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
                 return;
             }
+            // resolveActivePhase may have pushed onto the path; persist
+            // the bookkeeping so a Brain restart resumes inside the
+            // loop body rather than re-entering it.
+            persistState(process, state);
 
             // 4. Already blocked on a checkpoint? Yield, wait for the
             //    answer to arrive via consumePending.
@@ -286,7 +337,8 @@ public class VogonEngine implements ThinkEngine {
 
         // 1. Worker step (if defined and not yet done).
         if (phase.getWorker() != null && !workerDone) {
-            spawnAndAwaitWorker(process, ctx, phase, params, state, sub);
+            BranchActionExecutor.Result override = spawnAndAwaitWorker(
+                    process, ctx, strategy, phase, params, state, sub);
             // Re-load after spawn — flag was set inside.
             state = loadState(process);
             workerDone = isFlagTrue(state, phaseFlag(phaseName, "completed"));
@@ -301,6 +353,13 @@ public class VogonEngine implements ThinkEngine {
                 // Defensive: shouldn't happen with synchronous spawn,
                 // but yield rather than loop.
                 thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
+                return;
+            }
+            // If the scorer fired a non-CONTINUE branch, take that path
+            // instead of running the normal checkpoint/gate/advance flow.
+            if (override != null
+                    && override.kind() != BranchActionExecutor.ResultKind.CONTINUE) {
+                applyBranchOverride(process, strategy, state, phase, override);
                 return;
             }
         }
@@ -335,9 +394,10 @@ public class VogonEngine implements ThinkEngine {
      * {@code MarvinEngine.runWorker}: spawn → submit-and-wait →
      * read reply → record artifact + flag → stop worker.
      */
-    private void spawnAndAwaitWorker(
+    private BranchActionExecutor.@Nullable Result spawnAndAwaitWorker(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
+            StrategySpec strategy,
             PhaseSpec phase,
             Map<String, Object> params,
             StrategyState state,
@@ -348,7 +408,7 @@ public class VogonEngine implements ThinkEngine {
                     process.getId(), phase.getName());
             state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
             persistState(process, state);
-            return;
+            return null;
         }
         String steerContent = sub.apply(phase.getWorkerInput());
         ThinkProcessDocument child;
@@ -389,7 +449,7 @@ public class VogonEngine implements ThinkEngine {
                     applied.defaultActiveSkills(),
                     applied.allowedSkills() == null
                             ? null : java.util.Set.copyOf(applied.allowedSkills()));
-            state.getWorkerProcessIds().put(phase.getName(), child.getId());
+            state.getWorkerProcessIds().put(qualifiedPhaseKey(state, phase), child.getId());
             persistState(process, state);
             thinkEngineServiceProvider.getObject().start(child);
             log.info("Vogon id='{}' phase '{}' spawned worker child='{}' recipe='{}'",
@@ -399,22 +459,37 @@ public class VogonEngine implements ThinkEngine {
                     process.getId(), phase.getName(), e.toString());
             state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
             persistState(process, state);
-            return;
+            return null;
         }
 
         // Synchronous turn drive.
+        BranchActionExecutor.Result branchResult = null;
         try {
             driveWorkerTurn(child, process.getId(), steerContent);
             String reply = readLastAssistantText(process.getTenantId(),
                     process.getSessionId(), child.getId());
+            String phaseKey = qualifiedPhaseKey(state, phase);
             Map<String, Object> artifact = new LinkedHashMap<>();
             if (reply != null) artifact.put("result", reply);
-            state.getPhaseArtifacts().put(phase.getName(), artifact);
+            state.getPhaseArtifacts().put(phaseKey, artifact);
             state.getFlags().put(phaseFlag(phase.getName(), "completed"), true);
             persistState(process, state);
             log.info("Vogon id='{}' phase '{}' worker DONE — {} chars captured",
                     process.getId(), phase.getName(),
                     reply == null ? 0 : reply.length());
+
+            // After-DONE hook: scorer (§2.5) or decider (§2.6) extracts
+            // a structured verdict from the reply and may force a branch
+            // (exitLoop / exitStrategy / jumpToPhase / escalateTo).
+            // Scorer / decider are mutually exclusive — strategy-load
+            // validation already enforces that.
+            if (phase.getScorer() != null) {
+                branchResult = evaluateScorerWithCorrections(
+                        process, child, strategy, state, phase, phaseKey, reply);
+            } else if (phase.getDecider() != null) {
+                branchResult = evaluateDeciderWithCorrections(
+                        process, child, strategy, state, phase, phaseKey, reply);
+            }
         } catch (RuntimeException e) {
             log.warn("Vogon id='{}' phase '{}' worker turn failed: {}",
                     process.getId(), phase.getName(), e.toString());
@@ -426,6 +501,65 @@ public class VogonEngine implements ThinkEngine {
             } catch (RuntimeException e) {
                 log.warn("Vogon id='{}' worker stop failed for child='{}': {}",
                         process.getId(), child.getId(), e.toString());
+            }
+        }
+        return branchResult;
+    }
+
+    /**
+     * Run {@code phase.scorer}'s evaluator on {@code reply}; on schema
+     * failure issue up-to {@code maxCorrections} re-prompts to the
+     * worker before flagging the phase failed. Returns the executed
+     * branch's {@link BranchActionExecutor.Result} (null when the
+     * scorer never reached COMPLETED).
+     */
+    private BranchActionExecutor.@Nullable Result evaluateScorerWithCorrections(
+            ThinkProcessDocument process,
+            ThinkProcessDocument child,
+            StrategySpec strategy,
+            StrategyState state,
+            PhaseSpec phase,
+            String phaseKey,
+            @Nullable String initialReply) {
+        ScorerSpec scorer = phase.getScorer();
+        if (scorer == null) return null;
+        int max = scorer.getMaxCorrections() == null ? 2 : scorer.getMaxCorrections();
+        String reply = initialReply;
+        int attempts = 0;
+        while (true) {
+            ScorerEvaluator.Result r = ScorerEvaluator.evaluate(
+                    strategy, state, phase, phaseKey, scorer, reply, objectMapper);
+            if (r.outcome() == ScorerEvaluator.Outcome.COMPLETED) {
+                persistState(process, state);
+                log.info("Vogon id='{}' phase '{}' scorer COMPLETED → {}",
+                        process.getId(), phase.getName(),
+                        r.branchResult() == null ? "no-op" : r.branchResult().kind());
+                return r.branchResult();
+            }
+            if (attempts >= max) {
+                log.warn("Vogon id='{}' phase '{}' scorer schema invalid after {} "
+                                + "correction attempts — failing phase. Last hint: {}",
+                        process.getId(), phase.getName(), attempts, r.correctionHint());
+                state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
+                persistState(process, state);
+                return null;
+            }
+            attempts++;
+            log.info("Vogon id='{}' phase '{}' scorer correction {}/{} — re-prompt",
+                    process.getId(), phase.getName(), attempts, max);
+            try {
+                driveWorkerTurn(child, process.getId(),
+                        "Your last reply did not match the scorer schema: "
+                                + r.correctionHint()
+                                + "\nPlease re-emit the final JSON object correctly.");
+                reply = readLastAssistantText(process.getTenantId(),
+                        process.getSessionId(), child.getId());
+            } catch (RuntimeException e) {
+                log.warn("Vogon id='{}' phase '{}' correction re-prompt failed: {}",
+                        process.getId(), phase.getName(), e.toString());
+                state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
+                persistState(process, state);
+                return null;
             }
         }
     }
@@ -476,7 +610,7 @@ public class VogonEngine implements ThinkEngine {
             return state.getFlags().containsKey(spec.getStoreAs());
         }
         return state.getFlags().containsKey(
-                phaseFlag(state.getCurrentPhaseName(), "checkpointAnswered"));
+                phaseFlag(currentLeafPhaseName(state), "checkpointAnswered"));
     }
 
     private void createCheckpoint(
@@ -667,31 +801,175 @@ public class VogonEngine implements ThinkEngine {
         return true;
     }
 
+    /**
+     * Run {@code phase.decider}'s evaluator on {@code reply}; on
+     * no-match issue up-to {@code maxCorrections} re-prompts before
+     * flagging the phase failed. Returns the executed branch's
+     * {@link BranchActionExecutor.Result} (null when the decider
+     * never reached COMPLETED).
+     */
+    private BranchActionExecutor.@Nullable Result evaluateDeciderWithCorrections(
+            ThinkProcessDocument process,
+            ThinkProcessDocument child,
+            StrategySpec strategy,
+            StrategyState state,
+            PhaseSpec phase,
+            String phaseKey,
+            @Nullable String initialReply) {
+        de.mhus.vance.api.vogon.DeciderSpec decider = phase.getDecider();
+        if (decider == null) return null;
+        int max = decider.getMaxCorrections() == null ? 2 : decider.getMaxCorrections();
+        String reply = initialReply;
+        int attempts = 0;
+        while (true) {
+            DeciderEvaluator.Result r = DeciderEvaluator.evaluate(
+                    strategy, state, phase, phaseKey, decider, reply);
+            if (r.outcome() == DeciderEvaluator.Outcome.COMPLETED) {
+                persistState(process, state);
+                log.info("Vogon id='{}' phase '{}' decider COMPLETED token='{}' → {}",
+                        process.getId(), phase.getName(), r.chosenToken(),
+                        r.branchResult() == null ? "no-op" : r.branchResult().kind());
+                return r.branchResult();
+            }
+            if (attempts >= max) {
+                log.warn("Vogon id='{}' phase '{}' decider unmatched after {} "
+                                + "correction attempts — failing phase. Last hint: {}",
+                        process.getId(), phase.getName(), attempts, r.correctionHint());
+                state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
+                persistState(process, state);
+                return null;
+            }
+            attempts++;
+            log.info("Vogon id='{}' phase '{}' decider correction {}/{} — re-prompt",
+                    process.getId(), phase.getName(), attempts, max);
+            try {
+                driveWorkerTurn(child, process.getId(),
+                        "Your last reply did not match the decider options. "
+                                + r.correctionHint());
+                reply = readLastAssistantText(process.getTenantId(),
+                        process.getSessionId(), child.getId());
+            } catch (RuntimeException e) {
+                log.warn("Vogon id='{}' phase '{}' correction re-prompt failed: {}",
+                        process.getId(), phase.getName(), e.toString());
+                state.getFlags().put(phaseFlag(phase.getName(), "failed"), true);
+                persistState(process, state);
+                return null;
+            }
+        }
+    }
+
+    /**
+     * Apply a forced branch from a Scorer/Decider case onto the path
+     * and process status. {@code CONTINUE} should never reach this —
+     * the caller skips the call in that case.
+     */
+    private void applyBranchOverride(
+            ThinkProcessDocument process,
+            StrategySpec strategy,
+            StrategyState state,
+            PhaseSpec donePhase,
+            BranchActionExecutor.Result override) {
+        switch (override.kind()) {
+            case CONTINUE -> { /* unreachable — caller filters */ }
+            case JUMPED -> {
+                // Path already mutated by BranchActionExecutor; persist
+                // and trigger the next turn so the new phase is picked up.
+                persistState(process, state);
+                log.info("Vogon id='{}' phase '{}' scorer JUMPED → '{}'",
+                        process.getId(), donePhase.getName(), override.detail());
+                eventEmitter.scheduleTurn(process.getId());
+            }
+            case EXIT_LOOP -> {
+                BranchAction.ExitOutcome outcome = override.exitOutcome() == null
+                        ? BranchAction.ExitOutcome.OK : override.exitOutcome();
+                PhaseAdvancer.Outcome out = PhaseAdvancer.forceExitLoop(
+                        strategy, state, outcome);
+                persistState(process, state);
+                log.info("Vogon id='{}' phase '{}' scorer EXIT_LOOP {} → outer outcome {}",
+                        process.getId(), donePhase.getName(), outcome, out);
+                handleAdvancerOutcome(process, strategy, state, out);
+            }
+            case EXIT_STRATEGY -> {
+                BranchAction.ExitOutcome outcome = override.exitOutcome() == null
+                        ? BranchAction.ExitOutcome.OK : override.exitOutcome();
+                state.getCurrentPhasePath().clear();
+                state.setStrategyComplete(true);
+                persistState(process, state);
+                log.info("Vogon id='{}' phase '{}' scorer EXIT_STRATEGY {}",
+                        process.getId(), donePhase.getName(), outcome);
+                thinkProcessService.closeProcess(process.getId(),
+                        outcome == BranchAction.ExitOutcome.FAIL
+                                ? CloseReason.STALE : CloseReason.DONE);
+            }
+            case ESCALATED -> {
+                // Sub-strategy spawn comes with §2.8 escalation block
+                // wiring. For now log and fail the process so the parent
+                // sees a clean STALE event with the escalation reason.
+                log.warn("Vogon id='{}' phase '{}' scorer ESCALATED → '{}' "
+                                + "(sub-strategy spawn not yet implemented)",
+                        process.getId(), donePhase.getName(), override.detail());
+                state.getFlags().put("__scorerEscalation__", override.detail());
+                persistState(process, state);
+                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            }
+            case PAUSED -> {
+                log.info("Vogon id='{}' phase '{}' scorer PAUSED reason='{}'",
+                        process.getId(), donePhase.getName(), override.detail());
+                persistState(process, state);
+                thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.BLOCKED);
+            }
+        }
+    }
+
+    private void handleAdvancerOutcome(
+            ThinkProcessDocument process,
+            StrategySpec strategy,
+            StrategyState state,
+            PhaseAdvancer.Outcome out) {
+        switch (out) {
+            case CONTINUE -> eventEmitter.scheduleTurn(process.getId());
+            case STRATEGY_DONE -> {
+                log.info("Vogon id='{}' strategy '{}' done after scorer-forced exit",
+                        process.getId(), strategy.getName());
+                thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
+            }
+            case STRATEGY_FAILED, ESCALATION_NEEDED -> {
+                log.warn("Vogon id='{}' strategy '{}' STALE after scorer-forced exit "
+                                + "(outcome={})",
+                        process.getId(), strategy.getName(), out);
+                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            }
+        }
+    }
+
     private void advanceToNext(
             ThinkProcessDocument process,
             StrategySpec strategy,
             StrategyState state,
             PhaseSpec done) {
-        state.getPhaseHistory().add(done.getName());
-        int idx = -1;
-        for (int i = 0; i < strategy.getPhases().size(); i++) {
-            if (strategy.getPhases().get(i).getName().equals(done.getName())) {
-                idx = i;
-                break;
+        PhaseAdvancer.Outcome outcome = PhaseAdvancer.advanceAfter(strategy, state, done);
+        persistState(process, state);
+        switch (outcome) {
+            case CONTINUE -> log.info("Vogon id='{}' phase '{}' DONE → leaf '{}'",
+                    process.getId(), done.getName(), currentLeafPhaseName(state));
+            case STRATEGY_DONE -> log.info("Vogon id='{}' strategy '{}' all phases done",
+                    process.getId(), strategy.getName());
+            case STRATEGY_FAILED -> {
+                log.warn("Vogon id='{}' strategy '{}' loop EXIT_FAIL — failing process",
+                        process.getId(), strategy.getName());
+                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
+            }
+            case ESCALATION_NEEDED -> {
+                // Phase B: §2.8 escalation block isn't wired yet, so we
+                // notify the parent and fail the process with the
+                // loopExhausted reason. The §2.8 implementation will
+                // intercept this branch and run the matching rule.
+                log.warn("Vogon id='{}' loop exhausted in strategy '{}' — "
+                                + "no escalation block yet, notifying parent",
+                        process.getId(), strategy.getName());
+                thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             }
         }
-        if (idx < 0 || idx + 1 >= strategy.getPhases().size()) {
-            state.setCurrentPhaseName(null);
-            state.setStrategyComplete(true);
-            log.info("Vogon id='{}' strategy '{}' all phases done",
-                    process.getId(), strategy.getName());
-        } else {
-            String nextName = strategy.getPhases().get(idx + 1).getName();
-            state.setCurrentPhaseName(nextName);
-            log.info("Vogon id='{}' phase '{}' DONE → next phase '{}'",
-                    process.getId(), done.getName(), nextName);
-        }
-        persistState(process, state);
     }
 
     // ──────────────────── summarizeForParent ────────────────────
@@ -764,7 +1042,7 @@ public class VogonEngine implements ThinkEngine {
      * Builds a {@link de.mhus.vance.api.progress.PlanPayload} from the
      * strategy + current state and pushes it to the user-progress
      * side-channel. Each phase becomes a child of the strategy root;
-     * status is derived from {@code phaseHistory}, {@code currentPhaseName},
+     * status is derived from {@code phaseHistory}, {@code currentPhasePath},
      * and {@code pendingCheckpoint}.
      */
     private void emitPlanSnapshot(
@@ -775,7 +1053,7 @@ public class VogonEngine implements ThinkEngine {
         java.util.List<de.mhus.vance.api.progress.PlanNode> phaseNodes =
                 new java.util.ArrayList<>();
         java.util.Set<String> historySet = new java.util.HashSet<>(state.getPhaseHistory());
-        String current = state.getCurrentPhaseName();
+        String current = currentLeafPhaseName(state);
         boolean blocked = state.getPendingCheckpoint() != null;
         for (PhaseSpec p : strategy.getPhases()) {
             String status;

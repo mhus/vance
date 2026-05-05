@@ -15,8 +15,10 @@ import org.jspecify.annotations.Nullable;
  * left off.
  *
  * <p>See {@code specification/vogon-engine.md} §6 for the full
- * shape. v1 uses {@code currentPhaseName} (linear phase list); v2
- * will switch to {@code currentPhasePath} for nested loops/forks.
+ * shape. The current phase is addressed via
+ * {@link #currentPhasePath} — a stack with one segment per nesting
+ * level (linear phases have a one-element path, loop sub-phases
+ * carry {@code [<loopName>, <subPhaseName>]}).
  */
 @Data
 @Builder
@@ -28,37 +30,50 @@ public class StrategyState {
     private String strategy = "";
     private String strategyVersion = "1";
 
-    /** Current phase by name. {@code null} when the strategy has
-     *  finished (process is on its way to DONE). */
-    private @Nullable String currentPhaseName;
+    /** Path stack to the active phase. Each segment is a phase name
+     *  on its level (top-level for the outermost, sub-phase under a
+     *  loop for nested levels). Empty list ⇔ strategy finished and
+     *  on its way to DONE. */
+    @Builder.Default
+    private java.util.List<String> currentPhasePath = new java.util.ArrayList<>();
 
-    /** Names of phases already completed. Audit + ${phases.X.…}
+    /** Qualified names of phases already completed. Linear phases
+     *  appear as their bare name, loop sub-phases as
+     *  {@code <loopName>/<subPhaseName>}. Audit + {@code ${phases.X.…}}
      *  substitution lookup. */
     @Builder.Default
     private java.util.List<String> phaseHistory = new java.util.ArrayList<>();
 
     /** Strategy-wide flags. Sources:
      *  <ul>
-     *    <li>{@code <phase>.completed} / {@code <phase>.failed} —
+     *    <li>{@code <phase>_completed} / {@code <phase>_failed} —
      *        worker DONE/FAILED transitions.</li>
-     *    <li>Checkpoint answers under {@code storeAs} key.</li>
+     *    <li>{@code <loopName>_max_iterations_reached} — loop counter
+     *        cap reached.</li>
+     *    <li>Checkpoint answers + scorer/decider results under
+     *        {@code storeAs} key (and per-field sub-keys).</li>
+     *    <li>{@code setFlag} branch actions.</li>
      *  </ul>
      */
     @Builder.Default
     private Map<String, Object> flags = new LinkedHashMap<>();
 
-    /** Per-phase loop counter (v2 — currently unused, included so
-     *  v1 state docs are forward-compatible with v2 readers). */
+    /** Per-loop iteration counter. Keyed by loop-phase name. Set to
+     *  1 on first entry, incremented on every re-entry. */
     @Builder.Default
     private Map<String, Integer> loopCounters = new LinkedHashMap<>();
 
-    /** Mongo-id of the worker process spawned for each
-     *  worker-phase. Keys are phase names. */
+    /** Mongo-id of the worker process spawned for each worker-phase.
+     *  Keys are qualified phase names ({@code <loopName>/<subPhaseName>}
+     *  for loop sub-phases). Re-entry into a loop invalidates these
+     *  for the loop body so the next iteration spawns fresh workers. */
     @Builder.Default
     private Map<String, String> workerProcessIds = new LinkedHashMap<>();
 
     /** Per-phase artifact storage — typically the worker's last
-     *  reply text under key {@code "result"}. */
+     *  reply text under key {@code "result"} plus an optional
+     *  {@code "scorerOutput"}/{@code "deciderOutput"} entry. Keys are
+     *  qualified phase names like {@link #workerProcessIds}. */
     @Builder.Default
     private Map<String, Map<String, Object>> phaseArtifacts = new LinkedHashMap<>();
 

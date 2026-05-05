@@ -1,9 +1,16 @@
 package de.mhus.vance.brain.vogon;
 
+import de.mhus.vance.api.vogon.BranchAction;
 import de.mhus.vance.api.vogon.CheckpointSpec;
 import de.mhus.vance.api.vogon.CheckpointType;
+import de.mhus.vance.api.vogon.DeciderCase;
+import de.mhus.vance.api.vogon.DeciderSpec;
 import de.mhus.vance.api.vogon.GateSpec;
+import de.mhus.vance.api.vogon.LoopSpec;
 import de.mhus.vance.api.vogon.PhaseSpec;
+import de.mhus.vance.api.vogon.ScoreMatch;
+import de.mhus.vance.api.vogon.ScorerCase;
+import de.mhus.vance.api.vogon.ScorerSpec;
 import de.mhus.vance.api.vogon.StrategySpec;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
@@ -105,7 +112,12 @@ public class StrategyResolver {
     // ──────────────────── parsing ────────────────────
 
     @SuppressWarnings("unchecked")
-    private static StrategySpec parseStrategy(String yamlContent, String pathHint) {
+    /**
+     * Parse a single strategy YAML document. Exposed as a static
+     * test entry-point so unit tests can exercise the YAML schema
+     * without booting Spring or wiring a {@code DocumentService}.
+     */
+    public static StrategySpec parseStrategy(String yamlContent, String pathHint) {
         Object parsed = new Yaml().load(yamlContent);
         if (!(parsed instanceof Map<?, ?> m)) {
             throw new IllegalStateException(pathHint + ": top-level YAML must be a map");
@@ -141,13 +153,364 @@ public class StrategyResolver {
 
     private static PhaseSpec parsePhase(Map<String, Object> spec, String trail) {
         String name = requireString(spec, "name", trail);
+        ScorerSpec scorer = parseScorer(spec.get("scorer"), trail);
+        DeciderSpec decider = parseDecider(spec.get("decider"), trail);
+        if (scorer != null && decider != null) {
+            throw new IllegalStateException(
+                    trail + " phase '" + name
+                            + "': scorer and decider are mutually exclusive");
+        }
+        LoopSpec loop = parseLoop(spec.get("loop"), trail + " loop");
+        if (loop != null
+                && (spec.get("worker") != null
+                        || spec.get("checkpoint") != null
+                        || scorer != null
+                        || decider != null)) {
+            throw new IllegalStateException(
+                    trail + " phase '" + name
+                            + "': loop-phase must not also declare worker/"
+                            + "checkpoint/scorer/decider");
+        }
         return PhaseSpec.builder()
                 .name(name)
                 .worker(optString(spec.get("worker")))
                 .workerInput(optString(spec.get("workerInput")))
                 .checkpoint(parseCheckpoint(spec.get("checkpoint"), trail))
                 .gate(parseGate(spec.get("gate"), trail))
+                .loop(loop)
+                .scorer(scorer)
+                .decider(decider)
                 .build();
+    }
+
+    private static @Nullable LoopSpec parseLoop(@Nullable Object raw, String trail) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> m)) {
+            throw new IllegalStateException(trail + " must be a map");
+        }
+        Map<String, Object> spec = toStringMap(m);
+        Object subPhasesRaw = spec.get("subPhases");
+        if (!(subPhasesRaw instanceof List<?> subList) || subList.isEmpty()) {
+            throw new IllegalStateException(
+                    trail + ": subPhases must be a non-empty list");
+        }
+        List<PhaseSpec> subPhases = new ArrayList<>(subList.size());
+        for (int i = 0; i < subList.size(); i++) {
+            Object sp = subList.get(i);
+            if (!(sp instanceof Map<?, ?> spm)) {
+                throw new IllegalStateException(
+                        trail + " subPhases[" + i + "] is not a map");
+            }
+            PhaseSpec sub = parsePhase(toStringMap(spm), trail + " subPhases[" + i + "]");
+            if (sub.getLoop() != null) {
+                throw new IllegalStateException(
+                        trail + " subPhases[" + i + "]: nested loops are not supported");
+            }
+            subPhases.add(sub);
+        }
+        int maxIterations = 1;
+        Object maxRaw = spec.get("maxIterations");
+        if (maxRaw instanceof Number n) {
+            maxIterations = n.intValue();
+        } else if (maxRaw != null) {
+            throw new IllegalStateException(
+                    trail + ".maxIterations must be a number");
+        }
+        if (maxIterations < 1) {
+            throw new IllegalStateException(
+                    trail + ".maxIterations must be >= 1");
+        }
+        LoopSpec.OnMaxReached onMax = LoopSpec.OnMaxReached.ESCALATE;
+        Object onMaxRaw = spec.get("onMaxReached");
+        if (onMaxRaw instanceof String s && !s.isBlank()) {
+            String norm = s.trim().toLowerCase().replace('-', '_');
+            switch (norm) {
+                case "escalate" -> onMax = LoopSpec.OnMaxReached.ESCALATE;
+                case "exit_ok", "exitok" -> onMax = LoopSpec.OnMaxReached.EXIT_OK;
+                case "exit_fail", "exitfail" -> onMax = LoopSpec.OnMaxReached.EXIT_FAIL;
+                default -> throw new IllegalStateException(
+                        trail + ".onMaxReached unknown value: " + s);
+            }
+        }
+        return LoopSpec.builder()
+                .until(parseGate(spec.get("until"), trail + ".until"))
+                .maxIterations(maxIterations)
+                .onMaxReached(onMax)
+                .subPhases(subPhases)
+                .build();
+    }
+
+    private static @Nullable ScorerSpec parseScorer(@Nullable Object raw, String trail) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> m)) {
+            throw new IllegalStateException(trail + ".scorer must be a map");
+        }
+        Map<String, Object> spec = toStringMap(m);
+        String storeAs = requireString(spec, "storeAs", trail + ".scorer");
+        Object casesRaw = spec.get("cases");
+        if (!(casesRaw instanceof List<?> caseList) || caseList.isEmpty()) {
+            throw new IllegalStateException(
+                    trail + ".scorer.cases must be a non-empty list");
+        }
+        List<ScorerCase> cases = new ArrayList<>(caseList.size());
+        for (int i = 0; i < caseList.size(); i++) {
+            Object c = caseList.get(i);
+            if (!(c instanceof Map<?, ?> cm)) {
+                throw new IllegalStateException(
+                        trail + ".scorer.cases[" + i + "] is not a map");
+            }
+            cases.add(parseScorerCase(toStringMap(cm), trail + ".scorer.cases[" + i + "]"));
+        }
+        // Validate: defaultMatch only on the last case.
+        for (int i = 0; i < cases.size() - 1; i++) {
+            if (cases.get(i).getWhen().isDefaultMatch()) {
+                throw new IllegalStateException(
+                        trail + ".scorer.cases[" + i
+                                + "]: default-match must be the last case");
+            }
+        }
+        Integer maxCorrections = optInt(spec.get("maxCorrections"));
+        if (maxCorrections != null && maxCorrections < 0) {
+            throw new IllegalStateException(
+                    trail + ".scorer.maxCorrections must be >= 0");
+        }
+        return ScorerSpec.builder()
+                .schema(toStringMap(spec.get("schema")))
+                .storeAs(storeAs)
+                .cases(cases)
+                .maxCorrections(maxCorrections == null ? 2 : maxCorrections)
+                .build();
+    }
+
+    private static ScorerCase parseScorerCase(Map<String, Object> spec, String trail) {
+        Object whenRaw = spec.get("when");
+        if (!(whenRaw instanceof Map<?, ?> wm)) {
+            throw new IllegalStateException(trail + ".when must be a map");
+        }
+        ScoreMatch match = parseScoreMatch(toStringMap(wm), trail + ".when");
+        Object doRaw = spec.get("do");
+        if (!(doRaw instanceof List<?> doList)) {
+            throw new IllegalStateException(trail + ".do must be a list");
+        }
+        List<BranchAction> actions = parseActionList(doList, trail + ".do");
+        return ScorerCase.builder().when(match).doActions(actions).build();
+    }
+
+    private static ScoreMatch parseScoreMatch(Map<String, Object> spec, String trail) {
+        ScoreMatch.ScoreMatchBuilder b = ScoreMatch.builder();
+        int set = 0;
+        if (spec.get("scoreAtLeast") instanceof Number n) {
+            b.scoreAtLeast(n.doubleValue());
+            set++;
+        }
+        if (spec.get("scoreBelow") instanceof Number n) {
+            b.scoreBelow(n.doubleValue());
+            set++;
+        }
+        Object between = spec.get("scoreBetween");
+        if (between instanceof List<?> l) {
+            if (l.size() != 2 || !(l.get(0) instanceof Number) || !(l.get(1) instanceof Number)) {
+                throw new IllegalStateException(
+                        trail + ".scoreBetween must be a [lo, hi] pair of numbers");
+            }
+            b.scoreBetween(new double[] {
+                    ((Number) l.get(0)).doubleValue(),
+                    ((Number) l.get(1)).doubleValue() });
+            set++;
+        }
+        Object def = spec.get("default");
+        if (def != null) {
+            if (!(def instanceof Boolean dv) || !dv) {
+                throw new IllegalStateException(
+                        trail + ".default must be the literal 'true'");
+            }
+            b.defaultMatch(true);
+            set++;
+        }
+        if (set != 1) {
+            throw new IllegalStateException(
+                    trail + ": exactly one of scoreAtLeast/scoreBelow/scoreBetween/"
+                            + "default must be set (got " + set + ")");
+        }
+        return b.build();
+    }
+
+    private static @Nullable DeciderSpec parseDecider(@Nullable Object raw, String trail) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> m)) {
+            throw new IllegalStateException(trail + ".decider must be a map");
+        }
+        Map<String, Object> spec = toStringMap(m);
+        String storeAs = requireString(spec, "storeAs", trail + ".decider");
+        List<String> options = asStringList(spec.get("options"));
+        if (options.isEmpty()) {
+            options = new ArrayList<>(List.of("yes", "no"));
+        }
+        Object casesRaw = spec.get("cases");
+        if (!(casesRaw instanceof List<?> caseList) || caseList.isEmpty()) {
+            throw new IllegalStateException(
+                    trail + ".decider.cases must be a non-empty list");
+        }
+        List<DeciderCase> cases = new ArrayList<>(caseList.size());
+        for (int i = 0; i < caseList.size(); i++) {
+            Object c = caseList.get(i);
+            if (!(c instanceof Map<?, ?> cm)) {
+                throw new IllegalStateException(
+                        trail + ".decider.cases[" + i + "] is not a map");
+            }
+            Map<String, Object> cs = toStringMap(cm);
+            String when = requireDeciderWhen(cs, trail + ".decider.cases[" + i + "]");
+            if (!options.contains(when.toLowerCase())
+                    && !options.contains(when)) {
+                throw new IllegalStateException(
+                        trail + ".decider.cases[" + i + "].when='" + when
+                                + "' must be one of options=" + options);
+            }
+            Object doRaw = cs.get("do");
+            if (!(doRaw instanceof List<?> doList)) {
+                throw new IllegalStateException(
+                        trail + ".decider.cases[" + i + "].do must be a list");
+            }
+            cases.add(DeciderCase.builder()
+                    .when(when)
+                    .doActions(parseActionList(doList, trail + ".decider.cases[" + i + "].do"))
+                    .build());
+        }
+        Integer maxCorrections = optInt(spec.get("maxCorrections"));
+        if (maxCorrections != null && maxCorrections < 0) {
+            throw new IllegalStateException(
+                    trail + ".decider.maxCorrections must be >= 0");
+        }
+        return DeciderSpec.builder()
+                .options(options)
+                .storeAs(storeAs)
+                .cases(cases)
+                .maxCorrections(maxCorrections == null ? 2 : maxCorrections)
+                .build();
+    }
+
+    private static List<BranchAction> parseActionList(List<?> raw, String trail) {
+        List<BranchAction> out = new ArrayList<>(raw.size());
+        for (int i = 0; i < raw.size(); i++) {
+            Object item = raw.get(i);
+            if (!(item instanceof Map<?, ?> mm)) {
+                throw new IllegalStateException(
+                        trail + "[" + i + "] is not a map (each action is a single-key map)");
+            }
+            Map<String, Object> entry = toStringMap(mm);
+            if (entry.size() != 1) {
+                throw new IllegalStateException(
+                        trail + "[" + i + "] must have exactly one key (action name)");
+            }
+            Map.Entry<String, Object> e = entry.entrySet().iterator().next();
+            BranchAction action = parseSingleAction(e.getKey(), e.getValue(),
+                    trail + "[" + i + "]." + e.getKey());
+            if (action.terminal() && i < raw.size() - 1) {
+                throw new IllegalStateException(
+                        trail + "[" + i + "].'" + e.getKey()
+                                + "' is terminal — actions after it are unreachable");
+            }
+            out.add(action);
+        }
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static BranchAction parseSingleAction(String key, @Nullable Object value, String trail) {
+        return switch (key) {
+            case "setFlag" -> {
+                if (value instanceof String s && !s.isBlank()) {
+                    yield new BranchAction.SetFlag(s, Boolean.TRUE);
+                }
+                if (value instanceof Map<?, ?> m && m.size() == 1) {
+                    Map.Entry<?, ?> e = m.entrySet().iterator().next();
+                    yield new BranchAction.SetFlag(String.valueOf(e.getKey()), e.getValue());
+                }
+                throw new IllegalStateException(
+                        trail + " must be 'setFlag: name' or 'setFlag: { name: value }'");
+            }
+            case "setFlags" -> {
+                List<String> names = asStringList(value);
+                if (names.isEmpty()) {
+                    throw new IllegalStateException(trail + " must be a non-empty list of flag names");
+                }
+                yield new BranchAction.SetFlags(names);
+            }
+            case "notifyParent" -> {
+                if (!(value instanceof Map<?, ?> m)) {
+                    throw new IllegalStateException(trail + " must be a map with 'type' (and optional 'summary')");
+                }
+                Map<String, Object> nm = toStringMap(m);
+                String type = requireString(nm, "type", trail);
+                yield new BranchAction.NotifyParent(type, optString(nm.get("summary")));
+            }
+            case "escalateTo" -> {
+                if (value instanceof String s && !s.isBlank()) {
+                    yield new BranchAction.EscalateTo(s);
+                }
+                if (value instanceof Map<?, ?> m) {
+                    Map<String, Object> em = toStringMap(m);
+                    String strat = requireString(em, "strategy", trail);
+                    yield new BranchAction.EscalateTo(strat, toStringMap(em.get("params")));
+                }
+                throw new IllegalStateException(
+                        trail + " must be 'escalateTo: <strategy>' or 'escalateTo: { strategy: …, params: … }'");
+            }
+            case "jumpToPhase" -> {
+                if (!(value instanceof String s) || s.isBlank()) {
+                    throw new IllegalStateException(trail + " must be a non-empty phase name");
+                }
+                yield new BranchAction.JumpToPhase(s);
+            }
+            case "pause" -> {
+                String reason = null;
+                if (value instanceof String s && !s.isBlank()) {
+                    reason = s;
+                } else if (value instanceof Map<?, ?> m) {
+                    reason = optString(toStringMap(m).get("reason"));
+                }
+                yield new BranchAction.Pause(reason);
+            }
+            case "exitLoop" -> new BranchAction.ExitLoop(parseExitOutcome(value, trail));
+            case "exitStrategy" -> new BranchAction.ExitStrategy(parseExitOutcome(value, trail));
+            default -> throw new IllegalStateException(
+                    trail + " unknown action '" + key + "'");
+        };
+    }
+
+    private static BranchAction.ExitOutcome parseExitOutcome(@Nullable Object value, String trail) {
+        if (value == null) return BranchAction.ExitOutcome.OK;
+        if (value instanceof String s) {
+            return switch (s.trim().toLowerCase()) {
+                case "ok" -> BranchAction.ExitOutcome.OK;
+                case "fail" -> BranchAction.ExitOutcome.FAIL;
+                default -> throw new IllegalStateException(
+                        trail + " must be 'ok' or 'fail' (got '" + s + "')");
+            };
+        }
+        throw new IllegalStateException(trail + " must be a string ('ok' or 'fail')");
+    }
+
+    /**
+     * Resolve a decider {@code when:} value to a string. SnakeYAML 1.x
+     * parses unquoted {@code yes} / {@code no} (and {@code on} / {@code off})
+     * to booleans — so {@code when: yes} arrives here as
+     * {@link Boolean#TRUE}. Convert booleans back to {@code "yes"} /
+     * {@code "no"} so authors can write the natural form without
+     * remembering to quote.
+     */
+    private static String requireDeciderWhen(Map<String, Object> spec, String trail) {
+        Object raw = spec.get("when");
+        if (raw instanceof String s && !s.isBlank()) return s;
+        if (raw instanceof Boolean b) return b ? "yes" : "no";
+        throw new IllegalStateException(
+                trail + " missing required string 'when'");
+    }
+
+    private static @Nullable Integer optInt(@Nullable Object raw) {
+        if (raw == null) return null;
+        if (raw instanceof Number n) return n.intValue();
+        throw new IllegalStateException("expected integer, got " + raw.getClass().getSimpleName());
     }
 
     private static @Nullable CheckpointSpec parseCheckpoint(@Nullable Object raw, String trail) {

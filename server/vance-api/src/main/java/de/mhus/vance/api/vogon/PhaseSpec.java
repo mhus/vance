@@ -13,12 +13,16 @@ import org.jspecify.annotations.Nullable;
  *       worker's DONE event (worker-phase).</li>
  *   <li>Pause and ask the user via {@link #checkpoint}
  *       (checkpoint-phase).</li>
+ *   <li>Iterate sub-phases via {@link #loop} until a gate is
+ *       satisfied (loop-phase, see {@link LoopSpec}).</li>
  *   <li>Pure gate evaluation — neither worker nor checkpoint set,
  *       just {@link #gate} re-checked on every turn.</li>
  * </ul>
  *
- * <p>v1 supports worker- and checkpoint-phases. Loop / fork
- * primitives come in v2 (see spec §12).
+ * <p>A worker-phase may additionally carry exactly one of
+ * {@link #scorer} or {@link #decider} to extract a structured
+ * decision from the worker reply. {@link #scorer}/{@link #decider}
+ * are mutually exclusive — strategy-load validation rejects mixing.
  */
 @Data
 @Builder
@@ -45,4 +49,17 @@ public class PhaseSpec {
      *  completed. {@code null} = "no gate beyond the phase's
      *  intrinsic activity". */
     private @Nullable GateSpec gate;
+
+    /** Loop-phase body. When non-null this is a loop-phase and
+     *  {@link #worker}/{@link #checkpoint}/{@link #scorer}/{@link #decider}
+     *  must all be null. */
+    private @Nullable LoopSpec loop;
+
+    /** Score-based switch evaluated after worker DONE. Mutually
+     *  exclusive with {@link #decider}. */
+    private @Nullable ScorerSpec scorer;
+
+    /** Categorical match evaluated after worker DONE. Mutually
+     *  exclusive with {@link #scorer}. */
+    private @Nullable DeciderSpec decider;
 }

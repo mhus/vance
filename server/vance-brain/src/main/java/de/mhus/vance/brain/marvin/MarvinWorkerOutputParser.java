@@ -58,27 +58,12 @@ public class MarvinWorkerOutputParser {
     /**
      * Strips wrapping markdown / prose around the JSON. Picks the
      * LAST matching object in the reply so the trailing schema
-     * block wins over any earlier example/quote.
+     * block wins over any earlier example/quote. Delegates to the
+     * shared {@link de.mhus.vance.shared.util.JsonReplyExtractor} so
+     * Marvin and Vogon (scorer) parse with identical semantics.
      */
     private static @Nullable String extractJsonObject(String raw) {
-        int end = raw.lastIndexOf('}');
-        if (end < 0) return null;
-        // Walk back from end looking for the matching '{'.
-        int depth = 0;
-        int start = -1;
-        for (int i = end; i >= 0; i--) {
-            char c = raw.charAt(i);
-            if (c == '}') depth++;
-            else if (c == '{') {
-                depth--;
-                if (depth == 0) {
-                    start = i;
-                    break;
-                }
-            }
-        }
-        if (start < 0) return null;
-        return raw.substring(start, end + 1);
+        return de.mhus.vance.shared.util.JsonReplyExtractor.extractLastObject(raw);
     }
 
     private Result validate(Map<String, Object> root) {

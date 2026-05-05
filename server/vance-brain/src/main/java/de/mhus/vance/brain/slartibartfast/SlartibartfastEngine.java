@@ -15,6 +15,7 @@ import de.mhus.vance.api.slartibartfast.ValidationCheck;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.slartibartfast.phases.ClassifyingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
@@ -85,6 +86,7 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final FramingPhase framingPhase;
     private final ConfirmingPhase confirmingPhase;
     private final GatheringPhase gatheringPhase;
+    private final ClassifyingPhase classifyingPhase;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -269,8 +271,12 @@ public class SlartibartfastEngine implements ThinkEngine {
                 }
             }
             case CLASSIFYING -> {
-                SlartibartfastPhases.stubClassifying(state);
-                state.setStatus(ArchitectStatus.DECOMPOSING);
+                classifyingPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
+                } else {
+                    state.setStatus(ArchitectStatus.DECOMPOSING);
+                }
             }
             case DECOMPOSING -> {
                 SlartibartfastPhases.stubDecomposing(state);

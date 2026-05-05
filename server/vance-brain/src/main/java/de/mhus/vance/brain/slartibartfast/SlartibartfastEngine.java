@@ -21,6 +21,8 @@ import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.DecomposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
+import de.mhus.vance.brain.slartibartfast.phases.ProposingPhase;
+import de.mhus.vance.brain.slartibartfast.phases.ValidatingPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -91,6 +93,8 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final ClassifyingPhase classifyingPhase;
     private final DecomposingPhase decomposingPhase;
     private final BindingPhase bindingPhase;
+    private final ProposingPhase proposingPhase;
+    private final ValidatingPhase validatingPhase;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -339,12 +343,23 @@ public class SlartibartfastEngine implements ThinkEngine {
                 }
             }
             case PROPOSING -> {
-                SlartibartfastPhases.stubProposing(state);
-                state.setStatus(ArchitectStatus.VALIDATING);
+                proposingPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
+                } else {
+                    state.setStatus(ArchitectStatus.VALIDATING);
+                }
             }
             case VALIDATING -> {
-                SlartibartfastPhases.stubValidating(state);
-                state.setStatus(ArchitectStatus.PERSISTING);
+                validatingPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
+                } else if (state.getPendingRecovery() != null) {
+                    // Stay in VALIDATING — next runTurn picks up the
+                    // recovery and rolls back to PROPOSING.
+                } else {
+                    state.setStatus(ArchitectStatus.PERSISTING);
+                }
             }
             case PERSISTING -> {
                 SlartibartfastPhases.stubPersisting(state);

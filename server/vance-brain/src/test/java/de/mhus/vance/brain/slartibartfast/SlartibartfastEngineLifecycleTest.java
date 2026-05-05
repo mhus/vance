@@ -22,6 +22,8 @@ import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.DecomposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
+import de.mhus.vance.brain.slartibartfast.phases.ProposingPhase;
+import de.mhus.vance.brain.slartibartfast.phases.ValidatingPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -53,6 +55,8 @@ class SlartibartfastEngineLifecycleTest {
     private ClassifyingPhase classifyingPhase;
     private DecomposingPhase decomposingPhase;
     private BindingPhase bindingPhase;
+    private ProposingPhase proposingPhase;
+    private ValidatingPhase validatingPhase;
     private ThinkEngineContext ctx;
 
     private SlartibartfastEngine engine;
@@ -69,6 +73,8 @@ class SlartibartfastEngineLifecycleTest {
         classifyingPhase = mock(ClassifyingPhase.class);
         decomposingPhase = mock(DecomposingPhase.class);
         bindingPhase = mock(BindingPhase.class);
+        proposingPhase = mock(ProposingPhase.class);
+        validatingPhase = mock(ValidatingPhase.class);
         ctx = mock(ThinkEngineContext.class);
         when(ctx.drainPending()).thenReturn(List.<SteerMessage>of());
 
@@ -118,11 +124,24 @@ class SlartibartfastEngineLifecycleTest {
             return null;
         }).when(bindingPhase).execute(any(), any(), any());
 
+        doAnswer(inv -> {
+            de.mhus.vance.api.slartibartfast.ArchitectState s = inv.getArgument(0);
+            de.mhus.vance.brain.slartibartfast.SlartibartfastPhases.stubProposing(s);
+            return null;
+        }).when(proposingPhase).execute(any(), any(), any());
+
+        doAnswer(inv -> {
+            de.mhus.vance.api.slartibartfast.ArchitectState s = inv.getArgument(0);
+            de.mhus.vance.brain.slartibartfast.SlartibartfastPhases.stubValidating(s);
+            return null;
+        }).when(validatingPhase).execute(any(), any(), any());
+
         engine = new SlartibartfastEngine(
                 thinkProcessService, eventEmitter, laneScheduler,
                 objectMapper, framingPhase, confirmingPhase,
                 gatheringPhase, classifyingPhase,
-                decomposingPhase, bindingPhase);
+                decomposingPhase, bindingPhase,
+                proposingPhase, validatingPhase);
     }
 
     @Test

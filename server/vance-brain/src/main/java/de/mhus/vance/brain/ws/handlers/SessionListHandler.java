@@ -85,6 +85,8 @@ public class SessionListHandler implements WsHandler {
                 .bound(doc.getBoundConnectionId() != null)
                 .displayName(doc.getDisplayName())
                 .profile(doc.getProfile())
+                .firstUserMessage(doc.getFirstUserMessage())
+                .lastMessagePreview(doc.getLastMessagePreview())
                 .build();
     }
 

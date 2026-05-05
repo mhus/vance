@@ -75,6 +75,7 @@ public class ProjectController {
                 .title(doc.getTitle())
                 .projectGroupId(doc.getProjectGroupId())
                 .enabled(doc.isEnabled())
+                .createdAtMs(doc.getCreatedAt() == null ? null : doc.getCreatedAt().toEpochMilli())
                 .build();
     }
 }

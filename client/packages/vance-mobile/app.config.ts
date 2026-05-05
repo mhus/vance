@@ -48,11 +48,26 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: 'de.mhus.vance.mobile',
     permissions: ['RECORD_AUDIO'],
   },
-  // Expo config plugins. `expo-secure-store` registers itself here so
-  // its native module (Keychain on iOS, Keystore on Android) is wired
-  // into the prebuild output. Adding additional config plugins (e.g.
-  // for `@react-native-voice/voice` in Phase F) goes in this array.
-  plugins: ['expo-secure-store'],
+  // Expo config plugins. Each native module that ships its own
+  // `app.plugin.js` registers here so the prebuild output wires the
+  // iOS / Android sides correctly.
+  //
+  // Note: `expo-speech-recognition` provides Phase F's
+  // push-to-talk dictation. Its native module ships only via a
+  // development build — Expo Go does not bundle it. The mic button
+  // detects this at runtime and disables itself with a hint when
+  // the module is not loadable.
+  plugins: [
+    'expo-secure-store',
+    [
+      'expo-speech-recognition',
+      {
+        microphonePermission: 'Vance uses the microphone to dictate chat input.',
+        speechRecognitionPermission:
+          'Vance uses speech recognition to convert your spoken input to chat text.',
+      },
+    ],
+  ],
   extra: {
     brainUrl: process.env.VANCE_BRAIN_URL ?? 'http://localhost:8080',
   },

@@ -27,4 +27,12 @@ public class ProjectSummary {
     private @Nullable String projectGroupId;
 
     private boolean enabled;
+
+    /**
+     * Creation timestamp in milliseconds since epoch — used by clients
+     * that want a "newest first" sort order (e.g. the Mobile project
+     * picker). May be {@code null} for legacy seed data that was
+     * imported before this field was tracked.
+     */
+    private @Nullable Long createdAtMs;
 }

@@ -12,4 +12,6 @@ export interface SessionSummary {
   bound: boolean;
   displayName?: string;
   profile?: string;
+  firstUserMessage?: string;
+  lastMessagePreview?: string;
 }

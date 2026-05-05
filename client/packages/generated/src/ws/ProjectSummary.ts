@@ -8,4 +8,5 @@ export interface ProjectSummary {
   title?: string;
   projectGroupId?: string;
   enabled: boolean;
+  createdAtMs?: number;
 }

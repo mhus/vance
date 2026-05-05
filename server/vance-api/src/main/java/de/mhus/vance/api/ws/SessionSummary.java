@@ -48,4 +48,21 @@ public class SessionSummary {
      * surface this so users can spot incompatible sessions before picking.
      */
     private @Nullable String profile;
+
+    /**
+     * First USER-role chat message in this session, truncated to ≤250
+     * characters. Set once on the first user message and never
+     * overwritten — useful as the session's stable "topic" headline
+     * in pickers. {@code null} for fresh sessions that haven't seen
+     * a user message yet.
+     */
+    private @Nullable String firstUserMessage;
+
+    /**
+     * Most recent chat message in this session, truncated to ≤250
+     * characters. Updated atomically on every chat append. Pickers
+     * use it as a "what happened last" preview without having to
+     * re-fetch the chat history.
+     */
+    private @Nullable String lastMessagePreview;
 }

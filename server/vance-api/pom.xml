@@ -13,6 +13,17 @@
     <description>Vance API contract — DTOs, enums, and WebSocket/REST message types exchanged between clients and the Brain. No Spring, no persistence, no business logic. Source of truth for later TypeScript generation.</description>
     <packaging>jar</packaging>
 
+    <properties>
+        <!--
+          Skips the post-generate pnpm step that rebuilds the dist/
+          of @vance/generated. Default: run it, so a fresh mvn install
+          keeps the TypeScript dist/ of @vance/generated in sync with
+          the Java DTO sources. CI / headless environments that don't
+          have pnpm on PATH can pass -Dskip.pnpm=true to skip it.
+        -->
+        <skip.pnpm>false</skip.pnpm>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>tools.jackson.core</groupId>
@@ -46,6 +57,44 @@
                         <configuration>
                             <inputDirectory>${project.basedir}/src/main/java</inputDirectory>
                             <outputDirectory>${project.basedir}/../../client/packages/generated/src</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              After the TS interfaces are written into client/packages/generated/src,
+              compile @vance/generated's dist/ so consumers (vance-face, vance-mobile)
+              actually see the new fields at runtime. Without this step, Mobile + Web
+              load a stale dist/index.js that pre-dates the latest Java edits and
+              imports of newly added DTO fields fail at module load (Mobile shows
+              up as a silent white screen).
+
+              Skippable via -Dskip.pnpm=true for CI / headless builds that have no
+              pnpm on PATH.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>build-generated-ts-dist</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>pnpm</executable>
+                            <workingDirectory>${project.basedir}/../../client</workingDirectory>
+                            <arguments>
+                                <argument>--filter</argument>
+                                <argument>@vance/generated</argument>
+                                <argument>--filter</argument>
+                                <argument>@vance/shared</argument>
+                                <argument>build</argument>
+                            </arguments>
+                            <skip>${skip.pnpm}</skip>
                         </configuration>
                     </execution>
                 </executions>

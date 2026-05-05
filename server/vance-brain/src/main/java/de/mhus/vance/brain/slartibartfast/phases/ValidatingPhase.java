@@ -50,6 +50,10 @@ public class ValidatingPhase {
             "recipe-has-name-engine";
     public static final String RULE_VOGON_STRATEGY_PARSES =
             "embedded-strategy-yaml-parses";
+    public static final String RULE_MARVIN_RECIPE_SHAPE =
+            "marvin-recipe-shape";
+    public static final String RULE_MARVIN_PROMPT_PREFIX =
+            "marvin-recipe-prompt-prefix-present";
     public static final String RULE_JUSTIFICATION_RESOLVES =
             "justification-subgoal-id-resolves";
     public static final String RULE_SCHEMA_TYPE_SUPPORTED =
@@ -70,20 +74,10 @@ public class ValidatingPhase {
         List<ValidationCheck> report = new ArrayList<>();
         ValidationCheck firstFail = null;
 
-        // 1. SchemaType supported (M4.2: only VOGON_STRATEGY).
-        if (state.getOutputSchemaType() != OutputSchemaType.VOGON_STRATEGY) {
-            ValidationCheck v = ValidationCheck.builder()
-                    .rule(RULE_SCHEMA_TYPE_SUPPORTED)
-                    .passed(false)
-                    .offendingId(null)
-                    .message("outputSchemaType "
-                            + state.getOutputSchemaType()
-                            + " not supported by current PROPOSING/VALIDATING "
-                            + "(only VOGON_STRATEGY in v1)")
-                    .build();
-            report.add(v);
-            firstFail = v;
-        }
+        // 1. SchemaType supported (M5: VOGON_STRATEGY + MARVIN_RECIPE).
+        // The supported set is enumerated below — adding a new
+        // OutputSchemaType requires a corresponding branch.
+        // No early-fail since both currently-defined values are OK.
 
         // 2. YAML parses at all.
         Map<String, Object> recipeMap = null;
@@ -120,7 +114,11 @@ public class ValidatingPhase {
             }
         }
 
-        // 3. Recipe has the expected shape: name + engine.
+        // 3. Recipe has the expected shape: name + matching engine.
+        String expectedEngine = switch (state.getOutputSchemaType()) {
+            case VOGON_STRATEGY -> "vogon";
+            case MARVIN_RECIPE -> "marvin";
+        };
         if (firstFail == null && recipeMap != null) {
             Object name = recipeMap.get("name");
             Object engine = recipeMap.get("engine");
@@ -138,24 +136,29 @@ public class ValidatingPhase {
                         .build();
                 report.add(v);
                 firstFail = v;
-            } else if (!"vogon".equals(((String) engine).trim())) {
+            } else if (!expectedEngine.equals(((String) engine).trim())) {
                 ValidationCheck v = ValidationCheck.builder()
                         .rule(RULE_RECIPE_SHAPE).passed(false)
                         .message("recipe yaml engine='" + engine
-                                + "' but VOGON_STRATEGY schemaType "
-                                + "requires engine='vogon'")
+                                + "' but " + state.getOutputSchemaType()
+                                + " schemaType requires engine='"
+                                + expectedEngine + "'")
                         .build();
                 report.add(v);
                 firstFail = v;
             } else {
                 report.add(ValidationCheck.builder()
                         .rule(RULE_RECIPE_SHAPE).passed(true)
-                        .message("recipe has name + engine: vogon").build());
+                        .message("recipe has name + engine: " + expectedEngine)
+                        .build());
             }
         }
 
-        // 4. Embedded strategyPlanYaml parses via Vogon's resolver.
-        if (firstFail == null && recipeMap != null) {
+        // 4a. VOGON_STRATEGY: embedded strategyPlanYaml parses via
+        //     Vogon's resolver.
+        // 4b. MARVIN_RECIPE: promptPrefix + (optional) params shape.
+        if (firstFail == null && recipeMap != null
+                && state.getOutputSchemaType() == OutputSchemaType.VOGON_STRATEGY) {
             Object params = recipeMap.get("params");
             if (!(params instanceof Map<?, ?> pm)) {
                 ValidationCheck v = ValidationCheck.builder()
@@ -192,6 +195,47 @@ public class ValidatingPhase {
                         firstFail = v;
                     }
                 }
+            }
+        }
+
+        // 4b. MARVIN_RECIPE: must have a non-blank promptPrefix
+        //     (the PLAN-LLM-instruction text) and a params block
+        //     (engine constraints, may be empty). Deep validation
+        //     of the constraint values would happen at runtime
+        //     when Marvin actually runs this recipe — here we
+        //     just check shape.
+        if (firstFail == null && recipeMap != null
+                && state.getOutputSchemaType() == OutputSchemaType.MARVIN_RECIPE) {
+            Object pp = recipeMap.get("promptPrefix");
+            if (!(pp instanceof String ppStr) || ppStr.isBlank()) {
+                ValidationCheck v = ValidationCheck.builder()
+                        .rule(RULE_MARVIN_PROMPT_PREFIX).passed(false)
+                        .message("MARVIN_RECIPE must declare a non-blank "
+                                + "top-level 'promptPrefix' (the PLAN-LLM "
+                                + "instruction)")
+                        .build();
+                report.add(v);
+                firstFail = v;
+            } else {
+                report.add(ValidationCheck.builder()
+                        .rule(RULE_MARVIN_PROMPT_PREFIX).passed(true)
+                        .message("promptPrefix present (" + ppStr.length()
+                                + " chars)").build());
+            }
+            Object params = recipeMap.get("params");
+            if (firstFail == null
+                    && (!(params instanceof Map<?, ?>))) {
+                ValidationCheck v = ValidationCheck.builder()
+                        .rule(RULE_MARVIN_RECIPE_SHAPE).passed(false)
+                        .message("MARVIN_RECIPE must declare a 'params' map "
+                                + "(may be empty for a default Marvin run)")
+                        .build();
+                report.add(v);
+                firstFail = v;
+            } else if (firstFail == null) {
+                report.add(ValidationCheck.builder()
+                        .rule(RULE_MARVIN_RECIPE_SHAPE).passed(true)
+                        .message("params block present").build());
             }
         }
 

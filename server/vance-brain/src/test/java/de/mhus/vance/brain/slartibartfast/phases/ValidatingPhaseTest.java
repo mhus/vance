@@ -72,13 +72,53 @@ class ValidatingPhaseTest {
     }
 
     @Test
-    void unsupportedSchemaType_triggersRecovery() {
+    void marvinRecipeWellFormed_passes() {
+        String yaml = """
+                name: x
+                description: x
+                engine: marvin
+                params:
+                  rootTaskKind: PLAN
+                  maxPlanCorrections: 2
+                promptPrefix: |
+                  Du bist der x-PLAN-Knoten.
+                  Erzeuge GENAU 1 Child:
+                    {"taskKind":"WORKER","goal":"...","taskSpec":{}}
+                """;
         ArchitectState state = stateWith(
                 RecipeDraft.builder()
                         .name("x")
                         .outputSchemaType(OutputSchemaType.MARVIN_RECIPE)
-                        .yaml("x")
-                        .justifications(Map.of("x", "sg1"))
+                        .yaml(yaml)
+                        .justifications(Map.of("promptPrefix", "sg1"))
+                        .build(),
+                List.of(subgoal("sg1")));
+        state.setOutputSchemaType(OutputSchemaType.MARVIN_RECIPE);
+
+        phase.execute(state, process, ctx);
+
+        assertThat(state.getPendingRecovery()).isNull();
+        assertThat(state.getValidationReport())
+                .filteredOn(v -> ValidatingPhase.RULE_MARVIN_PROMPT_PREFIX.equals(v.getRule()))
+                .extracting(ValidationCheck::isPassed)
+                .containsExactly(true);
+    }
+
+    @Test
+    void marvinRecipeMissingPromptPrefix_triggersRecovery() {
+        String yaml = """
+                name: x
+                description: x
+                engine: marvin
+                params:
+                  rootTaskKind: PLAN
+                """;
+        ArchitectState state = stateWith(
+                RecipeDraft.builder()
+                        .name("x")
+                        .outputSchemaType(OutputSchemaType.MARVIN_RECIPE)
+                        .yaml(yaml)
+                        .justifications(Map.of("name", "sg1"))
                         .build(),
                 List.of(subgoal("sg1")));
         state.setOutputSchemaType(OutputSchemaType.MARVIN_RECIPE);
@@ -87,7 +127,40 @@ class ValidatingPhaseTest {
 
         assertThat(state.getPendingRecovery()).isNotNull();
         assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_SCHEMA_TYPE_SUPPORTED);
+                .isEqualTo(ValidatingPhase.RULE_MARVIN_PROMPT_PREFIX);
+    }
+
+    @Test
+    void marvinRecipeWithVogonEngine_triggersRecovery() {
+        String yaml = """
+                name: x
+                description: x
+                engine: vogon
+                params:
+                  rootTaskKind: PLAN
+                promptPrefix: |
+                  ...
+                """;
+        ArchitectState state = stateWith(
+                RecipeDraft.builder()
+                        .name("x")
+                        .outputSchemaType(OutputSchemaType.MARVIN_RECIPE)
+                        .yaml(yaml)
+                        .justifications(Map.of("name", "sg1"))
+                        .build(),
+                List.of(subgoal("sg1")));
+        state.setOutputSchemaType(OutputSchemaType.MARVIN_RECIPE);
+
+        phase.execute(state, process, ctx);
+
+        assertThat(state.getPendingRecovery()).isNotNull();
+        assertThat(state.getPendingRecovery().getReason())
+                .isEqualTo(ValidatingPhase.RULE_RECIPE_SHAPE);
+        assertThat(state.getValidationReport())
+                .filteredOn(v -> !v.isPassed())
+                .extracting(ValidationCheck::getMessage)
+                .first().asString()
+                .contains("requires engine='marvin'");
     }
 
     @Test

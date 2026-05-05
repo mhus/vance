@@ -61,6 +61,84 @@ public class ProposingPhase {
     private static final int MAX_OUTPUT_CORRECTIONS = 2;
     private static final int PROMPT_PREVIEW_LIMIT = 500;
 
+    private static final String SYSTEM_PROMPT_MARVIN = """
+            Du bist der PROPOSING-Knoten der Slartibartfast-Engine.
+            Aus dem framed Goal und den Subgoals erzeugst du ein
+            Marvin-Recipe — eine PLAN-getriebene Decomposition mit
+            Constraints, die Marvins PLAN-Validator zur Laufzeit
+            durchsetzt.
+
+            HARTER OUTPUT-VERTRAG:
+            - Beende deinen Reply mit GENAU einem JSON-Objekt.
+            - KEIN Markdown-Codeblock (kein ```json … ```).
+            - KEIN Text vor oder nach dem JSON.
+
+            Schema:
+                {
+                  "name":           "<recipe-name, kebab-case>",
+                  "yaml":           "<full recipe YAML, see structure below>",
+                  "justifications": {
+                    "params.maxPlanCorrections": "<sg-id>",
+                    "promptPrefix":              "<sg-id>",
+                    ...
+                  },
+                  "confidence":     <0.0..1.0>,
+                  "shapeRationale": "<why this shape — 1-2 Sätze>"
+                }
+
+            YAML-Struktur (Pflicht):
+                name: <name, gleich wie oben>
+                description: |
+                  <1-2 Sätze>
+                engine: marvin
+                params:
+                  rootTaskKind: PLAN
+                  maxPlanCorrections: 2
+                  # Optional weitere constraints (siehe unten)
+                promptPrefix: |
+                  Du bist der `<name>`-PLAN-Knoten. Du erzeugst
+                  GENAU N Children in dieser Reihenfolge:
+
+                  KIND 1 — <description matching subgoal sg1>
+                  KIND 2 — <description matching sg2>
+                  ...
+
+                  Jeder Child-Knoten als JSON gemäß Marvin-Schema:
+                  {"taskKind": "WORKER" | "EXPAND_FROM_DOC" | "USER_INPUT",
+                   "goal": "...",
+                   "taskSpec": { ... }}
+
+                  Output-Vertrag, nur diese N Children:
+                      {"children": [<KIND 1>, <KIND 2>, ...]}
+
+            Optionale Marvin-Constraints (in `params:`):
+            - allowedSubTaskRecipes: [list]    # whitelist child recipes
+            - recipesOnlyViaExpand: [list]     # subset that must be EXPAND_FROM_DOC childTemplate
+            - allowedExpandDocumentRefPaths: [paths]  # whitelist EXPAND.documentRef.path
+            - requiredChildTemplateRecipeParams: { recipe: [keys] }
+            - disallowedTaskKinds: [AGGREGATE]
+            - defaultExecutionMode: SEQUENTIAL | PARALLEL
+            Setze diese NUR wenn die Subgoals sie tatsächlich
+            motivieren — leerer params-Block ist OK für simple
+            Pläne.
+
+            promptPrefix:
+            - Multi-Zeilen-Anweisung an den PLAN-LLM, der zur
+              Laufzeit die konkreten Children erzeugt.
+            - Pro Subgoal in der subgoals-Liste EIN KIND-Block.
+            - Speziell wenn ein Subgoal "pro Item iterieren" sagt
+              (z.B. "schreibe pro Kapitel ein Kapitel"), nutze
+              EXPAND_FROM_DOC mit documentRef + childTemplate
+              statt manueller Aufzählung.
+
+            justifications-Map: jeder gesetzte constraint-key
+            (params.X oder promptPrefix) MUSS auf einen sg-id
+            zeigen, der existiert.
+
+            Wenn du diesen Vertrag verletzt, lehnt der Validator
+            deinen Output ab und du wirst um Korrektur gebeten.
+            """;
+
     private static final String SYSTEM_PROMPT_VOGON = """
             Du bist der PROPOSING-Knoten der Slartibartfast-Engine.
             Aus dem framed Goal und den Subgoals erzeugst du ein
@@ -139,15 +217,6 @@ public class ProposingPhase {
             return;
         }
 
-        if (state.getOutputSchemaType() != OutputSchemaType.VOGON_STRATEGY) {
-            // M5 will add MARVIN_RECIPE. For now: emit a placeholder
-            // and let VALIDATING flag it.
-            state.setFailureReason("PROPOSING for outputSchemaType="
-                    + state.getOutputSchemaType()
-                    + " not yet implemented (M5)");
-            return;
-        }
-
         EngineChatFactory.EngineChatBundle bundle =
                 engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
         String modelAlias = bundle.primaryConfig().provider() + ":"
@@ -160,8 +229,13 @@ public class ProposingPhase {
             recoveryHint = state.getPendingRecovery().getHint();
         }
 
+        String systemPrompt = switch (state.getOutputSchemaType()) {
+            case VOGON_STRATEGY -> SYSTEM_PROMPT_VOGON;
+            case MARVIN_RECIPE -> SYSTEM_PROMPT_MARVIN;
+        };
+
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(SYSTEM_PROMPT_VOGON));
+        messages.add(SystemMessage.from(systemPrompt));
         messages.add(UserMessage.from(buildInitialUserPrompt(state, recoveryHint)));
 
         ProposeResult parsed = null;
@@ -178,7 +252,7 @@ public class ProposingPhase {
             if (text == null) text = "";
 
             if (state.isAuditLlmCalls()) {
-                appendLlmRecord(state, text, modelAlias, durationMs, attempt);
+                appendLlmRecord(state, systemPrompt, text, modelAlias, durationMs, attempt);
             }
 
             try {
@@ -379,6 +453,7 @@ public class ProposingPhase {
 
     private static void appendLlmRecord(
             ArchitectState state,
+            String systemPrompt,
             String response,
             String modelAlias,
             long durationMs,
@@ -389,8 +464,8 @@ public class ProposingPhase {
                 .id(id)
                 .phase(ArchitectStatus.PROPOSING)
                 .iteration(attempt + 1)
-                .promptHash(sha256Hex(SYSTEM_PROMPT_VOGON + "\n----\n" + state.getRunId()))
-                .promptPreview(abbrev(SYSTEM_PROMPT_VOGON, PROMPT_PREVIEW_LIMIT))
+                .promptHash(sha256Hex(systemPrompt + "\n----\n" + state.getRunId()))
+                .promptPreview(abbrev(systemPrompt, PROMPT_PREVIEW_LIMIT))
                 .response(response)
                 .modelAlias(modelAlias)
                 .durationMs(durationMs)

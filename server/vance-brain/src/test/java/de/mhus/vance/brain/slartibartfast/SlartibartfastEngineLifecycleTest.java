@@ -22,6 +22,7 @@ import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.DecomposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
+import de.mhus.vance.brain.slartibartfast.phases.PersistingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ProposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ValidatingPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -57,6 +58,7 @@ class SlartibartfastEngineLifecycleTest {
     private BindingPhase bindingPhase;
     private ProposingPhase proposingPhase;
     private ValidatingPhase validatingPhase;
+    private PersistingPhase persistingPhase;
     private ThinkEngineContext ctx;
 
     private SlartibartfastEngine engine;
@@ -75,6 +77,7 @@ class SlartibartfastEngineLifecycleTest {
         bindingPhase = mock(BindingPhase.class);
         proposingPhase = mock(ProposingPhase.class);
         validatingPhase = mock(ValidatingPhase.class);
+        persistingPhase = mock(PersistingPhase.class);
         ctx = mock(ThinkEngineContext.class);
         when(ctx.drainPending()).thenReturn(List.<SteerMessage>of());
 
@@ -136,12 +139,18 @@ class SlartibartfastEngineLifecycleTest {
             return null;
         }).when(validatingPhase).execute(any(), any(), any());
 
+        doAnswer(inv -> {
+            de.mhus.vance.api.slartibartfast.ArchitectState s = inv.getArgument(0);
+            de.mhus.vance.brain.slartibartfast.SlartibartfastPhases.stubPersisting(s);
+            return null;
+        }).when(persistingPhase).execute(any(), any(), any());
+
         engine = new SlartibartfastEngine(
                 thinkProcessService, eventEmitter, laneScheduler,
                 objectMapper, framingPhase, confirmingPhase,
                 gatheringPhase, classifyingPhase,
                 decomposingPhase, bindingPhase,
-                proposingPhase, validatingPhase);
+                proposingPhase, validatingPhase, persistingPhase);
     }
 
     @Test

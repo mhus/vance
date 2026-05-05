@@ -21,6 +21,7 @@ import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.DecomposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
+import de.mhus.vance.brain.slartibartfast.phases.PersistingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ProposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ValidatingPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -95,6 +96,7 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final BindingPhase bindingPhase;
     private final ProposingPhase proposingPhase;
     private final ValidatingPhase validatingPhase;
+    private final PersistingPhase persistingPhase;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -362,8 +364,12 @@ public class SlartibartfastEngine implements ThinkEngine {
                 }
             }
             case PERSISTING -> {
-                SlartibartfastPhases.stubPersisting(state);
-                state.setStatus(ArchitectStatus.DONE);
+                persistingPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
+                } else {
+                    state.setStatus(ArchitectStatus.DONE);
+                }
             }
             // Handled by terminal-check at top of runTurn.
             case DONE, FAILED, ESCALATED -> {

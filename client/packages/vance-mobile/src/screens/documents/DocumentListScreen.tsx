@@ -4,7 +4,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { DocumentSummary } from '@vance/generated';
 import { useDocumentList } from '@/hooks/useDocuments';
-import { MobileShell, SignOutButton, VAlert, VEmptyState, VLoading } from '@/components';
+import { MobileShell, VAlert, VEmptyState, VLoading } from '@/components';
 import { DocumentRow } from './components/DocumentRow';
 import type { DocumentsStackParamList } from '@/navigation/types';
 
@@ -23,11 +23,7 @@ export default function DocumentListScreen() {
   const items: DocumentSummary[] = query.data?.items ?? [];
 
   return (
-    <MobileShell
-      title={projectTitle}
-      onBack={() => nav.goBack()}
-      trailing={<SignOutButton />}
-    >
+    <MobileShell title={projectTitle} onBack={() => nav.goBack()}>
       {query.isLoading && !query.data ? (
         <VLoading variant="centered" label="Loading documents…" />
       ) : query.isError ? (

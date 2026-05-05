@@ -38,6 +38,7 @@ export type MainTabParamList = {
   Inbox: NavigatorScreenParams<InboxStackParamList> | undefined;
   Chat: NavigatorScreenParams<ChatStackParamList> | undefined;
   Documents: NavigatorScreenParams<DocumentsStackParamList> | undefined;
+  Settings: undefined;
 };
 
 /**

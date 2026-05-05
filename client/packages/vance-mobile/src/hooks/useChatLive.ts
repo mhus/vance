@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ChatRole,
+  ProgressKind,
   type ChatMessageAppendedData,
   type ChatMessageChunkData,
   type ChatMessageDto,
+  type ProcessProgressNotification,
   type ProcessSteerRequest,
   type ProcessSteerResponse,
   type SessionListRequest,
@@ -53,7 +55,31 @@ interface UseChatLiveResult {
   streamingDrafts: Map<string, { processName: string; role: ChatRole; chunk: string }>;
   connectionState: ChatConnectionState;
   sessionDisplay: string;
+  /**
+   * Most recent process-progress hint, e.g. "thinking…", "32 in / 14
+   * out · 2 calls". Auto-clears ~1.2 s after the last frame so the
+   * chat doesn't accumulate ghost banners.
+   */
+  progressHint: string | null;
   send: (text: string) => Promise<void>;
+}
+
+/** How long a single progress hint stays on screen before fading out. */
+const PROGRESS_HINT_TTL_MS = 1200;
+
+function formatProgress(p: ProcessProgressNotification): string | null {
+  const kind = normalizeEnum(ProgressKind, p.kind);
+  if (kind === ProgressKind.STATUS && p.status?.text) {
+    return p.status.text;
+  }
+  if (kind === ProgressKind.METRICS && p.metrics) {
+    const m = p.metrics;
+    return `${m.tokensInTotal} in / ${m.tokensOutTotal} out · ${m.llmCallCount} calls`;
+  }
+  if (kind === ProgressKind.PLAN) {
+    return 'planning…';
+  }
+  return null;
 }
 
 export function useChatLive(sessionId: string): UseChatLiveResult {
@@ -63,11 +89,13 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
   >(new Map());
   const [connectionState, setConnectionState] = useState<ChatConnectionState>('connecting');
   const [sessionDisplay, setSessionDisplay] = useState(sessionId);
+  const [progressHint, setProgressHint] = useState<string | null>(null);
 
   const socketRef = useRef<BrainWsApi | null>(null);
   const liveRef = useRef(true);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const open = useCallback(async () => {
     if (!liveRef.current) return;
@@ -169,6 +197,20 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
           });
         }),
       );
+      unsubs.push(
+        socket.on<ProcessProgressNotification>('process-progress', (data) => {
+          const text = formatProgress(data);
+          if (text === null) return;
+          setProgressHint(text);
+          if (progressTimerRef.current !== null) {
+            clearTimeout(progressTimerRef.current);
+          }
+          progressTimerRef.current = setTimeout(() => {
+            setProgressHint(null);
+            progressTimerRef.current = null;
+          }, PROGRESS_HINT_TTL_MS);
+        }),
+      );
 
       const closeUnsub = socket.onClose(() => {
         for (const off of unsubs) off();
@@ -219,6 +261,10 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
       }
+      if (progressTimerRef.current !== null) {
+        clearTimeout(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
       const socket = socketRef.current;
       socketRef.current = null;
       if (socket) socket.close();
@@ -262,6 +308,7 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
     streamingDrafts,
     connectionState,
     sessionDisplay,
+    progressHint,
     send,
   };
 }

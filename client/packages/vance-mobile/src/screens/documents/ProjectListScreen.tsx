@@ -5,7 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ProjectSummary } from '@vance/generated';
 import { useTenantProjects } from '@/hooks/useProjects';
-import { MobileShell, SignOutButton, VAlert, VEmptyState, VLoading } from '@/components';
+import { MobileShell, VAlert, VEmptyState, VLoading } from '@/components';
 import { getSortPref, setSortPref } from '@/util/sortPref';
 import { relativeTime } from '@/util/format';
 import type { DocumentsStackParamList } from '@/navigation/types';
@@ -39,7 +39,7 @@ export default function ProjectListScreen() {
   }
 
   return (
-    <MobileShell title="Documents" trailing={<SignOutButton />}>
+    <MobileShell title="Documents">
       <SortToggle active={sort} onChange={pickSort} />
       {query.isLoading && !query.data ? (
         <VLoading variant="centered" label="Loading projects…" />

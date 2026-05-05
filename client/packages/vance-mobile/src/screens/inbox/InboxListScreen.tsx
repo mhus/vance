@@ -5,7 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { InboxItemStatus, type InboxItemDto } from '@vance/generated';
 import { useInboxList } from '@/hooks/useInbox';
-import { MobileShell, SignOutButton, VAlert, VEmptyState, VLoading } from '@/components';
+import { MobileShell, VAlert, VEmptyState, VLoading } from '@/components';
 import { InboxItemRow } from './components/InboxItemRow';
 import type { InboxStackParamList } from '@/navigation/types';
 
@@ -33,7 +33,7 @@ export default function InboxListScreen() {
   const items: InboxItemDto[] = useMemo(() => query.data?.items ?? [], [query.data]);
 
   return (
-    <MobileShell title="Inbox" trailing={<SignOutButton />}>
+    <MobileShell title="Inbox">
       <StatusFilter active={status} onChange={setStatus} />
       {query.isLoading && !query.data ? (
         <VLoading variant="centered" label="Loading inbox…" />

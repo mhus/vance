@@ -12,7 +12,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ProjectSummary, SessionSummary } from '@vance/generated';
 import { useChatSessions } from '@/hooks/useChatSessions';
 import { useTenantProjects } from '@/hooks/useProjects';
-import { MobileShell, SignOutButton, VAlert, VEmptyState, VLoading } from '@/components';
+import { MobileShell, VAlert, VEmptyState, VLoading } from '@/components';
 import { relativeTime } from '@/util/format';
 import { isUserProject } from '@/util/userProject';
 import type { ChatStackParamList } from '@/navigation/types';
@@ -82,18 +82,15 @@ export default function ChatPickerScreen() {
     <MobileShell
       title="Chat"
       trailing={
-        <View className="flex-row items-center gap-1">
-          <Pressable
-            onPress={() => nav.navigate('NewSession')}
-            hitSlop={8}
-            className="p-2"
-            accessibilityRole="button"
-            accessibilityLabel="New session"
-          >
-            <Ionicons name="add-circle-outline" size={24} color="#2563eb" />
-          </Pressable>
-          <SignOutButton />
-        </View>
+        <Pressable
+          onPress={() => nav.navigate('NewSession')}
+          hitSlop={8}
+          className="p-2"
+          accessibilityRole="button"
+          accessibilityLabel="New session"
+        >
+          <Ionicons name="add-circle-outline" size={24} color="#2563eb" />
+        </Pressable>
       }
     >
       <FilterBar

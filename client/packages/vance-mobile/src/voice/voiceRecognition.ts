@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Constants from 'expo-constants';
 import { resolveSpeechLanguage } from '@vance/shared';
 
 /**
@@ -11,17 +12,28 @@ import { resolveSpeechLanguage } from '@vance/shared';
  * arrive; the caller is responsible for committing the final value
  * (e.g. into a composer text input) when {@link stop} resolves.
  *
- * The module is loaded lazily so the rest of the app keeps working
- * on Expo Go even when this file is imported (the dynamic import
- * happens only inside the hook's start path).
+ * Loading strategy:
+ *  - In Expo Go we never even try `import('expo-speech-recognition')`,
+ *    so its `requireNativeModule(...)` top-level call doesn't fire.
+ *    That keeps the dev console clean of "Cannot find native module"
+ *    noise on the platform that intentionally can't run STT.
+ *  - In dev / production builds, the dynamic import is wrapped in
+ *    try/catch as a defence-in-depth: if the native module is still
+ *    missing for any reason, we degrade to a disabled mic button.
  */
 
-type Module = typeof import('expo-speech-recognition');
+// `import type` is fully erased by Babel — the runtime bundle does
+// not pull in `expo-speech-recognition` because of this line.
+import type * as ExpoSpeechRecognitionLib from 'expo-speech-recognition';
+type Module = typeof ExpoSpeechRecognitionLib;
 
 let cachedModule: Module | null = null;
 let moduleLoadAttempted = false;
 
+const IS_EXPO_GO = Constants.appOwnership === 'expo';
+
 async function loadModule(): Promise<Module | null> {
+  if (IS_EXPO_GO) return null;
   if (cachedModule !== null) return cachedModule;
   if (moduleLoadAttempted) return null;
   moduleLoadAttempted = true;
@@ -29,8 +41,8 @@ async function loadModule(): Promise<Module | null> {
     cachedModule = (await import('expo-speech-recognition')) as Module;
     return cachedModule;
   } catch {
-    // Expo Go: native module not bundled. Caller falls back to a
-    // disabled mic button.
+    // Defence in depth — native module missing in a non-Expo-Go
+    // build (e.g. user prebuilt locally without running `pod install`).
     return null;
   }
 }

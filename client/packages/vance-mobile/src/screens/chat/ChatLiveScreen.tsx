@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChatRole, type ChatMessageDto } from '@vance/generated';
@@ -94,8 +94,37 @@ export default function ChatLiveScreen() {
             />
           </>
         )}
+        {live.progressHint !== null ? <ProgressOverlay text={live.progressHint} /> : null}
       </KeyboardAvoidingView>
     </MobileShell>
+  );
+}
+
+/**
+ * Floating, low-emphasis hint just above the composer. Echoes the
+ * latest `process-progress` frame so the user sees that something is
+ * happening (token counting, planning, status text). Auto-clears
+ * after ~1.2 s — the hook resets the state, the View unmounts, and
+ * we get a clean slate for the next frame.
+ */
+function ProgressOverlay({ text }: { text: string }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 8,
+        alignItems: 'center',
+      }}
+    >
+      <View className="px-3 py-1 rounded-full bg-slate-800/70 dark:bg-slate-700/70">
+        <Text className="text-xs text-white" numberOfLines={1}>
+          {text}
+        </Text>
+      </View>
+    </View>
   );
 }
 

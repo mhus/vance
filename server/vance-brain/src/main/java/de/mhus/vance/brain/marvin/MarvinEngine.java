@@ -591,14 +591,22 @@ public class MarvinEngine implements ThinkEngine {
     }
 
     /**
-     * Reacts to lifecycle events from a worker we spawned. With the
-     * synchronous worker pattern (see {@link #runWorker}) Marvin
-     * drives the worker explicitly and consumes its reply inline,
-     * so the only events that still matter here are surprises:
-     * a FAILED/STOPPED for a node that's somehow still
-     * non-terminal (engine crash, manual stop, restart-from-crash
-     * recovery). Terminal nodes ignore the event — we routed
-     * already.
+     * Reacts to lifecycle events from a worker we spawned. Two flavours:
+     *
+     * <ul>
+     *   <li><b>Synchronous LLM workers</b> (Ford / chat-style): Marvin
+     *       drives them inline in {@link #runWorker} and consumes the
+     *       reply right there, so the only events that still matter
+     *       are surprises (FAILED/STOPPED while node non-terminal).
+     *       Successful DONE/SUMMARY for these workers arrives as a
+     *       follow-up to the inline-routed output and is recorded as
+     *       a mid-flight note.</li>
+     *   <li><b>Async workers</b> (Vogon / nested Marvin / Trillian):
+     *       {@link #runWorker} only spawns + yields. The node stays
+     *       RUNNING until <i>this</i> handler sees the DONE event,
+     *       captures the {@code humanSummary} and {@code payload} as
+     *       artifacts and marks the node DONE.</li>
+     * </ul>
      */
     private void handleProcessEvent(
             ThinkProcessDocument process, SteerMessage.ProcessEvent event) {
@@ -623,11 +631,27 @@ public class MarvinEngine implements ThinkEngine {
                 log.info("Marvin id='{}' worker {} node='{}' worker='{}'",
                         process.getId(), event.type(), node.getId(), event.sourceProcessId());
             }
-            case BLOCKED, STARTED, SUMMARY, DONE -> {
-                // Synchronous-driven workers shouldn't reach DONE on
-                // their own; if they do (foreign trigger), record the
-                // mid-flight note but leave the node alone — runWorker
-                // already reads the reply inline.
+            case DONE -> {
+                // Async-worker termination — finalise the node here.
+                // (Synchronous workers reach this branch too, but their
+                // node is already terminal at this point and we'd have
+                // bailed at the isTerminalStatus check above.)
+                Map<String, Object> artifacts = new LinkedHashMap<>();
+                if (event.humanSummary() != null) {
+                    artifacts.put("result", event.humanSummary());
+                }
+                if (event.payload() != null && !event.payload().isEmpty()) {
+                    artifacts.put("payload", event.payload());
+                }
+                nodeService.markDone(node, artifacts);
+                log.info("Marvin id='{}' async worker DONE node='{}' worker='{}' "
+                                + "summary={} chars",
+                        process.getId(), node.getId(), event.sourceProcessId(),
+                        event.humanSummary() == null ? 0 : event.humanSummary().length());
+            }
+            case BLOCKED, STARTED, SUMMARY -> {
+                // Mid-flight progress — keep humanSummary as a note on
+                // the node so the inspector can see what's happening.
                 if (event.humanSummary() != null) {
                     @Nullable Map<String, Object> existing = node.getArtifacts();
                     if (existing == null) existing = new LinkedHashMap<>();
@@ -851,6 +875,13 @@ public class MarvinEngine implements ThinkEngine {
 
             int maxChildren = paramInt(node, "maxChildren", properties.getPlanMaxChildren());
             String customPrompt = paramString(node, "prompt", null);
+            // Phase H: Recipe-deklarierte Whitelist von Sub-Task-Recipes.
+            // Wenn gesetzt, MUSS der LLM nur diese Recipes für WORKER-
+            // Children vorschlagen — sonst Re-Prompt-Loop.
+            List<String> allowedSubTaskRecipes = readAllowedSubTaskRecipes(process);
+            int maxPlanCorrections = paramInt(
+                    node, "maxPlanCorrections",
+                    allowedSubTaskRecipes == null ? 0 : 2);
 
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(SystemMessage.from(enginePromptResolver.resolveTiered(
@@ -864,25 +895,60 @@ public class MarvinEngine implements ThinkEngine {
                     + "PARENT goal of the node you are decomposing:\n"
                     + node.getGoal() + "\n\n"
                     + "maxChildren: " + maxChildren + "\n\n"
-                    + buildRecipeCatalog(process)
+                    + (allowedSubTaskRecipes == null
+                            ? buildRecipeCatalog(process)
+                            : buildAllowedRecipesPrompt(allowedSubTaskRecipes))
                     + (customPrompt == null ? "" : "\n\nAdditional instruction:\n" + customPrompt);
             messages.add(UserMessage.from(body));
 
             String modelAlias = config.provider() + ":" + config.modelName();
-            long startMs = System.currentTimeMillis();
-            ChatResponse response = ai.chatModel().chat(
-                    ChatRequest.builder().messages(messages).build());
-            llmCallTracker.record(
-                    process, response, System.currentTimeMillis() - startMs, modelAlias);
-            AiMessage reply = response.aiMessage();
-            String text = reply == null ? "" : reply.text();
-            if (text == null) text = "";
 
-            List<NodeSpec> children = parsePlanChildren(text, maxChildren);
-            if (children.isEmpty()) {
+            // PLAN call + (optional) content-validation re-prompt loop.
+            String text = null;
+            List<NodeSpec> children = null;
+            String validationError = null;
+            for (int attempt = 0; attempt <= maxPlanCorrections; attempt++) {
+                long startMs = System.currentTimeMillis();
+                ChatResponse response = ai.chatModel().chat(
+                        ChatRequest.builder().messages(messages).build());
+                llmCallTracker.record(
+                        process, response, System.currentTimeMillis() - startMs, modelAlias);
+                AiMessage reply = response.aiMessage();
+                text = reply == null ? "" : reply.text();
+                if (text == null) text = "";
+
+                children = parsePlanChildren(text, maxChildren);
+                if (children.isEmpty()) {
+                    validationError = "PLAN produced 0 children";
+                } else if (allowedSubTaskRecipes != null) {
+                    validationError = validateSubTaskRecipes(children, allowedSubTaskRecipes);
+                } else {
+                    validationError = null;
+                }
+                if (validationError == null) break;
+
+                if (attempt < maxPlanCorrections) {
+                    log.info("Marvin id='{}' PLAN correction {}/{}: {}",
+                            process.getId(), attempt + 1, maxPlanCorrections, validationError);
+                    // Append model's bad output and a corrective user message —
+                    // standard format-correction shape.
+                    messages.add(AiMessage.from(text));
+                    messages.add(UserMessage.from(
+                            "Your last plan was rejected: " + validationError + "\n\n"
+                                    + "Re-emit the plan JSON. WORKER children MUST use ONLY "
+                                    + "these recipes (verbatim names): "
+                                    + String.join(", ", allowedSubTaskRecipes)
+                                    + ". Other taskKinds (PLAN / EXPAND_FROM_DOC / "
+                                    + "USER_INPUT / AGGREGATE) don't need a recipe and stay "
+                                    + "free."));
+                }
+            }
+
+            if (validationError != null) {
                 nodeService.markFailed(node,
-                        "PLAN produced 0 children — model output: "
-                                + abbrev(text));
+                        "PLAN failed after " + maxPlanCorrections
+                                + " corrections — last error: " + validationError
+                                + "; model output: " + abbrev(text));
                 return;
             }
             nodeService.appendChildren(
@@ -898,6 +964,60 @@ public class MarvinEngine implements ThinkEngine {
             log.warn("Marvin id='{}' PLAN node='{}' failed: {}",
                     process.getId(), node.getId(), e.toString());
         }
+    }
+
+    /**
+     * Reads the optional {@code allowedSubTaskRecipes} param from the
+     * Marvin process's engineParams. When set, the PLAN-stage validates
+     * that every WORKER child's {@code taskSpec.recipe} is in this list
+     * and re-prompts on violation. Returns {@code null} when the param
+     * is absent — in that case classic free-form planning applies (full
+     * recipe catalog in the prompt, no content validation).
+     */
+    private static @Nullable List<String> readAllowedSubTaskRecipes(ThinkProcessDocument process) {
+        Object raw = processParam(process, "allowedSubTaskRecipes");
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
+        List<String> out = new ArrayList<>(list.size());
+        for (Object o : list) {
+            if (o instanceof String s && !s.isBlank()) out.add(s.trim());
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    /** Validate that every WORKER child references an allowed recipe.
+     *  Returns null when valid, an error string when invalid. */
+    private static @Nullable String validateSubTaskRecipes(
+            List<NodeSpec> children, List<String> allowed) {
+        List<String> violations = new ArrayList<>();
+        for (NodeSpec ns : children) {
+            if (ns.taskKind() != TaskKind.WORKER) continue;
+            Object recipeRaw = ns.taskSpec() == null ? null : ns.taskSpec().get("recipe");
+            String recipe = recipeRaw instanceof String s ? s.trim() : null;
+            if (recipe == null || recipe.isBlank()) {
+                violations.add("WORKER child '" + ns.goal()
+                        + "' is missing taskSpec.recipe");
+            } else if (!allowed.contains(recipe)) {
+                violations.add("WORKER child '" + ns.goal()
+                        + "' uses recipe '" + recipe
+                        + "' which is not in the allowed list");
+            }
+        }
+        return violations.isEmpty() ? null : String.join("; ", violations);
+    }
+
+    /** Build the prompt section that lists the allow-listed recipes —
+     *  replaces the full catalog when the recipe constrains the plan. */
+    private static String buildAllowedRecipesPrompt(List<String> allowed) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("WORKER recipes you MAY use for `taskSpec.recipe` "
+                + "(these are the ONLY allowed values; nothing else "
+                + "will be accepted):\n");
+        for (String name : allowed) {
+            sb.append("  - ").append(name).append("\n");
+        }
+        sb.append("\nOther taskKinds (PLAN, EXPAND_FROM_DOC, USER_INPUT, "
+                + "AGGREGATE) do not need a recipe and remain free-form.\n");
+        return sb.toString();
     }
 
     @SuppressWarnings("unchecked")
@@ -1203,6 +1323,7 @@ public class MarvinEngine implements ThinkEngine {
         Map<String, Object> recipeParams = paramMap(node, "params");
 
         ThinkProcessDocument child;
+        boolean asyncWorker;
         try {
             AppliedRecipe applied = recipeResolver.apply(
                     process.getTenantId(), ctx.projectId(), recipeName,
@@ -1212,6 +1333,13 @@ public class MarvinEngine implements ThinkEngine {
                     .orElseThrow(() -> new IllegalStateException(
                             "Recipe '" + applied.name() + "' references unknown engine '"
                                     + applied.engine() + "'"));
+            // Phase I: engines whose `asyncSteer()` is true (Vogon,
+            // Marvin, …) don't produce a synchronous LLM reply. Spawn
+            // them as long-running children and finalise the WORKER
+            // node when their ProcessEvent type=DONE arrives in our
+            // pending queue. Synchronous LLM-engines (Ford, …) go
+            // through the heritage drive-and-parse path below.
+            asyncWorker = targetEngine.asyncSteer();
             String childName = "marvin-" + node.getId();
             child = thinkProcessService.create(
                     process.getTenantId(),
@@ -1236,8 +1364,8 @@ public class MarvinEngine implements ThinkEngine {
                             ? null : java.util.Set.copyOf(applied.allowedSkills()));
             nodeService.setSpawnedProcessId(node, child.getId());
             thinkEngineServiceProvider.getObject().start(child);
-            log.info("Marvin id='{}' WORKER node='{}' spawned child='{}' recipe='{}'",
-                    process.getId(), node.getId(), child.getId(), applied.name());
+            log.info("Marvin id='{}' WORKER node='{}' spawned child='{}' recipe='{}' async={}",
+                    process.getId(), node.getId(), child.getId(), applied.name(), asyncWorker);
         } catch (RecipeResolver.UnknownRecipeException ure) {
             nodeService.markFailed(node, "Unknown recipe: " + recipeName);
             log.warn("Marvin id='{}' WORKER node='{}' unknown recipe '{}' — failing",
@@ -1255,8 +1383,17 @@ public class MarvinEngine implements ThinkEngine {
             return false;
         }
 
-        // Drive the worker — including up to MAX_OUTPUT_CORRECTIONS
-        // schema-correction round-trips — and route the final output.
+        // Async worker (Vogon / nested Marvin / Trillian / …): start
+        // and yield. Node stays RUNNING; handleProcessEvent finalises
+        // it when the child's DONE/FAILED/STOPPED event lands in our
+        // pending queue.
+        if (asyncWorker) {
+            return false;
+        }
+
+        // Synchronous LLM worker (Ford / chat-style): drive the worker
+        // — including up to MAX_OUTPUT_CORRECTIONS schema-correction
+        // round-trips — and route the final output.
         try {
             String steer = steerContent + WORKER_SCHEMA_POSTFIX;
             String workerReply = null;
@@ -1286,11 +1423,12 @@ public class MarvinEngine implements ThinkEngine {
             }
             routeWorkerOutput(process, node, parsed.output(), workerReply);
         } finally {
-            // One-shot worker: stop it now, regardless of outcome,
-            // so it doesn't linger as a READY process consuming a
-            // session slot. The STOPPED-event will arrive in
-            // Marvin's pending queue and be ignored (node is now
-            // terminal).
+            // One-shot synchronous worker: stop it now, regardless of
+            // outcome, so it doesn't linger as a READY process
+            // consuming a session slot. The STOPPED-event will arrive
+            // in Marvin's pending queue and be ignored (node is now
+            // terminal). Async workers manage their own lifecycle —
+            // we let them drive themselves to DONE.
             try {
                 thinkEngineServiceProvider.getObject().stop(child);
             } catch (RuntimeException e) {

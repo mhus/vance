@@ -62,7 +62,7 @@ public class DocumentService {
     private final ResourcePatternResolver resourcePatternResolver;
     private final DocumentHeaderParser headerParser;
 
-    @Value("${vance.document.inline-threshold:4096}")
+    @Value("${vance.document.inline-threshold:40960}")
     private int inlineThreshold;
 
     public Optional<DocumentDocument> findById(String id) {

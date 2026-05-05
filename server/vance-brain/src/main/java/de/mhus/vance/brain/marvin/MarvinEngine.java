@@ -897,9 +897,21 @@ public class MarvinEngine implements ThinkEngine {
             List<String> recipesOnlyViaExpand = readRecipesOnlyViaExpand(process);
             Map<String, List<String>> requiredParamsPerRecipe =
                     readRequiredParamsPerRecipe(process);
+            List<String> allowedExpandDocumentRefPaths =
+                    readAllowedExpandDocumentRefPaths(process);
+            Map<String, List<String>> requiredChildTemplateRecipeParams =
+                    readRequiredChildTemplateRecipeParams(process);
+            Set<TaskKind> disallowedTaskKinds = readDisallowedTaskKinds(process);
+            log.info("Marvin id='{}' PLAN constraints: allowedSubTaskRecipes={}, recipesOnlyViaExpand={}, allowedExpandDocumentRefPaths={}, requiredChildTemplateRecipeParams={}, disallowedTaskKinds={}",
+                    process.getId(), allowedSubTaskRecipes,
+                    recipesOnlyViaExpand, allowedExpandDocumentRefPaths,
+                    requiredChildTemplateRecipeParams, disallowedTaskKinds);
             boolean anyConstraint = allowedSubTaskRecipes != null
                     || recipesOnlyViaExpand != null
-                    || requiredParamsPerRecipe != null;
+                    || requiredParamsPerRecipe != null
+                    || allowedExpandDocumentRefPaths != null
+                    || requiredChildTemplateRecipeParams != null
+                    || disallowedTaskKinds != null;
             int maxPlanCorrections = paramInt(
                     node, "maxPlanCorrections",
                     anyConstraint ? 2 : 0);
@@ -919,6 +931,9 @@ public class MarvinEngine implements ThinkEngine {
                     + (allowedSubTaskRecipes == null
                             ? buildRecipeCatalog(process)
                             : buildAllowedRecipesPrompt(allowedSubTaskRecipes))
+                    + (allowedExpandDocumentRefPaths == null
+                            ? ""
+                            : buildAllowedExpandPathsPrompt(allowedExpandDocumentRefPaths))
                     + (customPrompt == null ? "" : "\n\nAdditional instruction:\n" + customPrompt);
             messages.add(UserMessage.from(body));
 
@@ -939,12 +954,19 @@ public class MarvinEngine implements ThinkEngine {
                 if (text == null) text = "";
 
                 children = parsePlanChildren(text, maxChildren);
+                for (NodeSpec ns : children) {
+                    log.info("Marvin id='{}' PLAN attempt {} child kind={} taskSpec={}",
+                            process.getId(), attempt, ns.taskKind(), ns.taskSpec());
+                }
                 if (children.isEmpty()) {
                     validationError = "PLAN produced 0 children";
                 } else if (anyConstraint) {
                     validationError = validatePlanChildren(
                             children, allowedSubTaskRecipes,
-                            recipesOnlyViaExpand, requiredParamsPerRecipe);
+                            recipesOnlyViaExpand, requiredParamsPerRecipe,
+                            allowedExpandDocumentRefPaths,
+                            requiredChildTemplateRecipeParams,
+                            disallowedTaskKinds);
                 } else {
                     validationError = null;
                 }
@@ -978,8 +1000,16 @@ public class MarvinEngine implements ThinkEngine {
                             .append("taskSpec.documentRef as a MAP with one of ")
                             .append("name|path|id (NOT a bare string), AND ")
                             .append("taskSpec.childTemplate (with at least ")
-                            .append("`taskKind: WORKER` and `recipe: <name>`).\n")
-                            .append("Example EXPAND_FROM_DOC child shape:\n")
+                            .append("`taskKind: WORKER` and `recipe: <name>`).\n");
+                    if (allowedExpandDocumentRefPaths != null
+                            && !allowedExpandDocumentRefPaths.isEmpty()) {
+                        hint.append("- documentRef.path MUST be ONE of these ")
+                                .append("verbatim strings (no other paths are ")
+                                .append("acceptable, no fabrications): ")
+                                .append(String.join(", ", allowedExpandDocumentRefPaths))
+                                .append(".\n");
+                    }
+                    hint.append("Example EXPAND_FROM_DOC child shape:\n")
                             .append("  {\n")
                             .append("    \"taskKind\": \"EXPAND_FROM_DOC\",\n")
                             .append("    \"goal\": \"...\",\n")
@@ -1002,6 +1032,31 @@ public class MarvinEngine implements ThinkEngine {
                             hint.append("    ").append(e.getKey()).append(" → ")
                                     .append(String.join(", ", e.getValue())).append("\n");
                         }
+                    }
+                    if (requiredChildTemplateRecipeParams != null
+                            && !requiredChildTemplateRecipeParams.isEmpty()) {
+                        hint.append("- For EXPAND_FROM_DOC childTemplate.recipeParams, ")
+                                .append("these keys are MANDATORY per child-recipe ")
+                                .append("(use the {{index1}} / {{item.text}} placeholders ")
+                                .append("so the expander substitutes them per item):\n");
+                        for (Map.Entry<String, List<String>> e
+                                : requiredChildTemplateRecipeParams.entrySet()) {
+                            hint.append("    ").append(e.getKey()).append(" → ")
+                                    .append(String.join(", ", e.getValue())).append("\n");
+                        }
+                    }
+                    if (disallowedTaskKinds != null && !disallowedTaskKinds.isEmpty()) {
+                        hint.append("- These taskKinds are FORBIDDEN on top-level PLAN ")
+                                .append("children: ");
+                        boolean first = true;
+                        for (TaskKind k : disallowedTaskKinds) {
+                            if (!first) hint.append(", ");
+                            hint.append(k.name());
+                            first = false;
+                        }
+                        hint.append(". (For aggregation, spawn a WORKER with the ")
+                                .append("aggregator recipe instead of the built-in ")
+                                .append("AGGREGATE summary.)\n");
                     }
                     hint.append("Other taskKinds (PLAN / EXPAND_FROM_DOC / USER_INPUT / ")
                             .append("AGGREGATE) don't need a recipe and stay free.");
@@ -1091,6 +1146,75 @@ public class MarvinEngine implements ThinkEngine {
     }
 
     /**
+     * Read the optional {@code allowedExpandDocumentRefPaths} engineParam.
+     * When set, every EXPAND_FROM_DOC child's
+     * {@code taskSpec.documentRef.path} MUST be one of the listed
+     * verbatim strings — closes the documentRef-fabrication loop in
+     * the same way {@code allowedSubTaskRecipes} closed it for
+     * recipe names.
+     */
+    private static @Nullable List<String> readAllowedExpandDocumentRefPaths(
+            ThinkProcessDocument process) {
+        Object raw = processParam(process, "allowedExpandDocumentRefPaths");
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
+        List<String> out = new ArrayList<>(list.size());
+        for (Object o : list) {
+            if (o instanceof String s && !s.isBlank()) out.add(s.trim());
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    /**
+     * Read the optional {@code requiredChildTemplateRecipeParams}
+     * engineParam. Map of {@code child-recipe → [paramKey, …]}. When
+     * an EXPAND_FROM_DOC child's {@code childTemplate.recipe} matches
+     * a key, its {@code childTemplate.recipeParams} MUST contain
+     * every listed key (non-null, non-blank). Closes the
+     * "LLM omits recipeParams" loop the essay-pipeline saw in Phase N.
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable Map<String, List<String>>
+            readRequiredChildTemplateRecipeParams(ThinkProcessDocument process) {
+        Object raw = processParam(process, "requiredChildTemplateRecipeParams");
+        if (!(raw instanceof Map<?, ?> m) || m.isEmpty()) return null;
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            if (!(e.getKey() instanceof String recipe) || recipe.isBlank()) continue;
+            List<String> required = new ArrayList<>();
+            if (e.getValue() instanceof List<?> reqs) {
+                for (Object r : reqs) {
+                    if (r instanceof String s && !s.isBlank()) required.add(s.trim());
+                }
+            }
+            if (!required.isEmpty()) out.put(recipe.trim(), required);
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    /**
+     * Read the optional {@code disallowedTaskKinds} engineParam — a
+     * list of taskKind names ({@code AGGREGATE}, {@code USER_INPUT},
+     * etc.) that the recipe forbids on top-level PLAN children.
+     * Forces the LLM into the prescribed shape (e.g. essay-pipeline:
+     * use WORKER aggregator_run, not the built-in AGGREGATE summary).
+     */
+    private static @Nullable Set<TaskKind> readDisallowedTaskKinds(
+            ThinkProcessDocument process) {
+        Object raw = processParam(process, "disallowedTaskKinds");
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
+        Set<TaskKind> out = new java.util.LinkedHashSet<>();
+        for (Object o : list) {
+            if (!(o instanceof String s) || s.isBlank()) continue;
+            try {
+                out.add(TaskKind.valueOf(s.trim().toUpperCase()));
+            } catch (IllegalArgumentException ignored) {
+                // unknown kind — skip silently rather than fail recipe load
+            }
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    /**
      * Validate the PLAN's children against the configured constraints.
      * Returns null when all constraints hold, an error string listing
      * every violation otherwise.
@@ -1106,7 +1230,10 @@ public class MarvinEngine implements ThinkEngine {
             List<NodeSpec> children,
             @Nullable List<String> allowed,
             @Nullable List<String> onlyViaExpand,
-            @Nullable Map<String, List<String>> requiredParams) {
+            @Nullable Map<String, List<String>> requiredParams,
+            @Nullable List<String> allowedExpandPaths,
+            @Nullable Map<String, List<String>> requiredChildTemplateParams,
+            @Nullable Set<TaskKind> disallowedTaskKinds) {
         List<String> violations = new ArrayList<>();
         for (NodeSpec ns : children) {
             // Always-on check: EXPAND_FROM_DOC must be fully formed.
@@ -1134,6 +1261,19 @@ public class MarvinEngine implements ThinkEngine {
                                 + "' must declare taskSpec.documentRef.path "
                                 + "(or .id) — `name` alone is rejected to "
                                 + "avoid lookup ambiguity");
+                    } else if (hasPath && allowedExpandPaths != null) {
+                        // Path-whitelist: even when path is set, reject
+                        // fabricated paths the LLM made up. Forces the
+                        // model to copy the verbatim recipe string.
+                        String path = ((String) drMap.get("path")).trim();
+                        if (!allowedExpandPaths.contains(path)) {
+                            violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                                    + "' uses documentRef.path '" + path
+                                    + "' which is not in the allowed list "
+                                    + allowedExpandPaths
+                                    + " — copy the path verbatim from the recipe, "
+                                    + "do not invent new ones");
+                        }
                     }
                 }
                 Object tmpl = spec.get("childTemplate");
@@ -1141,16 +1281,48 @@ public class MarvinEngine implements ThinkEngine {
                     violations.add("EXPAND_FROM_DOC child '" + ns.goal()
                             + "' is missing taskSpec.childTemplate");
                 } else {
-                    Object tmplRecipe = ((Map<String, Object>) tm).get("recipe");
+                    Map<String, Object> tmplMap = (Map<String, Object>) tm;
+                    Object tmplRecipe = tmplMap.get("recipe");
+                    String tmplRecipeName = null;
                     if (!(tmplRecipe instanceof String rs) || rs.isBlank()) {
                         violations.add("EXPAND_FROM_DOC child '" + ns.goal()
                                 + "' is missing taskSpec.childTemplate.recipe");
-                    } else if (allowed != null && !allowed.contains(rs.trim())) {
-                        violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                                + "' uses childTemplate.recipe '" + rs.trim()
-                                + "' which is not in the allowed list");
+                    } else {
+                        tmplRecipeName = rs.trim();
+                        if (allowed != null && !allowed.contains(tmplRecipeName)) {
+                            violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                                    + "' uses childTemplate.recipe '" + tmplRecipeName
+                                    + "' which is not in the allowed list");
+                            tmplRecipeName = null;
+                        }
+                    }
+                    if (tmplRecipeName != null
+                            && requiredChildTemplateParams != null) {
+                        List<String> req = requiredChildTemplateParams.get(tmplRecipeName);
+                        if (req != null && !req.isEmpty()) {
+                            Object rpRaw = tmplMap.get("recipeParams");
+                            Map<String, Object> rp = rpRaw instanceof Map<?, ?> rpm
+                                    ? (Map<String, Object>) rpm : Map.of();
+                            for (String key : req) {
+                                Object v = rp.get(key);
+                                if (v == null
+                                        || (v instanceof String vs && vs.isBlank())) {
+                                    violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                                            + "' childTemplate (recipe '" + tmplRecipeName
+                                            + "') missing required recipeParams['"
+                                            + key + "']");
+                                }
+                            }
+                        }
                     }
                 }
+                continue;
+            }
+            if (disallowedTaskKinds != null
+                    && disallowedTaskKinds.contains(ns.taskKind())) {
+                violations.add("child '" + ns.goal()
+                        + "' uses disallowed taskKind '" + ns.taskKind()
+                        + "' — recipe forbids this kind on top-level PLAN children");
                 continue;
             }
             if (ns.taskKind() != TaskKind.WORKER) continue;
@@ -1208,6 +1380,23 @@ public class MarvinEngine implements ThinkEngine {
         }
         sb.append("\nOther taskKinds (PLAN, EXPAND_FROM_DOC, USER_INPUT, "
                 + "AGGREGATE) do not need a recipe and remain free-form.\n");
+        return sb.toString();
+    }
+
+    /** Build the prompt section that lists the allow-listed
+     *  EXPAND_FROM_DOC documentRef.path values. Forces the LLM to
+     *  copy the recipe-prescribed path verbatim instead of inventing
+     *  one. */
+    private static String buildAllowedExpandPathsPrompt(List<String> paths) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\nFor any EXPAND_FROM_DOC child, "
+                + "`taskSpec.documentRef.path` MUST be ONE of these "
+                + "verbatim strings — do NOT invent other paths, do "
+                + "NOT shorten or rename them, do NOT prefix them with "
+                + "`tasks/` or similar:\n");
+        for (String p : paths) {
+            sb.append("  - ").append(p).append("\n");
+        }
         return sb.toString();
     }
 

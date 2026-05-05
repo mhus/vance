@@ -165,6 +165,90 @@ class MarvinNodeServiceTest {
         assertThat(service.findNextActionableNode("p")).isEmpty();
     }
 
+    // ─── Sibling sequencing — SEQUENTIAL (default) vs PARALLEL ─────────
+
+    @Test
+    void findNextActionable_planParent_runningSiblingBlocksNextSibling() {
+        // PLAN root → A(RUNNING), B(PENDING)
+        // PLAN defaults to SEQUENTIAL: A's RUNNING pins the sibling
+        // group; B must NOT be picked up. This is the essay-pipeline
+        // race: WORKER outline_loop is still going when EXPAND would
+        // otherwise race ahead.
+        MarvinNodeDocument root = planNode("root", null, 0, NodeStatus.DONE);
+        MarvinNodeDocument a = node("a", "root", 0, NodeStatus.RUNNING);
+        MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
+        stubTree("p", root, a, b);
+
+        assertThat(service.findNextActionableNode("p")).isEmpty();
+    }
+
+    @Test
+    void findNextActionable_planParent_waitingSiblingBlocksNextSibling() {
+        // Same shape but WAITING (USER_INPUT) instead of RUNNING.
+        MarvinNodeDocument root = planNode("root", null, 0, NodeStatus.DONE);
+        MarvinNodeDocument a = node("a", "root", 0, NodeStatus.WAITING);
+        MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
+        stubTree("p", root, a, b);
+
+        assertThat(service.findNextActionableNode("p")).isEmpty();
+    }
+
+    @Test
+    void findNextActionable_expandParent_runningSiblingDoesNotBlockNextSibling() {
+        // EXPAND_FROM_DOC defaults to PARALLEL — generated chapters
+        // are independent fan-out, so a still-running chapter does
+        // NOT pin the next pending sibling. This preserves the
+        // legacy fan-out semantics.
+        MarvinNodeDocument root = expandNode("root", null, 0, NodeStatus.DONE);
+        MarvinNodeDocument a = node("a", "root", 0, NodeStatus.RUNNING);
+        MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
+        stubTree("p", root, a, b);
+
+        assertThat(service.findNextActionableNode("p")).hasValue(b);
+    }
+
+    @Test
+    void findNextActionable_planParent_explicitParallelOverride_doesNotBlock() {
+        // taskSpec.executionMode="PARALLEL" overrides the SEQUENTIAL
+        // default. Used for PLAN nodes that decompose into truly
+        // independent work units.
+        MarvinNodeDocument root = planNodeWithMode("root", null, 0,
+                NodeStatus.DONE, "PARALLEL");
+        MarvinNodeDocument a = node("a", "root", 0, NodeStatus.RUNNING);
+        MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
+        stubTree("p", root, a, b);
+
+        assertThat(service.findNextActionableNode("p")).hasValue(b);
+    }
+
+    @Test
+    void findNextActionable_expandParent_explicitSequentialOverride_blocks() {
+        // Same override the other way — EXPAND can be forced to
+        // SEQUENTIAL when chapters depend on each other.
+        MarvinNodeDocument root = expandNodeWithMode("root", null, 0,
+                NodeStatus.DONE, "SEQUENTIAL");
+        MarvinNodeDocument a = node("a", "root", 0, NodeStatus.RUNNING);
+        MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
+        stubTree("p", root, a, b);
+
+        assertThat(service.findNextActionableNode("p")).isEmpty();
+    }
+
+    @Test
+    void findNextActionable_planParent_doneSiblingThenRunningSubtree_blocksNextSibling() {
+        // PLAN root → A(DONE) → A1(RUNNING)
+        //          → B(PENDING)
+        // A's subtree contains a RUNNING node — under SEQUENTIAL
+        // this still pins the sibling group, B must wait.
+        MarvinNodeDocument root = planNode("root", null, 0, NodeStatus.DONE);
+        MarvinNodeDocument a = planNode("a", "root", 0, NodeStatus.DONE);
+        MarvinNodeDocument a1 = node("a1", "a", 0, NodeStatus.RUNNING);
+        MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
+        stubTree("p", root, a, a1, b);
+
+        assertThat(service.findNextActionableNode("p")).isEmpty();
+    }
+
     // ─── Tree-status aggregation ────────────────────────────────────────
 
     @Test
@@ -341,6 +425,66 @@ class MarvinNodeServiceTest {
                 .position(position)
                 .goal("test goal " + id)
                 .taskKind(TaskKind.WORKER)
+                .status(status)
+                .build();
+    }
+
+    private static MarvinNodeDocument planNode(
+            String id, String parentId, int position, NodeStatus status) {
+        return MarvinNodeDocument.builder()
+                .id(id)
+                .processId("p")
+                .parentId(parentId)
+                .position(position)
+                .goal("test goal " + id)
+                .taskKind(TaskKind.PLAN)
+                .status(status)
+                .build();
+    }
+
+    private static MarvinNodeDocument expandNode(
+            String id, String parentId, int position, NodeStatus status) {
+        return MarvinNodeDocument.builder()
+                .id(id)
+                .processId("p")
+                .parentId(parentId)
+                .position(position)
+                .goal("test goal " + id)
+                .taskKind(TaskKind.EXPAND_FROM_DOC)
+                .status(status)
+                .build();
+    }
+
+    private static MarvinNodeDocument planNodeWithMode(
+            String id, String parentId, int position,
+            NodeStatus status, String executionMode) {
+        Map<String, Object> spec = new LinkedHashMap<>();
+        spec.put("executionMode", executionMode);
+        return MarvinNodeDocument.builder()
+                .id(id)
+                .processId("p")
+                .parentId(parentId)
+                .position(position)
+                .goal("test goal " + id)
+                .taskKind(TaskKind.PLAN)
+                .taskSpec(spec)
+                .status(status)
+                .build();
+    }
+
+    private static MarvinNodeDocument expandNodeWithMode(
+            String id, String parentId, int position,
+            NodeStatus status, String executionMode) {
+        Map<String, Object> spec = new LinkedHashMap<>();
+        spec.put("executionMode", executionMode);
+        return MarvinNodeDocument.builder()
+                .id(id)
+                .processId("p")
+                .parentId(parentId)
+                .position(position)
+                .goal("test goal " + id)
+                .taskKind(TaskKind.EXPAND_FROM_DOC)
+                .taskSpec(spec)
                 .status(status)
                 .build();
     }

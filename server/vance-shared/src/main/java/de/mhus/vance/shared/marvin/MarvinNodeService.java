@@ -226,30 +226,82 @@ public class MarvinNodeService {
         for (List<MarvinNodeDocument> kids : childrenByParent.values()) {
             kids.sort((a, b) -> Integer.compare(a.getPosition(), b.getPosition()));
         }
-        return dfs(root, childrenByParent);
+        return dfs(root, childrenByParent).hit();
     }
 
-    private Optional<MarvinNodeDocument> dfs(
+    /**
+     * Result of a DFS subtree walk. {@code hit} carries the actionable
+     * node if found; {@code blocked} signals the subtree contains a
+     * RUNNING/WAITING node that hasn't terminated yet. The two are
+     * orthogonal so the parent can distinguish "subtree exhausted —
+     * advance to next sibling" (both empty) from "subtree blocked —
+     * may NOT advance under SEQUENTIAL siblings" (hit empty, blocked
+     * true). When {@code hit} is present {@code blocked} is irrelevant.
+     */
+    private record WalkResult(
+            Optional<MarvinNodeDocument> hit, boolean blocked) {
+        private static final WalkResult EXHAUSTED =
+                new WalkResult(Optional.empty(), false);
+        private static final WalkResult BLOCKED =
+                new WalkResult(Optional.empty(), true);
+        static WalkResult hit(MarvinNodeDocument node) {
+            return new WalkResult(Optional.of(node), false);
+        }
+    }
+
+    private WalkResult dfs(
             MarvinNodeDocument node,
             Map<String, List<MarvinNodeDocument>> childrenByParent) {
         switch (node.getStatus()) {
             case PENDING -> {
-                return Optional.of(node);
+                return WalkResult.hit(node);
             }
             case RUNNING, WAITING -> {
                 // Waiting on external event — block descent.
-                return Optional.empty();
+                return WalkResult.BLOCKED;
             }
             case DONE, FAILED, SKIPPED -> {
                 // Transparent — descend into children & continue siblings.
             }
         }
         List<MarvinNodeDocument> kids = childrenByParent.getOrDefault(node.getId(), List.of());
+        boolean parentSequential = isSequentialParent(node);
+        boolean anyKidBlocked = false;
         for (MarvinNodeDocument k : kids) {
-            Optional<MarvinNodeDocument> hit = dfs(k, childrenByParent);
-            if (hit.isPresent()) return hit;
+            WalkResult r = dfs(k, childrenByParent);
+            if (r.hit().isPresent()) return r;
+            if (r.blocked()) {
+                anyKidBlocked = true;
+                if (parentSequential) {
+                    // SEQUENTIAL parent: a blocked kid pins the
+                    // entire sibling group — must NOT advance to
+                    // the next sibling until this one's subtree
+                    // reaches a terminal status.
+                    return WalkResult.BLOCKED;
+                }
+                // PARALLEL parent: blocked kid doesn't stop the
+                // scan — keep looking for a PENDING sibling.
+            }
         }
-        return Optional.empty();
+        return anyKidBlocked ? WalkResult.BLOCKED : WalkResult.EXHAUSTED;
+    }
+
+    /**
+     * Decides whether a node's children must be executed strictly
+     * in position order (SEQUENTIAL) or may run in parallel
+     * (PARALLEL). Reads the {@code executionMode} entry from the
+     * node's {@code taskSpec}; if absent, falls back to the
+     * task-kind default — {@code EXPAND_FROM_DOC} fans out so its
+     * children default to PARALLEL, every other kind defaults to
+     * SEQUENTIAL.
+     */
+    private static boolean isSequentialParent(MarvinNodeDocument node) {
+        Map<String, Object> spec = node.getTaskSpec();
+        Object override = spec == null ? null : spec.get("executionMode");
+        if (override instanceof String s && !s.isBlank()) {
+            return !"PARALLEL".equalsIgnoreCase(s.trim());
+        }
+        return node.getTaskKind() != TaskKind.EXPAND_FROM_DOC;
     }
 
     /**

@@ -11,6 +11,8 @@ import de.mhus.vance.api.slartibartfast.RecipeDraft;
 import de.mhus.vance.api.slartibartfast.Subgoal;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.recipe.RecipeLoader;
+import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import dev.langchain4j.data.message.AiMessage;
@@ -63,10 +65,11 @@ public class ProposingPhase {
 
     private static final String SYSTEM_PROMPT_MARVIN = """
             Du bist der PROPOSING-Knoten der Slartibartfast-Engine.
-            Aus dem framed Goal und den Subgoals erzeugst du ein
-            Marvin-Recipe — eine PLAN-getriebene Decomposition mit
-            Constraints, die Marvins PLAN-Validator zur Laufzeit
-            durchsetzt.
+            Aus dem framed Goal, den Subgoals und der Liste verfügbarer
+            Sub-Recipes erzeugst du ein Marvin-Recipe. Marvins PLAN-
+            Validator erzwingt deine Constraints zur Laufzeit — wenn
+            du sie weglässt, kann der PLAN-LLM Abkürzungen nehmen und
+            der Plan läuft nicht durch.
 
             HARTER OUTPUT-VERTRAG:
             - Beende deinen Reply mit GENAU einem JSON-Objekt.
@@ -76,17 +79,57 @@ public class ProposingPhase {
             Schema:
                 {
                   "name":           "<recipe-name, kebab-case>",
-                  "yaml":           "<full recipe YAML, see structure below>",
+                  "yaml":           "<full recipe YAML>",
                   "justifications": {
-                    "params.maxPlanCorrections": "<sg-id>",
-                    "promptPrefix":              "<sg-id>",
+                    "params.allowedSubTaskRecipes": "<sg-id>",
+                    "promptPrefix":                 "<sg-id>",
                     ...
                   },
                   "confidence":     <0.0..1.0>,
                   "shapeRationale": "<why this shape — 1-2 Sätze>"
                 }
 
-            YAML-Struktur (Pflicht):
+            ── PFLICHT-CONSTRAINTS (setzen wenn anwendbar) ──
+
+            Diese Constraints sind NICHT optional wenn die Inputs
+            sie motivieren. Slartibartfast erkennt motivierte
+            Constraints aus subgoals + verfügbaren Sub-Recipes:
+
+            **allowedSubTaskRecipes** — PFLICHT wenn die Subgoals
+              auf konkrete Sub-Recipes mappen können. Schau in die
+              "Verfügbare Sub-Recipes"-Liste (User-Prompt). Jeder
+              Subgoal, der "schreibe Plot/Cast/Outline" macht, gehört
+              zu einem outline-style-Recipe; "schreibe Kapitel" zu
+              einem chapter-style-Recipe; "konsolidiere/aggregiere" zu
+              einem aggregator-style-Recipe. Liste GENAU die Recipes
+              auf, die deine Plan-Phasen brauchen werden.
+
+            **recipesOnlyViaExpand** — PFLICHT wenn ein Subgoal "pro
+              Item in einem Document" iteriert. Liste die Recipes
+              auf, die nur als EXPAND_FROM_DOC childTemplate auftauchen
+              dürfen (typisch: chapter-loop für Kapitel-pro-Outline-
+              Item).
+
+            **allowedExpandDocumentRefPaths** — PFLICHT wenn du
+              recipesOnlyViaExpand setzt. Liste die Document-Pfade
+              auf, über die die EXPAND_FROM_DOC iteriert (z.B.
+              "essay/outline.md").
+
+            **disallowedTaskKinds** — Setze [AGGREGATE] wenn deine
+              Plan-Form einen WORKER-Aggregator braucht (statt
+              Marvins built-in AGGREGATE-Summary). Standard für
+              Pipelines mit `aggregator_run`-style Recipe.
+
+            **defaultExecutionMode: SEQUENTIAL** — Standard wenn die
+              Plan-Phasen aufeinander aufbauen (Outline → Kapitel →
+              Aggregator). Setze PARALLEL nur wenn Phasen unabhängig
+              sind.
+
+            **maxPlanCorrections: 2** — Standard. Lasse weg nur bei
+              extrem konservativen Use Cases.
+
+            ── YAML-Struktur ──
+
                 name: <name, gleich wie oben>
                 description: |
                   <1-2 Sätze>
@@ -94,7 +137,15 @@ public class ProposingPhase {
                 params:
                   rootTaskKind: PLAN
                   maxPlanCorrections: 2
-                  # Optional weitere constraints (siehe unten)
+                  defaultExecutionMode: SEQUENTIAL
+                  allowedSubTaskRecipes:
+                    - <recipe1-name>
+                    - <recipe2-name>
+                  recipesOnlyViaExpand:
+                    - <chapter-loop-name>
+                  allowedExpandDocumentRefPaths:
+                    - <z.B. essay/outline.md>
+                  disallowedTaskKinds: [AGGREGATE]
                 promptPrefix: |
                   Du bist der `<name>`-PLAN-Knoten. Du erzeugst
                   GENAU N Children in dieser Reihenfolge:
@@ -111,29 +162,58 @@ public class ProposingPhase {
                   Output-Vertrag, nur diese N Children:
                       {"children": [<KIND 1>, <KIND 2>, ...]}
 
-            Optionale Marvin-Constraints (in `params:`):
-            - allowedSubTaskRecipes: [list]    # whitelist child recipes
-            - recipesOnlyViaExpand: [list]     # subset that must be EXPAND_FROM_DOC childTemplate
-            - allowedExpandDocumentRefPaths: [paths]  # whitelist EXPAND.documentRef.path
-            - requiredChildTemplateRecipeParams: { recipe: [keys] }
-            - disallowedTaskKinds: [AGGREGATE]
-            - defaultExecutionMode: SEQUENTIAL | PARALLEL
-            Setze diese NUR wenn die Subgoals sie tatsächlich
-            motivieren — leerer params-Block ist OK für simple
-            Pläne.
+            ── BEISPIEL (essay-style pipeline) ──
 
-            promptPrefix:
-            - Multi-Zeilen-Anweisung an den PLAN-LLM, der zur
-              Laufzeit die konkreten Children erzeugt.
-            - Pro Subgoal in der subgoals-Liste EIN KIND-Block.
-            - Speziell wenn ein Subgoal "pro Item iterieren" sagt
-              (z.B. "schreibe pro Kapitel ein Kapitel"), nutze
-              EXPAND_FROM_DOC mit documentRef + childTemplate
-              statt manueller Aufzählung.
+                name: my-essay-pipeline
+                description: |
+                  Erzeugt ein Essay durch Plot-Outline → Kapitel → Aggregat.
+                engine: marvin
+                params:
+                  rootTaskKind: PLAN
+                  maxPlanCorrections: 2
+                  defaultExecutionMode: SEQUENTIAL
+                  allowedSubTaskRecipes:
+                    - outline_loop
+                    - chapter_loop
+                    - aggregator_run
+                  recipesOnlyViaExpand:
+                    - chapter_loop
+                  allowedExpandDocumentRefPaths:
+                    - essay/outline.md
+                  disallowedTaskKinds: [AGGREGATE]
+                promptPrefix: |
+                  Du bist der my-essay-pipeline-PLAN-Knoten.
+                  Du erzeugst GENAU 3 Children:
 
-            justifications-Map: jeder gesetzte constraint-key
-            (params.X oder promptPrefix) MUSS auf einen sg-id
-            zeigen, der existiert.
+                  KIND 1 — WORKER outline_loop:
+                  {"taskKind":"WORKER","goal":"Plot+Outline","taskSpec":{"recipe":"outline_loop"}}
+
+                  KIND 2 — EXPAND_FROM_DOC für Kapitel:
+                  {"taskKind":"EXPAND_FROM_DOC","goal":"Pro Kapitel ein chapter_loop",
+                   "taskSpec":{"documentRef":{"path":"essay/outline.md"},
+                               "treeMode":"FLAT",
+                               "childTemplate":{"taskKind":"WORKER","recipe":"chapter_loop","goal":"..."}}}
+
+                  KIND 3 — WORKER aggregator_run:
+                  {"taskKind":"WORKER","goal":"Konsolidieren+Notification",
+                   "taskSpec":{"recipe":"aggregator_run"}}
+
+                  Output: {"children":[<KIND 1>,<KIND 2>,<KIND 3>]}
+
+            ── promptPrefix-Regeln ──
+
+            - Multi-Zeilen-Anweisung an den PLAN-LLM (zur Laufzeit
+              erzeugt der die konkreten Children).
+            - Pro Subgoal/Phase EIN KIND-Block mit konkretem
+              taskSpec inkl. recipe-Name aus allowedSubTaskRecipes.
+            - "Pro Item iterieren" → IMMER EXPAND_FROM_DOC mit
+              documentRef + childTemplate, NIE manuelle Aufzählung.
+
+            ── justifications-Map ──
+
+            Jeder constraint-key, den du im YAML setzt (params.X
+            oder promptPrefix), MUSS auf einen sg-id zeigen, der in
+            der Subgoal-Liste existiert.
 
             Wenn du diesen Vertrag verletzt, lehnt der Validator
             deinen Output ab und du wirst um Korrektur gebeten.
@@ -205,6 +285,7 @@ public class ProposingPhase {
     private final EngineChatFactory engineChatFactory;
     private final LlmCallTracker llmCallTracker;
     private final ObjectMapper objectMapper;
+    private final RecipeLoader recipeLoader;
 
     public void execute(
             ArchitectState state,
@@ -234,9 +315,19 @@ public class ProposingPhase {
             case MARVIN_RECIPE -> SYSTEM_PROMPT_MARVIN;
         };
 
+        // For MARVIN_RECIPE: list the project's currently-available
+        // sub-recipes so the LLM has concrete names to put into
+        // allowedSubTaskRecipes. Without this list it tends to
+        // omit the constraint and the runtime PLAN takes shortcuts.
+        List<ResolvedRecipe> availableRecipes =
+                state.getOutputSchemaType() == OutputSchemaType.MARVIN_RECIPE
+                        ? listAvailableSubRecipes(process)
+                        : List.of();
+
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(systemPrompt));
-        messages.add(UserMessage.from(buildInitialUserPrompt(state, recoveryHint)));
+        messages.add(UserMessage.from(
+                buildInitialUserPrompt(state, recoveryHint, availableRecipes)));
 
         ProposeResult parsed = null;
         String validationError = null;
@@ -307,7 +398,9 @@ public class ProposingPhase {
     // ──────────────────── Prompt building ────────────────────
 
     private static String buildInitialUserPrompt(
-            ArchitectState state, @Nullable String recoveryHint) {
+            ArchitectState state,
+            @Nullable String recoveryHint,
+            List<ResolvedRecipe> availableRecipes) {
         StringBuilder sb = new StringBuilder();
         sb.append("Output-Schema-Typ: ")
                 .append(state.getOutputSchemaType()).append("\n\n");
@@ -330,6 +423,31 @@ public class ProposingPhase {
             sb.append(": ").append(sg.getGoal()).append("\n");
         }
         sb.append("\n");
+
+        // MARVIN_RECIPE only: project-available sub-recipes that the
+        // generated marvin-recipe can list in allowedSubTaskRecipes.
+        // Without this the LLM tends to leave the constraint empty
+        // and the runtime PLAN takes shortcuts.
+        if (state.getOutputSchemaType() == OutputSchemaType.MARVIN_RECIPE) {
+            sb.append("Verfügbare Sub-Recipes im Project (ohne dein "
+                    + "eigenes _slart/* generated bucket):\n");
+            if (availableRecipes.isEmpty()) {
+                sb.append("  (keine — du musst ohne Sub-Recipes "
+                        + "auskommen, beachte das in promptPrefix)\n");
+            } else {
+                for (ResolvedRecipe r : availableRecipes) {
+                    sb.append("  - ").append(r.name())
+                            .append(" [engine=").append(r.engine())
+                            .append("]: ")
+                            .append(abbrev(r.description(), 100))
+                            .append("\n");
+                }
+            }
+            sb.append("\nWenn deine Subgoals zu einem dieser Recipes "
+                    + "passen, setze allowedSubTaskRecipes auf die "
+                    + "passende Teilmenge — und referenziere sie im "
+                    + "promptPrefix als `taskSpec.recipe`.\n\n");
+        }
 
         if (recoveryHint != null && !recoveryHint.isBlank()) {
             sb.append("WICHTIG — der vorige Proposing-Versuch wurde "
@@ -502,6 +620,35 @@ public class ProposingPhase {
     }
 
     // ──────────────────── Helpers ────────────────────
+
+    /**
+     * Lists every recipe currently visible to the project's
+     * recipe-cascade, minus the {@code _slart/} bucket itself —
+     * Slartibartfast's own outputs are not eligible as
+     * sub-recipes for the recipe being generated.
+     *
+     * <p>The list goes verbatim into the user-prompt so the LLM
+     * has concrete recipe names to put into
+     * {@code allowedSubTaskRecipes}. Without this the LLM tends to
+     * either invent names or omit the constraint entirely; the
+     * latter empirically results in Marvin's runtime PLAN-LLM
+     * taking shortcuts and the pipeline not running.
+     */
+    private List<ResolvedRecipe> listAvailableSubRecipes(
+            ThinkProcessDocument process) {
+        try {
+            return recipeLoader.listAll(
+                            process.getTenantId(), process.getProjectId())
+                    .stream()
+                    .filter(r -> !r.name().startsWith("_slart/"))
+                    .toList();
+        } catch (RuntimeException e) {
+            log.warn("Slartibartfast id='{}' PROPOSING failed listing project "
+                            + "recipes: {} — proceeding without recipe-list",
+                    process.getId(), e.toString());
+            return List.of();
+        }
+    }
 
     private static String summariseInputs(ArchitectState state) {
         return "subgoals=" + state.getSubgoals().size()

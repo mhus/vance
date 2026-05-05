@@ -207,7 +207,8 @@ export default {
       recordsParseError: 'Records-Ansicht nicht möglich: {message}',
       graphParseError: 'Graph-Ansicht nicht möglich: {message}',
       sheetParseError: 'Sheet-Ansicht nicht möglich: {message}',
-      delete: 'Löschen',
+      delete: 'In Papierkorb',
+      deletePermanent: 'Endgültig löschen',
       download: 'Herunterladen',
       cancel: 'Abbrechen',
       apply: 'Anwenden',
@@ -324,11 +325,15 @@ export default {
       submitUpload: 'Hochladen',
     },
     delete: {
-      title: 'Dokument löschen',
+      title: 'In den Papierkorb verschieben',
       body:
-        '{path} löschen? Das Dokument und sein Inhalt werden entfernt. Diese Aktion kann nicht rückgängig gemacht werden.',
+        '{path} in den Papierkorb verschieben? Du kannst es später unter {bin} endgültig löschen.',
       cancel: 'Abbrechen',
-      confirm: 'Löschen',
+      confirm: 'In Papierkorb',
+      titlePermanent: 'Endgültig löschen',
+      bodyPermanent:
+        '{path} endgültig löschen? Das Dokument und sein Inhalt werden entfernt. Diese Aktion kann nicht rückgängig gemacht werden.',
+      confirmPermanent: 'Endgültig löschen',
     },
     help: {
       title: 'Feld-Referenz',

@@ -111,7 +111,7 @@ public class MarvinEngine implements ThinkEngine {
               "children": [
                 {
                   "goal":     "<one-sentence goal for this subtask>",
-                  "taskKind": "PLAN" | "WORKER" | "USER_INPUT" | "AGGREGATE",
+                  "taskKind": "PLAN" | "EXPAND_FROM_DOC" | "WORKER" | "USER_INPUT" | "AGGREGATE",
                   "taskSpec": { ... task-kind-specific spec ... }
                 },
                 ...
@@ -121,6 +121,17 @@ public class MarvinEngine implements ThinkEngine {
             Rules:
             - Order matters; siblings run sequentially.
             - PLAN  - further decomposition (use sparingly).
+            - EXPAND_FROM_DOC - deterministic decomposition driven by an
+                       existing kind:list / kind:tree / kind:records document.
+                       Use this when the plan ALREADY EXISTS as a document
+                       (chapter outline, requirements list, …) — it iterates
+                       items and creates one child per item via a template,
+                       no LLM call. taskSpec.documentRef = {name|path|id};
+                       taskSpec.childTemplate = {goal, taskKind, taskSpec}
+                       with {{item.text}} / {{record.<field>}} / {{index}}
+                       / {{root.title}} / {{parent.goal}} placeholders.
+                       Optional: treeMode (RECURSIVE|FLAT), failOnEmpty,
+                       failOnMissingField.
             - WORKER - taskSpec.recipe + taskSpec.steerContent must be set.
                        Prefer recipe="marvin-worker" — it understands the
                        Marvin worker output contract (DONE / NEEDS_SUBTASKS /
@@ -174,6 +185,15 @@ public class MarvinEngine implements ThinkEngine {
             If you cannot finish without help, use NEEDS_USER_INPUT or
             BLOCKED_BY_PROBLEM rather than guessing. Do not embed the
             schema as an example — emit the actual filled-in object.
+
+            newTasks may use taskKind "EXPAND_FROM_DOC" for deterministic
+            decomposition when a kind:list / kind:tree / kind:records
+            document already carries the plan. taskSpec must then provide
+            documentRef={name|path|id} and childTemplate={goal, taskKind,
+            taskSpec} with {{item.text}}/{{record.<field>}}/{{index}}/
+            {{root.title}}/{{parent.goal}} placeholders. Marvin reads the
+            document and creates one child per item without an LLM call —
+            ideal when you wrote the outline yourself.
             """;
 
     /** Hard cap on JSON-format-correction re-prompts per worker. */
@@ -215,6 +235,7 @@ public class MarvinEngine implements ThinkEngine {
     private final ObjectMapper objectMapper;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
+    private final DocumentExpander documentExpander;
     /** Lazy because {@code ThinkEngineService} wires every engine
      *  bean — we'd otherwise close a cycle. */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
@@ -358,8 +379,9 @@ public class MarvinEngine implements ThinkEngine {
         }
         TaskKind rootKind = parseTaskKind(
                 paramString(process, "rootTaskKind", null), TaskKind.PLAN);
+        Map<String, Object> rootSpec = buildRootTaskSpec(process, rootKind);
         nodeService.createRoot(process.getTenantId(), process.getId(), goal,
-                rootKind, /*taskSpec*/ null);
+                rootKind, rootSpec);
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         // Schedule the first turn on Marvin's own lane — never run it
         // synchronously here, otherwise we'd block whatever lane invoked
@@ -808,6 +830,7 @@ public class MarvinEngine implements ThinkEngine {
                 node.getPosition(), abbrev(node.getGoal()));
         return switch (node.getTaskKind()) {
             case PLAN -> { runPlan(process, ctx, node); yield false; }
+            case EXPAND_FROM_DOC -> { runExpandFromDoc(process, ctx, node); yield false; }
             case AGGREGATE -> { runAggregate(process, ctx, node); yield false; }
             case WORKER -> runWorker(process, ctx, node);
             case USER_INPUT -> runUserInput(process, ctx, node);
@@ -962,6 +985,191 @@ public class MarvinEngine implements ThinkEngine {
         int end = raw.lastIndexOf('}');
         if (start < 0 || end <= start) return null;
         return raw.substring(start, end + 1);
+    }
+
+    // ──────────────────── EXPAND_FROM_DOC ────────────────────
+
+    /**
+     * Document-driven decomposition — see
+     * {@code specification/marvin-engine.md} §7a. Reads the referenced
+     * list/tree/records document via {@link DocumentExpander}, applies
+     * the {@code childTemplate} per item and appends the resulting
+     * children under this node. No LLM call.
+     *
+     * <p>Empty document is not a failure (returns 0 children, marks
+     * DONE) unless {@code taskSpec.failOnEmpty=true}. Missing template
+     * variables resolve to {@code ""} unless
+     * {@code taskSpec.failOnMissingField=true}.
+     *
+     * <p>{@code expandPolicy=PAUSE_BEFORE_EXPAND} (read from the node's
+     * {@code taskSpec} or the process's engine-params) injects a
+     * USER_INPUT approval sibling <em>before</em> this node, marks
+     * the node back to PENDING and yields. The DFS hits the inbox
+     * sibling first; once the user approves the EXPAND runs through
+     * normally on the next visit (an {@code _approved} flag on the
+     * taskSpec stops the policy from re-triggering).
+     */
+    private void runExpandFromDoc(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            MarvinNodeDocument node) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> documentRef = paramMap(node, "documentRef");
+        if (documentRef == null || documentRef.isEmpty()) {
+            nodeService.markFailed(node,
+                    "EXPAND_FROM_DOC missing taskSpec.documentRef");
+            log.warn("Marvin id='{}' EXPAND node='{}' missing documentRef — failing",
+                    process.getId(), node.getId());
+            return;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> childTemplate = paramMap(node, "childTemplate");
+        if (childTemplate == null || childTemplate.isEmpty()) {
+            nodeService.markFailed(node,
+                    "EXPAND_FROM_DOC missing taskSpec.childTemplate");
+            log.warn("Marvin id='{}' EXPAND node='{}' missing childTemplate — failing",
+                    process.getId(), node.getId());
+            return;
+        }
+
+        if (shouldPauseForApproval(process, node)) {
+            insertApprovalGate(process, node);
+            return;
+        }
+
+        String treeMode = paramString(node, "treeMode", "RECURSIVE");
+        boolean failOnEmpty = paramBool(node, "failOnEmpty", false);
+        boolean strictMissing = paramBool(node, "failOnMissingField", false);
+
+        DocumentExpander.ExpansionPlan plan;
+        try {
+            plan = documentExpander.expand(
+                    process.getTenantId(), ctx.projectId(),
+                    documentRef, childTemplate, treeMode,
+                    node.getGoal(), strictMissing);
+        } catch (DocumentExpander.ExpandError ee) {
+            nodeService.markFailed(node, ee.getMessage());
+            log.warn("Marvin id='{}' EXPAND node='{}' failed: {}",
+                    process.getId(), node.getId(), ee.getMessage());
+            return;
+        } catch (RuntimeException e) {
+            nodeService.markFailed(node, "EXPAND_FROM_DOC failed: " + e.getMessage());
+            log.warn("Marvin id='{}' EXPAND node='{}' unexpected error: {}",
+                    process.getId(), node.getId(), e.toString(), e);
+            return;
+        }
+
+        if (plan.nodes().isEmpty()) {
+            if (failOnEmpty) {
+                nodeService.markFailed(node,
+                        "EXPAND_FROM_DOC: document yielded 0 items (failOnEmpty=true)");
+                return;
+            }
+            Map<String, Object> artifacts = new LinkedHashMap<>();
+            artifacts.put("expanded", true);
+            artifacts.put("childCount", 0);
+            nodeService.markDone(node, artifacts);
+            log.info("Marvin id='{}' EXPAND node='{}' empty document — DONE without children",
+                    process.getId(), node.getId());
+            return;
+        }
+
+        int total = appendExpansionPlan(process, node.getId(), plan.nodes());
+        Map<String, Object> artifacts = new LinkedHashMap<>();
+        artifacts.put("expanded", true);
+        artifacts.put("childCount", total);
+        nodeService.markDone(node, artifacts);
+        log.info("Marvin id='{}' EXPAND node='{}' materialized {} node(s)",
+                process.getId(), node.getId(), total);
+    }
+
+    /**
+     * Walks the {@link DocumentExpander.ExpansionPlan} pre-order,
+     * appending direct children under each parent and recursing into
+     * nested children. Returns the total number of nodes inserted.
+     */
+    private int appendExpansionPlan(
+            ThinkProcessDocument process, String parentId,
+            List<DocumentExpander.TemplatedNode> templated) {
+        if (templated.isEmpty()) return 0;
+        List<de.mhus.vance.shared.marvin.MarvinNodeService.NodeSpec> directSpecs =
+                new ArrayList<>(templated.size());
+        for (DocumentExpander.TemplatedNode tn : templated) {
+            directSpecs.add(tn.spec());
+        }
+        List<MarvinNodeDocument> directNodes = nodeService.appendChildren(
+                process.getTenantId(), process.getId(), parentId, directSpecs);
+        int total = directNodes.size();
+        for (int i = 0; i < directNodes.size(); i++) {
+            DocumentExpander.TemplatedNode tn = templated.get(i);
+            if (!tn.children().isEmpty()) {
+                total += appendExpansionPlan(process, directNodes.get(i).getId(), tn.children());
+            }
+        }
+        return total;
+    }
+
+    /**
+     * @return {@code true} when the {@code expandPolicy} resolves to
+     *         {@code PAUSE_BEFORE_EXPAND} <em>and</em> this node has
+     *         not been approved yet (no {@code _approved} marker on
+     *         the taskSpec).
+     */
+    private static boolean shouldPauseForApproval(
+            ThinkProcessDocument process, MarvinNodeDocument node) {
+        if (paramBool(node, "_approved", false)) return false;
+        // Node-level overrides process-level; explicit AUTO wins.
+        String policy = paramString(node, "expandPolicy", null);
+        if (policy == null) policy = paramString(process, "expandPolicy", null);
+        return "PAUSE_BEFORE_EXPAND".equalsIgnoreCase(policy);
+    }
+
+    /**
+     * Inserts an APPROVAL inbox-item sibling immediately before this
+     * EXPAND node, flips the EXPAND back to PENDING and tags it as
+     * {@code _approved=true} so the next visit (after the approval
+     * lands) runs through to materialization without re-prompting.
+     */
+    private void insertApprovalGate(
+            ThinkProcessDocument process, MarvinNodeDocument expandNode) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> docRef = paramMap(expandNode, "documentRef");
+        String docDescriptor = describeDocRef(docRef);
+        Map<String, Object> taskSpec = new LinkedHashMap<>();
+        taskSpec.put("type", "APPROVAL");
+        taskSpec.put("title", "Approve outline before expansion");
+        taskSpec.put("body", "Marvin is about to expand the document "
+                + docDescriptor + " into "
+                + (expandNode.getGoal() == null ? "child tasks" : expandNode.getGoal())
+                + ". Edit the document now if needed, then approve.");
+        de.mhus.vance.shared.marvin.MarvinNodeService.NodeSpec gate =
+                new de.mhus.vance.shared.marvin.MarvinNodeService.NodeSpec(
+                        "Approve expansion of " + docDescriptor,
+                        TaskKind.USER_INPUT,
+                        taskSpec);
+        nodeService.insertSiblingBefore(process.getTenantId(), expandNode, gate);
+
+        Map<String, Object> updatedSpec = expandNode.getTaskSpec() == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(expandNode.getTaskSpec());
+        updatedSpec.put("_approved", Boolean.TRUE);
+        expandNode.setTaskSpec(updatedSpec);
+        expandNode.setStatus(NodeStatus.PENDING);
+        expandNode.setStartedAt(null);
+        nodeService.save(expandNode);
+        log.info("Marvin id='{}' EXPAND node='{}' paused for approval gate (doc={})",
+                process.getId(), expandNode.getId(), docDescriptor);
+    }
+
+    private static String describeDocRef(@Nullable Map<String, Object> ref) {
+        if (ref == null) return "<unknown>";
+        Object n = ref.get("name");
+        if (n instanceof String s && !s.isBlank()) return "'" + s + "'";
+        Object p = ref.get("path");
+        if (p instanceof String s && !s.isBlank()) return "'" + s + "'";
+        Object id = ref.get("id");
+        if (id instanceof String s && !s.isBlank()) return "id=" + s;
+        return "<unknown>";
     }
 
     // ──────────────────── WORKER ────────────────────
@@ -1386,6 +1594,13 @@ public class MarvinEngine implements ThinkEngine {
         return fallback;
     }
 
+    private static boolean paramBool(MarvinNodeDocument node, String key, boolean fallback) {
+        Object v = nodeSpecParam(node, key);
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) return Boolean.parseBoolean(s.trim());
+        return fallback;
+    }
+
     @SuppressWarnings("unchecked")
     private static @Nullable Map<String, Object> paramMap(
             MarvinNodeDocument node, String key) {
@@ -1412,6 +1627,50 @@ public class MarvinEngine implements ThinkEngine {
         } catch (IllegalArgumentException e) {
             return fallback;
         }
+    }
+
+    /**
+     * Builds the root node's {@code taskSpec} from process-level
+     * engine-params. For {@code EXPAND_FROM_DOC} we lift
+     * {@code rootDocumentRef} → {@code documentRef},
+     * {@code rootChildTemplate} → {@code childTemplate} and
+     * {@code rootTreeMode} → {@code treeMode} so a recipe can spawn
+     * a doc-driven Marvin via params alone (see spec §7a.3 (c)).
+     * Other root kinds get an empty spec — their handlers carry no
+     * required fields beyond {@code goal} for the root.
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable Map<String, Object> buildRootTaskSpec(
+            ThinkProcessDocument process, TaskKind kind) {
+        if (kind != TaskKind.EXPAND_FROM_DOC) return null;
+        Map<String, Object> p = process.getEngineParams();
+        if (p == null) return null;
+        Map<String, Object> spec = new LinkedHashMap<>();
+        Object docRef = p.get("rootDocumentRef");
+        if (docRef instanceof Map<?, ?> m) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                if (e.getKey() instanceof String k) copy.put(k, e.getValue());
+            }
+            spec.put("documentRef", copy);
+        } else if (docRef instanceof String s && !s.isBlank()) {
+            // Convenience shorthand: a bare string is treated as the
+            // document name within the current project.
+            Map<String, Object> ref = new LinkedHashMap<>();
+            ref.put("name", s);
+            spec.put("documentRef", ref);
+        }
+        Object tmpl = p.get("rootChildTemplate");
+        if (tmpl instanceof Map<?, ?> m) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                if (e.getKey() instanceof String k) copy.put(k, e.getValue());
+            }
+            spec.put("childTemplate", copy);
+        }
+        Object treeMode = p.get("rootTreeMode");
+        if (treeMode instanceof String s && !s.isBlank()) spec.put("treeMode", s);
+        return spec.isEmpty() ? null : spec;
     }
 
     private static InboxItemType parseInboxItemType(

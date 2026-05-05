@@ -209,7 +209,8 @@ export default {
       recordsParseError: 'Cannot show records view: {message}',
       graphParseError: 'Cannot show graph view: {message}',
       sheetParseError: 'Cannot show sheet view: {message}',
-      delete: 'Delete',
+      delete: 'Move to bin',
+      deletePermanent: 'Delete permanently',
       download: 'Download',
       cancel: 'Cancel',
       apply: 'Apply',
@@ -326,11 +327,15 @@ export default {
       submitUpload: 'Upload',
     },
     delete: {
-      title: 'Delete document',
+      title: 'Move to bin',
       body:
-        'Delete {path}? This removes the document and its stored content. The action cannot be undone.',
+        'Move {path} to the bin? You can permanently delete it later from {bin}.',
       cancel: 'Cancel',
-      confirm: 'Delete',
+      confirm: 'Move to bin',
+      titlePermanent: 'Delete permanently',
+      bodyPermanent:
+        'Permanently delete {path}? This removes the document and its stored content. The action cannot be undone.',
+      confirmPermanent: 'Delete permanently',
     },
     help: {
       title: 'Field reference',

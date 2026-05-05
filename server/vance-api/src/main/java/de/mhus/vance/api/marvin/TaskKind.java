@@ -14,6 +14,16 @@ public enum TaskKind {
     PLAN,
 
     /**
+     * Deterministic decomposition driven by a {@code list}/{@code tree}/
+     * {@code records} document. The node reads the referenced document,
+     * iterates its items and appends one child per item (recursive for
+     * tree) using a {@code childTemplate} carried in {@code taskSpec}.
+     * No LLM call — the document <em>is</em> the plan. Synchronous,
+     * see {@code specification/marvin-engine.md} §7a.
+     */
+    EXPAND_FROM_DOC,
+
+    /**
      * Spawns a Ford (or other-engine) worker via a recipe. The
      * task-spec carries the recipe name and the initial steer
      * message. Asynchronous wait-point — Marvin parks the node in

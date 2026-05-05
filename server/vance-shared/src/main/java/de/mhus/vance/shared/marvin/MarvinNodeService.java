@@ -123,6 +123,44 @@ public class MarvinNodeService {
         return repository.save(inserted);
     }
 
+    /**
+     * Inserts a single sibling immediately before the given anchor
+     * node. Anchor and any later siblings shift one position right
+     * so the new node sits at the anchor's old position. Used by
+     * the EXPAND_FROM_DOC pause-policy (a USER_INPUT approval gate
+     * appears <em>before</em> the expansion node, so the DFS hits
+     * it first).
+     */
+    public MarvinNodeDocument insertSiblingBefore(
+            String tenantId, MarvinNodeDocument anchor, NodeSpec spec) {
+        List<MarvinNodeDocument> siblings = anchor.getParentId() == null
+                ? repository.findByProcessIdAndParentIdIsNullOrderByPositionAsc(anchor.getProcessId())
+                : repository.findByProcessIdAndParentIdOrderByPositionAsc(
+                        anchor.getProcessId(), anchor.getParentId());
+        int anchorPos = anchor.getPosition();
+        List<MarvinNodeDocument> shifted = new ArrayList<>();
+        for (MarvinNodeDocument s : siblings) {
+            if (s.getPosition() >= anchorPos) {
+                s.setPosition(s.getPosition() + 1);
+                shifted.add(s);
+            }
+        }
+        if (!shifted.isEmpty()) repository.saveAll(shifted);
+        MarvinNodeDocument inserted = MarvinNodeDocument.builder()
+                .tenantId(tenantId)
+                .processId(anchor.getProcessId())
+                .parentId(anchor.getParentId())
+                .position(anchorPos)
+                .goal(spec.goal())
+                .taskKind(spec.taskKind())
+                .taskSpec(spec.taskSpec() == null
+                        ? new LinkedHashMap<>()
+                        : new LinkedHashMap<>(spec.taskSpec()))
+                .status(NodeStatus.PENDING)
+                .build();
+        return repository.save(inserted);
+    }
+
     // ────────────────── Read / Lookup ──────────────────
 
     public Optional<MarvinNodeDocument> findById(String nodeId) {

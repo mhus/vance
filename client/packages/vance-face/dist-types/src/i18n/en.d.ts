@@ -181,6 +181,7 @@ declare const _default: {
             graphParseError: string;
             sheetParseError: string;
             delete: string;
+            deletePermanent: string;
             download: string;
             cancel: string;
             apply: string;
@@ -299,6 +300,9 @@ declare const _default: {
             body: string;
             cancel: string;
             confirm: string;
+            titlePermanent: string;
+            bodyPermanent: string;
+            confirmPermanent: string;
         };
         help: {
             title: string;

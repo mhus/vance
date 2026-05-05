@@ -312,6 +312,14 @@ const isSheetDocument = computed(() => {
         return false;
     return isSheetMime(sel.mimeType);
 });
+// Trash convention: documents under `_vance/bin/` are already in the
+// project's trash folder (mirrors DocumentService.TRASH_FOLDER_PREFIX
+// on the server). The DELETE endpoint dispatches on this — first
+// click moves regular docs to the bin, a second click on the bin
+// entry hard-deletes it. The UI swaps button label and confirmation
+// text to match.
+const TRASH_PREFIX = '_vance/bin/';
+const isSelectedInTrash = computed(() => (docsState.selected.value?.path ?? '').startsWith(TRASH_PREFIX));
 const parsedList = computed(() => {
     if (!isListDocument.value)
         return { doc: null, error: null };
@@ -1799,7 +1807,9 @@ else if (__VLS_ctx.docsState.selected.value) {
             onClick: (__VLS_ctx.openDeleteModal)
         };
         __VLS_124.slots.default;
-        (__VLS_ctx.$t('documents.detail.delete'));
+        (__VLS_ctx.isSelectedInTrash
+            ? __VLS_ctx.$t('documents.detail.deletePermanent')
+            : __VLS_ctx.$t('documents.detail.delete'));
         var __VLS_124;
         const __VLS_129 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
@@ -2205,17 +2215,26 @@ const __VLS_208 = {}.VModal;
 // @ts-ignore
 const __VLS_209 = __VLS_asFunctionalComponent(__VLS_208, new __VLS_208({
     modelValue: (__VLS_ctx.showDeleteModal),
-    title: (__VLS_ctx.$t('documents.delete.title')),
+    title: (__VLS_ctx.isSelectedInTrash
+        ? __VLS_ctx.$t('documents.delete.titlePermanent')
+        : __VLS_ctx.$t('documents.delete.title')),
     closeOnBackdrop: (!__VLS_ctx.deleting),
 }));
 const __VLS_210 = __VLS_209({
     modelValue: (__VLS_ctx.showDeleteModal),
-    title: (__VLS_ctx.$t('documents.delete.title')),
+    title: (__VLS_ctx.isSelectedInTrash
+        ? __VLS_ctx.$t('documents.delete.titlePermanent')
+        : __VLS_ctx.$t('documents.delete.title')),
     closeOnBackdrop: (!__VLS_ctx.deleting),
 }, ...__VLS_functionalComponentArgsRest(__VLS_209));
 __VLS_211.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({});
-(__VLS_ctx.$t('documents.delete.body', { path: __VLS_ctx.docsState.selected.value?.path ?? '' }));
+(__VLS_ctx.isSelectedInTrash
+    ? __VLS_ctx.$t('documents.delete.bodyPermanent', { path: __VLS_ctx.docsState.selected.value?.path ?? '' })
+    : __VLS_ctx.$t('documents.delete.body', {
+        path: __VLS_ctx.docsState.selected.value?.path ?? '',
+        bin: __VLS_ctx.TRASH_PREFIX,
+    }));
 {
     const { actions: __VLS_thisSlot } = __VLS_211.slots;
     const __VLS_212 = {}.VButton;
@@ -2262,7 +2281,9 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)(
         onClick: (__VLS_ctx.confirmDelete)
     };
     __VLS_223.slots.default;
-    (__VLS_ctx.$t('documents.delete.confirm'));
+    (__VLS_ctx.isSelectedInTrash
+        ? __VLS_ctx.$t('documents.delete.confirmPermanent')
+        : __VLS_ctx.$t('documents.delete.confirm'));
     var __VLS_223;
 }
 var __VLS_211;
@@ -2917,6 +2938,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             isRecordsDocument: isRecordsDocument,
             isGraphDocument: isGraphDocument,
             isSheetDocument: isSheetDocument,
+            TRASH_PREFIX: TRASH_PREFIX,
+            isSelectedInTrash: isSelectedInTrash,
             parsedList: parsedList,
             parsedTree: parsedTree,
             parsedRecords: parsedRecords,

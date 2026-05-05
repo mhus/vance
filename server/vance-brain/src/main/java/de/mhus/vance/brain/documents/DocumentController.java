@@ -321,8 +321,14 @@ public class DocumentController {
     }
 
     /**
-     * Hard-deletes the document (and its storage blob, if any).
-     * Idempotent against unknown ids — returns 404 the second time.
+     * Two-stage delete: documents that live outside the project's
+     * trash folder get soft-deleted (moved to {@code _vance/bin/}
+     * via {@link DocumentService#trash}); documents already in the
+     * trash get hard-deleted (row + storage blob gone). The behaviour
+     * mirrors a desktop file manager — first DELETE moves to bin,
+     * second DELETE on the bin entry is permanent.
+     *
+     * <p>Idempotent against unknown ids — returns 404 the second time.
      * Tenant cross-check identical to {@code findOne} / {@code update}:
      * the JWT's tenant must match the URL tenant must match the
      * document's tenant.
@@ -339,7 +345,11 @@ public class DocumentController {
         }
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.DELETE);
-        documentService.delete(id);
+        if (DocumentService.isTrash(existing.getPath())) {
+            documentService.delete(id);
+        } else {
+            documentService.trash(id);
+        }
         return ResponseEntity.noContent().build();
     }
 

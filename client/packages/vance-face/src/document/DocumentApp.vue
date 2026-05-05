@@ -391,6 +391,17 @@ const isSheetDocument = computed<boolean>(() => {
   return isSheetMime(sel.mimeType);
 });
 
+// Trash convention: documents under `_vance/bin/` are already in the
+// project's trash folder (mirrors DocumentService.TRASH_FOLDER_PREFIX
+// on the server). The DELETE endpoint dispatches on this — first
+// click moves regular docs to the bin, a second click on the bin
+// entry hard-deletes it. The UI swaps button label and confirmation
+// text to match.
+const TRASH_PREFIX = '_vance/bin/';
+const isSelectedInTrash = computed<boolean>(() =>
+  (docsState.selected.value?.path ?? '').startsWith(TRASH_PREFIX),
+);
+
 interface ParsedList {
   doc: ListDocument | null;
   error: string | null;
@@ -1307,7 +1318,9 @@ const formatBytes = (n: number): string => {
               variant="danger"
               :disabled="saving || deleting"
               @click="openDeleteModal"
-            >{{ $t('documents.detail.delete') }}</VButton>
+            >{{ isSelectedInTrash
+              ? $t('documents.detail.deletePermanent')
+              : $t('documents.detail.delete') }}</VButton>
             <VButton
               variant="ghost"
               :href="downloadUrl(docsState.selected.value)"
@@ -1438,19 +1451,25 @@ const formatBytes = (n: number): string => {
       </template>
     </div>
 
-    <!-- Delete confirmation. Single-shot Cancel | Delete pattern —
-         see specification/web-ui.md §7.7.1 (destructive actions). -->
+    <!-- Delete confirmation. Two flavours — soft-trash (default) and
+         permanent (when the doc already lives in `_vance/bin/`). The
+         server picks the actual operation from the same path; the UI
+         just relabels the prompt so the user understands the impact.
+         See specification/web-ui.md §7.7.1 (destructive actions). -->
     <VModal
       v-model="showDeleteModal"
-      :title="$t('documents.delete.title')"
+      :title="isSelectedInTrash
+        ? $t('documents.delete.titlePermanent')
+        : $t('documents.delete.title')"
       :close-on-backdrop="!deleting"
     >
-      <!-- Path is rendered as <code> via the i18n placeholder.
-           {path} is interpolated as plain text — wrapping it in a
-           styled <span> would require component-interpolation; for
-           a confirmation modal, plain text is good enough. -->
       <p>
-        {{ $t('documents.delete.body', { path: docsState.selected.value?.path ?? '' }) }}
+        {{ isSelectedInTrash
+          ? $t('documents.delete.bodyPermanent', { path: docsState.selected.value?.path ?? '' })
+          : $t('documents.delete.body', {
+              path: docsState.selected.value?.path ?? '',
+              bin: TRASH_PREFIX,
+            }) }}
       </p>
       <template #actions>
         <VButton
@@ -1459,7 +1478,9 @@ const formatBytes = (n: number): string => {
           @click="showDeleteModal = false"
         >{{ $t('documents.delete.cancel') }}</VButton>
         <VButton variant="danger" :loading="deleting" @click="confirmDelete">
-          {{ $t('documents.delete.confirm') }}
+          {{ isSelectedInTrash
+            ? $t('documents.delete.confirmPermanent')
+            : $t('documents.delete.confirm') }}
         </VButton>
       </template>
     </VModal>

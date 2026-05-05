@@ -1,15 +1,24 @@
 package de.mhus.vance.shared.marvin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.marvin.NodeStatus;
 import de.mhus.vance.api.marvin.TaskKind;
+import de.mhus.vance.shared.marvin.MarvinNodeService.NodeSpec;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /**
  * Tests for the pre-order DFS in {@link MarvinNodeService#findNextActionableNode}
@@ -199,6 +208,121 @@ class MarvinNodeServiceTest {
     void hasRunningNodes_isIndependentOfWaiting() {
         when(repository.countByProcessIdAndStatus("p", NodeStatus.RUNNING)).thenReturn(2L);
         assertThat(service.hasRunningNodes("p")).isTrue();
+    }
+
+    // ─── insertSiblingBefore ────────────────────────────────────────────
+
+    @Test
+    void insertSiblingBefore_anchorWithNoEarlierSiblings_shiftsAnchorRight() {
+        // root is the implicit parent; anchor 'a' is the only child at pos 0.
+        MarvinNodeDocument anchor = node("a", "root", 0, NodeStatus.PENDING);
+        when(repository.findByProcessIdAndParentIdOrderByPositionAsc("p", "root"))
+                .thenReturn(List.of(anchor));
+        // Echo whatever is saved so the returned id-less node round-trips.
+        when(repository.save(any(MarvinNodeDocument.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        MarvinNodeDocument inserted = service.insertSiblingBefore(
+                "tenant", anchor,
+                new NodeSpec("approval gate", TaskKind.USER_INPUT, Map.of()));
+
+        // Anchor was bumped to position 1 and persisted.
+        assertThat(anchor.getPosition()).isEqualTo(1);
+        verify(repository).saveAll(anyList());
+        // New node sits at the anchor's old position 0.
+        assertThat(inserted.getPosition()).isEqualTo(0);
+        assertThat(inserted.getParentId()).isEqualTo("root");
+        assertThat(inserted.getTaskKind()).isEqualTo(TaskKind.USER_INPUT);
+        assertThat(inserted.getGoal()).isEqualTo("approval gate");
+        assertThat(inserted.getStatus()).isEqualTo(NodeStatus.PENDING);
+    }
+
+    @Test
+    void insertSiblingBefore_withEarlierAndLaterSiblings_onlyShiftsFromAnchorOnward() {
+        MarvinNodeDocument earlier = node("e", "root", 0, NodeStatus.DONE);
+        MarvinNodeDocument anchor = node("a", "root", 1, NodeStatus.PENDING);
+        MarvinNodeDocument later = node("l", "root", 2, NodeStatus.PENDING);
+        when(repository.findByProcessIdAndParentIdOrderByPositionAsc("p", "root"))
+                .thenReturn(List.of(earlier, anchor, later));
+        when(repository.save(any(MarvinNodeDocument.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        MarvinNodeDocument inserted = service.insertSiblingBefore(
+                "tenant", anchor,
+                new NodeSpec("g", TaskKind.WORKER, Map.of()));
+
+        assertThat(earlier.getPosition()).isEqualTo(0);  // unchanged
+        assertThat(anchor.getPosition()).isEqualTo(2);   // bumped
+        assertThat(later.getPosition()).isEqualTo(3);    // bumped
+        assertThat(inserted.getPosition()).isEqualTo(1); // anchor's old slot
+
+        // saveAll was called for the two shifted siblings only.
+        ArgumentCaptor<List<MarvinNodeDocument>> shiftedCap =
+                ArgumentCaptor.forClass(List.class);
+        verify(repository).saveAll(shiftedCap.capture());
+        assertThat(shiftedCap.getValue()).containsExactly(anchor, later);
+    }
+
+    @Test
+    void insertSiblingBefore_topLevelAnchor_usesParentIdNullLookup() {
+        MarvinNodeDocument anchor = node("root", null, 0, NodeStatus.PENDING);
+        when(repository.findByProcessIdAndParentIdIsNullOrderByPositionAsc("p"))
+                .thenReturn(List.of(anchor));
+        when(repository.save(any(MarvinNodeDocument.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        MarvinNodeDocument inserted = service.insertSiblingBefore(
+                "tenant", anchor,
+                new NodeSpec("g", TaskKind.WORKER, Map.of("recipe", "ford")));
+
+        assertThat(inserted.getParentId()).isNull();
+        assertThat(inserted.getPosition()).isEqualTo(0);
+        assertThat(anchor.getPosition()).isEqualTo(1);
+        assertThat(inserted.getTaskSpec()).containsEntry("recipe", "ford");
+        // The non-null sibling lookup must NOT have been used.
+        verify(repository, never())
+                .findByProcessIdAndParentIdOrderByPositionAsc(any(), any());
+    }
+
+    @Test
+    void insertSiblingBefore_taskSpecIsCopied_callerMutationsDontLeakIntoSavedNode() {
+        MarvinNodeDocument anchor = node("a", "root", 0, NodeStatus.PENDING);
+        when(repository.findByProcessIdAndParentIdOrderByPositionAsc("p", "root"))
+                .thenReturn(List.of(anchor));
+        when(repository.save(any(MarvinNodeDocument.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        Map<String, Object> caller = new LinkedHashMap<>();
+        caller.put("recipe", "ford");
+
+        MarvinNodeDocument inserted = service.insertSiblingBefore(
+                "tenant", anchor,
+                new NodeSpec("g", TaskKind.WORKER, caller));
+        // Caller mutates after the call — saved spec must remain untouched.
+        caller.put("recipe", "different");
+
+        assertThat(inserted.getTaskSpec()).containsEntry("recipe", "ford");
+    }
+
+    @Test
+    void insertSiblingBefore_noOtherSiblingsBesidesAnchor_savesOnlyTheNewNode() {
+        MarvinNodeDocument anchor = node("solo", "root", 5, NodeStatus.PENDING);
+        when(repository.findByProcessIdAndParentIdOrderByPositionAsc("p", "root"))
+                .thenReturn(List.of(anchor));
+        when(repository.save(any(MarvinNodeDocument.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        MarvinNodeDocument inserted = service.insertSiblingBefore(
+                "tenant", anchor,
+                new NodeSpec("g", TaskKind.WORKER, Map.of()));
+
+        // Anchor was the only sibling; it gets shifted to position 6 and
+        // saveAll is called once with that single shifted sibling.
+        assertThat(anchor.getPosition()).isEqualTo(6);
+        assertThat(inserted.getPosition()).isEqualTo(5);
+        verify(repository, times(1)).saveAll(anyList());
+        // Plus exactly one save() for the newly inserted node.
+        verify(repository, times(1)).save(any(MarvinNodeDocument.class));
     }
 
     // ─── helpers ────────────────────────────────────────────────────────

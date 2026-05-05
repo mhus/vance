@@ -16,6 +16,7 @@ import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.PhaseIteration;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -41,6 +42,7 @@ class SlartibartfastEngineLifecycleTest {
     private ProcessEventEmitter eventEmitter;
     private LaneScheduler laneScheduler;
     private ObjectMapper objectMapper;
+    private FramingPhase framingPhase;
     private ThinkEngineContext ctx;
 
     private SlartibartfastEngine engine;
@@ -51,6 +53,7 @@ class SlartibartfastEngineLifecycleTest {
         eventEmitter = mock(ProcessEventEmitter.class);
         laneScheduler = mock(LaneScheduler.class);
         objectMapper = JsonMapper.builder().build();
+        framingPhase = mock(FramingPhase.class);
         ctx = mock(ThinkEngineContext.class);
         when(ctx.drainPending()).thenReturn(List.<SteerMessage>of());
 
@@ -60,8 +63,19 @@ class SlartibartfastEngineLifecycleTest {
         doAnswer(inv -> null).when(thinkProcessService)
                 .replaceEngineParams(anyString(), any());
 
+        // Lifecycle test focuses on engine dispatch; FramingPhase
+        // gets its own dedicated test. Stub it so it mirrors the
+        // M1 stub behaviour — populates a minimal FramedGoal so the
+        // downstream stub phases keep producing the same shape.
+        doAnswer(inv -> {
+            de.mhus.vance.api.slartibartfast.ArchitectState s = inv.getArgument(0);
+            de.mhus.vance.brain.slartibartfast.SlartibartfastPhases.stubFraming(s);
+            return null;
+        }).when(framingPhase).execute(any(), any(), any());
+
         engine = new SlartibartfastEngine(
-                thinkProcessService, eventEmitter, laneScheduler, objectMapper);
+                thinkProcessService, eventEmitter, laneScheduler,
+                objectMapper, framingPhase);
     }
 
     @Test

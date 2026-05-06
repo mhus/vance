@@ -1587,6 +1587,18 @@ public class MarvinEngine implements ThinkEngine {
         boolean failOnEmpty = paramBool(node, "failOnEmpty", false);
         boolean strictMissing = paramBool(node, "failOnMissingField", false);
 
+        // Memoization: if the childTemplate has no recipe, run the
+        // selector ONCE on the goal template before materialising.
+        // The picked recipe gets written into childTemplate, so all
+        // materialised children carry it and the per-child
+        // runWorker-selector path is bypassed for the whole batch.
+        // Items in EXPAND-batches share a goal-shape (only
+        // placeholders vary) — they should resolve to the same
+        // recipe by construction. If the selector returns NONE here,
+        // we leave childTemplate recipe-less and let the per-child
+        // path try again at spawn-time as a graceful fallback.
+        childTemplate = preSelectChildTemplateRecipe(process, node, childTemplate);
+
         DocumentExpander.ExpansionPlan plan;
         try {
             plan = documentExpander.expand(
@@ -2278,6 +2290,61 @@ public class MarvinEngine implements ThinkEngine {
     private static String abbrev(@Nullable String s) {
         if (s == null) return "";
         return s.length() <= 80 ? s : s.substring(0, 77) + "...";
+    }
+
+    /**
+     * Memoizes the selector across an EXPAND-batch: when the
+     * childTemplate has no {@code recipe}, runs ONE selector call
+     * on the goal template and stamps the picked recipe back into
+     * the (returned, copied) childTemplate. The DocumentExpander
+     * then materialises all children with that recipe — saves N-1
+     * per-child selector calls.
+     *
+     * <p>Returns the (possibly modified) childTemplate. When the
+     * selector returns NONE here, the original recipe-less
+     * childTemplate is returned unchanged — the per-child
+     * runWorker-selector path acts as fallback.
+     */
+    private Map<String, Object> preSelectChildTemplateRecipe(
+            ThinkProcessDocument process,
+            MarvinNodeDocument node,
+            Map<String, Object> childTemplate) {
+        Object tmplRecipe = childTemplate.get("recipe");
+        if (tmplRecipe instanceof String s && !s.isBlank()) {
+            // childTemplate already pins a recipe — no work.
+            return childTemplate;
+        }
+        Object tmplGoal = childTemplate.get("goal");
+        if (!(tmplGoal instanceof String goalTpl) || goalTpl.isBlank()) {
+            // No goal template either — runWorker will fail or call
+            // the selector per child if the materialised goal is
+            // non-blank. Nothing to memoize here.
+            return childTemplate;
+        }
+        try {
+            de.mhus.vance.brain.delegate.RecipeSelectorService.Result r =
+                    recipeSelector.select(process, goalTpl);
+            if (r.decision()
+                    != de.mhus.vance.brain.delegate.RecipeSelectorService.Result.Decision.MATCH) {
+                log.info("Marvin id='{}' EXPAND node='{}' pre-select returned NONE "
+                                + "for goal-template — per-child selector fallback applies "
+                                + "(rationale: {})",
+                        process.getId(), node.getId(), r.rationale());
+                return childTemplate;
+            }
+            Map<String, Object> updated = new LinkedHashMap<>(childTemplate);
+            updated.put("recipe", r.recipeName());
+            log.info("Marvin id='{}' EXPAND node='{}' memoized recipe='{}' for batch "
+                            + "(goal-template: '{}')",
+                    process.getId(), node.getId(), r.recipeName(),
+                    abbrev(goalTpl));
+            return updated;
+        } catch (RuntimeException e) {
+            log.warn("Marvin id='{}' EXPAND node='{}' pre-select call failed: {} "
+                            + "— falling back to per-child selector",
+                    process.getId(), node.getId(), e.toString());
+            return childTemplate;
+        }
     }
 
     /**

@@ -102,27 +102,33 @@ public class EddieContext {
             boolean allowSystem) {
         String explicit = paramString(params, "projectId");
         String name;
-        if (explicit != null && isSubProcess(ctx)) {
+        if (isSubProcess(ctx)) {
             // Sub-processes (Marvin/Vogon/Ford workers spawned with a
             // parentProcessId) always run in the inherited project. The
             // worker LLM sometimes hallucinates a `projectId` from
             // training-data patterns (e.g. picking another project's
-            // name it has seen elsewhere); accepting it would silently
-            // route reads/writes to the wrong project. Force the
-            // inherited context and warn so the audit trail flags it.
+            // name it has seen elsewhere) — either as the tool param
+            // or via project_switch into the active-slot. Forcing the
+            // inherited context catches both paths.
             String inherited = ctx.projectId();
-            if (inherited != null && !inherited.isBlank()
-                    && !inherited.equals(explicit)) {
-                log.warn("Sub-process tool ignored hallucinated projectId='{}' "
-                                + "— forced to inherited project '{}' (process='{}')",
-                        explicit, inherited, ctx.processId());
-            }
-            name = inherited;
-            if (name == null || name.isBlank()) {
+            if (inherited == null || inherited.isBlank()) {
                 throw new ToolException(
                         "Sub-process invoked without an inherited "
                                 + "projectId — engine spawn is broken");
             }
+            if (explicit != null && !inherited.equals(explicit)) {
+                log.warn("Sub-process tool ignored hallucinated projectId='{}' "
+                                + "— forced to inherited project '{}' (process='{}')",
+                        explicit, inherited, ctx.processId());
+            } else {
+                Optional<String> slot = readActiveProject(ctx);
+                if (slot.isPresent() && !slot.get().equals(inherited)) {
+                    log.warn("Sub-process tool ignored stale activeProject slot='{}' "
+                                    + "— forced to inherited project '{}' (process='{}')",
+                            slot.get(), inherited, ctx.processId());
+                }
+            }
+            name = inherited;
         } else {
             name = explicit != null
                     ? explicit
@@ -153,7 +159,7 @@ public class EddieContext {
      * orchestrators spawn Ford workers this way; those workers
      * have no business switching projects mid-task.
      */
-    private boolean isSubProcess(ToolInvocationContext ctx) {
+    public boolean isSubProcess(ToolInvocationContext ctx) {
         String pid = ctx.processId();
         if (pid == null || pid.isBlank()) return false;
         return thinkProcessService.findById(pid)

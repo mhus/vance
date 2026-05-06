@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
@@ -99,6 +100,27 @@ class EddieContextTest {
                             false))
                     .isInstanceOf(ToolException.class)
                     .hasMessageContaining("Sub-process invoked without an inherited projectId");
+        }
+
+        @Test
+        void staleActiveSlotIsIgnored_inheritedUsedInstead() {
+            // Sub-process worker called project_switch and polluted
+            // its active-slot with a hallucinated project name. Now
+            // a follow-up tool call without explicit projectId must
+            // not silently use that slot.
+            arrangeProcess(PROCESS_ID, "parent-x");
+            arrangeProject(INHERITED, ProjectKind.NORMAL);
+            MemoryDocument slot = mock(MemoryDocument.class);
+            when(slot.getContent()).thenReturn(HALLUCINATED);
+            when(scratchpad.get(TENANT, PROCESS_ID, EddieContext.ACTIVE_PROJECT_SLOT))
+                    .thenReturn(Optional.of(slot));
+
+            ProjectDocument resolved = eddieContext.resolveProject(
+                    Map.of(),
+                    ctx(INHERITED, PROCESS_ID),
+                    false);
+
+            assertThat(resolved.getName()).isEqualTo(INHERITED);
         }
     }
 

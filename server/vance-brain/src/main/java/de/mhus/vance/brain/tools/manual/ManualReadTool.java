@@ -71,11 +71,15 @@ public class ManualReadTool implements Tool {
             throw new ToolException("manual_read requires a tenant scope");
         }
         Object raw = params == null ? null : params.get("name");
-        if (!(raw instanceof String name) || name.isBlank()) {
+        if (!(raw instanceof String rawName) || rawName.isBlank()) {
             throw new ToolException("'name' is required");
         }
-        if (name.contains("/") || name.contains("..") || name.contains("\\")) {
-            throw new ToolException("Invalid manual name: " + name);
+        // Path traversal is the one thing we never accept. Backslashes
+        // are normalised to forward-slashes so a Windows-shaped path
+        // doesn't slip past the check.
+        String name = rawName.replace('\\', '/').trim();
+        if (name.contains("..")) {
+            throw new ToolException("Invalid manual name: " + rawName);
         }
 
         List<String> folders = ManualPaths.readFor(ctx, thinkProcessService);
@@ -83,15 +87,22 @@ public class ManualReadTool implements Tool {
             throw new ToolException("No manualPaths configured in the recipe.");
         }
 
+        // Resilient name resolution: the LLM frequently echoes a
+        // manual path verbatim from a workspace listing or an error
+        // message ("manuals/essay/STYLE.md", "essay/STYLE.md", or
+        // "/STYLE.md"). Strip the .md suffix and reduce the input to
+        // its last path segment — that is what the per-folder lookup
+        // expects as a bare stem.
+        String candidate = toBareStem(name);
         for (String folder : folders) {
-            String path = folder + name + MD_SUFFIX;
+            String path = folder + candidate + MD_SUFFIX;
             Optional<LookupResult> hit = documentService.lookupCascade(
                     ctx.tenantId(), ctx.projectId(), path);
             if (hit.isPresent()) {
                 LookupResult result = hit.get();
                 String content = result.content() == null ? "" : result.content();
                 Map<String, Object> out = new LinkedHashMap<>();
-                out.put("name", name);
+                out.put("name", candidate);
                 out.put("folder", folder);
                 out.put("content", content);
                 out.put("chars", content.length());
@@ -100,7 +111,25 @@ public class ManualReadTool implements Tool {
             }
         }
         throw new ToolException(
-                "Manual not found: '" + name + "'. Use manual_list to "
+                "Manual not found: '" + rawName + "'. Use manual_list to "
                         + "see what's available in: " + folders);
+    }
+
+    /**
+     * Normalises an LLM-supplied name into the bare stem the
+     * folder-cascade lookup expects. Drops the {@code .md} suffix
+     * and reduces a path-shaped value to its last segment so the
+     * common LLM mistake of pasting a full path resolves correctly.
+     */
+    private static String toBareStem(String name) {
+        String n = name;
+        if (n.endsWith(MD_SUFFIX)) {
+            n = n.substring(0, n.length() - MD_SUFFIX.length());
+        }
+        int slash = n.lastIndexOf('/');
+        if (slash >= 0) {
+            n = n.substring(slash + 1);
+        }
+        return n;
     }
 }

@@ -63,6 +63,12 @@ public class ProjectSwitchTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+        if (eddieContext.isSubProcess(ctx)) {
+            throw new ToolException(
+                    "project_switch is not allowed in sub-process workers — "
+                            + "the project is fixed by the spawning engine. "
+                            + "Operate within the inherited project context.");
+        }
         Object raw = params == null ? null : params.get("name");
         if (!(raw instanceof String name) || name.isBlank()) {
             throw new ToolException("'name' is required");

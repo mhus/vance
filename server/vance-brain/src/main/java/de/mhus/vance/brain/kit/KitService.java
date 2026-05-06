@@ -6,6 +6,7 @@ import de.mhus.vance.api.kit.KitImportRequestDto;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
+import de.mhus.vance.shared.project.ProjectService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -30,6 +31,7 @@ public class KitService {
     private final KitInstaller installer;
     private final KitExporter exporter;
     private final KitWorkspace workspace;
+    private final ProjectService projectService;
 
     /**
      * Install / update / apply a kit. The {@code mode} on the request
@@ -39,6 +41,17 @@ public class KitService {
     public KitOperationResultDto importKit(
             String tenantId, KitImportRequestDto request, @Nullable String actor) {
         validateImport(request);
+        // The kit installer writes documents/settings/tools under
+        // request.projectId. If no ProjectDocument with that name
+        // exists, downstream Eddie/Ford tools that go through
+        // EddieContext.resolveProject would fail with "project not
+        // found in tenant". Reject the install up front rather than
+        // leaving the project in an inconsistent state.
+        if (projectService.findByTenantAndName(tenantId, request.getProjectId()).isEmpty()) {
+            throw new KitException("project '" + request.getProjectId()
+                    + "' does not exist in tenant '" + tenantId
+                    + "' — create it before installing a kit");
+        }
         if (request.getMode() == KitImportMode.INSTALL || request.getMode() == KitImportMode.UPDATE) {
             KitManifestDto current = installer.loadManifest(tenantId, request.getProjectId());
             if (request.getMode() == KitImportMode.INSTALL && current != null) {
@@ -99,6 +112,10 @@ public class KitService {
             String tenantId, KitExportRequestDto request, @Nullable String actor) {
         if (request.getProjectId() == null || request.getProjectId().isBlank()) {
             throw new KitException("export request must carry a projectId");
+        }
+        if (projectService.findByTenantAndName(tenantId, request.getProjectId()).isEmpty()) {
+            throw new KitException("project '" + request.getProjectId()
+                    + "' does not exist in tenant '" + tenantId + "'");
         }
         return exporter.export(tenantId, request.getProjectId(), request, actor);
     }

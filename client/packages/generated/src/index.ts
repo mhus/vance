@@ -48,6 +48,8 @@ export * from './kit/KitOriginDto';
 
 export * from './insights/ActiveSkillInsightsDto';
 export * from './insights/ChatMessageInsightsDto';
+export * from './insights/EffectiveRecipeDto';
+export * from './insights/EffectiveToolDto';
 export * from './insights/MarvinNodeInsightsDto';
 export * from './insights/MemoryInsightsDto';
 export * from './insights/PendingMessageInsightsDto';

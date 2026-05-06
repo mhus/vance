@@ -24,6 +24,8 @@ import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem, { type MarvinTreeNode } from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
 import LlmTraceTab from './LlmTraceTab.vue';
+import RecipesTab from './RecipesTab.vue';
+import ProjectToolsTab from './ProjectToolsTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -45,6 +47,13 @@ const help = useHelp();
 const filterProjectId = ref<string | null>(null);
 const filterUserId = ref<string>('');
 const filterStatus = ref<string | null>(null);
+
+// ─── Project-level top tab ─────────────────────────────────────────────
+// Sessions = the existing session-walker (default). Recipes / Tools
+// show project-scope read-only views fed from the same project filter
+// as the sidebar.
+type TopTab = 'sessions' | 'recipes' | 'tools';
+const topTab = ref<TopTab>('sessions');
 
 const projectFilterOptions = computed(() => [
   { value: '', label: t('insights.filters.allProjects') },
@@ -372,14 +381,39 @@ function clickProcessByMongoId(id: string | undefined | null): void {
         <span>{{ combinedError }}</span>
       </VAlert>
 
-      <VEmptyState
-        v-if="!selection"
-        :headline="$t('insights.emptyMain.headline')"
-        :body="$t('insights.emptyMain.body')"
-      />
+      <!-- Project-level top tab bar — Sessions stays the default
+           selection-driven view; Recipes / Tools take the active
+           filter project and render the cascade-resolved list. -->
+      <div class="tab-bar mb-1">
+        <button
+          class="tab"
+          :class="{ 'tab--active': topTab === 'sessions' }"
+          @click="topTab = 'sessions'"
+        >Sessions</button>
+        <button
+          class="tab"
+          :class="{ 'tab--active': topTab === 'recipes' }"
+          @click="topTab = 'recipes'"
+        >Recipes</button>
+        <button
+          class="tab"
+          :class="{ 'tab--active': topTab === 'tools' }"
+          @click="topTab = 'tools'"
+        >Tools</button>
+      </div>
 
-      <!-- ─── Session view ─── -->
-      <template v-else-if="selection.kind === 'session'">
+      <RecipesTab v-if="topTab === 'recipes'" :project-id="filterProjectId" />
+      <ProjectToolsTab v-else-if="topTab === 'tools'" :project-id="filterProjectId" />
+
+      <template v-else-if="topTab === 'sessions'">
+        <VEmptyState
+          v-if="!selection"
+          :headline="$t('insights.emptyMain.headline')"
+          :body="$t('insights.emptyMain.body')"
+        />
+
+        <!-- ─── Session view ─── -->
+        <template v-else-if="selection.kind === 'session'">
         <div v-if="!selectedSession" class="opacity-70">{{ $t('insights.loading') }}</div>
         <template v-else>
           <!-- Session header — always visible across Overview / Processes /
@@ -702,6 +736,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
             <LlmTraceTab :process-id="selectedProcess.id" />
           </template>
         </template>
+      </template>
       </template>
     </div>
 

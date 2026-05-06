@@ -2,11 +2,22 @@ package de.mhus.vance.brain.insights;
 
 import de.mhus.vance.api.insights.ActiveSkillInsightsDto;
 import de.mhus.vance.api.insights.ChatMessageInsightsDto;
+import de.mhus.vance.api.insights.EffectiveRecipeDto;
+import de.mhus.vance.api.insights.EffectiveToolDto;
 import de.mhus.vance.api.insights.MarvinNodeInsightsDto;
 import de.mhus.vance.api.insights.MemoryInsightsDto;
 import de.mhus.vance.api.insights.PendingMessageInsightsDto;
 import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
+import de.mhus.vance.brain.recipe.RecipeLoader;
+import de.mhus.vance.brain.recipe.RecipeSource;
+import de.mhus.vance.brain.recipe.ResolvedRecipe;
+import de.mhus.vance.brain.servertool.ServerToolService;
+import de.mhus.vance.brain.tools.BuiltInToolSource;
+import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.servertool.ServerToolDocument;
+import de.mhus.vance.shared.servertool.ServerToolRepository;
 import de.mhus.vance.api.llmtrace.LlmTraceDto;
 import de.mhus.vance.api.llmtrace.LlmTraceListResponse;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -69,6 +80,10 @@ public class InsightsAdminController {
     private final MarvinNodeService marvinNodeService;
     private final LlmTraceService llmTraceService;
     private final EngineMessageService engineMessageService;
+    private final RecipeLoader recipeLoader;
+    private final ServerToolService serverToolService;
+    private final ServerToolRepository serverToolRepository;
+    private final BuiltInToolSource builtInToolSource;
     private final RequestAuthority authority;
 
     // ─── Sessions ──────────────────────────────────────────────────────────
@@ -419,5 +434,125 @@ public class InsightsAdminController {
                 .elapsedMs(t.getElapsedMs())
                 .createdAt(t.getCreatedAt())
                 .build();
+    }
+
+    // ─── Project-level effective config (Recipes / Tools) ──────────────────
+
+    /**
+     * Effective recipe list for a project. Cascade-resolved
+     * ({@code project → _vance → bundled}); each entry carries its
+     * source so the UI can render the origin badge.
+     */
+    @GetMapping("/projects/{project}/insights/recipes")
+    public List<EffectiveRecipeDto> listEffectiveRecipes(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
+        List<ResolvedRecipe> resolved = recipeLoader.listAll(tenant, project);
+        List<EffectiveRecipeDto> out = new ArrayList<>(resolved.size());
+        for (ResolvedRecipe r : resolved) {
+            out.add(EffectiveRecipeDto.builder()
+                    .name(r.name())
+                    .description(r.description())
+                    .engine(r.engine())
+                    .source(r.source().name())
+                    .paramsCount(r.params() == null ? 0 : r.params().size())
+                    .hasPromptPrefix(r.promptPrefix() != null && !r.promptPrefix().isBlank())
+                    .hasPromptPrefixSmall(r.promptPrefixSmall() != null && !r.promptPrefixSmall().isBlank())
+                    .allowedToolsAdd(r.allowedToolsAdd())
+                    .allowedToolsRemove(r.allowedToolsRemove())
+                    .defaultActiveSkills(r.defaultActiveSkills())
+                    .allowedSkills(r.allowedSkills())
+                    .locked(r.locked())
+                    .tags(r.tags())
+                    .profileKeys(r.profiles() == null ? List.of() : new ArrayList<>(r.profiles().keySet()))
+                    .build());
+        }
+        out.sort(Comparator.comparing(EffectiveRecipeDto::getName));
+        return out;
+    }
+
+    /**
+     * Effective tool list for a project. Walks the same cascade the
+     * runtime dispatcher walks ({@code BUILTIN → _vance → project})
+     * and attributes each surviving entry to its innermost layer.
+     * Disabled inner-layer documents trigger {@code disabledByInnerLayer=true}
+     * on the otherwise hidden entry instead of dropping it silently —
+     * this is the diagnostic value the insights tab exists for.
+     */
+    @GetMapping("/projects/{project}/insights/tools")
+    public List<EffectiveToolDto> listEffectiveTools(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.READ);
+
+        Map<String, EffectiveToolDto.EffectiveToolDtoBuilder> acc = new LinkedHashMap<>();
+
+        // Layer 1 — built-in beans
+        for (Tool t : builtInToolSource.list()) {
+            acc.put(t.name(), EffectiveToolDto.builder()
+                    .name(t.name())
+                    .description(t.description())
+                    .primary(t.primary())
+                    .source("BUILTIN")
+                    .labels(new ArrayList<>(t.labels()))
+                    .type(null)
+                    .disabledByInnerLayer(false));
+        }
+
+        // Layer 2 — tenant-wide _vance project
+        applyToolLayer(acc, tenant, HomeBootstrapService.VANCE_PROJECT_NAME, "VANCE");
+
+        // Layer 3 — caller's project (skip if it IS _vance)
+        if (!HomeBootstrapService.VANCE_PROJECT_NAME.equals(project)) {
+            applyToolLayer(acc, tenant, project, "PROJECT");
+        }
+
+        List<EffectiveToolDto> out = new ArrayList<>(acc.size());
+        for (EffectiveToolDto.EffectiveToolDtoBuilder b : acc.values()) {
+            out.add(b.build());
+        }
+        out.sort(Comparator.comparing(EffectiveToolDto::getName));
+        return out;
+    }
+
+    private void applyToolLayer(
+            Map<String, EffectiveToolDto.EffectiveToolDtoBuilder> acc,
+            String tenant,
+            String project,
+            String sourceLabel) {
+        for (ServerToolDocument doc : serverToolRepository.findByTenantIdAndProjectId(tenant, project)) {
+            String name = doc.getName();
+            if (!doc.isEnabled()) {
+                // Disabled stop-card — surface as a diagnostic on the existing entry,
+                // or insert a placeholder when nothing was there before.
+                EffectiveToolDto.EffectiveToolDtoBuilder existing = acc.get(name);
+                if (existing != null) {
+                    existing.disabledByInnerLayer(true);
+                } else {
+                    acc.put(name, EffectiveToolDto.builder()
+                            .name(name)
+                            .description(doc.getDescription())
+                            .primary(false)
+                            .source(sourceLabel)
+                            .labels(doc.getLabels() == null ? List.of() : new ArrayList<>(doc.getLabels()))
+                            .type(doc.getType())
+                            .disabledByInnerLayer(true));
+                }
+                continue;
+            }
+            // Enabled doc → fully replaces lower layer
+            Tool materialized = serverToolService.lookup(tenant, project, name).orElse(null);
+            acc.put(name, EffectiveToolDto.builder()
+                    .name(name)
+                    .description(materialized != null ? materialized.description() : doc.getDescription())
+                    .primary(materialized != null && materialized.primary())
+                    .source(sourceLabel)
+                    .labels(doc.getLabels() == null ? List.of() : new ArrayList<>(doc.getLabels()))
+                    .type(doc.getType())
+                    .disabledByInnerLayer(false));
+        }
     }
 }

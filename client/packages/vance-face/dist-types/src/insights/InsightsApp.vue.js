@@ -7,6 +7,8 @@ import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
 import LlmTraceTab from './LlmTraceTab.vue';
+import RecipesTab from './RecipesTab.vue';
+import ProjectToolsTab from './ProjectToolsTab.vue';
 import { ChatRole, } from '@vance/generated';
 const { t } = useI18n();
 const tenantProjects = useTenantProjects();
@@ -21,6 +23,7 @@ const help = useHelp();
 const filterProjectId = ref(null);
 const filterUserId = ref('');
 const filterStatus = ref(null);
+const topTab = ref('sessions');
 const projectFilterOptions = computed(() => [
     { value: '', label: t('insights.filters.allProjects') },
     ...tenantProjects.projects.value.map(p => ({
@@ -441,365 +444,397 @@ if (__VLS_ctx.combinedError) {
     (__VLS_ctx.combinedError);
     var __VLS_32;
 }
-if (!__VLS_ctx.selection) {
-    const __VLS_33 = {}.VEmptyState;
-    /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "tab-bar mb-1" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.topTab = 'sessions';
+        } },
+    ...{ class: "tab" },
+    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'sessions' }) },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.topTab = 'recipes';
+        } },
+    ...{ class: "tab" },
+    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'recipes' }) },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.topTab = 'tools';
+        } },
+    ...{ class: "tab" },
+    ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'tools' }) },
+});
+if (__VLS_ctx.topTab === 'recipes') {
+    /** @type {[typeof RecipesTab, ]} */ ;
     // @ts-ignore
-    const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
-        headline: (__VLS_ctx.$t('insights.emptyMain.headline')),
-        body: (__VLS_ctx.$t('insights.emptyMain.body')),
+    const __VLS_33 = __VLS_asFunctionalComponent(RecipesTab, new RecipesTab({
+        projectId: (__VLS_ctx.filterProjectId),
     }));
-    const __VLS_35 = __VLS_34({
-        headline: (__VLS_ctx.$t('insights.emptyMain.headline')),
-        body: (__VLS_ctx.$t('insights.emptyMain.body')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_34));
+    const __VLS_34 = __VLS_33({
+        projectId: (__VLS_ctx.filterProjectId),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
 }
-else if (__VLS_ctx.selection.kind === 'session') {
-    if (!__VLS_ctx.selectedSession) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "opacity-70" },
-        });
-        (__VLS_ctx.$t('insights.loading'));
+else if (__VLS_ctx.topTab === 'tools') {
+    /** @type {[typeof ProjectToolsTab, ]} */ ;
+    // @ts-ignore
+    const __VLS_36 = __VLS_asFunctionalComponent(ProjectToolsTab, new ProjectToolsTab({
+        projectId: (__VLS_ctx.filterProjectId),
+    }));
+    const __VLS_37 = __VLS_36({
+        projectId: (__VLS_ctx.filterProjectId),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_36));
+}
+else if (__VLS_ctx.topTab === 'sessions') {
+    if (!__VLS_ctx.selection) {
+        const __VLS_39 = {}.VEmptyState;
+        /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+        // @ts-ignore
+        const __VLS_40 = __VLS_asFunctionalComponent(__VLS_39, new __VLS_39({
+            headline: (__VLS_ctx.$t('insights.emptyMain.headline')),
+            body: (__VLS_ctx.$t('insights.emptyMain.body')),
+        }));
+        const __VLS_41 = __VLS_40({
+            headline: (__VLS_ctx.$t('insights.emptyMain.headline')),
+            body: (__VLS_ctx.$t('insights.emptyMain.body')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_40));
     }
-    else {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.header, __VLS_intrinsicElements.header)({
-            ...{ class: "session-header" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "flex items-baseline gap-2 flex-wrap" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "font-mono text-sm opacity-70" },
-        });
-        (__VLS_ctx.selectedSession.sessionId);
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "text-xs px-1.5 py-0.5 rounded" },
-            ...{ class: (__VLS_ctx.selectedSession.status === 'OPEN' ? 'badge-open' : 'badge-closed') },
-        });
-        (__VLS_ctx.selectedSession.status?.toLowerCase());
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "text-xs opacity-60" },
-        });
-        (__VLS_ctx.selectedSession.userId);
-        (__VLS_ctx.selectedSession.projectId);
-        if (__VLS_ctx.selectedSession.firstUserMessage) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
-                ...{ class: "session-topic-title" },
-            });
-            (__VLS_ctx.selectedSession.firstUserMessage);
-        }
-        if (__VLS_ctx.selectedSession.lastMessagePreview) {
+    else if (__VLS_ctx.selection.kind === 'session') {
+        if (!__VLS_ctx.selectedSession) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                ...{ class: "text-xs opacity-70 mt-1" },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "opacity-70" },
             });
-            (__VLS_ctx.$t('insights.session.lastLabel'));
-            if (__VLS_ctx.selectedSession.lastMessageRole) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                (__VLS_ctx.selectedSession.lastMessageRole.toLowerCase());
-            }
-            if (__VLS_ctx.selectedSession.lastMessageAt) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                (__VLS_ctx.fmt(__VLS_ctx.selectedSession.lastMessageAt));
-            }
+            (__VLS_ctx.$t('insights.loading'));
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.header, __VLS_intrinsicElements.header)({
+                ...{ class: "session-header" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "flex items-baseline gap-2 flex-wrap" },
+            });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "block opacity-90 truncate" },
-                title: (__VLS_ctx.selectedSession.lastMessagePreview),
+                ...{ class: "font-mono text-sm opacity-70" },
             });
-            (__VLS_ctx.selectedSession.lastMessagePreview);
-        }
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "tab-bar" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.selection))
-                        return;
-                    if (!(__VLS_ctx.selection.kind === 'session'))
-                        return;
-                    if (!!(!__VLS_ctx.selectedSession))
-                        return;
-                    __VLS_ctx.activeTab = 'overview';
-                } },
-            ...{ class: "tab" },
-            ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'overview' }) },
-        });
-        (__VLS_ctx.$t('insights.tabs.overview'));
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.selection))
-                        return;
-                    if (!(__VLS_ctx.selection.kind === 'session'))
-                        return;
-                    if (!!(!__VLS_ctx.selectedSession))
-                        return;
-                    __VLS_ctx.activeTab = 'processes';
-                } },
-            ...{ class: "tab" },
-            ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'processes' }) },
-        });
-        (__VLS_ctx.$t('insights.tabs.processes', { count: __VLS_ctx.sessionProcessesForTab.length }));
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.selection))
-                        return;
-                    if (!(__VLS_ctx.selection.kind === 'session'))
-                        return;
-                    if (!!(!__VLS_ctx.selectedSession))
-                        return;
-                    __VLS_ctx.activeTab = 'timeline';
-                } },
-            ...{ class: "tab" },
-            ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'timeline' }) },
-        });
-        (__VLS_ctx.$t('insights.tabs.timeline'));
-        if (__VLS_ctx.activeTab === 'overview') {
-            const __VLS_37 = {}.VCard;
-            /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-            // @ts-ignore
-            const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
-                title: (__VLS_ctx.$t('insights.session.detailsTitle')),
-            }));
-            const __VLS_39 = __VLS_38({
-                title: (__VLS_ctx.$t('insights.session.detailsTitle')),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_38));
-            __VLS_40.slots.default;
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
-                ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm" },
+            (__VLS_ctx.selectedSession.sessionId);
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-xs px-1.5 py-0.5 rounded" },
+                ...{ class: (__VLS_ctx.selectedSession.status === 'OPEN' ? 'badge-open' : 'badge-closed') },
             });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
+            (__VLS_ctx.selectedSession.status?.toLowerCase());
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-xs opacity-60" },
             });
-            (__VLS_ctx.$t('insights.session.mongoId'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
-                ...{ class: "font-mono" },
-            });
-            (__VLS_ctx.selectedSession.id);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.session.user'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.selectedSession.userId);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.session.project'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
             (__VLS_ctx.selectedSession.projectId);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.session.status'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.selectedSession.status);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.session.client'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.selectedSession.profile);
-            (__VLS_ctx.selectedSession.clientVersion);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.session.boundConn'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
-                ...{ class: "font-mono text-xs" },
-            });
-            (__VLS_ctx.fmt(__VLS_ctx.selectedSession.boundConnectionId));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.session.chatProcess'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            if (__VLS_ctx.selectedSession.chatProcessId) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                    ...{ onClick: (...[$event]) => {
-                            if (!!(!__VLS_ctx.selection))
-                                return;
-                            if (!(__VLS_ctx.selection.kind === 'session'))
-                                return;
-                            if (!!(!__VLS_ctx.selectedSession))
-                                return;
-                            if (!(__VLS_ctx.activeTab === 'overview'))
-                                return;
-                            if (!(__VLS_ctx.selectedSession.chatProcessId))
-                                return;
-                            __VLS_ctx.clickProcessByMongoId(__VLS_ctx.selectedSession.chatProcessId);
-                        } },
-                    ...{ class: "link" },
+            if (__VLS_ctx.selectedSession.firstUserMessage) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
+                    ...{ class: "session-topic-title" },
                 });
-                (__VLS_ctx.selectedSession.chatProcessId);
+                (__VLS_ctx.selectedSession.firstUserMessage);
             }
-            else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-            }
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.session.created'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.fmt(__VLS_ctx.selectedSession.createdAt));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.session.lastActivity'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.fmt(__VLS_ctx.selectedSession.lastActivityAt));
-            var __VLS_40;
-        }
-        if (__VLS_ctx.activeTab === 'processes') {
-            const __VLS_41 = {}.VCard;
-            /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-            // @ts-ignore
-            const __VLS_42 = __VLS_asFunctionalComponent(__VLS_41, new __VLS_41({
-                title: (__VLS_ctx.$t('insights.session.processesTitle')),
-            }));
-            const __VLS_43 = __VLS_42({
-                title: (__VLS_ctx.$t('insights.session.processesTitle')),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_42));
-            __VLS_44.slots.default;
-            if (__VLS_ctx.sessionProcessesForTab.length === 0) {
+            if (__VLS_ctx.selectedSession.lastMessagePreview) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "text-xs opacity-70 mt-1" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                     ...{ class: "opacity-70" },
                 });
-                (__VLS_ctx.$t('insights.session.noProcesses'));
-            }
-            else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
-                    ...{ class: "flex flex-col divide-y divide-base-300" },
+                (__VLS_ctx.$t('insights.session.lastLabel'));
+                if (__VLS_ctx.selectedSession.lastMessageRole) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                    (__VLS_ctx.selectedSession.lastMessageRole.toLowerCase());
+                }
+                if (__VLS_ctx.selectedSession.lastMessageAt) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                    (__VLS_ctx.fmt(__VLS_ctx.selectedSession.lastMessageAt));
+                }
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "block opacity-90 truncate" },
+                    title: (__VLS_ctx.selectedSession.lastMessagePreview),
                 });
-                for (const [p] of __VLS_getVForSourceType((__VLS_ctx.sessionProcessesForTab))) {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                (__VLS_ctx.selectedSession.lastMessagePreview);
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "tab-bar" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.topTab === 'recipes'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'tools'))
+                            return;
+                        if (!(__VLS_ctx.topTab === 'sessions'))
+                            return;
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'session'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedSession))
+                            return;
+                        __VLS_ctx.activeTab = 'overview';
+                    } },
+                ...{ class: "tab" },
+                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'overview' }) },
+            });
+            (__VLS_ctx.$t('insights.tabs.overview'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.topTab === 'recipes'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'tools'))
+                            return;
+                        if (!(__VLS_ctx.topTab === 'sessions'))
+                            return;
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'session'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedSession))
+                            return;
+                        __VLS_ctx.activeTab = 'processes';
+                    } },
+                ...{ class: "tab" },
+                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'processes' }) },
+            });
+            (__VLS_ctx.$t('insights.tabs.processes', { count: __VLS_ctx.sessionProcessesForTab.length }));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.topTab === 'recipes'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'tools'))
+                            return;
+                        if (!(__VLS_ctx.topTab === 'sessions'))
+                            return;
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'session'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedSession))
+                            return;
+                        __VLS_ctx.activeTab = 'timeline';
+                    } },
+                ...{ class: "tab" },
+                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'timeline' }) },
+            });
+            (__VLS_ctx.$t('insights.tabs.timeline'));
+            if (__VLS_ctx.activeTab === 'overview') {
+                const __VLS_43 = {}.VCard;
+                /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+                // @ts-ignore
+                const __VLS_44 = __VLS_asFunctionalComponent(__VLS_43, new __VLS_43({
+                    title: (__VLS_ctx.$t('insights.session.detailsTitle')),
+                }));
+                const __VLS_45 = __VLS_44({
+                    title: (__VLS_ctx.$t('insights.session.detailsTitle')),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_44));
+                __VLS_46.slots.default;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
+                    ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.session.mongoId'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
+                    ...{ class: "font-mono" },
+                });
+                (__VLS_ctx.selectedSession.id);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.session.user'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.selectedSession.userId);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.session.project'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.selectedSession.projectId);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.session.status'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.selectedSession.status);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.session.client'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.selectedSession.profile);
+                (__VLS_ctx.selectedSession.clientVersion);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.session.boundConn'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
+                    ...{ class: "font-mono text-xs" },
+                });
+                (__VLS_ctx.fmt(__VLS_ctx.selectedSession.boundConnectionId));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.session.chatProcess'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                if (__VLS_ctx.selectedSession.chatProcessId) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                         ...{ onClick: (...[$event]) => {
+                                if (!!(__VLS_ctx.topTab === 'recipes'))
+                                    return;
+                                if (!!(__VLS_ctx.topTab === 'tools'))
+                                    return;
+                                if (!(__VLS_ctx.topTab === 'sessions'))
+                                    return;
                                 if (!!(!__VLS_ctx.selection))
                                     return;
                                 if (!(__VLS_ctx.selection.kind === 'session'))
                                     return;
                                 if (!!(!__VLS_ctx.selectedSession))
                                     return;
-                                if (!(__VLS_ctx.activeTab === 'processes'))
+                                if (!(__VLS_ctx.activeTab === 'overview'))
                                     return;
-                                if (!!(__VLS_ctx.sessionProcessesForTab.length === 0))
+                                if (!(__VLS_ctx.selectedSession.chatProcessId))
                                     return;
-                                __VLS_ctx.selectProcess(p);
+                                __VLS_ctx.clickProcessByMongoId(__VLS_ctx.selectedSession.chatProcessId);
                             } },
-                        key: (p.id),
-                        ...{ class: "py-2 flex items-center justify-between gap-3 cursor-pointer hover:bg-base-200/40 px-2 rounded" },
+                        ...{ class: "link" },
                     });
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                        ...{ class: "flex flex-col" },
-                    });
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "font-mono text-sm" },
-                    });
-                    (p.name);
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "text-xs opacity-60" },
-                    });
-                    (p.thinkEngine);
-                    if (p.recipeName) {
-                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                        (p.recipeName);
-                    }
-                    if (p.title) {
-                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                        (p.title);
-                    }
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "text-xs opacity-70" },
-                    });
-                    (p.status);
+                    (__VLS_ctx.selectedSession.chatProcessId);
                 }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                }
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.session.created'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.fmt(__VLS_ctx.selectedSession.createdAt));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.session.lastActivity'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.fmt(__VLS_ctx.selectedSession.lastActivityAt));
+                var __VLS_46;
             }
-            var __VLS_44;
-        }
-        if (__VLS_ctx.activeTab === 'timeline') {
-            /** @type {[typeof SessionTimelineTab, ]} */ ;
-            // @ts-ignore
-            const __VLS_45 = __VLS_asFunctionalComponent(SessionTimelineTab, new SessionTimelineTab({
-                ...{ 'onSelectProcess': {} },
-                processes: (__VLS_ctx.sessionProcessesForTab),
-            }));
-            const __VLS_46 = __VLS_45({
-                ...{ 'onSelectProcess': {} },
-                processes: (__VLS_ctx.sessionProcessesForTab),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_45));
-            let __VLS_48;
-            let __VLS_49;
-            let __VLS_50;
-            const __VLS_51 = {
-                onSelectProcess: (__VLS_ctx.clickProcessByMongoId)
-            };
-            var __VLS_47;
+            if (__VLS_ctx.activeTab === 'processes') {
+                const __VLS_47 = {}.VCard;
+                /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+                // @ts-ignore
+                const __VLS_48 = __VLS_asFunctionalComponent(__VLS_47, new __VLS_47({
+                    title: (__VLS_ctx.$t('insights.session.processesTitle')),
+                }));
+                const __VLS_49 = __VLS_48({
+                    title: (__VLS_ctx.$t('insights.session.processesTitle')),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_48));
+                __VLS_50.slots.default;
+                if (__VLS_ctx.sessionProcessesForTab.length === 0) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "opacity-70" },
+                    });
+                    (__VLS_ctx.$t('insights.session.noProcesses'));
+                }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+                        ...{ class: "flex flex-col divide-y divide-base-300" },
+                    });
+                    for (const [p] of __VLS_getVForSourceType((__VLS_ctx.sessionProcessesForTab))) {
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                            ...{ onClick: (...[$event]) => {
+                                    if (!!(__VLS_ctx.topTab === 'recipes'))
+                                        return;
+                                    if (!!(__VLS_ctx.topTab === 'tools'))
+                                        return;
+                                    if (!(__VLS_ctx.topTab === 'sessions'))
+                                        return;
+                                    if (!!(!__VLS_ctx.selection))
+                                        return;
+                                    if (!(__VLS_ctx.selection.kind === 'session'))
+                                        return;
+                                    if (!!(!__VLS_ctx.selectedSession))
+                                        return;
+                                    if (!(__VLS_ctx.activeTab === 'processes'))
+                                        return;
+                                    if (!!(__VLS_ctx.sessionProcessesForTab.length === 0))
+                                        return;
+                                    __VLS_ctx.selectProcess(p);
+                                } },
+                            key: (p.id),
+                            ...{ class: "py-2 flex items-center justify-between gap-3 cursor-pointer hover:bg-base-200/40 px-2 rounded" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                            ...{ class: "flex flex-col" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "font-mono text-sm" },
+                        });
+                        (p.name);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "text-xs opacity-60" },
+                        });
+                        (p.thinkEngine);
+                        if (p.recipeName) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                            (p.recipeName);
+                        }
+                        if (p.title) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                            (p.title);
+                        }
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "text-xs opacity-70" },
+                        });
+                        (p.status);
+                    }
+                }
+                var __VLS_50;
+            }
+            if (__VLS_ctx.activeTab === 'timeline') {
+                /** @type {[typeof SessionTimelineTab, ]} */ ;
+                // @ts-ignore
+                const __VLS_51 = __VLS_asFunctionalComponent(SessionTimelineTab, new SessionTimelineTab({
+                    ...{ 'onSelectProcess': {} },
+                    processes: (__VLS_ctx.sessionProcessesForTab),
+                }));
+                const __VLS_52 = __VLS_51({
+                    ...{ 'onSelectProcess': {} },
+                    processes: (__VLS_ctx.sessionProcessesForTab),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_51));
+                let __VLS_54;
+                let __VLS_55;
+                let __VLS_56;
+                const __VLS_57 = {
+                    onSelectProcess: (__VLS_ctx.clickProcessByMongoId)
+                };
+                var __VLS_53;
+            }
         }
     }
-}
-else if (__VLS_ctx.selection.kind === 'process') {
-    if (!__VLS_ctx.selectedProcess) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "opacity-70" },
-        });
-        (__VLS_ctx.$t('insights.loading'));
-    }
-    else {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "tab-bar" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.selection))
-                        return;
-                    if (!!(__VLS_ctx.selection.kind === 'session'))
-                        return;
-                    if (!(__VLS_ctx.selection.kind === 'process'))
-                        return;
-                    if (!!(!__VLS_ctx.selectedProcess))
-                        return;
-                    __VLS_ctx.activeTab = 'overview';
-                } },
-            ...{ class: "tab" },
-            ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'overview' }) },
-        });
-        (__VLS_ctx.$t('insights.tabs.overview'));
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.selection))
-                        return;
-                    if (!!(__VLS_ctx.selection.kind === 'session'))
-                        return;
-                    if (!(__VLS_ctx.selection.kind === 'process'))
-                        return;
-                    if (!!(!__VLS_ctx.selectedProcess))
-                        return;
-                    __VLS_ctx.activeTab = 'chat';
-                } },
-            ...{ class: "tab" },
-            ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'chat' }) },
-        });
-        (__VLS_ctx.$t('insights.tabs.chat'));
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.selection))
-                        return;
-                    if (!!(__VLS_ctx.selection.kind === 'session'))
-                        return;
-                    if (!(__VLS_ctx.selection.kind === 'process'))
-                        return;
-                    if (!!(!__VLS_ctx.selectedProcess))
-                        return;
-                    __VLS_ctx.activeTab = 'memory';
-                } },
-            ...{ class: "tab" },
-            ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'memory' }) },
-        });
-        (__VLS_ctx.$t('insights.tabs.memory'));
-        if (__VLS_ctx.isMarvin) {
+    else if (__VLS_ctx.selection.kind === 'process') {
+        if (!__VLS_ctx.selectedProcess) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "opacity-70" },
+            });
+            (__VLS_ctx.$t('insights.loading'));
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "tab-bar" },
+            });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.topTab === 'recipes'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'tools'))
+                            return;
+                        if (!(__VLS_ctx.topTab === 'sessions'))
+                            return;
                         if (!!(!__VLS_ctx.selection))
                             return;
                         if (!!(__VLS_ctx.selection.kind === 'session'))
@@ -808,89 +843,65 @@ else if (__VLS_ctx.selection.kind === 'process') {
                             return;
                         if (!!(!__VLS_ctx.selectedProcess))
                             return;
-                        if (!(__VLS_ctx.isMarvin))
-                            return;
-                        __VLS_ctx.activeTab = 'tree';
+                        __VLS_ctx.activeTab = 'overview';
                     } },
                 ...{ class: "tab" },
-                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'tree' }) },
+                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'overview' }) },
             });
-            (__VLS_ctx.$t('insights.tabs.tree'));
-        }
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.selection))
-                        return;
-                    if (!!(__VLS_ctx.selection.kind === 'session'))
-                        return;
-                    if (!(__VLS_ctx.selection.kind === 'process'))
-                        return;
-                    if (!!(!__VLS_ctx.selectedProcess))
-                        return;
-                    __VLS_ctx.activeTab = 'llm-traces';
-                } },
-            ...{ class: "tab" },
-            ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'llm-traces' }) },
-        });
-        (__VLS_ctx.$t('insights.tabs.llmTrace'));
-        if (__VLS_ctx.activeTab === 'overview') {
-            const __VLS_52 = {}.VCard;
-            /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-            // @ts-ignore
-            const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
-                title: (__VLS_ctx.$t('insights.process.titlePrefix', { name: __VLS_ctx.selectedProcess.name })),
-            }));
-            const __VLS_54 = __VLS_53({
-                title: (__VLS_ctx.$t('insights.process.titlePrefix', { name: __VLS_ctx.selectedProcess.name })),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_53));
-            __VLS_55.slots.default;
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
-                ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm" },
+            (__VLS_ctx.$t('insights.tabs.overview'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.topTab === 'recipes'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'tools'))
+                            return;
+                        if (!(__VLS_ctx.topTab === 'sessions'))
+                            return;
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!!(__VLS_ctx.selection.kind === 'session'))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'process'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProcess))
+                            return;
+                        __VLS_ctx.activeTab = 'chat';
+                    } },
+                ...{ class: "tab" },
+                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'chat' }) },
             });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
+            (__VLS_ctx.$t('insights.tabs.chat'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.topTab === 'recipes'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'tools'))
+                            return;
+                        if (!(__VLS_ctx.topTab === 'sessions'))
+                            return;
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!!(__VLS_ctx.selection.kind === 'session'))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'process'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProcess))
+                            return;
+                        __VLS_ctx.activeTab = 'memory';
+                    } },
+                ...{ class: "tab" },
+                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'memory' }) },
             });
-            (__VLS_ctx.$t('insights.process.mongoId'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
-                ...{ class: "font-mono text-xs" },
-            });
-            (__VLS_ctx.selectedProcess.id);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.process.session'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.selectedProcess.sessionId);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.process.engine'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.selectedProcess.thinkEngine);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.selectedProcess.thinkEngineVersion);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.process.recipe'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.recipeName));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.process.status'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.selectedProcess.status);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.process.parent'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            if (__VLS_ctx.selectedProcess.parentProcessId) {
+            (__VLS_ctx.$t('insights.tabs.memory'));
+            if (__VLS_ctx.isMarvin) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                     ...{ onClick: (...[$event]) => {
+                            if (!!(__VLS_ctx.topTab === 'recipes'))
+                                return;
+                            if (!!(__VLS_ctx.topTab === 'tools'))
+                                return;
+                            if (!(__VLS_ctx.topTab === 'sessions'))
+                                return;
                             if (!!(!__VLS_ctx.selection))
                                 return;
                             if (!!(__VLS_ctx.selection.kind === 'session'))
@@ -899,351 +910,455 @@ else if (__VLS_ctx.selection.kind === 'process') {
                                 return;
                             if (!!(!__VLS_ctx.selectedProcess))
                                 return;
-                            if (!(__VLS_ctx.activeTab === 'overview'))
+                            if (!(__VLS_ctx.isMarvin))
                                 return;
-                            if (!(__VLS_ctx.selectedProcess.parentProcessId))
-                                return;
-                            __VLS_ctx.clickProcessByMongoId(__VLS_ctx.selectedProcess.parentProcessId);
+                            __VLS_ctx.activeTab = 'tree';
                         } },
-                    ...{ class: "link" },
+                    ...{ class: "tab" },
+                    ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'tree' }) },
                 });
-                (__VLS_ctx.selectedProcess.parentProcessId);
+                (__VLS_ctx.$t('insights.tabs.tree'));
             }
-            else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-            }
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.topTab === 'recipes'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'tools'))
+                            return;
+                        if (!(__VLS_ctx.topTab === 'sessions'))
+                            return;
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!!(__VLS_ctx.selection.kind === 'session'))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'process'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProcess))
+                            return;
+                        __VLS_ctx.activeTab = 'llm-traces';
+                    } },
+                ...{ class: "tab" },
+                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'llm-traces' }) },
             });
-            (__VLS_ctx.$t('insights.process.goal'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.goal));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.process.created'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.createdAt));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
-                ...{ class: "opacity-60" },
-            });
-            (__VLS_ctx.$t('insights.process.updated'));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
-            (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.updatedAt));
-            var __VLS_55;
-            const __VLS_56 = {}.VCard;
-            /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-            // @ts-ignore
-            const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
-                title: (__VLS_ctx.$t('insights.process.engineParams')),
-            }));
-            const __VLS_58 = __VLS_57({
-                title: (__VLS_ctx.$t('insights.process.engineParams')),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_57));
-            __VLS_59.slots.default;
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
-                ...{ class: "json-block" },
-            });
-            (__VLS_ctx.asJson(__VLS_ctx.selectedProcess.engineParams));
-            var __VLS_59;
-            const __VLS_60 = {}.VCard;
-            /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-            // @ts-ignore
-            const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
-                title: (__VLS_ctx.$t('insights.process.activeSkills')),
-            }));
-            const __VLS_62 = __VLS_61({
-                title: (__VLS_ctx.$t('insights.process.activeSkills')),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_61));
-            __VLS_63.slots.default;
-            if (__VLS_ctx.selectedProcess.activeSkills.length === 0) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "opacity-70" },
-                });
-                (__VLS_ctx.$t('insights.process.noneActive'));
-            }
-            else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
-                    ...{ class: "flex flex-col divide-y divide-base-300" },
-                });
-                for (const [a, idx] of __VLS_getVForSourceType((__VLS_ctx.selectedProcess.activeSkills))) {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-                        key: ('skl-' + idx),
-                        ...{ class: "py-2 flex items-center justify-between gap-2" },
-                    });
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "font-mono text-sm" },
-                    });
-                    (a.name);
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "text-xs opacity-70" },
-                    });
-                    (a.resolvedFromScope);
-                    if (a.fromRecipe) {
-                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                        (__VLS_ctx.$t('insights.process.fromRecipe'));
-                    }
-                    if (a.oneShot) {
-                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                        (__VLS_ctx.$t('insights.process.oneShot'));
-                    }
-                }
-            }
-            var __VLS_63;
-            const __VLS_64 = {}.VCard;
-            /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-            // @ts-ignore
-            const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
-                title: (__VLS_ctx.$t('insights.process.pendingQueue')),
-            }));
-            const __VLS_66 = __VLS_65({
-                title: (__VLS_ctx.$t('insights.process.pendingQueue')),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_65));
-            __VLS_67.slots.default;
-            if (__VLS_ctx.selectedProcess.pendingMessages.length === 0) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "opacity-70" },
-                });
-                (__VLS_ctx.$t('insights.process.drained'));
-            }
-            else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
-                    ...{ class: "flex flex-col divide-y divide-base-300" },
-                });
-                for (const [m, idx] of __VLS_getVForSourceType((__VLS_ctx.selectedProcess.pendingMessages))) {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-                        key: ('pm-' + idx),
-                        ...{ class: "py-2" },
-                    });
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                        ...{ class: "flex items-center justify-between gap-2 text-sm" },
-                    });
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "font-mono" },
-                    });
-                    (m.type);
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "opacity-60 text-xs" },
-                    });
-                    (__VLS_ctx.fmt(m.at));
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
-                        ...{ class: "json-block" },
-                    });
-                    (__VLS_ctx.asJson(m.payload));
-                }
-            }
-            var __VLS_67;
-        }
-        else if (__VLS_ctx.activeTab === 'chat') {
-            if (__VLS_ctx.chatState.loading.value) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "opacity-70" },
-                });
-                (__VLS_ctx.$t('insights.process.chatLoading'));
-            }
-            else if (__VLS_ctx.chatState.messages.value.length === 0) {
-                const __VLS_68 = {}.VEmptyState;
-                /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+            (__VLS_ctx.$t('insights.tabs.llmTrace'));
+            if (__VLS_ctx.activeTab === 'overview') {
+                const __VLS_58 = {}.VCard;
+                /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                 // @ts-ignore
-                const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
-                    headline: (__VLS_ctx.$t('insights.process.chatEmptyHeadline')),
-                    body: (__VLS_ctx.$t('insights.process.chatEmptyBody')),
+                const __VLS_59 = __VLS_asFunctionalComponent(__VLS_58, new __VLS_58({
+                    title: (__VLS_ctx.$t('insights.process.titlePrefix', { name: __VLS_ctx.selectedProcess.name })),
                 }));
-                const __VLS_70 = __VLS_69({
-                    headline: (__VLS_ctx.$t('insights.process.chatEmptyHeadline')),
-                    body: (__VLS_ctx.$t('insights.process.chatEmptyBody')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_69));
-            }
-            else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
-                    ...{ class: "flex flex-col gap-3" },
+                const __VLS_60 = __VLS_59({
+                    title: (__VLS_ctx.$t('insights.process.titlePrefix', { name: __VLS_ctx.selectedProcess.name })),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_59));
+                __VLS_61.slots.default;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
+                    ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm" },
                 });
-                for (const [m] of __VLS_getVForSourceType((__VLS_ctx.chatState.messages.value))) {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-                        key: (m.id),
-                        ...{ class: "chat-msg" },
-                        ...{ class: ({
-                                'chat-msg--user': m.role === __VLS_ctx.ChatRole.USER,
-                                'chat-msg--assistant': m.role === __VLS_ctx.ChatRole.ASSISTANT,
-                                'chat-msg--system': m.role === __VLS_ctx.ChatRole.SYSTEM,
-                                'chat-msg--archived': m.archivedInMemoryId,
-                            }) },
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.process.mongoId'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
+                    ...{ class: "font-mono text-xs" },
+                });
+                (__VLS_ctx.selectedProcess.id);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.process.session'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.selectedProcess.sessionId);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.process.engine'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.selectedProcess.thinkEngine);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.selectedProcess.thinkEngineVersion);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.process.recipe'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.recipeName));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.process.status'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.selectedProcess.status);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.process.parent'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                if (__VLS_ctx.selectedProcess.parentProcessId) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                        ...{ onClick: (...[$event]) => {
+                                if (!!(__VLS_ctx.topTab === 'recipes'))
+                                    return;
+                                if (!!(__VLS_ctx.topTab === 'tools'))
+                                    return;
+                                if (!(__VLS_ctx.topTab === 'sessions'))
+                                    return;
+                                if (!!(!__VLS_ctx.selection))
+                                    return;
+                                if (!!(__VLS_ctx.selection.kind === 'session'))
+                                    return;
+                                if (!(__VLS_ctx.selection.kind === 'process'))
+                                    return;
+                                if (!!(!__VLS_ctx.selectedProcess))
+                                    return;
+                                if (!(__VLS_ctx.activeTab === 'overview'))
+                                    return;
+                                if (!(__VLS_ctx.selectedProcess.parentProcessId))
+                                    return;
+                                __VLS_ctx.clickProcessByMongoId(__VLS_ctx.selectedProcess.parentProcessId);
+                            } },
+                        ...{ class: "link" },
                     });
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                        ...{ class: "flex items-center justify-between gap-2 text-xs opacity-60 mb-1" },
-                    });
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "font-mono" },
-                    });
-                    (m.role);
+                    (__VLS_ctx.selectedProcess.parentProcessId);
+                }
+                else {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                    (__VLS_ctx.fmt(m.createdAt));
-                    if (m.archivedInMemoryId) {
+                }
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.process.goal'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.goal));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.process.created'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.createdAt));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                    ...{ class: "opacity-60" },
+                });
+                (__VLS_ctx.$t('insights.process.updated'));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                (__VLS_ctx.fmt(__VLS_ctx.selectedProcess.updatedAt));
+                var __VLS_61;
+                const __VLS_62 = {}.VCard;
+                /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+                // @ts-ignore
+                const __VLS_63 = __VLS_asFunctionalComponent(__VLS_62, new __VLS_62({
+                    title: (__VLS_ctx.$t('insights.process.engineParams')),
+                }));
+                const __VLS_64 = __VLS_63({
+                    title: (__VLS_ctx.$t('insights.process.engineParams')),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_63));
+                __VLS_65.slots.default;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
+                    ...{ class: "json-block" },
+                });
+                (__VLS_ctx.asJson(__VLS_ctx.selectedProcess.engineParams));
+                var __VLS_65;
+                const __VLS_66 = {}.VCard;
+                /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+                // @ts-ignore
+                const __VLS_67 = __VLS_asFunctionalComponent(__VLS_66, new __VLS_66({
+                    title: (__VLS_ctx.$t('insights.process.activeSkills')),
+                }));
+                const __VLS_68 = __VLS_67({
+                    title: (__VLS_ctx.$t('insights.process.activeSkills')),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_67));
+                __VLS_69.slots.default;
+                if (__VLS_ctx.selectedProcess.activeSkills.length === 0) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "opacity-70" },
+                    });
+                    (__VLS_ctx.$t('insights.process.noneActive'));
+                }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+                        ...{ class: "flex flex-col divide-y divide-base-300" },
+                    });
+                    for (const [a, idx] of __VLS_getVForSourceType((__VLS_ctx.selectedProcess.activeSkills))) {
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                            key: ('skl-' + idx),
+                            ...{ class: "py-2 flex items-center justify-between gap-2" },
+                        });
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                            ...{ class: "ml-2 opacity-80" },
+                            ...{ class: "font-mono text-sm" },
                         });
-                        (__VLS_ctx.$t('insights.process.archivedToMemory', { id: m.archivedInMemoryId }));
+                        (a.name);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "text-xs opacity-70" },
+                        });
+                        (a.resolvedFromScope);
+                        if (a.fromRecipe) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                            (__VLS_ctx.$t('insights.process.fromRecipe'));
+                        }
+                        if (a.oneShot) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                            (__VLS_ctx.$t('insights.process.oneShot'));
+                        }
                     }
-                    const __VLS_72 = {}.MarkdownView;
-                    /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
-                    // @ts-ignore
-                    const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
-                        source: (m.content),
-                    }));
-                    const __VLS_74 = __VLS_73({
-                        source: (m.content),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_73));
                 }
-            }
-        }
-        else if (__VLS_ctx.activeTab === 'memory') {
-            if (__VLS_ctx.memoryState.loading.value) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "opacity-70" },
-                });
-                (__VLS_ctx.$t('insights.process.memoryLoading'));
-            }
-            else if (__VLS_ctx.memoryState.entries.value.length === 0) {
-                const __VLS_76 = {}.VEmptyState;
-                /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+                var __VLS_69;
+                const __VLS_70 = {}.VCard;
+                /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                 // @ts-ignore
-                const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
-                    headline: (__VLS_ctx.$t('insights.process.memoryEmptyHeadline')),
-                    body: (__VLS_ctx.$t('insights.process.memoryEmptyBody')),
+                const __VLS_71 = __VLS_asFunctionalComponent(__VLS_70, new __VLS_70({
+                    title: (__VLS_ctx.$t('insights.process.pendingQueue')),
                 }));
-                const __VLS_78 = __VLS_77({
-                    headline: (__VLS_ctx.$t('insights.process.memoryEmptyHeadline')),
-                    body: (__VLS_ctx.$t('insights.process.memoryEmptyBody')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_77));
-            }
-            else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "flex flex-col gap-3" },
-                });
-                for (const [m] of __VLS_getVForSourceType((__VLS_ctx.memoryState.entries.value))) {
-                    const __VLS_80 = {}.VCard;
-                    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-                    // @ts-ignore
-                    const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
-                        key: (m.id),
-                        title: (m.title || m.kind),
-                    }));
-                    const __VLS_82 = __VLS_81({
-                        key: (m.id),
-                        title: (m.title || m.kind),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_81));
-                    __VLS_83.slots.default;
+                const __VLS_72 = __VLS_71({
+                    title: (__VLS_ctx.$t('insights.process.pendingQueue')),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_71));
+                __VLS_73.slots.default;
+                if (__VLS_ctx.selectedProcess.pendingMessages.length === 0) {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                        ...{ class: "text-xs opacity-60 mb-2 flex flex-wrap gap-x-3 gap-y-1" },
+                        ...{ class: "opacity-70" },
                     });
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "font-mono" },
+                    (__VLS_ctx.$t('insights.process.drained'));
+                }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+                        ...{ class: "flex flex-col divide-y divide-base-300" },
                     });
-                    (m.kind);
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                    (__VLS_ctx.fmt(m.createdAt));
-                    if (m.supersededByMemoryId) {
-                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                        (__VLS_ctx.$t('insights.process.supersededBy', { id: m.supersededByMemoryId }));
-                    }
-                    if (m.sourceRefs.length > 0) {
-                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                        (__VLS_ctx.$t('insights.process.sources', { count: m.sourceRefs.length }));
-                    }
-                    const __VLS_84 = {}.MarkdownView;
-                    /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
-                    // @ts-ignore
-                    const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
-                        source: (m.content),
-                    }));
-                    const __VLS_86 = __VLS_85({
-                        source: (m.content),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_85));
-                    if (Object.keys(m.metadata).length > 0) {
-                        __VLS_asFunctionalElement(__VLS_intrinsicElements.details, __VLS_intrinsicElements.details)({
-                            ...{ class: "mt-3" },
+                    for (const [m, idx] of __VLS_getVForSourceType((__VLS_ctx.selectedProcess.pendingMessages))) {
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                            key: ('pm-' + idx),
+                            ...{ class: "py-2" },
                         });
-                        __VLS_asFunctionalElement(__VLS_intrinsicElements.summary, __VLS_intrinsicElements.summary)({
-                            ...{ class: "text-xs opacity-70 cursor-pointer" },
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                            ...{ class: "flex items-center justify-between gap-2 text-sm" },
                         });
-                        (__VLS_ctx.$t('insights.process.metadata'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "font-mono" },
+                        });
+                        (m.type);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "opacity-60 text-xs" },
+                        });
+                        (__VLS_ctx.fmt(m.at));
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
                             ...{ class: "json-block" },
                         });
-                        (__VLS_ctx.asJson(m.metadata));
+                        (__VLS_ctx.asJson(m.payload));
                     }
-                    var __VLS_83;
                 }
+                var __VLS_73;
             }
-        }
-        else if (__VLS_ctx.activeTab === 'tree' && __VLS_ctx.isMarvin) {
-            if (__VLS_ctx.treeState.loading.value) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "opacity-70" },
-                });
-                (__VLS_ctx.$t('insights.process.treeLoading'));
-            }
-            else if (__VLS_ctx.treeState.nodes.value.length === 0) {
-                const __VLS_88 = {}.VEmptyState;
-                /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
-                // @ts-ignore
-                const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
-                    headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
-                    body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
-                }));
-                const __VLS_90 = __VLS_89({
-                    headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
-                    body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_89));
-            }
-            else {
-                const __VLS_92 = {}.VCard;
-                /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-                // @ts-ignore
-                const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
-                    title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
-                }));
-                const __VLS_94 = __VLS_93({
-                    title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_93));
-                __VLS_95.slots.default;
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
-                    ...{ class: "marvin-tree" },
-                });
-                for (const [root] of __VLS_getVForSourceType((__VLS_ctx.marvinTree))) {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-                        key: (root.doc.id),
+            else if (__VLS_ctx.activeTab === 'chat') {
+                if (__VLS_ctx.chatState.loading.value) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "opacity-70" },
                     });
-                    /** @type {[typeof MarvinTreeItem, ]} */ ;
-                    // @ts-ignore
-                    const __VLS_96 = __VLS_asFunctionalComponent(MarvinTreeItem, new MarvinTreeItem({
-                        ...{ 'onSelectProcess': {} },
-                        node: (root),
-                    }));
-                    const __VLS_97 = __VLS_96({
-                        ...{ 'onSelectProcess': {} },
-                        node: (root),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_96));
-                    let __VLS_99;
-                    let __VLS_100;
-                    let __VLS_101;
-                    const __VLS_102 = {
-                        onSelectProcess: (__VLS_ctx.clickProcessByMongoId)
-                    };
-                    var __VLS_98;
+                    (__VLS_ctx.$t('insights.process.chatLoading'));
                 }
-                var __VLS_95;
+                else if (__VLS_ctx.chatState.messages.value.length === 0) {
+                    const __VLS_74 = {}.VEmptyState;
+                    /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_75 = __VLS_asFunctionalComponent(__VLS_74, new __VLS_74({
+                        headline: (__VLS_ctx.$t('insights.process.chatEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.chatEmptyBody')),
+                    }));
+                    const __VLS_76 = __VLS_75({
+                        headline: (__VLS_ctx.$t('insights.process.chatEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.chatEmptyBody')),
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_75));
+                }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+                        ...{ class: "flex flex-col gap-3" },
+                    });
+                    for (const [m] of __VLS_getVForSourceType((__VLS_ctx.chatState.messages.value))) {
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                            key: (m.id),
+                            ...{ class: "chat-msg" },
+                            ...{ class: ({
+                                    'chat-msg--user': m.role === __VLS_ctx.ChatRole.USER,
+                                    'chat-msg--assistant': m.role === __VLS_ctx.ChatRole.ASSISTANT,
+                                    'chat-msg--system': m.role === __VLS_ctx.ChatRole.SYSTEM,
+                                    'chat-msg--archived': m.archivedInMemoryId,
+                                }) },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                            ...{ class: "flex items-center justify-between gap-2 text-xs opacity-60 mb-1" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "font-mono" },
+                        });
+                        (m.role);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                        (__VLS_ctx.fmt(m.createdAt));
+                        if (m.archivedInMemoryId) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                                ...{ class: "ml-2 opacity-80" },
+                            });
+                            (__VLS_ctx.$t('insights.process.archivedToMemory', { id: m.archivedInMemoryId }));
+                        }
+                        const __VLS_78 = {}.MarkdownView;
+                        /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
+                        // @ts-ignore
+                        const __VLS_79 = __VLS_asFunctionalComponent(__VLS_78, new __VLS_78({
+                            source: (m.content),
+                        }));
+                        const __VLS_80 = __VLS_79({
+                            source: (m.content),
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_79));
+                    }
+                }
             }
-        }
-        else if (__VLS_ctx.activeTab === 'llm-traces') {
-            /** @type {[typeof LlmTraceTab, ]} */ ;
-            // @ts-ignore
-            const __VLS_103 = __VLS_asFunctionalComponent(LlmTraceTab, new LlmTraceTab({
-                processId: (__VLS_ctx.selectedProcess.id),
-            }));
-            const __VLS_104 = __VLS_103({
-                processId: (__VLS_ctx.selectedProcess.id),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_103));
+            else if (__VLS_ctx.activeTab === 'memory') {
+                if (__VLS_ctx.memoryState.loading.value) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "opacity-70" },
+                    });
+                    (__VLS_ctx.$t('insights.process.memoryLoading'));
+                }
+                else if (__VLS_ctx.memoryState.entries.value.length === 0) {
+                    const __VLS_82 = {}.VEmptyState;
+                    /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_83 = __VLS_asFunctionalComponent(__VLS_82, new __VLS_82({
+                        headline: (__VLS_ctx.$t('insights.process.memoryEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.memoryEmptyBody')),
+                    }));
+                    const __VLS_84 = __VLS_83({
+                        headline: (__VLS_ctx.$t('insights.process.memoryEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.memoryEmptyBody')),
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_83));
+                }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "flex flex-col gap-3" },
+                    });
+                    for (const [m] of __VLS_getVForSourceType((__VLS_ctx.memoryState.entries.value))) {
+                        const __VLS_86 = {}.VCard;
+                        /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+                        // @ts-ignore
+                        const __VLS_87 = __VLS_asFunctionalComponent(__VLS_86, new __VLS_86({
+                            key: (m.id),
+                            title: (m.title || m.kind),
+                        }));
+                        const __VLS_88 = __VLS_87({
+                            key: (m.id),
+                            title: (m.title || m.kind),
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_87));
+                        __VLS_89.slots.default;
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                            ...{ class: "text-xs opacity-60 mb-2 flex flex-wrap gap-x-3 gap-y-1" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "font-mono" },
+                        });
+                        (m.kind);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                        (__VLS_ctx.fmt(m.createdAt));
+                        if (m.supersededByMemoryId) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                            (__VLS_ctx.$t('insights.process.supersededBy', { id: m.supersededByMemoryId }));
+                        }
+                        if (m.sourceRefs.length > 0) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                            (__VLS_ctx.$t('insights.process.sources', { count: m.sourceRefs.length }));
+                        }
+                        const __VLS_90 = {}.MarkdownView;
+                        /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
+                        // @ts-ignore
+                        const __VLS_91 = __VLS_asFunctionalComponent(__VLS_90, new __VLS_90({
+                            source: (m.content),
+                        }));
+                        const __VLS_92 = __VLS_91({
+                            source: (m.content),
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_91));
+                        if (Object.keys(m.metadata).length > 0) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.details, __VLS_intrinsicElements.details)({
+                                ...{ class: "mt-3" },
+                            });
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.summary, __VLS_intrinsicElements.summary)({
+                                ...{ class: "text-xs opacity-70 cursor-pointer" },
+                            });
+                            (__VLS_ctx.$t('insights.process.metadata'));
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
+                                ...{ class: "json-block" },
+                            });
+                            (__VLS_ctx.asJson(m.metadata));
+                        }
+                        var __VLS_89;
+                    }
+                }
+            }
+            else if (__VLS_ctx.activeTab === 'tree' && __VLS_ctx.isMarvin) {
+                if (__VLS_ctx.treeState.loading.value) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "opacity-70" },
+                    });
+                    (__VLS_ctx.$t('insights.process.treeLoading'));
+                }
+                else if (__VLS_ctx.treeState.nodes.value.length === 0) {
+                    const __VLS_94 = {}.VEmptyState;
+                    /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_95 = __VLS_asFunctionalComponent(__VLS_94, new __VLS_94({
+                        headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
+                    }));
+                    const __VLS_96 = __VLS_95({
+                        headline: (__VLS_ctx.$t('insights.process.treeEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.treeEmptyBody')),
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_95));
+                }
+                else {
+                    const __VLS_98 = {}.VCard;
+                    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_99 = __VLS_asFunctionalComponent(__VLS_98, new __VLS_98({
+                        title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
+                    }));
+                    const __VLS_100 = __VLS_99({
+                        title: (__VLS_ctx.$t('insights.process.marvinTreeTitle')),
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_99));
+                    __VLS_101.slots.default;
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+                        ...{ class: "marvin-tree" },
+                    });
+                    for (const [root] of __VLS_getVForSourceType((__VLS_ctx.marvinTree))) {
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                            key: (root.doc.id),
+                        });
+                        /** @type {[typeof MarvinTreeItem, ]} */ ;
+                        // @ts-ignore
+                        const __VLS_102 = __VLS_asFunctionalComponent(MarvinTreeItem, new MarvinTreeItem({
+                            ...{ 'onSelectProcess': {} },
+                            node: (root),
+                        }));
+                        const __VLS_103 = __VLS_102({
+                            ...{ 'onSelectProcess': {} },
+                            node: (root),
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_102));
+                        let __VLS_105;
+                        let __VLS_106;
+                        let __VLS_107;
+                        const __VLS_108 = {
+                            onSelectProcess: (__VLS_ctx.clickProcessByMongoId)
+                        };
+                        var __VLS_104;
+                    }
+                    var __VLS_101;
+                }
+            }
+            else if (__VLS_ctx.activeTab === 'llm-traces') {
+                /** @type {[typeof LlmTraceTab, ]} */ ;
+                // @ts-ignore
+                const __VLS_109 = __VLS_asFunctionalComponent(LlmTraceTab, new LlmTraceTab({
+                    processId: (__VLS_ctx.selectedProcess.id),
+                }));
+                const __VLS_110 = __VLS_109({
+                    processId: (__VLS_ctx.selectedProcess.id),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_109));
+            }
         }
     }
 }
@@ -1275,15 +1390,15 @@ else if (__VLS_ctx.selection.kind === 'process') {
         (__VLS_ctx.$t('insights.help.empty'));
     }
     else {
-        const __VLS_106 = {}.MarkdownView;
+        const __VLS_112 = {}.MarkdownView;
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
-        const __VLS_107 = __VLS_asFunctionalComponent(__VLS_106, new __VLS_106({
+        const __VLS_113 = __VLS_asFunctionalComponent(__VLS_112, new __VLS_112({
             source: (__VLS_ctx.help.content.value),
         }));
-        const __VLS_108 = __VLS_107({
+        const __VLS_114 = __VLS_113({
             source: (__VLS_ctx.help.content.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_107));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_113));
     }
 }
 var __VLS_3;
@@ -1343,6 +1458,14 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-w-5xl']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab-bar']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['session-header']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -1539,6 +1662,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             MarvinTreeItem: MarvinTreeItem,
             SessionTimelineTab: SessionTimelineTab,
             LlmTraceTab: LlmTraceTab,
+            RecipesTab: RecipesTab,
+            ProjectToolsTab: ProjectToolsTab,
             ChatRole: ChatRole,
             sessionsState: sessionsState,
             chatState: chatState,
@@ -1548,6 +1673,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             filterProjectId: filterProjectId,
             filterUserId: filterUserId,
             filterStatus: filterStatus,
+            topTab: topTab,
             projectFilterOptions: projectFilterOptions,
             statusOptions: statusOptions,
             selection: selection,

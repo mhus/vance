@@ -54,6 +54,15 @@ vance:
       cache-ttl: 30m
       connect-timeout: 2s
       read-timeout: 30s
+  ai:
+    cache:
+      # Master switch for Anthropic prompt caching. When false, the
+      # AnthropicProvider downgrades every AiChatOptions.cacheBoundary
+      # to NONE — every call pays full input price, no cache_control
+      # markers go out. Per-recipe override via params.disableCache:true
+      # is layered on top (engine-level granularity); set this flag
+      # to false for an operator-level kill switch.
+      enabled: true
 
 management:
   endpoint:

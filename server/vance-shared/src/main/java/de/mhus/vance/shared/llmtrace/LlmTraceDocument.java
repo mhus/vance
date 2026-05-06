@@ -111,6 +111,22 @@ public class LlmTraceDocument {
     /** Output tokens for this leg. */
     private @Nullable Integer tokensOut;
 
+    /**
+     * Tokens written to the Anthropic prompt cache on this call —
+     * billed at ~1.25× normal input. Only populated on OUTPUT rows
+     * for cache-aware providers (Anthropic). {@code null} when the
+     * provider doesn't expose cache stats or no caching was active.
+     */
+    private @Nullable Integer cacheCreationInputTokens;
+
+    /**
+     * Tokens read from the prompt cache on this call — billed at
+     * ~10% of normal input. Together with {@link #cacheCreationInputTokens}
+     * this is the data Insights aggregates per tenant/process to
+     * report a hit-rate.
+     */
+    private @Nullable Integer cacheReadInputTokens;
+
     /** Wall-clock the underlying LLM call took, in milliseconds. */
     private @Nullable Long elapsedMs;
 

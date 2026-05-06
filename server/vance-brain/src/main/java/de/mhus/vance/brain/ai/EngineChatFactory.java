@@ -4,6 +4,7 @@ import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -101,6 +102,30 @@ public class EngineChatFactory {
             base.setLlmTraceWriter((req, resp, ms) -> LlmTraceRecorder.record(
                     ctx.llmTraceService(), process, engineName, req, resp, ms));
         }
+        // Recipe-level cache kill — `params.disableCache: true` on the
+        // applied recipe lands on the spawned process's engineParams.
+        // Honored on top of the global vance.ai.cache.enabled flag,
+        // which the AnthropicProvider enforces on its own. This second
+        // level lets a single recipe opt out without disabling caching
+        // for the whole tenant.
+        if (recipeDisablesCache(process)) {
+            base.setCacheBoundary(CacheBoundary.NONE);
+        }
         return base;
+    }
+
+    private static boolean recipeDisablesCache(ThinkProcessDocument process) {
+        Map<String, Object> params = process.getEngineParams();
+        if (params == null) {
+            return false;
+        }
+        Object v = params.get("disableCache");
+        if (v instanceof Boolean b) {
+            return b;
+        }
+        if (v instanceof String s) {
+            return "true".equalsIgnoreCase(s.trim());
+        }
+        return false;
     }
 }

@@ -55,6 +55,30 @@ public class AiChatOptions {
      */
     private @Nullable LlmTraceWriter llmTraceWriter;
 
+    /**
+     * Where to place the {@code cache_control} marker on the
+     * outbound request. Default {@link CacheBoundary#SYSTEM_AND_TOOLS}
+     * — the wirtschaftlich sweet spot for most engines. Set to
+     * {@link CacheBoundary#NONE} to disable caching for a single call
+     * (e.g. debugging cache-stability issues).
+     *
+     * <p>Providers without a cache concept (Gemini, embedding) ignore
+     * this field. The Anthropic adapter is the only one that reads it
+     * today.
+     */
+    @Builder.Default
+    private CacheBoundary cacheBoundary = CacheBoundary.SYSTEM_AND_TOOLS;
+
+    /**
+     * Requested cache lifetime — 5 minutes by default. {@link
+     * CacheTtl#LONG_1H} switches the adapter into the
+     * {@code extended-cache-ttl-2025-04-11} beta and costs ~2× write
+     * up-front. Ignored when {@link #cacheBoundary} is
+     * {@link CacheBoundary#NONE}.
+     */
+    @Builder.Default
+    private CacheTtl cacheTtl = CacheTtl.DEFAULT_5MIN;
+
     public static AiChatOptions defaults() {
         return AiChatOptions.builder().build();
     }

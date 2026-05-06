@@ -42,9 +42,16 @@
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>
         </dependency>
+        <!--
+            Anthropic talks via AnthropicDirectChatModel (anthropic-java SDK)
+            so prompt caching, beta headers and structured outputs are
+            reachable. langchain4j-anthropic is intentionally not pulled in
+            anymore — its model classes don't expose cache_control and we
+            don't need a parallel transport for the same provider.
+        -->
         <dependency>
-            <groupId>dev.langchain4j</groupId>
-            <artifactId>langchain4j-anthropic</artifactId>
+            <groupId>com.anthropic</groupId>
+            <artifactId>anthropic-java</artifactId>
         </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.anthropic.AnthropicTokenUsage;
 import de.mhus.vance.shared.llmtrace.LlmTraceDirection;
 import de.mhus.vance.shared.llmtrace.LlmTraceDocument;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
@@ -128,6 +129,12 @@ public final class LlmTraceRecorder {
         TokenUsage usage = response.tokenUsage();
         Integer tokensIn = usage == null ? null : usage.inputTokenCount();
         Integer tokensOut = usage == null ? null : usage.outputTokenCount();
+        Integer cacheCreate = null;
+        Integer cacheRead = null;
+        if (usage instanceof AnthropicTokenUsage atu) {
+            cacheCreate = (int) atu.getCacheCreationInputTokens();
+            cacheRead = (int) atu.getCacheReadInputTokens();
+        }
 
         // OUTPUT row — assistant reply text. Always written even for
         // empty replies so the operator can tell "model said nothing"
@@ -138,6 +145,8 @@ public final class LlmTraceRecorder {
                 .content(ai == null ? null : safeText(ai))
                 .tokensIn(tokensIn)
                 .tokensOut(tokensOut)
+                .cacheCreationInputTokens(cacheCreate)
+                .cacheReadInputTokens(cacheRead)
                 .elapsedMs(elapsedMs)
                 .build());
         seq++;

@@ -1,8 +1,10 @@
 package de.mhus.vance.shared.thinkprocess;
 
 import de.mhus.vance.api.thinkprocess.CloseReason;
+import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -210,6 +212,29 @@ public class ThinkProcessDocument {
     private List<ActiveSkillRefEmbedded> activeSkills = new ArrayList<>();
 
     private ThinkProcessStatus status = ThinkProcessStatus.INIT;
+
+    /**
+     * Operating mode for chat-orchestrator engines (Arthur). Drives the
+     * tool filter (read-only in {@code EXPLORING}/{@code PLANNING}) and
+     * the system-prompt variant. Non-Arthur engines leave this at
+     * {@link ProcessMode#NORMAL} for the entire process life.
+     *
+     * <p>See {@code readme/arthur-plan-mode.md} §3.1.
+     */
+    @Builder.Default
+    private ProcessMode mode = ProcessMode.NORMAL;
+
+    /**
+     * TodoList of plan steps, owned by Arthur in {@code PLANNING}/
+     * {@code EXECUTING}-mode. Set fresh on every {@code PROPOSE_PLAN};
+     * status updates flow via {@code TODO_UPDATE}-actions during
+     * execution. Empty for non-Arthur engines and for Arthur in
+     * {@link ProcessMode#NORMAL}/{@link ProcessMode#EXPLORING}.
+     *
+     * <p>See {@code readme/arthur-plan-mode.md} §3.2.
+     */
+    @Builder.Default
+    private List<TodoItem> todos = new ArrayList<>();
 
     /**
      * Set when {@link #status} is {@link ThinkProcessStatus#CLOSED}, null

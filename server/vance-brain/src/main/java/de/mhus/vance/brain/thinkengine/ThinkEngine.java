@@ -73,6 +73,30 @@ public interface ThinkEngine {
     }
 
     /**
+     * Optional per-mode restriction on the engine's tool pool. Called
+     * by {@link ThinkEngineService} on every per-call
+     * {@link ThinkEngineContext} build, after {@link #allowedTools()}
+     * (or the recipe override) has been resolved.
+     *
+     * <p>Default: identity — engines that don't care about
+     * {@link de.mhus.vance.api.thinkprocess.ProcessMode} see the full
+     * pool regardless of mode (Ford, Eddie, Marvin, …).
+     *
+     * <p>Arthur overrides this to enforce the read-only tool subset in
+     * {@code EXPLORING} / {@code PLANNING}. See
+     * {@code readme/arthur-plan-mode.md} §6.
+     *
+     * @param baseAllowed the resolved tool pool (empty = unrestricted).
+     * @param mode        the process's current operating mode.
+     * @return the (possibly tighter) effective allow-set.
+     */
+    default Set<String> filterAllowedToolsForMode(
+            Set<String> baseAllowed,
+            de.mhus.vance.api.thinkprocess.ProcessMode mode) {
+        return baseAllowed;
+    }
+
+    /**
      * Returns engine-owned default configuration that bypasses the
      * recipe system. When present, spawners (notably the
      * {@code SessionChatBootstrapper}) skip recipe resolution and

@@ -123,6 +123,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "whoami",
+            "current_time",
+            "find_tools",
+            "describe_tool",
             "process_create",
             "process_create_delegate",
             "process_steer",
@@ -135,7 +138,58 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             "recipe_describe",
             "manual_list",
             "manual_read",
-            "inbox_post");
+            "inbox_post",
+            "project_list",
+            "project_current",
+            "doc_read",
+            "doc_list",
+            "doc_find",
+            "scratchpad_get",
+            "scratchpad_list",
+            "data_get",
+            "web_search",
+            "web_fetch",
+            "cross_doc_list_projects",
+            "relations_find",
+            "rag_list",
+            "kit_status",
+            "exec_status");
+
+    /**
+     * Read-only subset of {@link #ALLOWED_TOOLS} — used in
+     * {@code EXPLORING} and {@code PLANNING} mode (see Plan-Mode
+     * mechanics, {@code readme/arthur-plan-mode.md} §6).
+     *
+     * <p>Nothing in this list mutates state: no {@code process_create*},
+     * no {@code process_steer/stop/pause/resume}, no {@code inbox_post},
+     * no scratchpad / data writes.
+     */
+    private static final Set<String> READ_ONLY_TOOLS = Set.of(
+            "whoami",
+            "current_time",
+            "find_tools",
+            "describe_tool",
+            "process_list",
+            "process_status",
+            "recipe_list",
+            "recipe_describe",
+            "manual_list",
+            "manual_read",
+            "project_list",
+            "project_current",
+            "doc_read",
+            "doc_list",
+            "doc_find",
+            "scratchpad_get",
+            "scratchpad_list",
+            "data_get",
+            "web_search",
+            "web_fetch",
+            "cross_doc_list_projects",
+            "relations_find",
+            "rag_list",
+            "kit_status",
+            "exec_status");
 
     /**
      * Subset of {@link #ALLOWED_TOOLS} the LLM is allowed to see and
@@ -239,6 +293,33 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     @Override
     public Set<String> allowedTools() {
         return ALLOWED_TOOLS;
+    }
+
+    /**
+     * Plan-Mode tool-filter: in {@code EXPLORING} and {@code PLANNING}
+     * Arthur sees only read-only tools — write/delegate/steer tools are
+     * physically removed from the dispatcher's allow-set so neither a
+     * direct {@code invoke()} call nor any LLM-emitted action can hit
+     * them. See {@code readme/arthur-plan-mode.md} §6.
+     *
+     * <p>{@code NORMAL} and {@code EXECUTING} pass through unchanged —
+     * the full Arthur tool-pool is available.
+     */
+    @Override
+    public Set<String> filterAllowedToolsForMode(
+            Set<String> baseAllowed,
+            de.mhus.vance.api.thinkprocess.ProcessMode mode) {
+        if (mode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
+                || mode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
+            if (baseAllowed.isEmpty()) {
+                // unrestricted base + Plan-Mode → restrict to read-only set
+                return READ_ONLY_TOOLS;
+            }
+            return baseAllowed.stream()
+                    .filter(READ_ONLY_TOOLS::contains)
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        }
+        return baseAllowed;
     }
 
     // ──────────────────── Lifecycle ────────────────────
@@ -644,13 +725,33 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
+        // Per-mode action gate — surface a clean re-prompt message
+        // when the LLM picks an action that isn't legal for the
+        // process's current mode. The action schema is intentionally
+        // flat (all types visible) for cache stability; the gate
+        // here enforces what each mode actually allows.
+        de.mhus.vance.api.thinkprocess.ProcessMode mode = process.getMode();
+        if (mode == null) mode = de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
+        if (!ArthurActionSchema.typesForMode(mode).contains(action.type())) {
+            String hint = "Action '" + action.type() + "' is not available "
+                    + "in mode " + mode + ". Allowed in this mode: "
+                    + ArthurActionSchema.typesForMode(mode)
+                    + ". Re-emit a valid action.";
+            log.warn("Arthur id='{}' rejected action '{}' in mode {} — reason: '{}'",
+                    process.getId(), action.type(), mode, action.reason());
+            return new ActionTurnOutcome(hint, /*awaitingUserInput*/ false);
+        }
         return switch (action.type()) {
-            case ArthurActionSchema.TYPE_ANSWER   -> handleAnswer(action);
-            case ArthurActionSchema.TYPE_ASK_USER -> handleAskUser(action);
-            case ArthurActionSchema.TYPE_DELEGATE -> handleDelegate(action, process, ctx);
-            case ArthurActionSchema.TYPE_RELAY    -> handleRelay(action, process, ctx);
-            case ArthurActionSchema.TYPE_WAIT     -> handleWait(action);
-            case ArthurActionSchema.TYPE_REJECT   -> handleReject(action);
+            case ArthurActionSchema.TYPE_ANSWER          -> handleAnswer(action);
+            case ArthurActionSchema.TYPE_ASK_USER        -> handleAskUser(action);
+            case ArthurActionSchema.TYPE_DELEGATE        -> handleDelegate(action, process, ctx);
+            case ArthurActionSchema.TYPE_RELAY           -> handleRelay(action, process, ctx);
+            case ArthurActionSchema.TYPE_WAIT            -> handleWait(action);
+            case ArthurActionSchema.TYPE_REJECT          -> handleReject(action);
+            case ArthurActionSchema.TYPE_START_PLAN      -> handleStartPlan(action, process, ctx);
+            case ArthurActionSchema.TYPE_PROPOSE_PLAN    -> handleProposePlan(action, process, ctx);
+            case ArthurActionSchema.TYPE_START_EXECUTION -> handleStartExecution(action, process, ctx);
+            case ArthurActionSchema.TYPE_TODO_UPDATE     -> handleTodoUpdate(action, process, ctx);
             default -> {
                 // Should never happen — the base class validates against
                 // supportedActionTypes() before reaching here. Surface as
@@ -663,6 +764,188 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         true);
             }
         };
+    }
+
+    // ──────────────────── Plan-Mode action handlers ────────────────────
+
+    /**
+     * {@code START_PLAN} — switch the process into EXPLORING mode. The
+     * LLM has decided the user's request is non-trivial and wants to
+     * explore-then-plan-then-execute. Read-only tool filter activates
+     * via {@link #filterAllowedToolsForMode} on the next per-call
+     * context build.
+     *
+     * <p>Recipe property {@code planMode: disabled} blocks this action.
+     * {@code planMode: auto} (default) and {@code planMode: required}
+     * allow it.
+     */
+    private ActionTurnOutcome handleStartPlan(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        String planMode = paramString(process, "planMode", "auto");
+        if ("disabled".equalsIgnoreCase(planMode)) {
+            log.info("Arthur id='{}' START_PLAN rejected — planMode=disabled",
+                    process.getId());
+            return new ActionTurnOutcome(
+                    "(plan mode is disabled for this recipe — pick a different "
+                            + "action: ANSWER, DELEGATE, ASK_USER, …)",
+                    /*awaitingUserInput*/ false);
+        }
+        boolean ok = thinkProcessService.updateMode(
+                process.getId(),
+                de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING);
+        if (!ok) {
+            log.warn("Arthur id='{}' START_PLAN failed — process not found",
+                    process.getId());
+            return new ActionTurnOutcome(
+                    "(internal: failed to enter plan mode)", true);
+        }
+        process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING);
+        log.info("Arthur id='{}' entered EXPLORING — reason='{}'",
+                process.getId(), action.reason());
+        // No user-facing chat message — the next turn will run in
+        // EXPLORING mode and produce the actual exploration output.
+        // awaitingUserInput=false so the engine auto-wakes for the
+        // next turn instead of waiting on the user.
+        return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
+    }
+
+    /**
+     * {@code PROPOSE_PLAN} — submit plan + TodoList for user approval.
+     * Persists the TodoList atomically, switches mode to PLANNING,
+     * emits the plan text as a normal assistant chat message.
+     */
+    private ActionTurnOutcome handleProposePlan(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        String plan = action.stringParam(ArthurActionSchema.PARAM_PLAN);
+        String summary = action.stringParam(ArthurActionSchema.PARAM_SUMMARY);
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos =
+                parseTodos(action.params().get(ArthurActionSchema.PARAM_TODOS));
+        if (plan == null || plan.isBlank()) {
+            log.warn("Arthur id='{}' PROPOSE_PLAN missing plan — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(
+                    "(internal: PROPOSE_PLAN missing plan text — re-emit with the full plan markdown)",
+                    false);
+        }
+        if (todos.isEmpty()) {
+            log.warn("Arthur id='{}' PROPOSE_PLAN missing todos — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(
+                    "(internal: PROPOSE_PLAN must include 3–8 todos — re-emit)",
+                    false);
+        }
+        thinkProcessService.setTodos(process.getId(), todos);
+        thinkProcessService.updateMode(
+                process.getId(),
+                de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING);
+        process.setTodos(todos);
+        process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING);
+        log.info("Arthur id='{}' PROPOSE_PLAN summary='{}' todos.size={} reason='{}'",
+                process.getId(), summary, todos.size(), action.reason());
+        // Plan text becomes the assistant chat message — user sees it
+        // directly. awaitingUserInput=true → process goes BLOCKED until
+        // user replies (approval / edit / reject).
+        return new ActionTurnOutcome(plan, /*awaitingUserInput*/ true);
+    }
+
+    /**
+     * {@code START_EXECUTION} — user accepted the plan, begin work.
+     * Switches mode to EXECUTING. Tool filter relaxes back to
+     * Arthur's full pool.
+     */
+    private ActionTurnOutcome handleStartExecution(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        String notes = action.stringParam(ArthurActionSchema.PARAM_NOTES);
+        thinkProcessService.updateMode(
+                process.getId(),
+                de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
+        process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
+        log.info("Arthur id='{}' entered EXECUTING — notes='{}' reason='{}'",
+                process.getId(), notes, action.reason());
+        // No user-facing message; the next turn picks up the first
+        // PENDING todo and starts work.
+        return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
+    }
+
+    /**
+     * {@code TODO_UPDATE} — mark TodoList items as IN_PROGRESS or
+     * COMPLETED during execution. No chat message, no mode change.
+     */
+    private ActionTurnOutcome handleTodoUpdate(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        Object updatesRaw = action.params().get(ArthurActionSchema.PARAM_UPDATES);
+        java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> updates =
+                parseTodoUpdates(updatesRaw);
+        if (updates.isEmpty()) {
+            log.warn("Arthur id='{}' TODO_UPDATE empty — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
+        }
+        boolean ok = thinkProcessService.updateTodoStatuses(process.getId(), updates);
+        log.info("Arthur id='{}' TODO_UPDATE applied={} count={} reason='{}'",
+                process.getId(), ok, updates.size(), action.reason());
+        return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> parseTodos(
+            @org.jspecify.annotations.Nullable Object raw) {
+        if (!(raw instanceof java.util.List<?> list)) {
+            return java.util.List.of();
+        }
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> out =
+                new java.util.ArrayList<>();
+        for (Object o : list) {
+            if (!(o instanceof java.util.Map<?, ?> mapRaw)) continue;
+            java.util.Map<String, Object> m = (java.util.Map<String, Object>) mapRaw;
+            String id = strOrNull(m.get("id"));
+            String content = strOrNull(m.get("content"));
+            String activeForm = strOrNull(m.get("activeForm"));
+            if (id == null || id.isBlank() || content == null || content.isBlank()) {
+                continue;
+            }
+            out.add(de.mhus.vance.api.thinkprocess.TodoItem.builder()
+                    .id(id)
+                    .status(de.mhus.vance.api.thinkprocess.TodoStatus.PENDING)
+                    .content(content)
+                    .activeForm(activeForm)
+                    .build());
+        }
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> parseTodoUpdates(
+            @org.jspecify.annotations.Nullable Object raw) {
+        java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> out =
+                new java.util.LinkedHashMap<>();
+        if (!(raw instanceof java.util.List<?> list)) return out;
+        for (Object o : list) {
+            if (!(o instanceof java.util.Map<?, ?> mapRaw)) continue;
+            java.util.Map<String, Object> m = (java.util.Map<String, Object>) mapRaw;
+            String id = strOrNull(m.get("id"));
+            String statusStr = strOrNull(m.get("status"));
+            if (id == null || id.isBlank() || statusStr == null) continue;
+            try {
+                out.put(id, de.mhus.vance.api.thinkprocess.TodoStatus.valueOf(statusStr));
+            } catch (IllegalArgumentException ignored) {
+                // unknown status — skip, validator catches it via re-prompt
+            }
+        }
+        return out;
+    }
+
+    private static @org.jspecify.annotations.Nullable String strOrNull(
+            @org.jspecify.annotations.Nullable Object o) {
+        return o instanceof String s ? s : null;
     }
 
     /**
@@ -1127,8 +1410,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private String engineDefaultPrompt(ThinkProcessDocument process, ModelSize modelSize) {
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
         String smallOverride = paramString(process, "promptDocumentSmall", null);
-        return enginePromptResolver.resolveTiered(
-                process, basePath, smallOverride, modelSize, ENGINE_FALLBACK_PROMPT);
+        return enginePromptResolver.resolveTieredForMode(
+                process, basePath, smallOverride, modelSize,
+                process.getMode(), ENGINE_FALLBACK_PROMPT);
     }
 
     /**

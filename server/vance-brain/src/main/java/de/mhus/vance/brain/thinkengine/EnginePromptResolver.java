@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.brain.ai.ModelSize;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
@@ -160,6 +161,78 @@ public class EnginePromptResolver {
         int dot = basePath.lastIndexOf('.');
         if (dot < 0) return basePath + "-small";
         return basePath.substring(0, dot) + "-small" + basePath.substring(dot);
+    }
+
+    /**
+     * Mode-suffixed path variant for Plan-Mode prompts.
+     * {@code EXPLORING} → {@code <base>-exploring.md},
+     * {@code PLANNING}  → {@code <base>-planning.md}.
+     * {@code NORMAL} and {@code EXECUTING} return the base path as-is.
+     *
+     * <p>See {@code readme/arthur-plan-mode.md} §7.
+     */
+    public static @Nullable String modeVariantPath(
+            @Nullable String basePath, @Nullable ProcessMode mode) {
+        if (basePath == null || mode == null
+                || mode == ProcessMode.NORMAL || mode == ProcessMode.EXECUTING) {
+            return basePath;
+        }
+        String suffix = switch (mode) {
+            case EXPLORING -> "-exploring";
+            case PLANNING -> "-planning";
+            default -> "";
+        };
+        if (suffix.isEmpty()) return basePath;
+        int dot = basePath.lastIndexOf('.');
+        if (dot < 0) return basePath + suffix;
+        return basePath.substring(0, dot) + suffix + basePath.substring(dot);
+    }
+
+    /**
+     * Tier-aware <em>and</em> mode-aware resolution. Used by Plan-Mode-
+     * capable engines (Arthur). Resolution order:
+     * <ol>
+     *   <li>Mode-suffixed variant ({@code -exploring} / {@code -planning})
+     *       if applicable, with {@link ModelSize#SMALL} small-variant
+     *       lookup as inner cascade.</li>
+     *   <li>Mode-suffixed variant without small-suffix.</li>
+     *   <li>Falls through to {@link #resolveTiered} on the base path
+     *       (size-aware, no mode suffix).</li>
+     * </ol>
+     *
+     * <p>For {@link ProcessMode#NORMAL}/{@link ProcessMode#EXECUTING}
+     * this is identical to {@link #resolveTiered}.
+     */
+    public String resolveTieredForMode(
+            ThinkProcessDocument process,
+            String basePath,
+            @Nullable String smallOverridePath,
+            ModelSize modelSize,
+            @Nullable ProcessMode mode,
+            String javaFallback) {
+        if (basePath == null || basePath.isBlank() || process == null
+                || process.getTenantId() == null || process.getTenantId().isBlank()) {
+            return javaFallback;
+        }
+        if (mode != null && mode != ProcessMode.NORMAL && mode != ProcessMode.EXECUTING) {
+            String modePath = modeVariantPath(basePath, mode);
+            if (modePath != null && !modePath.equals(basePath)) {
+                @Nullable String projectId = resolveProjectId(process);
+                if (modelSize == ModelSize.SMALL) {
+                    String modeSmall = variantPath(modePath, ModelSize.SMALL);
+                    if (modeSmall != null && !modeSmall.equals(modePath)) {
+                        @Nullable String hit = lookup(
+                                process.getTenantId(), projectId, modeSmall);
+                        if (hit != null) return hit;
+                    }
+                }
+                @Nullable String hit = lookup(
+                        process.getTenantId(), projectId, modePath);
+                if (hit != null) return hit;
+            }
+        }
+        // Fall through to size-only cascade on the base path.
+        return resolveTiered(process, basePath, smallOverridePath, modelSize, javaFallback);
     }
 
     private @Nullable String resolveProjectId(ThinkProcessDocument process) {

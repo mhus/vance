@@ -122,9 +122,13 @@ public class ThinkEngineService {
         // is intentionally restrictive ("this process may invoke no
         // tools") and must be honoured rather than collapsed to "use
         // engine default".
-        java.util.Set<String> allowed = process.getAllowedToolsOverride() != null
+        java.util.Set<String> base = process.getAllowedToolsOverride() != null
                 ? process.getAllowedToolsOverride()
                 : engine.allowedTools();
+        // Per-mode tighten: Arthur drops to read-only in EXPLORING/PLANNING,
+        // other engines pass through unchanged.
+        java.util.Set<String> allowed = engine.filterAllowedToolsForMode(
+                base, process.getMode());
         // Resolve the LLM-trace toggle once per turn — engines pay no
         // setting lookup per round-trip. Cascade is tenant → project →
         // think-process so a single noisy process can be flipped on

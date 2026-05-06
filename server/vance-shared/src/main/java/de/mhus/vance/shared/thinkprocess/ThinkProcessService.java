@@ -3,8 +3,11 @@ package de.mhus.vance.shared.thinkprocess;
 import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.thinkprocess.CloseReason;
+import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.thinkprocess.TodoItem;
+import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -581,6 +584,104 @@ public class ThinkProcessService {
      */
     public int pendingSize(String processId) {
         return (int) engineMessageService.countInbox(processId);
+    }
+
+    // ────────────────── Plan-Mode (Arthur) ──────────────────
+
+    /**
+     * Atomically transitions {@link ThinkProcessDocument#getMode()}.
+     * Used by Arthur's action handlers ({@code START_PLAN},
+     * {@code PROPOSE_PLAN}, {@code START_EXECUTION}). Independent of
+     * {@link ThinkProcessStatus} — both fields evolve in their own
+     * lifecycles.
+     *
+     * @return {@code true} if the row exists and the mode was set
+     */
+    public boolean updateMode(String id, ProcessMode mode) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("mode", mode);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
+     * Replaces the entire TodoList. Called from {@code PROPOSE_PLAN}
+     * (initial plan and edited plans alike — no merge, full replace).
+     * Empty list clears the TodoList — used when a process leaves
+     * {@code EXECUTING} cleanly back to {@code NORMAL}.
+     *
+     * @return {@code true} if the row exists and was updated
+     */
+    public boolean setTodos(String id, List<TodoItem> todos) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("todos", new ArrayList<>(todos));
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
+     * Atomically updates the status of selected TodoItems by id. Items
+     * not in {@code updates} are left untouched. Items in {@code updates}
+     * but not present in the document are silently ignored (no error,
+     * no insert).
+     *
+     * <p>Implementation reads the current list, applies updates in
+     * memory, and writes back via {@code findAndModify} with optimistic
+     * locking ({@link ThinkProcessDocument#getVersion()}). Concurrent
+     * updates on different items race-free; same-item conflicts retry
+     * once.
+     *
+     * @return {@code true} if the row exists and any item was updated
+     */
+    public boolean updateTodoStatuses(String id, Map<String, TodoStatus> updates) {
+        if (updates.isEmpty()) {
+            return false;
+        }
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Optional<ThinkProcessDocument> opt = repository.findById(id);
+            if (opt.isEmpty()) {
+                return false;
+            }
+            ThinkProcessDocument doc = opt.get();
+            List<TodoItem> current = doc.getTodos();
+            if (current == null || current.isEmpty()) {
+                return false;
+            }
+            List<TodoItem> updated = new ArrayList<>(current.size());
+            boolean changed = false;
+            for (TodoItem item : current) {
+                TodoStatus newStatus = updates.get(item.getId());
+                if (newStatus != null && newStatus != item.getStatus()) {
+                    updated.add(TodoItem.builder()
+                            .id(item.getId())
+                            .status(newStatus)
+                            .content(item.getContent())
+                            .activeForm(item.getActiveForm())
+                            .build());
+                    changed = true;
+                } else {
+                    updated.add(item);
+                }
+            }
+            if (!changed) {
+                return false;
+            }
+            Query query = new Query(Criteria.where("_id").is(id)
+                    .and("version").is(doc.getVersion()));
+            Update update = new Update()
+                    .set("todos", updated)
+                    .inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(
+                    query, update, ThinkProcessDocument.class);
+            if (result.getModifiedCount() > 0) {
+                return true;
+            }
+            // optimistic-lock conflict — retry
+        }
+        log.warn("updateTodoStatuses: optimistic-lock retries exhausted id='{}'", id);
+        return false;
     }
 
     public void delete(String id) {

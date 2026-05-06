@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Vance Web-UI: Vue 3 + Vite + Tailwind + DaisyUI multi-page app. One HTML entry per editor.",
-  "license": "FSL-1.1-Apache-2.0",
+  "license": "SEE LICENSE IN ../../LICENSE.txt",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Vance mobile app — React Native + Expo. Inbox, Chat with voice, Documents.",
-  "license": "FSL-1.1-Apache-2.0",
+  "license": "SEE LICENSE IN ../../LICENSE.txt",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",

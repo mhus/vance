@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "TypeScript interfaces generated from vance-api Java DTOs by generate-java-to-ts-maven-plugin. Do not edit individual *.ts files — they are overwritten by the Maven build.",
-  "license": "FSL-1.1-Apache-2.0",
+  "license": "SEE LICENSE IN ../../LICENSE.txt",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

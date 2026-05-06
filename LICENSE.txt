@@ -1,0 +1,109 @@
+Vance Non-Commercial, Non-Production Copyleft License (v1.0)
+
+Copyright (c) 2025 Mike Hummel
+All rights reserved.
+
+============================================================
+1. Grant of Rights – Free of Charge
+============================================================
+
+The Software is provided free of charge.
+
+Permission is granted to use, copy, and modify the Software solely
+for non-commercial, non-production purposes, including testing,
+evaluation, research, and experimentation.
+
+No fees, payments, or other compensation are required or expected.
+No support, maintenance, update, or service obligations are provided.
+
+============================================================
+2. Non-Production / Non-Operational Use Only
+============================================================
+
+The Software must not be used in production, operational, or
+business-critical environments.
+
+“Production or operational use” includes, but is not limited to:
+- running the Software in systems intended for ongoing or long-term use,
+- deploying the Software in environments affecting real users, data,
+  or decisions beyond testing or evaluation,
+- using the Software as part of operational workflows, services,
+  or infrastructure,
+- continuous, automated, or unattended execution.
+
+Any use beyond temporary, experimental, or evaluative purposes
+is strictly prohibited.
+
+============================================================
+3. Non-Commercial Restriction
+============================================================
+
+The Software may not be used for any commercial purpose.
+
+Commercial purposes include, but are not limited to:
+- selling, sublicensing, or monetizing the Software,
+- integrating the Software into commercial or revenue-generating
+  products or services,
+- using the Software for commercial advantage or within profit-oriented
+  or business operations.
+
+============================================================
+4. Copyleft – Same License for Modifications
+============================================================
+
+If you modify the Software and make the modified version available
+to any third party, you must:
+
+- make the complete corresponding source code publicly available, and
+- license the modified version under the exact same license terms
+  as this License.
+
+Private modifications that are not distributed or made accessible
+to third parties are permitted.
+
+============================================================
+5. Redistribution Conditions
+============================================================
+
+Any permitted redistribution of the Software, modified or unmodified,
+must:
+- include this License in full,
+- retain all copyright notices,
+- not impose additional restrictions beyond this License.
+
+============================================================
+6. No Transfer of Ownership
+============================================================
+
+This License does not grant ownership of the Software.
+All rights not expressly granted are reserved by the copyright holder.
+
+============================================================
+7. Termination
+============================================================
+
+Any violation of this License automatically terminates all rights
+granted herein.
+
+Upon termination, all use of the Software must cease immediately.
+
+============================================================
+8. No Warranty and Limitation of Liability
+============================================================
+
+THE SOFTWARE IS PROVIDED FREE OF CHARGE AND "AS IS", WITHOUT WARRANTY
+OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+CORRECTNESS, OR FITNESS FOR ANY PARTICULAR USE.
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE ENTIRE RISK
+ARISING OUT OF THE USE OF THE SOFTWARE REMAINS WITH THE USER.
+
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+============================================================
+
+End of Vance License v1.0

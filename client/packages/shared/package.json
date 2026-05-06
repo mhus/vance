@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Vance client-side library: auth, REST client, WebSocket connection, speech preferences. Platform-neutral — no Vue, no Tailwind, no DaisyUI, no direct browser-only APIs (storage and REST behaviour are bound by the host via configurePlatform).",
-  "license": "FSL-1.1-Apache-2.0",
+  "license": "SEE LICENSE IN ../../LICENSE.txt",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

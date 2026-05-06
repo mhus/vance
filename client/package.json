@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Vance Web-UI workspace — pnpm monorepo with @vance/generated, @vance/shared, @vance/vance-face.",
-  "license": "FSL-1.1-Apache-2.0",
+  "license": "SEE LICENSE IN LICENSE.txt",
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --filter @vance/vance-face dev",

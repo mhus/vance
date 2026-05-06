@@ -37,9 +37,9 @@ Vance is a multi-agent orchestration platform that enables complex, dialogic AI 
 
 ## License
 
-Vance is licensed under the [Functional Source License, Version 1.1, Apache 2.0 Future License](LICENSE.md) (FSL-1.1-Apache-2.0).
+Vance is licensed under the [Vance Non-Commercial, Non-Production Copyleft License v1.0](LICENSE.txt).
 
-You are free to use, modify, and self-host Vance for any purpose **except** offering it as a competing commercial service. Each version automatically converts to Apache 2.0 two years after release.
+Use, copying, and modification are permitted **only** for non-commercial, non-production purposes (testing, evaluation, research, experimentation). Any production, operational, or commercial use is prohibited. Modifications redistributed to third parties must be published in source form under the same license. See [LICENSE.txt](LICENSE.txt) for the full terms and [CLA.md](CLA.md) for the contributor agreement.
 
 Enterprise features (SSO, Audit, Team Management) are available separately under a commercial license — see [vance-ee](https://github.com/mhus/vance-ee).
 

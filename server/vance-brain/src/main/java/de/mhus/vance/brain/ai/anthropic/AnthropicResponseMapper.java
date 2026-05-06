@@ -14,7 +14,6 @@ import dev.langchain4j.model.output.FinishReason;
 import dev.langchain4j.model.output.TokenUsage;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.ObjectMapper;
@@ -93,9 +92,10 @@ final class AnthropicResponseMapper {
     private static String serialiseInput(ToolUseBlock block) {
         try {
             JsonValue raw = block._input();
-            Optional<Object> obj = raw.asObject().map(m -> (Object) m);
-            if (obj.isPresent()) {
-                return JSON.writeValueAsString(obj.get());
+            // JsonValue extends JsonField as raw type — asObject erases.
+            Object obj = raw.asObject().orElse(null);
+            if (obj != null) {
+                return JSON.writeValueAsString(obj);
             }
             return raw.toString();
         } catch (RuntimeException e) {
@@ -109,6 +109,10 @@ final class AnthropicResponseMapper {
      * {@link AnthropicTokenUsage} so cache-aware downstream consumers
      * (LlmTraceRecorder, Insights) can pick up the extra fields via
      * {@code instanceof}.
+     *
+     * <p>Cache counters are typed accessors on the SDK's {@link Usage}
+     * (since 2.x); a missing field produces an empty Optional which
+     * collapses to {@code 0} here.
      */
     private static @Nullable TokenUsage toTokenUsage(Message message) {
         Usage usage = message.usage();
@@ -117,17 +121,10 @@ final class AnthropicResponseMapper {
         }
         long input = usage.inputTokens();
         long output = usage.outputTokens();
-        long cacheCreate = readLong(usage._additionalProperties(), "cache_creation_input_tokens");
-        long cacheRead = readLong(usage._additionalProperties(), "cache_read_input_tokens");
+        long cacheCreate = usage.cacheCreationInputTokens().orElse(0L);
+        long cacheRead = usage.cacheReadInputTokens().orElse(0L);
         return new AnthropicTokenUsage(
                 (int) input, (int) output, cacheCreate, cacheRead);
-    }
-
-    private static long readLong(Map<String, JsonValue> props, String key) {
-        if (props == null) return 0;
-        JsonValue v = props.get(key);
-        if (v == null) return 0;
-        return v.asNumber().map(Number::longValue).orElse(0L);
     }
 
     private static @Nullable FinishReason toFinishReason(Message message) {

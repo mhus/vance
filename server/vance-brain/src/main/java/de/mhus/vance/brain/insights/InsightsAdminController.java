@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.insights;
 
 import de.mhus.vance.api.insights.ActiveSkillInsightsDto;
+import de.mhus.vance.api.insights.CacheStatsDto;
 import de.mhus.vance.api.insights.ChatMessageInsightsDto;
 import de.mhus.vance.api.insights.EffectiveRecipeDto;
 import de.mhus.vance.api.insights.EffectiveToolDto;
@@ -251,6 +252,32 @@ public class InsightsAdminController {
                 .build();
     }
 
+    /**
+     * Aggregated Anthropic cache statistics for one process: input /
+     * output / cache-creation / cache-read tokens summed over every
+     * OUTPUT trace row, plus a hit-rate fraction. Drives the Insights
+     * "is caching paying off here?" view. See
+     * {@code specification/prompt-caching.md} §10.4.
+     */
+    @GetMapping("/processes/{processId}/cache-stats")
+    public CacheStatsDto getCacheStats(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("processId") String processId,
+            HttpServletRequest httpRequest) {
+        ThinkProcessDocument process = loadProcess(tenant, processId);
+        authority.enforce(httpRequest, processResource(process), Action.ADMIN);
+        LlmTraceService.CacheStatsAccumulator acc =
+                llmTraceService.cacheStatsByProcess(tenant, process.getId());
+        return CacheStatsDto.builder()
+                .roundTrips(acc.roundTrips())
+                .inputTokens(acc.inputTokens())
+                .outputTokens(acc.outputTokens())
+                .cacheCreationInputTokens(acc.cacheCreationInputTokens())
+                .cacheReadInputTokens(acc.cacheReadInputTokens())
+                .hitRate(acc.hitRate())
+                .build();
+    }
+
     // ─── Authorization helpers ─────────────────────────────────────────────
 
     private ThinkProcessDocument loadProcess(String tenant, String processId) {
@@ -439,6 +466,8 @@ public class InsightsAdminController {
                 .providerModel(t.getProviderModel())
                 .tokensIn(t.getTokensIn())
                 .tokensOut(t.getTokensOut())
+                .cacheCreationInputTokens(t.getCacheCreationInputTokens())
+                .cacheReadInputTokens(t.getCacheReadInputTokens())
                 .elapsedMs(t.getElapsedMs())
                 .createdAt(t.getCreatedAt())
                 .build();

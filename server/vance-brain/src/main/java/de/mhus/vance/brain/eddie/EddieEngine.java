@@ -11,6 +11,7 @@ import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
+import de.mhus.vance.brain.ai.VanceSystemMessage;
 import de.mhus.vance.brain.eddie.activity.EddieActivityEntry;
 import de.mhus.vance.brain.eddie.activity.EddieActivityService;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
@@ -1231,28 +1232,40 @@ public class EddieEngine extends StructuredActionEngine {
             List<SteerMessage> inbox,
             ModelSize modelSize) {
         List<ChatMessage> messages = new ArrayList<>();
+
+        // ── STATIC system prefix — Anthropic cache anchors here ──
+        // Engine default + recipe-prompt overlay. The user-context
+        // block (displayName / userId) is session-stable too, so it
+        // joins the static prefix; the cache marker lands on the
+        // last static block. See specification/prompt-caching.md §5.
         String base = SystemPrompts.compose(process,
                 process.getPromptOverride() == null
                         ? GREETING
                         : process.getPromptOverride(),
                 modelSize);
+        messages.add(SystemMessage.from(base));
         String userBlock = composeUserContextBlock(process);
         if (userBlock != null && !userBlock.isBlank()) {
-            base = base + "\n\n" + userBlock;
+            messages.add(SystemMessage.from(userBlock));
         }
+
+        // ── DYNAMIC blocks — mutated by LEARN, ride outside cache ──
+        // Persona / facts: rewritten by `LEARN` action. Memory block:
+        // mutates on settings cascade changes. Each gets its own
+        // system block so the mapper can place the cache_control
+        // marker before any of them.
         String personaBlock = composePersonaBlock(process);
         if (personaBlock != null && !personaBlock.isBlank()) {
-            base = base + "\n\n" + personaBlock;
+            messages.add(VanceSystemMessage.dynamic(personaBlock));
         }
         String factsBlock = composeFactsBlock(process);
         if (factsBlock != null && !factsBlock.isBlank()) {
-            base = base + "\n\n" + factsBlock;
+            messages.add(VanceSystemMessage.dynamic(factsBlock));
         }
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {
-            base = base + "\n\n" + memoryBlock;
+            messages.add(VanceSystemMessage.dynamic(memoryBlock));
         }
-        messages.add(SystemMessage.from(base));
 
         List<ChatMessageDocument> history = chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId());

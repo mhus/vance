@@ -73,4 +73,78 @@ public class LlmTraceService {
     public long forgetProcess(String tenantId, String processId) {
         return repository.deleteByTenantIdAndProcessId(tenantId, processId);
     }
+
+    /**
+     * Aggregate Anthropic cache-token counters across all trace rows
+     * of one process. Walks the trace history (typically &lt; 100
+     * rows per process — the TTL keeps it bounded) and sums the
+     * cache fields from OUTPUT rows. Other directions don't carry
+     * token counts.
+     *
+     * <p>Pure Java aggregation rather than a Mongo {@code $group}
+     * pipeline because the row count per process is tiny and the
+     * TTL-bounded collection makes a $group unnecessary. Tenant /
+     * session-scope aggregations (more rows) would warrant a Mongo
+     * pipeline; not in scope here.
+     */
+    public CacheStatsAccumulator cacheStatsByProcess(String tenantId, String processId) {
+        CacheStatsAccumulator acc = new CacheStatsAccumulator();
+        // Walk pages — listByProcess caps the size at 200 internally.
+        // Most processes fit in one page; we still page defensively.
+        int page = 0;
+        while (true) {
+            Page<LlmTraceDocument> p = listByProcess(tenantId, processId, page, 200);
+            for (LlmTraceDocument doc : p.getContent()) {
+                if (doc.getDirection() != LlmTraceDirection.OUTPUT) {
+                    continue;
+                }
+                acc.addOutput(doc);
+            }
+            if (!p.hasNext()) {
+                break;
+            }
+            page++;
+        }
+        return acc;
+    }
+
+    /**
+     * Mutable accumulator for {@link #cacheStatsByProcess}. Stays in
+     * the shared layer (no API DTO) so the controller can shape it for
+     * the wire format.
+     */
+    public static final class CacheStatsAccumulator {
+        private long roundTrips;
+        private long inputTokens;
+        private long outputTokens;
+        private long cacheCreationInputTokens;
+        private long cacheReadInputTokens;
+
+        public long roundTrips() { return roundTrips; }
+        public long inputTokens() { return inputTokens; }
+        public long outputTokens() { return outputTokens; }
+        public long cacheCreationInputTokens() { return cacheCreationInputTokens; }
+        public long cacheReadInputTokens() { return cacheReadInputTokens; }
+
+        public double hitRate() {
+            long totalInput = inputTokens + cacheCreationInputTokens + cacheReadInputTokens;
+            return totalInput == 0 ? 0.0 : (double) cacheReadInputTokens / totalInput;
+        }
+
+        void addOutput(LlmTraceDocument doc) {
+            roundTrips++;
+            if (doc.getTokensIn() != null) {
+                inputTokens += doc.getTokensIn();
+            }
+            if (doc.getTokensOut() != null) {
+                outputTokens += doc.getTokensOut();
+            }
+            if (doc.getCacheCreationInputTokens() != null) {
+                cacheCreationInputTokens += doc.getCacheCreationInputTokens();
+            }
+            if (doc.getCacheReadInputTokens() != null) {
+                cacheReadInputTokens += doc.getCacheReadInputTokens();
+            }
+        }
+    }
 }

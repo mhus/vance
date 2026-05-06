@@ -3,6 +3,8 @@ package de.mhus.vance.brain.ai.anthropic;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
+import de.mhus.vance.brain.ai.SystemBlockKind;
+import de.mhus.vance.brain.ai.VanceSystemMessage;
 import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.MessageCreateParams;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -87,7 +89,13 @@ final class AnthropicRequestMapper {
         }
     }
 
-    private static Map<String, Object> buildBody(
+    /**
+     * Build the JSON body of a Messages-API request as a Map. Returned
+     * verbatim to {@link MessageCreateParams.Builder} via
+     * {@code putAdditionalBodyProperty}; package-private so unit tests
+     * can assert on it directly without instantiating the SDK builder.
+     */
+    static Map<String, Object> buildBody(
             ChatRequest request, AiChatOptions options) {
         Map<String, Object> body = new LinkedHashMap<>();
         CacheBoundary boundary = effectiveBoundary(options);
@@ -122,35 +130,65 @@ final class AnthropicRequestMapper {
 
     /**
      * Lifts the request's {@link SystemMessage}s into Anthropic's
-     * top-level {@code system} array (text-block form) so a
-     * {@code cache_control} marker can be set on the last one. Returns
-     * {@code null} when the request has no system messages — the
-     * builder then omits the field entirely.
+     * top-level {@code system} array (text-block form) and plants
+     * the {@code cache_control} marker on the last <i>static</i>
+     * block.
+     *
+     * <p>Per-message kind comes from {@link VanceSystemMessage#kind()};
+     * a plain {@link SystemMessage} is treated as
+     * {@link SystemBlockKind#STATIC} (safe default — engines that
+     * haven't migrated yet keep their old caching behaviour).
+     *
+     * <ul>
+     *   <li>All blocks STATIC → marker on the last block (legacy behaviour).</li>
+     *   <li>Static blocks followed by dynamic ones → marker on the last STATIC,
+     *       dynamic blocks ride along outside the cache hash.</li>
+     *   <li>All blocks DYNAMIC → no system-side marker. The tools-side
+     *       marker (when {@link CacheBoundary#cachesTools()} holds)
+     *       still fires independently.</li>
+     * </ul>
+     *
+     * <p>Returns {@code null} when the request has no system messages.
      */
     private static @Nullable List<Map<String, Object>> buildSystemBlocks(
             ChatRequest request, CacheBoundary boundary, @Nullable String ttl) {
-        List<String> texts = new ArrayList<>();
+        record TaggedBlock(String text, SystemBlockKind kind) {}
+        List<TaggedBlock> tagged = new ArrayList<>();
         for (ChatMessage m : safeMessages(request)) {
-            if (m instanceof SystemMessage s) {
-                String t = s.text();
-                if (t != null && !t.isEmpty()) {
-                    texts.add(t);
+            if (!(m instanceof SystemMessage s)) {
+                continue;
+            }
+            String t = s.text();
+            if (t == null || t.isEmpty()) {
+                continue;
+            }
+            SystemBlockKind kind = (s instanceof VanceSystemMessage v)
+                    ? v.kind()
+                    : SystemBlockKind.STATIC;
+            tagged.add(new TaggedBlock(t, kind));
+        }
+        if (tagged.isEmpty()) {
+            return null;
+        }
+
+        // Find the last STATIC block — that's where the marker goes.
+        // -1 means "no static block at all" → no system-side marker.
+        int markerIndex = -1;
+        if (boundary.cachesSystem()) {
+            for (int i = tagged.size() - 1; i >= 0; i--) {
+                if (tagged.get(i).kind() == SystemBlockKind.STATIC) {
+                    markerIndex = i;
+                    break;
                 }
             }
         }
-        if (texts.isEmpty()) {
-            return null;
-        }
-        List<Map<String, Object>> blocks = new ArrayList<>(texts.size());
-        for (int i = 0; i < texts.size(); i++) {
+
+        List<Map<String, Object>> blocks = new ArrayList<>(tagged.size());
+        for (int i = 0; i < tagged.size(); i++) {
             Map<String, Object> block = new LinkedHashMap<>();
             block.put("type", "text");
-            block.put("text", texts.get(i));
-            // Cache marker on the *last* system block — Anthropic
-            // caches everything up to and including that block, so a
-            // single marker covers any number of preceding blocks.
-            boolean isLast = i == texts.size() - 1;
-            if (isLast && boundary.cachesSystem()) {
+            block.put("text", tagged.get(i).text());
+            if (i == markerIndex) {
                 block.put("cache_control", cacheControl(ttl));
             }
             blocks.add(block);

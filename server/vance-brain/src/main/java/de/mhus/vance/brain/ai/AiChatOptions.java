@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
  * Arthur and DeepThink.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 public class AiChatOptions {
 
     /** Sampling temperature, typically 0.0–2.0. */

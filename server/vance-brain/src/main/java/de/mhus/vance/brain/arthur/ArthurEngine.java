@@ -13,6 +13,7 @@ import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ModelSize;
+import de.mhus.vance.brain.ai.VanceSystemMessage;
 import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
@@ -900,17 +901,28 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             List<SteerMessage> inbox,
             ModelSize modelSize) {
         List<ChatMessage> messages = new ArrayList<>();
+
+        // ── STATIC system prefix — Anthropic cache anchors here ──
+        // Engine default + recipe-prompt overlay. Stable per recipe
+        // version; the dynamic blocks below ride outside the cache hash.
+        // See specification/prompt-caching.md §5.
         String base = SystemPrompts.compose(process,
                 engineDefaultPrompt(process, modelSize), modelSize);
-        String withCatalog = base + buildRecipeCatalogSection(process);
-        // Append the project-memory block (memory.* settings cascade) so
-        // the user can pin language / tone / persona / arbitrary key:value
-        // hints at any scope without rewriting the recipe prompt.
+        messages.add(SystemMessage.from(base));
+
+        // ── DYNAMIC blocks — change tenant/project/turn-to-turn ──
+        // Recipe catalog: depends on tenant + bundled recipes; mutates
+        // when a recipe is added / removed in _vance.
+        String catalog = buildRecipeCatalogSection(process);
+        if (catalog != null && !catalog.isBlank()) {
+            messages.add(VanceSystemMessage.dynamic(catalog));
+        }
+        // Project-memory block (memory.* settings cascade) — pinned
+        // language / tone / persona hints. Mutates on Settings changes.
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {
-            withCatalog = withCatalog + "\n\n" + memoryBlock;
+            messages.add(VanceSystemMessage.dynamic(memoryBlock));
         }
-        messages.add(SystemMessage.from(withCatalog));
 
         // Active history (ARCHIVED_CHAT compaction-aware once we wire
         // memoryService — for v1 just use full active history).

@@ -21,6 +21,8 @@ export interface LlmTraceDto {
   providerModel?: string;
   tokensIn?: number;
   tokensOut?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
   elapsedMs?: number;
   createdAt?: Date;
 }

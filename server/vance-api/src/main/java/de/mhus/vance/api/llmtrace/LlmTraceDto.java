@@ -55,6 +55,10 @@ public class LlmTraceDto {
 
     private @Nullable Integer tokensIn;
     private @Nullable Integer tokensOut;
+    /** Tokens written to the Anthropic prompt cache (~1.25× input price). */
+    private @Nullable Integer cacheCreationInputTokens;
+    /** Tokens read from the prompt cache (~10% input price). */
+    private @Nullable Integer cacheReadInputTokens;
     private @Nullable Long elapsedMs;
 
     private @Nullable Instant createdAt;

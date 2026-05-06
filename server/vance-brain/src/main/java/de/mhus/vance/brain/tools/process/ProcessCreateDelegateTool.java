@@ -84,6 +84,20 @@ public class ProcessCreateDelegateTool implements Tool {
                         + "Set false if the caller wants to handle NONE "
                         + "themselves (e.g. ask the user to clarify "
                         + "before generating a recipe)."));
+        properties.put("asyncFallback", Map.of(
+                "type", "boolean",
+                "description", "Only meaningful when fallbackOnNone is "
+                        + "true. When async=true: the tool spawns "
+                        + "Slartibartfast and returns immediately with "
+                        + "{outcome: PENDING, slartProcessId}; the caller "
+                        + "is responsible for checking Slart's status "
+                        + "later (typically via the parent-notification "
+                        + "process-event that fires when Slart reaches "
+                        + "CLOSED). The generated recipe is NOT auto-"
+                        + "spawned in this mode — the caller must read "
+                        + "Slart's persistedRecipePath and call "
+                        + "process_create itself. Default: false (sync "
+                        + "wait + auto-spawn)."));
         SCHEMA = Map.of(
                 "type", "object",
                 "properties", properties,
@@ -134,6 +148,7 @@ public class ProcessCreateDelegateTool implements Tool {
         String title = optString(params, "title");
         String steerContent = optString(params, "steerContent");
         boolean fallbackOnNone = optBoolean(params, "fallbackOnNone", true);
+        boolean asyncFallback = optBoolean(params, "asyncFallback", false);
         @SuppressWarnings("unchecked")
         Map<String, Object> callerParams = params.get("params") instanceof Map<?, ?> m
                 ? (Map<String, Object>) m : null;
@@ -161,8 +176,11 @@ public class ProcessCreateDelegateTool implements Tool {
         }
 
         log.info("process_create_delegate name='{}' → NONE, invoking Slart fallback "
-                + "(rationale: {})", name, result.rationale());
-        SlartibartfastFallback.Result fb = slartFallback.invoke(caller, task, name);
+                + "({} mode, rationale: {})",
+                name, asyncFallback ? "async" : "sync", result.rationale());
+        SlartibartfastFallback.Result fb = asyncFallback
+                ? slartFallback.invokeAsync(caller, task, name)
+                : slartFallback.invoke(caller, task, name);
         Map<String, Object> fallbackInfo = new LinkedHashMap<>();
         fallbackInfo.put("outcome", fb.outcome().name());
         fallbackInfo.put("slartProcessId", fb.slartProcessId());
@@ -171,6 +189,11 @@ public class ProcessCreateDelegateTool implements Tool {
         fallbackInfo.put("rationale", fb.rationale());
         out.put("fallback", fallbackInfo);
 
+        // Async-mode never auto-spawns the generated recipe — that's
+        // the whole point. Caller observes Slart's terminal event
+        // (parent-notification on the calling process's pending queue)
+        // and decides whether to spawn or report back to the user.
+        // GENERATED is a sync-mode-only outcome.
         if (fb.outcome() != SlartibartfastFallback.Outcome.GENERATED) {
             log.info("process_create_delegate name='{}' fallback outcome={}: {}",
                     name, fb.outcome(), fb.rationale());

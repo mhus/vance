@@ -156,6 +156,22 @@ class SlartibartfastFallbackTest {
         assertThat(r.rationale()).contains("disappeared from think_processes");
     }
 
+    @Test
+    void invokeAsync_returnsImmediately_withPendingOutcome() {
+        primeSpawn();
+
+        SlartibartfastFallback.Result r = fallback.invokeAsync(caller, "task", "name");
+
+        // Async mode must NOT poll — even if findById returns empty,
+        // we don't observe that. Verify the result shape only.
+        assertThat(r.outcome()).isEqualTo(SlartibartfastFallback.Outcome.PENDING);
+        assertThat(r.slartProcessId()).isEqualTo(SLART_PROC);
+        assertThat(r.recipeName()).isNull();
+        assertThat(r.rationale())
+                .contains("async")
+                .contains("parent-notification");
+    }
+
     // ──────────────────── helpers ────────────────────
 
     /**

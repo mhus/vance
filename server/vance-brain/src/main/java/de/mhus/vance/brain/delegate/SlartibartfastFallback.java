@@ -98,6 +98,30 @@ public class SlartibartfastFallback {
         return Result.timedOut(slart.getId(), WAIT_TIMEOUT);
     }
 
+    /**
+     * Async variant — spawns Slart and returns immediately with
+     * {@link Outcome#PENDING}. The caller is responsible for
+     * observing Slart's eventual completion (typically via the
+     * {@code parentProcessId} link: when Slart hits CLOSED, the
+     * {@code ParentNotificationListener} queues a process-event
+     * into the caller's pending queue).
+     *
+     * <p>Use when the caller-LLM cannot tolerate the 60-180s
+     * blocking wait that {@link #invoke} performs.
+     */
+    public Result invokeAsync(
+            ThinkProcessDocument caller,
+            String taskDescription,
+            String spawnedProcessName) {
+
+        ThinkProcessDocument slart = spawnSlart(caller, taskDescription, spawnedProcessName);
+        log.info("SlartibartfastFallback (async): spawned slart id='{}' for task '{}' "
+                        + "(caller='{}'); not waiting — caller polls",
+                slart.getId(), abbrev(taskDescription, 60),
+                caller.getId());
+        return Result.pending(slart.getId());
+    }
+
     // ──────────────────── internals ────────────────────
 
     private ThinkProcessDocument spawnSlart(
@@ -178,13 +202,14 @@ public class SlartibartfastFallback {
 
     // ──────────────────── result types ────────────────────
 
-    public enum Outcome { GENERATED, FAILED, TIMED_OUT }
+    public enum Outcome { GENERATED, FAILED, TIMED_OUT, PENDING }
 
     /**
      * Outcome of a fallback round-trip. {@link #recipeName} is set
      * only on {@link Outcome#GENERATED}; for failures the
      * {@link #rationale} carries a one-line diagnostic suitable
-     * for the caller's response.
+     * for the caller's response. {@link Outcome#PENDING} is the
+     * async-mode result — Slart is spawned but not yet terminal.
      */
     public record Result(
             Outcome outcome,
@@ -205,6 +230,12 @@ public class SlartibartfastFallback {
         public static Result timedOut(String pid, Duration timeout) {
             return new Result(Outcome.TIMED_OUT, pid, null, null,
                     "Slart did not terminate within " + timeout);
+        }
+
+        public static Result pending(String pid) {
+            return new Result(Outcome.PENDING, pid, null, null,
+                    "Slart spawned async — observe via process status "
+                            + "(parent-notification fires when DONE)");
         }
     }
 }

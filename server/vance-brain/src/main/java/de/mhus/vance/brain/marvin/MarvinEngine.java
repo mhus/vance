@@ -140,6 +140,13 @@ public class MarvinEngine implements ThinkEngine {
                        taskSpec.childTemplate = {goal, taskKind, taskSpec}
                        with {{item.text}} / {{record.<field>}} / {{index}}
                        / {{root.title}} / {{parent.goal}} placeholders.
+                       childTemplate.recipe is OPTIONAL — set it for
+                       direct binding (typical when one specific recipe
+                       handles every item) or omit it and let the
+                       selector pick per materialised child based on
+                       the substituted goal text (each child fires one
+                       selector LLM-call at spawn-time, so prefer the
+                       direct binding for very large EXPAND batches).
                        Optional: treeMode (RECURSIVE|FLAT), failOnEmpty,
                        failOnMissingField.
             - WORKER - taskSpec.steerContent must be set; taskSpec.recipe
@@ -1302,8 +1309,22 @@ public class MarvinEngine implements ThinkEngine {
                     Object tmplRecipe = tmplMap.get("recipe");
                     String tmplRecipeName = null;
                     if (!(tmplRecipe instanceof String rs) || rs.isBlank()) {
-                        violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                                + "' is missing taskSpec.childTemplate.recipe");
+                        // Selector-mode: childTemplate.recipe is
+                        // optional when childTemplate.goal is set.
+                        // Each materialised child arrives with no
+                        // recipe, and runWorker() picks one via the
+                        // selector at spawn-time using the
+                        // (template-substituted) goal as task
+                        // description. Same dispatch as top-level
+                        // recipe-less WORKER children.
+                        Object tmplGoal = tmplMap.get("goal");
+                        if (!(tmplGoal instanceof String gs) || gs.isBlank()) {
+                            violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                                    + "' childTemplate has neither `recipe` "
+                                    + "nor a non-blank `goal` template — set "
+                                    + "one of them so each materialised child "
+                                    + "knows what to do");
+                        }
                     } else {
                         tmplRecipeName = rs.trim();
                         if (allowed != null && !allowed.contains(tmplRecipeName)) {

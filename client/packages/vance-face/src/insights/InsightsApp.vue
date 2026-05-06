@@ -198,6 +198,41 @@ const sessionProcessesForTab = computed<ThinkProcessInsightsDto[]>(() => {
 const isMarvin = computed(() =>
   (selectedProcess.value?.thinkEngine ?? '').toLowerCase() === 'marvin');
 
+/**
+ * Project id the Recipes / Tools / Workspace top-tabs should show.
+ * A picked session (or process) overrides the sidebar filter so the
+ * user can pivot from a session straight to its project's effective
+ * config without re-selecting the project. Falls back to the explicit
+ * sidebar filter when nothing is selected.
+ */
+const effectiveProjectId = computed<string | null>(() => {
+  const sel = selection.value;
+  if (sel?.kind === 'session') {
+    const s = sessionsState.sessions.value.find(x => x.sessionId === sel.id);
+    if (s?.projectId) return s.projectId;
+  } else if (sel?.kind === 'process') {
+    const p = selectedProcess.value;
+    if (p) {
+      const s = sessionsState.sessions.value.find(x => x.sessionId === p.sessionId);
+      if (s?.projectId) return s.projectId;
+    }
+  }
+  return filterProjectId.value;
+});
+
+/** Source label for the project-context hint shown above project-tabs. */
+const projectContextSource = computed<{ kind: 'session' | 'process' | 'filter'; label: string } | null>(() => {
+  const sel = selection.value;
+  if (sel?.kind === 'session') {
+    const s = sessionsState.sessions.value.find(x => x.sessionId === sel.id);
+    if (s) return { kind: 'session', label: s.firstUserMessage || s.sessionId };
+  } else if (sel?.kind === 'process') {
+    const p = selectedProcess.value;
+    if (p) return { kind: 'process', label: p.name };
+  }
+  return null;
+});
+
 function sessionLabel(sessionId: string): string {
   // Prefer the denormalised topic when we already have it cached;
   // otherwise fall back to the raw id.
@@ -409,9 +444,21 @@ function clickProcessByMongoId(id: string | undefined | null): void {
         >Workspace</button>
       </div>
 
-      <RecipesTab v-if="topTab === 'recipes'" :project-id="filterProjectId" />
-      <ProjectToolsTab v-else-if="topTab === 'tools'" :project-id="filterProjectId" />
-      <WorkspaceTab v-else-if="topTab === 'workspace'" :project-id="filterProjectId" />
+      <div
+        v-if="topTab !== 'sessions' && projectContextSource"
+        class="text-xs opacity-70 -mt-1 mb-1"
+      >
+        Showing
+        <span class="font-mono">{{ effectiveProjectId ?? '—' }}</span>
+        <span class="opacity-60">
+          (from {{ projectContextSource.kind }}
+          <span class="italic">{{ projectContextSource.label }}</span>)
+        </span>
+      </div>
+
+      <RecipesTab v-if="topTab === 'recipes'" :project-id="effectiveProjectId" />
+      <ProjectToolsTab v-else-if="topTab === 'tools'" :project-id="effectiveProjectId" />
+      <WorkspaceTab v-else-if="topTab === 'workspace'" :project-id="effectiveProjectId" />
 
       <template v-else-if="topTab === 'sessions'">
         <VEmptyState

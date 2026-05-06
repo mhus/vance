@@ -145,6 +145,45 @@ const sessionProcessesForTab = computed(() => {
     return processesBySession.value[sel.id] ?? [];
 });
 const isMarvin = computed(() => (selectedProcess.value?.thinkEngine ?? '').toLowerCase() === 'marvin');
+/**
+ * Project id the Recipes / Tools / Workspace top-tabs should show.
+ * A picked session (or process) overrides the sidebar filter so the
+ * user can pivot from a session straight to its project's effective
+ * config without re-selecting the project. Falls back to the explicit
+ * sidebar filter when nothing is selected.
+ */
+const effectiveProjectId = computed(() => {
+    const sel = selection.value;
+    if (sel?.kind === 'session') {
+        const s = sessionsState.sessions.value.find(x => x.sessionId === sel.id);
+        if (s?.projectId)
+            return s.projectId;
+    }
+    else if (sel?.kind === 'process') {
+        const p = selectedProcess.value;
+        if (p) {
+            const s = sessionsState.sessions.value.find(x => x.sessionId === p.sessionId);
+            if (s?.projectId)
+                return s.projectId;
+        }
+    }
+    return filterProjectId.value;
+});
+/** Source label for the project-context hint shown above project-tabs. */
+const projectContextSource = computed(() => {
+    const sel = selection.value;
+    if (sel?.kind === 'session') {
+        const s = sessionsState.sessions.value.find(x => x.sessionId === sel.id);
+        if (s)
+            return { kind: 'session', label: s.firstUserMessage || s.sessionId };
+    }
+    else if (sel?.kind === 'process') {
+        const p = selectedProcess.value;
+        if (p)
+            return { kind: 'process', label: p.name };
+    }
+    return null;
+});
 function sessionLabel(sessionId) {
     // Prefer the denormalised topic when we already have it cached;
     // otherwise fall back to the raw id.
@@ -477,34 +516,51 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElement
     ...{ class: "tab" },
     ...{ class: ({ 'tab--active': __VLS_ctx.topTab === 'workspace' }) },
 });
+if (__VLS_ctx.topTab !== 'sessions' && __VLS_ctx.projectContextSource) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "text-xs opacity-70 -mt-1 mb-1" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "font-mono" },
+    });
+    (__VLS_ctx.effectiveProjectId ?? '—');
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "opacity-60" },
+    });
+    (__VLS_ctx.projectContextSource.kind);
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "italic" },
+    });
+    (__VLS_ctx.projectContextSource.label);
+}
 if (__VLS_ctx.topTab === 'recipes') {
     /** @type {[typeof RecipesTab, ]} */ ;
     // @ts-ignore
     const __VLS_33 = __VLS_asFunctionalComponent(RecipesTab, new RecipesTab({
-        projectId: (__VLS_ctx.filterProjectId),
+        projectId: (__VLS_ctx.effectiveProjectId),
     }));
     const __VLS_34 = __VLS_33({
-        projectId: (__VLS_ctx.filterProjectId),
+        projectId: (__VLS_ctx.effectiveProjectId),
     }, ...__VLS_functionalComponentArgsRest(__VLS_33));
 }
 else if (__VLS_ctx.topTab === 'tools') {
     /** @type {[typeof ProjectToolsTab, ]} */ ;
     // @ts-ignore
     const __VLS_36 = __VLS_asFunctionalComponent(ProjectToolsTab, new ProjectToolsTab({
-        projectId: (__VLS_ctx.filterProjectId),
+        projectId: (__VLS_ctx.effectiveProjectId),
     }));
     const __VLS_37 = __VLS_36({
-        projectId: (__VLS_ctx.filterProjectId),
+        projectId: (__VLS_ctx.effectiveProjectId),
     }, ...__VLS_functionalComponentArgsRest(__VLS_36));
 }
 else if (__VLS_ctx.topTab === 'workspace') {
     /** @type {[typeof WorkspaceTab, ]} */ ;
     // @ts-ignore
     const __VLS_39 = __VLS_asFunctionalComponent(WorkspaceTab, new WorkspaceTab({
-        projectId: (__VLS_ctx.filterProjectId),
+        projectId: (__VLS_ctx.effectiveProjectId),
     }));
     const __VLS_40 = __VLS_39({
-        projectId: (__VLS_ctx.filterProjectId),
+        projectId: (__VLS_ctx.effectiveProjectId),
     }, ...__VLS_functionalComponentArgsRest(__VLS_39));
 }
 else if (__VLS_ctx.topTab === 'sessions') {
@@ -1540,6 +1596,13 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['-mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['italic']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['session-header']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -1767,6 +1830,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             selectedProcess: selectedProcess,
             sessionProcessesForTab: sessionProcessesForTab,
             isMarvin: isMarvin,
+            effectiveProjectId: effectiveProjectId,
+            projectContextSource: projectContextSource,
             breadcrumbs: breadcrumbs,
             combinedError: combinedError,
             marvinTree: marvinTree,

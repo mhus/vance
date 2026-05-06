@@ -81,8 +81,10 @@ public class SlartibartfastFallback {
             }
             String status = fresh.get().getStatus() == null
                     ? "" : fresh.get().getStatus().name();
-            if ("CLOSED".equals(status) || "STALE".equals(status)
-                    || "FAILED".equals(status)) {
+            // CLOSED is the only terminal status — Slart's logical
+            // outcome (DONE / FAILED / ESCALATED / STOPPED) lives
+            // inside engineParams.architectState.status.
+            if ("CLOSED".equals(status)) {
                 return inspect(fresh.get());
             }
             try {

@@ -1,0 +1,71 @@
+# Engine catalog — feeds the `process_create_delegate` selector with
+# a curated description of what each think-engine does, when to use
+# it, and what NOT to use it for. Keep entries terse but
+# distinguishing — the selector LLM compares user task descriptions
+# against these on every delegate-call, so wording matters.
+#
+# Adding a new engine: append a top-level entry under `engines:`.
+# Format is intentionally flat so the selector can render it as a
+# bulleted list in its prompt.
+
+engines:
+  arthur:
+    purpose: "Interactive chat / Q&A engine bound to a session."
+    when_to_use: "User asks a question, wants conversation, needs an
+      interactive turn-by-turn dialogue. Always running as the chat
+      front-end of a session — typically NOT spawned via delegate
+      because it is the caller, not a callee."
+    not_for: "Structured multi-step pipelines, deep planning,
+      document generation flows. Use Vogon/Marvin/Slart for those."
+
+  vogon:
+    purpose: "Deterministic linear / branching pipeline runner with
+      named phases, gates, loops, fork/join, escalation. Plan is
+      defined up-front in a strategyPlanYaml."
+    when_to_use: "Workflow shape is known in advance. Phases run in
+      a fixed order with gates on each. Examples: 'extract → review
+      → publish', 'scrape → cluster → report'."
+    not_for: "Tasks where the shape of the plan only emerges while
+      solving (use Marvin). Single-shot LLM Q&A (use Ford)."
+
+  marvin:
+    purpose: "Dynamic task-tree engine. Root is a PLAN node; PLAN
+      LLM emits children (WORKER / EXPAND_FROM_DOC / AGGREGATE /
+      USER_INPUT). Pre-order DFS executes the tree; sub-trees grow
+      while running."
+    when_to_use: "Plan is fluid — number of subtasks, their kind,
+      and their nesting depend on intermediate results. Examples:
+      'write an essay with one chapter per outline item',
+      'investigate codebase and surface findings'."
+    not_for: "Strictly linear pipelines (Vogon is simpler).
+      Single LLM-call atomic tasks (Ford)."
+
+  slartibartfast:
+    purpose: "Plan-architect / meta-engine. Frames a free-text user
+      goal, gathers evidence from project manuals, decomposes into
+      subgoals, and emits a NEW recipe (Marvin or Vogon) tailored
+      to the goal. Output is a recipe YAML, not a final document."
+    when_to_use: "No existing recipe in the project matches the
+      task. The user describes WHAT they want done; the system
+      needs to invent the HOW. Slart writes the recipe; another
+      engine then runs it."
+    not_for: "Tasks where a suitable recipe already exists — call
+      that recipe directly. Quick interactive Q&A (Arthur)."
+
+  ford:
+    purpose: "Single-LLM-call worker. Runs one chat round (or a
+      few tool-call rounds), returns text, terminates. The
+      'function' primitive of Vance."
+    when_to_use: "One question, one answer. Atomic operations:
+      'translate this paragraph', 'summarise this doc', 'pick the
+      best option from a list'. Used as the worker inside Vogon
+      phases and Marvin WORKER nodes."
+    not_for: "Multi-step orchestration. Long-running deliberation."
+
+  eddie:
+    purpose: "Hub / system engine — provides cross-project tools
+      (project_switch, team_list, etc.) when no specific project
+      scope is set yet."
+    when_to_use: "Reserved for the system hub-session. Not
+      typically a delegate target."
+    not_for: "User-facing task delivery."

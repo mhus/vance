@@ -489,8 +489,20 @@ public class ProposingPhase {
             sb.append("Available sub-recipes in the project (excluding "
                     + "your own _slart/* generated bucket):\n");
             if (availableRecipes.isEmpty()) {
-                sb.append("  (none — you must work without sub-recipes; "
-                        + "reflect that in promptPrefix)\n");
+                sb.append("  (none)\n\n")
+                        .append("Because there are NO project sub-recipes:\n")
+                        .append("  - DO NOT set params.allowedSubTaskRecipes "
+                                + "(omit the field entirely).\n")
+                        .append("  - DO NOT set params.recipesOnlyViaExpand.\n")
+                        .append("  - Inventing recipe names ('web-research', "
+                                + "'analyze', 'marvin-worker', etc.) will be "
+                                + "rejected by the validator — those names "
+                                + "do not resolve at runtime.\n")
+                        .append("  - Drive the plan via the promptPrefix "
+                                + "alone; let Marvin's PLAN-LLM pick task "
+                                + "kinds (WORKER without recipe = generic "
+                                + "ford worker, EXPAND_FROM_DOC, etc.) at "
+                                + "runtime.\n\n");
             } else {
                 for (ResolvedRecipe r : availableRecipes) {
                     sb.append("  - ").append(r.name())
@@ -499,13 +511,15 @@ public class ProposingPhase {
                             .append(abbrev(r.description(), 100))
                             .append("\n");
                 }
+                sb.append("\nIf your subgoals map to any of these recipes, "
+                        + "set allowedSubTaskRecipes to the matching subset "
+                        + "and reference each recipe in the promptPrefix as "
+                        + "`taskSpec.recipe`. Remember the KIND-block parity "
+                        + "rule: the number of KIND blocks MUST equal the "
+                        + "size of allowedSubTaskRecipes. Use ONLY the names "
+                        + "listed above — every name must resolve to a real "
+                        + "project recipe.\n\n");
             }
-            sb.append("\nIf your subgoals map to any of these recipes, "
-                    + "set allowedSubTaskRecipes to the matching subset "
-                    + "and reference each recipe in the promptPrefix as "
-                    + "`taskSpec.recipe`. Remember the KIND-block parity "
-                    + "rule: the number of KIND blocks MUST equal the "
-                    + "size of allowedSubTaskRecipes.\n\n");
         }
 
         if (recoveryHint != null && !recoveryHint.isBlank()) {

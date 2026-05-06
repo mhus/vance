@@ -8,12 +8,15 @@ import de.mhus.vance.api.slartibartfast.RecipeDraft;
 import de.mhus.vance.api.slartibartfast.RecoveryRequest;
 import de.mhus.vance.api.slartibartfast.Subgoal;
 import de.mhus.vance.api.slartibartfast.ValidationCheck;
+import de.mhus.vance.brain.recipe.RecipeLoader;
+import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.vogon.StrategyResolver;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,10 +57,14 @@ public class ValidatingPhase {
             "marvin-recipe-shape";
     public static final String RULE_MARVIN_PROMPT_PREFIX =
             "marvin-recipe-prompt-prefix-present";
+    public static final String RULE_MARVIN_RECIPES_EXIST =
+            "marvin-recipe-allowed-recipes-exist";
     public static final String RULE_JUSTIFICATION_RESOLVES =
             "justification-subgoal-id-resolves";
     public static final String RULE_SCHEMA_TYPE_SUPPORTED =
             "outputSchemaType-supported";
+
+    private final RecipeLoader recipeLoader;
 
     public void execute(
             ArchitectState state,
@@ -237,33 +244,70 @@ public class ValidatingPhase {
                         .rule(RULE_MARVIN_RECIPE_SHAPE).passed(true)
                         .message("params block present").build());
             }
+
+            // MARVIN_RECIPE: every entry in allowedSubTaskRecipes /
+            // recipesOnlyViaExpand MUST be a real project recipe and
+            // must NOT be a reserved engine name. Empirical:
+            // PROPOSING fabricates plausible-sounding names ('ford',
+            // 'web-research', 'marvin-worker') when the project has
+            // no real sub-recipes — Marvin's runtime PLAN-validator
+            // rejects those, and the whole pipeline aborts. Catching
+            // it here saves a wallclock cycle through Marvin.
+            if (firstFail == null && params instanceof Map<?, ?> pmap) {
+                @SuppressWarnings("unchecked")
+                ValidationCheck recipeCheck = checkAllowedSubTaskRecipes(
+                        (Map<String, Object>) pmap, process);
+                report.add(recipeCheck);
+                if (!recipeCheck.isPassed()) firstFail = recipeCheck;
+            }
         }
 
         // 5. Justification refs resolve to subgoal ids.
+        //    Empirically the LLM occasionally emits a comma-
+        //    separated value ("sg1, sg2, sg3") when one constraint
+        //    covers several subgoals — JSON forbids duplicate keys
+        //    so it can't list multiple entries. We split + check
+        //    each part rather than reject the whole entry on a
+        //    purely formatting choice. Every part still has to be
+        //    a real sg-id; otherwise the entry is rejected with a
+        //    pointer to the unresolved name(s).
         if (firstFail == null) {
             Set<String> sgIds = new HashSet<>();
             for (Subgoal sg : state.getSubgoals()) sgIds.add(sg.getId());
+            int totalRefs = 0;
             for (Map.Entry<String, String> e :
                     draft.getJustifications().entrySet()) {
-                String sgId = e.getValue();
-                if (!sgIds.contains(sgId)) {
+                String raw = e.getValue();
+                List<String> parts = splitSgIdList(raw);
+                List<String> unknown = new ArrayList<>();
+                for (String part : parts) {
+                    if (!sgIds.contains(part)) unknown.add(part);
+                }
+                if (parts.isEmpty() || !unknown.isEmpty()) {
+                    String missing = parts.isEmpty()
+                            ? raw
+                            : String.join(", ", unknown);
                     ValidationCheck v = ValidationCheck.builder()
                             .rule(RULE_JUSTIFICATION_RESOLVES)
                             .passed(false)
                             .offendingId(e.getKey())
                             .message("justification '" + e.getKey()
-                                    + "' → '" + sgId
-                                    + "' references non-existent subgoal")
+                                    + "' → '" + raw
+                                    + "' references non-existent subgoal: "
+                                    + missing)
                             .build();
                     report.add(v);
                     if (firstFail == null) firstFail = v;
+                } else {
+                    totalRefs += parts.size();
                 }
             }
             if (firstFail == null) {
                 report.add(ValidationCheck.builder()
                         .rule(RULE_JUSTIFICATION_RESOLVES).passed(true)
                         .message(draft.getJustifications().size()
-                                + " justification(s) all resolve to subgoals")
+                                + " justification(s) all resolve to subgoals "
+                                + "(" + totalRefs + " sg-id ref(s) checked)")
                         .build());
             }
         }
@@ -276,7 +320,7 @@ public class ValidatingPhase {
         state.setValidationReport(report);
 
         if (firstFail != null) {
-            String hint = buildHint(report, state);
+            String hint = buildHint(report, state, process);
             state.setPendingRecovery(RecoveryRequest.builder()
                     .fromPhase(ArchitectStatus.VALIDATING)
                     .toPhase(ArchitectStatus.PROPOSING)
@@ -307,8 +351,9 @@ public class ValidatingPhase {
 
     // ──────────────────── Helpers ────────────────────
 
-    private static String buildHint(
-            List<ValidationCheck> report, ArchitectState state) {
+    private String buildHint(
+            List<ValidationCheck> report, ArchitectState state,
+            ThinkProcessDocument process) {
         StringBuilder sb = new StringBuilder();
         sb.append("VALIDATING rejected the previous recipe. "
                 + "Violations — address EVERY one:\n");
@@ -335,6 +380,21 @@ public class ValidatingPhase {
         boolean isMarvin = state.getOutputSchemaType()
                 == OutputSchemaType.MARVIN_RECIPE;
         if (isMarvin) {
+            // Same protection for recipe names as for sg-ids: echo
+            // the actual project recipe inventory so the LLM can't
+            // fabricate plausible-sounding names. allowedSubTaskRecipes
+            // and recipesOnlyViaExpand take recipe names, never engine
+            // labels.
+            List<String> available = listAvailableRecipeNames(process);
+            sb.append("\nValid recipe names (use ONLY these in "
+                    + "allowedSubTaskRecipes / recipesOnlyViaExpand): ");
+            if (available.isEmpty()) {
+                sb.append("(none — leave allowedSubTaskRecipes "
+                        + "and recipesOnlyViaExpand absent).\n");
+            } else {
+                sb.append(String.join(", ", available)).append(".\n");
+            }
+
             sb.append("\nEmit a corrected recipe YAML as a JSON object "
                     + "with a valid name, engine: marvin, "
                     + "params.allowedSubTaskRecipes / "
@@ -353,6 +413,131 @@ public class ValidatingPhase {
                     + "sg-ids from the list above.");
         }
         return sb.toString();
+    }
+
+    /**
+     * Validates that every entry in {@code params.allowedSubTaskRecipes}
+     * and {@code params.recipesOnlyViaExpand} is a real project
+     * recipe — both fields hold recipe names (NOT engine names), so
+     * a name that doesn't resolve via the recipe-cascade is by
+     * definition wrong (whether the LLM hallucinated it freshly or
+     * mis-typed an engine label is irrelevant). Also catches
+     * duplicate entries.
+     */
+    private ValidationCheck checkAllowedSubTaskRecipes(
+            Map<String, Object> params, ThinkProcessDocument process) {
+        List<String> allowed = readStringList(params.get("allowedSubTaskRecipes"));
+        List<String> onlyViaExpand = readStringList(params.get("recipesOnlyViaExpand"));
+
+        if (allowed.isEmpty() && onlyViaExpand.isEmpty()) {
+            // Recipe-author chose to leave the constraint open — no
+            // names to validate. Marvin will run with the full
+            // recipe catalog at runtime.
+            return ValidationCheck.builder()
+                    .rule(RULE_MARVIN_RECIPES_EXIST).passed(true)
+                    .message("no allowedSubTaskRecipes / recipesOnlyViaExpand "
+                            + "constraints — no names to validate")
+                    .build();
+        }
+
+        Set<String> available = new LinkedHashSet<>();
+        try {
+            for (ResolvedRecipe r : recipeLoader.listAll(
+                    process.getTenantId(), process.getProjectId())) {
+                if (!r.name().startsWith("_slart/")) {
+                    available.add(r.name());
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("Slartibartfast id='{}' VALIDATING failed listing recipes: {}",
+                    process.getId(), e.toString());
+        }
+
+        List<String> unknown = new ArrayList<>();
+        for (String name : allowed) {
+            if (!available.contains(name)) unknown.add(name);
+        }
+        for (String name : onlyViaExpand) {
+            if (!available.contains(name) && !unknown.contains(name)) {
+                unknown.add(name);
+            }
+        }
+
+        // Duplicate detection: any name that shows up >1 in
+        // allowedSubTaskRecipes is a duplicate.
+        Set<String> seen = new HashSet<>();
+        Set<String> dupes = new LinkedHashSet<>();
+        for (String name : allowed) {
+            if (!seen.add(name)) dupes.add(name);
+        }
+
+        if (!unknown.isEmpty() || !dupes.isEmpty()) {
+            StringBuilder msg = new StringBuilder();
+            if (!unknown.isEmpty()) {
+                msg.append("recipe(s) not found in project: ")
+                        .append(String.join(", ", unknown)).append(". ");
+            }
+            if (!dupes.isEmpty()) {
+                msg.append("duplicate recipe name(s) in "
+                                + "allowedSubTaskRecipes: ")
+                        .append(String.join(", ", dupes)).append(". ");
+            }
+            if (available.isEmpty()) {
+                msg.append("Project has no available recipes — drop the "
+                        + "allowedSubTaskRecipes constraint entirely.");
+            } else {
+                msg.append("Available: ")
+                        .append(String.join(", ", available)).append(".");
+            }
+            return ValidationCheck.builder()
+                    .rule(RULE_MARVIN_RECIPES_EXIST).passed(false)
+                    .message(msg.toString().trim())
+                    .build();
+        }
+
+        return ValidationCheck.builder()
+                .rule(RULE_MARVIN_RECIPES_EXIST).passed(true)
+                .message("all " + (allowed.size() + onlyViaExpand.size())
+                        + " recipe name(s) resolve to project recipes")
+                .build();
+    }
+
+    /**
+     * Splits a justification value into individual sg-id references.
+     * Tolerates a single value ("sg1") or a comma-separated list
+     * ("sg1, sg2, sg3"). Empty fragments and surrounding whitespace
+     * are dropped; the order of the result follows the input.
+     */
+    private static List<String> splitSgIdList(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String part : raw.split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) out.add(trimmed);
+        }
+        return out;
+    }
+
+    private static List<String> readStringList(Object raw) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<String> out = new ArrayList<>(list.size());
+        for (Object item : list) {
+            if (item instanceof String s && !s.isBlank()) out.add(s.trim());
+        }
+        return out;
+    }
+
+    private List<String> listAvailableRecipeNames(ThinkProcessDocument process) {
+        try {
+            List<String> names = new ArrayList<>();
+            for (ResolvedRecipe r : recipeLoader.listAll(
+                    process.getTenantId(), process.getProjectId())) {
+                if (!r.name().startsWith("_slart/")) names.add(r.name());
+            }
+            return names;
+        } catch (RuntimeException e) {
+            return List.of();
+        }
     }
 
     private static long countFailed(List<ValidationCheck> report) {

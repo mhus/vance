@@ -240,6 +240,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
+    private final PlanModeEventEmitter planModeEventEmitter;
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -253,7 +254,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver,
             de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory,
             de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher,
-            de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter) {
+            de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
+            PlanModeEventEmitter planModeEventEmitter) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -264,6 +266,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.engineChatFactory = engineChatFactory;
         this.skillTriggerMatcher = skillTriggerMatcher;
         this.messageRouter = messageRouter;
+        this.planModeEventEmitter = planModeEventEmitter;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -792,6 +795,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             + "action: ANSWER, DELEGATE, ASK_USER, …)",
                     /*awaitingUserInput*/ false);
         }
+        de.mhus.vance.api.thinkprocess.ProcessMode prior = process.getMode();
         boolean ok = thinkProcessService.updateMode(
                 process.getId(),
                 de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING);
@@ -802,6 +806,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     "(internal: failed to enter plan mode)", true);
         }
         process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING);
+        planModeEventEmitter.emitModeChanged(
+                process, prior, de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING);
         log.info("Arthur id='{}' entered EXPLORING — reason='{}'",
                 process.getId(), action.reason());
         // No user-facing chat message — the next turn will run in
@@ -838,12 +844,19 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     "(internal: PROPOSE_PLAN must include 3–8 todos — re-emit)",
                     false);
         }
+        de.mhus.vance.api.thinkprocess.ProcessMode prior = process.getMode();
         thinkProcessService.setTodos(process.getId(), todos);
         thinkProcessService.updateMode(
                 process.getId(),
                 de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING);
         process.setTodos(todos);
         process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING);
+        planModeEventEmitter.emitTodosUpdated(process, todos);
+        planModeEventEmitter.emitPlanProposed(process, summary, /*planVersion*/ 1);
+        if (prior != de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
+            planModeEventEmitter.emitModeChanged(
+                    process, prior, de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING);
+        }
         log.info("Arthur id='{}' PROPOSE_PLAN summary='{}' todos.size={} reason='{}'",
                 process.getId(), summary, todos.size(), action.reason());
         // Plan text becomes the assistant chat message — user sees it
@@ -862,10 +875,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
         String notes = action.stringParam(ArthurActionSchema.PARAM_NOTES);
+        de.mhus.vance.api.thinkprocess.ProcessMode prior = process.getMode();
         thinkProcessService.updateMode(
                 process.getId(),
                 de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
         process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
+        planModeEventEmitter.emitModeChanged(
+                process, prior, de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
         log.info("Arthur id='{}' entered EXECUTING — notes='{}' reason='{}'",
                 process.getId(), notes, action.reason());
         // No user-facing message; the next turn picks up the first
@@ -892,6 +908,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         boolean ok = thinkProcessService.updateTodoStatuses(process.getId(), updates);
         log.info("Arthur id='{}' TODO_UPDATE applied={} count={} reason='{}'",
                 process.getId(), ok, updates.size(), action.reason());
+        if (ok) {
+            // Reload to read the persisted list, then publish the full set —
+            // clients replace verbatim (no diff/patch protocol).
+            thinkProcessService.findById(process.getId()).ifPresent(refreshed -> {
+                process.setTodos(refreshed.getTodos());
+                planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos());
+            });
+        }
         return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
     }
 

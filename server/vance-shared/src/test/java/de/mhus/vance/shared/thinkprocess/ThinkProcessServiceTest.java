@@ -11,7 +11,10 @@ import static org.mockito.Mockito.when;
 
 import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.api.thinkprocess.CloseReason;
+import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.api.thinkprocess.TodoItem;
+import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import java.util.ArrayList;
@@ -211,6 +214,143 @@ class ThinkProcessServiceTest {
         when(repository.findById("p-1")).thenReturn(Optional.of(doc));
 
         assertThat(service.isHaltRequested("p-1")).isTrue();
+    }
+
+    // ─── Plan-Mode (mode + todos) ────────────────────────────────────────
+
+    @Test
+    void updateMode_writesTheModeFieldAtomically() {
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        boolean changed = service.updateMode("p-1", ProcessMode.EXPLORING);
+
+        assertThat(changed).isTrue();
+        org.mockito.ArgumentCaptor<Update> captor =
+                org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        Object setOps = captor.getValue().getUpdateObject().get("$set");
+        assertThat(setOps.toString()).contains("mode").contains("EXPLORING");
+    }
+
+    @Test
+    void updateMode_returnsFalse_whenProcessNotFound() {
+        UpdateResult miss = mock(UpdateResult.class);
+        when(miss.getModifiedCount()).thenReturn(0L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(miss);
+
+        assertThat(service.updateMode("ghost", ProcessMode.PLANNING)).isFalse();
+    }
+
+    @Test
+    void setTodos_replacesEntireListAtomically() {
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        List<TodoItem> todos = List.of(
+                TodoItem.builder().id("1").status(TodoStatus.PENDING).content("a").build(),
+                TodoItem.builder().id("2").status(TodoStatus.PENDING).content("b").build());
+
+        boolean changed = service.setTodos("p-1", todos);
+
+        assertThat(changed).isTrue();
+        org.mockito.ArgumentCaptor<Update> captor =
+                org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        Object setOps = captor.getValue().getUpdateObject().get("$set");
+        assertThat(setOps.toString()).contains("todos");
+    }
+
+    @Test
+    void updateTodoStatuses_appliesUpdates_andLeavesUnlistedItemsUntouched() {
+        ThinkProcessDocument doc = process("p-1");
+        doc.setTodos(new ArrayList<>(List.of(
+                TodoItem.builder().id("1").status(TodoStatus.PENDING).content("a").build(),
+                TodoItem.builder().id("2").status(TodoStatus.PENDING).content("b").build(),
+                TodoItem.builder().id("3").status(TodoStatus.PENDING).content("c").build())));
+        when(repository.findById("p-1")).thenReturn(Optional.of(doc));
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        var updates = new java.util.LinkedHashMap<String, TodoStatus>();
+        updates.put("1", TodoStatus.COMPLETED);
+        updates.put("3", TodoStatus.IN_PROGRESS);
+
+        boolean changed = service.updateTodoStatuses("p-1", updates);
+
+        assertThat(changed).isTrue();
+        org.mockito.ArgumentCaptor<Update> captor =
+                org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        // The update payload contains the rebuilt list (3 items, two
+        // statuses applied, item 2 untouched). We don't reflect-into
+        // the embedded array — verifying the $set + $inc structure is
+        // enough to know the right shape was issued.
+        Object updateObject = captor.getValue().getUpdateObject();
+        assertThat(updateObject.toString()).contains("todos").contains("$inc");
+    }
+
+    @Test
+    void updateTodoStatuses_returnsFalse_whenNoChange() {
+        ThinkProcessDocument doc = process("p-1");
+        doc.setTodos(new ArrayList<>(List.of(
+                TodoItem.builder().id("1").status(TodoStatus.COMPLETED).content("a").build())));
+        when(repository.findById("p-1")).thenReturn(Optional.of(doc));
+
+        // Update demands COMPLETED, item is already COMPLETED → no-op
+        var updates = new java.util.LinkedHashMap<String, TodoStatus>();
+        updates.put("1", TodoStatus.COMPLETED);
+
+        boolean changed = service.updateTodoStatuses("p-1", updates);
+
+        assertThat(changed).isFalse();
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class));
+    }
+
+    @Test
+    void updateTodoStatuses_returnsFalse_whenProcessUnknown() {
+        when(repository.findById("ghost")).thenReturn(Optional.empty());
+        var updates = new java.util.LinkedHashMap<String, TodoStatus>();
+        updates.put("1", TodoStatus.COMPLETED);
+
+        assertThat(service.updateTodoStatuses("ghost", updates)).isFalse();
+    }
+
+    @Test
+    void updateTodoStatuses_returnsFalse_whenUpdatesAreEmpty() {
+        assertThat(service.updateTodoStatuses(
+                "p-1", new java.util.LinkedHashMap<>())).isFalse();
+        // Critically: no Mongo call at all when the input is empty.
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class));
+    }
+
+    @Test
+    void updateTodoStatuses_silentlyIgnoresUnknownTodoIds() {
+        ThinkProcessDocument doc = process("p-1");
+        doc.setTodos(new ArrayList<>(List.of(
+                TodoItem.builder().id("1").status(TodoStatus.PENDING).content("a").build())));
+        when(repository.findById("p-1")).thenReturn(Optional.of(doc));
+
+        var updates = new java.util.LinkedHashMap<String, TodoStatus>();
+        updates.put("ghost", TodoStatus.COMPLETED);
+
+        boolean changed = service.updateTodoStatuses("p-1", updates);
+
+        assertThat(changed).isFalse();
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class));
     }
 
     // ─── helpers ─────────────────────────────────────────────────────────

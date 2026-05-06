@@ -142,6 +142,40 @@ public final class MessageType {
      */
     public static final String PROCESS_PROGRESS = "process-progress";
 
+    // ─── Plan-Mode Notifications (Arthur) ─────────────────────────
+
+    /**
+     * Brain → client: a think-process changed its
+     * {@link de.mhus.vance.api.thinkprocess.ProcessMode}. Carries the
+     * old + new mode plus the process id. Drives Foot's mode-indicator
+     * in the prompt and the plan-box visibility in the scrollback.
+     *
+     * See {@code readme/arthur-plan-mode.md} §9.
+     */
+    public static final String PROCESS_MODE_CHANGED = "process-mode-changed";
+
+    /**
+     * Brain → client: TodoList of a think-process was created or
+     * updated. Payload carries the full current TodoList — clients
+     * replace their local copy verbatim. Foot renders this above the
+     * prompt as a scrollable status block.
+     *
+     * See {@code readme/arthur-plan-mode.md} §9.
+     */
+    public static final String TODOS_UPDATED = "todos-updated";
+
+    /**
+     * Brain → client: a Plan was proposed by Arthur (PROPOSE_PLAN).
+     * Sent <em>in addition</em> to the regular ChatMessage stream so
+     * UIs can highlight the plan-text visually (box, color, "Plan v2"
+     * header). Payload carries summary + plan-version (count of plans
+     * proposed in this process so far). The full plan text is in the
+     * ChatMessage.
+     *
+     * See {@code readme/arthur-plan-mode.md} §9.
+     */
+    public static final String PLAN_PROPOSED = "plan-proposed";
+
     // ─── File Transfer Subsystem ────────────────────────────────
 
     /**

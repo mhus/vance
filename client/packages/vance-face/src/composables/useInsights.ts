@@ -3,6 +3,7 @@ import type {
   ChatMessageInsightsDto,
   MarvinNodeInsightsDto,
   MemoryInsightsDto,
+  SessionClientToolsDto,
   SessionInsightsDto,
   ThinkProcessInsightsDto,
 } from '@vance/generated';
@@ -168,6 +169,36 @@ export function useProcessMemory(): {
   }
 
   return { entries, loading, error, load, clear };
+}
+
+export function useSessionClientTools(): {
+  data: Ref<SessionClientToolsDto | null>;
+  loading: Ref<boolean>;
+  error: Ref<string | null>;
+  load: (sessionId: string) => Promise<void>;
+  clear: () => void;
+} {
+  const data = ref<SessionClientToolsDto | null>(null);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+
+  function clear(): void { data.value = null; error.value = null; }
+
+  async function load(sessionId: string): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      data.value = await brainFetch<SessionClientToolsDto>(
+        'GET', `admin/sessions/${encodeURIComponent(sessionId)}/insights/client-tools`);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load client tools.';
+      data.value = null;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  return { data, loading, error, load, clear };
 }
 
 export function useMarvinTree(): {

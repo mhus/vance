@@ -23,6 +23,7 @@ import {
 import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem, { type MarvinTreeNode } from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
+import LiveToolsTab from './LiveToolsTab.vue';
 import LlmTraceTab from './LlmTraceTab.vue';
 import RecipesTab from './RecipesTab.vue';
 import ProjectToolsTab from './ProjectToolsTab.vue';
@@ -463,6 +464,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               :class="{ 'tab--active': activeTab === 'timeline' }"
               @click="activeTab = 'timeline'"
             >{{ $t('insights.tabs.timeline') }}</button>
+            <button
+              class="tab"
+              :class="{ 'tab--active': activeTab === 'live-tools' }"
+              @click="activeTab = 'live-tools'"
+            >Live Tools</button>
           </div>
 
           <VCard v-if="activeTab === 'overview'" :title="$t('insights.session.detailsTitle')">
@@ -523,6 +529,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
             v-if="activeTab === 'timeline'"
             :processes="sessionProcessesForTab"
             @select-process="clickProcessByMongoId"
+          />
+
+          <LiveToolsTab
+            v-if="activeTab === 'live-tools'"
+            :session-id="selectedSession.sessionId"
           />
         </template>
       </template>

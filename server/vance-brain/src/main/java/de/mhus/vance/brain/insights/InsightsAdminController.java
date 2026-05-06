@@ -7,6 +7,7 @@ import de.mhus.vance.api.insights.EffectiveToolDto;
 import de.mhus.vance.api.insights.MarvinNodeInsightsDto;
 import de.mhus.vance.api.insights.MemoryInsightsDto;
 import de.mhus.vance.api.insights.PendingMessageInsightsDto;
+import de.mhus.vance.api.insights.SessionClientToolsDto;
 import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
 import de.mhus.vance.brain.recipe.RecipeLoader;
@@ -15,6 +16,10 @@ import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.tools.BuiltInToolSource;
 import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.brain.tools.client.ClientToolRegistry;
+import de.mhus.vance.brain.workspace.access.PodForwarder;
+import de.mhus.vance.brain.workspace.access.ProjectPodKey;
+import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.servertool.ServerToolRepository;
@@ -84,6 +89,9 @@ public class InsightsAdminController {
     private final ServerToolService serverToolService;
     private final ServerToolRepository serverToolRepository;
     private final BuiltInToolSource builtInToolSource;
+    private final ClientToolRegistry clientToolRegistry;
+    private final PodForwarder podForwarder;
+    private final WorkspaceAccessProperties workspaceAccessProperties;
     private final RequestAuthority authority;
 
     // ─── Sessions ──────────────────────────────────────────────────────────
@@ -554,5 +562,52 @@ public class InsightsAdminController {
                     .type(doc.getType())
                     .disabledByInnerLayer(false));
         }
+    }
+
+    // ─── Live client-tools per session ─────────────────────────────────────
+
+    /**
+     * Tools the client pushed at WebSocket connect-time. The registry
+     * lives on the pod that owns the session's bind — same pod as the
+     * project's owner, so we forward via {@link PodForwarder} to the
+     * project pod's internal endpoint. Diagnostic-only; the registry
+     * is rebuilt on every reconnect, so a refresh shows the live
+     * picture.
+     */
+    @GetMapping("/sessions/{sessionId}/insights/client-tools")
+    public SessionClientToolsDto listClientTools(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("sessionId") String sessionId,
+            HttpServletRequest httpRequest) {
+        SessionDocument session = sessionService.findBySessionId(sessionId)
+                .filter(s -> tenant.equals(s.getTenantId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Session '" + sessionId + "' not found"));
+        authority.enforce(httpRequest,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()), Action.ADMIN);
+
+        // Bypass mode (used in single-pod tests): read the local registry
+        // directly. In normal operation we always forward, so dev and prod
+        // exercise the same path.
+        if (workspaceAccessProperties.isBypassProxy()) {
+            return clientToolRegistry.entry(sessionId)
+                    .map(e -> SessionClientToolsDto.builder()
+                            .sessionId(sessionId)
+                            .bound(true)
+                            .connectionId(e.connectionId())
+                            .tools(List.copyOf(e.tools().values()))
+                            .build())
+                    .orElseGet(() -> SessionClientToolsDto.builder()
+                            .sessionId(sessionId)
+                            .bound(false)
+                            .tools(List.of())
+                            .build());
+        }
+
+        ProjectPodKey key = new ProjectPodKey(tenant, session.getProjectId());
+        String path = "/internal/insights/sessions/"
+                + java.net.URLEncoder.encode(sessionId, java.nio.charset.StandardCharsets.UTF_8)
+                + "/client-tools";
+        return podForwarder.getJson(key, path, SessionClientToolsDto.class);
     }
 }

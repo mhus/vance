@@ -117,6 +117,27 @@ export function useProcessMemory() {
     }
     return { entries, loading, error, load, clear };
 }
+export function useSessionClientTools() {
+    const data = ref(null);
+    const loading = ref(false);
+    const error = ref(null);
+    function clear() { data.value = null; error.value = null; }
+    async function load(sessionId) {
+        loading.value = true;
+        error.value = null;
+        try {
+            data.value = await brainFetch('GET', `admin/sessions/${encodeURIComponent(sessionId)}/insights/client-tools`);
+        }
+        catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to load client tools.';
+            data.value = null;
+        }
+        finally {
+            loading.value = false;
+        }
+    }
+    return { data, loading, error, load, clear };
+}
 export function useMarvinTree() {
     const nodes = ref([]);
     const loading = ref(false);

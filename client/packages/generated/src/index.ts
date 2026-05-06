@@ -53,6 +53,7 @@ export * from './insights/EffectiveToolDto';
 export * from './insights/MarvinNodeInsightsDto';
 export * from './insights/MemoryInsightsDto';
 export * from './insights/PendingMessageInsightsDto';
+export * from './insights/SessionClientToolsDto';
 export * from './insights/SessionInsightsDto';
 export * from './insights/ThinkProcessInsightsDto';
 

@@ -1,5 +1,5 @@
 import { type Ref } from 'vue';
-import type { ChatMessageInsightsDto, MarvinNodeInsightsDto, MemoryInsightsDto, SessionInsightsDto, ThinkProcessInsightsDto } from '@vance/generated';
+import type { ChatMessageInsightsDto, MarvinNodeInsightsDto, MemoryInsightsDto, SessionClientToolsDto, SessionInsightsDto, ThinkProcessInsightsDto } from '@vance/generated';
 interface SessionFilter {
     projectId?: string | null;
     userId?: string | null;
@@ -42,6 +42,13 @@ export declare function useProcessMemory(): {
     loading: Ref<boolean>;
     error: Ref<string | null>;
     load: (processId: string) => Promise<void>;
+    clear: () => void;
+};
+export declare function useSessionClientTools(): {
+    data: Ref<SessionClientToolsDto | null>;
+    loading: Ref<boolean>;
+    error: Ref<string | null>;
+    load: (sessionId: string) => Promise<void>;
     clear: () => void;
 };
 export declare function useMarvinTree(): {

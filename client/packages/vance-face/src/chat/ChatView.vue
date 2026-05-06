@@ -34,17 +34,27 @@ import type {
   ChatMessageChunkData,
   ChatMessageDto,
   ChatRole,
+  PlanProposedNotification,
+  ProcessModeChangedNotification,
   ProcessPauseRequest,
   ProcessProgressNotification,
   ProcessSteerRequest,
   ProcessSteerResponse,
   SessionListRequest,
   SessionListResponse,
+  TodoItem,
+  TodosUpdatedNotification,
 } from '@vance/generated';
 import { useChatHistory } from '@composables/useChatHistory';
 import { VAlert, VButton, VSelect, VTextarea } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
+import PlanModeIndicator from './PlanModeIndicator.vue';
 import ProgressFeed from './ProgressFeed.vue';
+
+// Wire form of {@code ProcessMode} (Jackson serialises by enum name).
+// The generated TS enum is numeric so a runtime equality check would
+// always miss — same string-literal pattern as MessageBubble's role.
+type ProcessModeName = 'NORMAL' | 'EXPLORING' | 'PLANNING' | 'EXECUTING';
 
 const props = defineProps<{
   socket: BrainWsApi;
@@ -78,6 +88,27 @@ const streamingDrafts = ref<Map<string, { role: ChatRole; content: string; proce
   new Map());
 
 const progressEvents = ref<ProcessProgressNotification[]>([]);
+
+// ──────────────── Plan-Mode state (Arthur Plan-Mode flow) ────────────────
+//
+// Tracks the chat-process's mode plus its current TodoList and the
+// metadata of the latest PROPOSE_PLAN. Driven by three WS notifications:
+// {@code process-mode-changed}, {@code todos-updated}, {@code plan-proposed}.
+//
+// We only care about frames whose {@code processName} matches the
+// chat-process — worker sub-processes never emit Plan-Mode messages
+// today, but if they do the right place to surface them is the worker
+// channel, not the user-facing main UI. Falling back to NORMAL clears
+// todos and the plan banner so the indicator hides cleanly.
+
+const chatProcessMode = ref<ProcessModeName>('NORMAL');
+const chatTodos = ref<TodoItem[]>([]);
+const planMeta = ref<{ version: number; summary?: string } | null>(null);
+
+const modeBadge = computed<string | null>(() => {
+  if (chatProcessMode.value === 'NORMAL') return null;
+  return chatProcessMode.value.toLowerCase();
+});
 
 const composerText = ref('');
 const sending = ref(false);
@@ -468,6 +499,43 @@ function recordProgress(data: ProcessProgressNotification): void {
   }
 }
 
+function isChatProcess(processName: string | null | undefined): boolean {
+  if (!processName) return false;
+  if (!chatProcessName.value) return false;
+  return processName === chatProcessName.value;
+}
+
+function onProcessModeChanged(data: ProcessModeChangedNotification): void {
+  if (!isChatProcess(data.processName)) return;
+  const next = (data.newMode as unknown as ProcessModeName) ?? 'NORMAL';
+  chatProcessMode.value = next;
+  if (next === 'NORMAL') {
+    // Plan/exec cycle is over — drop the panel content so the indicator
+    // hides on its own. Mirrors PlanModeState.setMode() in the foot.
+    chatTodos.value = [];
+    planMeta.value = null;
+  }
+}
+
+function onTodosUpdated(data: TodosUpdatedNotification): void {
+  if (!isChatProcess(data.processName)) return;
+  chatTodos.value = data.todos ?? [];
+}
+
+function onPlanProposed(data: PlanProposedNotification): void {
+  if (!isChatProcess(data.processName)) return;
+  planMeta.value = {
+    version: data.planVersion ?? 1,
+    summary: data.summary ?? undefined,
+  };
+}
+
+function resetPlanModeState(): void {
+  chatProcessMode.value = 'NORMAL';
+  chatTodos.value = [];
+  planMeta.value = null;
+}
+
 function scrollToBottom(): void {
   nextTick(() => {
     const el = messageContainer.value;
@@ -570,6 +638,10 @@ onMounted(async () => {
     props.socket.on<ChatMessageAppendedData>('chat-message-appended', appendMessageBubble),
     props.socket.on<ChatMessageChunkData>('chat-message-stream-chunk', appendChunk),
     props.socket.on<ProcessProgressNotification>('process-progress', recordProgress),
+    props.socket.on<ProcessModeChangedNotification>(
+      'process-mode-changed', onProcessModeChanged),
+    props.socket.on<TodosUpdatedNotification>('todos-updated', onTodosUpdated),
+    props.socket.on<PlanProposedNotification>('plan-proposed', onPlanProposed),
   );
   initSpeechRecognition();
   initSpeechSynthesis();
@@ -602,6 +674,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
   streamingDrafts.value = new Map();
   progressEvents.value = [];
   sending.value = false;
+  resetPlanModeState();
   await load(newId);
   scrollToBottom();
 });
@@ -615,8 +688,15 @@ watch(() => props.sessionId, async (newId, oldId) => {
         <VButton variant="ghost" size="sm" @click="emit('leave')">
           {{ $t('chat.backToSessions') }}
         </VButton>
-        <div class="flex-1 min-w-0 truncate">
+        <div class="flex-1 min-w-0 truncate flex items-center gap-2">
           <span class="font-medium">{{ sessionDisplay ?? sessionId }}</span>
+          <span
+            v-if="modeBadge"
+            class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30"
+            :title="$t('chat.planMode.modeBadgeTooltip')"
+          >
+            {{ modeBadge }}
+          </span>
         </div>
       </header>
 
@@ -654,6 +734,12 @@ watch(() => props.sessionId, async (newId, oldId) => {
           />
         </div>
       </div>
+
+      <PlanModeIndicator
+        :mode="chatProcessMode"
+        :todos="chatTodos"
+        :plan-meta="planMeta"
+      />
 
       <footer class="border-t border-base-300 bg-base-100 p-4">
         <VAlert v-if="sendError" variant="error" class="mb-2">{{ sendError }}</VAlert>

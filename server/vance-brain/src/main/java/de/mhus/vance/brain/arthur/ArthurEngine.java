@@ -378,6 +378,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        // Plan-Mode self-continuation: actions like START_PLAN /
+        // START_EXECUTION transition the process to a new mode without
+        // user input. Without a self-trigger the engine would go IDLE
+        // and wait forever for a non-existent pending. We allow at most
+        // CONTINUATION_BUDGET extra turns per top-level invocation —
+        // the natural progression NORMAL → EXPLORING → PLANNING →
+        // EXECUTING uses 3, +1 slack. Beyond that we yield to break
+        // pathological loops.
+        int continuationsRemaining = 4;
+        boolean continueAfterModeChange = false;
         while (true) {
             // Cooperative halt-check between drain iterations. The
             // pause-task on the lane is queued *behind* this runTurn
@@ -392,9 +402,41 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
             List<SteerMessage> drained = ctx.drainPending();
             if (drained.isEmpty()) {
-                return;
+                if (!continueAfterModeChange) {
+                    return;
+                }
+                // Mode changed in the previous iteration → run one more
+                // turn with empty inbox so the LLM sees the new
+                // mode-prompt (EXPLORING / PLANNING / EXECUTING) and
+                // can emit the next action.
+                continueAfterModeChange = false;
+                continuationsRemaining--;
+                if (continuationsRemaining < 0) {
+                    log.warn("Arthur.runTurn id='{}' — continuation budget exhausted",
+                            process.getId());
+                    return;
+                }
             }
+
+            de.mhus.vance.api.thinkprocess.ProcessMode modeBefore = process.getMode();
             runTurnFor(process, ctx, drained);
+
+            // The handlers update process.mode in-place; if it differs
+            // from what we saw on entry, schedule one more turn so
+            // exploration / planning / execution actually starts —
+            // BUT only if the engine isn't waiting on user input now.
+            // PROPOSE_PLAN / ANSWER / ASK_USER set awaiting=true →
+            // status=BLOCKED → no self-continuation, the user's next
+            // message wakes the engine via the regular pending pipeline.
+            if (process.getMode() != modeBefore) {
+                ThinkProcessStatus currentStatus = thinkProcessService
+                        .findById(process.getId())
+                        .map(ThinkProcessDocument::getStatus)
+                        .orElse(ThinkProcessStatus.SUSPENDED);
+                if (currentStatus == ThinkProcessStatus.IDLE) {
+                    continueAfterModeChange = true;
+                }
+            }
         }
     }
 
@@ -473,6 +515,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     process, chatLog, inbox, effectiveSize);
             int maxIters = paramInt(process, "maxIterations",
                     arthurProperties.getMaxToolIterations());
+            // Plan-Mode turns chain multiple read-tool calls before
+            // emitting PROPOSE_PLAN. The default budget (~6) is sized
+            // for NORMAL action loops and runs out before the model
+            // can finish exploring and propose. Lift the floor in
+            // EXPLORING / PLANNING so the model has room to settle.
+            de.mhus.vance.api.thinkprocess.ProcessMode currentMode = process.getMode();
+            if (currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
+                    || currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
+                maxIters = Math.max(maxIters, 12);
+            }
             boolean validation = paramBool(process, "validation", false);
             log.debug("Arthur.turn id='{}' inbox={} historyMsgs={} model={} maxIters={} validation={}",
                     process.getId(), inbox.size(), messages.size(),

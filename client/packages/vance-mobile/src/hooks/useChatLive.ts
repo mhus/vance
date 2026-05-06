@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ChatRole,
+  ProcessMode,
   ProgressKind,
   type ChatMessageAppendedData,
   type ChatMessageChunkData,
   type ChatMessageDto,
+  type PlanProposedNotification,
+  type ProcessModeChangedNotification,
   type ProcessProgressNotification,
   type ProcessSteerRequest,
   type ProcessSteerResponse,
@@ -12,6 +15,8 @@ import {
   type SessionListResponse,
   type SessionResumeRequest,
   type SessionResumeResponse,
+  type TodoItem,
+  type TodosUpdatedNotification,
 } from '@vance/generated';
 import { type BrainWsApi } from '@vance/shared';
 import { connectBrainWs } from '@/ws/connectBrainWs';
@@ -49,6 +54,12 @@ export type ChatConnectionState = 'connecting' | 'open' | 'reconnecting' | 'clos
 const CHAT_PROCESS_NAME = 'chat';
 const OPTIMISTIC_PREFIX = 'tmp_';
 
+/** Latest PROPOSE_PLAN metadata for the chat-process. Cleared on NORMAL. */
+export interface PlanMeta {
+  version: number;
+  summary: string | null;
+}
+
 interface UseChatLiveResult {
   messages: ChatMessageDto[];
   /** Per-thinkProcessId in-flight stream draft. */
@@ -61,6 +72,15 @@ interface UseChatLiveResult {
    * chat doesn't accumulate ghost banners.
    */
   progressHint: string | null;
+  /**
+   * Arthur Plan-Mode: current operating mode of the chat-process.
+   * {@link ProcessMode.NORMAL} when no plan-mode flow is active.
+   */
+  chatProcessMode: ProcessMode;
+  /** Persistent TodoList for the chat-process; empty outside Plan-Mode. */
+  chatTodos: TodoItem[];
+  /** Pending-plan banner metadata; non-null while mode is PLANNING. */
+  planMeta: PlanMeta | null;
   send: (text: string) => Promise<void>;
 }
 
@@ -90,6 +110,9 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
   const [connectionState, setConnectionState] = useState<ChatConnectionState>('connecting');
   const [sessionDisplay, setSessionDisplay] = useState(sessionId);
   const [progressHint, setProgressHint] = useState<string | null>(null);
+  const [chatProcessMode, setChatProcessMode] = useState<ProcessMode>(ProcessMode.NORMAL);
+  const [chatTodos, setChatTodos] = useState<TodoItem[]>([]);
+  const [planMeta, setPlanMeta] = useState<PlanMeta | null>(null);
 
   const socketRef = useRef<BrainWsApi | null>(null);
   const liveRef = useRef(true);
@@ -211,6 +234,37 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
           }, PROGRESS_HINT_TTL_MS);
         }),
       );
+      // Plan-Mode notifications: scoped to the main chat-process. Worker
+      // sub-processes don't drive the user-facing plan UI; ignore them.
+      unsubs.push(
+        socket.on<ProcessModeChangedNotification>('process-mode-changed', (data) => {
+          if (data.processName !== CHAT_PROCESS_NAME) return;
+          const next = normalizeEnum(ProcessMode, data.newMode);
+          setChatProcessMode(next);
+          if (next === ProcessMode.NORMAL) {
+            // Plan/exec cycle ended — drop the panel content so the
+            // indicator hides on its own. Mirrors PlanModeState.setMode
+            // in the foot client.
+            setChatTodos([]);
+            setPlanMeta(null);
+          }
+        }),
+      );
+      unsubs.push(
+        socket.on<TodosUpdatedNotification>('todos-updated', (data) => {
+          if (data.processName !== CHAT_PROCESS_NAME) return;
+          setChatTodos(data.todos ?? []);
+        }),
+      );
+      unsubs.push(
+        socket.on<PlanProposedNotification>('plan-proposed', (data) => {
+          if (data.processName !== CHAT_PROCESS_NAME) return;
+          setPlanMeta({
+            version: data.planVersion ?? 1,
+            summary: data.summary && data.summary.length > 0 ? data.summary : null,
+          });
+        }),
+      );
 
       const closeUnsub = socket.onClose(() => {
         for (const off of unsubs) off();
@@ -309,6 +363,9 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
     connectionState,
     sessionDisplay,
     progressHint,
+    chatProcessMode,
+    chatTodos,
+    planMeta,
     send,
   };
 }

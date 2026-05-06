@@ -159,6 +159,14 @@ export default {
       planUpdated: 'plan updated',
       status: 'status',
     },
+    planMode: {
+      modeBadgeTooltip: 'Current chat-process mode (Arthur Plan-Mode)',
+      planTitle: 'Plan',
+      planTitleVersioned: 'Plan v{version}',
+      awaitingApproval: 'awaiting approval',
+      approvalHint: 'Reply with "ok"/"go ahead" to approve, or with corrections.',
+      todosTitle: 'Plan steps',
+    },
   },
 
   documents: {

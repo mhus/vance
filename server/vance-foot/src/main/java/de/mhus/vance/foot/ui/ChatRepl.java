@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.ui;
 
+import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.foot.command.ChatInputService;
 import de.mhus.vance.foot.command.SlashCompleter;
 import de.mhus.vance.foot.config.FootConfig;
@@ -43,6 +44,7 @@ public class ChatRepl {
     private final StatusBar statusBar;
     private final FootConfig config;
     private final SlashCompleter completer;
+    private final PlanModeState planMode;
 
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private @Nullable Terminal terminal;
@@ -54,7 +56,8 @@ public class ChatRepl {
                     SessionService sessions,
                     StatusBar statusBar,
                     FootConfig config,
-                    SlashCompleter completer) {
+                    SlashCompleter completer,
+                    PlanModeState planMode) {
         this.input = input;
         this.chatTerminal = chatTerminal;
         this.interfaceService = interfaceService;
@@ -62,6 +65,7 @@ public class ChatRepl {
         this.statusBar = statusBar;
         this.config = config;
         this.completer = completer;
+        this.planMode = planMode;
     }
 
     /** Allows {@code /quit} (or shutdown hooks) to exit the loop cleanly. */
@@ -241,7 +245,15 @@ public class ChatRepl {
         if (bound == null) {
             return "vance> ";
         }
-        return "vance(" + bound.sessionId() + ")> ";
+        // Mode tag — only present while the active process is in a
+        // non-NORMAL mode (Arthur Plan-Mode flow). Updates take effect
+        // on the next readLine cycle, not mid-input — JLine fixes the
+        // prompt for the duration of a readLine call.
+        ProcessMode mode = planMode.mode(sessions.activeProcess());
+        String suffix = mode == ProcessMode.NORMAL
+                ? ""
+                : ", " + mode.name().toLowerCase();
+        return "vance(" + bound.sessionId() + suffix + ")> ";
     }
 
     @PreDestroy

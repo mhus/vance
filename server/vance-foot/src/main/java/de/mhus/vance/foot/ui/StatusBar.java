@@ -1,7 +1,10 @@
 package de.mhus.vance.foot.ui;
 
+import de.mhus.vance.api.thinkprocess.TodoItem;
+import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.foot.session.SessionService;
 import jakarta.annotation.PreDestroy;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -14,6 +17,7 @@ import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
 import org.jline.utils.Status;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -47,6 +51,7 @@ public class StatusBar {
     private final SessionService sessions;
     private final BusyIndicator busy;
     private final ThinkingPhrases phrases;
+    private final ObjectProvider<PlanModeState> planMode;
     private final AtomicReference<@Nullable Terminal> terminal = new AtomicReference<>();
     private final AtomicReference<@Nullable Status> status = new AtomicReference<>();
     private final AtomicInteger frame = new AtomicInteger();
@@ -60,10 +65,14 @@ public class StatusBar {
      */
     private volatile String currentPhrase = "thinking";
 
-    public StatusBar(SessionService sessions, BusyIndicator busy, ThinkingPhrases phrases) {
+    public StatusBar(SessionService sessions,
+                     BusyIndicator busy,
+                     ThinkingPhrases phrases,
+                     ObjectProvider<PlanModeState> planMode) {
         this.sessions = sessions;
         this.busy = busy;
         this.phrases = phrases;
+        this.planMode = planMode;
     }
 
     /**
@@ -152,10 +161,69 @@ public class StatusBar {
         Status s = status.get();
         if (s == null) return;
         try {
-            s.update(List.of(persistentLine()));
+            s.update(buildLines());
         } catch (RuntimeException ignored) {
             // Terminal could be tearing down — paint failure isn't fatal.
         }
+    }
+
+    /**
+     * Composes the pinned status block, top-to-bottom: optional Plan-Mode
+     * todo panel for the active process, then the always-visible session
+     * /process/busy line.
+     */
+    private List<AttributedString> buildLines() {
+        List<AttributedString> out = new ArrayList<>();
+        appendTodoPanel(out);
+        out.add(persistentLine());
+        return out;
+    }
+
+    private void appendTodoPanel(List<AttributedString> sink) {
+        PlanModeState state = planMode.getIfAvailable();
+        if (state == null) return;
+        String active = sessions.activeProcess();
+        if (active == null) return;
+        List<TodoItem> items = state.todos(active);
+        if (items.isEmpty()) return;
+        sink.add(dim("─── Plan ───"));
+        for (TodoItem item : items) {
+            sink.add(formatTodo(item));
+        }
+        sink.add(dim("────────────"));
+    }
+
+    private static AttributedString dim(String text) {
+        return new AttributedStringBuilder()
+                .style(AttributedStyle.DEFAULT.foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK))
+                .append(text)
+                .toAttributedString();
+    }
+
+    private static AttributedString formatTodo(TodoItem item) {
+        TodoStatus status = item.getStatus() == null ? TodoStatus.PENDING : item.getStatus();
+        String marker = switch (status) {
+            case PENDING -> "[ ]";
+            case IN_PROGRESS -> "[~]";
+            case COMPLETED -> "[✓]";
+        };
+        String label = status == TodoStatus.IN_PROGRESS
+                && item.getActiveForm() != null
+                && !item.getActiveForm().isBlank()
+                ? item.getActiveForm()
+                : item.getContent();
+        AttributedStyle style = switch (status) {
+            case IN_PROGRESS -> AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW);
+            case COMPLETED -> AttributedStyle.DEFAULT
+                    .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
+            case PENDING -> AttributedStyle.DEFAULT;
+        };
+        return new AttributedStringBuilder()
+                .style(style)
+                .append(marker)
+                .append(' ')
+                .append(label == null ? "" : label)
+                .toAttributedString();
     }
 
     private AttributedString persistentLine() {

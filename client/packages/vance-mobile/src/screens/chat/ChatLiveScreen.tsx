@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChatRole, type ChatMessageDto } from '@vance/generated';
+import { ChatRole, ProcessMode, type ChatMessageDto } from '@vance/generated';
 import { useChatLive, type ChatConnectionState } from '@/hooks/useChatLive';
-import { MobileShell, VAlert, VLoading } from '@/components';
+import { MobileShell, VAlert, VBadge, VLoading } from '@/components';
 import { MessageBubble } from './components/MessageBubble';
 import { SpeakerToggle } from './components/SpeakerToggle';
 import { ChatComposer } from './components/ChatComposer';
+import { PlanModeIndicator } from './components/PlanModeIndicator';
 import type { ChatStackParamList } from '@/navigation/types';
 
 type Nav = NativeStackNavigationProp<ChatStackParamList, 'ChatLive'>;
@@ -61,11 +62,21 @@ export default function ChatLiveScreen() {
       onBack={() => nav.goBack()}
       trailing={
         <View className="flex-row items-center gap-1">
+          <ModeBadge mode={live.chatProcessMode} />
           <ConnectionDot state={live.connectionState} />
           <SpeakerToggle />
         </View>
       }
-      footer={<ChatComposer disabled={live.connectionState !== 'open'} onSend={live.send} />}
+      footer={
+        <View>
+          <PlanModeIndicator
+            mode={live.chatProcessMode}
+            todos={live.chatTodos}
+            planMeta={live.planMeta}
+          />
+          <ChatComposer disabled={live.connectionState !== 'open'} onSend={live.send} />
+        </View>
+      }
     >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -124,6 +135,23 @@ function ProgressOverlay({ text }: { text: string }) {
           {text}
         </Text>
       </View>
+    </View>
+  );
+}
+
+function ModeBadge({ mode }: { mode: ProcessMode }) {
+  // NORMAL is the default — no badge needed. Keeps the trailing slot
+  // tidy when the chat is just plain Q&A.
+  if (mode === ProcessMode.NORMAL) return null;
+  const label =
+    mode === ProcessMode.PLANNING ? 'planning'
+      : mode === ProcessMode.EXECUTING ? 'executing'
+        : mode === ProcessMode.EXPLORING ? 'exploring'
+          : '';
+  if (!label) return null;
+  return (
+    <View className="px-1">
+      <VBadge variant="primary">{label}</VBadge>
     </View>
   );
 }

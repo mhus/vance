@@ -87,6 +87,9 @@ export * from './skills/SkillTriggerDto';
 export * from './skills/SkillTriggerType';
 
 export * from './thinkprocess/BootstrappedProcess';
+export * from './thinkprocess/PlanProposedNotification';
+export * from './thinkprocess/ProcessMode';
+export * from './thinkprocess/ProcessModeChangedNotification';
 export * from './thinkprocess/ProcessPauseRequest';
 export * from './thinkprocess/ProcessPauseResponse';
 export * from './thinkprocess/ProcessSpec';
@@ -97,6 +100,9 @@ export * from './thinkprocess/PromptMode';
 export * from './thinkprocess/SessionBootstrapRequest';
 export * from './thinkprocess/SessionBootstrapResponse';
 export * from './thinkprocess/ThinkProcessStatus';
+export * from './thinkprocess/TodoItem';
+export * from './thinkprocess/TodoStatus';
+export * from './thinkprocess/TodosUpdatedNotification';
 
 export * from './server-tools/ServerToolDto';
 export * from './server-tools/ServerToolWriteRequest';

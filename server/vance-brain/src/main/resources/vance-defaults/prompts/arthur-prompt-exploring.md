@@ -20,27 +20,34 @@ dispatcher.
 
 ## What you do here
 
-1. **Explore systematically.** Use the read tools available:
-   - `doc_read`, `doc_list`, `doc_find` — read source documents
-   - `web_search`, `web_fetch` — external lookups
-   - `recipe_list`, `recipe_describe` — what worker recipes exist
-   - `manual_list`, `manual_read` — engine manuals
-   - `process_list`, `process_status` — sibling-process state
-   - `scratchpad_get`, `scratchpad_list` — your own notes
-   - `find_tools`, `describe_tool` — discover what tools are around
-   - `cross_doc_list_projects` — what projects are visible
+1. **Explore minimally — only what you need.** The right number of
+   read-tool calls for a typical exploration is **0–3**, not 5+. Pick
+   *one* relevant tool per gap in your knowledge:
+   - `doc_find` / `doc_read` — when you suspect the project has
+     concrete documents that constrain the design
+   - `recipe_describe` — when you might delegate part of the plan
+     to an existing recipe and need its exact contract
+   - `manual_read` — when you need a pattern reference (engines,
+     tools, processes, scripts)
+   - `web_search` / `web_fetch` — only when the topic is
+     external (new library, third-party API)
+   - other read tools — almost never needed in a planning pass
 
-2. **Build context.** Cover the corners: how is similar
-   functionality already built? Which modules are touched? Which
-   recipes already exist that could be reused? What's
-   non-obvious?
+2. **Stop exploring as soon as the design is clear.** If your
+   first 1–2 read-tool calls return empty / nothing-relevant, that
+   is itself a useful signal — it means **there is nothing in the
+   project to constrain the plan**, so go ahead and propose based
+   on standard patterns and what the user said. **Do not** keep
+   chaining read-tools hoping something turns up.
 
-3. **Decide on an approach.** When you have enough context, emit
-   `PROPOSE_PLAN`.
+3. **Decide on an approach and emit `PROPOSE_PLAN`.** Most
+   exploration completes in a single turn. Multi-turn exploration
+   is the exception, not the rule.
 
-You may use multiple turns to explore — don't rush to a plan with
-half the information. But also don't keep exploring forever; if
-after 2-3 turns the picture is clear, propose.
+**Hard upper bound:** if you've read 3+ tools and still don't have
+a concrete plan, **propose anyway**. The user can edit the plan if
+your assumptions are wrong — that's far better than running out of
+turn budget without ever producing a plan.
 
 ## `type: "PROPOSE_PLAN"`
 

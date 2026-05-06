@@ -71,6 +71,20 @@ public class ChatTerminal {
         return threshold.get();
     }
 
+    /**
+     * Best-effort terminal column count. Returns the JLine terminal's
+     * reported width when attached, otherwise {@code 80} as a safe
+     * fallback. Width readings of {@code <= 0} (e.g. dumb terminal,
+     * size not yet probed) collapse to the fallback so callers can
+     * format unconditionally.
+     */
+    public int width() {
+        Terminal t = jlineTerminal.get();
+        if (t == null) return 80;
+        int w = t.getWidth();
+        return w > 0 ? w : 80;
+    }
+
     public void setThreshold(Verbosity newThreshold) {
         threshold.set(newThreshold);
     }

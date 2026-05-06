@@ -37,7 +37,6 @@ function onClick(): void {
 
 const sortedChildren = computed<WorkspaceTreeNodeDto[]>(() => {
   if (!props.node.children) return [];
-  // Folders first, then files; alphabetic within each group.
   return props.node.children.slice().sort((a, b) => {
     if (a.type !== b.type) return a.type === WorkspaceNodeType.DIR ? -1 : 1;
     return a.name.localeCompare(b.name);

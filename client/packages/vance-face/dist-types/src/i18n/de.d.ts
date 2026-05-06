@@ -42,10 +42,6 @@ declare const _default: {
             title: string;
             description: string;
         };
-        workspace: {
-            title: string;
-            description: string;
-        };
         inbox: {
             title: string;
             description: string;
@@ -896,16 +892,9 @@ declare const _default: {
         };
     };
     workspace: {
-        pageTitle: string;
         loadingFile: string;
-        sidebar: {
-            projectLabel: string;
-            noProjectsHeadline: string;
-            noProjectsBody: string;
-        };
+        pickProjectHint: string;
         empty: {
-            pickProjectHeadline: string;
-            pickProjectBody: string;
             emptyTreeHeadline: string;
             emptyTreeBody: string;
         };

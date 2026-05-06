@@ -52,10 +52,6 @@ export default {
       title: 'Dokumente',
       description: 'Projektdokumente durchsuchen und bearbeiten.',
     },
-    workspace: {
-      title: 'Workspace',
-      description: 'Workspace-Dateisystem des Projekts auf dem Home-Pod ansehen (read-only).',
-    },
     inbox: {
       title: 'Posteingang',
       description:
@@ -963,16 +959,9 @@ export default {
     },
   },
   workspace: {
-    pageTitle: 'Workspace',
     loadingFile: 'Datei wird geladen…',
-    sidebar: {
-      projectLabel: 'Projekt',
-      noProjectsHeadline: 'Keine Projekte',
-      noProjectsBody: 'Sie haben in diesem Mandanten keinen Projekt-Zugriff.',
-    },
+    pickProjectHint: 'Im Sidebar-Filter ein Projekt wählen, um den Workspace anzuzeigen.',
     empty: {
-      pickProjectHeadline: 'Projekt wählen',
-      pickProjectBody: 'Wählen Sie links ein Projekt, um dessen Workspace anzusehen.',
       emptyTreeHeadline: 'Leerer Workspace',
       emptyTreeBody: 'Dieses Projekt hat noch keine Dateien im Workspace.',
     },

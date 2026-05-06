@@ -395,55 +395,27 @@ else {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "font-semibold" },
     });
-    (__VLS_ctx.$t('index.workspace.title'));
+    (__VLS_ctx.$t('index.inbox.title'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "text-sm opacity-70" },
     });
-    (__VLS_ctx.$t('index.workspace.description'));
+    (__VLS_ctx.$t('index.inbox.description'));
     const __VLS_48 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
     const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
         variant: "primary",
         size: "sm",
-        href: "/workspace.html",
+        href: "/inbox.html",
     }));
     const __VLS_50 = __VLS_49({
         variant: "primary",
         size: "sm",
-        href: "/workspace.html",
+        href: "/inbox.html",
     }, ...__VLS_functionalComponentArgsRest(__VLS_49));
     __VLS_51.slots.default;
     (__VLS_ctx.$t('index.open'));
     var __VLS_51;
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: "flex items-center justify-between gap-4" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "font-semibold" },
-    });
-    (__VLS_ctx.$t('index.inbox.title'));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "text-sm opacity-70" },
-    });
-    (__VLS_ctx.$t('index.inbox.description'));
-    const __VLS_52 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
-        variant: "primary",
-        size: "sm",
-        href: "/inbox.html",
-    }));
-    const __VLS_54 = __VLS_53({
-        variant: "primary",
-        size: "sm",
-        href: "/inbox.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
-    __VLS_55.slots.default;
-    (__VLS_ctx.$t('index.open'));
-    var __VLS_55;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
         ...{ class: "flex items-center justify-between gap-4" },
     });
@@ -456,22 +428,22 @@ else {
         ...{ class: "text-sm opacity-70" },
     });
     (__VLS_ctx.$t('index.scopes.description'));
-    const __VLS_56 = {}.VButton;
+    const __VLS_52 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
         variant: "primary",
         size: "sm",
         href: "/scopes.html",
     }));
-    const __VLS_58 = __VLS_57({
+    const __VLS_54 = __VLS_53({
         variant: "primary",
         size: "sm",
         href: "/scopes.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
-    __VLS_59.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+    __VLS_55.slots.default;
     (__VLS_ctx.$t('index.open'));
-    var __VLS_59;
+    var __VLS_55;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
         ...{ class: "flex items-center justify-between gap-4" },
     });
@@ -484,22 +456,22 @@ else {
         ...{ class: "text-sm opacity-70" },
     });
     (__VLS_ctx.$t('index.tools.description'));
-    const __VLS_60 = {}.VButton;
+    const __VLS_56 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
+    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
         variant: "primary",
         size: "sm",
         href: "/tools.html",
     }));
-    const __VLS_62 = __VLS_61({
+    const __VLS_58 = __VLS_57({
         variant: "primary",
         size: "sm",
         href: "/tools.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
-    __VLS_63.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+    __VLS_59.slots.default;
     (__VLS_ctx.$t('index.open'));
-    var __VLS_63;
+    var __VLS_59;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
         ...{ class: "flex items-center justify-between gap-4" },
     });
@@ -512,22 +484,22 @@ else {
         ...{ class: "text-sm opacity-70" },
     });
     (__VLS_ctx.$t('index.insights.description'));
-    const __VLS_64 = {}.VButton;
+    const __VLS_60 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
         variant: "primary",
         size: "sm",
         href: "/insights.html",
     }));
-    const __VLS_66 = __VLS_65({
+    const __VLS_62 = __VLS_61({
         variant: "primary",
         size: "sm",
         href: "/insights.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
-    __VLS_67.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+    __VLS_63.slots.default;
     (__VLS_ctx.$t('index.open'));
-    var __VLS_67;
+    var __VLS_63;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
         ...{ class: "flex items-center justify-between gap-4" },
     });
@@ -540,22 +512,22 @@ else {
         ...{ class: "text-sm opacity-70" },
     });
     (__VLS_ctx.$t('index.users.description'));
-    const __VLS_68 = {}.VButton;
+    const __VLS_64 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
+    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
         variant: "primary",
         size: "sm",
         href: "/users.html",
     }));
-    const __VLS_70 = __VLS_69({
+    const __VLS_66 = __VLS_65({
         variant: "primary",
         size: "sm",
         href: "/users.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_69));
-    __VLS_71.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+    __VLS_67.slots.default;
     (__VLS_ctx.$t('index.open'));
-    var __VLS_71;
+    var __VLS_67;
     var __VLS_39;
     var __VLS_35;
 }
@@ -604,13 +576,6 @@ else {
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
-/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-between']} */ ;

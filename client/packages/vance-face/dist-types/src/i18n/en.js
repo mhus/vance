@@ -52,10 +52,6 @@ export default {
             title: 'Documents',
             description: 'Browse and edit project documents.',
         },
-        workspace: {
-            title: 'Workspace',
-            description: "Browse the project's workspace filesystem on the home pod (read-only).",
-        },
         inbox: {
             title: 'Inbox',
             description: "Read items from your personal inbox and the team-inbox of every team you're in. Reply, archive, delegate.",

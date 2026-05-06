@@ -42,10 +42,6 @@ declare const _default: {
             title: string;
             description: string;
         };
-        workspace: {
-            title: string;
-            description: string;
-        };
         inbox: {
             title: string;
             description: string;

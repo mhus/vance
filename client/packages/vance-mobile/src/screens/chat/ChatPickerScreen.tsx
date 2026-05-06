@@ -9,7 +9,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ProjectSummary, SessionSummary } from '@vance/generated';
+import type { SessionSummary } from '@vance/generated';
 import { useChatSessions } from '@/hooks/useChatSessions';
 import { useTenantProjects } from '@/hooks/useProjects';
 import { MobileShell, VAlert, VEmptyState, VLoading } from '@/components';

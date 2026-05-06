@@ -123,6 +123,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "whoami",
             "process_create",
+            "process_create_delegate",
             "process_steer",
             "process_stop",
             "process_pause",
@@ -690,13 +691,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /**
-     * Spawn a worker via the {@code process_create} tool. The LLM
-     * provides the recipe preset and a self-contained prompt; the
-     * engine derives a unique worker name and invokes the spawn
-     * programmatically — no LLM-generated names, no hallucination
-     * risk. The optional {@code message} is shown to the user as a
-     * pre-announcement; absent message = silent spawn (no chat
-     * append, no filler).
+     * Spawn a worker via {@code process_create} (when the LLM
+     * supplies an explicit {@code preset} recipe name) or via
+     * {@code process_create_delegate} (when {@code preset} is
+     * omitted and the system should pick the best-matching recipe
+     * for the task). Either path produces a {@link ThinkProcessDocument}
+     * for the new worker. The engine derives a unique worker name
+     * — never trusts the LLM with naming. The optional
+     * {@code message} is shown to the user as a pre-announcement;
+     * absent message = silent spawn (no chat append, no filler).
      */
     private ActionTurnOutcome handleDelegate(
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
@@ -704,25 +707,43 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkEngineContext ctx) {
         String preset = action.stringParam(ArthurActionSchema.PARAM_PRESET);
         String prompt = action.stringParam(ArthurActionSchema.PARAM_PROMPT);
-        if (preset == null || preset.isBlank() || prompt == null || prompt.isBlank()) {
-            log.warn("Arthur id='{}' DELEGATE missing preset/prompt — reason='{}'",
+        if (prompt == null || prompt.isBlank()) {
+            log.warn("Arthur id='{}' DELEGATE missing prompt — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — internal: tried to delegate without preset or prompt. "
+                    "Sorry — internal: tried to delegate without a prompt. "
                             + "Reason was: " + action.reason(),
                     true);
         }
 
-        String workerName = preset + "-" + java.util.UUID.randomUUID().toString().substring(0, 6);
+        boolean explicitRecipe = preset != null && !preset.isBlank();
+        String workerNamePrefix = explicitRecipe ? preset : "delegated";
+        String workerName = workerNamePrefix + "-"
+                + java.util.UUID.randomUUID().toString().substring(0, 6);
         try {
-            Map<String, Object> params = new LinkedHashMap<>();
-            params.put("recipe", preset);
-            params.put("name", workerName);
-            params.put("goal", prompt);
-            params.put("steerContent", prompt);
-            ctx.tools().invoke("process_create", params);
-            log.info("Arthur id='{}' DELEGATE recipe='{}' worker='{}' reason='{}'",
-                    process.getId(), preset, workerName, summariseReason(action.reason()));
+            if (explicitRecipe) {
+                Map<String, Object> params = new LinkedHashMap<>();
+                params.put("recipe", preset);
+                params.put("name", workerName);
+                params.put("goal", prompt);
+                params.put("steerContent", prompt);
+                ctx.tools().invoke("process_create", params);
+                log.info("Arthur id='{}' DELEGATE recipe='{}' worker='{}' reason='{}'",
+                        process.getId(), preset, workerName, summariseReason(action.reason()));
+            } else {
+                // No preset — let process_create_delegate's selector
+                // pick. Fallback to Slart is enabled by default,
+                // mirroring the user-facing intent of "do this
+                // somehow, even if no existing recipe fits".
+                Map<String, Object> params = new LinkedHashMap<>();
+                params.put("task", prompt);
+                params.put("name", workerName);
+                params.put("steerContent", prompt);
+                ctx.tools().invoke("process_create_delegate", params);
+                log.info("Arthur id='{}' DELEGATE via selector worker='{}' "
+                                + "reason='{}'",
+                        process.getId(), workerName, summariseReason(action.reason()));
+            }
         } catch (RuntimeException e) {
             log.warn("Arthur id='{}' DELEGATE failed: {}", process.getId(), e.toString());
             return new ActionTurnOutcome(

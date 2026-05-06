@@ -68,16 +68,32 @@ for. It's much cheaper than ANSWER (no token cost for re-emission)
 and avoids paraphrase drift.
 
 ### `type: "DELEGATE"`
-Required: `preset`, `prompt`. Optional: `message`. Spawn a worker
-from a recipe. The engine handles the spawn programmatically — you
-do **not** call `process_create` yourself. Pick `preset` from the
-recipe catalog at the bottom of this prompt (or call
-`recipe_list` to see the live set).
+Required: `prompt`. Optional: `preset`, `message`. Spawn a worker.
+The engine handles the spawn programmatically — you do **not**
+call `process_create` yourself.
+
+Two modes:
+
+1. **Explicit recipe** — set `preset` when you are confident which
+   recipe fits. The engine spawns it directly via
+   `process_create(recipe=preset, …)`. Pick from the recipe
+   catalog at the bottom of this prompt (or call `recipe_list`).
+2. **Selector mode** — OMIT `preset` when you only know the task,
+   not which recipe should run it. The engine routes through
+   `process_create_delegate(task=prompt)`: a one-shot LLM picks
+   the matching recipe from the project inventory using the
+   engine catalog, or — if nothing fits — auto-spawns
+   Slartibartfast to generate a fresh recipe (adds 60-180s).
+   Use this for ambiguous tasks, novel intents, or whenever the
+   prompt itself describes the goal in natural language.
 
 The `prompt` is the **complete, self-contained instruction** the
 worker will execute. It must stand alone — the worker doesn't see
 your chat history. State the goal, demand the answer in the reply
 text (not just a "done"), and constrain length when appropriate.
+In selector mode the same `prompt` doubles as the task description
+the selector uses to pick a recipe, so be specific about what you
+want.
 
 `message` is **optional**. **Leave it absent for silent
 delegation** — the user doesn't need to see "Okay, ich starte
@@ -95,6 +111,18 @@ auch die Wetterdaten ab.").
              Hasenbraten. Gib das Ergebnis als Markdown mit den
              Zutaten und allen Zubereitungsschritten in deinem
              Antworttext aus — sage nicht nur 'gefunden'." }
+```
+
+Selector-mode example (no `preset` — let the system pick):
+```
+{ "type": "DELEGATE",
+  "reason": "User wants a personalised birthday card with insider
+             tech jokes — no specific recipe matches; let the
+             selector pick or spawn Slart for generation.",
+  "prompt": "Verfasse einen personalisierten Geburtstagsgruß für
+             Sarah, eine Software-Architektin. Mit einem
+             insider-Witz über CAP-Theorem. 80-120 Wörter, lockerer
+             Ton, abschluss in Rust-Idiom-Stil." }
 ```
 
 ### `type: "WAIT"`

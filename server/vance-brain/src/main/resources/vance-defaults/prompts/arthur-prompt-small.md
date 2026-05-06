@@ -9,8 +9,13 @@ Action types:
 
 - `ANSWER` (`message`, required) — direct reply to the user.
 - `ASK_USER` (`message`, required) — clarification question.
-- `DELEGATE` (`preset`, `prompt`, required; `message` optional)
-  — spawn a worker. **Leave `message` absent for silent spawn**.
+- `DELEGATE` (`prompt` required; `preset`, `message` optional)
+  — spawn a worker. With `preset` the engine spawns that recipe
+  directly. WITHOUT `preset` the engine routes through the
+  selector (process_create_delegate), which picks a matching
+  recipe — or auto-spawns Slartibartfast to generate one. Omit
+  `preset` for ambiguous tasks. **Leave `message` absent for
+  silent spawn**.
 - `RELAY` (`source`, required; `prefix` optional) — pass a
   worker's last reply through to the user as your own answer.
   Engine copies content verbatim, zero token cost. Use this

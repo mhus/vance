@@ -108,15 +108,22 @@ public final class ArthurActionSchema {
         presetProp.put("type", "string");
         presetProp.put("description",
                 "Recipe name to spawn the worker from (e.g. 'web-research', "
-                        + "'analyze', 'code-read'). Required for DELEGATE. "
-                        + "Use recipe_list at runtime if unsure.");
+                        + "'analyze', 'code-read'). OPTIONAL for DELEGATE: "
+                        + "set this when you are confident which recipe fits "
+                        + "the task; OMIT it to let the system pick the best "
+                        + "matching recipe via process_create_delegate (the "
+                        + "selector reads engine catalog + project recipes "
+                        + "and decides). Use recipe_list at runtime to "
+                        + "confirm a name before passing it explicitly.");
 
         Map<String, Object> promptProp = new LinkedHashMap<>();
         promptProp.put("type", "string");
         promptProp.put("description",
-                "Concrete instruction the worker should execute on spawn. "
-                        + "Required for DELEGATE. Self-contained — the worker "
-                        + "doesn't see the parent's chat history by default.");
+                "Concrete instruction the worker should execute. Required "
+                        + "for DELEGATE. Self-contained — the worker doesn't "
+                        + "see the parent's chat history by default. Doubles "
+                        + "as the task description when `preset` is omitted "
+                        + "(routed to process_create_delegate's selector).");
 
         Map<String, Object> sourceProp = new LinkedHashMap<>();
         sourceProp.put("type", "string");

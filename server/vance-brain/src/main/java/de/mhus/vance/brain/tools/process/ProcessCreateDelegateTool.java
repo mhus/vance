@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.process;
 
 import de.mhus.vance.brain.delegate.RecipeSelectorService;
+import de.mhus.vance.brain.delegate.SlartibartfastFallback;
 import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
@@ -73,6 +74,16 @@ public class ProcessCreateDelegateTool implements Tool {
                         + "override the matched recipe's defaults "
                         + "per-key. Same shape as process_create.params.",
                 "additionalProperties", true));
+        properties.put("fallbackOnNone", Map.of(
+                "type", "boolean",
+                "description", "When the selector returns NONE (no "
+                        + "existing recipe matches), automatically spawn "
+                        + "Slartibartfast to generate a fresh recipe and "
+                        + "then spawn that recipe. Adds 60-180s to the "
+                        + "tool round-trip when triggered. Default: true. "
+                        + "Set false if the caller wants to handle NONE "
+                        + "themselves (e.g. ask the user to clarify "
+                        + "before generating a recipe)."));
         SCHEMA = Map.of(
                 "type", "object",
                 "properties", properties,
@@ -82,6 +93,7 @@ public class ProcessCreateDelegateTool implements Tool {
     private final RecipeSelectorService selector;
     private final ThinkProcessService thinkProcessService;
     private final ProcessCreateTool processCreateTool;
+    private final SlartibartfastFallback slartFallback;
 
     @Override
     public String name() {
@@ -94,12 +106,11 @@ public class ProcessCreateDelegateTool implements Tool {
                 + "natural language — the system picks the matching "
                 + "recipe automatically and delegates to process_create. "
                 + "Use this when you DON'T have a specific recipe name "
-                + "in mind. Returns the selector's decision plus the "
-                + "spawned process info on MATCH, or a NONE result "
-                + "(no spawn) when nothing in the project fits — let "
-                + "the caller decide whether to fall back to "
-                + "Slartibartfast for a freshly-generated recipe or "
-                + "ask the user to clarify.";
+                + "in mind. By default, when no existing recipe fits "
+                + "(NONE), Slartibartfast is auto-spawned to generate "
+                + "a fresh recipe and that recipe is then spawned (adds "
+                + "~60-180s). Pass `fallbackOnNone: false` to opt out "
+                + "and let the caller handle NONE manually.";
     }
 
     @Override
@@ -122,6 +133,7 @@ public class ProcessCreateDelegateTool implements Tool {
         String task = stringOrThrow(params, "task");
         String title = optString(params, "title");
         String steerContent = optString(params, "steerContent");
+        boolean fallbackOnNone = optBoolean(params, "fallbackOnNone", true);
         @SuppressWarnings("unchecked")
         Map<String, Object> callerParams = params.get("params") instanceof Map<?, ?> m
                 ? (Map<String, Object>) m : null;
@@ -135,30 +147,73 @@ public class ProcessCreateDelegateTool implements Tool {
         out.put("engine", result.engineName());
         out.put("rationale", result.rationale());
 
-        if (result.decision() == RecipeSelectorService.Result.Decision.NONE) {
-            log.info("process_create_delegate name='{}' task='{}' → NONE: {}",
+        if (result.decision() == RecipeSelectorService.Result.Decision.MATCH) {
+            return spawnAndReturn(out, name, result.recipeName(), task,
+                    title, steerContent, callerParams, ctx);
+        }
+
+        // NONE path. Either fall back to Slartibartfast for fresh
+        // recipe generation, or surface the decision to the caller.
+        if (!fallbackOnNone) {
+            log.info("process_create_delegate name='{}' task='{}' → NONE (no fallback): {}",
                     name, abbrev(task, 80), result.rationale());
             return out;
         }
 
-        // MATCH — hand off to the regular create path so cascade
-        // resolution + profile inheritance + engine start all happen
-        // exactly as for an explicit process_create call.
+        log.info("process_create_delegate name='{}' → NONE, invoking Slart fallback "
+                + "(rationale: {})", name, result.rationale());
+        SlartibartfastFallback.Result fb = slartFallback.invoke(caller, task, name);
+        Map<String, Object> fallbackInfo = new LinkedHashMap<>();
+        fallbackInfo.put("outcome", fb.outcome().name());
+        fallbackInfo.put("slartProcessId", fb.slartProcessId());
+        fallbackInfo.put("recipeName", fb.recipeName());
+        fallbackInfo.put("recipePath", fb.recipePath());
+        fallbackInfo.put("rationale", fb.rationale());
+        out.put("fallback", fallbackInfo);
+
+        if (fb.outcome() != SlartibartfastFallback.Outcome.GENERATED) {
+            log.info("process_create_delegate name='{}' fallback outcome={}: {}",
+                    name, fb.outcome(), fb.rationale());
+            return out;
+        }
+
+        // Slart produced a recipe — spawn it through the regular
+        // create path. The recipe name carries the _slart/<runId>/
+        // prefix that RecipeResolver knows how to resolve via the
+        // project document cascade (Slart wrote it as a project doc
+        // in PERSISTING).
+        return spawnAndReturn(out, name, fb.recipeName(), task,
+                title, steerContent, callerParams, ctx);
+    }
+
+    /**
+     * Hands off to {@link ProcessCreateTool} with the matched (or
+     * generated) recipe and threads the spawn-result back into the
+     * delegate response. Same call shape regardless of how the
+     * recipe was chosen — only the {@code decision} field upstream
+     * tells you whether selector or fallback path picked it.
+     */
+    private Map<String, Object> spawnAndReturn(
+            Map<String, Object> out,
+            String name, String recipe, String task,
+            @org.jspecify.annotations.Nullable String title,
+            @org.jspecify.annotations.Nullable String steerContent,
+            @org.jspecify.annotations.Nullable Map<String, Object> callerParams,
+            ToolInvocationContext ctx) {
         Map<String, Object> createParams = new LinkedHashMap<>();
         createParams.put("name", name);
-        createParams.put("recipe", result.recipeName());
+        createParams.put("recipe", recipe);
         if (title != null) createParams.put("title", title);
-        // The selector already used the task as semantic input; pass
-        // it through as the spawned process's `goal` so engines that
-        // surface a goal (Marvin, Vogon) start oriented.
+        // Pass the task as the spawned process's goal so engines
+        // that surface a goal (Marvin, Vogon) start oriented.
         createParams.put("goal", task);
         if (steerContent != null) createParams.put("steerContent", steerContent);
         if (callerParams != null) createParams.put("params", callerParams);
 
         Map<String, Object> spawnResult = processCreateTool.invoke(createParams, ctx);
         out.put("process", spawnResult);
-        log.info("process_create_delegate name='{}' → MATCH recipe='{}' engine='{}'",
-                name, result.recipeName(), result.engineName());
+        log.info("process_create_delegate name='{}' → spawned recipe='{}'",
+                name, recipe);
         return out;
     }
 
@@ -187,6 +242,16 @@ public class ProcessCreateDelegateTool implements Tool {
     private static String optString(Map<String, Object> params, String key) {
         Object v = params == null ? null : params.get(key);
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
+    }
+
+    private static boolean optBoolean(Map<String, Object> params, String key, boolean defaultValue) {
+        Object v = params == null ? null : params.get(key);
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) {
+            if ("true".equalsIgnoreCase(s.trim())) return true;
+            if ("false".equalsIgnoreCase(s.trim())) return false;
+        }
+        return defaultValue;
     }
 
     private static String abbrev(String s, int max) {

@@ -163,6 +163,32 @@ class RecipeSelectorServiceTest {
     }
 
     @Test
+    void engineDefaultRecipes_excludedFromInventory() {
+        // Engine-alias recipes (arthur, ford, marvin-worker, zaphod)
+        // carry tag 'engine-default'. They must not appear in the
+        // selector inventory — only task-oriented recipes do.
+        when(recipeLoader.listAll(anyString(), any()))
+                .thenReturn(List.of(
+                        stub("essay-pipeline", "marvin", List.of()),
+                        stubWithTags("ford", "ford", List.of("engine-default"))));
+        chatModel.script(List.of("""
+                {
+                  "decision": "MATCH",
+                  "recipe": "ford",
+                  "rationale": "n/a"
+                }
+                """));
+
+        RecipeSelectorService.Result r = selector.select(caller, "task");
+
+        // 'ford' was filtered out, so picking it comes back as
+        // unknown — same defensive shape as picking a hallucinated
+        // name.
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
+        assertThat(r.rationale()).contains("unknown recipe 'ford'");
+    }
+
+    @Test
     void slartGeneratedRecipes_excludedFromInventory() {
         when(recipeLoader.listAll(anyString(), any()))
                 .thenReturn(List.of(
@@ -187,6 +213,15 @@ class RecipeSelectorServiceTest {
     // ──────────────────── helpers ────────────────────
 
     private static ResolvedRecipe stub(String name, String engine) {
+        return stubWithTags(name, engine, java.util.List.of());
+    }
+
+    private static ResolvedRecipe stub(String name, String engine, java.util.List<String> tags) {
+        return stubWithTags(name, engine, tags);
+    }
+
+    private static ResolvedRecipe stubWithTags(
+            String name, String engine, java.util.List<String> tags) {
         return new ResolvedRecipe(
                 name,
                 "stub recipe " + name,
@@ -201,7 +236,7 @@ class RecipeSelectorServiceTest {
                 java.util.List.of(),
                 null,
                 false,
-                java.util.List.of(),
+                tags,
                 RecipeSource.PROJECT);
     }
 

@@ -63,6 +63,13 @@ public class RecipeSelectorService {
      *  (e.g. tag-based) before then. */
     private static final int RECIPE_LIST_LIMIT = 50;
 
+    /** Recipes carrying this tag are engine-default wrappers
+     *  (arthur, ford, marvin-worker, zaphod) — they exist so
+     *  {@code process_create(engine="X")} resolves to a valid
+     *  recipe, but they are not user-task-oriented and would only
+     *  add noise to the selector prompt. Hidden from the inventory. */
+    private static final String INTERNAL_TAG = "engine-default";
+
     private static final String SYSTEM_PROMPT = """
             You are the recipe selector for the Vance multi-engine
             think-system. Given a free-text task description, you pick
@@ -157,13 +164,20 @@ public class RecipeSelectorService {
             List<ResolvedRecipe> all = recipeLoader.listAll(
                     caller.getTenantId(), caller.getProjectId());
             // The selector is for "pick something the user can act on
-            // immediately". `_slart/*` are Slart's own past outputs
-            // (not human-curated workflows) and are skipped — same
-            // filter we use elsewhere.
+            // immediately". Filtered out:
+            //   - `_slart/*`      — Slart's own past outputs (not
+            //                       human-curated workflows)
+            //   - `_*`            — system-internal documents
+            //   - tag `engine-default` — engine-name aliases (arthur,
+            //                       ford, marvin-worker, zaphod) used
+            //                       by direct-engine spawns; they hold
+            //                       no task-specific intent and would
+            //                       only dilute the selector prompt.
             List<ResolvedRecipe> visible = new ArrayList<>();
             for (ResolvedRecipe r : all) {
                 if (r.name().startsWith("_slart/")) continue;
                 if (r.name().startsWith("_")) continue;
+                if (r.tags() != null && r.tags().contains(INTERNAL_TAG)) continue;
                 visible.add(r);
                 if (visible.size() >= RECIPE_LIST_LIMIT) break;
             }

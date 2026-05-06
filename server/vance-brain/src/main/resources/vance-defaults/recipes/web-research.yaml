@@ -1,5 +1,11 @@
 description: |
-  Multi-source web research with summarisation.
+  Multi-source web research with summarisation. Use this when the
+  user wants up-to-date information from the public web — comparison
+  reports, current best-practices, vendor-feature lookups, news /
+  status checks. Performs several `web_search` / `web_fetch` calls,
+  cross-checks sources, and returns a synthesis with inline source
+  attributions ([source: url]). Single-shot worker (no sub-tasks);
+  not for tasks that need decomposition into phases.
 engine: ford
 params:
   model: default:web

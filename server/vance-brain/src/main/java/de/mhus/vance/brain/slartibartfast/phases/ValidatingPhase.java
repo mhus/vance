@@ -276,7 +276,7 @@ public class ValidatingPhase {
         state.setValidationReport(report);
 
         if (firstFail != null) {
-            String hint = buildHint(report);
+            String hint = buildHint(report, state);
             state.setPendingRecovery(RecoveryRequest.builder()
                     .fromPhase(ArchitectStatus.VALIDATING)
                     .toPhase(ArchitectStatus.PROPOSING)
@@ -307,7 +307,8 @@ public class ValidatingPhase {
 
     // ──────────────────── Helpers ────────────────────
 
-    private static String buildHint(List<ValidationCheck> report) {
+    private static String buildHint(
+            List<ValidationCheck> report, ArchitectState state) {
         StringBuilder sb = new StringBuilder();
         sb.append("VALIDATING rejected the previous recipe. "
                 + "Violations — address EVERY one:\n");
@@ -319,11 +320,38 @@ public class ValidatingPhase {
                     .append(v.getMessage()).append("\n");
             shown++;
         }
-        sb.append("\nEmit a corrected recipe YAML as a JSON object "
-                + "with a valid name, engine: vogon, "
-                + "params.strategyPlanYaml (parseable by Vogon), "
-                + "and justifications all pointing to existing "
-                + "sg-ids.");
+        // Echo the existing sg-ids verbatim so the LLM can't drift to
+        // hallucinated names like 'sg9' when only sg1..sgN exist.
+        sb.append("\nValid sg-ids (use ONLY these as justification "
+                + "values): ");
+        boolean first = true;
+        for (Subgoal sg : state.getSubgoals()) {
+            if (!first) sb.append(", ");
+            sb.append(sg.getId());
+            first = false;
+        }
+        sb.append(".\n");
+
+        boolean isMarvin = state.getOutputSchemaType()
+                == OutputSchemaType.MARVIN_RECIPE;
+        if (isMarvin) {
+            sb.append("\nEmit a corrected recipe YAML as a JSON object "
+                    + "with a valid name, engine: marvin, "
+                    + "params.allowedSubTaskRecipes / "
+                    + "params.recipesOnlyViaExpand / "
+                    + "params.allowedExpandDocumentRefPaths / "
+                    + "params.disallowedTaskKinds set per the "
+                    + "system-prompt rules, a non-empty promptPrefix "
+                    + "with one KIND block per recipe, and "
+                    + "justifications all pointing to existing "
+                    + "sg-ids from the list above.");
+        } else {
+            sb.append("\nEmit a corrected recipe YAML as a JSON object "
+                    + "with a valid name, engine: vogon, "
+                    + "params.strategyPlanYaml (parseable by Vogon), "
+                    + "and justifications all pointing to existing "
+                    + "sg-ids from the list above.");
+        }
         return sb.toString();
     }
 

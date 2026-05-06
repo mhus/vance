@@ -7,9 +7,11 @@ import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -32,6 +34,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class EddieContext {
 
     /**
@@ -42,6 +45,7 @@ public class EddieContext {
 
     private final ScratchpadService scratchpad;
     private final ProjectService projectService;
+    private final ThinkProcessService thinkProcessService;
 
     /**
      * Reads the active-project slot for the calling Eddie process.
@@ -97,16 +101,40 @@ public class EddieContext {
             ToolInvocationContext ctx,
             boolean allowSystem) {
         String explicit = paramString(params, "projectId");
-        String name = explicit != null
-                ? explicit
-                : readActiveProject(ctx)
-                        .or(() -> Optional.ofNullable(ctx.projectId())
-                                .filter(s -> !s.isBlank()))
-                        .orElseThrow(() ->
-                                new ToolException(
-                                        "No project specified and no active project set. "
-                                                + "Use project_switch(name) first, or pass "
-                                                + "the projectId parameter explicitly."));
+        String name;
+        if (explicit != null && isSubProcess(ctx)) {
+            // Sub-processes (Marvin/Vogon/Ford workers spawned with a
+            // parentProcessId) always run in the inherited project. The
+            // worker LLM sometimes hallucinates a `projectId` from
+            // training-data patterns (e.g. picking another project's
+            // name it has seen elsewhere); accepting it would silently
+            // route reads/writes to the wrong project. Force the
+            // inherited context and warn so the audit trail flags it.
+            String inherited = ctx.projectId();
+            if (inherited != null && !inherited.isBlank()
+                    && !inherited.equals(explicit)) {
+                log.warn("Sub-process tool ignored hallucinated projectId='{}' "
+                                + "— forced to inherited project '{}' (process='{}')",
+                        explicit, inherited, ctx.processId());
+            }
+            name = inherited;
+            if (name == null || name.isBlank()) {
+                throw new ToolException(
+                        "Sub-process invoked without an inherited "
+                                + "projectId — engine spawn is broken");
+            }
+        } else {
+            name = explicit != null
+                    ? explicit
+                    : readActiveProject(ctx)
+                            .or(() -> Optional.ofNullable(ctx.projectId())
+                                    .filter(s -> !s.isBlank()))
+                            .orElseThrow(() ->
+                                    new ToolException(
+                                            "No project specified and no active project set. "
+                                                    + "Use project_switch(name) first, or pass "
+                                                    + "the projectId parameter explicitly."));
+        }
         ProjectDocument project = projectService.findByTenantAndName(ctx.tenantId(), name)
                 .orElseThrow(() -> new ToolException(
                         "Project '" + name + "' not found in tenant '"
@@ -117,6 +145,21 @@ public class EddieContext {
                             + "this operation requires a regular user project");
         }
         return project;
+    }
+
+    /**
+     * A think-process is a "sub-process" when it was spawned by
+     * another process (parentProcessId set). Marvin and Vogon
+     * orchestrators spawn Ford workers this way; those workers
+     * have no business switching projects mid-task.
+     */
+    private boolean isSubProcess(ToolInvocationContext ctx) {
+        String pid = ctx.processId();
+        if (pid == null || pid.isBlank()) return false;
+        return thinkProcessService.findById(pid)
+                .map(p -> p.getParentProcessId() != null
+                        && !p.getParentProcessId().isBlank())
+                .orElse(false);
     }
 
     private static @Nullable String paramString(@Nullable Map<String, Object> params, String key) {

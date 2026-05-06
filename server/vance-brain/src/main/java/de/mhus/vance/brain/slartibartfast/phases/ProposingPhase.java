@@ -89,6 +89,24 @@ public class ProposingPhase {
                   "shapeRationale": "<why this shape — 1-2 sentences>"
                 }
 
+            ── COMPLETENESS REQUIREMENT ──
+
+            Your recipe MUST drive the user's request to a final
+            deliverable, not just one stage of it. If the user
+            asks for an essay, the recipe MUST run outline →
+            chapter writing → aggregation (final consolidation).
+            Producing only the outline phase, only chapters, or
+            stopping before aggregation is a hard failure: the
+            user gets no usable result and the validator will
+            reject the recipe.
+
+            When the available sub-recipes include outline-style,
+            chapter-style, AND aggregator-style entries, you MUST
+            wire all three into allowedSubTaskRecipes and the
+            promptPrefix. Pick fewer phases ONLY when the user's
+            request truly needs less (e.g. they explicitly asked
+            for an outline only).
+
             ── MANDATORY CONSTRAINTS (set when applicable) ──
 
             These constraints are NOT optional when the inputs

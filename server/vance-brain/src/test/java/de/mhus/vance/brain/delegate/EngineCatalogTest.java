@@ -52,4 +52,17 @@ class EngineCatalogTest {
         // load() not called → entries stays empty
         assertThat(empty.renderForPrompt()).isEmpty();
     }
+
+    @Test
+    void reload_returnsParsedEntryCount_andRefreshesEntries() {
+        EngineCatalog fresh = new EngineCatalog();
+        // First reload populates from the bundled resource.
+        int firstCount = fresh.reload();
+        assertThat(firstCount).isPositive();
+        assertThat(fresh.getEntries()).hasSize(firstCount);
+
+        // Second reload is idempotent — same result.
+        int secondCount = fresh.reload();
+        assertThat(secondCount).isEqualTo(firstCount);
+    }
 }

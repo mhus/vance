@@ -41,19 +41,45 @@ public class EngineCatalog {
 
     @PostConstruct
     void load() {
+        reload();
+    }
+
+    /**
+     * Re-parses the bundled catalog resource. Idempotent and
+     * thread-safe: the {@link #entries} reference is replaced
+     * atomically with a freshly built list so concurrent
+     * {@link #renderForPrompt} calls either see the old list or
+     * the new one — never a half-written one.
+     *
+     * <p>Triggered automatically at boot (via {@link PostConstruct})
+     * and on demand via the admin REST endpoint
+     * {@code POST /brain/{tenant}/admin/catalog/engines/reload}.
+     * The reload re-reads the same classpath resource — useful
+     * during development or after a re-deploy that refreshed the
+     * yaml without restarting the JVM.
+     *
+     * @return the number of engine entries the parsed catalog now
+     *         carries (zero on parse failure — the previous list
+     *         is then retained).
+     */
+    public synchronized int reload() {
         ClassPathResource res = new ClassPathResource(CATALOG_RESOURCE);
         if (!res.exists()) {
             log.warn("EngineCatalog: bundled resource '{}' not found",
                     CATALOG_RESOURCE);
-            return;
+            return entries.size();
         }
         try (InputStream in = res.getInputStream()) {
             String raw = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            entries = parse(raw);
-            log.info("EngineCatalog: loaded {} engine descriptions", entries.size());
+            List<EngineEntry> parsed = parse(raw);
+            entries = parsed;
+            log.info("EngineCatalog: loaded {} engine descriptions",
+                    parsed.size());
+            return parsed.size();
         } catch (IOException | RuntimeException e) {
-            log.warn("EngineCatalog: failed to parse '{}': {}",
-                    CATALOG_RESOURCE, e.toString());
+            log.warn("EngineCatalog: failed to parse '{}' — keeping previous {} entries: {}",
+                    CATALOG_RESOURCE, entries.size(), e.toString());
+            return entries.size();
         }
     }
 

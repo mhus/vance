@@ -66,64 +66,63 @@ public class ClassifyingPhase {
     private static final int PROMPT_PREVIEW_LIMIT = 500;
 
     private static final String SYSTEM_PROMPT = """
-            Du bist der CLASSIFYING-Knoten der Slartibartfast-Engine.
-            Aus dem Manual-Text extrahierst du atomare Aussagen und
-            klassifizierst jede.
+            You are the CLASSIFYING node of the Slartibartfast
+            engine. From the manual text you extract atomic claims
+            and classify each one.
 
-            HARTER OUTPUT-VERTRAG:
-            - Beende deinen Reply mit GENAU einem JSON-Objekt.
-            - KEIN Markdown-Codeblock (kein ```json … ```).
-            - KEIN erklärender Text VOR dem JSON.
-            - KEIN Text NACH dem JSON.
+            HARD OUTPUT CONTRACT:
+            - End your reply with EXACTLY one JSON object.
+            - NO markdown code fence (no ```json … ```).
+            - NO explanatory text BEFORE the JSON.
+            - NO text AFTER the JSON.
 
             Schema:
                 {
                   "claims": [
                     {
-                      "text":           "<atomare Aussage, paraphrasiert>",
+                      "text":           "<atomic claim, paraphrased>",
                       "classification": "FACT" | "EXAMPLE" | "OPINION" | "OUTDATED",
-                      "quote":          "<verbatim Zitat aus Source>" | null,
-                      "rationale":      "<Warum diese Klassifizierung?>" | null
+                      "quote":          "<verbatim span from source>" | null,
+                      "rationale":      "<why this classification?>" | null
                     }
                   ]
                 }
 
-            Klassifizierungs-Skala:
-            - FACT: Aussage gilt ohne Kontext — definierte Fakten,
-              harte Constraints, messbare Größen, definierte Begriffe.
-              Beispiel: "Manuals leben unter manuals/".
-            - EXAMPLE: konkretes Beispiel zur Illustration einer
-              FACT/OPINION. Schwächer als FACT (zeigt was möglich
-              ist, nicht was Pflicht ist).
-              Beispiel: "etwa 'die Schrauben waren klein, robust,
-              und nicht mehr da'".
-            - OPINION: subjektive Empfehlung, Stil-Präferenz,
-              Geschmacks-Aussage.
-              Beispiel: "Lange Sätze ohne Pointe vermeiden".
-            - OUTDATED: explizit als veraltet markierte Aussage.
+            Classification scale:
+            - FACT: claim holds without context — defined facts,
+              hard constraints, measurable quantities, defined
+              terms. Example: "Manuals live under manuals/".
+            - EXAMPLE: concrete example illustrating a FACT/OPINION.
+              Weaker than FACT (shows what is possible, not what
+              is required). Example: "such as 'the screws were
+              small, robust, and gone'".
+            - OPINION: subjective recommendation, stylistic
+              preference, taste-based statement. Example: "avoid
+              long sentences without a punchline".
+            - OUTDATED: explicitly marked as outdated.
 
-            Atomarität:
-            - EIN Punkt pro Claim.
-            - Wenn ein Absatz zwei Aussagen mischt (eine FACT, eine
-              OPINION), zerlege in zwei separate Claims.
-            - Mehrere Beispiele in einer Liste → mehrere Claims
-              (außer die Liste selbst ist die Aussage).
+            Atomicity:
+            - ONE point per claim.
+            - If a paragraph mixes two statements (one FACT, one
+              OPINION), split into two separate claims.
+            - Multiple examples in a list → multiple claims (unless
+              the list itself is the statement).
 
             Rationale:
-            - Pflicht für alles außer FACT.
-            - Bei FACT optional/null.
-            - Eine Begründung WARUM die Klassifizierung greift, NICHT
-              eine Wiederholung des Claim-Texts.
+            - Required for everything except FACT.
+            - Optional/null for FACT.
+            - A justification of WHY the classification applies,
+              NOT a repetition of the claim text.
 
             Quote:
-            - Optional. Wenn gesetzt, MUSS es ein wörtlicher Span
-              aus dem Source-Text sein (kein Paraphrase).
+            - Optional. When set, MUST be a verbatim span from the
+              source text (no paraphrase).
 
-            Wenn der Source-Text leer ist oder keine extrahierbaren
-            Aussagen enthält, liefere `claims: []`.
+            If the source text is empty or has no extractable
+            claims, return `claims: []`.
 
-            Wenn du diesen Vertrag verletzt, lehnt der Validator
-            deinen Output ab und du wirst um Korrektur gebeten.
+            If you violate this contract the validator rejects
+            your output and asks you to correct it.
             """;
 
     private final EngineChatFactory engineChatFactory;
@@ -275,25 +274,25 @@ public class ClassifyingPhase {
             ArchitectState state, EvidenceSource source) {
         StringBuilder sb = new StringBuilder();
         if (state.getGoal() != null) {
-            sb.append("Framed Goal (Kontext für Klassifizierung):\n")
+            sb.append("Framed goal (context for classification):\n")
                     .append(state.getGoal().getFramed()).append("\n\n");
         }
-        sb.append("Source-Pfad: ").append(source.getPath() == null
+        sb.append("Source path: ").append(source.getPath() == null
                 ? "<inline>" : source.getPath()).append("\n");
-        sb.append("Source-Typ: ").append(source.getType().name()).append("\n\n");
-        sb.append("Source-Inhalt:\n");
+        sb.append("Source type: ").append(source.getType().name()).append("\n\n");
+        sb.append("Source content:\n");
         sb.append("---BEGIN SOURCE---\n");
         sb.append(source.getContent());
         sb.append("\n---END SOURCE---\n\n");
-        sb.append("Liefere JETZT ein einzelnes JSON-Objekt mit `claims` "
-                + "nach Schema. Bei leerem Source: `claims: []`.");
+        sb.append("Now emit a single JSON object with `claims` "
+                + "matching the schema. For an empty source: `claims: []`.");
         return sb.toString();
     }
 
     private static String buildCorrectivePrompt(String validationError) {
-        return "Dein letztes JSON wurde abgelehnt: " + validationError
-                + "\n\nKorrigiere und liefere erneut ein einzelnes JSON-Objekt "
-                + "mit `claims` nach dem oben definierten Schema.";
+        return "Your last JSON was rejected: " + validationError
+                + "\n\nCorrect it and emit a single JSON object with "
+                + "`claims` matching the schema defined above.";
     }
 
     // ──────────────────── Parse + validate ────────────────────
@@ -303,20 +302,20 @@ public class ClassifyingPhase {
         String jsonOnly = extractJsonObject(text);
         if (jsonOnly == null) {
             throw new ClassifyValidationException(
-                    "kein JSON-Objekt im Reply gefunden");
+                    "no JSON object found in reply");
         }
         Map<String, Object> root;
         try {
             root = objectMapper.readValue(jsonOnly, Map.class);
         } catch (RuntimeException e) {
             throw new ClassifyValidationException(
-                    "JSON-Parse-Fehler: " + e.getMessage());
+                    "JSON parse error: " + e.getMessage());
         }
 
         Object claimsRaw = root.get("claims");
         if (!(claimsRaw instanceof List<?> claimsList)) {
             throw new ClassifyValidationException(
-                    "Pflichtfeld 'claims' fehlt oder ist kein Array");
+                    "required field 'claims' missing or not an array");
         }
 
         List<ParsedClaim> out = new ArrayList<>();
@@ -324,20 +323,20 @@ public class ClassifyingPhase {
             Object entry = claimsList.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
                 throw new ClassifyValidationException(
-                        "claims[" + i + "] ist kein Objekt");
+                        "claims[" + i + "] is not an object");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
 
             Object t = m.get("text");
             if (!(t instanceof String txt) || txt.isBlank()) {
                 throw new ClassifyValidationException(
-                        "claims[" + i + "].text fehlt oder ist leer");
+                        "claims[" + i + "].text missing or blank");
             }
 
             Object c = m.get("classification");
             if (!(c instanceof String cls) || cls.isBlank()) {
                 throw new ClassifyValidationException(
-                        "claims[" + i + "].classification fehlt");
+                        "claims[" + i + "].classification missing");
             }
             ClassificationKind classification;
             try {
@@ -345,7 +344,7 @@ public class ClassifyingPhase {
             } catch (IllegalArgumentException ex) {
                 throw new ClassifyValidationException(
                         "claims[" + i + "].classification '" + cls
-                                + "' ungültig (erlaubt: FACT | EXAMPLE | OPINION | OUTDATED)");
+                                + "' invalid (allowed: FACT | EXAMPLE | OPINION | OUTDATED)");
             }
 
             Object q = m.get("quote");

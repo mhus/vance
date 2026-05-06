@@ -64,17 +64,17 @@ public class ProposingPhase {
     private static final int PROMPT_PREVIEW_LIMIT = 500;
 
     private static final String SYSTEM_PROMPT_MARVIN = """
-            Du bist der PROPOSING-Knoten der Slartibartfast-Engine.
-            Aus dem framed Goal, den Subgoals und der Liste verfügbarer
-            Sub-Recipes erzeugst du ein Marvin-Recipe. Marvins PLAN-
-            Validator erzwingt deine Constraints zur Laufzeit — wenn
-            du sie weglässt, kann der PLAN-LLM Abkürzungen nehmen und
-            der Plan läuft nicht durch.
+            You are the PROPOSING node of the Slartibartfast engine.
+            From the framed goal, the subgoals, and the list of
+            available sub-recipes, you produce a Marvin recipe.
+            Marvin's PLAN validator enforces your constraints at
+            runtime — if you omit them the runtime PLAN-LLM takes
+            shortcuts and the pipeline does not run through.
 
-            HARTER OUTPUT-VERTRAG:
-            - Beende deinen Reply mit GENAU einem JSON-Objekt.
-            - KEIN Markdown-Codeblock (kein ```json … ```).
-            - KEIN Text vor oder nach dem JSON.
+            HARD OUTPUT CONTRACT:
+            - End your reply with EXACTLY one JSON object.
+            - NO markdown code fence (no ```json … ```).
+            - NO prose before or after the JSON.
 
             Schema:
                 {
@@ -86,53 +86,83 @@ public class ProposingPhase {
                     ...
                   },
                   "confidence":     <0.0..1.0>,
-                  "shapeRationale": "<why this shape — 1-2 Sätze>"
+                  "shapeRationale": "<why this shape — 1-2 sentences>"
                 }
 
-            ── PFLICHT-CONSTRAINTS (setzen wenn anwendbar) ──
+            ── MANDATORY CONSTRAINTS (set when applicable) ──
 
-            Diese Constraints sind NICHT optional wenn die Inputs
-            sie motivieren. Slartibartfast erkennt motivierte
-            Constraints aus subgoals + verfügbaren Sub-Recipes:
+            These constraints are NOT optional when the inputs
+            motivate them. Slartibartfast detects motivated
+            constraints from the subgoals + the available sub-recipes:
 
-            **allowedSubTaskRecipes** — PFLICHT wenn die Subgoals
-              auf konkrete Sub-Recipes mappen können. Schau in die
-              "Verfügbare Sub-Recipes"-Liste (User-Prompt). Jeder
-              Subgoal, der "schreibe Plot/Cast/Outline" macht, gehört
-              zu einem outline-style-Recipe; "schreibe Kapitel" zu
-              einem chapter-style-Recipe; "konsolidiere/aggregiere" zu
-              einem aggregator-style-Recipe. Liste GENAU die Recipes
-              auf, die deine Plan-Phasen brauchen werden.
+            **allowedSubTaskRecipes** — REQUIRED whenever the
+              subgoals map to concrete sub-recipes. Inspect the
+              "Available sub-recipes" block in the user prompt. A
+              subgoal that "writes plot/cast/outline" maps to an
+              outline-style recipe; "writes chapters" to a
+              chapter-style recipe; "consolidates/aggregates" to an
+              aggregator-style recipe. List EXACTLY the recipes
+              your plan phases will use.
 
-            **recipesOnlyViaExpand** — PFLICHT wenn ein Subgoal "pro
-              Item in einem Document" iteriert. Liste die Recipes
-              auf, die nur als EXPAND_FROM_DOC childTemplate auftauchen
-              dürfen (typisch: chapter-loop für Kapitel-pro-Outline-
-              Item).
+            **recipesOnlyViaExpand** — REQUIRED when a subgoal
+              iterates "per item in a document". List the recipes
+              that may appear ONLY inside an EXPAND_FROM_DOC
+              childTemplate (typical: chapter-loop for
+              chapter-per-outline-item).
 
-            **allowedExpandDocumentRefPaths** — PFLICHT wenn du
-              recipesOnlyViaExpand setzt. Liste die Document-Pfade
-              auf, über die die EXPAND_FROM_DOC iteriert (z.B.
+            **allowedExpandDocumentRefPaths** — REQUIRED when you
+              set recipesOnlyViaExpand. List the document paths the
+              EXPAND_FROM_DOC iterates over (e.g.
               "essay/outline.md").
 
-            **disallowedTaskKinds** — Setze [AGGREGATE] wenn deine
-              Plan-Form einen WORKER-Aggregator braucht (statt
-              Marvins built-in AGGREGATE-Summary). Standard für
-              Pipelines mit `aggregator_run`-style Recipe.
+            **disallowedTaskKinds** — Set [AGGREGATE] when your
+              plan shape needs a WORKER aggregator (instead of
+              Marvin's built-in AGGREGATE summary). Standard for
+              pipelines with an aggregator-style recipe.
 
-            **defaultExecutionMode: SEQUENTIAL** — Standard wenn die
-              Plan-Phasen aufeinander aufbauen (Outline → Kapitel →
-              Aggregator). Setze PARALLEL nur wenn Phasen unabhängig
-              sind.
+            **defaultExecutionMode: SEQUENTIAL** — Default when the
+              plan phases build on each other (outline → chapters →
+              aggregator). Use PARALLEL only when phases are
+              independent.
 
-            **maxPlanCorrections: 2** — Standard. Lasse weg nur bei
-              extrem konservativen Use Cases.
+            **maxPlanCorrections: 2** — Default. Omit only for
+              extremely conservative use cases.
 
-            ── YAML-Struktur ──
+            ── promptPrefix CONTRACT (the runtime PLAN-LLM reads it) ──
 
-                name: <name, gleich wie oben>
+            **CRITICAL — KIND-block parity rule:**
+              The number of KIND blocks in your promptPrefix MUST
+              equal the size of allowedSubTaskRecipes (and the
+              number of children Marvin's PLAN should emit).
+              EVERY recipe in allowedSubTaskRecipes MUST have
+              exactly one KIND block referencing it (either as a
+              direct WORKER taskSpec.recipe, or — for entries in
+              recipesOnlyViaExpand — as the EXPAND_FROM_DOC
+              childTemplate.recipe). If you list 3 recipes you MUST
+              write 3 KIND blocks; the runtime LLM otherwise drops
+              the trailing ones.
+
+            **JSON skeleton rule:** Each KIND block MUST contain a
+              concrete JSON skeleton for that child (literal
+              taskKind / goal / taskSpec). Plain prose without a
+              JSON sample lets the LLM omit the child.
+
+            **Order rule:** The KIND blocks MUST appear in
+              execution order (the order Marvin will use under
+              SEQUENTIAL). The order also reflects the
+              data-dependency chain (a phase that consumes
+              `essay/outline.md` comes after the phase that
+              produces it).
+
+            **No manual fan-out:** "Iterate per item in a document"
+              ALWAYS means EXPAND_FROM_DOC with documentRef +
+              childTemplate. Never enumerate items by hand.
+
+            ── YAML structure ──
+
+                name: <name, same as above>
                 description: |
-                  <1-2 Sätze>
+                  <1-2 sentences>
                 engine: marvin
                 params:
                   rootTaskKind: PLAN
@@ -144,29 +174,32 @@ public class ProposingPhase {
                   recipesOnlyViaExpand:
                     - <chapter-loop-name>
                   allowedExpandDocumentRefPaths:
-                    - <z.B. essay/outline.md>
+                    - <e.g. essay/outline.md>
                   disallowedTaskKinds: [AGGREGATE]
                 promptPrefix: |
-                  Du bist der `<name>`-PLAN-Knoten. Du erzeugst
-                  GENAU N Children in dieser Reihenfolge:
+                  You are the `<name>` PLAN node. Emit EXACTLY N
+                  children in this exact order. N MUST equal the
+                  number of recipes in allowedSubTaskRecipes.
 
                   KIND 1 — <description matching subgoal sg1>
+                  <one-line literal JSON skeleton for child 1>
+
                   KIND 2 — <description matching sg2>
+                  <one-line literal JSON skeleton for child 2>
+
                   ...
 
-                  Jeder Child-Knoten als JSON gemäß Marvin-Schema:
-                  {"taskKind": "WORKER" | "EXPAND_FROM_DOC" | "USER_INPUT",
-                   "goal": "...",
-                   "taskSpec": { ... }}
-
-                  Output-Vertrag, nur diese N Children:
+                  Output contract — ONLY these N children:
                       {"children": [<KIND 1>, <KIND 2>, ...]}
 
-            ── BEISPIEL (essay-style pipeline) ──
+                  Do not omit any KIND. Do not add extras. The
+                  number of children MUST be exactly N.
+
+            ── EXAMPLE (essay-style pipeline, N=3) ──
 
                 name: my-essay-pipeline
                 description: |
-                  Erzeugt ein Essay durch Plot-Outline → Kapitel → Aggregat.
+                  Produces an essay through outline → chapters → aggregation.
                 engine: marvin
                 params:
                   rootTaskKind: PLAN
@@ -182,54 +215,55 @@ public class ProposingPhase {
                     - essay/outline.md
                   disallowedTaskKinds: [AGGREGATE]
                 promptPrefix: |
-                  Du bist der my-essay-pipeline-PLAN-Knoten.
-                  Du erzeugst GENAU 3 Children:
+                  You are the my-essay-pipeline PLAN node. Emit
+                  EXACTLY 3 children, one per recipe in
+                  allowedSubTaskRecipes [outline_loop, chapter_loop,
+                  aggregator_run], in this exact order:
 
-                  KIND 1 — WORKER outline_loop:
-                  {"taskKind":"WORKER","goal":"Plot+Outline","taskSpec":{"recipe":"outline_loop"}}
+                  KIND 1 — WORKER outline_loop (produces essay/outline.md):
+                  {"taskKind":"WORKER","goal":"Draft plot, cast, and outline.","taskSpec":{"recipe":"outline_loop"}}
 
-                  KIND 2 — EXPAND_FROM_DOC für Kapitel:
-                  {"taskKind":"EXPAND_FROM_DOC","goal":"Pro Kapitel ein chapter_loop",
+                  KIND 2 — EXPAND_FROM_DOC over outline (one chapter per item):
+                  {"taskKind":"EXPAND_FROM_DOC","goal":"Run one chapter_loop per outline item.",
                    "taskSpec":{"documentRef":{"path":"essay/outline.md"},
                                "treeMode":"FLAT",
-                               "childTemplate":{"taskKind":"WORKER","recipe":"chapter_loop","goal":"..."}}}
+                               "childTemplate":{"taskKind":"WORKER","recipe":"chapter_loop","goal":"Write the chapter."}}}
 
-                  KIND 3 — WORKER aggregator_run:
-                  {"taskKind":"WORKER","goal":"Konsolidieren+Notification",
-                   "taskSpec":{"recipe":"aggregator_run"}}
+                  KIND 3 — WORKER aggregator_run (consolidates chapters → final-essay.md):
+                  {"taskKind":"WORKER","goal":"Consolidate chapters into the final essay and post the inbox notification.","taskSpec":{"recipe":"aggregator_run"}}
 
-                  Output: {"children":[<KIND 1>,<KIND 2>,<KIND 3>]}
+                  Output contract — EXACTLY these 3 children, no fewer:
+                      {"children":[<KIND 1>,<KIND 2>,<KIND 3>]}
 
-            ── promptPrefix-Regeln ──
+                  Do not omit KIND 3. The number of children MUST be 3.
 
-            - Multi-Zeilen-Anweisung an den PLAN-LLM (zur Laufzeit
-              erzeugt der die konkreten Children).
-            - Pro Subgoal/Phase EIN KIND-Block mit konkretem
-              taskSpec inkl. recipe-Name aus allowedSubTaskRecipes.
-            - "Pro Item iterieren" → IMMER EXPAND_FROM_DOC mit
-              documentRef + childTemplate, NIE manuelle Aufzählung.
+            ── Language ──
 
-            ── justifications-Map ──
+            The promptPrefix you generate MUST be in English (the
+            runtime PLAN-LLM reads it as orchestration code). The
+            user-facing content language is carried separately by
+            the goal text and is not your concern here.
 
-            Jeder constraint-key, den du im YAML setzt (params.X
-            oder promptPrefix), MUSS auf einen sg-id zeigen, der in
-            der Subgoal-Liste existiert.
+            ── justifications map ──
 
-            Wenn du diesen Vertrag verletzt, lehnt der Validator
-            deinen Output ab und du wirst um Korrektur gebeten.
+            Every constraint-key you set in the YAML (params.X or
+            promptPrefix) MUST point to an sg-id that exists in
+            the subgoal list.
+
+            If you violate this contract the validator rejects
+            your output and asks you to correct it.
             """;
 
     private static final String SYSTEM_PROMPT_VOGON = """
-            Du bist der PROPOSING-Knoten der Slartibartfast-Engine.
-            Aus dem framed Goal und den Subgoals erzeugst du ein
-            ausführbares Recipe für die Vogon-Engine. Das Recipe
-            wickelt eine inline strategyPlanYaml (Vogon-Strategy)
-            ein.
+            You are the PROPOSING node of the Slartibartfast engine.
+            From the framed goal and the subgoals you produce an
+            executable recipe for the Vogon engine. The recipe
+            wraps an inline strategyPlanYaml (Vogon strategy).
 
-            HARTER OUTPUT-VERTRAG:
-            - Beende deinen Reply mit GENAU einem JSON-Objekt.
-            - KEIN Markdown-Codeblock (kein ```json … ```).
-            - KEIN Text vor oder nach dem JSON.
+            HARD OUTPUT CONTRACT:
+            - End your reply with EXACTLY one JSON object.
+            - NO markdown code fence (no ```json … ```).
+            - NO prose before or after the JSON.
 
             Schema:
                 {
@@ -241,13 +275,13 @@ public class ProposingPhase {
                     ...
                   },
                   "confidence":     <0.0..1.0>,
-                  "shapeRationale": "<why this shape — 1-2 Sätze>"
+                  "shapeRationale": "<why this shape — 1-2 sentences>"
                 }
 
-            YAML-Struktur (Pflicht):
-                name: <name, gleich wie oben>
+            YAML structure (mandatory):
+                name: <name, same as above>
                 description: |
-                  <1-2 Sätze>
+                  <1-2 sentences>
                 engine: vogon
                 params:
                   strategyPlanYaml: |
@@ -255,31 +289,36 @@ public class ProposingPhase {
                     version: "1"
                     phases:
                       - name: <phase-name>
-                        worker: <recipe-name oder ford>
+                        worker: <recipe-name or ford>
                         workerInput: |
                           <prompt for the worker>
                         gate: { requires: [<phase-name>_completed] }
 
-            justifications-Map (Pflicht):
-            - JEDER constraint-key, den du im YAML setzt, MUSS hier
-              auf einen sg-id zeigen, der in subgoals existiert.
-            - Konvention für constraint-keys:
-              - "name" für den Recipe-Namen
-              - "phases.<idx>.worker" für jede Phase
-              - "engine" wenn du etwas anderes als "vogon" wählst
-                (sollte hier nie passieren — Output-Schema-Typ ist
+            justifications map (mandatory):
+            - EVERY constraint-key you set in the YAML MUST point
+              here to an sg-id that exists in subgoals.
+            - Convention for constraint-keys:
+              - "name" for the recipe name
+              - "phases.<idx>.worker" for each phase
+              - "engine" if you pick anything other than "vogon"
+                (should never happen here — output schema type is
                 VOGON_STRATEGY)
 
             confidence:
-            - 1.0 - speculative-Anteil = grobe Heuristik
-            - VALIDATING wird das prüfen.
+            - 1.0 minus the speculative share = a coarse heuristic
+            - VALIDATING will check this.
 
-            shapeRationale: WARUM gerade diese Anzahl von Phasen
-            in dieser Reihenfolge. Bezieht sich auf die Plan-Form,
-            nicht einzelne Phasen.
+            shapeRationale: WHY this exact number of phases in
+            this order. Refers to the overall plan shape, not
+            individual phases.
 
-            Wenn du diesen Vertrag verletzt, lehnt der Validator
-            deinen Output ab und du wirst um Korrektur gebeten.
+            Language: workerInput and prose-style fields are read
+            by downstream LLMs as orchestration code — write them
+            in English. The user-facing content language is
+            carried separately by the goal text.
+
+            If you violate this contract the validator rejects
+            your output and asks you to correct it.
             """;
 
     private final EngineChatFactory engineChatFactory;
@@ -357,10 +396,10 @@ public class ProposingPhase {
                 if (attempt < MAX_OUTPUT_CORRECTIONS) {
                     messages.add(AiMessage.from(text));
                     messages.add(UserMessage.from(
-                            "Dein letztes JSON wurde abgelehnt: "
+                            "Your last JSON was rejected: "
                                     + validationError
-                                    + "\n\nKorrigiere und liefere erneut ein "
-                                    + "einzelnes JSON-Objekt nach Schema."));
+                                    + "\n\nCorrect it and emit a single JSON "
+                                    + "object matching the schema."));
                 }
             }
         }
@@ -402,10 +441,10 @@ public class ProposingPhase {
             @Nullable String recoveryHint,
             List<ResolvedRecipe> availableRecipes) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Output-Schema-Typ: ")
+        sb.append("Output schema type: ")
                 .append(state.getOutputSchemaType()).append("\n\n");
 
-        sb.append("Framed Goal:\n").append(state.getGoal().getFramed())
+        sb.append("Framed goal:\n").append(state.getGoal().getFramed())
                 .append("\n\n");
 
         sb.append("acceptanceCriteria:\n");
@@ -415,8 +454,8 @@ public class ProposingPhase {
         }
         sb.append("\n");
 
-        sb.append("subgoals (jeder muss in justifications zitiert werden, "
-                + "wenn du eine Plan-Entscheidung an ihn knüpfst):\n");
+        sb.append("subgoals (every plan decision you tie to one MUST "
+                + "cite its sg-id in justifications):\n");
         for (Subgoal sg : state.getSubgoals()) {
             sb.append("  ").append(sg.getId());
             if (sg.isSpeculative()) sb.append(" [SPECULATIVE]");
@@ -429,11 +468,11 @@ public class ProposingPhase {
         // Without this the LLM tends to leave the constraint empty
         // and the runtime PLAN takes shortcuts.
         if (state.getOutputSchemaType() == OutputSchemaType.MARVIN_RECIPE) {
-            sb.append("Verfügbare Sub-Recipes im Project (ohne dein "
-                    + "eigenes _slart/* generated bucket):\n");
+            sb.append("Available sub-recipes in the project (excluding "
+                    + "your own _slart/* generated bucket):\n");
             if (availableRecipes.isEmpty()) {
-                sb.append("  (keine — du musst ohne Sub-Recipes "
-                        + "auskommen, beachte das in promptPrefix)\n");
+                sb.append("  (none — you must work without sub-recipes; "
+                        + "reflect that in promptPrefix)\n");
             } else {
                 for (ResolvedRecipe r : availableRecipes) {
                     sb.append("  - ").append(r.name())
@@ -443,23 +482,25 @@ public class ProposingPhase {
                             .append("\n");
                 }
             }
-            sb.append("\nWenn deine Subgoals zu einem dieser Recipes "
-                    + "passen, setze allowedSubTaskRecipes auf die "
-                    + "passende Teilmenge — und referenziere sie im "
-                    + "promptPrefix als `taskSpec.recipe`.\n\n");
+            sb.append("\nIf your subgoals map to any of these recipes, "
+                    + "set allowedSubTaskRecipes to the matching subset "
+                    + "and reference each recipe in the promptPrefix as "
+                    + "`taskSpec.recipe`. Remember the KIND-block parity "
+                    + "rule: the number of KIND blocks MUST equal the "
+                    + "size of allowedSubTaskRecipes.\n\n");
         }
 
         if (recoveryHint != null && !recoveryHint.isBlank()) {
-            sb.append("WICHTIG — der vorige Proposing-Versuch wurde "
-                    + "abgelehnt. Korrektur-Hinweis:\n")
+            sb.append("IMPORTANT — the previous proposing attempt was "
+                    + "rejected. Correction hint:\n")
                     .append(recoveryHint).append("\n\n");
         }
 
-        sb.append("Liefere JETZT ein einzelnes JSON-Objekt nach Schema. "
-                + "Das `yaml`-Feld enthält das komplette Recipe-YAML; "
-                + "`justifications` mappt jeden constraint-key auf einen "
-                + "sg-id; `shapeRationale` erklärt die Plan-Form in "
-                + "1-2 Sätzen.");
+        sb.append("Now emit a single JSON object matching the schema. "
+                + "The `yaml` field contains the full recipe YAML; "
+                + "`justifications` maps every constraint-key to an "
+                + "sg-id; `shapeRationale` explains the plan shape in "
+                + "1-2 sentences.");
         return sb.toString();
     }
 
@@ -470,52 +511,52 @@ public class ProposingPhase {
         String jsonOnly = extractJsonObject(text);
         if (jsonOnly == null) {
             throw new ProposeValidationException(
-                    "kein JSON-Objekt im Reply gefunden");
+                    "no JSON object found in reply");
         }
         Map<String, Object> root;
         try {
             root = objectMapper.readValue(jsonOnly, Map.class);
         } catch (RuntimeException e) {
             throw new ProposeValidationException(
-                    "JSON-Parse-Fehler: " + e.getMessage());
+                    "JSON parse error: " + e.getMessage());
         }
 
         Object n = root.get("name");
         if (!(n instanceof String name) || name.isBlank()) {
             throw new ProposeValidationException(
-                    "Pflichtfeld 'name' fehlt oder ist leer");
+                    "required field 'name' missing or blank");
         }
 
         Object y = root.get("yaml");
         if (!(y instanceof String yaml) || yaml.isBlank()) {
             throw new ProposeValidationException(
-                    "Pflichtfeld 'yaml' fehlt oder ist leer");
+                    "required field 'yaml' missing or blank");
         }
 
         Object j = root.get("justifications");
         if (!(j instanceof Map<?, ?> jMap)) {
             throw new ProposeValidationException(
-                    "Pflichtfeld 'justifications' fehlt oder ist kein Object");
+                    "required field 'justifications' missing or not an object");
         }
         Map<String, String> justifications = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : jMap.entrySet()) {
             if (!(e.getKey() instanceof String key)
                     || !(e.getValue() instanceof String val)) {
                 throw new ProposeValidationException(
-                        "justifications muss String→String sein "
+                        "justifications must be String→String "
                                 + "(key=" + e.getKey() + ", value=" + e.getValue() + ")");
             }
             if (key.isBlank() || val.isBlank()) {
                 throw new ProposeValidationException(
-                        "justifications-Eintrag mit leerem key/value: '"
+                        "justifications entry with blank key/value: '"
                                 + key + "' → '" + val + "'");
             }
             justifications.put(key, val);
         }
         if (justifications.isEmpty()) {
             throw new ProposeValidationException(
-                    "justifications darf nicht leer sein — jeder "
-                            + "constraint-key MUSS auf einen sg-id zeigen");
+                    "justifications must not be empty — every "
+                            + "constraint-key MUST point to an sg-id");
         }
 
         double confidence = 0.5;
@@ -524,14 +565,14 @@ public class ProposingPhase {
             confidence = num.doubleValue();
             if (confidence < 0.0 || confidence > 1.0) {
                 throw new ProposeValidationException(
-                        "confidence " + confidence + " außerhalb 0.0..1.0");
+                        "confidence " + confidence + " outside 0.0..1.0");
             }
         }
 
         Object sr = root.get("shapeRationale");
         if (!(sr instanceof String shapeRationale) || shapeRationale.isBlank()) {
             throw new ProposeValidationException(
-                    "Pflichtfeld 'shapeRationale' fehlt oder ist leer");
+                    "required field 'shapeRationale' missing or blank");
         }
 
         return new ProposeResult(

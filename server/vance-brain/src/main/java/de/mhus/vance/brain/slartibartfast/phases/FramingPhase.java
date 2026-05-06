@@ -68,61 +68,65 @@ public class FramingPhase {
     private static final int PROMPT_PREVIEW_LIMIT = 500;
 
     private static final String SYSTEM_PROMPT = """
-            Du bist der FRAMING-Knoten der Slartibartfast-Engine. Dein
-            einziger Job: aus der User-Beschreibung zwei Listen von
-            Acceptance-Kriterien produzieren — was wörtlich gesagt wurde
-            und was der User wahrscheinlich auch erwartet, ohne es zu
-            sagen.
+            You are the FRAMING node of the Slartibartfast engine.
+            Your only job: turn the user's free-text description
+            into two lists of acceptance criteria — what was said
+            verbatim, and what the user likely also expects without
+            saying it.
 
-            HARTER OUTPUT-VERTRAG:
-            - Beende deinen Reply mit GENAU einem JSON-Objekt.
-            - KEIN Markdown-Codeblock (kein ```json … ```).
-            - KEIN erklärender Text VOR dem JSON.
-            - KEIN Text NACH dem JSON.
+            HARD OUTPUT CONTRACT:
+            - End your reply with EXACTLY one JSON object.
+            - NO markdown code fence (no ```json … ```).
+            - NO explanatory text BEFORE the JSON.
+            - NO text AFTER the JSON.
 
-            Schema (alle Felder Pflicht außer wo markiert):
+            Schema (every field mandatory unless noted):
                 {
-                  "framed":          "<re-formulierter Auftrag, ein Satz>",
+                  "framed":          "<re-stated request, one sentence>",
                   "statedCriteria":  [
-                    { "text": "<Predicate>" }
+                    { "text": "<predicate>" }
                   ],
                   "assumedCriteria": [
                     {
-                      "text":       "<Predicate>",
+                      "text":       "<predicate>",
                       "origin":     "INFERRED_CONVENTION" |
                                     "INFERRED_DOMAIN" |
                                     "INFERRED_CONTEXT",
                       "confidence": <0.0..1.0>,
-                      "rationale":  "<Warum vermutest du das?>"
+                      "rationale":  "<why do you assume this?>"
                     }
                   ]
                 }
 
-            statedCriteria: nur was im User-Text wörtlich oder als
-            unmissverständliche Paraphrase steht. Origin implizit
-            USER_STATED, keine confidence/rationale.
+            statedCriteria: only what is verbatim in the user text
+            or an unambiguous paraphrase. Origin is implicitly
+            USER_STATED; no confidence/rationale.
 
-            assumedCriteria: was der User mitmeint aber nicht sagt.
-            - INFERRED_CONVENTION: generelle Convention (z.B.
-              "schreibe X" impliziert "speicher X als Datei").
-            - INFERRED_DOMAIN: domain-typische Erwartung (z.B.
-              "Kapitel" impliziert "3-7 Kapitel").
-            - INFERRED_CONTEXT: Kontext-Inferenz (z.B. "User schreibt
-              Deutsch" impliziert "Output Deutsch").
+            assumedCriteria: what the user implies without saying it.
+            - INFERRED_CONVENTION: generic convention (e.g. "write
+              X" implies "save X as a file").
+            - INFERRED_DOMAIN: domain-typical expectation (e.g.
+              "chapters" implies "3-7 chapters").
+            - INFERRED_CONTEXT: context inference (e.g. "user
+              writes in German" implies "output in German").
 
-            confidence-Skala (sei konservativ):
-              0.95+ = "fast sicher" (Standard-Convention, klare Sprache)
-              0.70  = "wahrscheinlich"
-              0.50  = "möglich aber nicht sicher"
-              0.30  = "Vermutung"
+            confidence scale (be conservative):
+              0.95+ = "near-certain" (standard convention, clear text)
+              0.70  = "likely"
+              0.50  = "possible but not certain"
+              0.30  = "guess"
 
-            Lieber WENIGE aber gut begründete Annahmen als viele
-            schwach begründete. Wenn keine Annahmen plausibel sind,
-            liefere `assumedCriteria: []`.
+            Prefer FEW well-grounded assumptions over many weakly
+            grounded ones. If no assumptions are plausible, return
+            `assumedCriteria: []`.
 
-            Wenn du diesen Vertrag verletzt, lehnt der Validator
-            deinen Output ab und du wirst um eine Korrektur gebeten.
-            Liefere lieber beim ersten Mal ein gültiges JSON.
+            Language: write the JSON content in English. The user-
+            facing acceptance language follows the user's request
+            and is not your concern in this phase.
+
+            If you violate this contract the validator rejects your
+            output and asks you to correct it. Better to emit a
+            valid JSON on the first try.
             """;
 
     private final EngineChatFactory engineChatFactory;
@@ -203,18 +207,18 @@ public class FramingPhase {
 
     private static String buildInitialUserPrompt(ArchitectState state) {
         StringBuilder sb = new StringBuilder();
-        sb.append("User-Auftrag:\n").append(state.getUserDescription()).append("\n\n");
-        sb.append("Output-Schema-Typ (informational, beeinflusst die ")
-                .append("Acceptance-Kriterien): ")
+        sb.append("User request:\n").append(state.getUserDescription()).append("\n\n");
+        sb.append("Output schema type (informational, influences "
+                + "the acceptance criteria): ")
                 .append(state.getOutputSchemaType().name()).append("\n\n");
-        sb.append("Liefere JETZT ein einzelnes JSON-Objekt nach Schema.");
+        sb.append("Now emit a single JSON object matching the schema.");
         return sb.toString();
     }
 
     private static String buildCorrectivePrompt(String validationError) {
-        return "Dein letztes JSON wurde abgelehnt: " + validationError
-                + "\n\nKorrigiere und liefere erneut ein einzelnes "
-                + "JSON-Objekt nach dem oben definierten Schema.";
+        return "Your last JSON was rejected: " + validationError
+                + "\n\nCorrect it and emit a single JSON object "
+                + "matching the schema defined above.";
     }
 
     // ──────────────────── Parse + validate ────────────────────
@@ -224,38 +228,38 @@ public class FramingPhase {
         String jsonOnly = extractJsonObject(text);
         if (jsonOnly == null) {
             throw new FramingValidationException(
-                    "kein JSON-Objekt im Reply gefunden");
+                    "no JSON object found in reply");
         }
         Map<String, Object> root;
         try {
             root = objectMapper.readValue(jsonOnly, Map.class);
         } catch (RuntimeException e) {
             throw new FramingValidationException(
-                    "JSON-Parse-Fehler: " + e.getMessage());
+                    "JSON parse error: " + e.getMessage());
         }
 
         Object framedRaw = root.get("framed");
         if (!(framedRaw instanceof String framed) || framed.isBlank()) {
             throw new FramingValidationException(
-                    "Pflichtfeld 'framed' fehlt oder ist leer");
+                    "required field 'framed' missing or blank");
         }
 
         Object statedRaw = root.get("statedCriteria");
         if (!(statedRaw instanceof List<?> statedList)) {
             throw new FramingValidationException(
-                    "Pflichtfeld 'statedCriteria' fehlt oder ist kein Array");
+                    "required field 'statedCriteria' missing or not an array");
         }
         List<ParsedStated> statedCriteria = new ArrayList<>();
         for (int i = 0; i < statedList.size(); i++) {
             Object entry = statedList.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
                 throw new FramingValidationException(
-                        "statedCriteria[" + i + "] ist kein Objekt");
+                        "statedCriteria[" + i + "] is not an object");
             }
             Object t = ((Map<String, Object>) entryMap).get("text");
             if (!(t instanceof String s) || s.isBlank()) {
                 throw new FramingValidationException(
-                        "statedCriteria[" + i + "].text fehlt oder ist leer");
+                        "statedCriteria[" + i + "].text missing or blank");
             }
             statedCriteria.add(new ParsedStated(s.trim()));
         }
@@ -263,26 +267,26 @@ public class FramingPhase {
         Object assumedRaw = root.get("assumedCriteria");
         if (!(assumedRaw instanceof List<?> assumedList)) {
             throw new FramingValidationException(
-                    "Pflichtfeld 'assumedCriteria' fehlt oder ist kein Array "
-                            + "(empty array ist ok, aber muss vorhanden sein)");
+                    "required field 'assumedCriteria' missing or not an array "
+                            + "(empty array is ok, but must be present)");
         }
         List<ParsedAssumed> assumedCriteria = new ArrayList<>();
         for (int i = 0; i < assumedList.size(); i++) {
             Object entry = assumedList.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
                 throw new FramingValidationException(
-                        "assumedCriteria[" + i + "] ist kein Objekt");
+                        "assumedCriteria[" + i + "] is not an object");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
             Object t = m.get("text");
             if (!(t instanceof String s) || s.isBlank()) {
                 throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].text fehlt oder ist leer");
+                        "assumedCriteria[" + i + "].text missing or blank");
             }
             Object o = m.get("origin");
             if (!(o instanceof String origin) || origin.isBlank()) {
                 throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].origin fehlt");
+                        "assumedCriteria[" + i + "].origin missing");
             }
             CriterionOrigin parsedOrigin;
             try {
@@ -290,7 +294,7 @@ public class FramingPhase {
             } catch (IllegalArgumentException ex) {
                 throw new FramingValidationException(
                         "assumedCriteria[" + i + "].origin '" + origin
-                                + "' ist kein gültiger Wert (erlaubt: "
+                                + "' is not a valid value (allowed: "
                                 + "INFERRED_CONVENTION | INFERRED_DOMAIN | INFERRED_CONTEXT)");
             }
             if (parsedOrigin == CriterionOrigin.USER_STATED
@@ -298,8 +302,8 @@ public class FramingPhase {
                     || parsedOrigin == CriterionOrigin.DEFAULT) {
                 throw new FramingValidationException(
                         "assumedCriteria[" + i + "].origin '" + origin
-                                + "' ist nicht für inferierte Kriterien erlaubt — "
-                                + "nutze INFERRED_CONVENTION/DOMAIN/CONTEXT");
+                                + "' is not allowed for inferred criteria — "
+                                + "use INFERRED_CONVENTION/DOMAIN/CONTEXT");
             }
             Object c = m.get("confidence");
             double confidence;
@@ -307,18 +311,18 @@ public class FramingPhase {
                 confidence = n.doubleValue();
             } else {
                 throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].confidence fehlt oder "
-                                + "ist keine Zahl");
+                        "assumedCriteria[" + i + "].confidence missing or "
+                                + "not a number");
             }
             if (confidence < 0.0 || confidence > 1.0) {
                 throw new FramingValidationException(
                         "assumedCriteria[" + i + "].confidence " + confidence
-                                + " außerhalb 0.0..1.0");
+                                + " outside 0.0..1.0");
             }
             Object r = m.get("rationale");
             if (!(r instanceof String rationale) || rationale.isBlank()) {
                 throw new FramingValidationException(
-                        "assumedCriteria[" + i + "].rationale fehlt oder ist leer");
+                        "assumedCriteria[" + i + "].rationale missing or blank");
             }
             assumedCriteria.add(new ParsedAssumed(
                     s.trim(), parsedOrigin, confidence, rationale.trim()));

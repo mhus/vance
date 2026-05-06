@@ -60,26 +60,26 @@ public class DecomposingPhase {
     private static final int PROMPT_PREVIEW_LIMIT = 500;
 
     private static final String SYSTEM_PROMPT = """
-            Du bist der DECOMPOSING-Knoten der Slartibartfast-Engine.
-            Aus dem framed Goal, der acceptanceCriteria-Liste, den
-            evidenceClaims und evidenceSources entwirfst du eine
-            Liste von Subgoals — der Schritte, die der Plan ausführt.
+            You are the DECOMPOSING node of the Slartibartfast
+            engine. From the framed goal, the acceptanceCriteria
+            list, the evidenceClaims and evidenceSources you draft
+            a list of subgoals — the steps the plan executes.
 
-            HARTE REGELN für jeden Subgoal:
-            - JEDER Subgoal MUSS entweder
-              (a) mindestens einen evidenceRef auf eine vorhandene
-                  Claim-ID enthalten, ODER
-              (b) explizit `speculative: true` mit non-blank
-                  `speculationRationale` markiert sein.
-            - JEDER Subgoal MUSS via criterionRefs auf mindestens
-              ein acceptanceCriterion zeigen, das er adressiert.
-            - JEDES acceptanceCriterion MUSS von mindestens einem
-              Subgoal adressiert werden (Coverage-Pflicht).
+            HARD RULES per subgoal:
+            - EVERY subgoal MUST either
+              (a) cite at least one evidenceRef on an existing
+                  claim id, OR
+              (b) be explicitly marked `speculative: true` with a
+                  non-blank `speculationRationale`.
+            - EVERY subgoal MUST point via criterionRefs to at
+              least one acceptanceCriterion it addresses.
+            - EVERY acceptanceCriterion MUST be addressed by at
+              least one subgoal (coverage requirement).
 
-            HARTER OUTPUT-VERTRAG:
-            - Beende deinen Reply mit GENAU einem JSON-Objekt.
-            - KEIN Markdown-Codeblock (kein ```json … ```).
-            - KEIN Text vor oder nach dem JSON.
+            HARD OUTPUT CONTRACT:
+            - End your reply with EXACTLY one JSON object.
+            - NO markdown code fence (no ```json … ```).
+            - NO prose before or after the JSON.
 
             Schema:
                 {
@@ -92,24 +92,27 @@ public class DecomposingPhase {
                       "speculationRationale": null
                     }
                   ],
-                  "decompositionRationale": "<warum diese decomposition>"
+                  "decompositionRationale": "<why this decomposition>"
                 }
 
-            Bei `speculative: true`:
-            - `evidenceRefs` darf leer sein (`[]`).
-            - `speculationRationale` MUSS gesetzt sein und erklären
-              WARUM keine Evidence verfügbar ist und WAS angenommen
-              wird.
+            For `speculative: true`:
+            - `evidenceRefs` may be empty (`[]`).
+            - `speculationRationale` MUST be set and explain WHY
+              no evidence is available and WHAT is being assumed.
 
-            Konservativ sein:
-            - Lieber wenige feste Subgoals + 1-2 speculative als
-              viele schwach belegte.
-            - Speculative-Quote über 30% führt zu Validation-Fail.
+            Be conservative:
+            - Prefer few well-grounded subgoals + 1-2 speculative
+              over many weakly grounded ones.
+            - A speculative ratio above 30% triggers a validation
+              failure.
 
-            decompositionRationale: 1-2 Sätze warum die Decomposition
-            in genau dieser Form (Anzahl, Reihenfolge) sinnvoll ist.
-            Bezieht sich auf die Plan-Shape, nicht auf einzelne
-            Subgoals.
+            decompositionRationale: 1-2 sentences on why the
+            decomposition has exactly this shape (count, order).
+            Refers to the plan shape, not individual subgoals.
+
+            Language: write JSON content in English. The user-
+            facing content language is carried separately by the
+            framed goal and is not your concern here.
             """;
 
     private final EngineChatFactory engineChatFactory;
@@ -176,10 +179,10 @@ public class DecomposingPhase {
                 if (attempt < MAX_OUTPUT_CORRECTIONS) {
                     messages.add(AiMessage.from(text));
                     messages.add(UserMessage.from(
-                            "Dein letztes JSON wurde abgelehnt: "
+                            "Your last JSON was rejected: "
                                     + validationError
-                                    + "\n\nKorrigiere und liefere erneut ein "
-                                    + "einzelnes JSON-Objekt nach Schema."));
+                                    + "\n\nCorrect it and emit a single JSON "
+                                    + "object matching the schema."));
                 }
             }
         }
@@ -220,10 +223,10 @@ public class DecomposingPhase {
     private static String buildInitialUserPrompt(
             ArchitectState state, @Nullable String recoveryHint) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Framed Goal:\n").append(state.getGoal().getFramed()).append("\n\n");
+        sb.append("Framed goal:\n").append(state.getGoal().getFramed()).append("\n\n");
 
-        sb.append("acceptanceCriteria (jedes muss von mindestens einem ")
-                .append("Subgoal adressiert werden):\n");
+        sb.append("acceptanceCriteria (each MUST be addressed by at "
+                + "least one subgoal):\n");
         for (Criterion c : state.getAcceptanceCriteria()) {
             sb.append("  ").append(c.getId()).append(" [")
                     .append(c.getOrigin()).append("]: ")
@@ -231,11 +234,10 @@ public class DecomposingPhase {
         }
         sb.append("\n");
 
-        sb.append("evidenceClaims (Subgoals zitieren diese via evidenceRefs):\n");
+        sb.append("evidenceClaims (subgoals cite these via evidenceRefs):\n");
         if (state.getEvidenceClaims().isEmpty()) {
-            sb.append("  (keine — Subgoals müssen daher überwiegend "
-                    + "speculative sein, falls der Plan trotzdem "
-                    + "machbar ist)\n");
+            sb.append("  (none — subgoals must therefore be mostly "
+                    + "speculative if the plan is still feasible)\n");
         } else {
             for (Claim c : state.getEvidenceClaims()) {
                 sb.append("  ").append(c.getId()).append(" [")
@@ -246,22 +248,22 @@ public class DecomposingPhase {
         }
         sb.append("\n");
 
-        sb.append("Output-Schema-Typ (informational): ")
+        sb.append("Output schema type (informational): ")
                 .append(state.getOutputSchemaType()).append("\n");
         sb.append("maxSpeculativeRatio: ")
                 .append(state.getMaxSpeculativeRatio()).append("\n\n");
 
         if (recoveryHint != null && !recoveryHint.isBlank()) {
-            sb.append("WICHTIG — der vorige Decomposing-Versuch wurde "
-                    + "abgelehnt. Korrektur-Hinweis:\n")
+            sb.append("IMPORTANT — the previous decomposing attempt "
+                    + "was rejected. Correction hint:\n")
                     .append(recoveryHint).append("\n\n");
         }
 
-        sb.append("Liefere JETZT ein einzelnes JSON-Objekt nach Schema. "
-                + "Stelle sicher: jeder Subgoal hat entweder evidenceRefs "
-                + "oder speculative=true mit Rationale; jedes "
-                + "acceptanceCriterion ist von mindestens einem Subgoal "
-                + "adressiert.");
+        sb.append("Now emit a single JSON object matching the "
+                + "schema. Ensure: every subgoal has either "
+                + "evidenceRefs or speculative=true with a "
+                + "rationale; every acceptanceCriterion is "
+                + "addressed by at least one subgoal.");
         return sb.toString();
     }
 
@@ -272,25 +274,25 @@ public class DecomposingPhase {
         String jsonOnly = extractJsonObject(text);
         if (jsonOnly == null) {
             throw new DecomposeValidationException(
-                    "kein JSON-Objekt im Reply gefunden");
+                    "no JSON object found in reply");
         }
         Map<String, Object> root;
         try {
             root = objectMapper.readValue(jsonOnly, Map.class);
         } catch (RuntimeException e) {
             throw new DecomposeValidationException(
-                    "JSON-Parse-Fehler: " + e.getMessage());
+                    "JSON parse error: " + e.getMessage());
         }
 
         Object subgoalsRaw = root.get("subgoals");
         if (!(subgoalsRaw instanceof List<?> subgoalsList)) {
             throw new DecomposeValidationException(
-                    "Pflichtfeld 'subgoals' fehlt oder ist kein Array");
+                    "required field 'subgoals' missing or not an array");
         }
         if (subgoalsList.isEmpty()) {
             throw new DecomposeValidationException(
-                    "subgoals darf nicht leer sein — der Plan muss mindestens "
-                            + "einen Schritt enthalten");
+                    "subgoals must not be empty — the plan must "
+                            + "contain at least one step");
         }
 
         List<ParsedSubgoal> subgoals = new ArrayList<>();
@@ -298,14 +300,14 @@ public class DecomposingPhase {
             Object entry = subgoalsList.get(i);
             if (!(entry instanceof Map<?, ?> entryMap)) {
                 throw new DecomposeValidationException(
-                        "subgoals[" + i + "] ist kein Objekt");
+                        "subgoals[" + i + "] is not an object");
             }
             Map<String, Object> m = (Map<String, Object>) entryMap;
 
             Object g = m.get("goal");
             if (!(g instanceof String goal) || goal.isBlank()) {
                 throw new DecomposeValidationException(
-                        "subgoals[" + i + "].goal fehlt oder ist leer");
+                        "subgoals[" + i + "].goal missing or blank");
             }
 
             List<String> evidenceRefs = parseStringArray(
@@ -319,7 +321,7 @@ public class DecomposingPhase {
                 speculative = b;
             } else if (s != null) {
                 throw new DecomposeValidationException(
-                        "subgoals[" + i + "].speculative muss boolean sein");
+                        "subgoals[" + i + "].speculative must be boolean");
             }
 
             String specRationale = null;
@@ -358,7 +360,7 @@ public class DecomposingPhase {
         Object dr = root.get("decompositionRationale");
         if (!(dr instanceof String drs) || drs.isBlank()) {
             throw new DecomposeValidationException(
-                    "Pflichtfeld 'decompositionRationale' fehlt oder ist leer");
+                    "required field 'decompositionRationale' missing or blank");
         }
 
         return new DecomposeResult(subgoals, drs.trim());
@@ -369,7 +371,7 @@ public class DecomposingPhase {
         if (raw == null) return List.of();
         if (!(raw instanceof List<?> list)) {
             throw new DecomposeValidationException(label
-                    + " muss ein Array sein (oder fehlen)");
+                    + " must be an array (or be omitted)");
         }
         List<String> out = new ArrayList<>(list.size());
         for (Object o : list) {
@@ -377,7 +379,7 @@ public class DecomposingPhase {
                 out.add(s.trim());
             } else {
                 throw new DecomposeValidationException(label
-                        + " enthält non-string oder leeren Eintrag");
+                        + " contains a non-string or blank entry");
             }
         }
         return out;

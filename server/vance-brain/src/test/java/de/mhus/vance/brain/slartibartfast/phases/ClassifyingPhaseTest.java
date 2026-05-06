@@ -209,7 +209,7 @@ class ClassifyingPhaseTest {
         phase.execute(state, process, ctx);
 
         assertThat(state.getFailureReason()).contains("CLASSIFYING failed at source");
-        assertThat(state.getFailureReason()).contains("classification 'OK' ungültig");
+        assertThat(state.getFailureReason()).contains("classification 'OK' invalid");
         assertThat(state.getIterations())
                 .filteredOn(it -> it.getPhase() == ArchitectStatus.CLASSIFYING)
                 .extracting(PhaseIteration::getOutcome)

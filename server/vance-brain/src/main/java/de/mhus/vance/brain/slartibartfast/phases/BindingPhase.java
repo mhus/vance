@@ -280,9 +280,9 @@ public class BindingPhase {
 
     private static String buildHint(List<ValidationCheck> report) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Die BINDING-Validierung hat den vorigen Decomposing-")
-                .append("Output abgelehnt. Folgende Verstöße — addressiere "
-                        + "JEDEN:\n");
+        sb.append("BINDING validation rejected the previous decomposing ")
+                .append("output. The following violations — address EVERY "
+                        + "one:\n");
         int shown = 0;
         for (ValidationCheck v : report) {
             if (v.isPassed()) continue;
@@ -291,12 +291,12 @@ public class BindingPhase {
                     .append(v.getMessage()).append("\n");
             shown++;
         }
-        sb.append("\nLiefere eine korrigierte subgoals-Liste, in der jeder ")
-                .append("Subgoal entweder mindestens einen FACT/EXAMPLE-")
-                .append("evidenceRef hat ODER speculative=true mit Rationale ")
-                .append("ist; jedes acceptanceCriterion von mindestens einem ")
-                .append("Subgoal adressiert wird; und der speculative-Anteil ")
-                .append("im Limit bleibt.");
+        sb.append("\nEmit a corrected subgoals list in which every "
+                + "subgoal either has at least one FACT/EXAMPLE "
+                + "evidenceRef OR is speculative=true with a "
+                + "rationale; every acceptanceCriterion is addressed "
+                + "by at least one subgoal; and the speculative ratio "
+                + "stays within the limit.");
         return sb.toString();
     }
 

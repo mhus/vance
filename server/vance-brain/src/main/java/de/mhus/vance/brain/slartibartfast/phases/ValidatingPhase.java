@@ -309,8 +309,8 @@ public class ValidatingPhase {
 
     private static String buildHint(List<ValidationCheck> report) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Die VALIDATING-Phase hat das vorige Recipe abgelehnt. ")
-                .append("Verstöße — addressiere JEDEN:\n");
+        sb.append("VALIDATING rejected the previous recipe. "
+                + "Violations — address EVERY one:\n");
         int shown = 0;
         for (ValidationCheck v : report) {
             if (v.isPassed()) continue;
@@ -319,11 +319,11 @@ public class ValidatingPhase {
                     .append(v.getMessage()).append("\n");
             shown++;
         }
-        sb.append("\nLiefere ein korrigiertes Recipe-YAML als JSON-Objekt ")
-                .append("mit gültigem name, engine: vogon, ")
-                .append("params.strategyPlanYaml (parseable von Vogon), und ")
-                .append("justifications die alle auf existierende sg-ids ")
-                .append("zeigen.");
+        sb.append("\nEmit a corrected recipe YAML as a JSON object "
+                + "with a valid name, engine: vogon, "
+                + "params.strategyPlanYaml (parseable by Vogon), "
+                + "and justifications all pointing to existing "
+                + "sg-ids.");
         return sb.toString();
     }
 

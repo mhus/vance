@@ -8,6 +8,7 @@ import MarvinTreeItem from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
 import LiveToolsTab from './LiveToolsTab.vue';
 import LlmTraceTab from './LlmTraceTab.vue';
+import CacheStatsTab from './CacheStatsTab.vue';
 import RecipesTab from './RecipesTab.vue';
 import ProjectToolsTab from './ProjectToolsTab.vue';
 import WorkspaceTab from './WorkspaceTab.vue';
@@ -1067,6 +1068,30 @@ else if (__VLS_ctx.topTab === 'sessions') {
                 ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'llm-traces' }) },
             });
             (__VLS_ctx.$t('insights.tabs.llmTrace'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.topTab === 'recipes'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'tools'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'workspace'))
+                            return;
+                        if (!(__VLS_ctx.topTab === 'sessions'))
+                            return;
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!!(__VLS_ctx.selection.kind === 'session'))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'process'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProcess))
+                            return;
+                        __VLS_ctx.activeTab = 'cache-stats';
+                    } },
+                ...{ class: "tab" },
+                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'cache-stats' }) },
+            });
+            (__VLS_ctx.$t('insights.tabs.cacheStats'));
             if (__VLS_ctx.activeTab === 'overview') {
                 const __VLS_64 = {}.VCard;
                 /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
@@ -1487,6 +1512,16 @@ else if (__VLS_ctx.topTab === 'sessions') {
                     processId: (__VLS_ctx.selectedProcess.id),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_115));
             }
+            else if (__VLS_ctx.activeTab === 'cache-stats') {
+                /** @type {[typeof CacheStatsTab, ]} */ ;
+                // @ts-ignore
+                const __VLS_118 = __VLS_asFunctionalComponent(CacheStatsTab, new CacheStatsTab({
+                    processId: (__VLS_ctx.selectedProcess.id),
+                }));
+                const __VLS_119 = __VLS_118({
+                    processId: (__VLS_ctx.selectedProcess.id),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_118));
+            }
         }
     }
 }
@@ -1518,15 +1553,15 @@ else if (__VLS_ctx.topTab === 'sessions') {
         (__VLS_ctx.$t('insights.help.empty'));
     }
     else {
-        const __VLS_118 = {}.MarkdownView;
+        const __VLS_121 = {}.MarkdownView;
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
-        const __VLS_119 = __VLS_asFunctionalComponent(__VLS_118, new __VLS_118({
+        const __VLS_122 = __VLS_asFunctionalComponent(__VLS_121, new __VLS_121({
             source: (__VLS_ctx.help.content.value),
         }));
-        const __VLS_120 = __VLS_119({
+        const __VLS_123 = __VLS_122({
             source: (__VLS_ctx.help.content.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_119));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_122));
     }
 }
 var __VLS_3;
@@ -1687,6 +1722,8 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-x-4']} */ ;
@@ -1802,6 +1839,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             SessionTimelineTab: SessionTimelineTab,
             LiveToolsTab: LiveToolsTab,
             LlmTraceTab: LlmTraceTab,
+            CacheStatsTab: CacheStatsTab,
             RecipesTab: RecipesTab,
             ProjectToolsTab: ProjectToolsTab,
             WorkspaceTab: WorkspaceTab,

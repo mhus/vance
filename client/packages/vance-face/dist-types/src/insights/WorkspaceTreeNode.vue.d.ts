@@ -11,11 +11,11 @@ interface Props {
     level: number;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    selectFile: (node: WorkspaceTreeNodeDto) => any;
     toggle: (path: string, isDir: boolean) => any;
+    selectFile: (node: WorkspaceTreeNodeDto) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onSelectFile?: ((node: WorkspaceTreeNodeDto) => any) | undefined;
     onToggle?: ((path: string, isDir: boolean) => any) | undefined;
+    onSelectFile?: ((node: WorkspaceTreeNodeDto) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=WorkspaceTreeNode.vue.d.ts.map

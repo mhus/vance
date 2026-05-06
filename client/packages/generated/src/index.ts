@@ -47,6 +47,7 @@ export * from './kit/KitOperationResultDto';
 export * from './kit/KitOriginDto';
 
 export * from './insights/ActiveSkillInsightsDto';
+export * from './insights/CacheStatsDto';
 export * from './insights/ChatMessageInsightsDto';
 export * from './insights/EffectiveRecipeDto';
 export * from './insights/EffectiveToolDto';

@@ -389,6 +389,7 @@ export default {
       memory: 'Memory',
       tree: 'Tree',
       llmTrace: 'LLM Trace',
+      cacheStats: 'Cache',
     },
     session: {
       detailsTitle: 'Details',
@@ -459,6 +460,26 @@ export default {
       toolCallSingular: '· {count} tool-call',
       toolCallPlural: '· {count} tool-calls',
       tokensInOut: '{tokensIn} in / {tokensOut} out',
+    },
+    cacheStats: {
+      loading: 'Loading cache stats…',
+      emptyHeadline: 'No cache data',
+      emptyBody:
+        'Either tracing.llm was off, or the provider does not emit cache tokens (Gemini, OpenAI). Cache tracking is Anthropic-specific today.',
+      headlineTitle: 'Cache hit rate',
+      headlineSub: 'across {rounds} LLM calls',
+      headlineHint:
+        'Share of input tokens served from the Anthropic prompt cache — higher is better. Spec target: ≥ 70%.',
+      breakdownTitle: 'Token breakdown',
+      cacheRead: 'Read from cache',
+      cacheCreate: 'Written to cache',
+      uncachedInput: 'Uncached input',
+      totalInput: 'Total input',
+      outputTokens: 'Output',
+      tokensSaved: 'Tokens saved',
+      savingsHint:
+        'Cache-read tokens cost ~10% of the normal input price; the savings estimate ignores the one-off write surcharge on creation tokens.',
+      reload: 'Reload',
     },
     timeline: {
       loading: 'Loading timeline…',

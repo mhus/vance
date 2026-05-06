@@ -354,6 +354,7 @@ declare const _default: {
             memory: string;
             tree: string;
             llmTrace: string;
+            cacheStats: string;
         };
         session: {
             detailsTitle: string;
@@ -423,6 +424,23 @@ declare const _default: {
             toolCallSingular: string;
             toolCallPlural: string;
             tokensInOut: string;
+        };
+        cacheStats: {
+            loading: string;
+            emptyHeadline: string;
+            emptyBody: string;
+            headlineTitle: string;
+            headlineSub: string;
+            headlineHint: string;
+            breakdownTitle: string;
+            cacheRead: string;
+            cacheCreate: string;
+            uncachedInput: string;
+            totalInput: string;
+            outputTokens: string;
+            tokensSaved: string;
+            savingsHint: string;
+            reload: string;
         };
         timeline: {
             loading: string;

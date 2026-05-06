@@ -25,6 +25,7 @@ import MarvinTreeItem, { type MarvinTreeNode } from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
 import LiveToolsTab from './LiveToolsTab.vue';
 import LlmTraceTab from './LlmTraceTab.vue';
+import CacheStatsTab from './CacheStatsTab.vue';
 import RecipesTab from './RecipesTab.vue';
 import ProjectToolsTab from './ProjectToolsTab.vue';
 import WorkspaceTab from './WorkspaceTab.vue';
@@ -623,6 +624,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               :class="{ 'tab--active': activeTab === 'llm-traces' }"
               @click="activeTab = 'llm-traces'"
             >{{ $t('insights.tabs.llmTrace') }}</button>
+            <button
+              class="tab"
+              :class="{ 'tab--active': activeTab === 'cache-stats' }"
+              @click="activeTab = 'cache-stats'"
+            >{{ $t('insights.tabs.cacheStats') }}</button>
           </div>
 
           <!-- Overview -->
@@ -799,6 +805,13 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                switches to this tab and on subsequent process changes. -->
           <template v-else-if="activeTab === 'llm-traces'">
             <LlmTraceTab :process-id="selectedProcess.id" />
+          </template>
+
+          <!-- Cache Stats — aggregated Anthropic prompt-cache hit rate
+               for this process, summed over every OUTPUT trace row.
+               Driving question: "is prompt caching paying off here?". -->
+          <template v-else-if="activeTab === 'cache-stats'">
+            <CacheStatsTab :process-id="selectedProcess.id" />
           </template>
         </template>
       </template>

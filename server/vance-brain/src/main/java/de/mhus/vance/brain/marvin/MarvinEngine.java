@@ -142,14 +142,24 @@ public class MarvinEngine implements ThinkEngine {
                        / {{root.title}} / {{parent.goal}} placeholders.
                        Optional: treeMode (RECURSIVE|FLAT), failOnEmpty,
                        failOnMissingField.
-            - WORKER - taskSpec.recipe + taskSpec.steerContent must be set.
-                       Prefer recipe="marvin-worker" — it understands the
-                       Marvin worker output contract (DONE / NEEDS_SUBTASKS /
-                       NEEDS_USER_INPUT / BLOCKED_BY_PROBLEM) and lets the
-                       worker request further decomposition or ask the user
-                       on its own. Specialist recipes (web-research,
-                       code-read, analyze) work but their output won't carry
-                       the structured Marvin contract.
+            - WORKER - taskSpec.steerContent must be set; taskSpec.recipe
+                       is OPTIONAL.
+                       * With recipe set (e.g. "marvin-worker", "web-research",
+                         "code-read", "analyze") the engine spawns that recipe
+                         directly. Prefer recipe="marvin-worker" when you want
+                         the structured Marvin worker output contract (DONE /
+                         NEEDS_SUBTASKS / NEEDS_USER_INPUT / BLOCKED_BY_PROBLEM);
+                         specialist recipes work but won't carry that contract.
+                       * Without recipe — only the goal — the engine routes
+                         through process_create_delegate's selector at
+                         spawn-time: a one-shot LLM picks the matching project
+                         recipe based on engine catalog + recipe inventory, or
+                         falls back to Slartibartfast for a freshly-generated
+                         recipe (adds 60-180s) when nothing fits. Use this when
+                         you have a clear task description but don't want to
+                         commit to a specific recipe — typical for novel or
+                         ambiguous subtasks. The goal field IS the task
+                         description the selector reads, so make it specific.
             - USER_INPUT - taskSpec.type (DECISION|FEEDBACK|APPROVAL),
                            taskSpec.title, taskSpec.body, taskSpec.criticality.
             - AGGREGATE - put as the LAST sibling under a parent that has
@@ -246,6 +256,12 @@ public class MarvinEngine implements ThinkEngine {
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final DocumentExpander documentExpander;
+    /** Used to route recipe-less PLAN-WORKER children through the
+     *  selector. PLAN-LLM may emit just a {@code goal} without
+     *  picking a recipe — the selector reads project recipes at
+     *  spawn-time and picks the best match. Same engine catalog +
+     *  inventory as {@code process_create_delegate}. */
+    private final de.mhus.vance.brain.delegate.RecipeSelectorService recipeSelector;
     /** Lazy because {@code ThinkEngineService} wires every engine
      *  bean — we'd otherwise close a cycle. */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
@@ -1330,8 +1346,16 @@ public class MarvinEngine implements ThinkEngine {
             Object recipeRaw = ns.taskSpec() == null ? null : ns.taskSpec().get("recipe");
             String recipe = recipeRaw instanceof String s ? s.trim() : null;
             if (recipe == null || recipe.isBlank()) {
-                violations.add("WORKER child '" + ns.goal()
-                        + "' is missing taskSpec.recipe");
+                // Selector-mode: a WORKER without a recipe is allowed
+                // when the goal is non-blank. {@code runWorker} calls
+                // {@link RecipeSelectorService} at spawn-time to pick
+                // a recipe based on the goal text. The PLAN-LLM
+                // doesn't have to know recipe names.
+                if (ns.goal() == null || ns.goal().isBlank()) {
+                    violations.add("WORKER child has neither taskSpec.recipe "
+                            + "nor a non-blank goal — give one of them so the "
+                            + "spawn knows what to do");
+                }
                 continue;
             }
             if (allowed != null && !allowed.contains(recipe)) {
@@ -1695,10 +1719,24 @@ public class MarvinEngine implements ThinkEngine {
             MarvinNodeDocument node) {
         String recipeName = paramString(node, "recipe", null);
         if (recipeName == null) {
-            nodeService.markFailed(node, "WORKER node missing taskSpec.recipe");
-            log.warn("Marvin id='{}' WORKER node='{}' missing recipe — failing",
-                    process.getId(), node.getId());
-            return false;
+            // Selector-mode: PLAN-LLM emitted the child without a
+            // recipe binding — pick one based on the node's goal.
+            // Same routing as process_create_delegate's selector.
+            recipeName = pickRecipeViaSelector(process, node);
+            if (recipeName == null) {
+                // Selector returned NONE — surface a node-level
+                // failure with the rationale baked in (the warn
+                // log emitted by the helper has the LLM rationale).
+                nodeService.markFailed(node,
+                        "WORKER node has no recipe and the selector "
+                                + "could not pick one for goal: "
+                                + abbrev(node.getGoal()));
+                return false;
+            }
+            log.info("Marvin id='{}' WORKER node='{}' recipe-less spawn — "
+                            + "selector picked recipe='{}' for goal='{}'",
+                    process.getId(), node.getId(), recipeName,
+                    abbrev(node.getGoal()));
         }
         String steerContent = paramString(node, "steerContent", node.getGoal());
         Map<String, Object> recipeParams = paramMap(node, "params");
@@ -2219,5 +2257,41 @@ public class MarvinEngine implements ThinkEngine {
     private static String abbrev(@Nullable String s) {
         if (s == null) return "";
         return s.length() <= 80 ? s : s.substring(0, 77) + "...";
+    }
+
+    /**
+     * Routes a recipe-less WORKER node through {@link
+     * de.mhus.vance.brain.delegate.RecipeSelectorService}. Returns
+     * the picked recipe name on MATCH; null on NONE / failure.
+     * Caller decides how to fail the node.
+     *
+     * <p>Cost: one synchronous selector LLM-call per recipe-less
+     * spawn. PLAN-LLMs that pre-emit recipes via
+     * {@code allowedSubTaskRecipes} bypass this path entirely.
+     */
+    private @Nullable String pickRecipeViaSelector(
+            ThinkProcessDocument process, MarvinNodeDocument node) {
+        String goal = node.getGoal();
+        if (goal == null || goal.isBlank()) {
+            log.warn("Marvin id='{}' WORKER node='{}' has no goal — "
+                            + "cannot run selector",
+                    process.getId(), node.getId());
+            return null;
+        }
+        try {
+            de.mhus.vance.brain.delegate.RecipeSelectorService.Result r =
+                    recipeSelector.select(process, goal);
+            if (r.decision()
+                    == de.mhus.vance.brain.delegate.RecipeSelectorService.Result.Decision.MATCH) {
+                return r.recipeName();
+            }
+            log.warn("Marvin id='{}' WORKER node='{}' selector returned NONE: {}",
+                    process.getId(), node.getId(), r.rationale());
+            return null;
+        } catch (RuntimeException e) {
+            log.warn("Marvin id='{}' WORKER node='{}' selector call failed: {}",
+                    process.getId(), node.getId(), e.toString());
+            return null;
+        }
     }
 }

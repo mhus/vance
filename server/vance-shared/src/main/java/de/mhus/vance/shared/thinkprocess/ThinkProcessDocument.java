@@ -238,7 +238,7 @@ public class ThinkProcessDocument {
 
     /**
      * Tools that the LLM has activated by calling {@code describe_tool}
-     * on a {@link de.mhus.vance.brain.tools.Tool#deferred()}-marked tool.
+     * on a {@link de.mhus.vance.toolpack.Tool#deferred()}-marked tool.
      * Map value is the activation timestamp (refreshed on every
      * subsequent invocation through {@code ContextToolsApi}); the
      * configured TTL ({@code vance.tooling.deferralActivationTtl},

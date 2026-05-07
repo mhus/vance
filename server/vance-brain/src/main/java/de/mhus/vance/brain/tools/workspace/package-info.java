@@ -3,7 +3,7 @@
  * (read/write/list/delete + execute_workspace_javascript) plus the
  * {@link de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver}
  * helper that bridges {@link
- * de.mhus.vance.brain.tools.ToolInvocationContext} to the {@code
+ * de.mhus.vance.toolpack.ToolInvocationContext} to the {@code
  * dirName} parameter on
  * {@link de.mhus.vance.shared.workspace.WorkspaceService}.
  *

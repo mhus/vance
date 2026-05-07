@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.context;
 
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

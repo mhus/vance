@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.script;
 
 import de.mhus.vance.brain.tools.ContextToolsApi;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
 import org.graalvm.polyglot.HostAccess;
 import org.jspecify.annotations.Nullable;

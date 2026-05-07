@@ -4,9 +4,9 @@ import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptResult;
 import de.mhus.vance.brain.tools.ContextToolsApi;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.nio.file.Path;
@@ -99,7 +99,8 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(
-            Map<String, Object> params, ToolInvocationContext ctx, ContextToolsApi tools) {
+            Map<String, Object> params, ToolInvocationContext ctx, de.mhus.vance.toolpack.ToolBus busArg) {
+        ContextToolsApi tools = (ContextToolsApi) busArg;
         Object raw = params == null ? null : params.get("path");
         if (!(raw instanceof String path) || path.isBlank()) {
             throw new ToolException("'path' is required and must be a non-empty string");

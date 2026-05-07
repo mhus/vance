@@ -1,11 +1,11 @@
 package de.mhus.vance.brain.tools.rest;
 
-import de.mhus.vance.brain.toolpack.core.PackHttpClient;
-import de.mhus.vance.brain.toolpack.rest.OpenApiOperation;
-import de.mhus.vance.brain.toolpack.rest.OpenApiSpecLoader;
-import de.mhus.vance.brain.toolpack.rest.RestApiConfig;
-import de.mhus.vance.brain.toolpack.rest.RestHttpInvoker;
-import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.toolpack.core.PackHttpClient;
+import de.mhus.vance.toolpack.rest.OpenApiOperation;
+import de.mhus.vance.toolpack.rest.OpenApiSpecLoader;
+import de.mhus.vance.toolpack.rest.RestApiConfig;
+import de.mhus.vance.toolpack.rest.RestHttpInvoker;
+import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.brain.tools.types.ToolFactory;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import io.swagger.v3.oas.models.OpenAPI;

@@ -1,11 +1,11 @@
 package de.mhus.vance.brain.tools.mcp;
 
-import de.mhus.vance.brain.toolpack.core.PackHttpClient;
-import de.mhus.vance.brain.toolpack.mcp.McpConnection;
-import de.mhus.vance.brain.toolpack.mcp.McpConnectionPool;
-import de.mhus.vance.brain.toolpack.mcp.McpToolMeta;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.PackHttpClient;
+import de.mhus.vance.toolpack.mcp.McpConnection;
+import de.mhus.vance.brain.tools.mcp.McpConnectionPool;
+import de.mhus.vance.toolpack.mcp.McpToolMeta;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.rest.SettingsSecretResolver;
 import de.mhus.vance.brain.tools.types.ToolFactory;
 import de.mhus.vance.shared.servertool.ServerToolDocument;

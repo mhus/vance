@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.rest;
 
-import de.mhus.vance.brain.toolpack.core.SecretResolver;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.core.SecretResolver;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.settings.SettingService;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

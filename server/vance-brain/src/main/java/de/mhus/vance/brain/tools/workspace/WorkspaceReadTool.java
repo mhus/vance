@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.tools.workspace;
 
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import de.mhus.vance.shared.workspace.WorkspaceService;

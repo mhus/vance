@@ -1,7 +1,7 @@
 /**
  * Runtime tool model.
  *
- * <p>{@link de.mhus.vance.brain.tools.Tool} is the server-side
+ * <p>{@link de.mhus.vance.toolpack.Tool} is the server-side
  * counterpart to {@link de.mhus.vance.api.tools.ToolSpec}: it carries the
  * same metadata plus an {@code invoke} method. {@link
  * de.mhus.vance.brain.tools.ToolSource} sources tools from somewhere

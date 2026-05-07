@@ -100,7 +100,7 @@ public class ServerToolDocument {
     private @Nullable Set<String> disabledSubTools = new LinkedHashSet<>();
 
     /**
-     * Pack-level default for {@link de.mhus.vance.brain.tools.Tool#deferred()}.
+     * Pack-level default for {@link de.mhus.vance.toolpack.Tool#deferred()}.
      * Pack factories with many sub-tools (e.g. a 50-endpoint REST pack)
      * should default to {@code true} so the LLM doesn't get flooded with
      * schemas — sub-tools surface only via the discovery block until

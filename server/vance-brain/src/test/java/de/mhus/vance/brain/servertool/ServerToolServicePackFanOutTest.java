@@ -6,8 +6,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.types.ToolFactory;
 import de.mhus.vance.brain.tools.types.ToolFactoryRegistry;
 import de.mhus.vance.shared.home.HomeBootstrapService;

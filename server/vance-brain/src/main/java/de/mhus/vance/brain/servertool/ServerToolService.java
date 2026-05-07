@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.servertool;
 
-import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.brain.tools.types.ToolFactory;
 import de.mhus.vance.brain.tools.types.ToolFactoryRegistry;
 import de.mhus.vance.shared.home.HomeBootstrapService;

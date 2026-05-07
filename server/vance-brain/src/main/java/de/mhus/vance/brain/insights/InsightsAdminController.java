@@ -16,7 +16,7 @@ import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.tools.BuiltInToolSource;
-import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.workspace.access.PodForwarder;
 import de.mhus.vance.brain.workspace.access.ProjectPodKey;

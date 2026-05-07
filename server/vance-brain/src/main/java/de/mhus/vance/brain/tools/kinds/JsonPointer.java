@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.brain.tools.ToolException;
+import de.mhus.vance.toolpack.ToolException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

@@ -1,0 +1,45 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>de.mhus.vance</groupId>
+        <artifactId>vance</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>vance-toolpack</artifactId>
+    <name>vance-toolpack</name>
+    <description>Vance Tool Pack — pure-Java Tool interface, REST/OpenAPI and MCP-Server pack factories, JSON-RPC, HTTP transport with TLS toggle, and shared scaffolding (PackJson, SecretResolver). Consumed by both vance-brain (server-side ToolFactory beans) and vance-foot (client-side tool-pack registration). No Spring, no MongoDB — only vance-api + jspecify + swagger-parser.</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- OpenAPI / Swagger spec parsing for REST-API tool packs. -->
+        <dependency>
+            <groupId>io.swagger.parser.v3</groupId>
+            <artifactId>swagger-parser</artifactId>
+        </dependency>
+
+        <!-- slf4j-api as a runtime-provided log facade — vance-brain ships
+             logback, vance-foot ships logback. The toolpack itself only
+             needs the API. -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
+

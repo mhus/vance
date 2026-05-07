@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.mcp;
 
-import de.mhus.vance.brain.toolpack.mcp.McpConnection;
-import de.mhus.vance.brain.toolpack.mcp.McpToolMeta;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.mcp.McpConnection;
+import de.mhus.vance.toolpack.mcp.McpToolMeta;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
 import java.util.Set;
 

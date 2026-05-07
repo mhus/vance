@@ -2,8 +2,8 @@ package de.mhus.vance.brain.tools.kit;
 
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

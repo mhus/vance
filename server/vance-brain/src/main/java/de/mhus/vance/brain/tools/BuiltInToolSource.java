@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.tools;
 
+import de.mhus.vance.toolpack.Tool;
+
 import de.mhus.vance.brain.servertool.ServerToolService;
 import jakarta.annotation.PostConstruct;
 import java.util.List;

@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.eddie;
 
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.shared.project.ProjectDocument;

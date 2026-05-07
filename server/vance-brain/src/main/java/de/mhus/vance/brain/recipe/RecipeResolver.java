@@ -5,7 +5,7 @@ import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
-import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

@@ -1,5 +1,8 @@
 package de.mhus.vance.brain.tools;
 
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+
 import java.util.List;
 import java.util.Optional;
 

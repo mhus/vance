@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.tools.builtins;
 
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;

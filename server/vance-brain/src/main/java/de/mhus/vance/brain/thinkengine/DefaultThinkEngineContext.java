@@ -5,7 +5,7 @@ import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.ToolInvocationListener;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;

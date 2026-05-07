@@ -1,8 +1,8 @@
 package de.mhus.vance.brain.tools.kinds;
 
 import de.mhus.vance.brain.documents.DocumentBufferService;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;

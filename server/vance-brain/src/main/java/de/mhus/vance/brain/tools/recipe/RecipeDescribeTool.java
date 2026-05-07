@@ -2,9 +2,9 @@ package de.mhus.vance.brain.tools.recipe;
 
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

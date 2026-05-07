@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.tools.types;
 
-import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import java.util.Collection;
 import java.util.Map;

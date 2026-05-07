@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.builtins;
 
 import de.mhus.vance.api.tools.ToolSpec;
-import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.brain.tools.ToolDispatcher;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

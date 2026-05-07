@@ -28,7 +28,7 @@ import de.mhus.vance.brain.thinkengine.action.EngineAction;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine.ActionLoopResult;
 import de.mhus.vance.brain.tools.ContextToolsApi;
-import de.mhus.vance.brain.tools.ToolException;
+import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.document.DocumentDocument;

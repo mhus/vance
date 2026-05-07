@@ -19,6 +19,7 @@
     <modules>
         <module>plugins</module>
         <module>vance-api</module>
+        <module>vance-toolpack</module>
         <module>vance-shared</module>
         <module>vance-brain</module>
         <module>vance-foot</module>

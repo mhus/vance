@@ -153,7 +153,7 @@ public class ThinkEngineService {
         final String connectionProfile = process.getConnectionProfile();
         java.util.function.BiFunction<
                 de.mhus.vance.api.thinkprocess.ProcessMode,
-                de.mhus.vance.brain.tools.ToolInvocationContext,
+                de.mhus.vance.toolpack.ToolInvocationContext,
                 RecipeResolver.ToolFilter> toolFilterResolver =
                 (currentMode, scope) -> {
                     RecipeResolver resolver = recipeResolverProvider.getIfAvailable();

@@ -5,9 +5,9 @@ import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
 import de.mhus.vance.brain.script.ScriptResult;
 import de.mhus.vance.brain.tools.ContextToolsApi;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -93,7 +93,8 @@ public class JavaScriptTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(
-            Map<String, Object> params, ToolInvocationContext ctx, ContextToolsApi tools) {
+            Map<String, Object> params, ToolInvocationContext ctx, de.mhus.vance.toolpack.ToolBus busArg) {
+        ContextToolsApi tools = (ContextToolsApi) busArg;
         Object raw = params == null ? null : params.get("code");
         if (!(raw instanceof String code) || code.isBlank()) {
             throw new ToolException("'code' is required and must be a non-empty string");

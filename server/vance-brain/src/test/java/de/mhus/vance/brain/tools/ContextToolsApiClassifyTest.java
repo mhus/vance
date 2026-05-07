@@ -1,5 +1,8 @@
 package de.mhus.vance.brain.tools;
 
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -19,7 +22,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Apply order under test (§14.2):
  * Remove → Add (force-primary) → Defer (force-deferred). Tool's own
- * {@link de.mhus.vance.brain.tools.Tool#deferred()} default is the
+ * {@link de.mhus.vance.toolpack.Tool#deferred()} default is the
  * tie-breaker when no explicit add/defer applies.
  */
 class ContextToolsApiClassifyTest {

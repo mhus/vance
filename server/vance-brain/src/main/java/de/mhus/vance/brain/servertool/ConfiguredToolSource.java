@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.servertool;
 
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.ToolSource;
 import java.util.List;
 import java.util.Optional;

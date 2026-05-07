@@ -1,6 +1,10 @@
 package de.mhus.vance.brain.tools;
 
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolBus;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -42,7 +46,7 @@ import java.util.Set;
  * {@link #classify(ToolDispatcher, ToolInvocationContext, java.util.Set,
  * de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter, java.util.Set)}.
  */
-public final class ContextToolsApi {
+public final class ContextToolsApi implements ToolBus {
 
     private final ToolDispatcher dispatcher;
     private final ToolInvocationContext ctx;

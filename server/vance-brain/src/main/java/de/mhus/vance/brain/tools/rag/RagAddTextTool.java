@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.rag;
 
 import de.mhus.vance.brain.rag.RagService;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.rag.RagDocument;
 import java.util.LinkedHashMap;
 import java.util.List;

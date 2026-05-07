@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.kind.MindmapCodec;
 import de.mhus.vance.shared.document.kind.TreeCodec;

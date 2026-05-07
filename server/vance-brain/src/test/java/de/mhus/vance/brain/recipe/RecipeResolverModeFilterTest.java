@@ -10,7 +10,7 @@ import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
-import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.toolpack.Tool;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -245,7 +245,7 @@ class RecipeResolverModeFilterTest {
             @Override public Map<String, Object> paramsSchema() { return Map.of(); }
             @Override public Set<String> labels() { return Set.of(); }
             @Override public Map<String, Object> invoke(Map<String, Object> p,
-                    de.mhus.vance.brain.tools.ToolInvocationContext ctx) {
+                    de.mhus.vance.toolpack.ToolInvocationContext ctx) {
                 return Map.of();
             }
         };

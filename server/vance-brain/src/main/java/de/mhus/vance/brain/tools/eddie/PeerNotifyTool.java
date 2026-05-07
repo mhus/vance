@@ -2,9 +2,9 @@ package de.mhus.vance.brain.tools.eddie;
 
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.eddie.EddieEngine;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;

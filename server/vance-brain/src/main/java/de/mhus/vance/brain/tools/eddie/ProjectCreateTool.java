@@ -2,9 +2,9 @@ package de.mhus.vance.brain.tools.eddie;
 
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.eddie.activity.EntityRef;
 import de.mhus.vance.brain.eddie.activity.EddieActivityKind;
 import de.mhus.vance.brain.eddie.activity.EddieActivityService;

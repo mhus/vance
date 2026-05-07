@@ -13,7 +13,7 @@ import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.Lc4jSchema;
-import de.mhus.vance.brain.tools.ToolException;
+import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;

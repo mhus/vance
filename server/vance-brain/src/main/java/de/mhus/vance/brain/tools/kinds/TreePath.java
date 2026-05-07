@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.brain.tools.ToolException;
+import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.document.kind.TreeDocument;
 import de.mhus.vance.shared.document.kind.TreeItem;
 import java.util.ArrayList;

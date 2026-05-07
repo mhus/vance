@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.client;
 
 import de.mhus.vance.api.tools.ToolSpec;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.ToolSource;
 import java.io.IOException;
 import java.util.List;

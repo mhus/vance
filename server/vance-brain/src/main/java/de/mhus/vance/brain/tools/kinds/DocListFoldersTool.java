@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.kinds;
 
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.FolderInfo;
 import de.mhus.vance.shared.project.ProjectDocument;
 import java.util.ArrayList;

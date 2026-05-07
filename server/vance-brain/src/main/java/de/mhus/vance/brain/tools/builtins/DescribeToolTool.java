@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.builtins;
 
-import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.brain.tools.ToolDispatcher;
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
  * the find/describe/invoke discovery pattern.
  *
  * <p>Side-effect: when the resolved tool is
- * {@link de.mhus.vance.brain.tools.Tool#deferred()}, the call records
+ * {@link de.mhus.vance.toolpack.Tool#deferred()}, the call records
  * the activation timestamp on the calling process via
  * {@link ThinkProcessService#activateDeferredTool}. From the next
  * tools()-call onward the tool ships in the LLM's primary list (until

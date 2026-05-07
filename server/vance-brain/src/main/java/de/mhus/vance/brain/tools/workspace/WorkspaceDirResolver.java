@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.tools.workspace;
 
-import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.toolpack.ToolException;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;

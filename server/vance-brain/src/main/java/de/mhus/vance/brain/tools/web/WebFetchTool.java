@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -60,6 +61,12 @@ public class WebFetchTool implements Tool {
             .connectTimeout(REQUEST_TIMEOUT)
             .build();
 
+    private final LlmsTxtProbeService llmsTxtProbe;
+
+    public WebFetchTool(LlmsTxtProbeService llmsTxtProbe) {
+        this.llmsTxtProbe = llmsTxtProbe;
+    }
+
     @Override
     public String name() {
         return "web_fetch";
@@ -71,7 +78,10 @@ public class WebFetchTool implements Tool {
                 + "the body as text. Use this when you have a concrete "
                 + "URL (often from web_search results) and need the page "
                 + "content. Body is truncated past " + MAX_BODY_CHARS
-                + " characters — fullLength reports the original size.";
+                + " characters — fullLength reports the original size. "
+                + "When the origin publishes an llms.txt overview, the "
+                + "response also carries an 'originOverview' field with "
+                + "a curated index of the site (cached per origin).";
     }
 
     @Override
@@ -148,6 +158,11 @@ public class WebFetchTool implements Tool {
             out.put("contentLength", fullLength);
             out.put("truncated", truncated);
             out.put("content", content);
+
+            Optional<String> overview = llmsTxtProbe.probe(uri, ctx);
+            overview.ifPresent(overviewBody -> out.put("originOverview", Map.of(
+                    "source", "llms.txt",
+                    "content", overviewBody)));
             return out;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

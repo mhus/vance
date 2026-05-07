@@ -42,13 +42,24 @@ public final class OpenApiSpecLoader {
 
     private OpenApiSpecLoader() { /* static */ }
 
-    /** Default: HTTP(S) fetch and full ref-inlining. */
-    public static List<OpenApiOperation> loadFromUrl(String url) {
+    /**
+     * Result of a URL-driven load: the raw {@link OpenAPI} (for
+     * {@code servers[].url} extraction) plus the parsed operations.
+     */
+    public record LoadResult(@Nullable OpenAPI spec, List<OpenApiOperation> operations) {}
+
+    /**
+     * Default: HTTP(S) fetch and full ref-inlining. Returns both the
+     * raw OpenAPI (so the caller can pull {@code servers[].url} via
+     * {@link #pickBaseUrl}) and the extracted operations.
+     */
+    public static LoadResult loadFromUrl(String url) {
         ParseOptions opt = new ParseOptions();
         opt.setResolveFully(true);
         opt.setResolve(true);
         SwaggerParseResult result = new OpenAPIV3Parser().readLocation(url, null, opt);
-        return extractOperations(result, "url=" + url);
+        OpenAPI spec = result == null ? null : result.getOpenAPI();
+        return new LoadResult(spec, extractOperations(result, "url=" + url));
     }
 
     /** Inline-spec variant — same parser settings. */

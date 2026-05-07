@@ -6,10 +6,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Reads {@code ~/.vance/foot-tools/*.json} (or the path given by the
@@ -24,7 +25,6 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class FootToolPackLoader {
 
     /**
@@ -34,7 +34,16 @@ public class FootToolPackLoader {
      */
     public static final String DEFAULT_DIR = ".vance/foot-tools";
 
-    private final tools.jackson.databind.ObjectMapper objectMapper;
+    /**
+     * Self-built Jackson 3 mapper. Spring Boot 4 still auto-configures
+     * Jackson 2's {@code com.fasterxml.jackson.databind.ObjectMapper};
+     * the foot uses Jackson 3 ({@code tools.jackson.*}) for protocol
+     * handling but doesn't expose a {@link ObjectMapper} bean —
+     * other foot services build their own the same way (see
+     * {@code ConnectionService}). One mapper per loader is fine: parse
+     * cost dwarfs allocation.
+     */
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     @Value("${vance.foot.tools.dir:}")
     private String configuredDir;

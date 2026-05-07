@@ -2,8 +2,6 @@ package de.mhus.vance.foot.tools.pack;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,8 +25,7 @@ class FootToolPackLoaderTest {
     @BeforeEach
     void setUp() throws IOException {
         dir = Files.createTempDirectory("foot-tool-pack-test-");
-        ObjectMapper mapper = JsonMapper.builder().build();
-        loader = new FootToolPackLoader(mapper);
+        loader = new FootToolPackLoader();
         ReflectionTestUtils.setField(loader, "configuredDir", dir.toString());
     }
 

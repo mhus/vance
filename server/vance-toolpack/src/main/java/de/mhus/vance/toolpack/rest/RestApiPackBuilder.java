@@ -65,7 +65,9 @@ public final class RestApiPackBuilder {
             spec = OpenApiSpecLoader.parseSpec(config.specInline());
             operations = OpenApiSpecLoader.parseInline(config.specInline());
         } else {
-            operations = OpenApiSpecLoader.loadFromUrl(config.specUrl());
+            OpenApiSpecLoader.LoadResult loaded = OpenApiSpecLoader.loadFromUrl(config.specUrl());
+            spec = loaded.spec();
+            operations = loaded.operations();
         }
 
         String baseUrl = OpenApiSpecLoader.pickBaseUrl(config.baseUrl(), spec);

@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.rest;
+package de.mhus.vance.toolpack.rest;
 
 import de.mhus.vance.toolpack.rest.OpenApiOperation;
 import de.mhus.vance.toolpack.rest.RestHttpInvoker;
@@ -18,7 +18,7 @@ import java.util.Set;
  * operation's {@code summary} (or {@code description}, or a synthesised
  * fallback) — what the LLM reads when deciding whether to call.
  */
-final class RestEndpointTool implements Tool {
+public final class RestEndpointTool implements Tool {
 
     private final String fullName;
     private final String description;
@@ -29,7 +29,7 @@ final class RestEndpointTool implements Tool {
     private final OpenApiOperation operation;
     private final RestHttpInvoker invoker;
 
-    RestEndpointTool(
+    public RestEndpointTool(
             String fullName,
             String description,
             Set<String> labels,

@@ -38,7 +38,7 @@ class ClientScriptExecutorTest {
     private static GraaljsClientScriptExecutor executor(ClientTool... tools) {
         ClientToolService svc = mock(ClientToolService.class);
         for (ClientTool t : tools) {
-            when(svc.find(t.name())).thenReturn(t);
+            when(svc.findBean(t.name())).thenReturn(t);
         }
         return new GraaljsClientScriptExecutor(engine, svc);
     }

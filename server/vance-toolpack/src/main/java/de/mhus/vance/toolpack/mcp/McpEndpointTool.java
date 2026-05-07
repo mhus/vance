@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.mcp;
+package de.mhus.vance.toolpack.mcp;
 
 import de.mhus.vance.toolpack.mcp.McpConnection;
 import de.mhus.vance.toolpack.mcp.McpToolMeta;
@@ -12,7 +12,7 @@ import java.util.Set;
  * sub-tool by {@link McpToolPackFactory}. Tool name follows the
  * {@code <packName>__<mcpToolName>} pack-naming convention.
  */
-final class McpEndpointTool implements Tool {
+public final class McpEndpointTool implements Tool {
 
     private final String fullName;
     private final McpToolMeta meta;
@@ -22,7 +22,7 @@ final class McpEndpointTool implements Tool {
     private final String searchHint;
     private final McpConnection connection;
 
-    McpEndpointTool(
+    public McpEndpointTool(
             String fullName,
             McpToolMeta meta,
             Set<String> labels,

@@ -39,6 +39,9 @@
         <graaljs.version>25.0.3</graaljs.version>
         <jgit.version>7.1.0.202411261347-r</jgit.version>
         <anthropic.sdk.version>2.30.0</anthropic.sdk.version>
+        <!-- swagger-parser 2.x supports both OpenAPI 3.x and Swagger 2.x. Used by
+             RestApiToolPackFactory to materialise REST-API packs into Vance Tools. -->
+        <swagger.parser.version>2.1.22</swagger.parser.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
@@ -127,6 +130,11 @@
                 <groupId>org.eclipse.jgit</groupId>
                 <artifactId>org.eclipse.jgit</artifactId>
                 <version>${jgit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.swagger.parser.v3</groupId>
+                <artifactId>swagger-parser</artifactId>
+                <version>${swagger.parser.version}</version>
             </dependency>
             <!--
                 Direct Anthropic SDK — used by AnthropicDirectChatModel for

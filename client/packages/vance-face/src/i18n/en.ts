@@ -973,6 +973,13 @@ export default {
       themeLight: 'Light',
       themeDark: 'Dark',
       themeSaved: 'Theme updated.',
+      uiLevel: 'Surface',
+      uiLevelDescription:
+        'Which tiles appear on the home page. Server permissions still apply independently.',
+      uiLevelStandard: 'Standard (chat, documents, inbox)',
+      uiLevelExpert: 'Expert (adds scopes, tools, insights)',
+      uiLevelAdmin: 'Admin (adds user management)',
+      uiLevelSaved: 'Surface updated.',
     },
     teams: {
       title: 'Teams',

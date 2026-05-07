@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   clearLegacyAuth,
@@ -8,6 +8,7 @@ import {
   setRememberedLogin,
 } from '@vance/shared';
 import {
+  getActiveUiLevel,
   getSessionData,
   hydrateActiveWebUiSettings,
   hydrateIdentity,
@@ -15,7 +16,9 @@ import {
   isRefreshAlive,
   login,
   LoginError,
+  rankOf,
   refreshAccessCookie,
+  type WebUiLevel,
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput } from '@/components';
@@ -39,6 +42,23 @@ const autoLoginNotice = ref<string | null>(null);
 // localStorage on principle.
 const rememberUser = ref(false);
 
+// Active UI level for tile filtering. Mirrors the value the user has
+// chosen in the profile page; the 'landing' branch reads it after
+// {@link hydrateActiveWebUiSettings} has populated sessionStorage.
+//
+// Tiers:
+//   * standard — chat / documents / inbox  (everyday)
+//   * expert   — + scopes / tools / insights  (power user)
+//   * admin    — + users  (tenant admin)
+//
+// Server-side authorization remains the authoritative gate; this
+// just keeps the index page tidy for accounts that never need the
+// power tiles.
+const uiLevel = ref<WebUiLevel>('standard');
+
+const showExpertTiles = computed(() => rankOf(uiLevel.value) >= rankOf('expert'));
+const showAdminTiles = computed(() => rankOf(uiLevel.value) >= rankOf('admin'));
+
 onMounted(async () => {
   // Drop any stale localStorage tokens from the pre-cookie build.
   // Idempotent — no-op when already cleared.
@@ -61,6 +81,7 @@ onMounted(async () => {
     // value before the user does anything.
     hydrateActiveWebUiSettings();
     syncUiLocaleFromSession();
+    uiLevel.value = getActiveUiLevel();
     redirectAfterLogin();
     return;
   }
@@ -80,6 +101,7 @@ onMounted(async () => {
       hydrateActiveWebUiSettings();
       hydrateIdentity();
       syncUiLocaleFromSession();
+      uiLevel.value = getActiveUiLevel();
       window.setTimeout(redirectAfterLogin, 1000);
       return;
     }
@@ -117,6 +139,7 @@ async function onSubmit(): Promise<void> {
     // from there until the user changes them in profile.
     hydrateActiveWebUiSettings();
     syncUiLocaleFromSession();
+    uiLevel.value = getActiveUiLevel();
     // Persist or clear the (tenant, username) hint based on the
     // checkbox. Only a successful login is allowed to write — a
     // failed attempt mustn't leak its inputs into localStorage.
@@ -237,6 +260,7 @@ function readNextParam(): string | null {
       <h2 class="text-lg font-semibold mb-4">{{ $t('index.sectionTitle') }}</h2>
       <VCard>
         <ul class="flex flex-col gap-3">
+          <!-- Standard tier — always visible. -->
           <li class="flex items-center justify-between gap-4">
             <div>
               <div class="font-semibold">{{ $t('index.chat.title') }}</div>
@@ -264,7 +288,9 @@ function readNextParam(): string | null {
               {{ $t('index.open') }}
             </VButton>
           </li>
-          <li class="flex items-center justify-between gap-4">
+
+          <!-- Expert tier — power-user surfaces (scopes / tools / insights). -->
+          <li v-if="showExpertTiles" class="flex items-center justify-between gap-4">
             <div>
               <div class="font-semibold">{{ $t('index.scopes.title') }}</div>
               <div class="text-sm opacity-70">{{ $t('index.scopes.description') }}</div>
@@ -273,7 +299,7 @@ function readNextParam(): string | null {
               {{ $t('index.open') }}
             </VButton>
           </li>
-          <li class="flex items-center justify-between gap-4">
+          <li v-if="showExpertTiles" class="flex items-center justify-between gap-4">
             <div>
               <div class="font-semibold">{{ $t('index.tools.title') }}</div>
               <div class="text-sm opacity-70">{{ $t('index.tools.description') }}</div>
@@ -282,7 +308,7 @@ function readNextParam(): string | null {
               {{ $t('index.open') }}
             </VButton>
           </li>
-          <li class="flex items-center justify-between gap-4">
+          <li v-if="showExpertTiles" class="flex items-center justify-between gap-4">
             <div>
               <div class="font-semibold">{{ $t('index.insights.title') }}</div>
               <div class="text-sm opacity-70">{{ $t('index.insights.description') }}</div>
@@ -291,7 +317,11 @@ function readNextParam(): string | null {
               {{ $t('index.open') }}
             </VButton>
           </li>
-          <li class="flex items-center justify-between gap-4">
+
+          <!-- Admin tier — tenant-management surfaces. The brain still
+               denies non-admins at the REST layer; this is just a
+               clutter filter. -->
+          <li v-if="showAdminTiles" class="flex items-center justify-between gap-4">
             <div>
               <div class="font-semibold">{{ $t('index.users.title') }}</div>
               <div class="text-sm opacity-70">{{ $t('index.users.description') }}</div>

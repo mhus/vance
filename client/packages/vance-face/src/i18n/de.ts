@@ -982,6 +982,13 @@ export default {
       themeLight: 'Hell',
       themeDark: 'Dunkel',
       themeSaved: 'Farbschema aktualisiert.',
+      uiLevel: 'Ansicht',
+      uiLevelDescription:
+        'Welche Bereiche auf der Startseite sichtbar sind. Server-Berechtigungen bleiben unabhängig wirksam.',
+      uiLevelStandard: 'Standard (Chat, Dokumente, Inbox)',
+      uiLevelExpert: 'Experte (zusätzlich Scopes, Tools, Insights)',
+      uiLevelAdmin: 'Admin (zusätzlich Benutzerverwaltung)',
+      uiLevelSaved: 'Ansicht aktualisiert.',
     },
     teams: {
       title: 'Teams',

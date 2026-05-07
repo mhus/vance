@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { applyTheme, setActiveLanguage, setActiveTheme, type WebUiTheme } from '@/platform';
+import {
+  applyTheme,
+  setActiveLanguage,
+  setActiveTheme,
+  setActiveUiLevel,
+  type WebUiLevel,
+  type WebUiTheme,
+} from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
@@ -13,17 +20,24 @@ const titleDraft = ref('');
 const emailDraft = ref('');
 const languageDraft = ref<string>('');
 const themeDraft = ref<WebUiTheme>('auto');
+const uiLevelDraft = ref<WebUiLevel>('standard');
 const identitySaved = ref<string | null>(null);
 const languageSaved = ref<string | null>(null);
 const themeSaved = ref<string | null>(null);
+const uiLevelSaved = ref<string | null>(null);
 
 const LANGUAGE_KEY = 'webui.language';
 const THEME_KEY = 'webui.theme';
+const UI_LEVEL_KEY = 'webui.uiLevel';
 
 function asTheme(value: string | undefined | null): WebUiTheme {
   // Accept anything stored on the server but normalise unknown
   // values back to "auto" rather than rendering an empty selector.
   return value === 'light' || value === 'dark' ? value : 'auto';
+}
+
+function asUiLevel(value: string | undefined | null): WebUiLevel {
+  return value === 'expert' || value === 'admin' ? value : 'standard';
 }
 
 // "Browser default" is the only label that needs translating; the
@@ -45,6 +59,12 @@ const themeOptions = computed(() => [
   { value: 'dark', label: t('profile.preferences.themeDark') },
 ]);
 
+const uiLevelOptions = computed(() => [
+  { value: 'standard', label: t('profile.preferences.uiLevelStandard') },
+  { value: 'expert', label: t('profile.preferences.uiLevelExpert') },
+  { value: 'admin', label: t('profile.preferences.uiLevelAdmin') },
+]);
+
 onMounted(load);
 
 // Sync the form drafts whenever the underlying profile object changes —
@@ -56,6 +76,7 @@ watch(profile, (current) => {
   emailDraft.value = current.email ?? '';
   languageDraft.value = current.webUiSettings?.[LANGUAGE_KEY] ?? '';
   themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
+  uiLevelDraft.value = asUiLevel(current.webUiSettings?.[UI_LEVEL_KEY]);
 }, { immediate: true });
 
 async function onSaveIdentity(): Promise<void> {
@@ -98,6 +119,19 @@ async function onThemeChanged(value: string | null): Promise<void> {
     setActiveTheme(next);
     applyTheme(next);
     themeSaved.value = t('profile.preferences.themeSaved');
+  }
+}
+
+async function onUiLevelChanged(value: string | null): Promise<void> {
+  uiLevelSaved.value = null;
+  const next = asUiLevel(value);
+  uiLevelDraft.value = next;
+  // "standard" is the default and stored as the absence of the
+  // setting — same convention as theme=auto / language="".
+  await saveSetting(UI_LEVEL_KEY, next === 'standard' ? null : next).catch(() => undefined);
+  if (!error.value) {
+    setActiveUiLevel(next);
+    uiLevelSaved.value = t('profile.preferences.uiLevelSaved');
   }
 }
 </script>
@@ -175,6 +209,19 @@ async function onThemeChanged(value: string | null): Promise<void> {
             />
             <span v-if="themeSaved" class="text-success text-sm">
               {{ themeSaved }}
+            </span>
+            <VSelect
+              :model-value="uiLevelDraft"
+              :options="uiLevelOptions"
+              :label="$t('profile.preferences.uiLevel')"
+              :disabled="loading"
+              @update:model-value="onUiLevelChanged"
+            />
+            <p class="text-xs opacity-60 -mt-2">
+              {{ $t('profile.preferences.uiLevelDescription') }}
+            </p>
+            <span v-if="uiLevelSaved" class="text-success text-sm">
+              {{ uiLevelSaved }}
             </span>
           </div>
         </VCard>

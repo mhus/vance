@@ -29,12 +29,19 @@ import org.jspecify.annotations.Nullable;
 public class StandardAiChat implements AiChat {
 
     private final String name;
+    private final ProviderType providerType;
     private final ChatModel sync;
     private final StreamingChatModel streaming;
     private final AiChatOptions options;
 
-    public StandardAiChat(String name, ChatModel sync, StreamingChatModel streaming, AiChatOptions options) {
+    public StandardAiChat(
+            String name,
+            ProviderType providerType,
+            ChatModel sync,
+            StreamingChatModel streaming,
+            AiChatOptions options) {
         this.name = name;
+        this.providerType = providerType;
         // Wrap with trace-logging proxies up-front so every engine
         // (Arthur/Ford/Marvin/...) and every caller (engines,
         // memory-compaction, future tools) gets the same input/output
@@ -75,6 +82,11 @@ public class StandardAiChat implements AiChat {
     @Override
     public String getName() {
         return name;
+    }
+
+    @Override
+    public ProviderType providerType() {
+        return providerType;
     }
 
     @Override

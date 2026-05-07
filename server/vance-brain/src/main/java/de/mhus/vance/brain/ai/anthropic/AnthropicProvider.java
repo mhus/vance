@@ -8,6 +8,7 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.CacheBoundary;
+import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -37,7 +38,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class AnthropicProvider implements AiModelProvider {
 
-    public static final String NAME = "anthropic";
+    public static final String NAME = ProviderType.ANTHROPIC.wireName();
 
     /** Anthropic's API requires maxTokens; pick a safe upper bound when callers omit it. */
     private static final int DEFAULT_MAX_TOKENS = 4096;
@@ -53,8 +54,8 @@ public class AnthropicProvider implements AiModelProvider {
     }
 
     @Override
-    public String getName() {
-        return NAME;
+    public ProviderType getType() {
+        return ProviderType.ANTHROPIC;
     }
 
     @Override
@@ -81,7 +82,8 @@ public class AnthropicProvider implements AiModelProvider {
                             + "cacheBoundary={}, ttl={}",
                     config.modelName(), maxTokens,
                     effective.getCacheBoundary(), effective.getCacheTtl());
-            return new StandardAiChat(config.fullName(), sync, streaming, effective);
+            return new StandardAiChat(
+                    config.fullName(), ProviderType.ANTHROPIC, sync, streaming, effective);
         } catch (RuntimeException e) {
             throw new AiChatException(
                     "Failed to build Anthropic chat for " + config.fullName(), e);

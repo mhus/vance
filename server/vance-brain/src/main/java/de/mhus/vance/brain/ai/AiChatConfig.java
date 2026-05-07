@@ -32,4 +32,13 @@ public record AiChatConfig(String provider, String modelName, String apiKey) {
     public String fullName() {
         return provider + ":" + modelName;
     }
+
+    /**
+     * Typed view of {@link #provider()}. Validates the wire-name against the
+     * known {@link ProviderType} set — a recipe / setting with an unknown
+     * provider blows up at config-build time, not at dispatch time.
+     */
+    public ProviderType providerType() {
+        return ProviderType.requireWireName(provider);
+    }
 }

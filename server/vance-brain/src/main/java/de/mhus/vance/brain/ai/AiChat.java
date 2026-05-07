@@ -27,6 +27,13 @@ public interface AiChat {
     String getName();
 
     /**
+     * Typed identity of the backend driving this chat. For chained chats
+     * (multi-entry behavior), this is the primary entry's provider — the
+     * one the chain falls back from.
+     */
+    ProviderType providerType();
+
+    /**
      * Synchronous one-shot: send {@code question}, receive the full text.
      *
      * @throws AiChatException on any provider or transport failure

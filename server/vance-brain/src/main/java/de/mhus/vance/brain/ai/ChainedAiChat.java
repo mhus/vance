@@ -55,6 +55,11 @@ class ChainedAiChat implements AiChat {
     }
 
     @Override
+    public ProviderType providerType() {
+        return entries.get(0).providerType();
+    }
+
+    @Override
     public ChatModel chatModel() {
         // Sync calls don't chain — only the primary handles them.
         return entries.get(0).chatModel();

@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.ai;
 
-import de.mhus.vance.brain.ai.anthropic.AnthropicTokenUsage;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
@@ -75,17 +74,17 @@ public final class AiTraceLogger {
         TokenUsage usage = response.tokenUsage();
         if (usage != null) {
             sb.append("\n[tokens] ").append(usage);
-            if (usage instanceof AnthropicTokenUsage atu
-                    && (atu.getCacheCreationInputTokens() > 0
-                            || atu.getCacheReadInputTokens() > 0)) {
-                sb.append(" cache_create=").append(atu.getCacheCreationInputTokens())
-                        .append(" cache_read=").append(atu.getCacheReadInputTokens());
+            if (usage instanceof CacheAwareTokenUsage cau
+                    && (cau.cacheCreationInputTokens() > 0
+                            || cau.cacheReadInputTokens() > 0)) {
+                sb.append(" cache_create=").append(cau.cacheCreationInputTokens())
+                        .append(" cache_read=").append(cau.cacheReadInputTokens());
                 Integer in = usage.inputTokenCount();
                 long fullInput = (in == null ? 0 : in)
-                        + atu.getCacheCreationInputTokens()
-                        + atu.getCacheReadInputTokens();
+                        + cau.cacheCreationInputTokens()
+                        + cau.cacheReadInputTokens();
                 if (fullInput > 0) {
-                    double hitRate = atu.getCacheReadInputTokens() * 100.0 / fullInput;
+                    double hitRate = cau.cacheReadInputTokens() * 100.0 / fullInput;
                     sb.append(String.format(" hit_rate=%.1f%%", hitRate));
                 }
             }

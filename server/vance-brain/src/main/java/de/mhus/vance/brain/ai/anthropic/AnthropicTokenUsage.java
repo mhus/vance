@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai.anthropic;
 
+import de.mhus.vance.brain.ai.CacheAwareTokenUsage;
 import dev.langchain4j.model.output.TokenUsage;
 import lombok.Getter;
 
@@ -10,7 +11,7 @@ import lombok.Getter;
  * {@code inputTokenCount} / {@code outputTokenCount} contract while
  * letting cache-aware consumers — {@code LlmTraceRecorder}, future
  * Insights aggregations — pull the extra counters via
- * {@code instanceof AnthropicTokenUsage}.
+ * {@code instanceof CacheAwareTokenUsage}.
  *
  * <p>The standard counters carry the <i>uncached</i> input + output
  * tokens (i.e. what's billed at full input price). Cache tokens are
@@ -19,7 +20,7 @@ import lombok.Getter;
  * cacheReadInputTokens × 0.1 + outputTokenCount}.
  */
 @Getter
-public class AnthropicTokenUsage extends TokenUsage {
+public class AnthropicTokenUsage extends TokenUsage implements CacheAwareTokenUsage {
 
     private final long cacheCreationInputTokens;
     private final long cacheReadInputTokens;
@@ -32,5 +33,15 @@ public class AnthropicTokenUsage extends TokenUsage {
         super(inputTokens, outputTokens, inputTokens + outputTokens);
         this.cacheCreationInputTokens = cacheCreationInputTokens;
         this.cacheReadInputTokens = cacheReadInputTokens;
+    }
+
+    @Override
+    public long cacheCreationInputTokens() {
+        return cacheCreationInputTokens;
+    }
+
+    @Override
+    public long cacheReadInputTokens() {
+        return cacheReadInputTokens;
     }
 }

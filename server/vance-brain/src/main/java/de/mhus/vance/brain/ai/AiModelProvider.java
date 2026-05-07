@@ -13,10 +13,20 @@ package de.mhus.vance.brain.ai;
 public interface AiModelProvider {
 
     /**
-     * Registered provider name, lowercase. Used in {@link AiChatConfig#provider()}
-     * and in the dispatch map of {@link AiModelService}.
+     * Typed identity of the backend this provider speaks to. Drives the
+     * dispatch map in {@link AiModelService} and replaces the loose
+     * {@link #getName()} string for new call sites.
      */
-    String getName();
+    ProviderType getType();
+
+    /**
+     * Registered provider name, lowercase. Defaults to
+     * {@link ProviderType#wireName()} so new providers don't have to
+     * duplicate the constant. Used in {@link AiChatConfig#provider()}.
+     */
+    default String getName() {
+        return getType().wireName();
+    }
 
     /**
      * Build a chat bound to {@code config} with the given runtime

@@ -5,6 +5,7 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
+import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiStreamingChatModel;
@@ -25,11 +26,11 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class GeminiProvider implements AiModelProvider {
 
-    public static final String NAME = "gemini";
+    public static final String NAME = ProviderType.GEMINI.wireName();
 
     @Override
-    public String getName() {
-        return NAME;
+    public ProviderType getType() {
+        return ProviderType.GEMINI;
     }
 
     @Override
@@ -58,7 +59,8 @@ public class GeminiProvider implements AiModelProvider {
                     .build();
             log.debug("Built Gemini chat pair: model='{}', maxOutputTokens={}, temperature={}",
                     config.modelName(), options.getMaxTokens(), options.getTemperature());
-            return new StandardAiChat(config.fullName(), sync, streaming, options);
+            return new StandardAiChat(
+                    config.fullName(), ProviderType.GEMINI, sync, streaming, options);
         } catch (RuntimeException e) {
             throw new AiChatException(
                     "Failed to build Gemini chat for " + config.fullName(), e);

@@ -2,6 +2,7 @@ package de.mhus.vance.brain.ai;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -11,7 +12,7 @@ import org.springframework.stereotype.Service;
  * returns a fresh {@link AiChat}.
  *
  * <p>Providers are auto-discovered as Spring beans at startup and indexed by
- * {@link AiModelProvider#getName()}. Duplicate provider names fail fast.
+ * {@link AiModelProvider#getType()}. Duplicate provider types fail fast.
  *
  * <p>Callers (typically Think-Engines) are responsible for resolving the
  * right config first — which model to use for a given scope, where to read
@@ -22,13 +23,13 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class AiModelService {
 
-    private final Map<String, AiModelProvider> providers;
+    private final Map<ProviderType, AiModelProvider> providers;
 
     public AiModelService(List<AiModelProvider> providerBeans) {
         this.providers = providerBeans.stream().collect(
-                Collectors.toMap(AiModelProvider::getName, p -> p, (a, b) -> {
+                Collectors.toUnmodifiableMap(AiModelProvider::getType, p -> p, (a, b) -> {
                     throw new IllegalStateException(
-                            "Duplicate AiModelProvider name: " + a.getName()
+                            "Duplicate AiModelProvider type: " + a.getType()
                                     + " — " + a.getClass() + " vs " + b.getClass());
                 }));
         log.info("Registered AI providers: {}", providers.keySet());
@@ -37,13 +38,16 @@ public class AiModelService {
     /**
      * Build a chat for {@code config} using {@code options}.
      *
-     * @throws AiChatException if no provider is registered for the name
+     * @throws AiChatException if no provider is registered for the type
+     * @throws IllegalArgumentException if the wire-name in {@code config}
+     *         maps to no known {@link ProviderType}
      */
     public AiChat createChat(AiChatConfig config, AiChatOptions options) {
-        AiModelProvider provider = providers.get(config.provider());
+        ProviderType type = ProviderType.requireWireName(config.provider());
+        AiModelProvider provider = providers.get(type);
         if (provider == null) {
             throw new AiChatException(
-                    "Unknown AI provider: " + config.provider()
+                    "No adapter for provider " + type
                             + " — registered: " + providers.keySet());
         }
         return provider.createChat(config, options);
@@ -75,12 +79,19 @@ public class AiModelService {
         return new ChainedAiChat(name, built);
     }
 
-    /** Names of all registered providers, in no particular order. */
+    /** Wire-names of all registered providers, in no particular order. */
     public List<String> listProviders() {
-        return List.copyOf(providers.keySet());
+        return providers.keySet().stream().map(ProviderType::wireName).toList();
     }
 
+    /** Typed lookup. Preferred for new call sites. */
+    public boolean hasProvider(ProviderType type) {
+        return providers.containsKey(type);
+    }
+
+    /** Wire-name lookup. Returns {@code false} for unknown wire-names. */
     public boolean hasProvider(String name) {
-        return providers.containsKey(name);
+        Optional<ProviderType> type = ProviderType.fromWireName(name);
+        return type.isPresent() && providers.containsKey(type.get());
     }
 }

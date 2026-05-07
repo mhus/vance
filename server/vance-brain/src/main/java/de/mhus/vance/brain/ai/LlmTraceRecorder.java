@@ -1,6 +1,5 @@
 package de.mhus.vance.brain.ai;
 
-import de.mhus.vance.brain.ai.anthropic.AnthropicTokenUsage;
 import de.mhus.vance.shared.llmtrace.LlmTraceDirection;
 import de.mhus.vance.shared.llmtrace.LlmTraceDocument;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
@@ -131,9 +130,9 @@ public final class LlmTraceRecorder {
         Integer tokensOut = usage == null ? null : usage.outputTokenCount();
         Integer cacheCreate = null;
         Integer cacheRead = null;
-        if (usage instanceof AnthropicTokenUsage atu) {
-            cacheCreate = (int) atu.getCacheCreationInputTokens();
-            cacheRead = (int) atu.getCacheReadInputTokens();
+        if (usage instanceof CacheAwareTokenUsage cau) {
+            cacheCreate = (int) cau.cacheCreationInputTokens();
+            cacheRead = (int) cau.cacheReadInputTokens();
         }
 
         // OUTPUT row — assistant reply text. Always written even for

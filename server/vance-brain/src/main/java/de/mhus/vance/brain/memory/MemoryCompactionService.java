@@ -5,6 +5,7 @@ import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
+import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ford.FordProperties;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
@@ -76,7 +77,7 @@ public class MemoryCompactionService {
     private static final String SETTING_AI_PROVIDER = "ai.default.provider";
     private static final String SETTING_AI_MODEL = "ai.default.model";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
-    private static final String DEFAULT_PROVIDER = "anthropic";
+    private static final ProviderType DEFAULT_PROVIDER = ProviderType.ANTHROPIC;
     private static final String DEFAULT_MODEL = "claude-sonnet-4-5";
 
     private final ChatMessageService chatMessageService;
@@ -236,7 +237,7 @@ public class MemoryCompactionService {
         String providerCascade = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, processId, SETTING_AI_PROVIDER);
         String provider = (providerCascade == null || providerCascade.isBlank())
-                ? DEFAULT_PROVIDER : providerCascade;
+                ? DEFAULT_PROVIDER.wireName() : providerCascade;
         String modelCascade = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, processId, SETTING_AI_MODEL);
         String model = (modelCascade == null || modelCascade.isBlank())

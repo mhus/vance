@@ -108,21 +108,17 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
 
     /**
-     * Tools the runtime may dispatch in Arthur's scope. Two kinds:
+     * Tools the runtime may dispatch in Arthur's scope. Mode-aware
+     * filtering ({@link #filterAllowedToolsForMode}) tightens this
+     * set per process state — read-only-only in EXPLORING / PLANNING,
+     * full pool in NORMAL / EXECUTING.
      *
-     * <ul>
-     *   <li><b>Read-only</b> ({@link #LLM_VISIBLE_TOOLS}) — exposed
-     *       to the LLM so it can look things up while deliberating
-     *       (recipes, manuals, sibling status, …).</li>
-     *   <li><b>Action-internal</b> ({@code process_create},
-     *       {@code process_steer}, …) — invoked by Arthur's
-     *       {@code handleAction} dispatch, never shown to the LLM.
-     *       The LLM emits a structured {@code arthur_action}
-     *       ({@code DELEGATE} / etc.); the engine layer translates
-     *       that into the corresponding tool invocation. Keeping
-     *       these in {@code ALLOWED_TOOLS} satisfies the dispatcher's
-     *       allow-filter for the engine's own programmatic calls.</li>
-     * </ul>
+     * <p>The list mixes plain read tools (recipe_list, doc_read, …),
+     * orchestration tools called via Arthur's structured-action
+     * dispatch (process_create, process_steer, …), and client-pushed
+     * Foot tools (client_file_*, client_exec_*). The system prompt
+     * tells the LLM which path to use when several tools cover the
+     * same need (e.g. "DELEGATE action, not direct process_create").
      */
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "whoami",
@@ -168,6 +164,21 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             "client_exec_status",
             "client_exec_kill",
             "client_javascript");
+
+    /**
+     * Plan-Mode transition actions whose handlers re-set the same
+     * field they target — applying them in the "wrong" mode is a
+     * harmless no-op or redundant write, never destructive. The
+     * action gate lets these through with a log line instead of
+     * bouncing back to the LLM with a re-prompt error, which would
+     * otherwise produce action loops when the model double-emits
+     * (typically START_EXECUTION right after entering EXECUTING).
+     */
+    private static final Set<String> PLAN_MODE_IDEMPOTENT_ACTIONS = Set.of(
+            ArthurActionSchema.TYPE_START_PLAN,
+            ArthurActionSchema.TYPE_PROPOSE_PLAN,
+            ArthurActionSchema.TYPE_START_EXECUTION,
+            ArthurActionSchema.TYPE_TODO_UPDATE);
 
     /**
      * Convention-tag carried on tools that are safe to expose during
@@ -220,24 +231,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             "client_file_read",
             "client_file_list",
             "client_exec_status");
-
-    /**
-     * Subset of {@link #ALLOWED_TOOLS} the LLM is allowed to see and
-     * call directly each turn. Excludes everything that has an
-     * equivalent in the structured-action vocabulary — those are
-     * routed through {@code arthur_action} ({@code DELEGATE} etc.)
-     * instead, removing the free-form-tool / structured-action
-     * conflict.
-     */
-    private static final Set<String> LLM_VISIBLE_TOOLS = Set.of(
-            "whoami",
-            "process_list",
-            "process_status",
-            "recipe_list",
-            "recipe_describe",
-            "manual_list",
-            "manual_read",
-            "inbox_post");
 
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
@@ -435,23 +428,27 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        // Plan-Mode self-continuation: actions like START_PLAN /
-        // START_EXECUTION transition the process to a new mode without
-        // user input. Without a self-trigger the engine would go IDLE
-        // and wait forever for a non-existent pending. We allow at most
-        // CONTINUATION_BUDGET extra turns per top-level invocation —
-        // the natural progression NORMAL → EXPLORING → PLANNING →
-        // EXECUTING uses 3, +1 slack. Beyond that we yield to break
-        // pathological loops.
-        int continuationsRemaining = 4;
-        boolean continueAfterModeChange = false;
+        // Plan-Mode self-continuation: while in EXPLORING / PLANNING /
+        // EXECUTING, keep driving the engine without waiting for user
+        // input — actions like START_PLAN, START_EXECUTION, TODO_UPDATE
+        // do not block on the user, so an IDLE status here means
+        // "Arthur wants to keep working". We trigger a continuation
+        // pass with empty inbox and let the next LLM round-trip emit
+        // the next action.
+        //
+        // Mode NORMAL is the standard chat baseline — IDLE there
+        // genuinely means "waiting for user input", no self-continuation.
+        //
+        // Budget bounds runaway action loops (model emitting the same
+        // idempotent transition repeatedly). At budget exhaustion we
+        // explicitly transition the process to BLOCKED so the user
+        // sees the engine paused and can intervene, instead of leaving
+        // it silently IDLE.
+        final int continuationBudget = 25;
+        int continuationsRemaining = continuationBudget;
+        boolean continueWithEmptyInbox = false;
         while (true) {
-            // Cooperative halt-check between drain iterations. The
-            // pause-task on the lane is queued *behind* this runTurn
-            // — without yielding here, a busy drain-loop would keep
-            // chewing through pendings and the queued status-PAUSED
-            // task would never get to fire. See
-            // ThinkProcessDocument.haltRequested.
+            // Cooperative halt-check between drain iterations.
             if (thinkProcessService.isHaltRequested(process.getId())) {
                 log.info("Arthur.runTurn id='{}' — halt requested, yielding",
                         process.getId());
@@ -459,18 +456,18 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
             List<SteerMessage> drained = ctx.drainPending();
             if (drained.isEmpty()) {
-                if (!continueAfterModeChange) {
+                if (!continueWithEmptyInbox) {
                     return;
                 }
-                // Mode changed in the previous iteration → run one more
-                // turn with empty inbox so the LLM sees the new
-                // mode-prompt (EXPLORING / PLANNING / EXECUTING) and
-                // can emit the next action.
-                continueAfterModeChange = false;
+                continueWithEmptyInbox = false;
                 continuationsRemaining--;
                 if (continuationsRemaining < 0) {
-                    log.warn("Arthur.runTurn id='{}' — continuation budget exhausted",
-                            process.getId());
+                    log.warn("Arthur.runTurn id='{}' — continuation budget "
+                            + "({}) exhausted; transitioning to BLOCKED so the "
+                            + "user can intervene",
+                            process.getId(), continuationBudget);
+                    thinkProcessService.updateStatus(
+                            process.getId(), ThinkProcessStatus.BLOCKED);
                     return;
                 }
             }
@@ -478,21 +475,26 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.api.thinkprocess.ProcessMode modeBefore = process.getMode();
             runTurnFor(process, ctx, drained);
 
-            // The handlers update process.mode in-place; if it differs
-            // from what we saw on entry, schedule one more turn so
-            // exploration / planning / execution actually starts —
-            // BUT only if the engine isn't waiting on user input now.
-            // PROPOSE_PLAN / ANSWER / ASK_USER set awaiting=true →
-            // status=BLOCKED → no self-continuation, the user's next
-            // message wakes the engine via the regular pending pipeline.
-            if (process.getMode() != modeBefore) {
-                ThinkProcessStatus currentStatus = thinkProcessService
-                        .findById(process.getId())
-                        .map(ThinkProcessDocument::getStatus)
-                        .orElse(ThinkProcessStatus.SUSPENDED);
-                if (currentStatus == ThinkProcessStatus.IDLE) {
-                    continueAfterModeChange = true;
-                }
+            // Decide whether to keep going. The handlers update
+            // process.mode in-place — read the post-turn status from
+            // Mongo (handler set it via updateStatus inside runTurnFor).
+            ThinkProcessStatus currentStatus = thinkProcessService
+                    .findById(process.getId())
+                    .map(ThinkProcessDocument::getStatus)
+                    .orElse(ThinkProcessStatus.SUSPENDED);
+            de.mhus.vance.api.thinkprocess.ProcessMode currentMode = process.getMode();
+            boolean activeMode = currentMode != null
+                    && currentMode != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
+            // Continue if (a) mode changed (entered new plan-mode phase),
+            // OR (b) we're in any active plan-mode and the engine isn't
+            // waiting on user input (status=IDLE means "the action handler
+            // wants the engine to keep running"). PROPOSE_PLAN / ANSWER /
+            // ASK_USER set awaiting=true → BLOCKED → no continuation,
+            // user's next message reactivates via the regular pending
+            // pipeline.
+            if (currentStatus == ThinkProcessStatus.IDLE
+                    && (currentMode != modeBefore || activeMode)) {
+                continueWithEmptyInbox = true;
             }
         }
     }
@@ -572,32 +574,36 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     process, chatLog, inbox, effectiveSize);
             int maxIters = paramInt(process, "maxIterations",
                     arthurProperties.getMaxToolIterations());
-            // Plan-Mode turns chain multiple read-tool calls before
-            // emitting PROPOSE_PLAN. The default budget (~6) is sized
-            // for NORMAL action loops and runs out before the model
-            // can finish exploring and propose. Lift the floor in
-            // EXPLORING / PLANNING so the model has room to settle.
+            // Plan-Mode turns chain multiple read/write tool calls
+            // before emitting the next action. The default budget
+            // (~6) is sized for NORMAL action loops; lift the floor
+            // for the entire plan-mode trio (EXPLORING / PLANNING /
+            // EXECUTING) so the model has room to settle.
             de.mhus.vance.api.thinkprocess.ProcessMode currentMode = process.getMode();
             if (currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
-                    || currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
+                    || currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING
+                    || currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING) {
                 maxIters = Math.max(maxIters, 12);
             }
             boolean validation = paramBool(process, "validation", false);
-            log.debug("Arthur.turn id='{}' inbox={} historyMsgs={} model={} maxIters={} validation={}",
+            log.debug("Arthur.turn id='{}' inbox={} historyMsgs={} model={} maxIters={} validation={} mode={} allowedSize={} clientWriteAllowed={}",
                     process.getId(), inbox.size(), messages.size(),
-                    config.modelName(), maxIters, validation);
+                    config.modelName(), maxIters, validation,
+                    process.getMode(), tools.allowed().size(),
+                    tools.allowed().contains("client_file_write"));
 
             String modelAlias = config.provider() + ":" + config.modelName();
 
-            // Restrict the LLM-visible tool set to read-only tools
-            // (recipe_list, manual_read, …). Action-internal tools
-            // (process_create, process_steer, …) stay in the dispatcher
-            // for engine-internal invocation but are NOT shown to the
-            // LLM — orchestration goes through the structured
-            // {@code arthur_action} call instead.
-            List<ToolSpecification> readToolSpecs = toolSpecs.stream()
-                    .filter(t -> LLM_VISIBLE_TOOLS.contains(t.name()))
-                    .toList();
+            // The LLM sees the full tool pool that Arthur is allowed
+            // to invoke. Per-mode visibility is enforced upstream by
+            // {@link #filterAllowedToolsForMode} (read-only label set
+            // in EXPLORING / PLANNING; full pool in NORMAL / EXECUTING).
+            // Action-internal tools (process_create, process_steer, …)
+            // stay in the pool — orchestration via {@code arthur_action}
+            // is encoded in the system prompt; the LLM can also call
+            // these directly if needed (e.g. status checks during
+            // execution).
+            List<ToolSpecification> readToolSpecs = toolSpecs;
 
             ActionLoopResult loopResult = runStructuredActionLoop(
                     aiChat, readToolSpecs, tools, messages, ctx, process,
@@ -837,21 +843,41 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
-        // Per-mode action gate — surface a clean re-prompt message
-        // when the LLM picks an action that isn't legal for the
-        // process's current mode. The action schema is intentionally
-        // flat (all types visible) for cache stability; the gate
-        // here enforces what each mode actually allows.
+        // Per-mode action gate. The action schema is intentionally
+        // flat (all types visible) for cache stability; this gate
+        // enforces what each mode actually allows.
+        //
+        // Plan-Mode transition actions (START_PLAN, PROPOSE_PLAN,
+        // START_EXECUTION, TODO_UPDATE) are intrinsically idempotent —
+        // their handlers re-set the same fields they target — so we
+        // log + execute them even when emitted in a "wrong" mode. This
+        // breaks LLM-action loops where the model re-emits an already-
+        // applied transition (typically START_EXECUTION right after
+        // entering EXECUTING) without bouncing the user.
+        //
+        // Non-idempotent actions (DELEGATE, RELAY, ANSWER, …) stay
+        // fully gated so an EXPLORING / PLANNING turn can't accidentally
+        // spawn a worker or hand a non-plan reply to the user.
         de.mhus.vance.api.thinkprocess.ProcessMode mode = process.getMode();
         if (mode == null) mode = de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
         if (!ArthurActionSchema.typesForMode(mode).contains(action.type())) {
-            String hint = "Action '" + action.type() + "' is not available "
-                    + "in mode " + mode + ". Allowed in this mode: "
-                    + ArthurActionSchema.typesForMode(mode)
-                    + ". Re-emit a valid action.";
-            log.warn("Arthur id='{}' rejected action '{}' in mode {} — reason: '{}'",
-                    process.getId(), action.type(), mode, action.reason());
-            return new ActionTurnOutcome(hint, /*awaitingUserInput*/ false);
+            if (PLAN_MODE_IDEMPOTENT_ACTIONS.contains(action.type())) {
+                log.info("Arthur id='{}' action '{}' is idempotent in mode {} — "
+                        + "executing as no-op-or-redundant transition. reason: '{}'",
+                        process.getId(), action.type(), mode, action.reason());
+                // fall through — handler is idempotent
+            } else {
+                String hint = "Action '" + action.type() + "' is not available "
+                        + "in mode " + mode + ". Allowed in this mode: "
+                        + ArthurActionSchema.typesForMode(mode)
+                        + ". Re-emit a valid action.";
+                log.warn("Arthur id='{}' rejected action '{}' in mode {} — reason: '{}'",
+                        process.getId(), action.type(), mode, action.reason());
+                // awaitingUserInput=true → status=BLOCKED so we don't loop
+                // re-emitting the same invalid action. The hint surfaces
+                // to the user so they can intervene if Arthur is stuck.
+                return new ActionTurnOutcome(hint, /*awaitingUserInput*/ true);
+            }
         }
         return switch (action.type()) {
             case ArthurActionSchema.TYPE_ANSWER          -> handleAnswer(action);
@@ -1339,6 +1365,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(memoryBlock));
         }
+        // Plan-Mode TodoList block — surfaces the live task list so the
+        // LLM in EXECUTING / PLANNING knows which step is current
+        // (IN_PROGRESS marker) and which are still PENDING. Without
+        // this, the model would re-emit "I'll mark step 1 in progress"
+        // turn after turn because each turn would look like the start
+        // of execution.
+        String todoBlock = buildTodoListBlock(process);
+        if (todoBlock != null && !todoBlock.isBlank()) {
+            messages.add(VanceSystemMessage.dynamic(todoBlock));
+        }
 
         // Active history (ARCHIVED_CHAT compaction-aware once we wire
         // memoryService — for v1 just use full active history).
@@ -1546,6 +1582,51 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return enginePromptResolver.resolveTieredForMode(
                 process, basePath, smallOverride, modelSize,
                 process.getMode(), ENGINE_FALLBACK_PROMPT);
+    }
+
+    /**
+     * Builds the bullet-list of recipes that gets appended to the
+     * system prompt. Pulled fresh per call from
+     * Renders the live TodoList as a Markdown block for the system
+     * prompt. Empty list → empty string. Status markers mirror the
+     * foot-side rendering: {@code [ ]} pending, {@code [~]} active,
+     * {@code [✓]} done.
+     */
+    private String buildTodoListBlock(ThinkProcessDocument process) {
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        if (todos == null || todos.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n## Current TodoList (mode=")
+                .append(process.getMode() == null
+                        ? "NORMAL" : process.getMode().name())
+                .append(")\n\n");
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
+            de.mhus.vance.api.thinkprocess.TodoStatus s = t.getStatus() == null
+                    ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING
+                    : t.getStatus();
+            String marker = switch (s) {
+                case PENDING -> "[ ]";
+                case IN_PROGRESS -> "[~]";
+                case COMPLETED -> "[✓]";
+            };
+            sb.append(marker).append(' ')
+                    .append("(id=").append(t.getId() == null ? "" : t.getId()).append(") ");
+            String content = t.getContent() == null ? "" : t.getContent();
+            if (s == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS
+                    && t.getActiveForm() != null && !t.getActiveForm().isBlank()) {
+                content = t.getActiveForm();
+            }
+            sb.append(content).append('\n');
+        }
+        sb.append("\nGuidance: pick the first item that is not COMPLETED. "
+                + "If it's PENDING, your next TODO_UPDATE should set it "
+                + "IN_PROGRESS. If it's already IN_PROGRESS, do the actual "
+                + "work for that step now (e.g. call client_file_write to "
+                + "create / edit the relevant files), then TODO_UPDATE it "
+                + "to COMPLETED in the same turn or the next.\n");
+        return sb.toString();
     }
 
     /**

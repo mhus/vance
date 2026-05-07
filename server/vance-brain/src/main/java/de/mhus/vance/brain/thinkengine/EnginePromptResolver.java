@@ -166,20 +166,21 @@ public class EnginePromptResolver {
     /**
      * Mode-suffixed path variant for Plan-Mode prompts.
      * {@code EXPLORING} → {@code <base>-exploring.md},
-     * {@code PLANNING}  → {@code <base>-planning.md}.
-     * {@code NORMAL} and {@code EXECUTING} return the base path as-is.
+     * {@code PLANNING}  → {@code <base>-planning.md},
+     * {@code EXECUTING} → {@code <base>-executing.md}.
+     * {@code NORMAL} returns the base path as-is.
      *
-     * <p>See {@code readme/arthur-plan-mode.md} §7.
+     * <p>See {@code specification/plan-mode.md} §7.
      */
     public static @Nullable String modeVariantPath(
             @Nullable String basePath, @Nullable ProcessMode mode) {
-        if (basePath == null || mode == null
-                || mode == ProcessMode.NORMAL || mode == ProcessMode.EXECUTING) {
+        if (basePath == null || mode == null || mode == ProcessMode.NORMAL) {
             return basePath;
         }
         String suffix = switch (mode) {
             case EXPLORING -> "-exploring";
             case PLANNING -> "-planning";
+            case EXECUTING -> "-executing";
             default -> "";
         };
         if (suffix.isEmpty()) return basePath;
@@ -200,8 +201,9 @@ public class EnginePromptResolver {
      *       (size-aware, no mode suffix).</li>
      * </ol>
      *
-     * <p>For {@link ProcessMode#NORMAL}/{@link ProcessMode#EXECUTING}
-     * this is identical to {@link #resolveTiered}.
+     * <p>For {@link ProcessMode#NORMAL} this is identical to
+     * {@link #resolveTiered}. {@code EXPLORING}, {@code PLANNING},
+     * and {@code EXECUTING} each get their own mode-suffixed variant.
      */
     public String resolveTieredForMode(
             ThinkProcessDocument process,
@@ -214,7 +216,7 @@ public class EnginePromptResolver {
                 || process.getTenantId() == null || process.getTenantId().isBlank()) {
             return javaFallback;
         }
-        if (mode != null && mode != ProcessMode.NORMAL && mode != ProcessMode.EXECUTING) {
+        if (mode != null && mode != ProcessMode.NORMAL) {
             String modePath = modeVariantPath(basePath, mode);
             if (modePath != null && !modePath.equals(basePath)) {
                 @Nullable String projectId = resolveProjectId(process);

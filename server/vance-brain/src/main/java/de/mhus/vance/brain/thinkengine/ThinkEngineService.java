@@ -122,22 +122,20 @@ public class ThinkEngineService {
         // is intentionally restrictive ("this process may invoke no
         // tools") and must be honoured rather than collapsed to "use
         // engine default".
-        java.util.Set<String> base = process.getAllowedToolsOverride() != null
+        final java.util.Set<String> base = process.getAllowedToolsOverride() != null
                 ? process.getAllowedToolsOverride()
                 : engine.allowedTools();
-        // Per-mode tighten: Arthur drops to read-only in EXPLORING/PLANNING,
-        // other engines pass through unchanged. Label-aware overrides
-        // need the scope to query the ToolDispatcher for live labels —
-        // build a one-shot ctx for the filter call.
-        de.mhus.vance.brain.tools.ToolInvocationContext filterCtx =
-                new de.mhus.vance.brain.tools.ToolInvocationContext(
-                        process.getTenantId(),
-                        projectId,
-                        process.getSessionId(),
-                        process.getId(),
-                        userId);
-        java.util.Set<String> allowed = engine.filterAllowedToolsForMode(
-                base, process.getMode(), filterCtx);
+        // Per-mode tighten happens lazily on every tools() call —
+        // Plan-Mode transitions inside one runTurn (e.g.
+        // PLANNING → EXECUTING via START_EXECUTION) must reflect in
+        // the next ContextToolsApi without rebuilding the context.
+        final ThinkEngine resolvedEngine = engine;
+        java.util.function.BiFunction<
+                de.mhus.vance.api.thinkprocess.ProcessMode,
+                de.mhus.vance.brain.tools.ToolInvocationContext,
+                java.util.Set<String>> allowedToolsResolver =
+                (currentMode, scope) -> resolvedEngine.filterAllowedToolsForMode(
+                        base, currentMode, scope);
         // Resolve the LLM-trace toggle once per turn — engines pay no
         // setting lookup per round-trip. Cascade is tenant → project →
         // think-process so a single noisy process can be flipped on
@@ -154,7 +152,7 @@ public class ThinkEngineService {
                 aiModelService, settingService, chatMessageService,
                 toolDispatcher, eventPublisher,
                 thinkProcessService, processEventEmitter,
-                allowed,
+                allowedToolsResolver,
                 progressToolListener.forProcess(process),
                 traceLlm,
                 llmTraceService);

@@ -13,6 +13,7 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,6 +21,14 @@ import org.jspecify.annotations.Nullable;
  * wired services. Created per lifecycle call by
  * {@link ThinkEngineService}; {@code projectId} is resolved by the
  * service via the session lookup and threaded in here.
+ *
+ * <p>The {@code allowedToolsResolver} is a callback re-evaluated on
+ * every {@link #tools()} call so the effective allow-set tracks the
+ * process's current {@code mode}. This matters for Plan-Mode where
+ * a single {@code runTurn} can transition through multiple modes
+ * (e.g. PLANNING → EXECUTING via {@code START_EXECUTION}); a snapshot
+ * of {@code allowedTools} taken at context-build time would be stale
+ * for the EXECUTING continuation turn.
  */
 record DefaultThinkEngineContext(
         ThinkProcessDocument process,
@@ -32,7 +41,7 @@ record DefaultThinkEngineContext(
         ClientEventPublisher eventPublisher,
         ThinkProcessService thinkProcessService,
         ProcessEventEmitter processEventEmitter,
-        Set<String> allowedTools,
+        BiFunction<de.mhus.vance.api.thinkprocess.ProcessMode, ToolInvocationContext, Set<String>> allowedToolsResolver,
         ToolInvocationListener toolInvocationListener,
         boolean traceLlm,
         LlmTraceService llmTraceService
@@ -56,7 +65,10 @@ record DefaultThinkEngineContext(
                 process.getSessionId(),
                 process.getId(),
                 userId);
-        return new ContextToolsApi(toolDispatcher, scope, allowedTools, toolInvocationListener);
+        // Re-resolve the allow-set every call against the process's
+        // current mode — see class doc for why a snapshot won't do.
+        Set<String> allowed = allowedToolsResolver.apply(process.getMode(), scope);
+        return new ContextToolsApi(toolDispatcher, scope, allowed, toolInvocationListener);
     }
 
     @Override

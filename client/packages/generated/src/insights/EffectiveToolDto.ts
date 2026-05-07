@@ -7,6 +7,8 @@ export interface EffectiveToolDto {
   name: string;
   description: string;
   primary: boolean;
+  deferred: boolean;
+  searchHint: string;
   source: string;
   labels: string[];
   type?: string;

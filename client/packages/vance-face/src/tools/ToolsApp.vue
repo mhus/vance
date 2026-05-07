@@ -60,6 +60,8 @@ const form = reactive({
   labelsText: '',
   enabled: true,
   primary: false,
+  defaultDeferred: false,
+  disabledSubToolsText: '',
 });
 
 const banner = ref<string | null>(null);
@@ -137,6 +139,8 @@ function resetForm(): void {
   form.labelsText = '';
   form.enabled = true;
   form.primary = false;
+  form.defaultDeferred = false;
+  form.disabledSubToolsText = '';
 }
 
 function populateForm(t: ServerToolDto): void {
@@ -146,6 +150,8 @@ function populateForm(t: ServerToolDto): void {
   form.labelsText = (t.labels ?? []).join('\n');
   form.enabled = t.enabled;
   form.primary = t.primary;
+  form.defaultDeferred = t.defaultDeferred;
+  form.disabledSubToolsText = (t.disabledSubTools ?? []).join('\n');
 }
 
 function formatJson(obj: unknown): string {
@@ -178,6 +184,7 @@ function buildWriteRequest(): ServerToolWriteRequest | null {
   }
 
   const labels = splitLines(form.labelsText);
+  const disabledSubTools = splitLines(form.disabledSubToolsText);
 
   return {
     type,
@@ -186,6 +193,8 @@ function buildWriteRequest(): ServerToolWriteRequest | null {
     labels,
     enabled: form.enabled,
     primary: form.primary,
+    disabledSubTools,
+    defaultDeferred: form.defaultDeferred,
   };
 }
 
@@ -255,6 +264,8 @@ async function submitNewTool(): Promise<void> {
     labels: [],
     enabled: true,
     primary: false,
+    disabledSubTools: [],
+    defaultDeferred: false,
   };
   try {
     await toolsState.upsert(selectedProject.value, name, stub);
@@ -318,6 +329,7 @@ function selectTool(name: string): void {
           <div class="flex items-center gap-2 text-xs opacity-60">
             <span v-if="!tool.enabled" class="badge-disabled">{{ $t('tools.sidebar.disabled') }}</span>
             <span v-if="tool.primary" class="badge-primary">{{ $t('tools.sidebar.primary') }}</span>
+            <span v-if="tool.defaultDeferred" class="badge-deferred">{{ $t('tools.sidebar.deferred') }}</span>
             <span class="truncate">{{ tool.description }}</span>
           </div>
         </button>
@@ -397,6 +409,23 @@ function selectTool(name: string): void {
                 :label="$t('tools.fields.primary')"
               />
             </div>
+          </div>
+        </VCard>
+
+        <VCard :title="$t('tools.cards.packTitle')">
+          <div class="flex flex-col gap-3">
+            <p class="text-xs opacity-70">{{ $t('tools.cards.packHelp') }}</p>
+            <VCheckbox
+              v-model="form.defaultDeferred"
+              :label="$t('tools.fields.defaultDeferred')"
+              :help="$t('tools.fields.defaultDeferredHelp')"
+            />
+            <VTextarea
+              v-model="form.disabledSubToolsText"
+              :label="$t('tools.fields.disabledSubTools')"
+              :help="$t('tools.fields.disabledSubToolsHelp')"
+              :rows="4"
+            />
           </div>
         </VCard>
 
@@ -508,6 +537,12 @@ function selectTool(name: string): void {
 .badge-disabled {
   background: hsl(var(--bc) / 0.1);
   color: hsl(var(--bc) / 0.6);
+  padding: 0 0.4rem;
+  border-radius: 0.25rem;
+}
+.badge-deferred {
+  background: hsl(var(--wa) / 0.18);
+  color: hsl(var(--wac));
   padding: 0 0.4rem;
   border-radius: 0.25rem;
 }

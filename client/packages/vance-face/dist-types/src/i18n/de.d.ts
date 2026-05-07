@@ -491,6 +491,7 @@ declare const _default: {
             noToolsBody: string;
             disabled: string;
             primary: string;
+            deferred: string;
         };
         empty: {
             headline: string;
@@ -508,6 +509,8 @@ declare const _default: {
             parametersTitle: string;
             parametersHelp: string;
             labelsTitle: string;
+            packTitle: string;
+            packHelp: string;
         };
         fields: {
             type: string;
@@ -515,6 +518,10 @@ declare const _default: {
             descriptionHelp: string;
             enabled: string;
             primary: string;
+            defaultDeferred: string;
+            defaultDeferredHelp: string;
+            disabledSubTools: string;
+            disabledSubToolsHelp: string;
             labels: string;
             labelsHelp: string;
         };

@@ -13,8 +13,10 @@ import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -107,6 +109,9 @@ public class ServerToolAdminController {
         Optional<ServerToolDocument> existing =
                 serverToolService.findDocument(tenant, project, name);
         try {
+            Set<String> disabledSubTools = request.getDisabledSubTools() == null
+                    ? new LinkedHashSet<>()
+                    : new LinkedHashSet<>(request.getDisabledSubTools());
             ServerToolDocument saved;
             if (existing.isPresent()) {
                 ServerToolDocument incoming = ServerToolDocument.builder()
@@ -117,6 +122,8 @@ public class ServerToolAdminController {
                         .labels(new ArrayList<>(request.getLabels()))
                         .enabled(request.isEnabled())
                         .primary(request.isPrimary())
+                        .disabledSubTools(disabledSubTools)
+                        .defaultDeferred(request.isDefaultDeferred())
                         .build();
                 saved = serverToolService.update(tenant, project, name, incoming);
                 log.info("Updated server tool tenant='{}' project='{}' name='{}'",
@@ -130,6 +137,8 @@ public class ServerToolAdminController {
                         .labels(new ArrayList<>(request.getLabels()))
                         .enabled(request.isEnabled())
                         .primary(request.isPrimary())
+                        .disabledSubTools(disabledSubTools)
+                        .defaultDeferred(request.isDefaultDeferred())
                         .build();
                 saved = serverToolService.create(tenant, project, fresh);
                 log.info("Created server tool tenant='{}' project='{}' name='{}'",
@@ -172,6 +181,10 @@ public class ServerToolAdminController {
                         : new ArrayList<>(doc.getLabels()))
                 .enabled(doc.isEnabled())
                 .primary(doc.isPrimary())
+                .disabledSubTools(doc.getDisabledSubTools() == null
+                        ? new LinkedHashSet<>()
+                        : new LinkedHashSet<>(doc.getDisabledSubTools()))
+                .defaultDeferred(doc.isDefaultDeferred())
                 .projectId(doc.getProjectId())
                 .updatedAtTimestamp(doc.getUpdatedAt() == null
                         ? null

@@ -10,4 +10,6 @@ export interface ServerToolWriteRequest {
   labels: string[];
   enabled: boolean;
   primary: boolean;
+  disabledSubTools: string[];
+  defaultDeferred: boolean;
 }

@@ -52,6 +52,7 @@ const showProject = ref(true);
 const showVance = ref(true);
 const showBuiltin = ref(true);
 const primaryOnly = ref(false);
+const deferredOnly = ref(false);
 const showDisabled = ref(true);
 
 function toggleSort(key: SortKey): void {
@@ -79,12 +80,14 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
   const out = all.filter((t) => {
     if (!wanted.has(t.source)) return false;
     if (primaryOnly.value && !t.primary) return false;
+    if (deferredOnly.value && !t.deferred) return false;
     if (!showDisabled.value && t.disabledByInnerLayer) return false;
     if (q.length === 0) return true;
     return (
       (t.name ?? '').toLowerCase().includes(q)
       || (t.description ?? '').toLowerCase().includes(q)
       || (t.type ?? '').toLowerCase().includes(q)
+      || (t.searchHint ?? '').toLowerCase().includes(q)
       || (t.labels ?? []).some((l) => l.toLowerCase().includes(q))
     );
   });
@@ -141,6 +144,7 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
           <span class="text-xs opacity-70">Filter</span>
           <div class="flex gap-2">
             <VCheckbox v-model="primaryOnly" label="primary only" />
+            <VCheckbox v-model="deferredOnly" label="deferred only" />
             <VCheckbox v-model="showDisabled" label="show disabled" />
           </div>
         </div>
@@ -163,7 +167,7 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
               Type{{ arrow('type') }}
             </th>
             <th>Description</th>
-            <th class="w-20">Primary</th>
+            <th class="w-24">Visibility</th>
             <th class="w-32">Labels</th>
             <th class="w-12"></th>
           </tr>
@@ -184,9 +188,19 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
               <span :class="sourceClass(t.source)">{{ sourceLabel(t.source) }}</span>
             </td>
             <td class="text-xs opacity-80">{{ t.type ?? '—' }}</td>
-            <td class="text-xs opacity-80">{{ t.description }}</td>
+            <td class="text-xs opacity-80">
+              {{ t.description }}
+              <div
+                v-if="t.deferred && t.searchHint"
+                class="text-[0.65rem] opacity-60 italic mt-0.5"
+                :title="t.searchHint"
+              >
+                hint: {{ t.searchHint }}
+              </div>
+            </td>
             <td class="text-xs">
-              <span v-if="t.primary" class="text-success">primary</span>
+              <span v-if="t.deferred" class="badge-deferred" title="Hidden from manifest until describe_tool activates it">deferred</span>
+              <span v-else-if="t.primary" class="text-success">primary</span>
               <span v-else class="opacity-50">on demand</span>
             </td>
             <td class="text-xs">
@@ -231,5 +245,14 @@ const filteredTools = computed<EffectiveToolDto[]>(() => {
 .badge-source--builtin {
   background: oklch(var(--b3));
   color: oklch(var(--bc) / 0.7);
+}
+.badge-deferred {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.25rem;
+  background: oklch(var(--wa) / 0.18);
+  color: oklch(var(--wa));
+  font-size: 0.7rem;
+  font-weight: 500;
 }
 </style>

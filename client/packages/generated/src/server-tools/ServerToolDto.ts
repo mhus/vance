@@ -11,6 +11,8 @@ export interface ServerToolDto {
   labels: string[];
   enabled: boolean;
   primary: boolean;
+  disabledSubTools: string[];
+  defaultDeferred: boolean;
   projectId: string;
   updatedAtTimestamp?: number;
   createdBy?: string;

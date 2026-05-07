@@ -37,6 +37,21 @@ public class EffectiveToolDto {
     /** Advertised to the LLM on every turn vs. discoverable only via {@code find_tools}. */
     private boolean primary;
 
+    /**
+     * Mirrors the materialised {@code Tool.deferred()}: when {@code true}
+     * the tool is hidden from the LLM tool manifest and surfaces only
+     * via the discovery block until activated by {@code describe_tool}.
+     * Disabled inner-layer entries report {@code false}.
+     */
+    private boolean deferred;
+
+    /**
+     * Mirrors {@code Tool.searchHint()}: short relevance hint shown in
+     * the discovery block when {@link #deferred} is {@code true}. Empty
+     * for non-deferred tools.
+     */
+    private String searchHint;
+
     /** {@code PROJECT} | {@code VANCE} | {@code BUILTIN}. */
     private String source;
 

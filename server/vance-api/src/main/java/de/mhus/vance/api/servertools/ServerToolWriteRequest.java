@@ -5,8 +5,10 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 import jakarta.validation.constraints.NotBlank;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -41,4 +43,20 @@ public class ServerToolWriteRequest {
     private boolean enabled;
 
     private boolean primary;
+
+    /**
+     * Sub-tools to deactivate within this pack. Local names only (without
+     * the {@code <pack>__} prefix). Empty / null → all sub-tools active.
+     * Singleton packs (e.g. {@code doc_lookup}) ignore this.
+     */
+    @Builder.Default
+    private Set<String> disabledSubTools = new LinkedHashSet<>();
+
+    /**
+     * Pack-level default for {@code Tool.deferred()}. Multi-tool packs
+     * with many sub-tools should set this to {@code true} so sub-tools
+     * surface via the discovery block instead of the tool manifest.
+     * Singleton packs ignore this — the factory's classification wins.
+     */
+    private boolean defaultDeferred;
 }

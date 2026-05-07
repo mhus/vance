@@ -4,8 +4,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -41,6 +43,25 @@ public class ServerToolDto {
     private boolean enabled;
 
     private boolean primary;
+
+    /**
+     * Sub-tools that are deactivated within this pack. Only meaningful
+     * for multi-tool packs (REST API, MCP, plugin bundles). Each entry
+     * matches the sub-tool's local name (without the {@code <pack>__}
+     * prefix). Empty / null → all sub-tools active.
+     */
+    @Builder.Default
+    private Set<String> disabledSubTools = new LinkedHashSet<>();
+
+    /**
+     * Pack-level default for {@code Tool.deferred()}. Multi-tool packs
+     * with many sub-tools (e.g. a 50-endpoint REST pack) should default
+     * to {@code true} so the LLM doesn't get flooded with schemas;
+     * sub-tools surface only via the discovery block until activated by
+     * {@code describe_tool}. Singleton packs (e.g. {@code doc_lookup})
+     * ignore this — the factory's classification wins.
+     */
+    private boolean defaultDeferred;
 
     /** Owning project — {@code _vance} for system-wide tools. */
     private String projectId;

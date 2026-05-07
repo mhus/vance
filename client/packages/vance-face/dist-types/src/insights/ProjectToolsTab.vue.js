@@ -40,6 +40,7 @@ const showProject = ref(true);
 const showVance = ref(true);
 const showBuiltin = ref(true);
 const primaryOnly = ref(false);
+const deferredOnly = ref(false);
 const showDisabled = ref(true);
 function toggleSort(key) {
     if (sortKey.value === key) {
@@ -70,6 +71,8 @@ const filteredTools = computed(() => {
             return false;
         if (primaryOnly.value && !t.primary)
             return false;
+        if (deferredOnly.value && !t.deferred)
+            return false;
         if (!showDisabled.value && t.disabledByInnerLayer)
             return false;
         if (q.length === 0)
@@ -77,6 +80,7 @@ const filteredTools = computed(() => {
         return ((t.name ?? '').toLowerCase().includes(q)
             || (t.description ?? '').toLowerCase().includes(q)
             || (t.type ?? '').toLowerCase().includes(q)
+            || (t.searchHint ?? '').toLowerCase().includes(q)
             || (t.labels ?? []).some((l) => l.toLowerCase().includes(q)));
     });
     const dir = sortAsc.value ? 1 : -1;
@@ -218,13 +222,24 @@ else {
     /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
     // @ts-ignore
     const __VLS_29 = __VLS_asFunctionalComponent(__VLS_28, new __VLS_28({
+        modelValue: (__VLS_ctx.deferredOnly),
+        label: "deferred only",
+    }));
+    const __VLS_30 = __VLS_29({
+        modelValue: (__VLS_ctx.deferredOnly),
+        label: "deferred only",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_29));
+    const __VLS_32 = {}.VCheckbox;
+    /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
+    // @ts-ignore
+    const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
         modelValue: (__VLS_ctx.showDisabled),
         label: "show disabled",
     }));
-    const __VLS_30 = __VLS_29({
+    const __VLS_34 = __VLS_33({
         modelValue: (__VLS_ctx.showDisabled),
         label: "show disabled",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_29));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "text-xs opacity-60 ml-auto" },
     });
@@ -282,7 +297,7 @@ else {
     (__VLS_ctx.arrow('type'));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
-        ...{ class: "w-20" },
+        ...{ class: "w-24" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
         ...{ class: "w-32" },
@@ -320,10 +335,23 @@ else {
             ...{ class: "text-xs opacity-80" },
         });
         (t.description);
+        if (t.deferred && t.searchHint) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-[0.65rem] opacity-60 italic mt-0.5" },
+                title: (t.searchHint),
+            });
+            (t.searchHint);
+        }
         __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
             ...{ class: "text-xs" },
         });
-        if (t.primary) {
+        if (t.deferred) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "badge-deferred" },
+                title: "Hidden from manifest until describe_tool activates it",
+            });
+        }
+        else if (t.primary) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "text-success" },
             });
@@ -399,7 +427,7 @@ else {
 /** @type {__VLS_StyleScopedClasses['w-20']} */ ;
 /** @type {__VLS_StyleScopedClasses['cursor-pointer']} */ ;
 /** @type {__VLS_StyleScopedClasses['select-none']} */ ;
-/** @type {__VLS_StyleScopedClasses['w-20']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-24']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-32']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-12']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
@@ -410,7 +438,12 @@ else {
 /** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-[0.65rem]']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['italic']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-0.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge-deferred']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-success']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
@@ -435,6 +468,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             showVance: showVance,
             showBuiltin: showBuiltin,
             primaryOnly: primaryOnly,
+            deferredOnly: deferredOnly,
             showDisabled: showDisabled,
             toggleSort: toggleSort,
             arrow: arrow,

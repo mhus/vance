@@ -531,6 +531,7 @@ export default {
       noToolsBody: 'Auf „+ Neu" klicken, um eines anzulegen.',
       disabled: 'deaktiviert',
       primary: 'primär',
+      deferred: 'deferred',
     },
     empty: {
       headline: 'Tool auswählen',
@@ -551,6 +552,9 @@ export default {
       parametersHelp:
         'Typ-spezifische Konfiguration. Das Parameter-Schema der Factory wird im Hilfe-Panel angezeigt.',
       labelsTitle: 'Labels',
+      packTitle: 'Pack',
+      packHelp:
+        'Multi-Tool-Packs (REST-API, MCP-Server) expandieren in viele Sub-Tools. Die folgenden Felder konfigurieren Pack-weite Defaults; Singleton-Packs (z. B. doc_lookup) ignorieren sie.',
     },
     fields: {
       type: 'Typ',
@@ -559,6 +563,12 @@ export default {
         'Wird dem LLM angezeigt. Ein kurzer Absatz, Klartext.',
       enabled: 'Aktiviert',
       primary: 'Primär (in jeder Runde angekündigt)',
+      defaultDeferred: 'Standardmäßig deferred',
+      defaultDeferredHelp:
+        'Pack-weiter Default für Tool.deferred(). Bei true erscheinen Sub-Tools nur im Discovery-Block, bis das LLM sie über describe_tool aktiviert — empfohlen für Packs mit vielen Endpunkten.',
+      disabledSubTools: 'Deaktivierte Sub-Tools',
+      disabledSubToolsHelp:
+        'Ein Sub-Tool-Name pro Zeile. Nur lokale Namen (ohne <pack>__-Präfix). Leer bedeutet: alle Sub-Tools aktiv.',
       labels: 'Labels',
       labelsHelp:
         'Eines pro Zeile (oder Komma-getrennt). Recipes können Labels über @<label> ansprechen.',

@@ -9,4 +9,5 @@ export interface ToolSpec {
   primary: boolean;
   source?: string;
   paramsSchema: Record<string, any>;
+  labels: string[];
 }

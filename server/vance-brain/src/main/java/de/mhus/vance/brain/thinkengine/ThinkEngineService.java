@@ -126,9 +126,18 @@ public class ThinkEngineService {
                 ? process.getAllowedToolsOverride()
                 : engine.allowedTools();
         // Per-mode tighten: Arthur drops to read-only in EXPLORING/PLANNING,
-        // other engines pass through unchanged.
+        // other engines pass through unchanged. Label-aware overrides
+        // need the scope to query the ToolDispatcher for live labels —
+        // build a one-shot ctx for the filter call.
+        de.mhus.vance.brain.tools.ToolInvocationContext filterCtx =
+                new de.mhus.vance.brain.tools.ToolInvocationContext(
+                        process.getTenantId(),
+                        projectId,
+                        process.getSessionId(),
+                        process.getId(),
+                        userId);
         java.util.Set<String> allowed = engine.filterAllowedToolsForMode(
-                base, process.getMode());
+                base, process.getMode(), filterCtx);
         // Resolve the LLM-trace toggle once per turn — engines pay no
         // setting lookup per round-trip. Cascade is tenant → project →
         // think-process so a single noisy process can be flipped on

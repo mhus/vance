@@ -42,6 +42,11 @@ public class ClientExecStatusTool implements ClientTool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("read-only");
+    }
+
+    @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
     }

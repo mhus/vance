@@ -13,6 +13,8 @@ import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.skill.SkillTriggerMatcher;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
+import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.brain.tools.ToolInvocationContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -54,17 +56,20 @@ class ArthurReadOnlyToolFilterTest {
 
     private final ArthurEngine engine = newEngine();
 
+    private static final ToolInvocationContext CTX = new ToolInvocationContext(
+            "tenant", "project", "session", "process", "user");
+
     @Test
     void exploringMode_dropsAllWriteTools() {
         Set<String> base = engine.allowedTools();
-        Set<String> filtered = engine.filterAllowedToolsForMode(base, ProcessMode.EXPLORING);
+        Set<String> filtered = engine.filterAllowedToolsForMode(base, ProcessMode.EXPLORING, CTX);
         assertThat(filtered).doesNotContainAnyElementsOf(WRITE_TOOLS);
     }
 
     @Test
     void exploringMode_keepsAllReadTools() {
         Set<String> base = engine.allowedTools();
-        Set<String> filtered = engine.filterAllowedToolsForMode(base, ProcessMode.EXPLORING);
+        Set<String> filtered = engine.filterAllowedToolsForMode(base, ProcessMode.EXPLORING, CTX);
         for (String readTool : READ_TOOLS_SAMPLE) {
             assertThat(base).as("baseAllowed must contain " + readTool).contains(readTool);
             assertThat(filtered).as("filtered must contain " + readTool).contains(readTool);
@@ -74,22 +79,22 @@ class ArthurReadOnlyToolFilterTest {
     @Test
     void planningMode_appliesSameFilterAsExploring() {
         Set<String> base = engine.allowedTools();
-        Set<String> exploring = engine.filterAllowedToolsForMode(base, ProcessMode.EXPLORING);
-        Set<String> planning = engine.filterAllowedToolsForMode(base, ProcessMode.PLANNING);
+        Set<String> exploring = engine.filterAllowedToolsForMode(base, ProcessMode.EXPLORING, CTX);
+        Set<String> planning = engine.filterAllowedToolsForMode(base, ProcessMode.PLANNING, CTX);
         assertThat(planning).containsExactlyInAnyOrderElementsOf(exploring);
     }
 
     @Test
     void normalMode_passesThroughUnchanged() {
         Set<String> base = engine.allowedTools();
-        Set<String> filtered = engine.filterAllowedToolsForMode(base, ProcessMode.NORMAL);
+        Set<String> filtered = engine.filterAllowedToolsForMode(base, ProcessMode.NORMAL, CTX);
         assertThat(filtered).containsExactlyInAnyOrderElementsOf(base);
     }
 
     @Test
     void executingMode_passesThroughUnchanged() {
         Set<String> base = engine.allowedTools();
-        Set<String> filtered = engine.filterAllowedToolsForMode(base, ProcessMode.EXECUTING);
+        Set<String> filtered = engine.filterAllowedToolsForMode(base, ProcessMode.EXECUTING, CTX);
         assertThat(filtered).containsExactlyInAnyOrderElementsOf(base);
     }
 
@@ -98,7 +103,7 @@ class ArthurReadOnlyToolFilterTest {
         // Empty base = "no restriction"; under Plan-Mode the read-only set
         // becomes the effective allow-set so the LLM doesn't suddenly see
         // every tool the dispatcher has registered.
-        Set<String> filtered = engine.filterAllowedToolsForMode(Set.of(), ProcessMode.EXPLORING);
+        Set<String> filtered = engine.filterAllowedToolsForMode(Set.of(), ProcessMode.EXPLORING, CTX);
         assertThat(filtered).isNotEmpty();
         assertThat(filtered).doesNotContainAnyElementsOf(WRITE_TOOLS);
         assertThat(filtered).contains("doc_read", "web_search", "current_time");
@@ -106,7 +111,7 @@ class ArthurReadOnlyToolFilterTest {
 
     @Test
     void emptyBase_inNormal_staysEmpty() {
-        Set<String> filtered = engine.filterAllowedToolsForMode(Set.of(), ProcessMode.NORMAL);
+        Set<String> filtered = engine.filterAllowedToolsForMode(Set.of(), ProcessMode.NORMAL, CTX);
         assertThat(filtered).isEmpty();
     }
 
@@ -127,6 +132,7 @@ class ArthurReadOnlyToolFilterTest {
                 mock(EngineChatFactory.class),
                 mock(SkillTriggerMatcher.class),
                 mock(EngineMessageRouter.class),
-                mock(PlanModeEventEmitter.class));
+                mock(PlanModeEventEmitter.class),
+                mock(ToolDispatcher.class));
     }
 }

@@ -38,7 +38,7 @@ public class CrossDocListProjectsTool implements Tool {
                 + "targets exist.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("cross-project"); }
+    @Override public Set<String> labels() { return Set.of("cross-project", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

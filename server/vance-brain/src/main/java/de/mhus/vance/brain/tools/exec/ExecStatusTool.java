@@ -5,6 +5,7 @@ import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -46,6 +47,11 @@ public class ExecStatusTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("read-only");
     }
 
     @Override

@@ -26,7 +26,10 @@ import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.brain.tools.Tool;
+import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolException;
+import de.mhus.vance.brain.tools.ToolInvocationContext;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -153,18 +156,36 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             "relations_find",
             "rag_list",
             "kit_status",
-            "exec_status");
+            "exec_status",
+            // Client-pushed tools (registered by Foot on session-bind via
+            // ClientToolRegistry). Without these in the allow-set Arthur
+            // cannot inspect or modify the user's workspace at all.
+            "client_file_read",
+            "client_file_list",
+            "client_file_edit",
+            "client_file_write",
+            "client_exec_run",
+            "client_exec_status",
+            "client_exec_kill",
+            "client_javascript");
 
     /**
-     * Read-only subset of {@link #ALLOWED_TOOLS} — used in
-     * {@code EXPLORING} and {@code PLANNING} mode (see Plan-Mode
-     * mechanics, {@code readme/arthur-plan-mode.md} §6).
-     *
-     * <p>Nothing in this list mutates state: no {@code process_create*},
-     * no {@code process_steer/stop/pause/resume}, no {@code inbox_post},
-     * no scratchpad / data writes.
+     * Convention-tag carried on tools that are safe to expose during
+     * Plan-Mode exploration (no state mutation, no side-effects).
+     * Tools advertise it via {@link Tool#labels()} or
+     * {@code ToolSpec.labels} (for client-pushed tools); see
+     * {@code specification/plan-mode.md} §5.
      */
-    private static final Set<String> READ_ONLY_TOOLS = Set.of(
+    private static final String LABEL_READ_ONLY = "read-only";
+
+    /**
+     * Fallback read-only set used until every tool that should be
+     * visible in {@code EXPLORING}/{@code PLANNING} carries the
+     * {@link #LABEL_READ_ONLY} label. The mode-filter unions the
+     * label-tagged tools with this list so existing behaviour
+     * doesn't regress while the labels roll out incrementally.
+     */
+    private static final Set<String> READ_ONLY_TOOLS_FALLBACK = Set.of(
             "whoami",
             "current_time",
             "find_tools",
@@ -189,7 +210,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             "relations_find",
             "rag_list",
             "kit_status",
-            "exec_status");
+            "exec_status",
+            // Client-pushed read tools — let Arthur inspect the user's
+            // workspace during plan-mode exploration so concrete file
+            // paths can land in the proposed plan. Write/exec/JS
+            // counterparts (client_file_edit/write, client_exec_run/kill,
+            // client_javascript) stay blocked — those are EXECUTING-mode
+            // territory.
+            "client_file_read",
+            "client_file_list",
+            "client_exec_status");
 
     /**
      * Subset of {@link #ALLOWED_TOOLS} the LLM is allowed to see and
@@ -241,6 +271,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
     private final PlanModeEventEmitter planModeEventEmitter;
+    private final ToolDispatcher toolDispatcher;
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -255,7 +286,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory,
             de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher,
             de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
-            PlanModeEventEmitter planModeEventEmitter) {
+            PlanModeEventEmitter planModeEventEmitter,
+            ToolDispatcher toolDispatcher) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -267,6 +299,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.skillTriggerMatcher = skillTriggerMatcher;
         this.messageRouter = messageRouter;
         this.planModeEventEmitter = planModeEventEmitter;
+        this.toolDispatcher = toolDispatcher;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -300,10 +333,21 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
     /**
      * Plan-Mode tool-filter: in {@code EXPLORING} and {@code PLANNING}
-     * Arthur sees only read-only tools — write/delegate/steer tools are
-     * physically removed from the dispatcher's allow-set so neither a
-     * direct {@code invoke()} call nor any LLM-emitted action can hit
-     * them. See {@code readme/arthur-plan-mode.md} §6.
+     * Arthur sees only tools that carry the {@link #LABEL_READ_ONLY}
+     * label — write/delegate/steer tools are physically removed from
+     * the dispatcher's allow-set so neither a direct {@code invoke()}
+     * call nor any LLM-emitted action can hit them. See
+     * {@code specification/plan-mode.md} §5.
+     *
+     * <p>The effective read-only set is the union of:
+     * <ul>
+     *   <li>tools whose {@link Tool#labels()} contain
+     *       {@link #LABEL_READ_ONLY} (live lookup against the
+     *       {@link ToolDispatcher} so client-pushed tools and
+     *       config-loaded tools are included), and</li>
+     *   <li>{@link #READ_ONLY_TOOLS_FALLBACK} (untagged tools we
+     *       know are read-only but haven't migrated yet).</li>
+     * </ul>
      *
      * <p>{@code NORMAL} and {@code EXECUTING} pass through unchanged —
      * the full Arthur tool-pool is available.
@@ -311,18 +355,31 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     @Override
     public Set<String> filterAllowedToolsForMode(
             Set<String> baseAllowed,
-            de.mhus.vance.api.thinkprocess.ProcessMode mode) {
-        if (mode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
-                || mode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
-            if (baseAllowed.isEmpty()) {
-                // unrestricted base + Plan-Mode → restrict to read-only set
-                return READ_ONLY_TOOLS;
-            }
-            return baseAllowed.stream()
-                    .filter(READ_ONLY_TOOLS::contains)
-                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            de.mhus.vance.api.thinkprocess.ProcessMode mode,
+            ToolInvocationContext ctx) {
+        if (mode != de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
+                && mode != de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
+            return baseAllowed;
         }
-        return baseAllowed;
+        Set<String> readOnly = new java.util.LinkedHashSet<>(READ_ONLY_TOOLS_FALLBACK);
+        try {
+            for (ToolDispatcher.Resolved r : toolDispatcher.resolveAll(ctx)) {
+                Tool t = r.tool();
+                if (t.labels() != null && t.labels().contains(LABEL_READ_ONLY)) {
+                    readOnly.add(t.name());
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("Arthur filterAllowedToolsForMode: label lookup failed for "
+                    + "process='{}', falling back to hardcoded read-only set: {}",
+                    ctx.processId(), e.toString());
+        }
+        if (baseAllowed.isEmpty()) {
+            return java.util.Set.copyOf(readOnly);
+        }
+        return baseAllowed.stream()
+                .filter(readOnly::contains)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     // ──────────────────── Lifecycle ────────────────────

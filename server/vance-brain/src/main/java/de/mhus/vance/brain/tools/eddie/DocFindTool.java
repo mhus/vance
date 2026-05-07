@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -72,6 +73,11 @@ public class DocFindTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("eddie", "read-only");
     }
 
     @Override

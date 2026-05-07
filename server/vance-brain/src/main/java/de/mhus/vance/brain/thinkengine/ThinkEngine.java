@@ -4,6 +4,7 @@ import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolException;
+import de.mhus.vance.brain.tools.ToolInvocationContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.Optional;
 import java.util.Set;
@@ -82,17 +83,24 @@ public interface ThinkEngine {
      * {@link de.mhus.vance.api.thinkprocess.ProcessMode} see the full
      * pool regardless of mode (Ford, Eddie, Marvin, …).
      *
-     * <p>Arthur overrides this to enforce the read-only tool subset in
-     * {@code EXPLORING} / {@code PLANNING}. See
-     * {@code readme/arthur-plan-mode.md} §6.
+     * <p>Arthur overrides this to enforce a label-driven read-only
+     * subset in {@code EXPLORING} / {@code PLANNING}. The label
+     * convention is documented on {@link Tool#labels()}: any tool
+     * carrying the {@code read-only} label is safe in plan-mode
+     * exploration. See {@code specification/plan-mode.md} §5.
      *
      * @param baseAllowed the resolved tool pool (empty = unrestricted).
      * @param mode        the process's current operating mode.
+     * @param ctx         tool-invocation scope; needed by
+     *                    label-aware overrides so they can ask the
+     *                    {@link ToolDispatcher} for live tool labels
+     *                    (server beans + client-pushed alike).
      * @return the (possibly tighter) effective allow-set.
      */
     default Set<String> filterAllowedToolsForMode(
             Set<String> baseAllowed,
-            de.mhus.vance.api.thinkprocess.ProcessMode mode) {
+            de.mhus.vance.api.thinkprocess.ProcessMode mode,
+            ToolInvocationContext ctx) {
         return baseAllowed;
     }
 

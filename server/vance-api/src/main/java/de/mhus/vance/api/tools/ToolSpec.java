@@ -3,7 +3,9 @@ package de.mhus.vance.api.tools;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -57,4 +59,18 @@ public class ToolSpec {
     /** JSON-Schema object describing the tool's invocation parameters. */
     @Builder.Default
     private Map<String, Object> paramsSchema = new LinkedHashMap<>();
+
+    /**
+     * Selector tags. Mirror of {@code Tool.labels()} on the server side
+     * — lets client-pushed tools join the same selector pool as
+     * server-managed tools (recipe {@code @<label>}-references and
+     * Plan-Mode's {@code read-only} filter alike).
+     *
+     * <p>Convention: tools that don't mutate state carry the
+     * {@code "read-only"} label, so Arthur's Plan-Mode tool-filter
+     * keeps them visible during {@code EXPLORING}/{@code PLANNING}.
+     * See {@code specification/plan-mode.md} §5.
+     */
+    @Builder.Default
+    private Set<String> labels = new LinkedHashSet<>();
 }

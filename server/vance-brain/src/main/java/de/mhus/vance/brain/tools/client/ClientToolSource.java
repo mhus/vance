@@ -93,6 +93,15 @@ public class ClientToolSource implements ToolSource {
         }
 
         @Override
+        public java.util.Set<String> labels() {
+            // Reflect the client-pushed labels so server-side selectors
+            // (recipes, Plan-Mode read-only filter) can find them.
+            return spec.getLabels() == null
+                    ? java.util.Set.of()
+                    : java.util.Set.copyOf(spec.getLabels());
+        }
+
+        @Override
         public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
             String sessionId = ctx.sessionId();
             if (sessionId == null) {

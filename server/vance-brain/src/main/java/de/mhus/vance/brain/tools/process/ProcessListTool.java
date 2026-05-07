@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -53,6 +54,11 @@ public class ProcessListTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("read-only");
     }
 
     @Override

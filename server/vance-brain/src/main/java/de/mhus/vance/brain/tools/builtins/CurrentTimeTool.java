@@ -9,6 +9,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
@@ -56,6 +57,11 @@ public class CurrentTimeTool implements Tool {
     @Override
     public Map<String, Object> paramsSchema() {
         return SCHEMA;
+    }
+
+    @Override
+    public Set<String> labels() {
+        return Set.of("read-only");
     }
 
     @Override

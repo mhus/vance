@@ -269,6 +269,16 @@ public class ProjectService {
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
+    /**
+     * Lists every project whose {@code podIp} matches, regardless of
+     * project status. Used by the cluster heartbeat to denormalise
+     * "what does this pod own right now" into the brain-pod row.
+     */
+    public List<ProjectDocument> findByPod(String podIp) {
+        Query query = new Query(Criteria.where(F_POD_IP).is(podIp));
+        return mongoTemplate.find(query, ProjectDocument.class);
+    }
+
     public static class ProjectAlreadyExistsException extends RuntimeException {
         public ProjectAlreadyExistsException(String message) {
             super(message);

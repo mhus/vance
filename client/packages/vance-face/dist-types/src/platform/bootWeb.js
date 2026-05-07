@@ -1,6 +1,7 @@
 import { configurePlatform } from '@vance/shared';
 import { refreshAccessCookie } from './refreshWeb';
 import { hydrateActiveWebUiSettings, hydrateIdentity } from './webUiSession';
+import { applyTheme } from './themeWeb';
 import { storageWeb } from './storageWeb';
 /**
  * Web boot hook. Imported for side effect at the top of every
@@ -40,4 +41,8 @@ configurePlatform({
 hydrateIdentity();
 // Same for the webui.* settings mirror in sessionStorage.
 hydrateActiveWebUiSettings();
+// Paint the resolved theme as early as possible — before Vue mounts,
+// so the first frame matches the user's choice. "auto" attaches a
+// matchMedia listener that keeps tracking the OS preference live.
+applyTheme();
 //# sourceMappingURL=bootWeb.js.map

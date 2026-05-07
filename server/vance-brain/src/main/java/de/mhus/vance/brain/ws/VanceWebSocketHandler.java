@@ -5,6 +5,7 @@ import de.mhus.vance.api.ws.ServerInfo;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.WelcomeData;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.permission.PermissionDeniedException;
@@ -49,6 +50,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     private final WebSocketSender sender;
     private final ClientToolRegistry clientToolRegistry;
     private final SessionConnectionRegistry connectionRegistry;
+    private final ExecutionRegistryService executionRegistry;
     private final Map<String, WsHandler> handlers;
 
     public VanceWebSocketHandler(
@@ -59,6 +61,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             WebSocketSender sender,
             ClientToolRegistry clientToolRegistry,
             SessionConnectionRegistry connectionRegistry,
+            ExecutionRegistryService executionRegistry,
             List<WsHandler> handlers) {
         this.sessionService = sessionService;
         this.sessionLifecycle = sessionLifecycle;
@@ -67,6 +70,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         this.sender = sender;
         this.clientToolRegistry = clientToolRegistry;
         this.connectionRegistry = connectionRegistry;
+        this.executionRegistry = executionRegistry;
         this.handlers = indexHandlers(handlers);
     }
 
@@ -153,6 +157,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession wsSession, CloseStatus status) {
         Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_CONNECTION);
         if (!(attr instanceof ConnectionContext ctx)) return;
+        executionRegistry.removeByFootClient(ctx.getConnectionId());
         if (ctx.hasSession()) {
             String sessionId = ctx.getSessionId();
             clientToolRegistry.unregister(sessionId);

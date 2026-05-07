@@ -1,4 +1,5 @@
 export * from './webUiSession';
+export * from './themeWeb';
 export * from './loginWeb';
 export * from './refreshWeb';
 export * from './ensureAuthenticatedWeb';

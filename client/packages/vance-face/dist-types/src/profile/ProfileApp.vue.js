@@ -1,6 +1,6 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { setActiveLanguage } from '@/platform';
+import { applyTheme, setActiveLanguage, setActiveTheme, setActiveUiLevel, } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
@@ -9,9 +9,23 @@ const { profile, loading, error, load, saveIdentity, saveSetting } = useProfile(
 const titleDraft = ref('');
 const emailDraft = ref('');
 const languageDraft = ref('');
+const themeDraft = ref('auto');
+const uiLevelDraft = ref('standard');
 const identitySaved = ref(null);
 const languageSaved = ref(null);
+const themeSaved = ref(null);
+const uiLevelSaved = ref(null);
 const LANGUAGE_KEY = 'webui.language';
+const THEME_KEY = 'webui.theme';
+const UI_LEVEL_KEY = 'webui.uiLevel';
+function asTheme(value) {
+    // Accept anything stored on the server but normalise unknown
+    // values back to "auto" rather than rendering an empty selector.
+    return value === 'light' || value === 'dark' ? value : 'auto';
+}
+function asUiLevel(value) {
+    return value === 'expert' || value === 'admin' ? value : 'standard';
+}
 // "Browser default" is the only label that needs translating; the
 // other entries are language names already shown in their native
 // form so users can recognise the option independent of the current
@@ -24,6 +38,16 @@ const languageOptions = computed(() => [
     { value: 'es', label: 'Español' },
     { value: 'it', label: 'Italiano' },
 ]);
+const themeOptions = computed(() => [
+    { value: 'auto', label: t('profile.preferences.themeAuto') },
+    { value: 'light', label: t('profile.preferences.themeLight') },
+    { value: 'dark', label: t('profile.preferences.themeDark') },
+]);
+const uiLevelOptions = computed(() => [
+    { value: 'standard', label: t('profile.preferences.uiLevelStandard') },
+    { value: 'expert', label: t('profile.preferences.uiLevelExpert') },
+    { value: 'admin', label: t('profile.preferences.uiLevelAdmin') },
+]);
 onMounted(load);
 // Sync the form drafts whenever the underlying profile object changes —
 // happens on initial load and after every successful save (the
@@ -34,6 +58,8 @@ watch(profile, (current) => {
     titleDraft.value = current.title ?? '';
     emailDraft.value = current.email ?? '';
     languageDraft.value = current.webUiSettings?.[LANGUAGE_KEY] ?? '';
+    themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
+    uiLevelDraft.value = asUiLevel(current.webUiSettings?.[UI_LEVEL_KEY]);
 }, { immediate: true });
 async function onSaveIdentity() {
     identitySaved.value = null;
@@ -60,6 +86,31 @@ async function onLanguageChanged(value) {
         // newly chosen language right away.
         setUiLocale(next === '' ? null : next);
         languageSaved.value = t('profile.preferences.languageSaved');
+    }
+}
+async function onThemeChanged(value) {
+    themeSaved.value = null;
+    const next = asTheme(value);
+    themeDraft.value = next;
+    // "auto" is encoded server-side as the absence of the setting —
+    // pass null so the brain DELETEs it. light / dark are stored as-is.
+    await saveSetting(THEME_KEY, next === 'auto' ? null : next).catch(() => undefined);
+    if (!error.value) {
+        setActiveTheme(next);
+        applyTheme(next);
+        themeSaved.value = t('profile.preferences.themeSaved');
+    }
+}
+async function onUiLevelChanged(value) {
+    uiLevelSaved.value = null;
+    const next = asUiLevel(value);
+    uiLevelDraft.value = next;
+    // "standard" is the default and stored as the absence of the
+    // setting — same convention as theme=auto / language="".
+    await saveSetting(UI_LEVEL_KEY, next === 'standard' ? null : next).catch(() => undefined);
+    if (!error.value) {
+        setActiveUiLevel(next);
+        uiLevelSaved.value = t('profile.preferences.uiLevelSaved');
     }
 }
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
@@ -239,13 +290,77 @@ else if (__VLS_ctx.profile) {
         });
         (__VLS_ctx.languageSaved);
     }
+    const __VLS_41 = {}.VSelect;
+    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+    // @ts-ignore
+    const __VLS_42 = __VLS_asFunctionalComponent(__VLS_41, new __VLS_41({
+        ...{ 'onUpdate:modelValue': {} },
+        modelValue: (__VLS_ctx.themeDraft),
+        options: (__VLS_ctx.themeOptions),
+        label: (__VLS_ctx.$t('profile.preferences.theme')),
+        disabled: (__VLS_ctx.loading),
+    }));
+    const __VLS_43 = __VLS_42({
+        ...{ 'onUpdate:modelValue': {} },
+        modelValue: (__VLS_ctx.themeDraft),
+        options: (__VLS_ctx.themeOptions),
+        label: (__VLS_ctx.$t('profile.preferences.theme')),
+        disabled: (__VLS_ctx.loading),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_42));
+    let __VLS_45;
+    let __VLS_46;
+    let __VLS_47;
+    const __VLS_48 = {
+        'onUpdate:modelValue': (__VLS_ctx.onThemeChanged)
+    };
+    var __VLS_44;
+    if (__VLS_ctx.themeSaved) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-success text-sm" },
+        });
+        (__VLS_ctx.themeSaved);
+    }
+    const __VLS_49 = {}.VSelect;
+    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+    // @ts-ignore
+    const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
+        ...{ 'onUpdate:modelValue': {} },
+        modelValue: (__VLS_ctx.uiLevelDraft),
+        options: (__VLS_ctx.uiLevelOptions),
+        label: (__VLS_ctx.$t('profile.preferences.uiLevel')),
+        disabled: (__VLS_ctx.loading),
+    }));
+    const __VLS_51 = __VLS_50({
+        ...{ 'onUpdate:modelValue': {} },
+        modelValue: (__VLS_ctx.uiLevelDraft),
+        options: (__VLS_ctx.uiLevelOptions),
+        label: (__VLS_ctx.$t('profile.preferences.uiLevel')),
+        disabled: (__VLS_ctx.loading),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_50));
+    let __VLS_53;
+    let __VLS_54;
+    let __VLS_55;
+    const __VLS_56 = {
+        'onUpdate:modelValue': (__VLS_ctx.onUiLevelChanged)
+    };
+    var __VLS_52;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-xs opacity-60 -mt-2" },
+    });
+    (__VLS_ctx.$t('profile.preferences.uiLevelDescription'));
+    if (__VLS_ctx.uiLevelSaved) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-success text-sm" },
+        });
+        (__VLS_ctx.uiLevelSaved);
+    }
     var __VLS_32;
-    const __VLS_41 = {}.VCard;
+    const __VLS_57 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_42 = __VLS_asFunctionalComponent(__VLS_41, new __VLS_41({}));
-    const __VLS_43 = __VLS_42({}, ...__VLS_functionalComponentArgsRest(__VLS_42));
-    __VLS_44.slots.default;
+    const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({}));
+    const __VLS_59 = __VLS_58({}, ...__VLS_functionalComponentArgsRest(__VLS_58));
+    __VLS_60.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
         ...{ class: "text-lg font-semibold mb-3" },
     });
@@ -292,7 +407,7 @@ else if (__VLS_ctx.profile) {
             }
         }
     }
-    var __VLS_44;
+    var __VLS_60;
 }
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['container']} */ ;
@@ -330,6 +445,13 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['-mt-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-success']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
@@ -371,11 +493,19 @@ const __VLS_self = (await import('vue')).defineComponent({
             titleDraft: titleDraft,
             emailDraft: emailDraft,
             languageDraft: languageDraft,
+            themeDraft: themeDraft,
+            uiLevelDraft: uiLevelDraft,
             identitySaved: identitySaved,
             languageSaved: languageSaved,
+            themeSaved: themeSaved,
+            uiLevelSaved: uiLevelSaved,
             languageOptions: languageOptions,
+            themeOptions: themeOptions,
+            uiLevelOptions: uiLevelOptions,
             onSaveIdentity: onSaveIdentity,
             onLanguageChanged: onLanguageChanged,
+            onThemeChanged: onThemeChanged,
+            onUiLevelChanged: onUiLevelChanged,
         };
     },
 });

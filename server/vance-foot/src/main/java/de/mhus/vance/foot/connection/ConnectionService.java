@@ -43,6 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
  * closed connection is harmless.
  */
 @Service
+@lombok.extern.slf4j.Slf4j
 public class ConnectionService {
 
     public enum State { DISCONNECTED, CONNECTING, OPEN }
@@ -184,17 +185,31 @@ public class ConnectionService {
     }
 
     /**
-     * Sends an envelope. Returns {@code true} on success; {@code false} if the
-     * connection is not open so the caller can decide whether to surface that
-     * to the user or queue.
+     * Sends an envelope and waits briefly for the underlying
+     * {@link VanceWebSocketClient#send} future to complete so a
+     * mid-send disconnect or serialisation error surfaces here as
+     * {@code false} instead of silently swallowing the frame. Most
+     * payloads finish in microseconds — the 2 s ceiling only kicks
+     * in if the socket is wedged, which is itself a failure to report.
      */
     public boolean send(WebSocketEnvelope envelope) {
         VanceWebSocketClient c = clientRef.get();
         if (c == null || !c.isOpen()) {
             return false;
         }
-        c.send(envelope);
-        return true;
+        try {
+            c.send(envelope).get(2, java.util.concurrent.TimeUnit.SECONDS);
+            return true;
+        } catch (java.util.concurrent.TimeoutException e) {
+            log.warn("send timed out after 2s — frame likely lost");
+            return false;
+        } catch (java.util.concurrent.ExecutionException e) {
+            log.warn("send failed: {}", e.getCause() == null ? e : e.getCause().toString());
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /**

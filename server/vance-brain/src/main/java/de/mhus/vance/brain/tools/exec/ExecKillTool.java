@@ -1,9 +1,9 @@
 package de.mhus.vance.brain.tools.exec;
 
+import de.mhus.vance.brain.execution.ExecutionRouter;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ public class ExecKillTool implements Tool {
                             "description", "Job id to kill.")),
             "required", List.of("id"));
 
-    private final ExecManager execManager;
+    private final ExecutionRouter router;
 
     @Override
     public String name() {
@@ -70,10 +70,6 @@ public class ExecKillTool implements Tool {
         if (!(raw instanceof String id) || id.isBlank()) {
             throw new ToolException("'id' is required");
         }
-        boolean killed = execManager.kill(ctx.tenantId(), ctx.projectId(), id);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("id", id);
-        out.put("killed", killed);
-        return out;
+        return router.kill(id, ctx.tenantId());
     }
 }

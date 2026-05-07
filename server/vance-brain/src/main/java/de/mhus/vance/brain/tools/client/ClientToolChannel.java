@@ -16,11 +16,11 @@ import org.springframework.web.socket.WebSocketSession;
  */
 @Component
 @RequiredArgsConstructor
-class ClientToolChannel {
+public class ClientToolChannel {
 
     private final WebSocketSender sender;
 
-    void sendInvoke(
+    public void sendInvoke(
             WebSocketSession wsSession,
             String correlationId,
             String toolName,

@@ -28,6 +28,7 @@ final class ExecJob {
     private volatile @Nullable Integer exitCode;
     private volatile @Nullable Instant finishedAt;
     private volatile @Nullable Process process;
+    private volatile Instant lastOutputAt;
 
     ExecJob(String id, String projectId, String command, Path stdoutFile, Path stderrFile) {
         this.id = id;
@@ -36,6 +37,7 @@ final class ExecJob {
         this.stdoutFile = stdoutFile;
         this.stderrFile = stderrFile;
         this.startedAt = Instant.now();
+        this.lastOutputAt = this.startedAt;
     }
 
     String id() { return id; }
@@ -59,10 +61,16 @@ final class ExecJob {
 
     void appendStdout(String line) {
         synchronized (stdout) { stdout.append(line).append('\n'); }
+        lastOutputAt = Instant.now();
     }
 
     void appendStderr(String line) {
         synchronized (stderr) { stderr.append(line).append('\n'); }
+        lastOutputAt = Instant.now();
+    }
+
+    Instant lastOutputAt() {
+        return lastOutputAt;
     }
 
     String readStdout() {

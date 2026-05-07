@@ -3,6 +3,7 @@ package de.mhus.vance.foot.session;
 import de.mhus.vance.foot.agent.ClientAgentDocService;
 import de.mhus.vance.foot.command.SuggestionCache;
 import de.mhus.vance.foot.tools.ClientToolService;
+import de.mhus.vance.foot.tools.exec.FootExecEventDispatcher;
 import de.mhus.vance.foot.ui.StatusBar;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
@@ -36,16 +37,19 @@ public class SessionService {
     private final ObjectProvider<ClientToolService> clientToolService;
     private final ObjectProvider<ClientAgentDocService> clientAgentDocService;
     private final ObjectProvider<SuggestionCache> suggestionCache;
+    private final ObjectProvider<FootExecEventDispatcher> execEventDispatcher;
 
     public SessionService(
             ObjectProvider<StatusBar> statusBar,
             ObjectProvider<ClientToolService> clientToolService,
             ObjectProvider<ClientAgentDocService> clientAgentDocService,
-            ObjectProvider<SuggestionCache> suggestionCache) {
+            ObjectProvider<SuggestionCache> suggestionCache,
+            ObjectProvider<FootExecEventDispatcher> execEventDispatcher) {
         this.statusBar = statusBar;
         this.clientToolService = clientToolService;
         this.clientAgentDocService = clientAgentDocService;
         this.suggestionCache = suggestionCache;
+        this.execEventDispatcher = execEventDispatcher;
     }
 
     public @Nullable BoundSession current() {
@@ -58,6 +62,7 @@ public class SessionService {
         notifyClientTools();
         uploadClientAgentDoc();
         invalidateSuggestions();
+        publishExecSnapshot();
     }
 
     public void clear() {
@@ -101,6 +106,13 @@ public class SessionService {
         SuggestionCache cache = suggestionCache.getIfAvailable();
         if (cache != null) {
             cache.invalidateAll();
+        }
+    }
+
+    private void publishExecSnapshot() {
+        FootExecEventDispatcher d = execEventDispatcher.getIfAvailable();
+        if (d != null) {
+            d.publishCurrentSnapshot();
         }
     }
 

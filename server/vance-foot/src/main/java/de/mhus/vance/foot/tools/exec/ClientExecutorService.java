@@ -10,10 +10,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +27,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -45,7 +52,25 @@ public class ClientExecutorService {
     private final Map<String, ClientExecJob> jobs = Collections.synchronizedMap(new LinkedHashMap<>());
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
 
+    /** Lazy — dispatcher in turn depends on ConnectionService which depends on this one indirectly. */
+    private final ObjectProvider<FootExecEventDispatcher> dispatcher;
+
+    public ClientExecutorService(ObjectProvider<FootExecEventDispatcher> dispatcher) {
+        this.dispatcher = dispatcher;
+    }
+
     public ClientExecJob submit(String command) {
+        return submit(command, null, null);
+    }
+
+    /**
+     * Spawns {@code command} and tags the resulting job with the current
+     * session-bind, if any, so the brain registry can later filter by
+     * project/session. Pass {@code null} for both scope fields when the
+     * caller is the local CLI (no active brain bind).
+     */
+    public ClientExecJob submit(
+            String command, @Nullable String sessionId, @Nullable String projectId) {
         if (command == null || command.isBlank()) {
             throw new IllegalArgumentException("command is required");
         }
@@ -60,10 +85,32 @@ public class ClientExecutorService {
         ClientExecJob job = new ClientExecJob(
                 jobId, command,
                 jobDir.resolve("stdout.log"),
-                jobDir.resolve("stderr.log"));
+                jobDir.resolve("stderr.log"),
+                sessionId, projectId);
         index(job);
+        notifyStarted(job);
         workers.submit(() -> runJob(job));
         return job;
+    }
+
+    private void notifyStarted(ClientExecJob job) {
+        FootExecEventDispatcher d = dispatcher.getIfAvailable();
+        if (d != null) d.publishStarted(job);
+    }
+
+    private void notifyEnded(ClientExecJob job) {
+        FootExecEventDispatcher d = dispatcher.getIfAvailable();
+        if (d != null) d.publishEnded(job);
+    }
+
+    /**
+     * Visible for {@link FootExecEventDispatcher} to build the snapshot
+     * payload at connect-time.
+     */
+    Collection<ClientExecJob> snapshot() {
+        synchronized (jobs) {
+            return new java.util.ArrayList<>(jobs.values());
+        }
     }
 
     public ClientExecJob waitFor(ClientExecJob job, long maxMillis) {
@@ -89,6 +136,81 @@ public class ClientExecutorService {
         }
     }
 
+    /** Compact status snapshot — no stdout/stderr bodies. */
+    public Optional<ClientExecStat> stat(String id) {
+        return get(id).map(ClientExecutorService::toStat);
+    }
+
+    static ClientExecStat toStat(ClientExecJob job) {
+        Instant end = job.finishedAt() != null ? job.finishedAt() : Instant.now();
+        return new ClientExecStat(
+                job.id(),
+                job.command(),
+                job.sessionId(),
+                job.projectId(),
+                job.status(),
+                job.startedAt(),
+                job.lastOutputAt(),
+                job.finishedAt(),
+                job.exitCode(),
+                Duration.between(job.startedAt(), end).toMillis(),
+                fileSize(job.stdoutFile()),
+                fileSize(job.stderrFile()),
+                fileMtime(job.stdoutFile()),
+                fileMtime(job.stderrFile()),
+                job.stdoutFile().toString(),
+                job.stderrFile().toString());
+    }
+
+    /**
+     * Last {@code n} lines of the requested stream. Reads from the
+     * persisted log file. Returns oldest-first.
+     */
+    public List<String> tail(String id, int n, Stream stream) {
+        if (n <= 0) return List.of();
+        ClientExecJob job = jobs.get(id);
+        if (job == null) {
+            throw new ClientExecException("Unknown client exec job: '" + id + "'", null);
+        }
+        Path file = stream == Stream.STDERR ? job.stderrFile() : job.stdoutFile();
+        return tailFile(file, n);
+    }
+
+    static List<String> tailFile(Path file, int n) {
+        if (!Files.isReadable(file)) return List.of();
+        Deque<String> ring = new ArrayDeque<>(n);
+        try (BufferedReader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (ring.size() == n) ring.removeFirst();
+                ring.addLast(line);
+            }
+        } catch (IOException e) {
+            return List.of();
+        }
+        return new ArrayList<>(ring);
+    }
+
+    private static long fileSize(Path file) {
+        try {
+            return Files.isRegularFile(file) ? Files.size(file) : 0L;
+        } catch (IOException e) {
+            return 0L;
+        }
+    }
+
+    private static long fileMtime(Path file) {
+        try {
+            return Files.isRegularFile(file)
+                    ? Files.getLastModifiedTime(file).toMillis() : 0L;
+        } catch (IOException e) {
+            return 0L;
+        }
+    }
+
+    /** Selector for {@link #tail}. */
+    public enum Stream { STDOUT, STDERR }
+
     public boolean kill(String id) {
         ClientExecJob job = jobs.get(id);
         if (job == null || job.isTerminal()) return false;
@@ -97,6 +219,7 @@ public class ClientExecutorService {
         p.destroyForcibly();
         job.status(ClientExecJob.Status.KILLED);
         job.finishedAt(Instant.now());
+        notifyEnded(job);
         return true;
     }
 
@@ -140,6 +263,7 @@ public class ClientExecutorService {
             job.status(ClientExecJob.Status.FAILED);
         } finally {
             job.finishedAt(Instant.now());
+            notifyEnded(job);
         }
     }
 

@@ -5,6 +5,7 @@ import { buildUtterance, isSpeechSynthesisSupported, listVoices, onVoicesChanged
 import { useChatHistory } from '@composables/useChatHistory';
 import { VAlert, VButton, VSelect, VTextarea } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
+import PlanModeIndicator from './PlanModeIndicator.vue';
 import ProgressFeed from './ProgressFeed.vue';
 const props = defineProps();
 const { t } = useI18n();
@@ -25,6 +26,25 @@ const workerMessageIds = ref(new Set());
 /** Per-process buffer of streaming chunks waiting for their commit frame. */
 const streamingDrafts = ref(new Map());
 const progressEvents = ref([]);
+// ──────────────── Plan-Mode state (Arthur Plan-Mode flow) ────────────────
+//
+// Tracks the chat-process's mode plus its current TodoList and the
+// metadata of the latest PROPOSE_PLAN. Driven by three WS notifications:
+// {@code process-mode-changed}, {@code todos-updated}, {@code plan-proposed}.
+//
+// We only care about frames whose {@code processName} matches the
+// chat-process — worker sub-processes never emit Plan-Mode messages
+// today, but if they do the right place to surface them is the worker
+// channel, not the user-facing main UI. Falling back to NORMAL clears
+// todos and the plan banner so the indicator hides cleanly.
+const chatProcessMode = ref('NORMAL');
+const chatTodos = ref([]);
+const planMeta = ref(null);
+const modeBadge = computed(() => {
+    if (chatProcessMode.value === 'NORMAL')
+        return null;
+    return chatProcessMode.value.toLowerCase();
+});
 const composerText = ref('');
 const sending = ref(false);
 const sendError = ref(null);
@@ -367,6 +387,43 @@ function recordProgress(data) {
         progressEvents.value.splice(0, progressEvents.value.length - PROGRESS_CAP);
     }
 }
+function isChatProcess(processName) {
+    if (!processName)
+        return false;
+    if (!chatProcessName.value)
+        return false;
+    return processName === chatProcessName.value;
+}
+function onProcessModeChanged(data) {
+    if (!isChatProcess(data.processName))
+        return;
+    const next = data.newMode ?? 'NORMAL';
+    chatProcessMode.value = next;
+    if (next === 'NORMAL') {
+        // Plan/exec cycle is over — drop the panel content so the indicator
+        // hides on its own. Mirrors PlanModeState.setMode() in the foot.
+        chatTodos.value = [];
+        planMeta.value = null;
+    }
+}
+function onTodosUpdated(data) {
+    if (!isChatProcess(data.processName))
+        return;
+    chatTodos.value = data.todos ?? [];
+}
+function onPlanProposed(data) {
+    if (!isChatProcess(data.processName))
+        return;
+    planMeta.value = {
+        version: data.planVersion ?? 1,
+        summary: data.summary ?? undefined,
+    };
+}
+function resetPlanModeState() {
+    chatProcessMode.value = 'NORMAL';
+    chatTodos.value = [];
+    planMeta.value = null;
+}
 function scrollToBottom() {
     nextTick(() => {
         const el = messageContainer.value;
@@ -467,7 +524,7 @@ function onComposerKeydown(event) {
 const subscriptions = [];
 onMounted(async () => {
     // Wire up live frames before history load so we don't miss anything.
-    subscriptions.push(props.socket.on('chat-message-appended', appendMessageBubble), props.socket.on('chat-message-stream-chunk', appendChunk), props.socket.on('process-progress', recordProgress));
+    subscriptions.push(props.socket.on('chat-message-appended', appendMessageBubble), props.socket.on('chat-message-stream-chunk', appendChunk), props.socket.on('process-progress', recordProgress), props.socket.on('process-mode-changed', onProcessModeChanged), props.socket.on('todos-updated', onTodosUpdated), props.socket.on('plan-proposed', onPlanProposed));
     initSpeechRecognition();
     initSpeechSynthesis();
     await Promise.all([
@@ -503,6 +560,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
     streamingDrafts.value = new Map();
     progressEvents.value = [];
     sending.value = false;
+    resetPlanModeState();
     await load(newId);
     scrollToBottom();
 });
@@ -544,12 +602,19 @@ __VLS_3.slots.default;
 (__VLS_ctx.$t('chat.backToSessions'));
 var __VLS_3;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "flex-1 min-w-0 truncate" },
+    ...{ class: "flex-1 min-w-0 truncate flex items-center gap-2" },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
     ...{ class: "font-medium" },
 });
 (__VLS_ctx.sessionDisplay ?? __VLS_ctx.sessionId);
+if (__VLS_ctx.modeBadge) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30" },
+        title: (__VLS_ctx.$t('chat.planMode.modeBadgeTooltip')),
+    });
+    (__VLS_ctx.modeBadge);
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ref: "messageContainer",
     ...{ class: "flex-1 min-h-0 overflow-y-auto px-6 py-4" },
@@ -630,86 +695,98 @@ for (const [draft] of __VLS_getVForSourceType((__VLS_ctx.visibleWorkerDrafts))) 
         streaming: (true),
     }, ...__VLS_functionalComponentArgsRest(__VLS_18));
 }
+/** @type {[typeof PlanModeIndicator, ]} */ ;
+// @ts-ignore
+const __VLS_21 = __VLS_asFunctionalComponent(PlanModeIndicator, new PlanModeIndicator({
+    mode: (__VLS_ctx.chatProcessMode),
+    todos: (__VLS_ctx.chatTodos),
+    planMeta: (__VLS_ctx.planMeta),
+}));
+const __VLS_22 = __VLS_21({
+    mode: (__VLS_ctx.chatProcessMode),
+    todos: (__VLS_ctx.chatTodos),
+    planMeta: (__VLS_ctx.planMeta),
+}, ...__VLS_functionalComponentArgsRest(__VLS_21));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.footer, __VLS_intrinsicElements.footer)({
     ...{ class: "border-t border-base-300 bg-base-100 p-4" },
 });
 if (__VLS_ctx.sendError) {
-    const __VLS_21 = {}.VAlert;
+    const __VLS_24 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
+    const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
         variant: "error",
         ...{ class: "mb-2" },
     }));
-    const __VLS_23 = __VLS_22({
+    const __VLS_26 = __VLS_25({
         variant: "error",
         ...{ class: "mb-2" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_22));
-    __VLS_24.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_25));
+    __VLS_27.slots.default;
     (__VLS_ctx.sendError);
-    var __VLS_24;
+    var __VLS_27;
 }
 if (__VLS_ctx.sessionResolveError) {
-    const __VLS_25 = {}.VAlert;
+    const __VLS_28 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
+    const __VLS_29 = __VLS_asFunctionalComponent(__VLS_28, new __VLS_28({
         variant: "warning",
         ...{ class: "mb-2" },
     }));
-    const __VLS_27 = __VLS_26({
+    const __VLS_30 = __VLS_29({
         variant: "warning",
         ...{ class: "mb-2" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_26));
-    __VLS_28.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_29));
+    __VLS_31.slots.default;
     (__VLS_ctx.sessionResolveError);
-    var __VLS_28;
+    var __VLS_31;
 }
 if (__VLS_ctx.speechError) {
-    const __VLS_29 = {}.VAlert;
+    const __VLS_32 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_30 = __VLS_asFunctionalComponent(__VLS_29, new __VLS_29({
+    const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
         variant: "warning",
         ...{ class: "mb-2" },
     }));
-    const __VLS_31 = __VLS_30({
+    const __VLS_34 = __VLS_33({
         variant: "warning",
         ...{ class: "mb-2" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_30));
-    __VLS_32.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
+    __VLS_35.slots.default;
     (__VLS_ctx.speechError);
-    var __VLS_32;
+    var __VLS_35;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "max-w-3xl mx-auto flex gap-2 items-end" },
 });
-const __VLS_33 = {}.VButton;
+const __VLS_36 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
+const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
 }));
-const __VLS_35 = __VLS_34({
+const __VLS_38 = __VLS_37({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_34));
-let __VLS_37;
-let __VLS_38;
-let __VLS_39;
-const __VLS_40 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_37));
+let __VLS_40;
+let __VLS_41;
+let __VLS_42;
+const __VLS_43 = {
     onClick: (...[$event]) => {
         __VLS_ctx.multiline = !__VLS_ctx.multiline;
     }
 };
-__VLS_36.slots.default;
+__VLS_39.slots.default;
 (__VLS_ctx.multiline ? '▲' : '▼');
-var __VLS_36;
+var __VLS_39;
 if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "relative" },
@@ -718,87 +795,87 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
         ...{ class: "flex gap-1" },
     });
     if (__VLS_ctx.speechSupported) {
-        const __VLS_41 = {}.VButton;
+        const __VLS_44 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_42 = __VLS_asFunctionalComponent(__VLS_41, new __VLS_41({
+        const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
             title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
         }));
-        const __VLS_43 = __VLS_42({
+        const __VLS_46 = __VLS_45({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
             title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_42));
-        let __VLS_45;
-        let __VLS_46;
-        let __VLS_47;
-        const __VLS_48 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_45));
+        let __VLS_48;
+        let __VLS_49;
+        let __VLS_50;
+        const __VLS_51 = {
             onClick: (__VLS_ctx.toggleSpeech)
         };
-        __VLS_44.slots.default;
-        var __VLS_44;
+        __VLS_47.slots.default;
+        var __VLS_47;
     }
     if (__VLS_ctx.speakerSupported) {
-        const __VLS_49 = {}.VButton;
+        const __VLS_52 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
+        const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
             title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
         }));
-        const __VLS_51 = __VLS_50({
+        const __VLS_54 = __VLS_53({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
             title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_50));
-        let __VLS_53;
-        let __VLS_54;
-        let __VLS_55;
-        const __VLS_56 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+        let __VLS_56;
+        let __VLS_57;
+        let __VLS_58;
+        const __VLS_59 = {
             onClick: (__VLS_ctx.toggleSpeaker)
         };
-        __VLS_52.slots.default;
+        __VLS_55.slots.default;
         (__VLS_ctx.speakerEnabled ? '🔊' : '🔇');
-        var __VLS_52;
+        var __VLS_55;
     }
-    const __VLS_57 = {}.VButton;
+    const __VLS_60 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({
+    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         title: (__VLS_ctx.$t('chat.speech.settings')),
     }));
-    const __VLS_59 = __VLS_58({
+    const __VLS_62 = __VLS_61({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         title: (__VLS_ctx.$t('chat.speech.settings')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_58));
-    let __VLS_61;
-    let __VLS_62;
-    let __VLS_63;
-    const __VLS_64 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+    let __VLS_64;
+    let __VLS_65;
+    let __VLS_66;
+    const __VLS_67 = {
         onClick: (...[$event]) => {
             if (!(__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported))
                 return;
             __VLS_ctx.speechSettingsOpen = !__VLS_ctx.speechSettingsOpen;
         }
     };
-    __VLS_60.slots.default;
-    var __VLS_60;
+    __VLS_63.slots.default;
+    var __VLS_63;
     if (__VLS_ctx.speechSettingsOpen) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "absolute bottom-full mb-2 left-0 z-10 w-80 bg-base-100 border border-base-300 rounded shadow-lg p-3 flex flex-col gap-3" },
@@ -808,52 +885,52 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
             ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
         });
         (__VLS_ctx.$t('chat.speech.language'));
-        const __VLS_65 = {}.VSelect;
+        const __VLS_68 = {}.VSelect;
         /** @type {[typeof __VLS_components.VSelect, ]} */ ;
         // @ts-ignore
-        const __VLS_66 = __VLS_asFunctionalComponent(__VLS_65, new __VLS_65({
+        const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.speechLanguageStored),
             options: (__VLS_ctx.speechLanguageOptions),
         }));
-        const __VLS_67 = __VLS_66({
+        const __VLS_70 = __VLS_69({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.speechLanguageStored),
             options: (__VLS_ctx.speechLanguageOptions),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_66));
-        let __VLS_69;
-        let __VLS_70;
-        let __VLS_71;
-        const __VLS_72 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+        let __VLS_72;
+        let __VLS_73;
+        let __VLS_74;
+        const __VLS_75 = {
             'onUpdate:modelValue': (__VLS_ctx.onLanguageChanged)
         };
-        var __VLS_68;
+        var __VLS_71;
         if (__VLS_ctx.speakerSupported) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
             });
             (__VLS_ctx.$t('chat.speech.voice'));
-            const __VLS_73 = {}.VSelect;
+            const __VLS_76 = {}.VSelect;
             /** @type {[typeof __VLS_components.VSelect, ]} */ ;
             // @ts-ignore
-            const __VLS_74 = __VLS_asFunctionalComponent(__VLS_73, new __VLS_73({
+            const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.speechVoiceUri ?? '__auto__'),
                 options: (__VLS_ctx.voiceOptions),
             }));
-            const __VLS_75 = __VLS_74({
+            const __VLS_78 = __VLS_77({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.speechVoiceUri ?? '__auto__'),
                 options: (__VLS_ctx.voiceOptions),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_74));
-            let __VLS_77;
-            let __VLS_78;
-            let __VLS_79;
-            const __VLS_80 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_77));
+            let __VLS_80;
+            let __VLS_81;
+            let __VLS_82;
+            const __VLS_83 = {
                 'onUpdate:modelValue': (__VLS_ctx.onVoiceChanged)
             };
-            var __VLS_76;
+            var __VLS_79;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between" },
@@ -902,87 +979,87 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1" },
 });
-const __VLS_81 = {}.VTextarea;
+const __VLS_84 = {}.VTextarea;
 /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
 // @ts-ignore
-const __VLS_82 = __VLS_asFunctionalComponent(__VLS_81, new __VLS_81({
+const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
     ...{ 'onKeydown': {} },
     modelValue: (__VLS_ctx.composerText),
     placeholder: (__VLS_ctx.composerPlaceholder),
     rows: (__VLS_ctx.composerRows),
 }));
-const __VLS_83 = __VLS_82({
+const __VLS_86 = __VLS_85({
     ...{ 'onKeydown': {} },
     modelValue: (__VLS_ctx.composerText),
     placeholder: (__VLS_ctx.composerPlaceholder),
     rows: (__VLS_ctx.composerRows),
-}, ...__VLS_functionalComponentArgsRest(__VLS_82));
-let __VLS_85;
-let __VLS_86;
-let __VLS_87;
-const __VLS_88 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_85));
+let __VLS_88;
+let __VLS_89;
+let __VLS_90;
+const __VLS_91 = {
     onKeydown: (__VLS_ctx.onComposerKeydown)
 };
-var __VLS_84;
-const __VLS_89 = {}.VButton;
+var __VLS_87;
+const __VLS_92 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
+const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (!__VLS_ctx.composerText.trim() || __VLS_ctx.sending || !__VLS_ctx.chatProcessName),
     loading: (__VLS_ctx.sending),
 }));
-const __VLS_91 = __VLS_90({
+const __VLS_94 = __VLS_93({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (!__VLS_ctx.composerText.trim() || __VLS_ctx.sending || !__VLS_ctx.chatProcessName),
     loading: (__VLS_ctx.sending),
-}, ...__VLS_functionalComponentArgsRest(__VLS_90));
-let __VLS_93;
-let __VLS_94;
-let __VLS_95;
-const __VLS_96 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_93));
+let __VLS_96;
+let __VLS_97;
+let __VLS_98;
+const __VLS_99 = {
     onClick: (__VLS_ctx.send)
 };
-__VLS_92.slots.default;
+__VLS_95.slots.default;
 (__VLS_ctx.$t('chat.send'));
-var __VLS_92;
+var __VLS_95;
 if (__VLS_ctx.sending) {
-    const __VLS_97 = {}.VButton;
+    const __VLS_100 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
+    const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
         ...{ 'onClick': {} },
         variant: "danger",
         title: (__VLS_ctx.$t('chat.pauseTooltip')),
     }));
-    const __VLS_99 = __VLS_98({
+    const __VLS_102 = __VLS_101({
         ...{ 'onClick': {} },
         variant: "danger",
         title: (__VLS_ctx.$t('chat.pauseTooltip')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_98));
-    let __VLS_101;
-    let __VLS_102;
-    let __VLS_103;
-    const __VLS_104 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_101));
+    let __VLS_104;
+    let __VLS_105;
+    let __VLS_106;
+    const __VLS_107 = {
         onClick: (__VLS_ctx.pause)
     };
-    __VLS_100.slots.default;
+    __VLS_103.slots.default;
     (__VLS_ctx.$t('chat.pause'));
-    var __VLS_100;
+    var __VLS_103;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
     ...{ class: "w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto" },
 });
 /** @type {[typeof ProgressFeed, ]} */ ;
 // @ts-ignore
-const __VLS_105 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
+const __VLS_108 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
     events: (__VLS_ctx.progressEvents),
 }));
-const __VLS_106 = __VLS_105({
+const __VLS_109 = __VLS_108({
     events: (__VLS_ctx.progressEvents),
-}, ...__VLS_functionalComponentArgsRest(__VLS_105));
+}, ...__VLS_functionalComponentArgsRest(__VLS_108));
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
@@ -1002,7 +1079,20 @@ const __VLS_106 = __VLS_105({
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['tracking-wide']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-info/15']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-info']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-info/30']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
@@ -1103,12 +1193,17 @@ const __VLS_self = (await import('vue')).defineComponent({
             VSelect: VSelect,
             VTextarea: VTextarea,
             MessageBubble: MessageBubble,
+            PlanModeIndicator: PlanModeIndicator,
             ProgressFeed: ProgressFeed,
             emit: emit,
             historyLoading: historyLoading,
             historyError: historyError,
             workerMessageIds: workerMessageIds,
             progressEvents: progressEvents,
+            chatProcessMode: chatProcessMode,
+            chatTodos: chatTodos,
+            planMeta: planMeta,
+            modeBadge: modeBadge,
             composerText: composerText,
             sending: sending,
             sendError: sendError,

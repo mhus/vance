@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import tools.jackson.databind.ObjectMapper;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
+import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.permission.Action;
@@ -40,6 +41,7 @@ class VanceWebSocketHandlerPermissionTest {
     private WebSocketSender sender;
     private ClientToolRegistry clientToolRegistry;
     private SessionConnectionRegistry connectionRegistry;
+    private ExecutionRegistryService executionRegistry;
     private ObjectMapper objectMapper;
 
     private WebSocketSession wsSession;
@@ -53,6 +55,7 @@ class VanceWebSocketHandlerPermissionTest {
         sender = mock(WebSocketSender.class);
         clientToolRegistry = mock(ClientToolRegistry.class);
         connectionRegistry = mock(SessionConnectionRegistry.class);
+        executionRegistry = new ExecutionRegistryService();
         objectMapper = new ObjectMapper();
 
         wsSession = mock(WebSocketSession.class);
@@ -78,7 +81,7 @@ class VanceWebSocketHandlerPermissionTest {
         };
         VanceWebSocketHandler dispatcher = new VanceWebSocketHandler(
                 sessionService, sessionLifecycle, properties, objectMapper,
-                sender, clientToolRegistry, connectionRegistry,
+                sender, clientToolRegistry, connectionRegistry, executionRegistry,
                 List.of(denyingHandler));
 
         TextMessage frame = envelopeOf("denied.message");
@@ -102,7 +105,7 @@ class VanceWebSocketHandlerPermissionTest {
         };
         VanceWebSocketHandler dispatcher = new VanceWebSocketHandler(
                 sessionService, sessionLifecycle, properties, objectMapper,
-                sender, clientToolRegistry, connectionRegistry,
+                sender, clientToolRegistry, connectionRegistry, executionRegistry,
                 List.of(boomHandler));
 
         dispatcher.handleTextMessage(wsSession, envelopeOf("boom.message"));

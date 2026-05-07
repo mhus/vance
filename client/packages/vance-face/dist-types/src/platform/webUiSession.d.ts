@@ -33,6 +33,9 @@ export declare function clearLocalSessionData(): void;
  * not survive a server-side logout.
  */
 export declare function hydrateIdentity(): void;
+export type WebUiTheme = 'auto' | 'light' | 'dark';
+export type WebUiLevel = 'standard' | 'expert' | 'admin';
+export declare function rankOf(level: WebUiLevel): number;
 /**
  * Mirror the webui.* settings carried in the data cookie into the
  * tab's sessionStorage. Idempotent — call freely after login or after
@@ -60,10 +63,44 @@ export declare function getActiveLanguage(): string | null;
  */
 export declare function setActiveLanguage(value: string | null): void;
 /**
+ * The active web-UI theme. Reads the session-scoped override first,
+ * falls back to the data-cookie snapshot, defaults to {@code 'auto'}
+ * when nothing is set — matching the user-visible "follow the system"
+ * default.
+ */
+export declare function getActiveTheme(): WebUiTheme;
+/**
+ * Update the active theme for this tab. Pass {@code null} or
+ * {@code 'auto'} to clear the override and fall back to the system
+ * preference. Caller is responsible for re-running
+ * {@link applyTheme} from {@code themeWeb.ts} after this — the two
+ * are split so that boot can apply without writing.
+ */
+export declare function setActiveTheme(value: WebUiTheme | null): void;
+/**
+ * The active web-UI level. Reads the session-scoped override first,
+ * falls back to the data-cookie snapshot, defaults to {@code 'standard'}
+ * — the safest baseline that hides every tile that is not part of
+ * everyday use.
+ */
+export declare function getActiveUiLevel(): WebUiLevel;
+/**
+ * Update the active UI level for this tab. Pass {@code null} or
+ * {@code 'standard'} to clear the override and fall back to the
+ * default. Reactive consumers (e.g. {@link IndexApp}) should re-read
+ * via {@link getActiveUiLevel} after calling.
+ *
+ * <p>This is purely a UI-clutter toggle. The brain enforces real
+ * authorization on every endpoint — flipping the level to
+ * {@code 'admin'} on a non-admin account just exposes a tile that
+ * the server will refuse to back.
+ */
+export declare function setActiveUiLevel(value: WebUiLevel | null): void;
+/**
  * Wipe the session-scoped UI overrides. Called from the logout path
  * so a subsequent login on the same tab cleanly picks up the next
  * user's settings instead of inheriting the previous session's
- * language.
+ * language or theme choice.
  */
 export declare function clearActiveWebUiSettings(): void;
 //# sourceMappingURL=webUiSession.d.ts.map

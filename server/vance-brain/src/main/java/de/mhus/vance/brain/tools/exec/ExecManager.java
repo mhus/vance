@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.tools.exec;
 
+import de.mhus.vance.brain.execution.ExecutionRegistryService;
+import de.mhus.vance.brain.execution.ExecutionStatus;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -13,9 +15,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,6 +58,7 @@ public class ExecManager {
 
     private final ExecProperties properties;
     private final WorkspaceService workspaceService;
+    private final ExecutionRegistryService registry;
 
     private final Map<String, Map<String, ExecJob>> jobs = new ConcurrentHashMap<>();
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
@@ -128,6 +136,80 @@ public class ExecManager {
         return perProject == null ? java.util.List.of() : perProject.values();
     }
 
+    /** Compact status snapshot — no stdout/stderr bodies. */
+    public Optional<ExecStat> stat(String tenantId, String projectId, String jobId) {
+        return get(tenantId, projectId, jobId).map(ExecManager::toStat);
+    }
+
+    static ExecStat toStat(ExecJob job) {
+        Instant end = job.finishedAt() != null ? job.finishedAt() : Instant.now();
+        return new ExecStat(
+                job.id(),
+                job.projectId(),
+                job.command(),
+                job.status(),
+                job.startedAt(),
+                job.lastOutputAt(),
+                job.finishedAt(),
+                job.exitCode(),
+                Duration.between(job.startedAt(), end).toMillis(),
+                fileSize(job.stdoutFile()),
+                fileSize(job.stderrFile()),
+                fileMtime(job.stdoutFile()),
+                fileMtime(job.stderrFile()),
+                job.stdoutFile().toString(),
+                job.stderrFile().toString());
+    }
+
+    /**
+     * Last {@code n} lines of the requested stream. Reads from the
+     * persisted log file so callers see the same content {@code tail -n}
+     * would on the host. Returns the lines oldest-first (chronological).
+     */
+    public List<String> tail(
+            String tenantId, String projectId, String jobId, int n, Stream stream) {
+        if (n <= 0) return List.of();
+        ExecJob job = get(tenantId, projectId, jobId).orElseThrow(() ->
+                new ExecException("Unknown exec job: '" + jobId + "' (not in this project)"));
+        Path file = stream == Stream.STDERR ? job.stderrFile() : job.stdoutFile();
+        return tailFile(file, n);
+    }
+
+    static List<String> tailFile(Path file, int n) {
+        if (!Files.isReadable(file)) return List.of();
+        Deque<String> ring = new ArrayDeque<>(n);
+        try (BufferedReader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (ring.size() == n) ring.removeFirst();
+                ring.addLast(line);
+            }
+        } catch (IOException e) {
+            return List.of();
+        }
+        return new ArrayList<>(ring);
+    }
+
+    private static long fileSize(Path file) {
+        try {
+            return Files.isRegularFile(file) ? Files.size(file) : 0L;
+        } catch (IOException e) {
+            return 0L;
+        }
+    }
+
+    private static long fileMtime(Path file) {
+        try {
+            return Files.isRegularFile(file)
+                    ? Files.getLastModifiedTime(file).toMillis() : 0L;
+        } catch (IOException e) {
+            return 0L;
+        }
+    }
+
+    /** Selector for {@link #tail}. */
+    public enum Stream { STDOUT, STDERR }
+
     /** Force-kill a still-running job. Returns {@code false} if already terminal. */
     public boolean kill(String tenantId, String projectId, String jobId) {
         ExecJob job = get(tenantId, projectId, jobId).orElse(null);
@@ -137,6 +219,7 @@ public class ExecManager {
         p.destroyForcibly();
         job.status(ExecJob.Status.KILLED);
         job.finishedAt(Instant.now());
+        notifyRegistry(job);
         return true;
     }
 
@@ -154,6 +237,7 @@ public class ExecManager {
                     j.process().destroyForcibly();
                     j.status(ExecJob.Status.KILLED);
                     j.finishedAt(Instant.now());
+                    notifyRegistry(j);
                     killed++;
                 }
             }
@@ -201,7 +285,28 @@ public class ExecManager {
             job.status(ExecJob.Status.FAILED);
         } finally {
             job.finishedAt(Instant.now());
+            notifyRegistry(job);
         }
+    }
+
+    /** Mirror the job's terminal state into the cross-side registry. */
+    private void notifyRegistry(ExecJob job) {
+        registry.updateProgress(
+                job.id(),
+                job.lastOutputAt(),
+                toRegistryStatus(job.status()),
+                job.exitCode(),
+                job.finishedAt());
+    }
+
+    static ExecutionStatus toRegistryStatus(ExecJob.Status s) {
+        return switch (s) {
+            case RUNNING -> ExecutionStatus.RUNNING;
+            case COMPLETED -> ExecutionStatus.COMPLETED;
+            case FAILED -> ExecutionStatus.FAILED;
+            case KILLED -> ExecutionStatus.KILLED;
+            case ORPHANED -> ExecutionStatus.ORPHANED;
+        };
     }
 
     private static Thread pumpVirtual(InputStream in, Consumer<String> sink) {

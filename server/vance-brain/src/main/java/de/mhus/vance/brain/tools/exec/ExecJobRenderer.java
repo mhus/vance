@@ -21,6 +21,7 @@ final class ExecJobRenderer {
         out.put("command", job.command());
         Instant end = job.finishedAt() != null ? job.finishedAt() : Instant.now();
         out.put("durationMs", Duration.between(job.startedAt(), end).toMillis());
+        out.put("lastOutputAt", job.lastOutputAt().toString());
         if (job.exitCode() != null) {
             out.put("exitCode", job.exitCode());
         }

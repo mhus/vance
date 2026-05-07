@@ -135,6 +135,14 @@ declare const _default: {
             planUpdated: string;
             status: string;
         };
+        planMode: {
+            modeBadgeTooltip: string;
+            planTitle: string;
+            planTitleVersioned: string;
+            awaitingApproval: string;
+            approvalHint: string;
+            todosTitle: string;
+        };
     };
     documents: {
         pageTitle: string;
@@ -899,6 +907,17 @@ declare const _default: {
             language: string;
             languageBrowserDefault: string;
             languageSaved: string;
+            theme: string;
+            themeAuto: string;
+            themeLight: string;
+            themeDark: string;
+            themeSaved: string;
+            uiLevel: string;
+            uiLevelDescription: string;
+            uiLevelStandard: string;
+            uiLevelExpert: string;
+            uiLevelAdmin: string;
+            uiLevelSaved: string;
         };
         teams: {
             title: string;

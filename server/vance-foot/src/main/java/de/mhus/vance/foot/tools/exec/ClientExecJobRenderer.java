@@ -21,8 +21,15 @@ final class ClientExecJobRenderer {
         out.put("id", job.id());
         out.put("status", job.status().name());
         out.put("command", job.command());
+        if (job.sessionId() != null) {
+            out.put("sessionId", job.sessionId());
+        }
+        if (job.projectId() != null) {
+            out.put("projectId", job.projectId());
+        }
         Instant end = job.finishedAt() != null ? job.finishedAt() : Instant.now();
         out.put("durationMs", Duration.between(job.startedAt(), end).toMillis());
+        out.put("lastOutputAt", job.lastOutputAt().toString());
         if (job.exitCode() != null) {
             out.put("exitCode", job.exitCode());
         }

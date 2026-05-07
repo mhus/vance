@@ -19,6 +19,8 @@ final class ClientExecJob {
     private final Path stdoutFile;
     private final Path stderrFile;
     private final Instant startedAt;
+    private final @Nullable String sessionId;
+    private final @Nullable String projectId;
 
     private final StringBuilder stdout = new StringBuilder();
     private final StringBuilder stderr = new StringBuilder();
@@ -27,13 +29,23 @@ final class ClientExecJob {
     private volatile @Nullable Integer exitCode;
     private volatile @Nullable Instant finishedAt;
     private volatile @Nullable Process process;
+    private volatile Instant lastOutputAt;
 
     ClientExecJob(String id, String command, Path stdoutFile, Path stderrFile) {
+        this(id, command, stdoutFile, stderrFile, null, null);
+    }
+
+    ClientExecJob(
+            String id, String command, Path stdoutFile, Path stderrFile,
+            @Nullable String sessionId, @Nullable String projectId) {
         this.id = id;
         this.command = command;
         this.stdoutFile = stdoutFile;
         this.stderrFile = stderrFile;
         this.startedAt = Instant.now();
+        this.lastOutputAt = this.startedAt;
+        this.sessionId = sessionId;
+        this.projectId = projectId;
     }
 
     String id() { return id; }
@@ -41,6 +53,8 @@ final class ClientExecJob {
     Path stdoutFile() { return stdoutFile; }
     Path stderrFile() { return stderrFile; }
     Instant startedAt() { return startedAt; }
+    @Nullable String sessionId() { return sessionId; }
+    @Nullable String projectId() { return projectId; }
 
     @Nullable Instant finishedAt() { return finishedAt; }
     void finishedAt(Instant t) { this.finishedAt = t; }
@@ -56,10 +70,16 @@ final class ClientExecJob {
 
     void appendStdout(String line) {
         synchronized (stdout) { stdout.append(line).append('\n'); }
+        lastOutputAt = Instant.now();
     }
 
     void appendStderr(String line) {
         synchronized (stderr) { stderr.append(line).append('\n'); }
+        lastOutputAt = Instant.now();
+    }
+
+    Instant lastOutputAt() {
+        return lastOutputAt;
     }
 
     String readStdout() {

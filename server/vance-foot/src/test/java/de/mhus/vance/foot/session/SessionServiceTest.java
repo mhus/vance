@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.foot.agent.ClientAgentDocService;
 import de.mhus.vance.foot.command.SuggestionCache;
 import de.mhus.vance.foot.tools.ClientToolService;
+import de.mhus.vance.foot.tools.exec.FootExecEventDispatcher;
 import de.mhus.vance.foot.ui.StatusBar;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,11 +32,14 @@ class SessionServiceTest {
     private final ObjectProvider<ClientAgentDocService> clientAgentDocService = mock(ObjectProvider.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<SuggestionCache> suggestionCache = mock(ObjectProvider.class);
+    @SuppressWarnings("unchecked")
+    private final ObjectProvider<FootExecEventDispatcher> execDispatcher = mock(ObjectProvider.class);
 
     private StatusBar bar;
     private ClientToolService tools;
     private ClientAgentDocService agentDoc;
     private SuggestionCache cache;
+    private FootExecEventDispatcher execDispatcherBean;
     private SessionService session;
 
     @BeforeEach
@@ -44,12 +48,15 @@ class SessionServiceTest {
         tools = mock(ClientToolService.class);
         agentDoc = mock(ClientAgentDocService.class);
         cache = mock(SuggestionCache.class);
+        execDispatcherBean = mock(FootExecEventDispatcher.class);
         when(statusBar.getIfAvailable()).thenReturn(bar);
         when(clientToolService.getIfAvailable()).thenReturn(tools);
         when(clientAgentDocService.getIfAvailable()).thenReturn(agentDoc);
         when(suggestionCache.getIfAvailable()).thenReturn(cache);
+        when(execDispatcher.getIfAvailable()).thenReturn(execDispatcherBean);
 
-        session = new SessionService(statusBar, clientToolService, clientAgentDocService, suggestionCache);
+        session = new SessionService(statusBar, clientToolService, clientAgentDocService,
+                suggestionCache, execDispatcher);
     }
 
     @Test

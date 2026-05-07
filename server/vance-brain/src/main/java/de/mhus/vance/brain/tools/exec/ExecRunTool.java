@@ -3,6 +3,10 @@ package de.mhus.vance.brain.tools.exec;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.brain.execution.ExecutionOwner;
+import de.mhus.vance.brain.execution.ExecutionRegistryEntry;
+import de.mhus.vance.brain.execution.ExecutionRegistryService;
+import de.mhus.vance.brain.execution.ExecutionStatus;
 import de.mhus.vance.brain.tools.workspace.WorkspaceDirResolver;
 import de.mhus.vance.shared.workspace.WorkspaceService;
 import java.util.List;
@@ -45,6 +49,7 @@ public class ExecRunTool implements Tool {
     private final ExecManager execManager;
     private final ExecProperties properties;
     private final WorkspaceService workspaceService;
+    private final ExecutionRegistryService registry;
 
     @Override
     public String name() {
@@ -100,6 +105,22 @@ public class ExecRunTool implements Tool {
         String dirName = WorkspaceDirResolver.resolve(workspaceService, ctx, stringOrNull(params, "dirName"));
         try {
             ExecJob job = execManager.submit(ctx.tenantId(), ctx.projectId(), dirName, command);
+            registry.register(new ExecutionRegistryEntry(
+                    job.id(),
+                    ExecutionOwner.Brain.INSTANCE,
+                    ctx.tenantId(),
+                    ctx.projectId(),
+                    ctx.sessionId(),
+                    ctx.processId(),
+                    job.command(),
+                    dirName,
+                    job.startedAt(),
+                    job.lastOutputAt(),
+                    null,
+                    ExecutionStatus.RUNNING,
+                    null,
+                    job.stdoutFile().toString(),
+                    job.stderrFile().toString()));
             execManager.waitFor(job, waitMs);
             return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());
         } catch (ExecException e) {

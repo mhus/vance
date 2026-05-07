@@ -1,5 +1,6 @@
 package de.mhus.vance.foot.tools.exec;
 
+import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.tools.ClientTool;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +37,7 @@ public class ClientExecRunTool implements ClientTool {
             "required", List.of("command"));
 
     private final ClientExecutorService executor;
+    private final SessionService sessionService;
 
     @Override
     public String name() {
@@ -79,7 +81,10 @@ public class ClientExecRunTool implements ClientTool {
         if (rawWait instanceof Number n && n.longValue() >= 0) {
             waitMs = n.longValue();
         }
-        ClientExecJob job = executor.submit(command);
+        SessionService.BoundSession bind = sessionService.current();
+        String sessionId = bind == null ? null : bind.sessionId();
+        String projectId = bind == null ? null : bind.projectId();
+        ClientExecJob job = executor.submit(command, sessionId, projectId);
         executor.waitFor(job, waitMs);
         return ClientExecJobRenderer.render(job);
     }

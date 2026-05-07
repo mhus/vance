@@ -85,6 +85,19 @@ public class ClientToolRegistry {
         return Optional.ofNullable(e.tools.get(name));
     }
 
+    /**
+     * Find the entry for a connectionId. Used by the cross-side execution
+     * registry to route {@code exec_kill}/{@code exec_stat}/{@code exec_tail}
+     * to the foot client that owns a particular execution. Linear scan —
+     * client count per pod is small.
+     */
+    public Optional<Entry> entryByConnection(String connectionId) {
+        for (Entry e : bySession.values()) {
+            if (e.connectionId.equals(connectionId)) return Optional.of(e);
+        }
+        return Optional.empty();
+    }
+
     /** Routing info for invocation — caller writes to the WebSocket. */
     public Optional<Entry> entry(String sessionId) {
         return Optional.ofNullable(bySession.get(sessionId));

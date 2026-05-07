@@ -1,7 +1,7 @@
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { clearLegacyAuth, clearRememberedLogin, getRememberedLogin, setRememberedLogin, } from '@vance/shared';
-import { getSessionData, hydrateActiveWebUiSettings, hydrateIdentity, isAccessAlive, isRefreshAlive, login, LoginError, refreshAccessCookie, } from '@/platform';
+import { getActiveUiLevel, getSessionData, hydrateActiveWebUiSettings, hydrateIdentity, isAccessAlive, isRefreshAlive, login, LoginError, rankOf, refreshAccessCookie, } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VCheckbox, VInput } from '@/components';
 const { t } = useI18n();
@@ -18,6 +18,21 @@ const autoLoginNotice = ref(null);
 // browser. Never persists the password — that one stays out of
 // localStorage on principle.
 const rememberUser = ref(false);
+// Active UI level for tile filtering. Mirrors the value the user has
+// chosen in the profile page; the 'landing' branch reads it after
+// {@link hydrateActiveWebUiSettings} has populated sessionStorage.
+//
+// Tiers:
+//   * standard — chat / documents / inbox  (everyday)
+//   * expert   — + scopes / tools / insights  (power user)
+//   * admin    — + users  (tenant admin)
+//
+// Server-side authorization remains the authoritative gate; this
+// just keeps the index page tidy for accounts that never need the
+// power tiles.
+const uiLevel = ref('standard');
+const showExpertTiles = computed(() => rankOf(uiLevel.value) >= rankOf('expert'));
+const showAdminTiles = computed(() => rankOf(uiLevel.value) >= rankOf('admin'));
 onMounted(async () => {
     // Drop any stale localStorage tokens from the pre-cookie build.
     // Idempotent — no-op when already cleared.
@@ -38,6 +53,7 @@ onMounted(async () => {
         // value before the user does anything.
         hydrateActiveWebUiSettings();
         syncUiLocaleFromSession();
+        uiLevel.value = getActiveUiLevel();
         redirectAfterLogin();
         return;
     }
@@ -56,6 +72,7 @@ onMounted(async () => {
             hydrateActiveWebUiSettings();
             hydrateIdentity();
             syncUiLocaleFromSession();
+            uiLevel.value = getActiveUiLevel();
             window.setTimeout(redirectAfterLogin, 1000);
             return;
         }
@@ -91,6 +108,7 @@ async function onSubmit() {
         // from there until the user changes them in profile.
         hydrateActiveWebUiSettings();
         syncUiLocaleFromSession();
+        uiLevel.value = getActiveUiLevel();
         // Persist or clear the (tenant, username) hint based on the
         // checkbox. Only a successful login is allowed to write — a
         // failed attempt mustn't leak its inputs into localStorage.
@@ -416,118 +434,126 @@ else {
     __VLS_51.slots.default;
     (__VLS_ctx.$t('index.open'));
     var __VLS_51;
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: "flex items-center justify-between gap-4" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "font-semibold" },
-    });
-    (__VLS_ctx.$t('index.scopes.title'));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "text-sm opacity-70" },
-    });
-    (__VLS_ctx.$t('index.scopes.description'));
-    const __VLS_52 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
-        variant: "primary",
-        size: "sm",
-        href: "/scopes.html",
-    }));
-    const __VLS_54 = __VLS_53({
-        variant: "primary",
-        size: "sm",
-        href: "/scopes.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
-    __VLS_55.slots.default;
-    (__VLS_ctx.$t('index.open'));
-    var __VLS_55;
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: "flex items-center justify-between gap-4" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "font-semibold" },
-    });
-    (__VLS_ctx.$t('index.tools.title'));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "text-sm opacity-70" },
-    });
-    (__VLS_ctx.$t('index.tools.description'));
-    const __VLS_56 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
-        variant: "primary",
-        size: "sm",
-        href: "/tools.html",
-    }));
-    const __VLS_58 = __VLS_57({
-        variant: "primary",
-        size: "sm",
-        href: "/tools.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
-    __VLS_59.slots.default;
-    (__VLS_ctx.$t('index.open'));
-    var __VLS_59;
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: "flex items-center justify-between gap-4" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "font-semibold" },
-    });
-    (__VLS_ctx.$t('index.insights.title'));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "text-sm opacity-70" },
-    });
-    (__VLS_ctx.$t('index.insights.description'));
-    const __VLS_60 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
-        variant: "primary",
-        size: "sm",
-        href: "/insights.html",
-    }));
-    const __VLS_62 = __VLS_61({
-        variant: "primary",
-        size: "sm",
-        href: "/insights.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
-    __VLS_63.slots.default;
-    (__VLS_ctx.$t('index.open'));
-    var __VLS_63;
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: "flex items-center justify-between gap-4" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "font-semibold" },
-    });
-    (__VLS_ctx.$t('index.users.title'));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "text-sm opacity-70" },
-    });
-    (__VLS_ctx.$t('index.users.description'));
-    const __VLS_64 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
-        variant: "primary",
-        size: "sm",
-        href: "/users.html",
-    }));
-    const __VLS_66 = __VLS_65({
-        variant: "primary",
-        size: "sm",
-        href: "/users.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
-    __VLS_67.slots.default;
-    (__VLS_ctx.$t('index.open'));
-    var __VLS_67;
+    if (__VLS_ctx.showExpertTiles) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: "flex items-center justify-between gap-4" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "font-semibold" },
+        });
+        (__VLS_ctx.$t('index.scopes.title'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-sm opacity-70" },
+        });
+        (__VLS_ctx.$t('index.scopes.description'));
+        const __VLS_52 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
+            variant: "primary",
+            size: "sm",
+            href: "/scopes.html",
+        }));
+        const __VLS_54 = __VLS_53({
+            variant: "primary",
+            size: "sm",
+            href: "/scopes.html",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+        __VLS_55.slots.default;
+        (__VLS_ctx.$t('index.open'));
+        var __VLS_55;
+    }
+    if (__VLS_ctx.showExpertTiles) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: "flex items-center justify-between gap-4" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "font-semibold" },
+        });
+        (__VLS_ctx.$t('index.tools.title'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-sm opacity-70" },
+        });
+        (__VLS_ctx.$t('index.tools.description'));
+        const __VLS_56 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+            variant: "primary",
+            size: "sm",
+            href: "/tools.html",
+        }));
+        const __VLS_58 = __VLS_57({
+            variant: "primary",
+            size: "sm",
+            href: "/tools.html",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+        __VLS_59.slots.default;
+        (__VLS_ctx.$t('index.open'));
+        var __VLS_59;
+    }
+    if (__VLS_ctx.showExpertTiles) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: "flex items-center justify-between gap-4" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "font-semibold" },
+        });
+        (__VLS_ctx.$t('index.insights.title'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-sm opacity-70" },
+        });
+        (__VLS_ctx.$t('index.insights.description'));
+        const __VLS_60 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
+            variant: "primary",
+            size: "sm",
+            href: "/insights.html",
+        }));
+        const __VLS_62 = __VLS_61({
+            variant: "primary",
+            size: "sm",
+            href: "/insights.html",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+        __VLS_63.slots.default;
+        (__VLS_ctx.$t('index.open'));
+        var __VLS_63;
+    }
+    if (__VLS_ctx.showAdminTiles) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: "flex items-center justify-between gap-4" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "font-semibold" },
+        });
+        (__VLS_ctx.$t('index.users.title'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-sm opacity-70" },
+        });
+        (__VLS_ctx.$t('index.users.description'));
+        const __VLS_64 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+            variant: "primary",
+            size: "sm",
+            href: "/users.html",
+        }));
+        const __VLS_66 = __VLS_65({
+            variant: "primary",
+            size: "sm",
+            href: "/users.html",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+        __VLS_67.slots.default;
+        (__VLS_ctx.$t('index.open'));
+        var __VLS_67;
+    }
     var __VLS_39;
     var __VLS_35;
 }
@@ -643,6 +669,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             error: error,
             autoLoginNotice: autoLoginNotice,
             rememberUser: rememberUser,
+            showExpertTiles: showExpertTiles,
+            showAdminTiles: showAdminTiles,
             onSubmit: onSubmit,
         };
     },

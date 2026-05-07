@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
@@ -27,6 +28,16 @@ public class VanceWebSocketClient implements AutoCloseable {
     private final HttpClient httpClient;
 
     private volatile @Nullable WebSocket webSocket;
+
+    /**
+     * Tail of the outbound send chain. JDK's {@link WebSocket#sendText}
+     * is undefined when invoked while a previous send is still in
+     * flight, so each new send is appended via {@code thenCompose}.
+     * Failures of one send are isolated from the next so a transient
+     * error doesn't permanently poison the chain.
+     */
+    private final AtomicReference<CompletableFuture<Void>> sendChain =
+            new AtomicReference<>(CompletableFuture.completedFuture(null));
 
     public VanceWebSocketClient(VanceWebSocketConfig config, VanceWebSocketClientListener listener) {
         this(config, listener, defaultObjectMapper(), HttpClient.newHttpClient());
@@ -78,7 +89,11 @@ public class VanceWebSocketClient implements AutoCloseable {
             failed.completeExceptionally(e);
             return failed;
         }
-        return ws.sendText(json, true).thenApply(w -> null);
+        // Serialise outbound writes — JDK WebSocket forbids overlapping sendText.
+        // Swallow the previous failure (per-send isolation) before chaining the next.
+        return sendChain.updateAndGet(prev -> prev
+                .exceptionally(e -> null)
+                .thenCompose(ignored -> ws.sendText(json, true).thenApply(w -> null)));
     }
 
     /**

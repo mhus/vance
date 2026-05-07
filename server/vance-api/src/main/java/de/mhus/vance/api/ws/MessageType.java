@@ -213,6 +213,23 @@ public final class MessageType {
      */
     public static final String CLIENT_FILE_UPLOAD_REQUEST = "client-file-upload-request";
 
+    // ─── Cross-Side Execution Registry ───────────────────────────
+
+    /**
+     * Foot → Brain: push a single shell-job life-cycle event
+     * (started / tick / ended). Drives the brain's
+     * {@code ExecutionRegistryService} so the brain knows about
+     * foot-side executions even outside the LLM tool-call window.
+     */
+    public static final String EXEC_EVENT = "exec-event";
+
+    /**
+     * Foot → Brain: send the full list of currently known foot-side
+     * jobs. Sent at connect / reconnect for reconciliation; brain
+     * replaces every entry it owns for this connection.
+     */
+    public static final String EXEC_LIST_SNAPSHOT = "exec-list-snapshot";
+
     private MessageType() {
     }
 }

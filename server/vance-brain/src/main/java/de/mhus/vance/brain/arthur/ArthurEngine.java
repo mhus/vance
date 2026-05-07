@@ -1061,7 +1061,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 params.put("name", workerName);
                 params.put("goal", prompt);
                 params.put("steerContent", prompt);
-                ctx.tools().invoke("process_create", params);
+                ctx.tools().invokeInternal("process_create", params);
                 log.info("Arthur id='{}' DELEGATE recipe='{}' worker='{}' reason='{}'",
                         process.getId(), preset, workerName, summariseReason(action.reason()));
             } else {
@@ -1073,7 +1073,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 params.put("task", prompt);
                 params.put("name", workerName);
                 params.put("steerContent", prompt);
-                ctx.tools().invoke("process_create_delegate", params);
+                ctx.tools().invokeInternal("process_create_delegate", params);
                 log.info("Arthur id='{}' DELEGATE via selector worker='{}' "
                                 + "reason='{}'",
                         process.getId(), workerName, summariseReason(action.reason()));

@@ -181,11 +181,48 @@ public final class ContextToolsApi {
      * {@link ToolInvocationListener} (if any) is called before and
      * after dispatch — including on the failure path.
      */
+    /**
+     * LLM-emitted tool call. Must be in {@link #primary()} or
+     * {@link #activatedDeferred()} — i.e. the visible tool manifest at
+     * turn start. Calls for deferred-but-not-activated tools fail even
+     * if the tool is in the dispatch pool: the LLM should not be able
+     * to side-step the discovery flow. Activation via
+     * {@code describe_tool} takes effect from the <i>next</i> turn (see
+     * {@code planning/tool-schema-deferral.md} §4.5).
+     *
+     * <p>Engine action handlers that need to invoke any allow-set tool
+     * (e.g. Arthur's DELEGATE handler calling {@code process_create_delegate})
+     * use {@link #invokeInternal} which checks against the broader
+     * dispatch pool.
+     */
     public Map<String, Object> invoke(String name, Map<String, Object> params) {
-        if (!isAllowed(name)) {
+        if (!isLlmVisible(name)) {
             throw new ToolException(
-                    "Tool '" + name + "' is not in this engine's allowed tool-pool");
+                    "Tool '" + name + "' is not visible to the LLM in this turn"
+                            + " — call describe_tool to activate it (effect from next turn)");
         }
+        return doInvoke(name, params);
+    }
+
+    /**
+     * Engine-internal invocation — bypasses the LLM-visibility check.
+     * Used by think-engine action handlers that route LLM-emitted
+     * actions through fixed tool calls (e.g. Arthur's DELEGATE action
+     * dispatching to {@code process_create_delegate} regardless of
+     * whether the LLM has the tool in its manifest).
+     *
+     * <p>Still gated by the dispatch allow-set: a tool not in
+     * {@link #allowed()} cannot be invoked even internally.
+     */
+    public Map<String, Object> invokeInternal(String name, Map<String, Object> params) {
+        if (!isInDispatch(name)) {
+            throw new ToolException(
+                    "Tool '" + name + "' is not in this engine's dispatch pool");
+        }
+        return doInvoke(name, params);
+    }
+
+    private Map<String, Object> doInvoke(String name, Map<String, Object> params) {
         listener.before(name);
         long startMs = System.currentTimeMillis();
         try {
@@ -283,8 +320,23 @@ public final class ContextToolsApi {
                 deferred, activatedDeferred, listener);
     }
 
-    private boolean isAllowed(String toolName) {
+    private boolean isInDispatch(String toolName) {
         return allowed.isEmpty() || allowed.contains(toolName);
+    }
+
+    /**
+     * What the LLM is allowed to invoke this turn — primary plus any
+     * activated deferred tools. Unrestricted engines (no classification,
+     * no allow-set) get a pass — the dispatcher handles validation.
+     */
+    private boolean isLlmVisible(String toolName) {
+        // Unclassified / unrestricted: same lenient check as before the
+        // primary/deferred split. Engines that opt into classification
+        // (Arthur via the recipe-cascade) get strict LLM-visibility.
+        if (primary.isEmpty() && deferred.isEmpty()) {
+            return isInDispatch(toolName);
+        }
+        return primary.contains(toolName) || activatedDeferred.contains(toolName);
     }
 
     private List<ToolDispatcher.Resolved> filter(List<ToolDispatcher.Resolved> resolved) {

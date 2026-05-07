@@ -659,7 +659,7 @@ public class EddieEngine extends StructuredActionEngine {
                 params.put("title", projectTitle);
             }
             params.put("initialPrompt", projectGoal);
-            ctx.tools().invoke("project_create", params);
+            ctx.tools().invokeInternal("project_create", params);
             log.info("Eddie id='{}' DELEGATE_PROJECT name='{}' reason='{}'",
                     process.getId(), projectName,
                     summariseReason(action.reason()));
@@ -699,7 +699,7 @@ public class EddieEngine extends StructuredActionEngine {
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("project", project);
             params.put("content", content);
-            ctx.tools().invoke("project_chat_send", params);
+            ctx.tools().invokeInternal("project_chat_send", params);
             log.info("Eddie id='{}' STEER_PROJECT project='{}' reason='{}'",
                     process.getId(), project,
                     summariseReason(action.reason()));
@@ -790,7 +790,7 @@ public class EddieEngine extends StructuredActionEngine {
             params.put("type", "OUTPUT_TEXT");
             params.put("title", inboxTitle);
             params.put("body", lastReply.getContent());
-            ctx.tools().invoke("inbox_post", params);
+            ctx.tools().invokeInternal("inbox_post", params);
             log.info("Eddie id='{}' RELAY_INBOX source='{}' title='{}' ({} chars) reason='{}'",
                     process.getId(),
                     action.stringParam(EddieActionSchema.PARAM_SOURCE),

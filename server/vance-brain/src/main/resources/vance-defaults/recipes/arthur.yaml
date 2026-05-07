@@ -34,13 +34,59 @@ params:
   # Recipes that want a different prompt either set promptPrefix
   # directly here (highest precedence) or point promptDocument /
   # promptDocumentSmall at a different cascade path.
-# Plan-Mode tool filter — recipe-driven instead of hardcoded in
-# ArthurEngine. EXPLORING / PLANNING strip every tool labelled
-# @write / @executive / @side-effect plus the bare `respond` action so
-# Arthur is constrained to read-only exploration. EXECUTING and NORMAL
-# inherit the profile-base (no overlay) and see the full pool.
-# See planning/tool-schema-deferral.md §14.6.
+# Mode-driven tool filter — recipe-driven instead of hardcoded in
+# ArthurEngine. See planning/tool-schema-deferral.md §14.6.
+#
+# NORMAL: Arthur is a chat orchestrator. The LLM sees only the 8 lookup
+#   tools (whoami, process_list/status, recipe_list/describe,
+#   manual_list/read, inbox_post) as primary. Everything else stays in
+#   the dispatcher allow-set so Arthur's structured-action handlers can
+#   call them (process_create_delegate via DELEGATE, etc.) — they're
+#   just hidden from the LLM tool manifest, which forces the LLM to
+#   reach for DELEGATE / ASK_USER / structured actions instead of
+#   inlining work that should run in a worker.
+#
+# EXPLORING / PLANNING: physically remove write/executive/side-effect
+#   tools from the dispatch pool — Arthur is constrained to read-only
+#   exploration during plan-mode, no inline mutations.
+#
+# EXECUTING and other modes inherit the profile-base (no overlay) and
+# see the full pool.
 modes:
+  NORMAL:
+    allowedToolsDefer:
+      - current_time
+      - find_tools
+      - describe_tool
+      - process_create
+      - process_create_delegate
+      - process_steer
+      - process_stop
+      - process_pause
+      - process_resume
+      - project_list
+      - project_current
+      - doc_read
+      - doc_list
+      - doc_find
+      - scratchpad_get
+      - scratchpad_list
+      - data_get
+      - web_search
+      - web_fetch
+      - cross_doc_list_projects
+      - relations_find
+      - rag_list
+      - kit_status
+      - exec_status
+      - client_file_read
+      - client_file_list
+      - client_file_edit
+      - client_file_write
+      - client_exec_run
+      - client_exec_status
+      - client_exec_kill
+      - client_javascript
   EXPLORING:
     allowedToolsRemove:
       - "@write"

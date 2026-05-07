@@ -34,6 +34,17 @@ params:
   # Recipes that want a different prompt either set promptPrefix
   # directly here (highest precedence) or point promptDocument /
   # promptDocumentSmall at a different cascade path.
+# Open Arthur's dispatch pool to every read-only tool registered in the
+# brain — workspace_grep / workspace_find / doc_grep / client_file_grep
+# and friends. The engine's hardcoded ALLOWED_TOOLS lists only the
+# read/list variants explicitly; this label-selector picks up the
+# inspection primitives so PLANNING-mode Arthur (where @write /
+# @executive / @side-effect are stripped) still has greppable visibility
+# into project + workspace + foot host without spawning a worker. The
+# selector resolves at spawn time via RecipeResolver.computeAllowed.
+allowedToolsAdd:
+  - "@read-only"
+
 # Mode-driven tool filter — recipe-driven instead of hardcoded in
 # ArthurEngine. See planning/tool-schema-deferral.md §14.6.
 #

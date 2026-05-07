@@ -38,16 +38,32 @@ public interface ClientTool {
 
     /**
      * Selector tags forwarded to the brain via {@link ToolSpec#getLabels()}.
-     * Read-only client tools (no filesystem mutation, no exec, no JS
-     * eval) should advertise the {@code "read-only"} label so Arthur's
-     * Plan-Mode tool-filter keeps them visible during EXPLORING /
-     * PLANNING — see {@code specification/plan-mode.md} §5.
+     * Engine-side conventions: {@code read-only} (no mutation),
+     * {@code write} (mutates app state), {@code executive} (orchestration),
+     * {@code side-effect} (external/host mutation). The mode-filter on
+     * Arthur strips {@code @write @executive @side-effect} during
+     * EXPLORING/PLANNING. See {@code planning/tool-schema-deferral.md} §5.
      *
      * <p>Default empty: tool stays out of every selector pool unless
      * explicitly tagged.
      */
     default Set<String> labels() {
         return Set.of();
+    }
+
+    /**
+     * If {@code true}, the brain advertises the tool only through the
+     * discovery block (name + {@link #searchHint()}) and won't surface
+     * its full schema until the LLM calls {@code describe_tool}. Default
+     * {@code false}. See {@code planning/tool-schema-deferral.md} §4.
+     */
+    default boolean deferred() {
+        return false;
+    }
+
+    /** 5–15-word relevance hint used in the discovery block when {@link #deferred()}. */
+    default String searchHint() {
+        return "";
     }
 
     /** Default projection to the wire-format spec. */
@@ -59,6 +75,8 @@ public interface ClientTool {
                 .source("client")
                 .paramsSchema(new LinkedHashMap<>(paramsSchema()))
                 .labels(new LinkedHashSet<>(labels()))
+                .deferred(deferred())
+                .searchHint(searchHint())
                 .build();
     }
 }

@@ -60,9 +60,47 @@ public interface Tool {
      * {@code @<label>}. Built-in beans return an empty set by default;
      * configured tools override with the values from
      * {@code ServerToolDocument#labels}.
+     *
+     * <p>Convention used across the engine layer:
+     * <ul>
+     *   <li>{@code read-only} — pure lookup; no state mutation, no
+     *       external side-effect. Safe in Plan-Mode exploration.</li>
+     *   <li>{@code write} — mutates application state (documents,
+     *       scratchpads, RAG-collections, project records).</li>
+     *   <li>{@code executive} — orchestration / process-control
+     *       (process_create, process_steer, recipe_apply, peer_notify).
+     *       Mode filters strip these in EXPLORING/PLANNING.</li>
+     *   <li>{@code side-effect} — observable mutation outside the
+     *       Vance environment (web_fetch, exec_run, kit_apply).</li>
+     * </ul>
      */
     default Set<String> labels() {
         return Set.of();
+    }
+
+    /**
+     * If {@code true}, the tool is held back from the default LLM
+     * tool-manifest. The discovery block in the system prompt advertises
+     * it by name and {@link #searchHint()} only; the LLM activates it
+     * by calling {@code describe_tool(name)} (see specification
+     * {@code planning/tool-schema-deferral.md}).
+     *
+     * <p>Default {@code false}: tool ships in every turn's tool list as
+     * <i>primary</i>. Recipes can override per-process via
+     * {@code allowedToolsDefer} / {@code allowedToolsAdd}.
+     */
+    default boolean deferred() {
+        return false;
+    }
+
+    /**
+     * 5–15-word relevance hint surfaced in the discovery block when
+     * {@link #deferred()} is {@code true}. Should give the LLM enough
+     * signal to know when calling {@code describe_tool} is worthwhile.
+     * Empty string for non-deferred tools.
+     */
+    default String searchHint() {
+        return "";
     }
 
     /**
@@ -76,6 +114,9 @@ public interface Tool {
                 .primary(primary())
                 .source(sourceId)
                 .paramsSchema(new LinkedHashMap<>(paramsSchema()))
+                .labels(new java.util.LinkedHashSet<>(labels()))
+                .deferred(deferred())
+                .searchHint(searchHint())
                 .build();
     }
 }

@@ -49,7 +49,7 @@ public class DocCopyTool implements Tool {
                 + "copy gets its own id. Pending in-flight changes on the source are flushed first.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("doc-management", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

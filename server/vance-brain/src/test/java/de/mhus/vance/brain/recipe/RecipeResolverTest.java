@@ -207,6 +207,8 @@ class RecipeResolverTest {
                 PromptMode.APPEND,
                 null, // dataRelayCorrection
                 List.of(), List.of(),
+                List.of(), // allowedToolsDefer
+                new HashMap<>(), // modes (recipe-base)
                 new HashMap<>(),
                 List.of(),
                 null,

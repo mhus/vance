@@ -50,6 +50,21 @@ public class ExecKillTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive", "side-effect");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Run/kill shell job on user workspace";
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         Object raw = params == null ? null : params.get("id");
         if (!(raw instanceof String id) || id.isBlank()) {

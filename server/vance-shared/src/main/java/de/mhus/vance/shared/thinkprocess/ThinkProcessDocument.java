@@ -231,10 +231,26 @@ public class ThinkProcessDocument {
      * execution. Empty for non-Arthur engines and for Arthur in
      * {@link ProcessMode#NORMAL}/{@link ProcessMode#EXPLORING}.
      *
-     * <p>See {@code readme/arthur-plan-mode.md} §3.2.
+     * <p>See {@code planning/arthur-plan-mode.md} §3.2.
      */
     @Builder.Default
     private List<TodoItem> todos = new ArrayList<>();
+
+    /**
+     * Tools that the LLM has activated by calling {@code describe_tool}
+     * on a {@link de.mhus.vance.brain.tools.Tool#deferred()}-marked tool.
+     * Map value is the activation timestamp (refreshed on every
+     * subsequent invocation through {@code ContextToolsApi}); the
+     * configured TTL ({@code vance.tooling.deferralActivationTtl},
+     * default 15 min) decays stale entries lazily.
+     *
+     * <p>Empty for processes whose engines never expose deferred
+     * tools or whose recipe pins everything to primary.
+     *
+     * <p>See {@code planning/tool-schema-deferral.md} §4.3 / §6.
+     */
+    @Builder.Default
+    private Map<String, Instant> activatedDeferredTools = new LinkedHashMap<>();
 
     /**
      * Set when {@link #status} is {@link ThinkProcessStatus#CLOSED}, null

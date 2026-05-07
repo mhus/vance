@@ -44,7 +44,9 @@ public class RagAddDocumentTool implements Tool {
                 + "idempotent on repeated calls.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("rag-bridge", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("rag-bridge", "eddie", "write"); }
+    @Override public boolean deferred() { return true; }
+    @Override public String searchHint() { return "RAG vector-collection management (rare)"; }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

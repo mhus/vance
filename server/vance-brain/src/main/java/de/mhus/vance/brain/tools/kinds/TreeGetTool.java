@@ -35,7 +35,7 @@ public class TreeGetTool implements Tool {
     }
 
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-tree", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-tree", "eddie", "read-only"); }
 
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }

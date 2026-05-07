@@ -54,6 +54,21 @@ public class RagDeleteTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("write");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "RAG vector-collection management (rare)";
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String projectId = ctx.projectId();
         if (projectId == null) {

@@ -54,6 +54,21 @@ public class KitInstallTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Kit installation/management — Git-bundled project configuration";
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx.tenantId() == null) {
             throw new ToolException("kit_install requires a tenant scope");

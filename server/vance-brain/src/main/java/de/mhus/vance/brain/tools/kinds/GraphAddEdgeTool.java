@@ -41,7 +41,7 @@ public class GraphAddEdgeTool implements Tool {
                 + "Duplicate edges (same source+target) are rejected.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

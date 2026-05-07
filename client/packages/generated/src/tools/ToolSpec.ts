@@ -10,4 +10,6 @@ export interface ToolSpec {
   source?: string;
   paramsSchema: Record<string, any>;
   labels: string[];
+  deferred: boolean;
+  searchHint: string;
 }

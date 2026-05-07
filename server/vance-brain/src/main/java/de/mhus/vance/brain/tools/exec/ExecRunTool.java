@@ -72,6 +72,21 @@ public class ExecRunTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive", "side-effect");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Run/kill shell job on user workspace";
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         Object rawCmd = params == null ? null : params.get("command");
         if (!(rawCmd instanceof String command) || command.isBlank()) {

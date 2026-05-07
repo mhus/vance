@@ -52,6 +52,11 @@ public class ScratchpadDeleteTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("write");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String processId = ctx.processId();
         if (processId == null) {

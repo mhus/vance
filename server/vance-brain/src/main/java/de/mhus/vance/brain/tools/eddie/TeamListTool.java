@@ -63,6 +63,11 @@ public class TeamListTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("eddie", "read-only");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String projectIdParam = paramString(params, "projectId");
         boolean wantsAll = "all".equalsIgnoreCase(projectIdParam);

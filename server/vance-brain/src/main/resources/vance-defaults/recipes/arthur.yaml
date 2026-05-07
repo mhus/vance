@@ -34,6 +34,25 @@ params:
   # Recipes that want a different prompt either set promptPrefix
   # directly here (highest precedence) or point promptDocument /
   # promptDocumentSmall at a different cascade path.
+# Plan-Mode tool filter — recipe-driven instead of hardcoded in
+# ArthurEngine. EXPLORING / PLANNING strip every tool labelled
+# @write / @executive / @side-effect plus the bare `respond` action so
+# Arthur is constrained to read-only exploration. EXECUTING and NORMAL
+# inherit the profile-base (no overlay) and see the full pool.
+# See planning/tool-schema-deferral.md §14.6.
+modes:
+  EXPLORING:
+    allowedToolsRemove:
+      - "@write"
+      - "@executive"
+      - "@side-effect"
+      - respond
+  PLANNING:
+    allowedToolsRemove:
+      - "@write"
+      - "@executive"
+      - "@side-effect"
+      - respond
 profiles:
   # The foot CLI is the user's terminal on their own machine — local
   # files, shell, and JS run there. Reach them through client_*.

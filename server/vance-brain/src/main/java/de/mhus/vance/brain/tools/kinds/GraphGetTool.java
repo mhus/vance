@@ -31,7 +31,7 @@ public class GraphGetTool implements Tool {
         return "Read a `kind: graph` document. Returns the directed flag, all nodes (id/label/color/position), and all edges (source/target/label/color).";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

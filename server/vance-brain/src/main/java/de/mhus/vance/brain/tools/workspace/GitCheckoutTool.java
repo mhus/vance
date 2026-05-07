@@ -79,6 +79,21 @@ public class GitCheckoutTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("write", "side-effect");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Workspace shell/git/JS — destructive or rare";
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String tenantId = ctx.tenantId();
         String projectId = ctx.projectId();

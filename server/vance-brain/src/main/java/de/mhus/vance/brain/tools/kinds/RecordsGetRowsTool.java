@@ -30,7 +30,7 @@ public class RecordsGetRowsTool implements Tool {
         return "Read all rows of a `kind: records` document. Returns the schema and an array of rows; each row is an object keyed by field name.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

@@ -31,7 +31,9 @@ public class ListClearTool implements Tool {
     }
 
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-list", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "write"); }
+    @Override public boolean deferred() { return true; }
+    @Override public String searchHint() { return "Bulk-destructive collection ops"; }
 
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }

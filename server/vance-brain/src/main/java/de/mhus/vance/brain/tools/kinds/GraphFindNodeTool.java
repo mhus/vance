@@ -37,7 +37,7 @@ public class GraphFindNodeTool implements Tool {
         return "Find nodes whose id or label contains the query (case-insensitive).";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

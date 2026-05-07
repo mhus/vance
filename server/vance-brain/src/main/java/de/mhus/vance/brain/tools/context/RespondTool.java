@@ -86,6 +86,11 @@ public class RespondTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         // No side effect — engines short-circuit the call from inside the
         // tool-loop and never get here. This implementation exists for the

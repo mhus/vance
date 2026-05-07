@@ -67,10 +67,30 @@ public class ToolSpec {
      * Plan-Mode's {@code read-only} filter alike).
      *
      * <p>Convention: tools that don't mutate state carry the
-     * {@code "read-only"} label, so Arthur's Plan-Mode tool-filter
-     * keeps them visible during {@code EXPLORING}/{@code PLANNING}.
-     * See {@code specification/plan-mode.md} §5.
+     * {@code "read-only"} label; mutation tools carry {@code "write"};
+     * orchestration / process-control tools carry {@code "executive"};
+     * tools with externally observable side-effects (shell, web,
+     * kit-apply) carry {@code "side-effect"}. Mode filters
+     * (Arthur's EXPLORING/PLANNING) and recipes use these via
+     * {@code @<label>}-selectors. See {@code planning/tool-schema-deferral.md} §5.
      */
     @Builder.Default
     private Set<String> labels = new LinkedHashSet<>();
+
+    /**
+     * Wire-mirror of {@code Tool.deferred()}. {@code true} means the
+     * tool is held back from the default LLM tool-manifest and only
+     * surfaces through the discovery-block + {@code describe_tool}
+     * activation. See {@code planning/tool-schema-deferral.md} §4.
+     */
+    @Builder.Default
+    private boolean deferred = false;
+
+    /**
+     * Wire-mirror of {@code Tool.searchHint()}. 5–15-word relevance
+     * hint shown in the discovery block when {@link #deferred} is
+     * {@code true}. Empty for non-deferred tools.
+     */
+    @Builder.Default
+    private String searchHint = "";
 }

@@ -684,6 +684,71 @@ public class ThinkProcessService {
         return false;
     }
 
+    // ────────────────── Tool-Schema-Deferral ──────────────────
+
+    /**
+     * Records that the LLM has activated the deferred tool {@code name}
+     * on this process — bumping the entry to the current instant if it
+     * already exists (sliding TTL via per-use refresh). Returns {@code
+     * true} iff the row exists and was updated.
+     *
+     * <p>Stamping happens via dotted-key Mongo update so concurrent
+     * activations of different tools don't race on the embedded map.
+     */
+    public boolean activateDeferredTool(String id, String toolName) {
+        return activateDeferredTool(id, toolName, Instant.now());
+    }
+
+    /** Test-friendly variant — pass an explicit instant. */
+    public boolean activateDeferredTool(String id, String toolName, Instant at) {
+        if (toolName == null || toolName.isBlank()) {
+            return false;
+        }
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("activatedDeferredTools." + toolName, at);
+        return mongoTemplate.updateFirst(query, update, ThinkProcessDocument.class)
+                .getModifiedCount() > 0;
+    }
+
+    /**
+     * Drops every entry from {@link ThinkProcessDocument#getActivatedDeferredTools()}
+     * whose timestamp is strictly older than {@code cutoff}. Implementation
+     * does a read-update-write with optimistic locking — concurrent
+     * activations during cleanup retry once.
+     *
+     * @return number of entries removed (0 when there's nothing to do)
+     */
+    public int cleanupDecayedActivations(String id, Instant cutoff) {
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Optional<ThinkProcessDocument> opt = repository.findById(id);
+            if (opt.isEmpty()) return 0;
+            ThinkProcessDocument doc = opt.get();
+            Map<String, Instant> current = doc.getActivatedDeferredTools();
+            if (current == null || current.isEmpty()) return 0;
+            Map<String, Instant> kept = new LinkedHashMap<>();
+            int removed = 0;
+            for (Map.Entry<String, Instant> e : current.entrySet()) {
+                if (e.getValue() != null && e.getValue().isAfter(cutoff)) {
+                    kept.put(e.getKey(), e.getValue());
+                } else {
+                    removed++;
+                }
+            }
+            if (removed == 0) return 0;
+            Query query = new Query(Criteria.where("_id").is(id)
+                    .and("version").is(doc.getVersion()));
+            Update update = new Update()
+                    .set("activatedDeferredTools", kept)
+                    .inc("version", 1);
+            UpdateResult result = mongoTemplate.updateFirst(
+                    query, update, ThinkProcessDocument.class);
+            if (result.getModifiedCount() > 0) return removed;
+            // optimistic-lock conflict — retry
+        }
+        log.warn("cleanupDecayedActivations: optimistic-lock retries exhausted id='{}'", id);
+        return 0;
+    }
+
     public void delete(String id) {
         repository.deleteById(id);
     }

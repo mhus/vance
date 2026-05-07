@@ -56,7 +56,9 @@ public class CrossDocMoveTool implements Tool {
                 + "buffer-flush window).";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("cross-project"); }
+    @Override public Set<String> labels() { return Set.of("cross-project", "write"); }
+    @Override public boolean deferred() { return true; }
+    @Override public String searchHint() { return "Copy/move documents across projects"; }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

@@ -53,7 +53,7 @@ public class DocCreateKindTool implements Tool {
                 + "Returns the new document id. Pass `body` to override the default stub.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("doc-management", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

@@ -42,7 +42,7 @@ public class RecordsFindTool implements Tool {
                 + "Optional `field` restricts the search to one column.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

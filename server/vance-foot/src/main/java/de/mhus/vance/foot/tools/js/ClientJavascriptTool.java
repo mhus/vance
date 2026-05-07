@@ -68,6 +68,11 @@ public class ClientJavascriptTool implements ClientTool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive", "side-effect");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
         Object raw = params == null ? null : params.get("code");
         if (!(raw instanceof String code) || code.isBlank()) {

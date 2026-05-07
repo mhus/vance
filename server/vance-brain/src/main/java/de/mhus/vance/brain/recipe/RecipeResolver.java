@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.recipe;
 
+import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -42,6 +43,35 @@ public class RecipeResolver {
 
     /** Prefix that marks an entry as a label selector (vs. a literal tool name). */
     public static final String LABEL_PREFIX = "@";
+
+    /**
+     * Reserved mode-block key used as the catch-all for engine modes
+     * the recipe doesn't list explicitly. Mirrors the {@code default}
+     * key in the profile cascade. See {@code planning/tool-schema-deferral.md} §14.4.
+     */
+    public static final String MODE_DEFAULT_KEY = "default";
+
+    /**
+     * Per-turn tool-filter resolved against the recipe's mode/profile
+     * cascade. Each list contains literal tool names — label selectors
+     * (`@<label>`) have been expanded by the resolver. Override
+     * semantics: this triple comes from a single cascade hit; outer
+     * layers are not merged in. See
+     * {@code planning/tool-schema-deferral.md} §14.5.
+     */
+    public record ToolFilter(
+            List<String> remove,
+            List<String> add,
+            List<String> defer) {
+
+        /** Empty filter — no overlays applied. */
+        public static final ToolFilter EMPTY =
+                new ToolFilter(List.of(), List.of(), List.of());
+
+        public boolean isEmpty() {
+            return remove.isEmpty() && add.isEmpty() && defer.isEmpty();
+        }
+    }
 
     /**
      * Resolves {@code name} in the project/_vance/classpath cascade.
@@ -116,7 +146,15 @@ public class RecipeResolver {
                 de.mhus.vance.brain.progress.ProgressLevel.PARAM_KEY,
                 de.mhus.vance.brain.progress.ProgressLevel.NORMAL.name().toLowerCase());
 
-        List<String> combinedAdd = concat(r.allowedToolsAdd(), profileBlock.allowedToolsAdd());
+        // Spawn-time dispatcher pool: recipe + profile-base lists fold in
+        // here. Defer-listed tools count as "add to dispatch" — they need
+        // to be invokable so the LLM can activate them via describe_tool;
+        // the per-turn ToolFilter handles the primary-vs-deferred split.
+        // Per-mode mode-block lists are NOT folded here; the per-turn
+        // toolFilterFor() applies them live.
+        List<String> combinedAdd = concat(
+                r.allowedToolsAdd(), profileBlock.allowedToolsAdd(),
+                r.allowedToolsDefer(), profileBlock.allowedToolsDefer());
         List<String> combinedRemove = concat(r.allowedToolsRemove(), profileBlock.allowedToolsRemove());
         List<String> expandedAdd = expandLabelSelectors(tenantId, projectId, combinedAdd);
         List<String> expandedRemove = expandLabelSelectors(tenantId, projectId, combinedRemove);
@@ -170,12 +208,12 @@ public class RecipeResolver {
         return fallback == null ? ProfileBlock.EMPTY : fallback;
     }
 
-    private static List<String> concat(List<String> a, List<String> b) {
-        if (a == null || a.isEmpty()) return b == null ? List.of() : b;
-        if (b == null || b.isEmpty()) return a;
-        List<String> out = new ArrayList<>(a.size() + b.size());
-        out.addAll(a);
-        out.addAll(b);
+    @SafeVarargs
+    private static List<String> concat(List<String>... lists) {
+        List<String> out = new ArrayList<>();
+        for (List<String> l : lists) {
+            if (l != null && !l.isEmpty()) out.addAll(l);
+        }
         return out;
     }
 
@@ -251,6 +289,120 @@ public class RecipeResolver {
             return null;
         }
         return Set.copyOf(effective);
+    }
+
+    /**
+     * Per-turn tool-filter resolution. The cascade in
+     * {@code planning/tool-schema-deferral.md} §14.4 applied
+     * first-hit-wins (override, not accumulation):
+     *
+     * <ol>
+     *   <li>{@code recipe.profiles[profile].modes[mode]}</li>
+     *   <li>{@code recipe.profiles[profile].modes["default"]}</li>
+     *   <li>{@code recipe.profiles[profile]} (profile-base, no mode overlay)</li>
+     *   <li>{@code recipe.profiles["default"]}</li>
+     *   <li>{@code recipe.profiles["default"].modes[mode]} → recipe-base
+     *       mode entry — used when there's no profile match at all.</li>
+     *   <li>{@code recipe.profiles["default"].modes["default"]}</li>
+     *   <li>recipe-base ({@code allowedToolsAdd / Remove / Defer}) and its
+     *       {@code modes[mode]}, {@code modes["default"]}.</li>
+     * </ol>
+     *
+     * <p>Returns {@link ToolFilter#EMPTY} when neither the recipe nor
+     * any matching layer carries an overlay — callers then apply only
+     * the engine default + {@code Tool.deferred()}-classification.
+     *
+     * <p>Engines with no mode (Ford, Marvin, Eddie) pass {@code mode = NORMAL}
+     * (or {@code null}); those land on the profile-base layer of the cascade.
+     *
+     * @param recipeName       resolved process recipe name; null/blank → resolve "default"
+     * @param connectionProfile profile name (foot/web/...) — matches the
+     *                          {@code profiles[profile]} key
+     * @param mode             current process mode, NORMAL when not Plan-Mode
+     */
+    public ToolFilter toolFilterFor(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String recipeName,
+            @Nullable String connectionProfile,
+            @Nullable ProcessMode mode) {
+        String name = (recipeName != null && !recipeName.isBlank())
+                ? recipeName : "default";
+        Optional<ResolvedRecipe> resolved = resolve(tenantId, projectId, name);
+        if (resolved.isEmpty()) {
+            return ToolFilter.EMPTY;
+        }
+        ResolvedRecipe r = resolved.get();
+        String modeKey = (mode == null) ? null : mode.name();
+
+        // Cascade lookup: first matching block wins.
+        RecipeModeBlock hit = lookupModeBlock(r, connectionProfile, modeKey);
+        if (hit != null && !hit.isEmpty()) {
+            return expandFilter(tenantId, projectId, hit);
+        }
+
+        // No mode-block hit. Fall through to profile-base / recipe-base.
+        ProfileBlock profileBlock = resolveProfileBlock(r, connectionProfile);
+        if (profileBlock.hasToolFilter()) {
+            return new ToolFilter(
+                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsRemove()),
+                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsAdd()),
+                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsDefer()));
+        }
+        if (!r.allowedToolsAdd().isEmpty()
+                || !r.allowedToolsRemove().isEmpty()
+                || !r.allowedToolsDefer().isEmpty()) {
+            return new ToolFilter(
+                    expandLabelSelectors(tenantId, projectId, r.allowedToolsRemove()),
+                    expandLabelSelectors(tenantId, projectId, r.allowedToolsAdd()),
+                    expandLabelSelectors(tenantId, projectId, r.allowedToolsDefer()));
+        }
+        return ToolFilter.EMPTY;
+    }
+
+    /**
+     * Walks the mode-block cascade. Returns the first non-empty
+     * {@link RecipeModeBlock} encountered, or {@code null} when none
+     * applies (caller falls through to profile-base / recipe-base).
+     *
+     * <p>Order: {@code profiles[profile].modes[mode] →
+     * profiles[profile].modes["default"] → profiles["default"].modes[mode] →
+     * profiles["default"].modes["default"] → recipe.modes[mode] →
+     * recipe.modes["default"]}.
+     */
+    private static @Nullable RecipeModeBlock lookupModeBlock(
+            ResolvedRecipe r, @Nullable String connectionProfile, @Nullable String modeKey) {
+        if (modeKey == null) modeKey = MODE_DEFAULT_KEY;
+        Map<String, ProfileBlock> profiles = r.profiles();
+        // 1+2: exact profile, then default profile
+        ProfileBlock[] profileChain = {
+                profiles == null ? null
+                        : (connectionProfile == null ? null : profiles.get(connectionProfile)),
+                profiles == null ? null : profiles.get(Profiles.DEFAULT)
+        };
+        for (ProfileBlock pb : profileChain) {
+            if (pb == null) continue;
+            Map<String, RecipeModeBlock> modes = pb.modes();
+            if (modes == null || modes.isEmpty()) continue;
+            RecipeModeBlock exact = modes.get(modeKey);
+            if (exact != null) return exact;
+            RecipeModeBlock catchAll = modes.get(MODE_DEFAULT_KEY);
+            if (catchAll != null) return catchAll;
+        }
+        // 3: recipe-base modes
+        Map<String, RecipeModeBlock> baseModes = r.modes();
+        if (baseModes == null || baseModes.isEmpty()) return null;
+        RecipeModeBlock baseExact = baseModes.get(modeKey);
+        if (baseExact != null) return baseExact;
+        return baseModes.get(MODE_DEFAULT_KEY);
+    }
+
+    private ToolFilter expandFilter(
+            String tenantId, @Nullable String projectId, RecipeModeBlock block) {
+        return new ToolFilter(
+                expandLabelSelectors(tenantId, projectId, block.allowedToolsRemove()),
+                expandLabelSelectors(tenantId, projectId, block.allowedToolsAdd()),
+                expandLabelSelectors(tenantId, projectId, block.allowedToolsDefer()));
     }
 
     /**

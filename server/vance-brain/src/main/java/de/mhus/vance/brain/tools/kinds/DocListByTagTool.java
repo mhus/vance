@@ -40,7 +40,7 @@ public class DocListByTagTool implements Tool {
                 + "narrows the result. Trashed documents are excluded.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("tags", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("tags", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

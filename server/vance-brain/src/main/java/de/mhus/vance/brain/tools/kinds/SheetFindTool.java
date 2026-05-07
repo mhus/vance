@@ -37,7 +37,7 @@ public class SheetFindTool implements Tool {
         return "Find cells whose data contains the query (case-insensitive). Returns matching addresses with their data.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

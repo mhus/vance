@@ -159,6 +159,8 @@ public class RecipeLoader {
         String dataRelayCorrection = stringOrNull(spec.get("dataRelayCorrection"));
         List<String> add = stringList(spec.get("allowedToolsAdd"), "allowedToolsAdd");
         List<String> remove = stringList(spec.get("allowedToolsRemove"), "allowedToolsRemove");
+        List<String> defer = stringList(spec.get("allowedToolsDefer"), "allowedToolsDefer");
+        Map<String, RecipeModeBlock> baseModes = parseModes(spec.get("modes"), "modes");
         Map<String, ProfileBlock> profiles = parseProfiles(spec.get("profiles"));
         List<String> defaultActiveSkills = stringList(
                 spec.get("defaultActiveSkills"), "defaultActiveSkills");
@@ -171,7 +173,7 @@ public class RecipeLoader {
                 name, description, engine, params,
                 promptPrefix, promptPrefixSmall, promptMode,
                 dataRelayCorrection,
-                add, remove, profiles,
+                add, remove, defer, baseModes, profiles,
                 defaultActiveSkills, allowedSkills,
                 locked, tags,
                 mapSource(hit.source()));
@@ -241,6 +243,11 @@ public class RecipeLoader {
             List<String> blockRemove = stringList(
                     blockMap.get("allowedToolsRemove"),
                     "profiles." + key + ".allowedToolsRemove");
+            List<String> blockDefer = stringList(
+                    blockMap.get("allowedToolsDefer"),
+                    "profiles." + key + ".allowedToolsDefer");
+            Map<String, RecipeModeBlock> blockModes = parseModes(
+                    blockMap.get("modes"), "profiles." + key + ".modes");
             String blockAppend = stringOrNull(blockMap.get("promptPrefixAppend"));
             Map<String, Object> blockParams = new LinkedHashMap<>();
             Object rawBlockParams = blockMap.get("params");
@@ -256,7 +263,53 @@ public class RecipeLoader {
             SessionLifecycleConfig sessionCfg = parseSessionBlock(
                     blockMap.get("session"), "profiles." + key + ".session");
             out.put(key, new ProfileBlock(
-                    blockAdd, blockRemove, blockAppend, Map.copyOf(blockParams), sessionCfg));
+                    blockAdd, blockRemove, blockDefer, blockModes,
+                    blockAppend, Map.copyOf(blockParams), sessionCfg));
+        }
+        return Map.copyOf(out);
+    }
+
+    /**
+     * Parses an optional {@code modes:} sub-map. Each mode key holds a
+     * {@link RecipeModeBlock} with optional {@code allowedToolsAdd /
+     * Remove / Defer} lists. The literal mode key {@code default}
+     * is the catch-all for modes the recipe didn't list explicitly.
+     * An empty block ({@code modes.<X>: {}}) is preserved as
+     * {@link RecipeModeBlock#EMPTY} — it acts as an explicit "leave
+     * the profile-base in place for this mode" marker (see §14.4).
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, RecipeModeBlock> parseModes(@Nullable Object raw, String fieldName) {
+        if (raw == null) return Map.of();
+        if (!(raw instanceof Map<?, ?> rawMap)) {
+            throw new IllegalStateException("'" + fieldName + "' must be a map");
+        }
+        Map<String, RecipeModeBlock> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if (key.isBlank()) {
+                throw new IllegalStateException("'" + fieldName + "' contains a blank key");
+            }
+            Object blockRaw = entry.getValue();
+            if (blockRaw == null) {
+                out.put(key, RecipeModeBlock.EMPTY);
+                continue;
+            }
+            if (!(blockRaw instanceof Map<?, ?>)) {
+                throw new IllegalStateException(
+                        "'" + fieldName + "." + key + "' must be a map");
+            }
+            Map<String, Object> blockMap = (Map<String, Object>) blockRaw;
+            List<String> add = stringList(
+                    blockMap.get("allowedToolsAdd"),
+                    fieldName + "." + key + ".allowedToolsAdd");
+            List<String> remove = stringList(
+                    blockMap.get("allowedToolsRemove"),
+                    fieldName + "." + key + ".allowedToolsRemove");
+            List<String> defer = stringList(
+                    blockMap.get("allowedToolsDefer"),
+                    fieldName + "." + key + ".allowedToolsDefer");
+            out.put(key, new RecipeModeBlock(add, remove, defer));
         }
         return Map.copyOf(out);
     }

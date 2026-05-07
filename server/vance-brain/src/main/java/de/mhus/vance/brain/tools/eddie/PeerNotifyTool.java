@@ -89,6 +89,11 @@ public class PeerNotifyTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("eddie", "executive");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx.processId() == null) {
             throw new ToolException("peer_notify requires an Eddie process scope");

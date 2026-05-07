@@ -60,6 +60,11 @@ public class ClientFileEditTool implements ClientTool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("write", "side-effect");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
         Object rawPath = params == null ? null : params.get("path");
         Object rawOld = params == null ? null : params.get("oldText");

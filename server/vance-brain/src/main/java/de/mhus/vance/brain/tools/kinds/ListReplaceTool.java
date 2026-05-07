@@ -42,7 +42,7 @@ public class ListReplaceTool implements Tool {
     }
 
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-list", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "write"); }
 
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }

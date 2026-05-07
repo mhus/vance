@@ -39,7 +39,9 @@ public class GraphRemoveNodeTool implements Tool {
                 + "All incident edges (incoming and outgoing) are dropped too.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "write"); }
+    @Override public boolean deferred() { return true; }
+    @Override public String searchHint() { return "Graph topology mutation (rare)"; }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

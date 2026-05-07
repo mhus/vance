@@ -38,7 +38,7 @@ public class SheetGetCellTool implements Tool {
                 + "Returns the cell's data (value or formula string), color and background if set.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

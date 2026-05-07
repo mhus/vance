@@ -28,7 +28,7 @@ public class RecordsGetSchemaTool implements Tool {
         return "Return the schema (ordered list of field names) of a `kind: records` document.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

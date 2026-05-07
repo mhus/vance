@@ -586,6 +586,8 @@ class ValidatingPhaseTest {
                 /*dataRelayCorrection*/ null,
                 java.util.List.of(),
                 java.util.List.of(),
+                java.util.List.of(), // allowedToolsDefer
+                java.util.Map.of(), // modes (recipe-base)
                 java.util.Map.of(),
                 java.util.List.of(),
                 /*allowedSkills*/ null,

@@ -56,7 +56,7 @@ public class DocGrepTool implements Tool {
                 + "Pattern is Java regex; literal substring is fine.";
     }
     @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("text-search", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("text-search", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

@@ -67,7 +67,7 @@ public class DocGrepPathTool implements Tool {
                 + "list of files containing at least one match. Capped at " + MAX_LIMIT + " matches.";
     }
     @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("text-search", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("text-search", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

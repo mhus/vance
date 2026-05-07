@@ -40,7 +40,7 @@ public class RecordsAddRowTool implements Tool {
                 + "schema fields not present in `values` default to empty string.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

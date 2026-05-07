@@ -40,7 +40,7 @@ public class SheetGetRangeTool implements Tool {
         return "Read every populated cell in an Excel-style A1:C3 range from a `kind: sheet` document.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

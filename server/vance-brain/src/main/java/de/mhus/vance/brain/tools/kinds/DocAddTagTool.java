@@ -33,7 +33,7 @@ public class DocAddTagTool implements Tool {
         return "Add a tag to a document. No-op when the tag is already present.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("tags", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("tags", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

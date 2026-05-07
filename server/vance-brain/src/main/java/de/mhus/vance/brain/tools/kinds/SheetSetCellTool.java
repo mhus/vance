@@ -44,7 +44,7 @@ public class SheetSetCellTool implements Tool {
                 + "Replaces the cell if it already exists; creates it otherwise.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

@@ -22,6 +22,22 @@ public record ResolvedRecipe(
         @Nullable String dataRelayCorrection,
         List<String> allowedToolsAdd,
         List<String> allowedToolsRemove,
+        /**
+         * Recipe-base demotion list: tools listed here are moved to the
+         * deferred bucket (LLM sees them only via the discovery block,
+         * activated through {@code describe_tool}). Profile and per-mode
+         * overlays can promote individual entries back to primary via
+         * {@code allowedToolsAdd}. See {@code planning/tool-schema-deferral.md} §4 / §14.
+         */
+        List<String> allowedToolsDefer,
+        /**
+         * Engine-mode overlay at the recipe-base level. Used when the
+         * recipe doesn't have profile-specific mode blocks but still
+         * wants per-mode tool restrictions. The cascade in
+         * {@link RecipeResolver#toolFilterFor} consults this last,
+         * after profile-specific mode blocks.
+         */
+        Map<String, RecipeModeBlock> modes,
         Map<String, ProfileBlock> profiles,
         /**
          * Skill names that are sticky-activated on the spawned process

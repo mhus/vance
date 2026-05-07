@@ -102,6 +102,16 @@ public class ClientToolSource implements ToolSource {
         }
 
         @Override
+        public boolean deferred() {
+            return spec.isDeferred();
+        }
+
+        @Override
+        public String searchHint() {
+            return spec.getSearchHint() == null ? "" : spec.getSearchHint();
+        }
+
+        @Override
         public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
             String sessionId = ctx.sessionId();
             if (sessionId == null) {

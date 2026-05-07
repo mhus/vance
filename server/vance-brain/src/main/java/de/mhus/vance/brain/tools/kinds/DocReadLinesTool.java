@@ -48,7 +48,7 @@ public class DocReadLinesTool implements Tool {
                 + "large bodies without loading the whole thing into context.";
     }
     @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("text-search", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("text-search", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

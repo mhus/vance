@@ -53,7 +53,7 @@ public class DocReplaceLinesTool implements Tool {
                 + "constraints of doc_edit.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("text-edit", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("text-edit", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

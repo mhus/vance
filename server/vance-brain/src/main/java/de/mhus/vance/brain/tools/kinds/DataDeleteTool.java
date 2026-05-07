@@ -36,7 +36,7 @@ public class DataDeleteTool implements Tool {
                 + "Removing an array element shifts subsequent indices.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-data", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-data", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

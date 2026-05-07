@@ -41,7 +41,7 @@ public class DocListInFolderTool implements Tool {
                 + "`recursive=true` to include subfolders. Trashed documents are filtered out.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("folders", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("folders", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

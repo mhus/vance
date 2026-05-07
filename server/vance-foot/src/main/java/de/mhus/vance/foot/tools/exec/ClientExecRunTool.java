@@ -63,6 +63,11 @@ public class ClientExecRunTool implements ClientTool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive", "side-effect");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
         Object rawCmd = params == null ? null : params.get("command");
         if (!(rawCmd instanceof String command) || command.isBlank()) {

@@ -4,6 +4,7 @@ import de.mhus.vance.brain.tools.Tool;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolException;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +16,15 @@ import org.springframework.stereotype.Component;
  * Returns the full {@link de.mhus.vance.api.tools.ToolSpec} for a named
  * tool, including its parameter schema. Intended as the second step of
  * the find/describe/invoke discovery pattern.
+ *
+ * <p>Side-effect: when the resolved tool is
+ * {@link de.mhus.vance.brain.tools.Tool#deferred()}, the call records
+ * the activation timestamp on the calling process via
+ * {@link ThinkProcessService#activateDeferredTool}. From the next
+ * tools()-call onward the tool ships in the LLM's primary list (until
+ * decay TTL passes without a follow-up invocation).
+ *
+ * <p>See {@code planning/tool-schema-deferral.md} §4.4.
  */
 @Component
 public class DescribeToolTool implements Tool {
@@ -28,9 +38,13 @@ public class DescribeToolTool implements Tool {
             "required", List.of("name"));
 
     private final ObjectProvider<ToolDispatcher> dispatcher;
+    private final ThinkProcessService thinkProcessService;
 
-    public DescribeToolTool(ObjectProvider<ToolDispatcher> dispatcher) {
+    public DescribeToolTool(
+            ObjectProvider<ToolDispatcher> dispatcher,
+            ThinkProcessService thinkProcessService) {
         this.dispatcher = dispatcher;
+        this.thinkProcessService = thinkProcessService;
     }
 
     @Override
@@ -41,7 +55,8 @@ public class DescribeToolTool implements Tool {
     @Override
     public String description() {
         return "Returns the full specification (description + parameter schema) "
-                + "for a named tool.";
+                + "for a named tool. Calling this on a deferred tool also "
+                + "activates it for the rest of this session.";
     }
 
     @Override
@@ -68,12 +83,20 @@ public class DescribeToolTool implements Tool {
         ToolDispatcher.Resolved r = dispatcher.getObject().resolve(name, ctx)
                 .orElseThrow(() -> new ToolException("Unknown tool: " + name));
         Tool tool = r.tool();
+        boolean wasDeferred = tool.deferred();
+        boolean activated = false;
+        if (wasDeferred && ctx.processId() != null && !ctx.processId().isBlank()) {
+            activated = thinkProcessService.activateDeferredTool(ctx.processId(), name);
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", tool.name());
         out.put("description", tool.description());
         out.put("primary", tool.primary());
         out.put("source", r.source().sourceId());
         out.put("paramsSchema", tool.paramsSchema());
+        out.put("deferred", wasDeferred);
+        out.put("searchHint", tool.searchHint());
+        out.put("activated", activated);
         return out;
     }
 }

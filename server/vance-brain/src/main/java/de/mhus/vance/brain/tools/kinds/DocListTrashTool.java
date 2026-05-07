@@ -34,7 +34,7 @@ public class DocListTrashTool implements Tool {
                 + "for restore / purge.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("doc-management", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "read-only"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

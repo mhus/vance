@@ -109,6 +109,11 @@ public class DocImportUrlTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("eddie", "write");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String rawUrl = paramString(params, "url");
         String path = paramString(params, "path");

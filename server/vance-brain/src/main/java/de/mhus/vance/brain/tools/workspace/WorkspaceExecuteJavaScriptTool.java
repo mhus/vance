@@ -76,6 +76,21 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive", "side-effect");
+    }
+
+    @Override
+    public boolean deferred() {
+        return true;
+    }
+
+    @Override
+    public String searchHint() {
+        return "Workspace shell/git/JS — destructive or rare";
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         throw new ToolException(
                 "execute_workspace_javascript requires the bound tools surface — "

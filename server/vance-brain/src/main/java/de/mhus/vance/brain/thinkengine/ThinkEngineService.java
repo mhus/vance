@@ -3,6 +3,7 @@ package de.mhus.vance.brain.thinkengine;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.progress.ProgressToolListener;
+import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
@@ -11,11 +12,14 @@ import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -45,9 +49,23 @@ public class ThinkEngineService {
     private final ProcessEventEmitter processEventEmitter;
     private final ProgressToolListener progressToolListener;
     private final LlmTraceService llmTraceService;
+    /** Lazy provider — RecipeResolver depends on us, so the bean graph cycles otherwise. */
+    private final ObjectProvider<RecipeResolver> recipeResolverProvider;
 
     /** Setting key driving per-process LLM-trace persistence. */
     public static final String SETTING_TRACE_LLM = "tracing.llm";
+
+    /**
+     * Setting key for the deferred-tool-activation TTL. Cascade tenant
+     * → project → think-process; values are duration strings (e.g.
+     * {@code "15m"}, {@code "1h"}). Default: 15 min. {@code 0}/{@code "0"}
+     * disables decay (entries persist until manual cleanup). See
+     * {@code planning/tool-schema-deferral.md} §6.
+     */
+    public static final String SETTING_DEFERRAL_ACTIVATION_TTL = "tooling.deferralActivationTtl";
+
+    /** Hard default when neither setting nor recipe pins the TTL. */
+    public static final Duration DEFAULT_DEFERRAL_ACTIVATION_TTL = Duration.ofMinutes(15);
 
     public ThinkEngineService(
             List<ThinkEngine> engineBeans,
@@ -60,7 +78,8 @@ public class ThinkEngineService {
             ThinkProcessService thinkProcessService,
             ProcessEventEmitter processEventEmitter,
             ProgressToolListener progressToolListener,
-            LlmTraceService llmTraceService) {
+            LlmTraceService llmTraceService,
+            ObjectProvider<RecipeResolver> recipeResolverProvider) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
                     throw new IllegalStateException(
@@ -77,6 +96,7 @@ public class ThinkEngineService {
         this.processEventEmitter = processEventEmitter;
         this.progressToolListener = progressToolListener;
         this.llmTraceService = llmTraceService;
+        this.recipeResolverProvider = recipeResolverProvider;
         log.info("Registered think-engines: {}", engines.keySet());
     }
 
@@ -122,20 +142,34 @@ public class ThinkEngineService {
         // is intentionally restrictive ("this process may invoke no
         // tools") and must be honoured rather than collapsed to "use
         // engine default".
-        final java.util.Set<String> base = process.getAllowedToolsOverride() != null
+        final Set<String> base = process.getAllowedToolsOverride() != null
                 ? process.getAllowedToolsOverride()
                 : engine.allowedTools();
         // Per-mode tighten happens lazily on every tools() call —
         // Plan-Mode transitions inside one runTurn (e.g.
         // PLANNING → EXECUTING via START_EXECUTION) must reflect in
         // the next ContextToolsApi without rebuilding the context.
-        final ThinkEngine resolvedEngine = engine;
+        final String recipeName = process.getRecipeName();
+        final String connectionProfile = process.getConnectionProfile();
         java.util.function.BiFunction<
                 de.mhus.vance.api.thinkprocess.ProcessMode,
                 de.mhus.vance.brain.tools.ToolInvocationContext,
-                java.util.Set<String>> allowedToolsResolver =
-                (currentMode, scope) -> resolvedEngine.filterAllowedToolsForMode(
-                        base, currentMode, scope);
+                RecipeResolver.ToolFilter> toolFilterResolver =
+                (currentMode, scope) -> {
+                    RecipeResolver resolver = recipeResolverProvider.getIfAvailable();
+                    if (resolver == null) return RecipeResolver.ToolFilter.EMPTY;
+                    try {
+                        return resolver.toolFilterFor(
+                                process.getTenantId(), projectId,
+                                recipeName, connectionProfile, currentMode);
+                    } catch (RuntimeException e) {
+                        log.warn("ThinkEngineService.toolFilterFor failed for "
+                                + "process='{}' recipe='{}' profile='{}' mode={}: {}",
+                                process.getId(), recipeName, connectionProfile,
+                                currentMode, e.toString());
+                        return RecipeResolver.ToolFilter.EMPTY;
+                    }
+                };
         // Resolve the LLM-trace toggle once per turn — engines pay no
         // setting lookup per round-trip. Cascade is tenant → project →
         // think-process so a single noisy process can be flipped on
@@ -147,15 +181,66 @@ public class ThinkEngineService {
                 || "1".equals(traceFlag.trim())
                 || "yes".equalsIgnoreCase(traceFlag.trim())
                 || "on".equalsIgnoreCase(traceFlag.trim()));
+        Duration decayTtl = resolveDeferralActivationTtl(
+                process.getTenantId(), projectId, process.getId());
         return new DefaultThinkEngineContext(
-                process, projectId, userId,
+                process, projectId, userId, base,
                 aiModelService, settingService, chatMessageService,
                 toolDispatcher, eventPublisher,
                 thinkProcessService, processEventEmitter,
-                allowedToolsResolver,
+                toolFilterResolver,
                 progressToolListener.forProcess(process),
+                decayTtl,
                 traceLlm,
                 llmTraceService);
+    }
+
+    /**
+     * Reads the deferral-activation TTL from the settings cascade. Empty
+     * / unparseable / blank → falls back to {@link #DEFAULT_DEFERRAL_ACTIVATION_TTL}.
+     * Accepts ISO-8601 ({@code "PT15M"}) and short-form ({@code "15m"},
+     * {@code "1h"}) durations. {@code "0"} disables decay.
+     */
+    private Duration resolveDeferralActivationTtl(
+            String tenantId, String projectId, String processId) {
+        String raw = settingService.getStringValueCascade(
+                tenantId, projectId, processId, SETTING_DEFERRAL_ACTIVATION_TTL);
+        if (raw == null || raw.isBlank()) {
+            return DEFAULT_DEFERRAL_ACTIVATION_TTL;
+        }
+        String trimmed = raw.trim();
+        if ("0".equals(trimmed)) return Duration.ZERO;
+        try {
+            // Try ISO-8601 first (PT15M), then accept "15m" / "1h" / "30s".
+            return Duration.parse(trimmed);
+        } catch (RuntimeException e) {
+            return parseShortDuration(trimmed)
+                    .orElseGet(() -> {
+                        log.warn("Unparseable {}='{}', falling back to {}",
+                                SETTING_DEFERRAL_ACTIVATION_TTL, trimmed,
+                                DEFAULT_DEFERRAL_ACTIVATION_TTL);
+                        return DEFAULT_DEFERRAL_ACTIVATION_TTL;
+                    });
+        }
+    }
+
+    private static Optional<Duration> parseShortDuration(String s) {
+        if (s.length() < 2) return Optional.empty();
+        char unit = Character.toLowerCase(s.charAt(s.length() - 1));
+        String numPart = s.substring(0, s.length() - 1);
+        long n;
+        try {
+            n = Long.parseLong(numPart);
+        } catch (NumberFormatException nfe) {
+            return Optional.empty();
+        }
+        return switch (unit) {
+            case 's' -> Optional.of(Duration.ofSeconds(n));
+            case 'm' -> Optional.of(Duration.ofMinutes(n));
+            case 'h' -> Optional.of(Duration.ofHours(n));
+            case 'd' -> Optional.of(Duration.ofDays(n));
+            default -> Optional.empty();
+        };
     }
 
     // ─── Convenience dispatch ────────────────────────────────────────────

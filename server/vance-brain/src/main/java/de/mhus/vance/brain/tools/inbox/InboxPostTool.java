@@ -115,6 +115,11 @@ public class InboxPostTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String tenantId = ctx.tenantId();
         if (tenantId == null) {

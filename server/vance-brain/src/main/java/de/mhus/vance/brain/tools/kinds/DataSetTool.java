@@ -40,7 +40,7 @@ public class DataSetTool implements Tool {
                 + "Creates intermediate objects on demand. Use '-' as the last token to append to an array.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-data", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-data", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

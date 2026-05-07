@@ -65,6 +65,11 @@ public class WorkspaceWriteTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("write", "side-effect");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String path = stringOrThrow(params, "path");
         String content = params == null ? null : (String) params.get("content");

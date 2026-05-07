@@ -51,6 +51,11 @@ public class TeamDescribeTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("eddie", "read-only");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         Object raw = params == null ? null : params.get("name");
         if (!(raw instanceof String name) || name.isBlank()) {

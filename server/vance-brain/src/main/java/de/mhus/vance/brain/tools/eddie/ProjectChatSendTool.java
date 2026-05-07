@@ -99,6 +99,11 @@ public class ProjectChatSendTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("eddie", "executive");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx.processId() == null) {
             throw new ToolException("project_chat_send requires an Eddie process scope");

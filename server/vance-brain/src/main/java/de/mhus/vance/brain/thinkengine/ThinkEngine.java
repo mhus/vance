@@ -74,37 +74,6 @@ public interface ThinkEngine {
     }
 
     /**
-     * Optional per-mode restriction on the engine's tool pool. Called
-     * by {@link ThinkEngineService} on every per-call
-     * {@link ThinkEngineContext} build, after {@link #allowedTools()}
-     * (or the recipe override) has been resolved.
-     *
-     * <p>Default: identity — engines that don't care about
-     * {@link de.mhus.vance.api.thinkprocess.ProcessMode} see the full
-     * pool regardless of mode (Ford, Eddie, Marvin, …).
-     *
-     * <p>Arthur overrides this to enforce a label-driven read-only
-     * subset in {@code EXPLORING} / {@code PLANNING}. The label
-     * convention is documented on {@link Tool#labels()}: any tool
-     * carrying the {@code read-only} label is safe in plan-mode
-     * exploration. See {@code specification/plan-mode.md} §5.
-     *
-     * @param baseAllowed the resolved tool pool (empty = unrestricted).
-     * @param mode        the process's current operating mode.
-     * @param ctx         tool-invocation scope; needed by
-     *                    label-aware overrides so they can ask the
-     *                    {@link ToolDispatcher} for live tool labels
-     *                    (server beans + client-pushed alike).
-     * @return the (possibly tighter) effective allow-set.
-     */
-    default Set<String> filterAllowedToolsForMode(
-            Set<String> baseAllowed,
-            de.mhus.vance.api.thinkprocess.ProcessMode mode,
-            ToolInvocationContext ctx) {
-        return baseAllowed;
-    }
-
-    /**
      * Returns engine-owned default configuration that bypasses the
      * recipe system. When present, spawners (notably the
      * {@code SessionChatBootstrapper}) skip recipe resolution and

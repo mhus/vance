@@ -101,6 +101,11 @@ public class DocConcatTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("eddie", "write");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         List<String> sources = paramStringList(params, "sources");
         if (sources == null || sources.isEmpty()) {

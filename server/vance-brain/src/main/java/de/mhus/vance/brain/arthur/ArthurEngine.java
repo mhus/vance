@@ -26,10 +26,7 @@ import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
-import de.mhus.vance.brain.tools.Tool;
-import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolException;
-import de.mhus.vance.brain.tools.ToolInvocationContext;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -108,10 +105,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
 
     /**
-     * Tools the runtime may dispatch in Arthur's scope. Mode-aware
-     * filtering ({@link #filterAllowedToolsForMode}) tightens this
-     * set per process state — read-only-only in EXPLORING / PLANNING,
-     * full pool in NORMAL / EXECUTING.
+     * Tools the runtime may dispatch in Arthur's scope. Per-mode
+     * filtering happens via the recipe-driven cascade (see
+     * {@code planning/tool-schema-deferral.md} §14) — Arthur's
+     * default recipe pins {@code allowedToolsRemove: ["@write",
+     * "@executive", "@side-effect", respond]} for {@code EXPLORING}
+     * and {@code PLANNING} so write/orchestration tools physically
+     * leave the allow-set there.
      *
      * <p>The list mixes plain read tools (recipe_list, doc_read, …),
      * orchestration tools called via Arthur's structured-action
@@ -180,91 +180,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ArthurActionSchema.TYPE_START_EXECUTION,
             ArthurActionSchema.TYPE_TODO_UPDATE);
 
-    /**
-     * Convention-tag carried on tools that are safe to expose during
-     * Plan-Mode exploration (no state mutation, no side-effects).
-     * Tools advertise it via {@link Tool#labels()} or
-     * {@code ToolSpec.labels} (for client-pushed tools); see
-     * {@code specification/plan-mode.md} §5.
-     */
-    private static final String LABEL_READ_ONLY = "read-only";
-
-    /**
-     * Fallback read-only set used until every tool that should be
-     * visible in {@code EXPLORING}/{@code PLANNING} carries the
-     * {@link #LABEL_READ_ONLY} label. The mode-filter unions the
-     * label-tagged tools with this list so existing behaviour
-     * doesn't regress while the labels roll out incrementally.
-     */
-    private static final Set<String> READ_ONLY_TOOLS_FALLBACK = Set.of(
-            "whoami",
-            "current_time",
-            "find_tools",
-            "describe_tool",
-            "process_list",
-            "process_status",
-            "recipe_list",
-            "recipe_describe",
-            "manual_list",
-            "manual_read",
-            "project_list",
-            "project_current",
-            "doc_read",
-            "doc_list",
-            "doc_find",
-            "scratchpad_get",
-            "scratchpad_list",
-            "data_get",
-            "web_search",
-            "web_fetch",
-            "cross_doc_list_projects",
-            "relations_find",
-            "rag_list",
-            "kit_status",
-            "exec_status",
-            // Client-pushed read tools — let Arthur inspect the user's
-            // workspace during plan-mode exploration so concrete file
-            // paths can land in the proposed plan. Write/exec/JS
-            // counterparts (client_file_edit/write, client_exec_run/kill,
-            // client_javascript) stay blocked — those are EXECUTING-mode
-            // territory.
-            "client_file_read",
-            "client_file_list",
-            "client_exec_status");
-
-    /**
-     * Tool subset the LLM sees in NORMAL mode — kept narrow so Arthur
-     * defers concrete work to workers via the structured DELEGATE
-     * action instead of running it inline. Read-only lookups
-     * (recipes, manuals, sibling status, inbox); everything else
-     * (process_create / steer / stop / pause / resume, doc_*, web_*,
-     * scratchpad_*, exec_*, client_file_*) is dispatcher-internal,
-     * called by Arthur's action handlers when the model emits the
-     * matching arthur_action.
-     *
-     * <p>EXPLORING / PLANNING / EXECUTING modes expose the full Arthur
-     * tool pool — the per-mode filter
-     * {@link #filterAllowedToolsForMode} already enforces the
-     * read-only constraint where appropriate.
-     *
-     * <p><b>TODO — replace with Tool-Schema-Deferral</b> (see
-     * {@code readme/tool-schema-deferral.md}). This hardcoded list is
-     * a transitional bridge: tools should declare their own
-     * {@code deferred()} default, and the recipe-/mode-layer should
-     * activate them on demand instead of the engine maintaining a
-     * static visibility set. Once the deferral mechanic lands the
-     * constant + filter below disappear in one cleanup commit.
-     */
-    private static final Set<String> LLM_VISIBLE_TOOLS_NORMAL = Set.of(
-            "whoami",
-            "process_list",
-            "process_status",
-            "recipe_list",
-            "recipe_describe",
-            "manual_list",
-            "manual_read",
-            "inbox_post");
-
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     // ──────────────────── End-of-turn marker ────────────────────
@@ -297,7 +212,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
     private final PlanModeEventEmitter planModeEventEmitter;
-    private final ToolDispatcher toolDispatcher;
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -312,8 +226,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory,
             de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher,
             de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
-            PlanModeEventEmitter planModeEventEmitter,
-            ToolDispatcher toolDispatcher) {
+            PlanModeEventEmitter planModeEventEmitter) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -325,7 +238,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.skillTriggerMatcher = skillTriggerMatcher;
         this.messageRouter = messageRouter;
         this.planModeEventEmitter = planModeEventEmitter;
-        this.toolDispatcher = toolDispatcher;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -355,57 +267,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     @Override
     public Set<String> allowedTools() {
         return ALLOWED_TOOLS;
-    }
-
-    /**
-     * Plan-Mode tool-filter: in {@code EXPLORING} and {@code PLANNING}
-     * Arthur sees only tools that carry the {@link #LABEL_READ_ONLY}
-     * label — write/delegate/steer tools are physically removed from
-     * the dispatcher's allow-set so neither a direct {@code invoke()}
-     * call nor any LLM-emitted action can hit them. See
-     * {@code specification/plan-mode.md} §5.
-     *
-     * <p>The effective read-only set is the union of:
-     * <ul>
-     *   <li>tools whose {@link Tool#labels()} contain
-     *       {@link #LABEL_READ_ONLY} (live lookup against the
-     *       {@link ToolDispatcher} so client-pushed tools and
-     *       config-loaded tools are included), and</li>
-     *   <li>{@link #READ_ONLY_TOOLS_FALLBACK} (untagged tools we
-     *       know are read-only but haven't migrated yet).</li>
-     * </ul>
-     *
-     * <p>{@code NORMAL} and {@code EXECUTING} pass through unchanged —
-     * the full Arthur tool-pool is available.
-     */
-    @Override
-    public Set<String> filterAllowedToolsForMode(
-            Set<String> baseAllowed,
-            de.mhus.vance.api.thinkprocess.ProcessMode mode,
-            ToolInvocationContext ctx) {
-        if (mode != de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
-                && mode != de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
-            return baseAllowed;
-        }
-        Set<String> readOnly = new java.util.LinkedHashSet<>(READ_ONLY_TOOLS_FALLBACK);
-        try {
-            for (ToolDispatcher.Resolved r : toolDispatcher.resolveAll(ctx)) {
-                Tool t = r.tool();
-                if (t.labels() != null && t.labels().contains(LABEL_READ_ONLY)) {
-                    readOnly.add(t.name());
-                }
-            }
-        } catch (RuntimeException e) {
-            log.warn("Arthur filterAllowedToolsForMode: label lookup failed for "
-                    + "process='{}', falling back to hardcoded read-only set: {}",
-                    ctx.processId(), e.toString());
-        }
-        if (baseAllowed.isEmpty()) {
-            return java.util.Set.copyOf(readOnly);
-        }
-        return baseAllowed.stream()
-                .filter(readOnly::contains)
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     // ──────────────────── Lifecycle ────────────────────
@@ -604,7 +465,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     paramString(process, "modelSize", null), modelInfo.size());
 
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, inbox, effectiveSize);
+                    process, chatLog, inbox, effectiveSize, ctx);
             int maxIters = paramInt(process, "maxIterations",
                     arthurProperties.getMaxToolIterations());
             // Plan-Mode turns chain multiple read/write tool calls
@@ -627,28 +488,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
             String modelAlias = config.provider() + ":" + config.modelName();
 
-            // What the LLM sees this turn:
-            // - NORMAL: a narrow read-only set ({@link #LLM_VISIBLE_TOOLS_NORMAL})
-            //   so Arthur stays in chat-orchestrator mode and defers
-            //   real work to workers via structured DELEGATE actions.
-            // - EXPLORING / PLANNING: pass through whatever the
-            //   per-mode filter (filterAllowedToolsForMode) already
-            //   restricted to read-only.
-            // - EXECUTING: pass through everything Arthur is allowed
-            //   to invoke. Refactor work needs direct access to
-            //   client_file_*, client_exec_*, etc.; structured
-            //   DELEGATE is too coarse for per-file edits.
-            de.mhus.vance.api.thinkprocess.ProcessMode promptMode = process.getMode();
-            List<ToolSpecification> readToolSpecs;
-            if (promptMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
-                    || promptMode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING
-                    || promptMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING) {
-                readToolSpecs = toolSpecs;
-            } else {
-                readToolSpecs = toolSpecs.stream()
-                        .filter(t -> LLM_VISIBLE_TOOLS_NORMAL.contains(t.name()))
-                        .toList();
-            }
+            // What the LLM sees this turn comes from the recipe-driven
+            // mode cascade (see planning/tool-schema-deferral.md §14).
+            // Arthur's bundled recipe pins per-mode allowedToolsRemove /
+            // Defer; the resulting primary set is what
+            // ContextToolsApi.primaryAsLc4j() returns.
+            List<ToolSpecification> readToolSpecs = toolSpecs;
 
             ActionLoopResult loopResult = runStructuredActionLoop(
                     aiChat, readToolSpecs, tools, messages, ctx, process,
@@ -955,8 +800,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * {@code START_PLAN} — switch the process into EXPLORING mode. The
      * LLM has decided the user's request is non-trivial and wants to
      * explore-then-plan-then-execute. Read-only tool filter activates
-     * via {@link #filterAllowedToolsForMode} on the next per-call
-     * context build.
+     * via the recipe-driven mode-cascade (see
+     * {@code planning/tool-schema-deferral.md} §14) on the next
+     * per-call context build.
      *
      * <p>Recipe property {@code planMode: disabled} blocks this action.
      * {@code planMode: auto} (default) and {@code planMode: required}
@@ -1386,15 +1232,22 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkProcessDocument process,
             ChatMessageService chatLog,
             List<SteerMessage> inbox,
-            ModelSize modelSize) {
+            ModelSize modelSize,
+            ThinkEngineContext ctx) {
         List<ChatMessage> messages = new ArrayList<>();
 
         // ── STATIC system prefix — Anthropic cache anchors here ──
-        // Engine default + recipe-prompt overlay. Stable per recipe
-        // version; the dynamic blocks below ride outside the cache hash.
-        // See specification/prompt-caching.md §5.
+        // Engine default + recipe-prompt overlay + deferred-tool
+        // discovery block. Stable per recipe + mode; the dynamic blocks
+        // below ride outside the cache hash. See
+        // specification/prompt-caching.md §5 and
+        // planning/tool-schema-deferral.md §4.5 / §7.
         String base = SystemPrompts.compose(process,
                 engineDefaultPrompt(process, modelSize), modelSize);
+        String discoveryBlock = ctx.tools().discoveryBlockMarkdown();
+        if (discoveryBlock != null && !discoveryBlock.isBlank()) {
+            base = base + discoveryBlock;
+        }
         messages.add(SystemMessage.from(base));
 
         // ── DYNAMIC blocks — change tenant/project/turn-to-turn ──

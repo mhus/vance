@@ -43,7 +43,7 @@ public class DocMoveTool implements Tool {
                 + "flushed first so the rename doesn't lose in-flight content.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("doc-management", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

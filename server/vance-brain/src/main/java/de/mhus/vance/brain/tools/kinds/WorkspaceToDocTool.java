@@ -67,7 +67,7 @@ public class WorkspaceToDocTool implements Tool {
                 + "workspace.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("workspace-bridge", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("workspace-bridge", "eddie", "write"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

@@ -33,7 +33,7 @@ public class ListGetTool implements Tool {
     }
 
     @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("kind-list", "eddie"); }
+    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "read-only"); }
 
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }

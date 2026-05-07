@@ -138,6 +138,11 @@ public class ProcessCreateDelegateTool implements Tool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx.sessionId() == null) {
             throw new ToolException(

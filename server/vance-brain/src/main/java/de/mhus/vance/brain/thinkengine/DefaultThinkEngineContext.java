@@ -2,6 +2,7 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.brain.tools.ToolInvocationContext;
@@ -11,7 +12,11 @@ import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
@@ -22,18 +27,25 @@ import org.jspecify.annotations.Nullable;
  * {@link ThinkEngineService}; {@code projectId} is resolved by the
  * service via the session lookup and threaded in here.
  *
- * <p>The {@code allowedToolsResolver} is a callback re-evaluated on
- * every {@link #tools()} call so the effective allow-set tracks the
- * process's current {@code mode}. This matters for Plan-Mode where
- * a single {@code runTurn} can transition through multiple modes
+ * <p>The {@code toolFilterResolver} is a callback re-evaluated on
+ * every {@link #tools()} call so the per-turn {@code RecipeResolver.ToolFilter}
+ * tracks the process's current {@code mode}. This matters for Plan-Mode
+ * where a single {@code runTurn} can transition through multiple modes
  * (e.g. PLANNING → EXECUTING via {@code START_EXECUTION}); a snapshot
- * of {@code allowedTools} taken at context-build time would be stale
- * for the EXECUTING continuation turn.
+ * of the tool filter taken at context-build time would be stale for the
+ * EXECUTING continuation turn.
+ *
+ * <p>{@code activationDecayTtl} is the TTL after which an activated
+ * deferred tool decays back to the discovery block. {@link Duration#ZERO}
+ * disables decay (entries persist until cleanup runs). The decay filter
+ * is applied lazily on read; persistent cleanup happens via
+ * {@link ThinkProcessService#cleanupDecayedActivations}.
  */
 record DefaultThinkEngineContext(
         ThinkProcessDocument process,
         String projectId,
         @Nullable String userId,
+        Set<String> baseAllowedTools,
         AiModelService aiModelService,
         SettingService settingService,
         ChatMessageService chatMessageService,
@@ -41,8 +53,9 @@ record DefaultThinkEngineContext(
         ClientEventPublisher eventPublisher,
         ThinkProcessService thinkProcessService,
         ProcessEventEmitter processEventEmitter,
-        BiFunction<de.mhus.vance.api.thinkprocess.ProcessMode, ToolInvocationContext, Set<String>> allowedToolsResolver,
+        BiFunction<de.mhus.vance.api.thinkprocess.ProcessMode, ToolInvocationContext, RecipeResolver.ToolFilter> toolFilterResolver,
         ToolInvocationListener toolInvocationListener,
+        Duration activationDecayTtl,
         boolean traceLlm,
         LlmTraceService llmTraceService
 ) implements ThinkEngineContext {
@@ -65,10 +78,43 @@ record DefaultThinkEngineContext(
                 process.getSessionId(),
                 process.getId(),
                 userId);
-        // Re-resolve the allow-set every call against the process's
+        // Re-resolve the tool filter every call against the process's
         // current mode — see class doc for why a snapshot won't do.
-        Set<String> allowed = allowedToolsResolver.apply(process.getMode(), scope);
-        return new ContextToolsApi(toolDispatcher, scope, allowed, toolInvocationListener);
+        RecipeResolver.ToolFilter filter = toolFilterResolver.apply(process.getMode(), scope);
+        Set<String> activated = liveActivatedDeferredTools();
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                toolDispatcher, scope, baseAllowedTools, filter, activated);
+        // Sliding-TTL refresh: when the LLM invokes an activated
+        // deferred tool, bump its timestamp so frequent use beats decay.
+        java.util.function.Consumer<String> refresh = name ->
+                thinkProcessService.activateDeferredTool(process.getId(), name);
+        return new ContextToolsApi(
+                toolDispatcher, scope,
+                c.allowed(), c.primary(), c.deferred(), c.activatedDeferred(),
+                toolInvocationListener, refresh);
+    }
+
+    /**
+     * Reads {@code process.activatedDeferredTools} and applies the TTL
+     * decay filter. Stale entries (timestamp older than now − ttl) are
+     * dropped from the in-memory set; persistent cleanup is the
+     * caller's job (see {@link ThinkProcessService#cleanupDecayedActivations}).
+     * Zero TTL disables decay.
+     */
+    private Set<String> liveActivatedDeferredTools() {
+        Map<String, Instant> map = process.getActivatedDeferredTools();
+        if (map == null || map.isEmpty()) return Set.of();
+        if (activationDecayTtl == null || activationDecayTtl.isZero() || activationDecayTtl.isNegative()) {
+            return Set.copyOf(map.keySet());
+        }
+        Instant cutoff = Instant.now().minus(activationDecayTtl);
+        Set<String> out = new LinkedHashSet<>();
+        for (Map.Entry<String, Instant> e : map.entrySet()) {
+            if (e.getValue() != null && e.getValue().isAfter(cutoff)) {
+                out.add(e.getKey());
+            }
+        }
+        return Set.copyOf(out);
     }
 
     @Override

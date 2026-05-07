@@ -48,6 +48,11 @@ public class ClientExecKillTool implements ClientTool {
     }
 
     @Override
+    public java.util.Set<String> labels() {
+        return java.util.Set.of("executive", "side-effect");
+    }
+
+    @Override
     public Map<String, Object> invoke(Map<String, Object> params) {
         Object raw = params == null ? null : params.get("id");
         if (!(raw instanceof String id) || id.isBlank()) {

@@ -977,6 +977,11 @@ export default {
       language: 'Sprache',
       languageBrowserDefault: 'Browser-Vorgabe',
       languageSaved: 'Sprache aktualisiert.',
+      theme: 'Farbschema',
+      themeAuto: 'System (automatisch)',
+      themeLight: 'Hell',
+      themeDark: 'Dunkel',
+      themeSaved: 'Farbschema aktualisiert.',
     },
     teams: {
       title: 'Teams',

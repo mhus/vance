@@ -4,6 +4,11 @@ export default {
     './*.html',
     './src/**/*.{vue,ts}',
   ],
+  // 'class' instead of 'media' so dark: utilities follow the explicit
+  // webui.theme choice. The themeWeb.ts boot path toggles `dark` on
+  // <html> based on the resolved theme (auto → match prefers-color-scheme,
+  // light/dark → pinned).
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {

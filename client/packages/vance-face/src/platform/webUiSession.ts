@@ -115,6 +115,22 @@ export function hydrateIdentity(): void {
 const SESSION_LANGUAGE_KEY = 'vance.session.webui.language';
 
 /**
+ * sessionStorage key for the live theme preference (`light` / `dark` /
+ * `auto`). Mirrors `webui.theme` from the data cookie. Same live-update
+ * pattern as the language mirror — the profile page writes here on
+ * every change so the active document repaints without re-login.
+ */
+const SESSION_THEME_KEY = 'vance.session.webui.theme';
+
+export type WebUiTheme = 'auto' | 'light' | 'dark';
+
+const VALID_THEMES: ReadonlyArray<WebUiTheme> = ['auto', 'light', 'dark'];
+
+function isWebUiTheme(value: string | null | undefined): value is WebUiTheme {
+  return value != null && (VALID_THEMES as ReadonlyArray<string>).includes(value);
+}
+
+/**
  * Mirror the webui.* settings carried in the data cookie into the
  * tab's sessionStorage. Idempotent — call freely after login or after
  * the data cookie has been refreshed. Existing sessionStorage values
@@ -129,6 +145,12 @@ export function hydrateActiveWebUiSettings(): void {
     window.sessionStorage.setItem(SESSION_LANGUAGE_KEY, language);
   } else {
     window.sessionStorage.removeItem(SESSION_LANGUAGE_KEY);
+  }
+  const theme = s.webUiSettings['webui.theme'];
+  if (isWebUiTheme(theme)) {
+    window.sessionStorage.setItem(SESSION_THEME_KEY, theme);
+  } else {
+    window.sessionStorage.removeItem(SESSION_THEME_KEY);
   }
 }
 
@@ -164,13 +186,43 @@ export function setActiveLanguage(value: string | null): void {
 }
 
 /**
+ * The active web-UI theme. Reads the session-scoped override first,
+ * falls back to the data-cookie snapshot, defaults to {@code 'auto'}
+ * when nothing is set — matching the user-visible "follow the system"
+ * default.
+ */
+export function getActiveTheme(): WebUiTheme {
+  const fromSession = window.sessionStorage.getItem(SESSION_THEME_KEY);
+  if (isWebUiTheme(fromSession)) return fromSession;
+  const fromCookie = getSessionData()?.webUiSettings?.['webui.theme'];
+  return isWebUiTheme(fromCookie) ? fromCookie : 'auto';
+}
+
+/**
+ * Update the active theme for this tab. Pass {@code null} or
+ * {@code 'auto'} to clear the override and fall back to the system
+ * preference. Caller is responsible for re-running
+ * {@link applyTheme} from {@code themeWeb.ts} after this — the two
+ * are split so that boot can apply without writing.
+ */
+export function setActiveTheme(value: WebUiTheme | null): void {
+  if (value == null || value === 'auto') {
+    window.sessionStorage.removeItem(SESSION_THEME_KEY);
+    return;
+  }
+  if (!isWebUiTheme(value)) return;
+  window.sessionStorage.setItem(SESSION_THEME_KEY, value);
+}
+
+/**
  * Wipe the session-scoped UI overrides. Called from the logout path
  * so a subsequent login on the same tab cleanly picks up the next
  * user's settings instead of inheriting the previous session's
- * language.
+ * language or theme choice.
  */
 export function clearActiveWebUiSettings(): void {
   window.sessionStorage.removeItem(SESSION_LANGUAGE_KEY);
+  window.sessionStorage.removeItem(SESSION_THEME_KEY);
 }
 
 function readCookie(name: string): string | null {

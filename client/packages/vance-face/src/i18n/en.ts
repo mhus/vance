@@ -968,6 +968,11 @@ export default {
       language: 'Language',
       languageBrowserDefault: 'Browser default',
       languageSaved: 'Language updated.',
+      theme: 'Theme',
+      themeAuto: 'System (auto)',
+      themeLight: 'Light',
+      themeDark: 'Dark',
+      themeSaved: 'Theme updated.',
     },
     teams: {
       title: 'Teams',

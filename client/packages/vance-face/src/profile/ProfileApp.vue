@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { setActiveLanguage } from '@/platform';
+import { applyTheme, setActiveLanguage, setActiveTheme, type WebUiTheme } from '@/platform';
 import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
@@ -12,10 +12,19 @@ const { profile, loading, error, load, saveIdentity, saveSetting } = useProfile(
 const titleDraft = ref('');
 const emailDraft = ref('');
 const languageDraft = ref<string>('');
+const themeDraft = ref<WebUiTheme>('auto');
 const identitySaved = ref<string | null>(null);
 const languageSaved = ref<string | null>(null);
+const themeSaved = ref<string | null>(null);
 
 const LANGUAGE_KEY = 'webui.language';
+const THEME_KEY = 'webui.theme';
+
+function asTheme(value: string | undefined | null): WebUiTheme {
+  // Accept anything stored on the server but normalise unknown
+  // values back to "auto" rather than rendering an empty selector.
+  return value === 'light' || value === 'dark' ? value : 'auto';
+}
 
 // "Browser default" is the only label that needs translating; the
 // other entries are language names already shown in their native
@@ -30,6 +39,12 @@ const languageOptions = computed(() => [
   { value: 'it', label: 'Italiano' },
 ]);
 
+const themeOptions = computed(() => [
+  { value: 'auto', label: t('profile.preferences.themeAuto') },
+  { value: 'light', label: t('profile.preferences.themeLight') },
+  { value: 'dark', label: t('profile.preferences.themeDark') },
+]);
+
 onMounted(load);
 
 // Sync the form drafts whenever the underlying profile object changes —
@@ -40,6 +55,7 @@ watch(profile, (current) => {
   titleDraft.value = current.title ?? '';
   emailDraft.value = current.email ?? '';
   languageDraft.value = current.webUiSettings?.[LANGUAGE_KEY] ?? '';
+  themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
 }, { immediate: true });
 
 async function onSaveIdentity(): Promise<void> {
@@ -68,6 +84,20 @@ async function onLanguageChanged(value: string | null): Promise<void> {
     // newly chosen language right away.
     setUiLocale(next === '' ? null : next);
     languageSaved.value = t('profile.preferences.languageSaved');
+  }
+}
+
+async function onThemeChanged(value: string | null): Promise<void> {
+  themeSaved.value = null;
+  const next = asTheme(value);
+  themeDraft.value = next;
+  // "auto" is encoded server-side as the absence of the setting —
+  // pass null so the brain DELETEs it. light / dark are stored as-is.
+  await saveSetting(THEME_KEY, next === 'auto' ? null : next).catch(() => undefined);
+  if (!error.value) {
+    setActiveTheme(next);
+    applyTheme(next);
+    themeSaved.value = t('profile.preferences.themeSaved');
   }
 }
 </script>
@@ -135,6 +165,16 @@ async function onLanguageChanged(value: string | null): Promise<void> {
             />
             <span v-if="languageSaved" class="text-success text-sm">
               {{ languageSaved }}
+            </span>
+            <VSelect
+              :model-value="themeDraft"
+              :options="themeOptions"
+              :label="$t('profile.preferences.theme')"
+              :disabled="loading"
+              @update:model-value="onThemeChanged"
+            />
+            <span v-if="themeSaved" class="text-success text-sm">
+              {{ themeSaved }}
             </span>
           </div>
         </VCard>

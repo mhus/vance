@@ -232,6 +232,39 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             "client_file_list",
             "client_exec_status");
 
+    /**
+     * Tool subset the LLM sees in NORMAL mode — kept narrow so Arthur
+     * defers concrete work to workers via the structured DELEGATE
+     * action instead of running it inline. Read-only lookups
+     * (recipes, manuals, sibling status, inbox); everything else
+     * (process_create / steer / stop / pause / resume, doc_*, web_*,
+     * scratchpad_*, exec_*, client_file_*) is dispatcher-internal,
+     * called by Arthur's action handlers when the model emits the
+     * matching arthur_action.
+     *
+     * <p>EXPLORING / PLANNING / EXECUTING modes expose the full Arthur
+     * tool pool — the per-mode filter
+     * {@link #filterAllowedToolsForMode} already enforces the
+     * read-only constraint where appropriate.
+     *
+     * <p><b>TODO — replace with Tool-Schema-Deferral</b> (see
+     * {@code readme/tool-schema-deferral.md}). This hardcoded list is
+     * a transitional bridge: tools should declare their own
+     * {@code deferred()} default, and the recipe-/mode-layer should
+     * activate them on demand instead of the engine maintaining a
+     * static visibility set. Once the deferral mechanic lands the
+     * constant + filter below disappear in one cleanup commit.
+     */
+    private static final Set<String> LLM_VISIBLE_TOOLS_NORMAL = Set.of(
+            "whoami",
+            "process_list",
+            "process_status",
+            "recipe_list",
+            "recipe_describe",
+            "manual_list",
+            "manual_read",
+            "inbox_post");
+
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     // ──────────────────── End-of-turn marker ────────────────────
@@ -594,16 +627,28 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
             String modelAlias = config.provider() + ":" + config.modelName();
 
-            // The LLM sees the full tool pool that Arthur is allowed
-            // to invoke. Per-mode visibility is enforced upstream by
-            // {@link #filterAllowedToolsForMode} (read-only label set
-            // in EXPLORING / PLANNING; full pool in NORMAL / EXECUTING).
-            // Action-internal tools (process_create, process_steer, …)
-            // stay in the pool — orchestration via {@code arthur_action}
-            // is encoded in the system prompt; the LLM can also call
-            // these directly if needed (e.g. status checks during
-            // execution).
-            List<ToolSpecification> readToolSpecs = toolSpecs;
+            // What the LLM sees this turn:
+            // - NORMAL: a narrow read-only set ({@link #LLM_VISIBLE_TOOLS_NORMAL})
+            //   so Arthur stays in chat-orchestrator mode and defers
+            //   real work to workers via structured DELEGATE actions.
+            // - EXPLORING / PLANNING: pass through whatever the
+            //   per-mode filter (filterAllowedToolsForMode) already
+            //   restricted to read-only.
+            // - EXECUTING: pass through everything Arthur is allowed
+            //   to invoke. Refactor work needs direct access to
+            //   client_file_*, client_exec_*, etc.; structured
+            //   DELEGATE is too coarse for per-file edits.
+            de.mhus.vance.api.thinkprocess.ProcessMode promptMode = process.getMode();
+            List<ToolSpecification> readToolSpecs;
+            if (promptMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
+                    || promptMode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING
+                    || promptMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING) {
+                readToolSpecs = toolSpecs;
+            } else {
+                readToolSpecs = toolSpecs.stream()
+                        .filter(t -> LLM_VISIBLE_TOOLS_NORMAL.contains(t.name()))
+                        .toList();
+            }
 
             ActionLoopResult loopResult = runStructuredActionLoop(
                     aiChat, readToolSpecs, tools, messages, ctx, process,

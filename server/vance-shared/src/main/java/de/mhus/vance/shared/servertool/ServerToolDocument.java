@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -82,6 +84,34 @@ public class ServerToolDocument {
 
     /** {@code true} advertises the tool to the LLM up-front; {@code false} requires {@code find_tools}. */
     private boolean primary = false;
+
+    /**
+     * Sub-tools that are deactivated within this pack. Only meaningful
+     * for multi-tool packs (REST API, MCP, plugin bundles). Each entry
+     * matches the sub-tool's <i>local</i> name (the part after the
+     * {@code <pack>__} prefix). Empty / null → all sub-tools active.
+     *
+     * <p>Used to deactivate single endpoints of a JIRA pack (or
+     * filesystem-MCP read-but-not-write) without duplicating the whole
+     * pack at the project layer. See
+     * {@code planning/server-tool-providers.md} §3.3.
+     */
+    @Builder.Default
+    private @Nullable Set<String> disabledSubTools = new LinkedHashSet<>();
+
+    /**
+     * Pack-level default for {@link de.mhus.vance.brain.tools.Tool#deferred()}.
+     * Pack factories with many sub-tools (e.g. a 50-endpoint REST pack)
+     * should default to {@code true} so the LLM doesn't get flooded with
+     * schemas — sub-tools surface only via the discovery block until
+     * activated by {@code describe_tool}. Per-sub-tool override is up to
+     * the factory (e.g. {@code parameters.deferredOverrides[name] = false}).
+     *
+     * <p>Singleton-pack types (doc_lookup) ignore this — they always
+     * produce one tool whose {@code Tool.deferred()} comes from the
+     * factory's classification.
+     */
+    private boolean defaultDeferred = false;
 
     @Version
     private @Nullable Long version;

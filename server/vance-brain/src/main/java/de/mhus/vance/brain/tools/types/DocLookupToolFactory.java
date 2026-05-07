@@ -62,14 +62,17 @@ public class DocLookupToolFactory implements ToolFactory {
     }
 
     @Override
-    public Tool create(ServerToolDocument document) {
+    public java.util.Collection<Tool> create(ServerToolDocument document) {
         Object pathRaw = document.getParameters().get("path");
         if (!(pathRaw instanceof String path) || path.isBlank()) {
             throw new IllegalArgumentException(
                     "doc_lookup tool '" + document.getName()
                             + "' is missing required parameter 'path'");
         }
-        return new DocLookupTool(document, path, documentService);
+        // Singleton-pack: one document → one tool whose name equals the
+        // document name. Multi-tool packs return their sub-tools with
+        // <pack>__<sub> names — see planning/server-tool-providers.md.
+        return List.of(new DocLookupTool(document, path, documentService));
     }
 
     private static final class DocLookupTool implements Tool {

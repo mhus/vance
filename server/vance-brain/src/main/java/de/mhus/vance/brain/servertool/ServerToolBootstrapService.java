@@ -45,6 +45,8 @@ public class ServerToolBootstrapService {
                     .labels(new ArrayList<>(bundled.labels()))
                     .enabled(bundled.enabled())
                     .primary(bundled.primary())
+                    .disabledSubTools(new java.util.LinkedHashSet<>(bundled.disabledSubTools()))
+                    .defaultDeferred(bundled.defaultDeferred())
                     .build();
             serverToolService.create(tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, doc);
             created++;

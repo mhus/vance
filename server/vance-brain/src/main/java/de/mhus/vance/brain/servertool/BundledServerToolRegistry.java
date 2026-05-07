@@ -107,9 +107,32 @@ public class BundledServerToolRegistry {
         List<String> labels = stringList(spec.get("labels"), name, "labels");
         boolean enabled = asBoolean(spec.get("enabled"), name, "enabled", true);
         boolean primary = asBoolean(spec.get("primary"), name, "primary", false);
+        java.util.Set<String> disabledSubTools = stringSet(
+                spec.get("disabledSubTools"), name, "disabledSubTools");
+        boolean defaultDeferred = asBoolean(
+                spec.get("defaultDeferred"), name, "defaultDeferred", false);
 
         return new BundledServerTool(
-                name, type, description, parameters, labels, enabled, primary);
+                name, type, description, parameters, labels,
+                enabled, primary, disabledSubTools, defaultDeferred);
+    }
+
+    private static java.util.Set<String> stringSet(Object raw, String name, String fieldName) {
+        if (raw == null) return java.util.Set.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException(
+                    "Server tool '" + name + "': '" + fieldName + "' must be a list");
+        }
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        for (Object item : list) {
+            if (!(item instanceof String s) || s.isBlank()) {
+                throw new IllegalStateException(
+                        "Server tool '" + name + "': '" + fieldName
+                                + "' contains a non-string or blank entry");
+            }
+            out.add(s);
+        }
+        return java.util.Collections.unmodifiableSet(out);
     }
 
     private static String requireNonBlankString(Map<String, Object> spec, String key, int index) {

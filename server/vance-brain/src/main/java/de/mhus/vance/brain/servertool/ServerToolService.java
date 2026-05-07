@@ -8,10 +8,13 @@ import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.servertool.ServerToolRepository;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,6 +46,20 @@ public class ServerToolService {
     /** Set by the source aggregator after construction (avoids cycles). */
     private volatile BuiltInProvider builtInProvider = BuiltInProvider.EMPTY;
 
+    /**
+     * Pack-materialization cache. Keyed by the document id; entry holds
+     * the {@code updatedAt} timestamp it was built from plus the resolved
+     * tool collection. A document update bumps {@code updatedAt}, so the
+     * cache lookup re-builds. Bounded only by the number of distinct
+     * server-tool documents — cleared on JVM restart.
+     *
+     * <p>Necessary because pack factories (REST API spec parsing, MCP
+     * tools/list calls) are too expensive to redo on every cascade
+     * read. Singleton factories (doc_lookup) tolerate the indirection
+     * without measurable cost.
+     */
+    private final Map<String, PackCacheEntry> packCache = new ConcurrentHashMap<>();
+
     public void setBuiltInProvider(BuiltInProvider provider) {
         this.builtInProvider = provider;
     }
@@ -58,22 +75,30 @@ public class ServerToolService {
      * </ol>
      * A document with {@code enabled=false} stops the cascade and
      * returns empty.
+     *
+     * <p>Multi-tool packs: when {@code name} contains the {@code __}
+     * pack-separator, the pack-doc is resolved by the prefix and the
+     * matching sub-tool is returned (or empty if the sub-tool is in
+     * the doc's {@code disabledSubTools}). Singleton-pack lookups
+     * (name without {@code __}) match the doc's {@code name} directly
+     * and pick the single tool the factory produces.
      */
     public Optional<Tool> lookup(String tenantId, String projectId, String name) {
+        String packName = packPrefix(name);
         if (!HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
             Optional<ServerToolDocument> projectDoc =
-                    repository.findByTenantIdAndProjectIdAndName(tenantId, projectId, name);
+                    repository.findByTenantIdAndProjectIdAndName(tenantId, projectId, packName);
             if (projectDoc.isPresent()) {
                 return projectDoc.get().isEnabled()
-                        ? Optional.of(materialize(projectDoc.get()))
+                        ? pickFromPack(projectDoc.get(), name)
                         : Optional.empty();
             }
         }
         Optional<ServerToolDocument> vanceDoc = repository.findByTenantIdAndProjectIdAndName(
-                tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, name);
+                tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, packName);
         if (vanceDoc.isPresent()) {
             return vanceDoc.get().isEnabled()
-                    ? Optional.of(materialize(vanceDoc.get()))
+                    ? pickFromPack(vanceDoc.get(), name)
                     : Optional.empty();
         }
         return builtInProvider.find(name);
@@ -83,6 +108,13 @@ public class ServerToolService {
      * All tools visible in the cascade, merged outer-to-inner. Inner
      * layers replace outer ones by {@code name}; disabled documents
      * remove the entry from the result.
+     *
+     * <p>Multi-tool packs fan out at this layer: a pack-doc with name
+     * {@code jira} contributes every sub-tool it materialises (e.g.
+     * {@code jira__create_issue}, {@code jira__search_issues}).
+     * Disabling the pack ({@code enabled=false}) removes the pack-name
+     * itself <i>plus</i> every {@code <pack>__*} entry that an outer
+     * cascade layer contributed.
      */
     public List<Tool> listAll(String tenantId, String projectId) {
         Map<String, Tool> merged = new LinkedHashMap<>();
@@ -112,28 +144,107 @@ public class ServerToolService {
         for (ServerToolDocument doc :
                 repository.findByTenantIdAndProjectId(tenantId, projectId)) {
             if (!doc.isEnabled()) {
-                acc.remove(doc.getName());
+                // Pack-disable: drop the pack-name and any <pack>__* sub-tools
+                // contributed by an outer layer.
+                String prefix = doc.getName() + ToolFactory.PACK_SEPARATOR;
+                acc.keySet().removeIf(n -> n.equals(doc.getName()) || n.startsWith(prefix));
                 continue;
             }
-            acc.put(doc.getName(), materialize(doc));
+            // Replace any contribution this name (or its sub-tools) had
+            // from outer layers — Pack-Override semantics.
+            String prefix = doc.getName() + ToolFactory.PACK_SEPARATOR;
+            acc.keySet().removeIf(n -> n.equals(doc.getName()) || n.startsWith(prefix));
+            Set<String> disabled = doc.getDisabledSubTools() == null
+                    ? Set.of() : doc.getDisabledSubTools();
+            for (Tool t : materialize(doc)) {
+                String localName = stripPackPrefix(t.name(), doc.getName());
+                if (disabled.contains(localName)) continue;
+                acc.put(t.name(), t);
+            }
         }
     }
 
-    private Tool materialize(ServerToolDocument doc) {
+    /**
+     * Materializes a pack-doc through its {@link ToolFactory}, with
+     * a per-document cache keyed by Mongo id and {@code updatedAt}. A
+     * doc-edit bumps the timestamp and the next call rebuilds.
+     *
+     * <p>Documents without an id (in-memory only — typically tests)
+     * skip the cache entirely. Production never sees a saved doc with
+     * a null id, so this branch is just a safety valve.
+     */
+    private Collection<Tool> materialize(ServerToolDocument doc) {
         ToolFactory factory = factoryRegistry.find(doc.getType()).orElseThrow(
                 () -> new IllegalStateException(
                         "Unknown tool type '" + doc.getType()
                                 + "' on server_tool '" + doc.getName()
                                 + "' (tenant=" + doc.getTenantId()
                                 + ", project=" + doc.getProjectId() + ")"));
-        return factory.create(doc);
+        if (doc.getId() == null) {
+            return factory.create(doc);
+        }
+        Instant ts = doc.getUpdatedAt() == null ? Instant.EPOCH : doc.getUpdatedAt();
+        PackCacheEntry hit = packCache.get(doc.getId());
+        if (hit != null && hit.timestamp().equals(ts)) {
+            return hit.tools();
+        }
+        Collection<Tool> built = factory.create(doc);
+        packCache.put(doc.getId(), new PackCacheEntry(ts, List.copyOf(built)));
+        return built;
+    }
+
+    /**
+     * Picks the right sub-tool from a (possibly multi-tool) pack
+     * document. Returns empty when the requested name doesn't appear
+     * in the pack, or when the matched sub-tool is in the doc's
+     * {@code disabledSubTools}.
+     */
+    private Optional<Tool> pickFromPack(ServerToolDocument doc, String requestedName) {
+        String packName = doc.getName();
+        Collection<Tool> tools = materialize(doc);
+        Set<String> disabled = doc.getDisabledSubTools() == null
+                ? Set.of() : doc.getDisabledSubTools();
+        for (Tool t : tools) {
+            if (!t.name().equals(requestedName)) continue;
+            String localName = stripPackPrefix(t.name(), packName);
+            if (disabled.contains(localName)) return Optional.empty();
+            return Optional.of(t);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Extracts the pack name from a possibly-suffixed tool name.
+     * {@code "jira__create_issue"} → {@code "jira"};
+     * {@code "doc_lookup"} → {@code "doc_lookup"} (unchanged).
+     */
+    private static String packPrefix(String name) {
+        int sep = name.indexOf(ToolFactory.PACK_SEPARATOR);
+        return sep < 0 ? name : name.substring(0, sep);
+    }
+
+    /**
+     * Extracts the local sub-tool name. For singleton packs (tool name
+     * equals pack name) returns the full name unchanged so the
+     * disabledSubTools logic still works on a one-element pack.
+     */
+    private static String stripPackPrefix(String fullName, String packName) {
+        String prefix = packName + ToolFactory.PACK_SEPARATOR;
+        if (fullName.startsWith(prefix)) {
+            return fullName.substring(prefix.length());
+        }
+        return fullName;
+    }
+
+    /** Cache value: timestamp of materialisation + frozen tool list. */
+    private record PackCacheEntry(Instant timestamp, List<Tool> tools) {
     }
 
     // ──────────────────── CRUD (project layer) ────────────────────
 
     public ServerToolDocument create(
             String tenantId, String projectId, ServerToolDocument doc) {
-        validateType(doc);
+        validateDocument(doc);
         if (repository.existsByTenantIdAndProjectIdAndName(
                 tenantId, projectId, doc.getName())) {
             throw new IllegalStateException(
@@ -159,13 +270,28 @@ public class ServerToolService {
         incoming.setVersion(current.getVersion());
         incoming.setCreatedAt(current.getCreatedAt());
         incoming.setUpdatedAt(Instant.now());
-        validateType(incoming);
-        return repository.save(incoming);
+        validateDocument(incoming);
+        ServerToolDocument saved = repository.save(incoming);
+        // Cache key is the doc-id; saving updates updatedAt → next
+        // materialize() rebuild. Explicit invalidate not strictly
+        // necessary, but cheap insurance for cases where the
+        // pre-save current.getUpdatedAt() somehow leaks back.
+        invalidatePackCache(saved);
+        return saved;
     }
 
     public void delete(String tenantId, String projectId, String name) {
         repository.findByTenantIdAndProjectIdAndName(tenantId, projectId, name)
-                .ifPresent(repository::delete);
+                .ifPresent(doc -> {
+                    repository.delete(doc);
+                    invalidatePackCache(doc);
+                });
+    }
+
+    private void invalidatePackCache(ServerToolDocument doc) {
+        if (doc.getId() != null) {
+            packCache.remove(doc.getId());
+        }
     }
 
     public Optional<ServerToolDocument> findDocument(
@@ -187,12 +313,28 @@ public class ServerToolService {
         return factoryRegistry.find(typeId);
     }
 
-    private void validateType(ServerToolDocument doc) {
-        if (factoryRegistry.find(doc.getType()).isEmpty()) {
+    /**
+     * Validates type-id and (eagerly) factory.create(). The dry-run
+     * surfaces missing required parameters at write time instead of
+     * delaying the failure until the first cascade lookup. For
+     * pack-factories with expensive setup (REST spec download, MCP
+     * connection) the eager call also primes the pack cache.
+     */
+    private void validateDocument(ServerToolDocument doc) {
+        ToolFactory factory = factoryRegistry.find(doc.getType()).orElseThrow(
+                () -> new IllegalArgumentException(
+                        "Unknown tool type '" + doc.getType()
+                                + "' — available: "
+                                + factoryRegistry.list().stream()
+                                        .map(ToolFactory::typeId).toList()));
+        try {
+            // Dry-run materialise — surfaces missing required params /
+            // bad spec URLs / unreachable MCP servers immediately.
+            factory.create(doc);
+        } catch (RuntimeException e) {
             throw new IllegalArgumentException(
-                    "Unknown tool type '" + doc.getType()
-                            + "' — available: "
-                            + factoryRegistry.list().stream().map(ToolFactory::typeId).toList());
+                    "Server tool '" + doc.getName() + "' (type='" + doc.getType()
+                            + "') failed factory validation: " + e.getMessage(), e);
         }
     }
 

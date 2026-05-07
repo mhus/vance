@@ -29,6 +29,7 @@ import CacheStatsTab from './CacheStatsTab.vue';
 import RecipesTab from './RecipesTab.vue';
 import ProjectToolsTab from './ProjectToolsTab.vue';
 import WorkspaceTab from './WorkspaceTab.vue';
+import ExecutionsTab from './ExecutionsTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -55,7 +56,7 @@ const filterStatus = ref<string | null>(null);
 // Sessions = the existing session-walker (default). Recipes / Tools
 // show project-scope read-only views fed from the same project filter
 // as the sidebar.
-type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace';
+type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions';
 const topTab = ref<TopTab>('sessions');
 
 const projectFilterOptions = computed(() => [
@@ -443,6 +444,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
           :class="{ 'tab--active': topTab === 'workspace' }"
           @click="topTab = 'workspace'"
         >Workspace</button>
+        <button
+          class="tab"
+          :class="{ 'tab--active': topTab === 'executions' }"
+          @click="topTab = 'executions'"
+        >Executions</button>
       </div>
 
       <div
@@ -460,6 +466,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <RecipesTab v-if="topTab === 'recipes'" :project-id="effectiveProjectId" />
       <ProjectToolsTab v-else-if="topTab === 'tools'" :project-id="effectiveProjectId" />
       <WorkspaceTab v-else-if="topTab === 'workspace'" :project-id="effectiveProjectId" />
+      <ExecutionsTab v-else-if="topTab === 'executions'" :project-id="effectiveProjectId" />
 
       <template v-else-if="topTab === 'sessions'">
         <VEmptyState

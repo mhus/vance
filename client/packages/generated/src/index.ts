@@ -46,6 +46,11 @@ export * from './kit/KitMetadataDto';
 export * from './kit/KitOperationResultDto';
 export * from './kit/KitOriginDto';
 
+export * from './execution/ExecEvent';
+export * from './execution/ExecListSnapshot';
+export * from './execution/ExecutionInsightsDto';
+export * from './execution/ExecutionTailDto';
+
 export * from './insights/ActiveSkillInsightsDto';
 export * from './insights/CacheStatsDto';
 export * from './insights/ChatMessageInsightsDto';

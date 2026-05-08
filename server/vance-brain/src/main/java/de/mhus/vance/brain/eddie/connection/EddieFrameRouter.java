@@ -3,9 +3,10 @@ package de.mhus.vance.brain.eddie.connection;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 /**
  * Classifies incoming Working-WS frames from a worker and dispatches
@@ -37,13 +38,29 @@ import org.jspecify.annotations.Nullable;
  * can run without dependencies. Step 3c installs the {@code ChatFrameHandler};
  * step 4 installs the {@code PlanFrameHandler}.
  */
+@Component
 @Slf4j
-@RequiredArgsConstructor
 public class EddieFrameRouter {
 
     private final @Nullable PlanFrameHandler planHandler;
     private final @Nullable ChatFrameHandler chatHandler;
     private final @Nullable ProgressFrameHandler progressHandler;
+
+    /**
+     * Spring constructor — handlers are optional. Step 3c registers a
+     * {@link ChatFrameHandler} bean (triage + working-memory), step 4 a
+     * {@link PlanFrameHandler} (plan-mirror + fusion). Until then the
+     * router runs in no-op mode.
+     */
+    @Autowired
+    public EddieFrameRouter(
+            @Autowired(required = false) @Nullable PlanFrameHandler planHandler,
+            @Autowired(required = false) @Nullable ChatFrameHandler chatHandler,
+            @Autowired(required = false) @Nullable ProgressFrameHandler progressHandler) {
+        this.planHandler = planHandler;
+        this.chatHandler = chatHandler;
+        this.progressHandler = progressHandler;
+    }
 
     /** No-handler instance — the router still discards incoming frames cleanly. */
     public static EddieFrameRouter noOp() {

@@ -153,6 +153,8 @@ public class EddieEngine extends StructuredActionEngine {
             "inbox_post",
             // Cross-hub sync
             "peer_notify",
+            // Worker observation (Working-WS to a worker process for live frames)
+            "process_observe",
             // Manuals
             "manual_list",
             "manual_read");
@@ -189,6 +191,7 @@ public class EddieEngine extends StructuredActionEngine {
             "team_list",
             "team_describe",
             "peer_notify",
+            "process_observe",
             "manual_list",
             "manual_read");
 

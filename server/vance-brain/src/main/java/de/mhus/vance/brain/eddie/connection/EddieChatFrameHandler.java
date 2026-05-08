@@ -5,9 +5,12 @@ import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.eddie.triage.OutputTriageService;
+import de.mhus.vance.brain.eddie.triage.TriageDecision;
 import de.mhus.vance.brain.eddie.triage.TriageInput;
 import de.mhus.vance.brain.eddie.triage.TriageResult;
+import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
@@ -66,6 +69,7 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
     private final ThinkProcessService thinkProcessService;
     private final ObjectMapper objectMapper;
     private final EddieWorkerConnectionPool pool;
+    private final ClientEventPublisher clientEventPublisher;
 
     @Override
     public void onChatFrame(WebSocketEnvelope envelope, WorkerLinkSnapshot link) {
@@ -126,6 +130,44 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
         } catch (RuntimeException e) {
             log.warn("EddieChatFrameHandler: upsertWorkerLink failed eddie={} worker={}: {}",
                     eddieProcessId, link.getWorkerProcessId(), e.toString());
+        }
+
+        // Deterministic action mapping — the part the LLM doesn't have
+        // to decide. v1: only VERBATIM is auto-forwarded; INBOX +
+        // REFORMULATE still go through the LLM on the next Eddie turn
+        // (the worker-link snapshot already carries the triage summary,
+        // so the <delegated_workers> prompt block surfaces it).
+        if (result.decision() == TriageDecision.VERBATIM) {
+            forwardVerbatim(eddieProcessId, data);
+        }
+    }
+
+    /**
+     * Sends the worker's chat-message-appended frame to Eddie's user
+     * session, rewriting {@code thinkProcessId} / {@code processName}
+     * so the user-client renders it as a message originating from
+     * Eddie (the actual carrier — keeps the chat thread coherent).
+     */
+    private void forwardVerbatim(String eddieProcessId, ChatMessageAppendedData workerData) {
+        ThinkProcessDocument eddie = thinkProcessService.findById(eddieProcessId).orElse(null);
+        if (eddie == null) return;
+        String sessionId = eddie.getSessionId();
+        if (sessionId == null || sessionId.isBlank()) return;
+
+        ChatMessageAppendedData out = ChatMessageAppendedData.builder()
+                .chatMessageId(workerData.getChatMessageId())
+                .thinkProcessId(eddie.getId())
+                .processName(eddie.getName())
+                .role(workerData.getRole())
+                .content(workerData.getContent())
+                .createdAt(workerData.getCreatedAt())
+                .build();
+
+        try {
+            clientEventPublisher.publish(sessionId, MessageType.CHAT_MESSAGE_APPENDED, out);
+        } catch (RuntimeException e) {
+            log.debug("EddieChatFrameHandler: verbatim forward to session='{}' failed: {}",
+                    sessionId, e.toString());
         }
     }
 }

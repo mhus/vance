@@ -14,10 +14,13 @@ import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.eddie.triage.OutputTriageService;
+import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -34,17 +37,19 @@ class EddieChatFrameHandlerTest {
     private final OutputTriageService triage = new OutputTriageService();
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
     private final EddieWorkerConnectionPool pool = mock(EddieWorkerConnectionPool.class);
+    private final ClientEventPublisher publisher = mock(ClientEventPublisher.class);
     // jackson 3 ObjectMapper. Real instance — convertValue path is the
     // production path we want to exercise.
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     private final EddieChatFrameHandler handler = new EddieChatFrameHandler(
-            triage, thinkProcessService, objectMapper, pool);
+            triage, thinkProcessService, objectMapper, pool, publisher);
 
     @Test
-    void assistantMessage_runsTriage_andPersistsSummary() {
+    void assistantMessage_runsTriage_andPersistsSummary_andForwardsVerbatim() {
         WorkerLinkSnapshot link = link("w-1");
         when(pool.findEddieIdForWorker("w-1")).thenReturn(Optional.of("eddie-1"));
+        when(thinkProcessService.findById("eddie-1")).thenReturn(Optional.of(eddie("eddie-1")));
 
         handler.onChatFrame(envelope(MessageType.CHAT_MESSAGE_APPENDED,
                 ChatMessageAppendedData.builder()
@@ -63,6 +68,36 @@ class EddieChatFrameHandlerTest {
         assertThat(link.getLastSeen()).isNotNull();
 
         verify(thinkProcessService).upsertWorkerLink(eq("eddie-1"), eq(link));
+
+        // Deterministic VERBATIM forward to Eddie's session.
+        ArgumentCaptor<ChatMessageAppendedData> forwarded =
+                ArgumentCaptor.forClass(ChatMessageAppendedData.class);
+        verify(publisher).publish(eq("eddie-sess"),
+                eq(MessageType.CHAT_MESSAGE_APPENDED), forwarded.capture());
+        assertThat(forwarded.getValue().getThinkProcessId()).isEqualTo("eddie-1");
+        assertThat(forwarded.getValue().getProcessName()).isEqualTo("eddie");
+        assertThat(forwarded.getValue().getContent()).isEqualTo("Tests sind grün.");
+    }
+
+    @Test
+    void midLengthAssistantMessage_doesNotForward() {
+        // Voice-mode mid-length plain prose → REFORMULATE; no auto-forward.
+        WorkerLinkSnapshot link = link("w-1");
+        when(pool.findEddieIdForWorker("w-1")).thenReturn(Optional.of("eddie-1"));
+        when(thinkProcessService.findById("eddie-1")).thenReturn(Optional.of(eddie("eddie-1")));
+
+        String midLength = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(4);
+        handler.onChatFrame(envelope(MessageType.CHAT_MESSAGE_APPENDED,
+                ChatMessageAppendedData.builder()
+                        .role(ChatRole.ASSISTANT)
+                        .content(midLength)
+                        .build()),
+                link);
+
+        // Snapshot is updated, but no forward (the LLM reformulates next turn).
+        verify(thinkProcessService).upsertWorkerLink(eq("eddie-1"), eq(link));
+        verify(publisher, never())
+                .publish(eq("eddie-sess"), eq(MessageType.CHAT_MESSAGE_APPENDED), any());
     }
 
     @Test
@@ -134,6 +169,16 @@ class EddieChatFrameHandlerTest {
                 .workerProcessId(workerProcessId)
                 .workerProcessName("arthur")
                 .workerProjectName("auth-refactor")
+                .build();
+    }
+
+    private static ThinkProcessDocument eddie(String id) {
+        return ThinkProcessDocument.builder()
+                .id(id)
+                .tenantId("acme")
+                .projectId("_user_mike")
+                .sessionId("eddie-sess")
+                .name("eddie")
                 .build();
     }
 

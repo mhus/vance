@@ -88,6 +88,12 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
 
         try {
             ctx.getBindings("js").putMember("vance", api);
+            // Tool-supplied bindings become top-level variables in the
+            // script's global scope. ScriptRequest validates that
+            // 'vance' is not reused as a binding name.
+            for (Map.Entry<String, @Nullable Object> entry : request.bindings().entrySet()) {
+                ctx.getBindings("js").putMember(entry.getKey(), entry.getValue());
+            }
             String sourceName = request.sourceName() == null ? "<run>" : request.sourceName();
             Source source = Source.newBuilder("js", request.code(), sourceName).buildLiteral();
 

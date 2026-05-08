@@ -146,6 +146,12 @@ public class ProjectService {
      * @throws ProjectClosedException   if the project is CLOSED
      */
     public ProjectDocument claim(String tenantId, String name, String podIp) {
+        if (isPodless(name)) {
+            throw new IllegalArgumentException(
+                    "Project '" + name + "' is podless — refusing to set podIp. "
+                            + "Use ProjectManagerService.claimForLocalPod() which "
+                            + "short-circuits on isPodless().");
+        }
         ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
                 .orElseThrow(() -> new ProjectNotFoundException(
                         "Project '" + name + "' not found in tenant '" + tenantId + "'"));

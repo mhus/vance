@@ -87,10 +87,17 @@ public class ProjectManagerService {
      * Home Pod claiming the given project — that is, the brain process
      * where its sessions, processes, and workspace live.
      *
-     * <p>Returns {@link Optional#empty()} if the project does not exist
-     * or has not yet been claimed by any pod. Callers that need a
-     * present endpoint should treat the empty case as "pending bootstrap"
-     * and either retry or surface a {@code 409 Conflict} to the user.
+     * <p>Returns {@link Optional#empty()} if the project does not exist,
+     * is podless ({@link ProjectService#isPodless}), or has not yet been
+     * claimed by any pod. Callers that need a present endpoint should
+     * treat the empty case as "lives wherever the WS lands" or
+     * "pending bootstrap" and either retry or surface a
+     * {@code 409 Conflict} to the user.
+     *
+     * <p>The podless short-circuit guards against stale {@code podIp}
+     * values that may linger on legacy {@code _user_<login>} or
+     * {@code _vance} documents created before the podless contract
+     * was introduced — those projects must always route local-direct.
      *
      * <p>This is the lookup primitive for engine-to-engine routing
      * (Eddie → Arthur via Working WS) and for workspace REST routing.
@@ -99,6 +106,9 @@ public class ProjectManagerService {
      * Mongo every call; a cache layer may be added later).
      */
     public Optional<String> findProjectEndpoint(String tenantId, String projectName) {
+        if (ProjectService.isPodless(projectName)) {
+            return Optional.empty();
+        }
         return projectService.findByTenantAndName(tenantId, projectName)
                 .map(ProjectDocument::getPodIp)
                 .filter(ip -> ip != null && !ip.isBlank());

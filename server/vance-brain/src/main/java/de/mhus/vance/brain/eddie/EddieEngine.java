@@ -248,6 +248,9 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.shared.session.SessionService sessionService;
     private final EngineMessageRouter messageRouter;
     private final DocumentService documentService;
+    private final de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool workerConnectionPool;
+    private final de.mhus.vance.brain.eddie.connection.EddieFrameRouter workerFrameRouter;
+    private final de.mhus.vance.shared.jwt.JwtService jwtService;
 
     public EddieEngine(
             StreamingProperties streamingProperties,
@@ -261,7 +264,10 @@ public class EddieEngine extends StructuredActionEngine {
             EddieActivityService activityService,
             de.mhus.vance.shared.session.SessionService sessionService,
             EngineMessageRouter messageRouter,
-            DocumentService documentService) {
+            DocumentService documentService,
+            de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool workerConnectionPool,
+            de.mhus.vance.brain.eddie.connection.EddieFrameRouter workerFrameRouter,
+            de.mhus.vance.shared.jwt.JwtService jwtService) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -272,6 +278,9 @@ public class EddieEngine extends StructuredActionEngine {
         this.sessionService = sessionService;
         this.messageRouter = messageRouter;
         this.documentService = documentService;
+        this.workerConnectionPool = workerConnectionPool;
+        this.workerFrameRouter = workerFrameRouter;
+        this.jwtService = jwtService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -383,13 +392,73 @@ public class EddieEngine extends StructuredActionEngine {
                     .content(recap)
                     .build());
         }
+        // Re-open Working-WS for every persisted worker link. Pool is
+        // pod-local — this rebuild is what makes Eddie's observation
+        // channels survive a Mongo-only state transfer to a new pod.
+        // Failures are logged and skipped: the worker can still be
+        // re-observed via process_observe later if the user prompts it.
+        reconnectWorkerLinks(process);
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
     }
 
     @Override
     public void suspend(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.debug("Eddie.suspend id='{}'", process.getId());
+        // Tear down the in-memory Working-WS pool slice for this Eddie
+        // process. The persisted WorkerLinkSnapshots stay — resume
+        // rebuilds the connections from there.
+        try {
+            workerConnectionPool.closeAll(process.getId());
+        } catch (RuntimeException e) {
+            log.debug("Eddie.suspend pool close failed for id='{}': {}",
+                    process.getId(), e.toString());
+        }
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
+    }
+
+    /**
+     * Walks {@link ThinkProcessDocument#getWorkerLinks()} and
+     * re-establishes a Working-WS for each entry through
+     * {@code workerConnectionPool}. Issues a fresh short-lived JWT for
+     * the user via {@link de.mhus.vance.shared.jwt.JwtService} so the
+     * worker pod can validate the connection just like a direct user
+     * connect.
+     *
+     * <p>Best-effort: a connection failure on one link doesn't stop
+     * the others. The link itself stays persisted, so a future call
+     * (auto-observe, manual {@code process_observe}, or another resume)
+     * can retry.
+     */
+    private void reconnectWorkerLinks(ThinkProcessDocument process) {
+        var links = process.getWorkerLinks();
+        if (links == null || links.isEmpty()) return;
+        String tenantId = process.getTenantId();
+        // Eddie's process is owned by the user; we use the project name
+        // (which for the user-project is _user_<username>) to recover
+        // the user identity. Defensive: if the project id isn't a
+        // _user_ container, fall back to the process's tenant default.
+        String userId = process.getProjectId() != null
+                && process.getProjectId().startsWith("_user_")
+                ? process.getProjectId().substring("_user_".length())
+                : tenantId;
+        java.time.Instant exp = java.time.Instant.now().plus(java.time.Duration.ofMinutes(15));
+        String jwt;
+        try {
+            jwt = jwtService.createToken(tenantId, userId, exp);
+        } catch (RuntimeException e) {
+            log.warn("Eddie.resume: cannot issue JWT for reconnect (tenant='{}' user='{}'): {}",
+                    tenantId, userId, e.toString());
+            return;
+        }
+        for (var link : links) {
+            try {
+                workerConnectionPool.openOrReuse(
+                        process.getId(), link, jwt, workerFrameRouter);
+            } catch (RuntimeException e) {
+                log.debug("Eddie.resume: reconnect to worker={} failed: {}",
+                        link.getWorkerProcessId(), e.toString());
+            }
+        }
     }
 
     @Override
@@ -664,6 +733,7 @@ public class EddieEngine extends StructuredActionEngine {
         String projectTitle = action.stringParam(EddieActionSchema.PARAM_PROJECT_TITLE);
         String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
 
+        Map<String, Object> createResult;
         try {
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("name", projectName);
@@ -671,7 +741,7 @@ public class EddieEngine extends StructuredActionEngine {
                 params.put("title", projectTitle);
             }
             params.put("initialPrompt", projectGoal);
-            ctx.tools().invokeInternal("project_create", params);
+            createResult = ctx.tools().invokeInternal("project_create", params);
             log.info("Eddie id='{}' DELEGATE_PROJECT name='{}' reason='{}'",
                     process.getId(), projectName,
                     summariseReason(action.reason()));
@@ -681,6 +751,25 @@ public class EddieEngine extends StructuredActionEngine {
             return new ActionTurnOutcome(
                     "Konnte das Projekt nicht anlegen: " + e.getMessage(),
                     true);
+        }
+
+        // Auto-observe: open a Working-WS to the freshly-spawned chat-process
+        // so Eddie sees its plan-frames + chat-output live, without the LLM
+        // having to call process_observe explicitly. Best-effort — failure
+        // here only loses live mirroring; the project is created either way
+        // and Eddie can still steer it via project_chat_send / Mongo.
+        Object chatProcessId = createResult == null ? null : createResult.get("chatProcessId");
+        if (chatProcessId instanceof String workerId && !workerId.isBlank()) {
+            try {
+                Map<String, Object> observeParams = new LinkedHashMap<>();
+                observeParams.put("processId", workerId);
+                observeParams.put("channelMode",
+                        de.mhus.vance.api.eddie.ChannelMode.MILESTONES.name());
+                ctx.tools().invokeInternal("process_observe", observeParams);
+            } catch (RuntimeException e) {
+                log.debug("Eddie id='{}' auto-observe after DELEGATE failed: {}",
+                        process.getId(), e.toString());
+            }
         }
 
         // Silent spawn unless Eddie explicitly wants to say something.

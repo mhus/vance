@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -21,11 +22,14 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class AiModelService {
 
-    private final Map<ProviderType, AiModelProvider> providers;
+    private final List<AiModelProvider> providerBeans;
+    private Map<ProviderType, AiModelProvider> providers;
 
-    public AiModelService(List<AiModelProvider> providerBeans) {
+    @jakarta.annotation.PostConstruct
+    public void postConstruct() {
         this.providers = providerBeans.stream().collect(
                 Collectors.toUnmodifiableMap(AiModelProvider::getType, p -> p, (a, b) -> {
                     throw new IllegalStateException(

@@ -78,7 +78,6 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Component
 @Slf4j
-@RequiredArgsConstructor
 public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.StructuredActionEngine {
 
     public static final String NAME = "arthur";

@@ -117,6 +117,71 @@ class McpHttpTransportTest {
         assertThat(capturedAuth.get()).isEqualTo("Bearer supersecret");
     }
 
+    /**
+     * Servers like JetBrains' built-in MCP plugin assign a session id on
+     * the {@code initialize} response and require it back as
+     * {@code Mcp-Session-Id} on every subsequent request — without that
+     * round-trip, {@code tools/list} returns nothing because the
+     * subsequent call is treated as a fresh, uninitialised session.
+     */
+    @Test
+    void sessionId_isCapturedFromInitializeAndEchoedBack() {
+        AtomicReference<String> capturedSessionOnSecondCall = new AtomicReference<>();
+        AtomicReference<Integer> callCounter = new AtomicReference<>(0);
+        server.createContext("/mcp", ex -> {
+            int n = callCounter.updateAndGet(i -> i + 1);
+            if (n == 1) {
+                ex.getResponseHeaders().add("Mcp-Session-Id", "sess-abc");
+            } else {
+                capturedSessionOnSecondCall.set(
+                        ex.getRequestHeaders().getFirst("Mcp-Session-Id"));
+            }
+            respondJson(ex);
+        });
+
+        McpConfig cfg = McpConfig.fromParameters(Map.of(
+                "transport", "http",
+                "url", "http://localhost:" + port + "/mcp"));
+        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
+            t.open();
+            t.sendRequest("initialize", Map.of(), Duration.ofSeconds(5), CTX);
+            t.sendRequest("tools/list", Map.of(), Duration.ofSeconds(5), CTX);
+        }
+
+        assertThat(capturedSessionOnSecondCall.get())
+                .as("Mcp-Session-Id must be forwarded on follow-up requests")
+                .isEqualTo("sess-abc");
+    }
+
+    /**
+     * Sessionless servers don't set the header — the transport must not
+     * fabricate one, and follow-up requests stay clean.
+     */
+    @Test
+    void sessionId_absentResponseLeavesFollowupsHeaderless() {
+        AtomicReference<String> capturedSessionOnSecondCall = new AtomicReference<>();
+        AtomicReference<Integer> callCounter = new AtomicReference<>(0);
+        server.createContext("/mcp", ex -> {
+            int n = callCounter.updateAndGet(i -> i + 1);
+            if (n == 2) {
+                capturedSessionOnSecondCall.set(
+                        ex.getRequestHeaders().getFirst("Mcp-Session-Id"));
+            }
+            respondJson(ex);
+        });
+
+        McpConfig cfg = McpConfig.fromParameters(Map.of(
+                "transport", "http",
+                "url", "http://localhost:" + port + "/mcp"));
+        try (McpHttpTransport t = new McpHttpTransport(cfg, rpc, new PackHttpClient(), SecretResolver.NOOP)) {
+            t.open();
+            t.sendRequest("initialize", Map.of(), Duration.ofSeconds(5), CTX);
+            t.sendRequest("tools/list", Map.of(), Duration.ofSeconds(5), CTX);
+        }
+
+        assertThat(capturedSessionOnSecondCall.get()).isNull();
+    }
+
     @Test
     void errorResponse_mapsToJsonRpcException() {
         server.createContext("/mcp", this::respondJsonError);

@@ -101,6 +101,17 @@ public final class MessageType {
      */
     public static final String CLIENT_AGENT_UPLOAD = "client-agent-upload";
 
+    /**
+     * Client → brain: register a JetBrains MCP server endpoint with
+     * the brain's tool registry. Triggered by the foot's
+     * {@code --intellij-mcp[=<url>]} switch. The brain upserts a
+     * {@code mcp_server} {@code ServerToolDocument} in the tenant's
+     * {@code _vance} system project, so all 40+ IntelliJ tools become
+     * callable from any project. Idempotent — same URL re-registers as
+     * a no-op, different URL updates the doc in place.
+     */
+    public static final String INTELLIJ_MCP_REGISTER = "intellij-mcp-register";
+
     // ─── User-Interaction (Inbox) Subsystem ──────────────────────
 
     /** Client → brain: list inbox items for the bound user/session. */

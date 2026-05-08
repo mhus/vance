@@ -57,7 +57,20 @@ public final class McpHttpTransport implements McpTransport {
             new AtomicReference<>();
     private final ConcurrentLinkedQueue<McpJsonRpc.Frame.Notification> pendingNotifications =
             new ConcurrentLinkedQueue<>();
+    /**
+     * Streamable-HTTP session id assigned by the server. Per MCP spec the
+     * server may return an {@code Mcp-Session-Id} header on the
+     * {@code initialize} response; we capture it here and echo it back on
+     * every subsequent request. Servers that don't use sessions never set
+     * it and the field stays {@code null}. JetBrains' built-in MCP server
+     * is one of the session-based ones — without this round-trip,
+     * {@code tools/list} returns 0 tools.
+     */
+    private final AtomicReference<@Nullable String> sessionId = new AtomicReference<>();
     private volatile boolean open;
+
+    /** Header name from the MCP Streamable-HTTP transport spec. Case-insensitive on the wire. */
+    static final String SESSION_HEADER = "Mcp-Session-Id";
 
     public McpHttpTransport(
             McpConfig config,
@@ -90,6 +103,7 @@ public final class McpHttpTransport implements McpTransport {
     public synchronized void close() {
         if (!open) return;
         open = false;
+        sessionId.set(null);
         log.info("McpHttpTransport closed");
     }
 
@@ -152,15 +166,36 @@ public final class McpHttpTransport implements McpTransport {
                 .header("Accept", "application/json, text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
         applyAuthHeader(rb, ctx);
+        String sid = sessionId.get();
+        if (sid != null) {
+            rb.header(SESSION_HEADER, sid);
+        }
 
         HttpClient client = httpClient.client(config.tls());
         try {
-            return client.send(rb.build(), HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = client.send(
+                    rb.build(), HttpResponse.BodyHandlers.ofInputStream());
+            captureSessionId(response);
+            return response;
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new IllegalStateException(
                     "MCP HTTP POST failed (" + config.url() + "): " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Captures the {@code Mcp-Session-Id} header from a response if the
+     * server set one. First-write-wins: servers that re-issue a session
+     * id on every response would only have the very first one stick,
+     * which matches the spec's "client must continue to use the
+     * received Mcp-Session-Id" until the server signals otherwise.
+     * Header lookup is case-insensitive via {@link java.net.http.HttpHeaders}.
+     */
+    private void captureSessionId(HttpResponse<?> response) {
+        response.headers().firstValue(SESSION_HEADER)
+                .filter(s -> !s.isBlank())
+                .ifPresent(value -> sessionId.compareAndSet(null, value));
     }
 
     private void applyAuthHeader(HttpRequest.Builder rb, ToolInvocationContext ctx) {

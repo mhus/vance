@@ -195,21 +195,54 @@ public class StatusBar {
      * todo panel for the active process, the always-visible session
      * /process/busy line, then a blank trailing row.
      *
-     * <p>The trailing blank is what Claude Code does as well — it stops
-     * terminals that don't honor JLine's reserved-region cursor moves
-     * from scrolling each repaint into the buffer. The cursor lives on
-     * the blank row; the spinner sits one row above it and stays put.
+     * <p>Two anti-scroll defences happen here:
+     * <ul>
+     *   <li>Every line is clamped to {@code terminalWidth - 1} columns —
+     *       a status line that hits the exact terminal width auto-wraps
+     *       to the next row in many terminals (notably IntelliJ's
+     *       built-in console), which moves the cursor below the
+     *       reserved region and turns the next repaint into a fresh
+     *       scrollback row.</li>
+     *   <li>The trailing blank rows ({@code bottomPadding}) keep the
+     *       cursor parked well above the actual bottom edge so any
+     *       residual auto-scroll is absorbed by the buffer rows.</li>
+     * </ul>
      */
     private List<AttributedString> buildLines() {
+        int maxCols = safeWidth() - 1;
         List<AttributedString> out = new ArrayList<>();
         appendTodoPanel(out);
         appendIdeSelection(out);
         out.add(persistentLine());
+        clampInPlace(out, maxCols);
         int padding = Math.max(0, config.getUi().getStatusBar().getBottomPadding());
         for (int i = 0; i < padding; i++) {
             out.add(AttributedString.EMPTY);
         }
         return out;
+    }
+
+    private int safeWidth() {
+        Terminal t = terminal.get();
+        if (t == null) return 80;
+        int w = t.getWidth();
+        return w > 0 ? w : 80;
+    }
+
+    /**
+     * Truncates each non-empty line to {@code maxCols} characters, keeping
+     * its style. {@code maxCols <= 0} disables the clamp (degenerate
+     * terminal width — let JLine cope as best it can). Empty lines pass
+     * through untouched so the trailing pad rows remain blank.
+     */
+    private static void clampInPlace(List<AttributedString> lines, int maxCols) {
+        if (maxCols <= 0) return;
+        for (int i = 0; i < lines.size(); i++) {
+            AttributedString line = lines.get(i);
+            if (line.length() > maxCols) {
+                lines.set(i, line.subSequence(0, maxCols));
+            }
+        }
     }
 
     private void appendIdeSelection(List<AttributedString> sink) {

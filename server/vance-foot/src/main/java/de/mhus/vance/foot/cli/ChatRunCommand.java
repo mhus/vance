@@ -41,6 +41,23 @@ public class ChatRunCommand implements Callable<Integer> {
                     + "selection_changed and /ide commands.")
     boolean intellijClaude;
 
+    /**
+     * Default URL when {@code --intellij-mcp-default} is set; matches
+     * the JetBrains MCP-Server plugin's stock streamable-HTTP endpoint.
+     */
+    private static final String INTELLIJ_MCP_DEFAULT_URL = "http://127.0.0.1:64342/stream";
+
+    @Option(names = "--intellij-mcp",
+            paramLabel = "<url>",
+            description = "Register an IntelliJ MCP-Server endpoint with the brain "
+                    + "(streamable-HTTP). Tools become available to the LLM after welcome.")
+    @Nullable String intellijMcpUrl;
+
+    @Option(names = "--intellij-mcp-default",
+            description = "Same as --intellij-mcp=" + INTELLIJ_MCP_DEFAULT_URL
+                    + " — convenience for the JetBrains plugin's stock endpoint.")
+    boolean intellijMcpDefault;
+
     @Option(names = "--agent-file",
             paramLabel = "<path>",
             description = "Override the agent doc uploaded to the brain. "
@@ -90,6 +107,15 @@ public class ChatRunCommand implements Callable<Integer> {
         if (intellijClaude) {
             config.getIde().getClaude().setEnabled(true);
             ideBridge.start(Paths.get("").toAbsolutePath());
+        }
+        if (intellijMcpUrl != null && !intellijMcpUrl.isBlank()) {
+            if (intellijMcpDefault) {
+                terminal.error("Use either --intellij-mcp=<url> or --intellij-mcp-default, not both.");
+                return 2;
+            }
+            config.getIde().getIntellijMcp().setUrl(intellijMcpUrl.trim());
+        } else if (intellijMcpDefault) {
+            config.getIde().getIntellijMcp().setUrl(INTELLIJ_MCP_DEFAULT_URL);
         }
         if (!noConnect) {
             try {

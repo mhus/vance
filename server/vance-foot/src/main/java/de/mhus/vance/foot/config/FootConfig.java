@@ -161,11 +161,28 @@ public class FootConfig {
     @Data
     public static class Ide {
         private Claude claude = new Claude();
+        private IntellijMcp intellijMcp = new IntellijMcp();
     }
 
     @Data
     public static class Claude {
         private boolean enabled = false;
+    }
+
+    /**
+     * JetBrains IntelliJ MCP-Server bridge. When {@link #url} is set the
+     * foot announces the endpoint to the brain after welcome via
+     * {@code intellij-mcp-register}; the brain then upserts a
+     * {@code mcp_server} ServerToolDocument and exposes the IntelliJ
+     * tools (run/debug/refactor/build/database/…) to the active recipe.
+     */
+    @Data
+    public static class IntellijMcp {
+        /**
+         * Streamable-HTTP MCP endpoint. {@code null}/empty disables auto-register.
+         * Default for {@code --intellij-mcp-default} is set in {@code ChatRunCommand}.
+         */
+        private @Nullable String url;
     }
 
     @Data

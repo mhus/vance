@@ -5,6 +5,7 @@ import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.WelcomeData;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.connection.MessageHandler;
+import de.mhus.vance.foot.ide.IntellijMcpRegistrationService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.Verbosity;
@@ -24,6 +25,7 @@ public class WelcomeHandler implements MessageHandler {
     private final ChatTerminal terminal;
     private final ConnectionService connection;
     private final AutoBootstrapService autoBootstrap;
+    private final IntellijMcpRegistrationService intellijMcpRegistration;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     /**
@@ -33,10 +35,12 @@ public class WelcomeHandler implements MessageHandler {
      */
     public WelcomeHandler(ChatTerminal terminal,
                           @Lazy ConnectionService connection,
-                          AutoBootstrapService autoBootstrap) {
+                          AutoBootstrapService autoBootstrap,
+                          IntellijMcpRegistrationService intellijMcpRegistration) {
         this.terminal = terminal;
         this.connection = connection;
         this.autoBootstrap = autoBootstrap;
+        this.intellijMcpRegistration = intellijMcpRegistration;
     }
 
     @Override
@@ -56,6 +60,9 @@ public class WelcomeHandler implements MessageHandler {
                 "Server capabilities: " + data.getServer().getCapabilities()
                         + " — pingInterval=" + data.getServer().getPingInterval() + "s");
         connection.startKeepAlive(data.getServer().getPingInterval());
+        // Register IntelliJ MCP before bootstrap fires — bootstrap may
+        // immediately need the IDE tools when the recipe references them.
+        intellijMcpRegistration.registerIfConfigured();
         autoBootstrap.triggerAfterWelcome();
     }
 }

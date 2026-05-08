@@ -24,7 +24,9 @@ public enum ProviderType {
     OPENAI("openai"),
     GEMINI("gemini"),
     OLLAMA("ollama"),
-    AZURE_OPENAI("azure-openai");
+    AZURE_OPENAI("azure-openai"),
+    /** Test-only deterministic stub provider (qa/ai-test). */
+    SCRIPTED("scripted");
 
     private final String wireName;
 

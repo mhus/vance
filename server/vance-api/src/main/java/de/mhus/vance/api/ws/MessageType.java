@@ -176,6 +176,27 @@ public final class MessageType {
      */
     public static final String PLAN_PROPOSED = "plan-proposed";
 
+    // ─── Eddie Mediation (specification/eddie-engine.md §8.5) ───
+
+    /**
+     * Server → client (Eddie's session): instructs the client to
+     * {@code session-rebind} to a worker session — Eddie is handing
+     * the live conversation directly to a worker (typically Arthur)
+     * because the user needs client-side tools Eddie can't route.
+     * Payload: {@code MediateHandoverNotification} with the target
+     * session id and human-readable hints.
+     */
+    public static final String MEDIATE_HANDOVER = "mediate-handover";
+
+    /**
+     * Client → server (worker's session): user pressed {@code /hub}
+     * (or the Web-UI back-to-hub button). Server intercepts the frame,
+     * runs the mediation-end choreography, and rebinds the client back
+     * to Eddie's session. See
+     * {@code specification/engine-message-routing.md} §4.1.2.
+     */
+    public static final String MEDIATION_END = "mediation-end";
+
     // ─── File Transfer Subsystem ────────────────────────────────
 
     /**

@@ -8,6 +8,7 @@ import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
+import de.mhus.vance.shared.eddie.Mediation;
 import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
@@ -697,6 +698,32 @@ public class ThinkProcessService {
         return findWorkerLinks(processId).stream()
                 .filter(l -> workerProcessId.equals(l.getWorkerProcessId()))
                 .findFirst();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Eddie's mediation-state ($set / $unset on the embedded Mediation
+    // record). See specification/eddie-engine.md §8.5.
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Sets {@code mediation} on Eddie's process — atomic. Pass
+     * {@code null} via {@link #clearMediation} to unset.
+     */
+    public boolean setMediation(String processId, Mediation mediation) {
+        Query query = new Query(Criteria.where("_id").is(processId));
+        Update update = new Update().set("mediation", mediation);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /** Unsets {@code mediation}, returning Eddie's lane to active state. */
+    public boolean clearMediation(String processId) {
+        Query query = new Query(Criteria.where("_id").is(processId));
+        Update update = new Update().unset("mediation");
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
     }
 
     /**

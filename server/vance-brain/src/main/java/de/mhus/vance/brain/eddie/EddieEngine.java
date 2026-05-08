@@ -480,6 +480,16 @@ public class EddieEngine extends StructuredActionEngine {
                         process.getId());
                 return;
             }
+            // While a mediation is active the user-WS talks directly
+            // to the worker — Eddie's LLM lane stays quiet (no model
+            // call, no actions). Pending messages stay queued; they're
+            // drained on the next turn after the mediation ends and
+            // the user-WS rebinds back to Eddie's session.
+            if (process.getMediation() != null) {
+                log.debug("Eddie.runTurn id='{}' — mediation active, lane paused",
+                        process.getId());
+                return;
+            }
             List<SteerMessage> drained = ctx.drainPending();
             if (drained.isEmpty()) {
                 return;
@@ -679,6 +689,7 @@ public class EddieEngine extends StructuredActionEngine {
             case EddieActionSchema.TYPE_RELAY            -> handleRelay(action, process, ctx);
             case EddieActionSchema.TYPE_RELAY_INBOX      -> handleRelayInbox(action, process, ctx);
             case EddieActionSchema.TYPE_LEARN            -> handleLearn(action, process);
+            case EddieActionSchema.TYPE_MEDIATE          -> handleMediate(action, process, ctx);
             case EddieActionSchema.TYPE_WAIT             -> handleWait(action);
             case EddieActionSchema.TYPE_REJECT           -> handleReject(action);
             default -> {
@@ -1218,6 +1229,126 @@ public class EddieEngine extends StructuredActionEngine {
                     text,
                     "eddie:" + process.getId());
         }
+    }
+
+    /**
+     * Hands the user-WS over to a worker session — see
+     * {@code specification/eddie-engine.md} §8.5.
+     *
+     * <p>Choreography on Eddie's side:
+     * <ol>
+     *   <li>Resolve the worker via {@code source} param. Caller picks
+     *       a worker name from the {@code <delegated_workers>} block.</li>
+     *   <li>Persist a {@link de.mhus.vance.shared.eddie.Mediation}
+     *       record on Eddie's process — that flips the LLM lane to
+     *       paused on the next turn.</li>
+     *   <li>Close the in-memory Working-WS to that worker (avoids
+     *       Eddie and the user-client both subscribing to the same
+     *       worker session, which would cause double-renders).</li>
+     *   <li>Push a {@code todos-updated} with empty list to Eddie's
+     *       user-session — wipes the fused plan view; the user-client
+     *       starts fresh on the worker session.</li>
+     *   <li>Push a {@code mediate-handover} with the worker session
+     *       id; the client follows it with a {@code session-resume}
+     *       to that session.</li>
+     * </ol>
+     *
+     * <p>v1: capability-check is intentionally lenient — the LLM is
+     * trusted to skip MEDIATE when the connected client can't return
+     * (mobile / voice-only). A formal {@code ProfileRegistry.canMediate}
+     * gate is on the roadmap.
+     */
+    private ActionTurnOutcome handleMediate(
+            EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        String source = action.stringParam(EddieActionSchema.PARAM_SOURCE);
+        if (source == null || source.isBlank()) {
+            log.warn("Eddie id='{}' MEDIATE missing source — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(
+                    "Sorry — interner Fehler: Worker-Quelle fehlte.", true);
+        }
+        // Resolve the worker link by name (process name from delegated_workers block).
+        var maybeLink = process.getWorkerLinks() == null
+                ? java.util.Optional.<de.mhus.vance.shared.eddie.WorkerLinkSnapshot>empty()
+                : process.getWorkerLinks().stream()
+                        .filter(l -> source.equals(l.getWorkerProcessName())
+                                || source.equals(l.getWorkerProcessId()))
+                        .findFirst();
+        if (maybeLink.isEmpty()) {
+            log.warn("Eddie id='{}' MEDIATE: no worker link for source='{}'",
+                    process.getId(), source);
+            return new ActionTurnOutcome(
+                    "Konnte den Worker '" + source + "' nicht finden.", true);
+        }
+        var link = maybeLink.get();
+
+        // Persist mediation state — atomic.
+        de.mhus.vance.shared.eddie.Mediation mediation =
+                de.mhus.vance.shared.eddie.Mediation.builder()
+                        .workerProcessId(link.getWorkerProcessId())
+                        .workerSessionId(link.getWorkerSessionId())
+                        .startedAt(java.time.Instant.now())
+                        .state(de.mhus.vance.api.eddie.MediationState.ACTIVE)
+                        .build();
+        thinkProcessService.setMediation(process.getId(), mediation);
+
+        // Tear down the Working-WS to this worker — the client takes
+        // over the live conversation directly.
+        try {
+            workerConnectionPool.close(process.getId(), link.getWorkerProcessId());
+        } catch (RuntimeException e) {
+            log.debug("Eddie MEDIATE: pool close failed for worker={}: {}",
+                    link.getWorkerProcessId(), e.toString());
+        }
+
+        // Plan-cleanup: empty the fused TodoList on the user-client.
+        de.mhus.vance.api.thinkprocess.TodosUpdatedNotification cleared =
+                de.mhus.vance.api.thinkprocess.TodosUpdatedNotification.builder()
+                        .processId(process.getId() == null ? "" : process.getId())
+                        .processName(process.getName())
+                        .sessionId(process.getSessionId())
+                        .todos(new java.util.ArrayList<>())
+                        .build();
+        try {
+            ctx.events().publish(process.getSessionId(),
+                    de.mhus.vance.api.ws.MessageType.TODOS_UPDATED, cleared);
+        } catch (RuntimeException e) {
+            log.debug("Eddie MEDIATE: plan-cleanup push failed: {}", e.toString());
+        }
+
+        // Hand-over instruction to the client.
+        String voice = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
+        de.mhus.vance.api.eddie.MediateHandoverNotification handover =
+                de.mhus.vance.api.eddie.MediateHandoverNotification.builder()
+                        .eddieProcessId(process.getId() == null ? "" : process.getId())
+                        .eddieSessionId(process.getSessionId())
+                        .targetSessionId(link.getWorkerSessionId())
+                        .targetProjectId(link.getWorkerProjectName())
+                        .targetProcessName(link.getWorkerProcessName())
+                        .voiceAnnouncement(voice)
+                        .build();
+        try {
+            ctx.events().publish(process.getSessionId(),
+                    de.mhus.vance.api.ws.MessageType.MEDIATE_HANDOVER, handover);
+        } catch (RuntimeException e) {
+            log.warn("Eddie MEDIATE: handover push failed for session='{}': {}",
+                    process.getSessionId(), e.toString());
+            // Roll back the mediation record so we don't leave Eddie
+            // paused without anyone listening.
+            thinkProcessService.clearMediation(process.getId());
+            return new ActionTurnOutcome(
+                    "Konnte den Übergabe-Frame nicht senden — bleibe für dich da.",
+                    true);
+        }
+
+        log.info("Eddie id='{}' MEDIATE worker='{}' targetSession='{}' reason='{}'",
+                process.getId(), link.getWorkerProcessName(),
+                link.getWorkerSessionId(), summariseReason(action.reason()));
+
+        return new ActionTurnOutcome(voice == null || voice.isBlank() ? null : voice,
+                /*awaitingUserInput=*/ true);
     }
 
     private ActionTurnOutcome handleWait(EngineAction action) {

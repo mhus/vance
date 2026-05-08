@@ -67,6 +67,7 @@ public final class EddieActionSchema {
     public static final String TYPE_RELAY            = "RELAY";
     public static final String TYPE_RELAY_INBOX      = "RELAY_INBOX";
     public static final String TYPE_LEARN            = "LEARN";
+    public static final String TYPE_MEDIATE          = "MEDIATE";
     public static final String TYPE_WAIT             = "WAIT";
     public static final String TYPE_REJECT           = "REJECT";
 
@@ -75,6 +76,7 @@ public final class EddieActionSchema {
             TYPE_DELEGATE_PROJECT, TYPE_STEER_PROJECT,
             TYPE_RELAY, TYPE_RELAY_INBOX,
             TYPE_LEARN,
+            TYPE_MEDIATE,
             TYPE_WAIT, TYPE_REJECT);
 
     /** LEARN scope: persistent persona summary, always loaded into Eddie's prompt. */
@@ -146,6 +148,7 @@ public final class EddieActionSchema {
                 TYPE_DELEGATE_PROJECT, TYPE_STEER_PROJECT,
                 TYPE_RELAY, TYPE_RELAY_INBOX,
                 TYPE_LEARN,
+                TYPE_MEDIATE,
                 TYPE_WAIT, TYPE_REJECT));
         typeProp.put("description",
                 "Which branch this turn takes. ANSWER = direct spoken "
@@ -157,8 +160,12 @@ public final class EddieActionSchema {
                         + "RELAY_INBOX = save a worker reply to the user's "
                         + "inbox + announce it briefly. LEARN = persist "
                         + "something about the user (persona summary or "
-                        + "specific fact) into per-user memory. WAIT = "
-                        + "async work running. REJECT = out of scope.");
+                        + "specific fact) into per-user memory. MEDIATE = "
+                        + "hand the user-WS over to a worker session for a "
+                        + "direct conversation (use when the user needs "
+                        + "client-side tools the worker has but Eddie can't "
+                        + "route — see eddie-engine §8.5). WAIT = async work "
+                        + "running. REJECT = out of scope.");
 
         Map<String, Object> reasonProp = new LinkedHashMap<>();
         reasonProp.put("type", "string");

@@ -1,0 +1,118 @@
+package de.mhus.vance.anus.access;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.Duration;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
+class AccessServiceTest {
+
+    private static final String SECRET = "vance-anus-login";
+    private AccessProperties props;
+    private AccessService service;
+
+    @BeforeEach
+    void setUp() {
+        props = new AccessProperties();
+        props.setPasswordHash(new BCryptPasswordEncoder(4).encode(SECRET));
+        props.setTimeout(Duration.ofMinutes(5));
+        service = new AccessService(props);
+    }
+
+    @Test
+    void boot_withBlankHash_throws() {
+        AccessProperties empty = new AccessProperties();
+        empty.setPasswordHash("   ");
+        assertThatThrownBy(() -> new AccessService(empty))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("VANCE_ANUS_PASSWORD_HASH");
+    }
+
+    @Test
+    void login_correctPassword_armsWindow() {
+        assertThat(service.isAuthorized()).isFalse();
+
+        boolean ok = service.login(SECRET);
+
+        assertThat(ok).isTrue();
+        assertThat(service.isAuthorized()).isTrue();
+        assertThat(service.remaining()).isPositive();
+    }
+
+    @Test
+    void login_wrongPassword_returnsFalseAndLeavesWindowClosed() {
+        boolean ok = service.login("nope");
+
+        assertThat(ok).isFalse();
+        assertThat(service.isAuthorized()).isFalse();
+    }
+
+    @Test
+    void login_blankPassword_isRejectedWithoutBcryptCall() {
+        assertThat(service.login("")).isFalse();
+        assertThat(service.login("   ")).isFalse();
+        assertThat(service.isAuthorized()).isFalse();
+    }
+
+    @Test
+    void requireAuthorized_withoutLogin_throws() {
+        assertThatThrownBy(() -> service.requireAuthorized())
+                .isInstanceOf(NotAuthorizedException.class)
+                .hasMessageContaining("login");
+    }
+
+    @Test
+    void requireAuthorized_extendsTheWindow() {
+        // Tiny timeout so the slide is observable.
+        props.setTimeout(Duration.ofSeconds(2));
+        assertThat(service.login(SECRET)).isTrue();
+
+        Duration before = service.remaining();
+        // Walk the clock forward a tick by busy-waiting so 'remaining' shrinks.
+        sleepMillis(50);
+        service.requireAuthorized();
+        Duration after = service.remaining();
+
+        // Sliding window: after the call, remaining must be ≥ before — the
+        // call refreshed the deadline. Equality is allowed if both samples
+        // landed in the same millisecond.
+        assertThat(after).isGreaterThanOrEqualTo(before);
+    }
+
+    @Test
+    void logout_clearsTheWindow() {
+        service.login(SECRET);
+        assertThat(service.isAuthorized()).isTrue();
+
+        service.logout();
+
+        assertThat(service.isAuthorized()).isFalse();
+        assertThat(service.remaining()).isEqualTo(Duration.ZERO);
+        assertThatThrownBy(() -> service.requireAuthorized())
+                .isInstanceOf(NotAuthorizedException.class);
+    }
+
+    @Test
+    void requireAuthorized_afterTimeout_throwsAndClearsState() {
+        props.setTimeout(Duration.ofMillis(50));
+        service.login(SECRET);
+        assertThat(service.isAuthorized()).isTrue();
+
+        sleepMillis(120);
+
+        assertThatThrownBy(() -> service.requireAuthorized())
+                .isInstanceOf(NotAuthorizedException.class);
+        assertThat(service.isAuthorized()).isFalse();
+    }
+
+    private static void sleepMillis(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+}

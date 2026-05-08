@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: vance-anus
+  mongodb:
+    uri: ${VANCE_MONGODB_URI:mongodb://root:example@localhost:27017/vance?authSource=admin}
+    database: ${VANCE_MONGODB_DATABASE:vance}
+  jackson:
+    deserialization:
+      fail-on-null-for-primitives: false
+  shell:
+    interactive:
+      enabled: true
+    script:
+      enabled: false
+    history:
+      enabled: true
+      name: ${user.home}/.vance-anus-history
+
+vance:
+  encryption:
+    # Anus shares the same key store as Brain. Override via env in prod.
+    password: ${VANCE_ENCRYPTION_PASSWORD:changeit}
+  anus:
+    access:
+      # BCrypt hash of the login password. Required at boot — no default.
+      # Generate with: java -jar vance-anus.jar hash --plain <password>
+      password-hash: ${VANCE_ANUS_PASSWORD_HASH:}
+      # Sliding-window timeout. Each authorised command resets the clock.
+      timeout: 10m
+
+logging:
+  level:
+    root: WARN
+    de.mhus.vance: INFO
+    org.springframework.data.mongodb: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n"

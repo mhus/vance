@@ -7,8 +7,8 @@
         see boot-time problems before the REPL takes over.
 
         File path comes from Spring Boot's `logging.file.name` property if
-        set (via the `--log-file <path>` app-level shim in
-        VanceFootApplication), otherwise falls back to ./vance-foot.log.
+        set (via the app-level `log-file` shim in VanceFootApplication),
+        otherwise falls back to ./vance-foot.log.
     -->
     <springProperty scope="context" name="vanceLogFile" source="logging.file.name" defaultValue="vance-foot.log"/>
 

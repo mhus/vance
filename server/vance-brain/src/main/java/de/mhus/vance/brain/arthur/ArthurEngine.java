@@ -190,13 +190,22 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * the same TODO_UPDATE forever because it has no record of
      * having emitted it).
      *
+     * <p>Only TODO_UPDATE qualifies. The mode-transition actions
+     * (START_PLAN, START_EXECUTION) are intentionally terminal even
+     * though they're idempotent: the per-turn LLM tool-spec is
+     * computed at turn start from the mode then, so a continuing
+     * mode switch leaves the LLM staring at the OLD mode's tool
+     * manifest for the rest of the turn. Returning instead lets the
+     * outer self-continuation rebuild the next turn with the new
+     * mode's tools (e.g. {@code client_*} after START_PLAN). The
+     * mode change is visible to the LLM via the system prompt on
+     * that next turn — no in-turn memory needed.
+     *
      * <p>{@link ArthurActionSchema#TYPE_PROPOSE_PLAN} stays terminal:
      * it ends the turn with an ASSISTANT message and BLOCKED status
      * waiting for user approval — the chain pauses there.
      */
     private static final Set<String> CONTINUING_ACTIONS = Set.of(
-            ArthurActionSchema.TYPE_START_PLAN,
-            ArthurActionSchema.TYPE_START_EXECUTION,
             ArthurActionSchema.TYPE_TODO_UPDATE);
 
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
@@ -914,30 +923,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
-        // Reuse the same dispatch as terminal actions — the per-type
-        // handlers are idempotent for these continuing types and the
-        // mode-gate is already friendly to them. Discard the
-        // ActionTurnOutcome (chatMessage / awaiting) since continuing
-        // actions don't produce chat messages and don't end the turn.
+        // Reuse the same dispatch as terminal actions — handleTodoUpdate
+        // is idempotent and persists the new state in process.todos.
+        // Discard the ActionTurnOutcome (chatMessage / awaiting) since
+        // continuing actions don't produce chat messages and don't end
+        // the turn.
         ActionTurnOutcome ignored = handleAction(action, process, ctx);
-        return switch (action.type()) {
-            case ArthurActionSchema.TYPE_START_PLAN -> ""
-                    + "Entered EXPLORING mode. Use read tools "
-                    + "(workspace_read, workspace_grep, doc_read, web_search, "
-                    + "client_file_read, client_file_list, etc.) to gather "
-                    + "context about the user's request. When you have "
-                    + "enough understanding, emit PROPOSE_PLAN with the plan "
-                    + "markdown plus 3-8 todos.";
-            case ArthurActionSchema.TYPE_START_EXECUTION -> ""
-                    + "Entered EXECUTING mode. Pick the first non-COMPLETED "
-                    + "TodoItem and DO THE ACTUAL WORK in this same turn — "
-                    + "call client_file_read / client_file_edit / "
-                    + "client_file_write / client_exec_run / workspace_read / "
-                    + "workspace_grep as appropriate. Do NOT emit "
-                    + "START_EXECUTION again. TODO_UPDATE alone is not work.";
-            case ArthurActionSchema.TYPE_TODO_UPDATE -> renderTodoUpdateFeedback(process);
-            default -> "Action " + action.type() + " applied.";
-        };
+        if (ArthurActionSchema.TYPE_TODO_UPDATE.equals(action.type())) {
+            return renderTodoUpdateFeedback(process);
+        }
+        return "Action " + action.type() + " applied.";
     }
 
     /**

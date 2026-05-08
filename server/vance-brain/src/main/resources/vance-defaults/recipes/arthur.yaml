@@ -65,10 +65,13 @@ allowedToolsAdd:
 # see the full pool.
 modes:
   NORMAL:
+    # find_tools and describe_tool stay PRIMARY here — they're the
+    # discovery primitives that let the LLM activate the deferred
+    # ones (catch-22 if they're deferred themselves: the model has
+    # no way to escape the minimal NORMAL toolset). Both are pure
+    # read-only inspection tools, no side effects.
     allowedToolsDefer:
       - current_time
-      - find_tools
-      - describe_tool
       - process_create
       - process_create_delegate
       - process_steer

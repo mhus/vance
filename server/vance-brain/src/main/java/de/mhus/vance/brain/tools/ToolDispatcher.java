@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -30,14 +31,14 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class ToolDispatcher {
 
     private final List<ToolSource> sources;
     private final PermissionService permissionService;
 
-    public ToolDispatcher(List<ToolSource> sources, PermissionService permissionService) {
-        this.sources = List.copyOf(sources);
-        this.permissionService = permissionService;
+    @jakarta.annotation.PostConstruct
+    public void postConstruct() {
         log.info("ToolDispatcher sources: {}",
                 sources.stream().map(ToolSource::sourceId).toList());
     }

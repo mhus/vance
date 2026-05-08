@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class ThinkEngineService {
 
     private final Map<String, ThinkEngine> engines;
@@ -67,36 +68,8 @@ public class ThinkEngineService {
     /** Hard default when neither setting nor recipe pins the TTL. */
     public static final Duration DEFAULT_DEFERRAL_ACTIVATION_TTL = Duration.ofMinutes(15);
 
-    public ThinkEngineService(
-            List<ThinkEngine> engineBeans,
-            AiModelService aiModelService,
-            SettingService settingService,
-            ChatMessageService chatMessageService,
-            ToolDispatcher toolDispatcher,
-            ClientEventPublisher eventPublisher,
-            SessionService sessionService,
-            ThinkProcessService thinkProcessService,
-            ProcessEventEmitter processEventEmitter,
-            ProgressToolListener progressToolListener,
-            LlmTraceService llmTraceService,
-            ObjectProvider<RecipeResolver> recipeResolverProvider) {
-        this.engines = engineBeans.stream().collect(
-                Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
-                    throw new IllegalStateException(
-                            "Duplicate ThinkEngine name: " + a.name()
-                                    + " — " + a.getClass() + " vs " + b.getClass());
-                }));
-        this.aiModelService = aiModelService;
-        this.settingService = settingService;
-        this.chatMessageService = chatMessageService;
-        this.toolDispatcher = toolDispatcher;
-        this.eventPublisher = eventPublisher;
-        this.sessionService = sessionService;
-        this.thinkProcessService = thinkProcessService;
-        this.processEventEmitter = processEventEmitter;
-        this.progressToolListener = progressToolListener;
-        this.llmTraceService = llmTraceService;
-        this.recipeResolverProvider = recipeResolverProvider;
+    @jakarta.annotation.PostConstruct
+    public void postConstruct() {
         log.info("Registered think-engines: {}", engines.keySet());
     }
 

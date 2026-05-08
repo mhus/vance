@@ -223,6 +223,15 @@ public class EddieEngine extends StructuredActionEngine {
      */
     private static final int FACTS_PROMPT_BUDGET_CHARS = 8_000;
 
+    /**
+     * Max number of {@link de.mhus.vance.shared.eddie.WorkerLinkSnapshot}
+     * entries Eddie surfaces in the {@code <delegated_workers>} prompt
+     * block. Older / DONE entries beyond this cap stay in Mongo for
+     * audit but get clipped from the render so the prompt can't grow
+     * unbounded when a session spawns many short-lived workers.
+     */
+    private static final int DELEGATED_WORKERS_MAX_RENDER = 10;
+
     private volatile @Nullable EngineBundledConfig cachedConfig;
 
     // ──────────────────── Dependencies ────────────────────
@@ -1266,6 +1275,10 @@ public class EddieEngine extends StructuredActionEngine {
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(memoryBlock));
         }
+        String delegatedBlock = composeDelegatedWorkersBlock(process);
+        if (delegatedBlock != null && !delegatedBlock.isBlank()) {
+            messages.add(VanceSystemMessage.dynamic(delegatedBlock));
+        }
 
         List<ChatMessageDocument> history = chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId());
@@ -1379,6 +1392,122 @@ public class EddieEngine extends StructuredActionEngine {
         return "## What I know about this user\n\n"
                 + trimmed
                 + "\n\n_Append new facts via `LEARN scope=fact`._";
+    }
+
+    /**
+     * Eddie's working-memory render. Walks
+     * {@link ThinkProcessDocument#getWorkerLinks()} and produces a
+     * {@code <delegated_workers>} prompt block keeping Eddie aware of
+     * what every active worker has been doing — without re-reading
+     * each worker's chat history.
+     *
+     * <p>Cleanup heuristic: keeps at most {@link #DELEGATED_WORKERS_MAX_RENDER}
+     * entries, sorted by {@code lastSeen} desc (newest first). Empty
+     * snapshots and links missing both a status and a triage summary
+     * are skipped — they would render an unhelpful blank line.
+     *
+     * <p>Block is token-cache-stable: it only mutates when a worker
+     * frame updates the snapshot (incoming triage / plan / status),
+     * not on every Eddie turn.
+     */
+    private @Nullable String composeDelegatedWorkersBlock(ThinkProcessDocument process) {
+        return renderDelegatedWorkersBlock(
+                process.getWorkerLinks(),
+                DELEGATED_WORKERS_MAX_RENDER,
+                java.time.Instant.now());
+    }
+
+    /**
+     * Pure-function render of the {@code <delegated_workers>} block
+     * factored out so the format can be unit-tested without spinning up
+     * the engine bean.
+     */
+    static @Nullable String renderDelegatedWorkersBlock(
+            @Nullable List<de.mhus.vance.shared.eddie.WorkerLinkSnapshot> links,
+            int maxRender,
+            java.time.Instant now) {
+        if (links == null || links.isEmpty()) return null;
+
+        var visible = links.stream()
+                .filter(l -> l.getWorkerStatus() != null
+                        || (l.getTriageSummary() != null && !l.getTriageSummary().isBlank()))
+                .sorted((a, b) -> {
+                    java.time.Instant ai = a.getLastSeen();
+                    java.time.Instant bi = b.getLastSeen();
+                    if (ai == null && bi == null) return 0;
+                    if (ai == null) return 1;
+                    if (bi == null) return -1;
+                    return bi.compareTo(ai); // newest first
+                })
+                .limit(maxRender)
+                .toList();
+        if (visible.isEmpty()) return null;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Delegated workers\n\n");
+        sb.append("Workers currently running on your behalf — surface their status when you "
+                + "need to address something they've reported, but don't repeat the summary "
+                + "verbatim back to the user.\n\n");
+        for (var link : visible) {
+            sb.append("- ").append(workerLabel(link)).append(' ')
+                    .append('(').append(linkStatus(link, now)).append(')');
+            if (link.getTriageSummary() != null && !link.getTriageSummary().isBlank()) {
+                sb.append(" — ").append(link.getTriageSummary().strip());
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    /**
+     * {@code workerProcessName-workerProjectName} where both are known;
+     * falls back to one of them, then to the worker process id when
+     * everything is empty (defensive).
+     */
+    static String workerLabel(de.mhus.vance.shared.eddie.WorkerLinkSnapshot link) {
+        String name = link.getWorkerProcessName();
+        String project = link.getWorkerProjectName();
+        boolean hasName = name != null && !name.isBlank();
+        boolean hasProject = project != null && !project.isBlank();
+        if (hasName && hasProject) return name + "-" + project;
+        if (hasName) return name;
+        if (hasProject) return project;
+        return link.getWorkerProcessId();
+    }
+
+    /**
+     * Compact status for the prompt block: worker status, optional
+     * mode (only when not {@link de.mhus.vance.api.thinkprocess.ProcessMode#NORMAL}),
+     * and a relative timestamp.
+     */
+    static String linkStatus(
+            de.mhus.vance.shared.eddie.WorkerLinkSnapshot link,
+            java.time.Instant now) {
+        StringBuilder s = new StringBuilder();
+        if (link.getWorkerStatus() != null) {
+            s.append(link.getWorkerStatus().name().toLowerCase(java.util.Locale.ROOT));
+        } else {
+            s.append("active");
+        }
+        if (link.getWorkerMode() != null
+                && link.getWorkerMode() != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL) {
+            s.append('/').append(link.getWorkerMode().name().toLowerCase(java.util.Locale.ROOT));
+        }
+        if (link.getLastSeen() != null) {
+            s.append(", ").append(relativeAge(link.getLastSeen(), now));
+        }
+        return s.toString();
+    }
+
+    static String relativeAge(java.time.Instant ts, java.time.Instant now) {
+        long sec = java.time.Duration.between(ts, now).getSeconds();
+        if (sec < 0) sec = 0;
+        if (sec < 90) return sec + "s ago";
+        long min = sec / 60;
+        if (min < 90) return min + "min ago";
+        long h = min / 60;
+        if (h < 48) return h + "h ago";
+        return (h / 24) + "d ago";
     }
 
     private @Nullable String lookupProcessName(@Nullable String processId) {

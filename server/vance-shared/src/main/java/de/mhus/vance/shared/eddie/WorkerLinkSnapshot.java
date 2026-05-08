@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.eddie.ChannelMode;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.thinkprocess.ProcessMode;
+import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -83,6 +84,14 @@ public class WorkerLinkSnapshot {
      * and the auto-rebind heuristic on idle timeout.
      */
     private @Nullable Instant lastSeen;
+
+    /**
+     * Last seen worker {@link ThinkProcessStatus}. Mirrored from
+     * incoming process-events so the {@code <delegated_workers>}
+     * prompt block can render "running / blocked / done" beside the
+     * triage summary. {@code null} until the first event arrives.
+     */
+    private @Nullable ThinkProcessStatus workerStatus;
 
     // === Plan-mirror (eddie-plan-mode.md §2) ===
 

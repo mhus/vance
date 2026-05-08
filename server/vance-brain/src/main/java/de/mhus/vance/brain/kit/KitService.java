@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.kit;
 
+import de.mhus.vance.api.kit.KitDescriptorDto;
 import de.mhus.vance.api.kit.KitExportRequestDto;
 import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitImportRequestDto;
@@ -67,6 +68,7 @@ public class KitService {
         KitResolver.ResolvedKit resolved = null;
         try {
             resolved = resolver.resolve(request.getSource(), request.getToken());
+            validateResolvedTopLayer(resolved.topLayer(), request.getMode());
             return installer.apply(
                     tenantId,
                     request.getProjectId(),
@@ -79,6 +81,25 @@ public class KitService {
                     actor);
         } finally {
             if (resolved != null) resolved.cleanup(workspace);
+        }
+    }
+
+    /**
+     * Enforce the visibility flags of the resolved top-layer descriptor
+     * before any Mongo write happens. Spec: kits.md §3.2 + §6.1/§6.2.
+     */
+    private static void validateResolvedTopLayer(
+            KitDescriptorDto top, KitImportMode mode) {
+        if (!top.isInstallable()) {
+            throw new KitException("kit '" + top.getName()
+                    + "' is marked installable=false — usable only as an inherits: entry,"
+                    + " not for direct import");
+        }
+        if (top.isArtifact()
+                && (mode == KitImportMode.INSTALL || mode == KitImportMode.UPDATE)) {
+            throw new KitException("kit '" + top.getName()
+                    + "' is marked as artifact and cannot be tracked in a manifest —"
+                    + " disable 'Manifest schreiben' / use apply instead");
         }
     }
 

@@ -263,6 +263,14 @@ public class KitResolver {
                 log.warn("inherit load failed: {}", e.getMessage());
                 continue;
             }
+            // Spec kits.md §3.2 — sealed kits refuse to be inherited
+            // from. Hard fail so the user gets the actual reason rather
+            // than a confusing missing-artefact message later.
+            if (loaded.descriptor().isSealed()) {
+                throw new KitException("kit '" + loaded.descriptor().getName()
+                        + "' is sealed and cannot be inherited from (referenced as "
+                        + key + ")");
+            }
             collectInherits(loaded, token, visited, resolvedNames, tmp, warnings, mergeOrder);
             mergeOrder.add(loaded);
             resolvedNames.add(loaded.descriptor().getName());

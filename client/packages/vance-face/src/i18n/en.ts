@@ -819,7 +819,6 @@ export default {
       inherits: 'Inherits',
       install: 'Install…',
       update: 'Update…',
-      apply: 'Apply…',
       export: 'Export…',
       installed_msg: 'Kit installed.',
       updated_msg: 'Kit updated.',
@@ -835,7 +834,6 @@ export default {
       dialog: {
         installTitle: 'Install kit',
         updateTitle: 'Update kit',
-        applyTitle: 'Apply kit',
         exportTitle: 'Export kit',
         repoUrl: 'Repo URL',
         repoUrlHelp: 'https://… or file:///…',
@@ -859,9 +857,11 @@ export default {
         keepPasswords: 'Keep existing passwords',
         keepPasswordsHelp:
           'Skip PASSWORD-settings shipped with the kit so existing project credentials are preserved.',
+        trackManifest: 'Record in kit manifest',
+        trackManifestHelp:
+          'On (default): files are tracked in _vance/kit-manifest.yaml as part of the kit, so update/export keep working. Off: one-off splat without tracking — useful for tunings (extra tools / settings) that should not be bound to the active kit.',
         submitInstall: 'Install',
         submitUpdate: 'Update',
-        submitApply: 'Apply',
         submitExport: 'Export',
       },
     },

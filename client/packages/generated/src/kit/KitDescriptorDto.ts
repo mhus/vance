@@ -11,4 +11,7 @@ export interface KitDescriptorDto {
   version?: string;
   inherits: KitInheritDto[];
   hasEncryptedSecrets: boolean;
+  artifact: boolean;
+  installable: boolean;
+  sealed: boolean;
 }

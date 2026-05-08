@@ -36,6 +36,18 @@ public final class KitYamlMapper {
         String description = requireString(map, "description", "kit.yaml");
         String version = stringOrNull(map.get("version"));
         boolean hasEncryptedSecrets = booleanOrFalse(map.get("hasEncryptedSecrets"));
+        boolean artifact = booleanOrFalse(map.get("artifact"));
+        boolean installable = booleanOr(map.get("installable"), true);
+        boolean sealed = booleanOrFalse(map.get("sealed"));
+
+        // Spec: kits.md §3.2 — a kit that is neither installable nor
+        // inheritable cannot be used at all. Reject the descriptor up
+        // front rather than failing later with a confusing message.
+        if (!installable && sealed) {
+            throw new KitException(
+                    "kit.yaml: 'installable: false' and 'sealed: true' together would make"
+                            + " the kit unusable (no direct import, no inherit). Pick one.");
+        }
 
         List<KitInheritDto> inherits = new ArrayList<>();
         Object inheritsRaw = map.get("inherits");
@@ -65,6 +77,9 @@ public final class KitYamlMapper {
                 .version(version)
                 .inherits(inherits)
                 .hasEncryptedSecrets(hasEncryptedSecrets)
+                .artifact(artifact)
+                .installable(installable)
+                .sealed(sealed)
                 .build();
     }
 
@@ -77,6 +92,17 @@ public final class KitYamlMapper {
         }
         if (descriptor.isHasEncryptedSecrets()) {
             root.put("hasEncryptedSecrets", true);
+        }
+        // Visibility flags only round-trip when they deviate from the
+        // default — keeps the export YAML noise-free for normal kits.
+        if (descriptor.isArtifact()) {
+            root.put("artifact", true);
+        }
+        if (!descriptor.isInstallable()) {
+            root.put("installable", false);
+        }
+        if (descriptor.isSealed()) {
+            root.put("sealed", true);
         }
         if (descriptor.getInherits() != null && !descriptor.getInherits().isEmpty()) {
             List<Map<String, Object>> inherits = new ArrayList<>();
@@ -337,7 +363,11 @@ public final class KitYamlMapper {
     }
 
     private static boolean booleanOrFalse(@Nullable Object v) {
-        if (v == null) return false;
+        return booleanOr(v, false);
+    }
+
+    private static boolean booleanOr(@Nullable Object v, boolean defaultValue) {
+        if (v == null) return defaultValue;
         if (v instanceof Boolean b) return b;
         return Boolean.parseBoolean(v.toString().trim());
     }

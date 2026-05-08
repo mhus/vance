@@ -28,7 +28,7 @@ import {
   type SettingDto,
 } from '@vance/generated';
 
-type KitDialogMode = 'install' | 'update' | 'apply' | 'export';
+type KitDialogMode = 'install' | 'update' | 'export';
 
 const ARCHIVED_GROUP = 'archived';
 
@@ -77,6 +77,11 @@ const kitForm = reactive({
   vaultPassword: '',
   prune: false,
   keepPasswords: false,
+  // Spec kits.md §10: "Manifest schreiben?" checkbox. On (default) ⇒
+  // install/update — files are tracked in _vance/kit-manifest.yaml.
+  // Off ⇒ apply (one-off splat without tracking) — used for tunings,
+  // e.g. extra tools that should not be bound to the active kit.
+  trackManifest: true,
   commitMessage: '',
 });
 
@@ -359,7 +364,6 @@ const kitDialogTitle = computed(() => {
   switch (kitDialogMode.value) {
     case 'install': return t('scopes.kit.dialog.installTitle');
     case 'update': return t('scopes.kit.dialog.updateTitle');
-    case 'apply': return t('scopes.kit.dialog.applyTitle');
     case 'export': return t('scopes.kit.dialog.exportTitle');
   }
 });
@@ -368,13 +372,11 @@ const kitDialogSubmitLabel = computed(() => {
   switch (kitDialogMode.value) {
     case 'install': return t('scopes.kit.dialog.submitInstall');
     case 'update': return t('scopes.kit.dialog.submitUpdate');
-    case 'apply': return t('scopes.kit.dialog.submitApply');
     case 'export': return t('scopes.kit.dialog.submitExport');
   }
 });
 
-const kitNeedsUrl = computed(() =>
-  kitDialogMode.value === 'install' || kitDialogMode.value === 'apply');
+const kitNeedsUrl = computed(() => kitDialogMode.value === 'install');
 
 function openKitDialog(mode: KitDialogMode): void {
   kitDialogMode.value = mode;
@@ -386,6 +388,7 @@ function openKitDialog(mode: KitDialogMode): void {
   kitForm.vaultPassword = '';
   kitForm.prune = false;
   kitForm.keepPasswords = false;
+  kitForm.trackManifest = true;
   kitForm.commitMessage = '';
 
   // Pre-fill from manifest origin when available (update / export).
@@ -432,15 +435,18 @@ async function submitKitDialog(): Promise<void> {
         prune: kitForm.prune,
         keepPasswords: kitForm.keepPasswords,
       };
-      if (kitDialogMode.value === 'install') {
-        await kitState.install(projectId, request);
-        banner.value = t('scopes.kit.installed_msg');
-      } else if (kitDialogMode.value === 'update') {
-        await kitState.update(projectId, request);
-        banner.value = t('scopes.kit.updated_msg');
-      } else {
+      // trackManifest=false ⇒ the user opted out of manifest tracking,
+      // which is exactly what `apply` does server-side (no manifest,
+      // no diff, no update path). Spec kits.md §10.
+      if (!kitForm.trackManifest) {
         await kitState.apply(projectId, request);
         banner.value = t('scopes.kit.applied_msg');
+      } else if (kitDialogMode.value === 'install') {
+        await kitState.install(projectId, request);
+        banner.value = t('scopes.kit.installed_msg');
+      } else {
+        await kitState.update(projectId, request);
+        banner.value = t('scopes.kit.updated_msg');
       }
     }
     showKitDialog.value = false;
@@ -784,9 +790,6 @@ const combinedError = computed<string | null>(() =>
             </dd>
           </dl>
           <div class="flex flex-wrap justify-end gap-2 pt-2">
-            <VButton variant="ghost" size="sm" @click="openKitDialog('apply')">
-              {{ $t('scopes.kit.apply') }}
-            </VButton>
             <VButton variant="ghost" size="sm" @click="openKitDialog('export')">
               {{ $t('scopes.kit.export') }}
             </VButton>
@@ -801,9 +804,6 @@ const combinedError = computed<string | null>(() =>
         <div v-else class="flex flex-col gap-2 text-sm">
           <div class="opacity-70">{{ $t('scopes.kit.none') }}</div>
           <div class="flex flex-wrap justify-end gap-2 pt-2">
-            <VButton variant="ghost" size="sm" @click="openKitDialog('apply')">
-              {{ $t('scopes.kit.apply') }}
-            </VButton>
             <VButton
               variant="primary"
               size="sm"
@@ -1050,13 +1050,19 @@ const combinedError = computed<string | null>(() =>
           :help="$t('scopes.kit.dialog.commitMessageHelp')"
         />
         <VCheckbox
-          v-if="kitDialogMode === 'update'"
+          v-if="kitDialogMode !== 'export'"
+          v-model="kitForm.trackManifest"
+          :label="$t('scopes.kit.dialog.trackManifest')"
+          :help="$t('scopes.kit.dialog.trackManifestHelp')"
+        />
+        <VCheckbox
+          v-if="kitDialogMode === 'update' && kitForm.trackManifest"
           v-model="kitForm.prune"
           :label="$t('scopes.kit.dialog.prune')"
           :help="$t('scopes.kit.dialog.pruneHelp')"
         />
         <VCheckbox
-          v-if="kitDialogMode === 'apply'"
+          v-if="kitDialogMode !== 'export' && !kitForm.trackManifest"
           v-model="kitForm.keepPasswords"
           :label="$t('scopes.kit.dialog.keepPasswords')"
           :help="$t('scopes.kit.dialog.keepPasswordsHelp')"

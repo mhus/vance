@@ -40,4 +40,32 @@ public class KitDescriptorDto {
      */
     @Builder.Default
     private boolean hasEncryptedSecrets = false;
+
+    /**
+     * {@code true} marks the kit as a tuning bundle (not a complete
+     * setup). Such kits must not be tracked in {@code kit-manifest.yaml}
+     * because update / export would later operate on an incomplete
+     * base. {@code install} and {@code update} are rejected by the kit
+     * service; only {@code apply} is allowed. Spec: kits.md §3.2.
+     */
+    @Builder.Default
+    private boolean artifact = false;
+
+    /**
+     * {@code false} forbids direct import (install / update / apply) —
+     * the kit is only usable when referenced as an entry in another
+     * kit's {@code inherits:}. Use case: abstract base kits like
+     * {@code base-arthur-prompts}. Spec: kits.md §3.2.
+     */
+    @Builder.Default
+    private boolean installable = true;
+
+    /**
+     * {@code true} forbids other kits from inheriting this one (via
+     * their {@code inherits:}). Use case: customer-specific end-product
+     * configurations that should not serve as a base for further kits.
+     * Direct import is unaffected. Spec: kits.md §3.2.
+     */
+    @Builder.Default
+    private boolean sealed = false;
 }

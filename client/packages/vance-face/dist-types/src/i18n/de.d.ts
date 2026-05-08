@@ -762,7 +762,6 @@ declare const _default: {
             inherits: string;
             install: string;
             update: string;
-            apply: string;
             export: string;
             installed_msg: string;
             updated_msg: string;
@@ -778,7 +777,6 @@ declare const _default: {
             dialog: {
                 installTitle: string;
                 updateTitle: string;
-                applyTitle: string;
                 exportTitle: string;
                 repoUrl: string;
                 repoUrlHelp: string;
@@ -800,9 +798,10 @@ declare const _default: {
                 pruneHelp: string;
                 keepPasswords: string;
                 keepPasswordsHelp: string;
+                trackManifest: string;
+                trackManifestHelp: string;
                 submitInstall: string;
                 submitUpdate: string;
-                submitApply: string;
                 submitExport: string;
             };
         };

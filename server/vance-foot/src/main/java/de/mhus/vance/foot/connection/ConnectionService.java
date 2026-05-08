@@ -98,12 +98,24 @@ public class ConnectionService {
 
             URI wsUri = URI.create(config.getBrain().getWsBase()
                     + "/brain/" + config.getAuth().getTenant() + "/ws");
+            String profile = config.getClient().getProfile();
+            if (profile == null || profile.isBlank()) {
+                profile = Profiles.FOOT;
+            }
+            String clientName = config.getClient().getName();
+            if (clientName == null || clientName.isBlank()) {
+                // Fallback so the brain always sees a non-empty
+                // identifier; useful when multiple foot instances run
+                // against the same tenant under different shell users
+                // or hosts.
+                clientName = config.getAuth().getUsername();
+            }
             VanceWebSocketConfig wsConfig = VanceWebSocketConfig.builder()
                     .uri(wsUri)
                     .jwtToken(token.getToken())
-                    .profile(Profiles.FOOT)
+                    .profile(profile)
                     .clientVersion(config.getClient().getVersion())
-                    .clientName(config.getClient().getName())
+                    .clientName(clientName)
                     .build();
 
             VanceWebSocketClient client = new VanceWebSocketClient(wsConfig, new Listener());

@@ -43,11 +43,23 @@ public class FootConfig {
     public static class Client {
         private String version = "0.1.0";
         /**
-         * Optional human-readable client identifier sent during the WebSocket
-         * handshake. Surfaced in brain logs and the session inspector — useful
-         * when running multiple foot instances against the same brain.
+         * Human-readable client identifier sent during the WebSocket
+         * handshake. Always sent; falls back to {@code vance.auth.username}
+         * when null. Surfaced in brain logs and the session inspector —
+         * useful when running multiple foot instances against the same
+         * brain. Override with {@code --name=<value>}.
          */
         private @Nullable String name;
+        /**
+         * WebSocket profile (capability bundle) the foot announces on
+         * connect. {@code "foot"} (default) gets shell + FS tools +
+         * client-side {@code agent.md}. {@code "daemon"} for headless
+         * tool-providers. {@code "web"} for browser-style minimal-perm
+         * clients. {@code "mobile"} for mobile apps. Custom tenant
+         * profiles allowed (see {@code Profiles.PATTERN}). Override with
+         * {@code --profile=<name>}.
+         */
+        private String profile = "foot";
     }
 
     @Data

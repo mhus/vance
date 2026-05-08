@@ -64,6 +64,7 @@ public class ClientAgentDocService {
     private final ObjectProvider<ConnectionService> connectionProvider;
     private final ObjectProvider<ChatTerminal> terminalProvider;
     private final AtomicReference<@Nullable Path> overridePath = new AtomicReference<>();
+    private volatile boolean suppressed = false;
 
     public ClientAgentDocService(ObjectProvider<ConnectionService> connectionProvider,
                                  ObjectProvider<ChatTerminal> terminalProvider) {
@@ -81,12 +82,25 @@ public class ClientAgentDocService {
     }
 
     /**
+     * Hard kill-switch from {@code --no-tools}. Once on,
+     * {@link #uploadIfPresent()} returns immediately without reading
+     * or sending — the brain never sees a client agent doc.
+     */
+    public void setSuppressed(boolean suppressed) {
+        this.suppressed = suppressed;
+    }
+
+    /**
      * Reads the resolved doc (if present) and uploads its contents.
      * No-op when not connected, when no doc is found, or when the file
      * exceeds the size cap. Returns {@code true} when an upload was
      * actually sent (success ack received).
      */
     public boolean uploadIfPresent() {
+        if (suppressed) {
+            log.debug("ClientAgentDocService.uploadIfPresent — suppressed (--no-tools)");
+            return false;
+        }
         ConnectionService connection = connectionProvider.getIfAvailable();
         if (connection == null || !connection.isOpen()) {
             log.debug("ClientAgentDocService.uploadIfPresent — not connected, skipped");

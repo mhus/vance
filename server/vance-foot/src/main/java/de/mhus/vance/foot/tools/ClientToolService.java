@@ -68,6 +68,13 @@ public class ClientToolService {
      */
     private final ObjectProvider<ConnectionService> connectionProvider;
     private final AtomicBoolean registering = new AtomicBoolean();
+    /**
+     * Hard kill-switch flipped by {@code --no-tools}. When suppressed,
+     * {@link #registerAll()} returns without sending and incoming
+     * invocations from the brain are rejected with an error. Used for
+     * {@code -w}/web profile foots that must not expose local resources.
+     */
+    private final AtomicBoolean suppressed = new AtomicBoolean(false);
 
     /**
      * Pack-derived tools — replaced wholesale by {@link #setPackTools}.
@@ -152,11 +159,24 @@ public class ClientToolService {
     }
 
     /**
+     * Sets the kill-switch flag for this service. Wired to {@code --no-tools}
+     * (and {@code -w} via that). Once on, neither registration nor
+     * dispatch happens.
+     */
+    public void setSuppressed(boolean suppressed) {
+        this.suppressed.set(suppressed);
+    }
+
+    /**
      * Announces every registered tool (bean + pack) to the brain.
      * Safe to call when disconnected (becomes a no-op); concurrent
      * calls are coalesced via {@link #registering}.
      */
     public void registerAll() {
+        if (suppressed.get()) {
+            log.debug("ClientToolService.registerAll — suppressed (--no-tools)");
+            return;
+        }
         ConnectionService connection = connectionProvider.getIfAvailable();
         if (connection == null || !connection.isOpen()) {
             log.debug("ClientToolService.registerAll — not connected, skipped");
@@ -197,6 +217,10 @@ public class ClientToolService {
      */
     public ClientToolInvokeResponse dispatch(
             String correlationId, String toolName, Map<String, Object> params) {
+        if (suppressed.get()) {
+            return error(correlationId,
+                    "Client tools are disabled on this foot (--no-tools / web profile)");
+        }
         Map<String, Object> safeParams = params == null ? Map.of() : params;
         Tool tool = find(toolName);
         if (tool == null) {

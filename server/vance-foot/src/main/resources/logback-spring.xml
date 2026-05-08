@@ -2,12 +2,18 @@
 <configuration>
     <!--
         REPL output goes through ChatTerminal to System.out / JLine writer.
-        Application log lives in vance-foot.log so it does not interleave with
-        the chat surface. Console appender stays for WARN/ERROR so users still
+        Application log lives in a file so it does not interleave with the
+        chat surface. Console appender stays for WARN/ERROR so users still
         see boot-time problems before the REPL takes over.
+
+        File path comes from Spring Boot's `logging.file.name` property if
+        set (via the `--log-file <path>` app-level shim in
+        VanceFootApplication), otherwise falls back to ./vance-foot.log.
     -->
+    <springProperty scope="context" name="vanceLogFile" source="logging.file.name" defaultValue="vance-foot.log"/>
+
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
-        <file>vance-foot.log</file>
+        <file>${vanceLogFile}</file>
         <!-- Truncate on every JVM start: the "current run's log" is the
              interesting one; persistent history is the user's job. -->
         <append>false</append>

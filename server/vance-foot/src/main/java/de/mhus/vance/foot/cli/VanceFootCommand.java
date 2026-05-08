@@ -1,16 +1,63 @@
 package de.mhus.vance.foot.cli;
 
+import de.mhus.vance.foot.agent.ClientAgentDocService;
+import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.connection.ConnectionService;
+import de.mhus.vance.foot.ide.IdeBridgeService;
+import de.mhus.vance.foot.session.AutoBootstrapService;
+import de.mhus.vance.foot.tools.ClientToolService;
+import de.mhus.vance.foot.transfer.FootTransferService;
+import de.mhus.vance.foot.ui.ChatRepl;
+import de.mhus.vance.foot.ui.ChatTerminal;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
-import picocli.CommandLine.Model.CommandSpec;
-import picocli.CommandLine.Spec;
+import picocli.CommandLine.Option;
 
 /**
- * Picocli root for {@code vance-foot}. Subcommands are registered as
- * Spring-managed Picocli beans — see {@link ChatRunCommand} and
- * {@link DaemonCommand}. With no subcommand and no args the root prints its
- * usage so users can see what is on offer (the IDE "Run main()" path lands
- * here).
+ * Picocli root for {@code vance-foot}. The CLI used to have {@code chat}
+ * and {@code daemon} subcommands; both have been folded back here, driven
+ * by orthogonal flags. This avoids the silent drift where adding an
+ * option to one subcommand left the other behind.
+ *
+ * <h2>Mode flags</h2>
+ *
+ * <ul>
+ *   <li>{@code --no-ui} — skip the JLine REPL; Spring stays alive until
+ *       SIGTERM/SIGINT. Used for headless daemons.</li>
+ *   <li>{@code --no-connect} — skip the auto-connect on startup; the
+ *       {@code /connect} slash-command is the manual trigger.</li>
+ *   <li>{@code --no-bootstrap} — skip the {@code vance.bootstrap}
+ *       auto-bootstrap after the welcome frame.</li>
+ *   <li>{@code --no-tools} — disable everything that exposes local
+ *       resources to the brain: {@code ClientTool} registration, agent
+ *       doc upload, file transfer, IDE bridge. Web-style restricted
+ *       client.</li>
+ *   <li>{@code --profile=<name>} — WebSocket profile sent on connect
+ *       (default {@code "foot"}, see {@code Profiles}).</li>
+ *   <li>{@code --name=<value>} — human-readable client identifier sent
+ *       on connect; falls back to {@code vance.auth.username}.</li>
+ *   <li>{@code --project=<name>} — override
+ *       {@code vance.bootstrap.project-id}.</li>
+ *   <li>{@code --agent-file=<path>} — override the agent doc cascade
+ *       ({@code ./agent.md} → {@code ./CLAUDE.md}).</li>
+ *   <li>{@code --intellij-claude},
+ *       {@code --intellij-mcp[=<url>]},
+ *       {@code --intellij-mcp-default} — IDE bridges (planning/foot-ide-bridge.md).</li>
+ *   <li>{@code -d} — bundle for {@code --profile=daemon --no-ui
+ *       --log-file=./vance-foot-daemon.log}.</li>
+ *   <li>{@code -w} — bundle for {@code --profile=web --no-tools}.</li>
+ * </ul>
+ *
+ * <h2>App-level shims (parsed in {@code VanceFootApplication.main})</h2>
+ *
+ * Stripped from {@code args} before Picocli sees them:
+ * {@code --config <path>} / {@code -c}, {@code --log-file <path>},
+ * {@code --rest-api}.
  */
 @Component
 @Command(
@@ -20,18 +67,205 @@ import picocli.CommandLine.Spec;
         description = {
                 "Spring-based CLI client for the Vance Brain.",
                 "",
-                "Spring config override (intercepted before Picocli):",
+                "App-level flags (intercepted before Picocli):",
                 "  --config <path>  / -c <path>   merge YAML on top of defaults",
-                "  may be passed multiple times; later wins on key collisions",
-        },
-        subcommands = {ChatRunCommand.class, DaemonCommand.class})
-public class VanceFootCommand implements Runnable {
+                "                                 (multiple allowed; later wins)",
+                "  --log-file <path>              write the application log here",
+                "                                 (default: vance-foot.log)",
+                "  --rest-api                     enable the debug REST server"
+        })
+public class VanceFootCommand implements Callable<Integer> {
 
-    @Spec
-    CommandSpec spec;
+    private static final String INTELLIJ_MCP_DEFAULT_URL = "http://127.0.0.1:64342/stream";
+    private static final String DAEMON_DEFAULT_LOG_FILE = "./vance-foot-daemon.log";
+
+    @Option(names = "--no-connect",
+            description = "Do not open the WebSocket on startup; use /connect later.")
+    boolean noConnect;
+
+    @Option(names = "--no-bootstrap",
+            description = "Skip the auto-bootstrap from vance.bootstrap config after welcome.")
+    boolean noBootstrap;
+
+    @Option(names = "--no-ui",
+            description = "Skip the JLine REPL; the JVM stays alive until SIGINT/SIGTERM.")
+    boolean noUi;
+
+    @Option(names = "--no-tools",
+            description = "Refuse local-resource integration (ClientTools, agent doc, "
+                    + "file transfer, IDE bridge). Use for web-style restricted clients.")
+    boolean noTools;
+
+    @Option(names = "--profile",
+            paramLabel = "<name>",
+            description = "WebSocket profile sent on connect "
+                    + "(foot, web, mobile, daemon, or a tenant-defined name). "
+                    + "Default: foot.")
+    @Nullable String profile;
+
+    @Option(names = "--name",
+            paramLabel = "<value>",
+            description = "Client identifier sent on connect. "
+                    + "Falls back to vance.auth.username when omitted.")
+    @Nullable String name;
+
+    @Option(names = "--agent-file",
+            paramLabel = "<path>",
+            description = "Override the agent doc uploaded to the brain. "
+                    + "Without this option the cascade is ./agent.md → ./CLAUDE.md.")
+    @Nullable Path agentFile;
+
+    @Option(names = "--project",
+            paramLabel = "<name>",
+            description = "Override vance.bootstrap.project-id. Clears any "
+                    + "configured session-id (start fresh).")
+    @Nullable String project;
+
+    @Option(names = "--intellij-claude",
+            description = "Connect to a running Claude Code IDE plugin "
+                    + "for editor context (at_mentioned, selection_changed, "
+                    + "/ide commands).")
+    boolean intellijClaude;
+
+    @Option(names = "--intellij-mcp",
+            paramLabel = "<url>",
+            description = "Register an IntelliJ MCP-Server endpoint with the brain "
+                    + "(streamable-HTTP). Tools become available after welcome.")
+    @Nullable String intellijMcpUrl;
+
+    @Option(names = "--intellij-mcp-default",
+            description = "Same as --intellij-mcp=" + INTELLIJ_MCP_DEFAULT_URL
+                    + " — the JetBrains plugin's stock endpoint.")
+    boolean intellijMcpDefault;
+
+    @Option(names = {"-d", "--daemon"},
+            description = "Daemon mode: --profile=daemon --no-ui "
+                    + "--log-file=" + DAEMON_DEFAULT_LOG_FILE + ". "
+                    + "Mutually exclusive with -w.")
+    boolean daemonShortcut;
+
+    @Option(names = {"-w", "--web"},
+            description = "Web-restricted mode: --profile=web --no-tools. "
+                    + "Mutually exclusive with -d.")
+    boolean webShortcut;
+
+    private final ChatRepl repl;
+    private final ConnectionService connection;
+    private final ChatTerminal terminal;
+    private final FootConfig config;
+    private final IdeBridgeService ideBridge;
+    private final ClientAgentDocService agentDoc;
+    private final ClientToolService clientTools;
+    private final FootTransferService transfers;
+
+    public VanceFootCommand(ChatRepl repl,
+                            ConnectionService connection,
+                            ChatTerminal terminal,
+                            FootConfig config,
+                            IdeBridgeService ideBridge,
+                            ClientAgentDocService agentDoc,
+                            ClientToolService clientTools,
+                            FootTransferService transfers) {
+        this.repl = repl;
+        this.connection = connection;
+        this.terminal = terminal;
+        this.config = config;
+        this.ideBridge = ideBridge;
+        this.agentDoc = agentDoc;
+        this.clientTools = clientTools;
+        this.transfers = transfers;
+    }
 
     @Override
-    public void run() {
-        spec.commandLine().usage(spec.commandLine().getOut());
+    public Integer call() throws Exception {
+        if (daemonShortcut && webShortcut) {
+            terminal.error("-d and -w are mutually exclusive (different profiles).");
+            return 2;
+        }
+        applyDaemonShortcut();
+        applyWebShortcut();
+
+        if (noBootstrap) {
+            System.setProperty(AutoBootstrapService.SKIP_PROPERTY, "true");
+        }
+        if (project != null && !project.isBlank()) {
+            config.getBootstrap().setProjectId(project);
+            config.getBootstrap().setSessionId(null);
+        }
+        if (profile != null && !profile.isBlank()) {
+            config.getClient().setProfile(profile);
+        }
+        if (name != null && !name.isBlank()) {
+            config.getClient().setName(name);
+        }
+        if (noTools) {
+            // Hard switch — every local-resource exposer respects this
+            // flag at runtime instead of suppressing them per-bean. See
+            // ClientToolService / ClientAgentDocService / FootTransferService
+            // for the guards. The IDE-bridge flags below short-circuit
+            // on noTools so the bridge is never started.
+            clientTools.setSuppressed(true);
+            agentDoc.setSuppressed(true);
+            transfers.setSuppressed(true);
+        }
+        if (agentFile != null) {
+            agentDoc.setOverridePath(agentFile);
+        }
+        if (intellijClaude && !noTools) {
+            config.getIde().getClaude().setEnabled(true);
+            ideBridge.start(Paths.get("").toAbsolutePath());
+        }
+        if (intellijMcpUrl != null && !intellijMcpUrl.isBlank()) {
+            if (intellijMcpDefault) {
+                terminal.error("Use either --intellij-mcp=<url> or --intellij-mcp-default, not both.");
+                return 2;
+            }
+            if (!noTools) {
+                config.getIde().getIntellijMcp().setUrl(intellijMcpUrl.trim());
+            }
+        } else if (intellijMcpDefault && !noTools) {
+            config.getIde().getIntellijMcp().setUrl(INTELLIJ_MCP_DEFAULT_URL);
+        }
+
+        if (!noConnect) {
+            try {
+                connection.connect();
+            } catch (Exception e) {
+                terminal.error("Auto-connect failed: " + e.getMessage()
+                        + (noUi ? "" : " — type /connect to retry."));
+            }
+        }
+        if (noUi) {
+            terminal.info("vance-foot running headless — Ctrl-C to exit.");
+            CountDownLatch park = new CountDownLatch(1);
+            Runtime.getRuntime().addShutdownHook(new Thread(park::countDown, "vance-foot-shutdown"));
+            park.await();
+        } else {
+            repl.run();
+        }
+        return 0;
+    }
+
+    private void applyDaemonShortcut() {
+        if (!daemonShortcut) return;
+        if (profile == null || profile.isBlank()) {
+            profile = "daemon";
+        }
+        noUi = true;
+        // --log-file is parsed in VanceFootApplication.main and sets
+        // logging.file.name as a system property; if the user did not
+        // pass one we set the daemon default here.
+        if (System.getProperty("logging.file.name") == null
+                || System.getProperty("logging.file.name").isBlank()) {
+            System.setProperty("logging.file.name", DAEMON_DEFAULT_LOG_FILE);
+        }
+    }
+
+    private void applyWebShortcut() {
+        if (!webShortcut) return;
+        if (profile == null || profile.isBlank()) {
+            profile = "web";
+        }
+        noTools = true;
     }
 }

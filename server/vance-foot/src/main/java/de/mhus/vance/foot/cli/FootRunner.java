@@ -26,12 +26,10 @@ public class FootRunner implements CommandLineRunner, ExitCodeGenerator {
 
     @Override
     public void run(String... args) {
-        // No subcommand → default to `chat`. The CLI without arguments lands
-        // in the REPL, mirroring the npm/python/psql convention. Users who
-        // want usage text pass `--help`; the explicit `vance-foot chat ...`
-        // form keeps working unchanged.
-        String[] effectiveArgs = args.length == 0 ? new String[] {"chat"} : args;
-        exitCode = new CommandLine(root, factory).execute(effectiveArgs);
+        // VanceFootCommand is the single Picocli root — flags steer the
+        // mode (REPL vs. headless, profile, tools on/off). No subcommand
+        // dispatch here.
+        exitCode = new CommandLine(root, factory).execute(args);
     }
 
     @Override

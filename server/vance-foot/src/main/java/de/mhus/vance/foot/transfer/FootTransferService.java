@@ -57,6 +57,12 @@ public class FootTransferService {
     private final ConnectionService connection;
     private final SessionService sessions;
     private final Map<String, TransferState> pending = new ConcurrentHashMap<>();
+    /**
+     * Hard kill-switch. Flipped by {@code --no-tools}; while on, both
+     * upload and download initiations are rejected with a finish/init-
+     * response carrying the disabled reason.
+     */
+    private volatile boolean suppressed = false;
     private final ExecutorService streamExecutor =
             Executors.newCachedThreadPool(r -> {
                 Thread t = new Thread(r, "vance-foot-transfer");
@@ -86,6 +92,15 @@ public class FootTransferService {
                 SWEEPER_INTERVAL_MS, SWEEPER_INTERVAL_MS, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * Disables all inbound transfer requests. Wired to
+     * {@code --no-tools} (and {@code -w} via that). Existing in-flight
+     * transfers continue to drain — only new initiations are refused.
+     */
+    public void setSuppressed(boolean suppressed) {
+        this.suppressed = suppressed;
+    }
+
     @PreDestroy
     void shutdown() {
         sweeper.shutdownNow();
@@ -101,6 +116,10 @@ public class FootTransferService {
     /** Brain → Foot: an upload trigger. Foot becomes sender. */
     public void onUploadRequest(ClientFileUploadRequest req) {
         String transferId = req.getTransferId();
+        if (suppressed) {
+            sendFinish(transferId, false, "file transfer disabled (--no-tools)");
+            return;
+        }
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
             sendFinish(transferId, false, "no bound session");
@@ -160,6 +179,10 @@ public class FootTransferService {
     /** Brain → Foot: opening a download. Foot becomes receiver. */
     public void onTransferInit(TransferInit init) {
         String transferId = init.getTransferId();
+        if (suppressed) {
+            sendInitResponse(transferId, false, "file transfer disabled (--no-tools)");
+            return;
+        }
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
             sendInitResponse(transferId, false, "no bound session");

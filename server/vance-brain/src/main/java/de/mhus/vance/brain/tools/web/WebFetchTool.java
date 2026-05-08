@@ -9,12 +9,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Component;
 
 /**
@@ -44,6 +48,11 @@ public class WebFetchTool implements Tool {
     /** Default user-agent — readable in server logs, unambiguous about origin. */
     private static final String USER_AGENT = "Vance-Brain/0.1 (+https://github.com/mhus/vance)";
 
+    /** Recognised tokens inside the {@code flags} parameter. */
+    static final String FLAG_NO_LLMS = "no-llms";
+    static final String FLAG_TEXT = "text";
+    private static final Set<String> KNOWN_FLAGS = Set.of(FLAG_NO_LLMS, FLAG_TEXT);
+
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", Map.of(
@@ -53,7 +62,14 @@ public class WebFetchTool implements Tool {
                     "accept", Map.of(
                             "type", "string",
                             "description", "Optional Accept header (e.g. "
-                                    + "'application/json'). Defaults to '*/*'.")),
+                                    + "'application/json'). Defaults to '*/*'."),
+                    "flags", Map.of(
+                            "type", "string",
+                            "description", "Optional comma- or space-separated tokens. "
+                                    + "Recognised: 'no-llms' skips the per-origin "
+                                    + "llms.txt overview probe; 'text' parses HTML and "
+                                    + "returns extracted text instead of raw markup. "
+                                    + "Unknown tokens are ignored.")),
             "required", List.of("url"));
 
     private final HttpClient http = HttpClient.newBuilder()
@@ -78,10 +94,16 @@ public class WebFetchTool implements Tool {
                 + "the body as text. Use this when you have a concrete "
                 + "URL (often from web_search results) and need the page "
                 + "content. Body is truncated past " + MAX_BODY_CHARS
-                + " characters — fullLength reports the original size. "
+                + " characters — contentLength reports the original size. "
                 + "When the origin publishes an llms.txt overview, the "
                 + "response also carries an 'originOverview' field with "
-                + "a curated index of the site (cached per origin).";
+                + "a curated index of the site (cached per origin). "
+                + "Optional 'flags' parameter — comma- or space-separated "
+                + "tokens — controls behaviour: 'no-llms' skips the "
+                + "originOverview probe entirely; 'text' parses HTML and "
+                + "returns the extracted visible text (script/style "
+                + "content stripped, entities decoded, whitespace "
+                + "normalised) — useful when you only care about prose.";
     }
 
     @Override
@@ -125,6 +147,8 @@ public class WebFetchTool implements Tool {
             accept = "*/*";
         }
 
+        Set<String> flags = parseFlags(params == null ? null : params.get("flags"));
+
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri)
@@ -137,17 +161,28 @@ public class WebFetchTool implements Tool {
                     request, HttpResponse.BodyHandlers.ofString());
 
             String body = response.body() == null ? "" : response.body();
-            int fullLength = body.length();
-            boolean truncated = fullLength > MAX_BODY_CHARS;
-            String content = truncated
-                    ? body.substring(0, MAX_BODY_CHARS) : body;
-
             String contentType = response.headers()
                     .firstValue("content-type").orElse("");
 
-            log.info("WebFetchTool tenant='{}' url='{}' status={} bytes={}",
+            // 'text' flag: parse HTML before truncation so unbalanced markup
+            // doesn't trip Jsoup. Heuristic — apply when the flag is set and
+            // the content type is HTML-ish, or is missing (some servers omit
+            // it but still serve HTML).
+            boolean transformedFromHtml = false;
+            String effectiveBody = body;
+            if (flags.contains(FLAG_TEXT) && looksLikeHtml(contentType, body)) {
+                effectiveBody = htmlToText(body);
+                transformedFromHtml = true;
+            }
+
+            int fullLength = effectiveBody.length();
+            boolean truncated = fullLength > MAX_BODY_CHARS;
+            String content = truncated
+                    ? effectiveBody.substring(0, MAX_BODY_CHARS) : effectiveBody;
+
+            log.info("WebFetchTool tenant='{}' url='{}' status={} bytes={} flags={}",
                     ctx.tenantId(), truncate(rawUrl, 120),
-                    response.statusCode(), fullLength);
+                    response.statusCode(), body.length(), flags);
 
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("url", uri.toString());
@@ -157,12 +192,17 @@ public class WebFetchTool implements Tool {
             }
             out.put("contentLength", fullLength);
             out.put("truncated", truncated);
+            if (transformedFromHtml) {
+                out.put("transformedFromHtml", true);
+            }
             out.put("content", content);
 
-            Optional<String> overview = llmsTxtProbe.probe(uri, ctx);
-            overview.ifPresent(overviewBody -> out.put("originOverview", Map.of(
-                    "source", "llms.txt",
-                    "content", overviewBody)));
+            if (!flags.contains(FLAG_NO_LLMS)) {
+                Optional<String> overview = llmsTxtProbe.probe(uri, ctx);
+                overview.ifPresent(overviewBody -> out.put("originOverview", Map.of(
+                        "source", "llms.txt",
+                        "content", overviewBody)));
+            }
             return out;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -178,4 +218,82 @@ public class WebFetchTool implements Tool {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max) + "…";
     }
+
+    /**
+     * Parses the {@code flags} parameter into a normalised set of tokens.
+     * Accepts comma- or whitespace-separated input, lowercases each
+     * token, and silently drops unknown ones — the LLM should never
+     * fail a fetch because it spelled a flag wrong.
+     */
+    static Set<String> parseFlags(Object raw) {
+        if (raw == null) return Collections.emptySet();
+        String s = raw.toString().trim();
+        if (s.isEmpty()) return Collections.emptySet();
+        Set<String> out = new LinkedHashSet<>();
+        for (String token : s.split("[\\s,]+")) {
+            String norm = token.trim().toLowerCase();
+            if (!norm.isEmpty() && KNOWN_FLAGS.contains(norm)) {
+                out.add(norm);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Heuristic: treat the body as HTML when the {@code Content-Type}
+     * advertises {@code text/html} or {@code application/xhtml+xml},
+     * or — when the server omits the header — the body's leading
+     * non-whitespace bytes look like a tag. Other content types
+     * (JSON, plain text) are passed through untouched.
+     */
+    private static boolean looksLikeHtml(String contentType, String body) {
+        if (contentType != null && !contentType.isEmpty()) {
+            String ct = contentType.toLowerCase();
+            return ct.contains("text/html") || ct.contains("application/xhtml");
+        }
+        // Sniff: a leading '<' followed by an ASCII letter — covers the
+        // common "<!DOCTYPE html>" and "<html>" cases. Avoids parsing
+        // JSON-with-stray-XML-strings as HTML.
+        for (int i = 0; i < body.length(); i++) {
+            char c = body.charAt(i);
+            if (Character.isWhitespace(c)) continue;
+            if (c != '<') return false;
+            if (i + 1 >= body.length()) return false;
+            char next = body.charAt(i + 1);
+            return next == '!' || (next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z');
+        }
+        return false;
+    }
+
+    /**
+     * Converts HTML to a plain-text representation: drops {@code <script>}
+     * / {@code <style>} content, decodes entities, collapses whitespace.
+     * Block-level boundaries become newlines so the structure of the
+     * document survives in a readable form.
+     */
+    static String htmlToText(String html) {
+        if (html == null || html.isEmpty()) return "";
+        Document doc = Jsoup.parse(html);
+        // Suppress the pretty-printer; we want explicit \n boundaries that
+        // we control, not Jsoup's HTML re-serialisation whitespace rules.
+        doc.outputSettings().prettyPrint(false);
+        // Insert newline markers around block-level elements so the
+        // collapsed-whitespace text() output keeps paragraph breaks.
+        for (var br : doc.select("br")) {
+            br.append("\\n");
+        }
+        for (var block : doc.select("p, div, section, article, header, footer, "
+                + "li, tr, h1, h2, h3, h4, h5, h6, blockquote, pre")) {
+            block.prepend("\\n");
+            block.append("\\n");
+        }
+        String text = doc.text();
+        // Replace our literal "\n" markers with real newlines, then collapse
+        // runs of blank lines to at most two for readability.
+        text = text.replace("\\n", "\n");
+        return text.replaceAll("\n[ \t]+", "\n")
+                .replaceAll("\n{3,}", "\n\n")
+                .trim();
+    }
+
 }

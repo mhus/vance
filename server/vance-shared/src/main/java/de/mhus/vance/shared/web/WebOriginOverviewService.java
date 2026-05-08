@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -34,6 +35,7 @@ public class WebOriginOverviewService {
     private final WebOriginOverviewRepository repository;
     private final Clock clock;
 
+    @Autowired
     public WebOriginOverviewService(WebOriginOverviewRepository repository) {
         this(repository, Clock.systemUTC());
     }

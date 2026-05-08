@@ -43,6 +43,9 @@
         <!-- swagger-parser 2.x supports both OpenAPI 3.x and Swagger 2.x. Used by
              RestApiToolPackFactory to materialise REST-API packs into Vance Tools. -->
         <swagger.parser.version>2.1.22</swagger.parser.version>
+        <!-- HTML → text extraction for WebFetchTool's 'text' flag. Robust against
+             broken markup, drops script/style content, decodes entities. -->
+        <jsoup.version>1.18.3</jsoup.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
@@ -136,6 +139,11 @@
                 <groupId>io.swagger.parser.v3</groupId>
                 <artifactId>swagger-parser</artifactId>
                 <version>${swagger.parser.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jsoup</groupId>
+                <artifactId>jsoup</artifactId>
+                <version>${jsoup.version}</version>
             </dependency>
             <!--
                 Direct Anthropic SDK — used by AnthropicDirectChatModel for

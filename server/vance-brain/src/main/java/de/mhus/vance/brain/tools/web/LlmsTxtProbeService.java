@@ -13,6 +13,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -65,6 +66,7 @@ public class LlmsTxtProbeService {
     private final SettingService settings;
     private final HttpClient http;
 
+    @Autowired
     public LlmsTxtProbeService(
             WebOriginOverviewService cache, SettingService settings) {
         this(cache, settings, HttpClient.newBuilder()

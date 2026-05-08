@@ -90,6 +90,12 @@
             <artifactId>swagger-parser</artifactId>
         </dependency>
 
+        <!-- HTML → text extraction for WebFetchTool's 'text' flag. -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

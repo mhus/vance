@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.insights;
 
 import de.mhus.vance.api.insights.ActiveSkillInsightsDto;
+import de.mhus.vance.api.insights.BrainPodInsightsDto;
 import de.mhus.vance.api.insights.CacheStatsDto;
 import de.mhus.vance.api.insights.ChatMessageInsightsDto;
 import de.mhus.vance.api.insights.EffectiveRecipeDto;
@@ -11,6 +12,7 @@ import de.mhus.vance.api.insights.PendingMessageInsightsDto;
 import de.mhus.vance.api.insights.SessionClientToolsDto;
 import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
+import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
@@ -21,6 +23,7 @@ import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.brain.workspace.access.PodForwarder;
 import de.mhus.vance.brain.workspace.access.ProjectPodKey;
 import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
+import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.servertool.ServerToolRepository;
@@ -45,6 +48,7 @@ import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -93,6 +97,7 @@ public class InsightsAdminController {
     private final ClientToolRegistry clientToolRegistry;
     private final PodForwarder podForwarder;
     private final WorkspaceAccessProperties workspaceAccessProperties;
+    private final ClusterService clusterService;
     private final RequestAuthority authority;
 
     // ─── Sessions ──────────────────────────────────────────────────────────
@@ -644,5 +649,63 @@ public class InsightsAdminController {
                 + java.net.URLEncoder.encode(sessionId, java.nio.charset.StandardCharsets.UTF_8)
                 + "/client-tools";
         return podForwarder.getJson(key, path, SessionClientToolsDto.class);
+    }
+
+    // ─── Cluster pods ──────────────────────────────────────────────────────
+
+    /**
+     * Lists every brain-pod row in this brain's cluster. {@code activeProjects}
+     * is filtered to the requesting tenant — other tenants' projects on the
+     * same pod are dropped server-side and never reach the wire.
+     *
+     * <p>Staleness is computed against this brain's view of the clock; a pod
+     * whose last heartbeat is older than the cluster's stale window comes
+     * back with {@code stale=true} regardless of its self-reported status.
+     */
+    @GetMapping("/cluster/pods")
+    public List<BrainPodInsightsDto> listClusterPods(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+
+        Instant now = Instant.now();
+        String selfPodId = clusterService.selfPodId();
+        String tenantPrefix = tenant + "/";
+
+        return clusterService.listCluster().stream()
+                .sorted(Comparator.comparing(BrainPodDocument::getNodeName,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(doc -> toClusterPodDto(
+                        doc, tenantPrefix, selfPodId, clusterService.isStale(doc, now)))
+                .toList();
+    }
+
+    /**
+     * Pure mapping: pod row + tenant prefix → DTO with cross-tenant
+     * projects filtered out and the prefix stripped. Static + package-
+     * private so it can be unit-tested without the controller stack.
+     */
+    static BrainPodInsightsDto toClusterPodDto(
+            BrainPodDocument doc, String tenantPrefix, String selfPodId, boolean stale) {
+        List<String> tenantProjects = doc.getActiveProjects() == null
+                ? List.of()
+                : doc.getActiveProjects().stream()
+                        .filter(p -> p != null && p.startsWith(tenantPrefix))
+                        .map(p -> p.substring(tenantPrefix.length()))
+                        .sorted()
+                        .toList();
+        return BrainPodInsightsDto.builder()
+                .nodeName(doc.getNodeName())
+                .podId(doc.getPodId())
+                .clusterId(doc.getClusterId())
+                .endpoint(doc.getEndpoint())
+                .status(doc.getStatus() != null ? doc.getStatus().name() : "UNKNOWN")
+                .stale(stale)
+                .selfPod(selfPodId.equals(doc.getPodId()))
+                .bootedAt(doc.getBootedAt())
+                .lastHeartbeatAt(doc.getLastHeartbeatAt())
+                .version(doc.getVersion())
+                .tenantProjects(tenantProjects)
+                .build();
     }
 }

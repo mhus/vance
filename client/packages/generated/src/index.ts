@@ -52,6 +52,7 @@ export * from './execution/ExecutionInsightsDto';
 export * from './execution/ExecutionTailDto';
 
 export * from './insights/ActiveSkillInsightsDto';
+export * from './insights/BrainPodInsightsDto';
 export * from './insights/CacheStatsDto';
 export * from './insights/ChatMessageInsightsDto';
 export * from './insights/EffectiveRecipeDto';

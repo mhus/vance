@@ -40,6 +40,17 @@ public final class Profiles {
     /** Headless tool-provider mode (future, {@code vance-foot -d}). Reserved name. */
     public static final String DAEMON = "daemon";
 
+    /**
+     * Eddie hub engine acting as outbound client to a worker project's
+     * Arthur (cross-project). Distinguishes Eddie-mediated worker
+     * conversations from direct user-driven ones — among other things,
+     * filters out client-side tools whose results couldn't be routed
+     * back to a specific user-WS. See
+     * {@code specification/eddie-engine.md} §8.4 and
+     * {@code specification/engine-message-routing.md} §4.1.1.
+     */
+    public static final String EDDIE = "eddie";
+
     /** Catch-all key for recipe-profile-blocks when no exact-match block exists. */
     public static final String DEFAULT = "default";
 

@@ -16,6 +16,7 @@ import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.api.session.SessionStatus;
 import java.io.IOException;
 import java.util.Optional;
@@ -40,6 +41,7 @@ public class SessionResumeHandler implements WsHandler {
     private final SessionConnectionRegistry connectionRegistry;
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final RequestAuthority authority;
+    private final ThinkProcessService thinkProcessService;
 
     @Override
     public String type() {
@@ -102,6 +104,12 @@ public class SessionResumeHandler implements WsHandler {
 
         ctx.bindSession(doc);
         connectionRegistry.register(doc.getSessionId(), wsSession);
+        // Propagate the connection profile to every think-process on the
+        // session so the per-turn tool filter (Tool.allowedForProfile)
+        // sees the current bound profile. See engine-message-routing.md
+        // §4.1.1.
+        thinkProcessService.updateBoundProfileForSession(
+                doc.getSessionId(), ctx.getProfile());
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
         SessionResumeResponse response = SessionResumeResponse.builder()
                 .sessionId(doc.getSessionId())

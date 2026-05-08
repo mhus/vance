@@ -606,6 +606,27 @@ public class ThinkProcessService {
     }
 
     /**
+     * Sets the connection-profile of every ThinkProcess belonging to a
+     * given session. Called from {@code session.bind} / {@code session.resume}
+     * handlers (see {@code engine-message-routing.md} §4.1.1) so the
+     * tool-filter sees the current bound profile on the next lane turn.
+     *
+     * <p>{@code profile} may be {@code null} to clear the field — used
+     * on unbind if the caller wants the field reset (default behaviour
+     * is to leave the value in place since no lane runs without a bound
+     * connection anyway).
+     *
+     * @return number of processes updated
+     */
+    public int updateBoundProfileForSession(String sessionId, @Nullable String profile) {
+        Query query = new Query(Criteria.where("sessionId").is(sessionId));
+        Update update = new Update().set("boundProfile", profile);
+        UpdateResult result = mongoTemplate.updateMulti(
+                query, update, ThinkProcessDocument.class);
+        return (int) result.getModifiedCount();
+    }
+
+    /**
      * Replaces the entire TodoList. Called from {@code PROPOSE_PLAN}
      * (initial plan and edited plans alike — no merge, full replace).
      * Empty list clears the TodoList — used when a process leaves

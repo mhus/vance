@@ -1,6 +1,7 @@
 package de.mhus.vance.foot.tools;
 
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
@@ -47,19 +48,20 @@ public interface ClientTool extends Tool {
 
     /**
      * Foot-side default: client tools are restricted to direct
-     * user-driven connections ({@code user} from Foot/Web/Desktop,
-     * {@code mobile} from React-Native). They are <b>not</b> available
-     * to {@code eddie}-profile hub clients — Eddie cannot route a
-     * {@code CLIENT_TOOL_INVOKE} back to a specific user-WS (see
-     * {@code eddie-engine.md} §8.4 and {@code engine-message-routing.md}
-     * §4.1.1).
+     * user-driven connections — the {@code foot} terminal client and
+     * the {@code mobile} React-Native client. They are <b>not</b>
+     * advertised to {@code web}-browser clients (no local FS access
+     * in a browser anyway) and <b>not</b> to {@code eddie}-profile hub
+     * clients, because Eddie cannot route a {@code CLIENT_TOOL_INVOKE}
+     * back to a specific user-WS (see {@code eddie-engine.md} §8.4 and
+     * {@code engine-message-routing.md} §4.1.1).
      *
      * <p>Individual client tools that should be even more restricted
-     * (e.g. desktop-only) can override.
+     * (e.g. foot-only) can override.
      */
     @Override
     default Set<String> allowedForProfile() {
-        return Set.of("user", "mobile");
+        return Set.of(Profiles.FOOT, Profiles.MOBILE);
     }
 
     /** Convenience: foot-side wire-spec with {@code source="client"} pinned. */

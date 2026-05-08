@@ -24,6 +24,7 @@ import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
@@ -53,6 +54,7 @@ public class SessionCreateHandler implements WsHandler {
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final HomeBootstrapService homeBootstrapService;
     private final RequestAuthority authority;
+    private final ThinkProcessService thinkProcessService;
 
     @Override
     public String type() {
@@ -149,6 +151,14 @@ public class SessionCreateHandler implements WsHandler {
             // won't have a default chat target. The chatProcessId fields
             // stay null in the response.
         }
+
+        // Propagate the connection profile to every think-process on the
+        // session so the per-turn tool filter (Tool.allowedForProfile)
+        // sees the current bound profile. Done after chat-process spawn
+        // so the freshly created process is included. See
+        // engine-message-routing.md §4.1.1.
+        thinkProcessService.updateBoundProfileForSession(
+                created.getSessionId(), ctx.getProfile());
 
         SessionCreateResponse response = SessionCreateResponse.builder()
                 .sessionId(created.getSessionId())

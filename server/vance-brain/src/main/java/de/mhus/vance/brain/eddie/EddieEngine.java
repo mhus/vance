@@ -195,6 +195,14 @@ public class EddieEngine extends StructuredActionEngine {
             "inbox_post",
             "peer_notify",
             "process_observe",
+            // Kit lifecycle — first-class so Eddie can set up a freshly
+            // delegated project with a kit in one user-instigated step
+            // (see manual: how-to-install-kit). kit_status is read-only;
+            // kit_install / kit_update are the executive pair Eddie
+            // calls when the user explicitly says "set up that project".
+            "kit_status",
+            "kit_install",
+            "kit_update",
             "manual_list",
             "manual_read");
 

@@ -47,6 +47,13 @@ public class ChatRunCommand implements Callable<Integer> {
                     + "Without this option the cascade is ./agent.md → ./CLAUDE.md.")
     @Nullable Path agentFile;
 
+    @Option(names = "--project",
+            paramLabel = "<name>",
+            description = "Override vance.bootstrap.project-id from the config — "
+                    + "starts the auto-bootstrap in this project. Clears any "
+                    + "configured session-id (start fresh, never resume).")
+    @Nullable String project;
+
     private final ChatRepl repl;
     private final ConnectionService connection;
     private final ChatTerminal terminal;
@@ -72,6 +79,10 @@ public class ChatRunCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         if (noBootstrap) {
             System.setProperty(AutoBootstrapService.SKIP_PROPERTY, "true");
+        }
+        if (project != null && !project.isBlank()) {
+            config.getBootstrap().setProjectId(project);
+            config.getBootstrap().setSessionId(null);
         }
         if (agentFile != null) {
             agentDoc.setOverridePath(agentFile);

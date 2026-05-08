@@ -205,7 +205,10 @@ public class StatusBar {
         appendTodoPanel(out);
         appendIdeSelection(out);
         out.add(persistentLine());
-        out.add(AttributedString.EMPTY);
+        int padding = Math.max(0, config.getUi().getStatusBar().getBottomPadding());
+        for (int i = 0; i < padding; i++) {
+            out.add(AttributedString.EMPTY);
+        }
         return out;
     }
 

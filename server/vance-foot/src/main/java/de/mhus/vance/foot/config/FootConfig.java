@@ -117,14 +117,24 @@ public class FootConfig {
 
     /**
      * Controls the pinned status line at the bottom of the JLine REPL.
-     * The status block always ends with one blank trailing row so the
-     * cursor never sits on the same physical line as the spinner; that
-     * stops some terminals from scrolling each repaint into the buffer.
+     *
+     * <p>{@link #bottomPadding} blank rows sit between the spinner row
+     * and the bottom of the terminal. Empirically this is what
+     * stops embedded terminals (notably IntelliJ's built-in console)
+     * from spamming each repaint into the scrollback — the buffer
+     * rows absorb the auto-scroll the terminal would otherwise
+     * trigger when the cursor lands on the last visible row. Claude
+     * Code does the same and sits ~5 rows up. Default 4 = spinner
+     * five rows above the bottom.
+     *
+     * <p>If the bar misbehaves entirely (orphaned lines on every
+     * keystroke, wrong cursor position), set {@code enabled: false}.
      */
     @Data
     public static class StatusBar {
         private boolean enabled = true;
-        private boolean animated = true;
+        private boolean animated = false;
+        private int bottomPadding = 4;
     }
 
     /**

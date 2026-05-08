@@ -237,6 +237,18 @@ public class ThinkProcessDocument {
     private List<TodoItem> todos = new ArrayList<>();
 
     /**
+     * Connection-profile of the WS currently bound to this process's
+     * session — propagated from the {@code session-bind} / {@code engine-bind}
+     * handshake (see {@code engine-message-routing.md} §4.1.1). Drives
+     * the per-turn tool filter via {@code Tool.allowedForProfile()}.
+     *
+     * <p>Initial profile values: {@code "user"}, {@code "mobile"},
+     * {@code "eddie"}. {@code null} = no profile recorded; tool filter
+     * runs in legacy unrestricted mode.
+     */
+    private @Nullable String boundProfile;
+
+    /**
      * Tools that the LLM has activated by calling {@code describe_tool}
      * on a {@link de.mhus.vance.toolpack.Tool#deferred()}-marked tool.
      * Map value is the activation timestamp (refreshed on every

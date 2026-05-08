@@ -83,7 +83,8 @@ record DefaultThinkEngineContext(
         RecipeResolver.ToolFilter filter = toolFilterResolver.apply(process.getMode(), scope);
         Set<String> activated = liveActivatedDeferredTools();
         ContextToolsApi.Classification c = ContextToolsApi.classify(
-                toolDispatcher, scope, baseAllowedTools, filter, activated);
+                toolDispatcher, scope, baseAllowedTools, filter, activated,
+                process.getBoundProfile());
         // Sliding-TTL refresh: when the LLM invokes an activated
         // deferred tool, bump its timestamp so frequent use beats decay.
         java.util.function.Consumer<String> refresh = name ->

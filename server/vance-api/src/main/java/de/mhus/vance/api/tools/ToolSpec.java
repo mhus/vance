@@ -78,6 +78,21 @@ public class ToolSpec {
     private Set<String> labels = new LinkedHashSet<>();
 
     /**
+     * Wire-mirror of {@code Tool.allowedForProfile()}. Set of connection-
+     * profile names the tool is restricted to. Empty/null = unrestricted
+     * (every profile may invoke it).
+     *
+     * <p>Used by client-pushed tools (foot side) to declare that they
+     * only work for direct {@code user} or {@code mobile} connections —
+     * not for {@code eddie}-profile hub clients, which cannot route
+     * client-side tool results back to the originating user-WS. See
+     * {@code eddie-engine.md} §8.4 + {@code engine-message-routing.md}
+     * §4.1.1.
+     */
+    @Builder.Default
+    private Set<String> allowedProfiles = new LinkedHashSet<>();
+
+    /**
      * Wire-mirror of {@code Tool.deferred()}. {@code true} means the
      * tool is held back from the default LLM tool-manifest and only
      * surfaces through the discovery-block + {@code describe_tool}

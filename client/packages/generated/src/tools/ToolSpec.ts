@@ -10,6 +10,7 @@ export interface ToolSpec {
   source?: string;
   paramsSchema: Record<string, any>;
   labels: string[];
+  allowedProfiles: string[];
   deferred: boolean;
   searchHint: string;
 }

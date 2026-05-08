@@ -154,20 +154,89 @@ class ContextToolsApiClassifyTest {
                 .containsExactly("alpha", "mu", "zeta");
     }
 
+    @Test
+    void profileGate_dropsToolWhenProfileNotAllowed() {
+        stubResolve("client_file_read", false, Set.of("user", "mobile"));
+        stubResolve("doc_read", false, Set.of()); // unrestricted
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("client_file_read", "doc_read"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                "eddie");
+
+        assertThat(c.allowed()).containsExactly("doc_read");
+        assertThat(c.primary()).containsExactly("doc_read");
+    }
+
+    @Test
+    void profileGate_keepsToolWhenProfileAllowed() {
+        stubResolve("client_file_read", false, Set.of("user", "mobile"));
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("client_file_read"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                "user");
+
+        assertThat(c.primary()).containsExactly("client_file_read");
+    }
+
+    @Test
+    void profileGate_emptyAllowedProfilesMeansUnrestricted() {
+        stubResolve("doc_read", false, Set.of());
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("doc_read"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of(),
+                "eddie");
+
+        assertThat(c.primary()).containsExactly("doc_read");
+    }
+
+    @Test
+    void profileGate_nullProfileSkipsFilterEntirely() {
+        // Legacy callers passing the 5-arg classify get null-profile;
+        // even tools with a non-empty allowedForProfile must stay in.
+        stubResolve("client_file_read", false, Set.of("user", "mobile"));
+
+        ContextToolsApi.Classification c = ContextToolsApi.classify(
+                dispatcher, ctx,
+                Set.of("client_file_read"),
+                RecipeResolver.ToolFilter.EMPTY,
+                Set.of());
+
+        assertThat(c.primary()).containsExactly("client_file_read");
+    }
+
     private void stubResolve(String name, boolean deferred) {
         when(dispatcher.resolve(eq(name), any())).thenReturn(Optional.of(resolved(name, deferred)));
     }
 
+    private void stubResolve(String name, boolean deferred, Set<String> allowedProfiles) {
+        when(dispatcher.resolve(eq(name), any()))
+                .thenReturn(Optional.of(resolved(name, deferred, allowedProfiles)));
+    }
+
     private static ToolDispatcher.Resolved resolved(String name) {
-        return resolved(name, false);
+        return resolved(name, false, Set.of());
     }
 
     private static ToolDispatcher.Resolved resolved(String name, boolean deferred) {
+        return resolved(name, deferred, Set.of());
+    }
+
+    private static ToolDispatcher.Resolved resolved(String name, boolean deferred, Set<String> allowedProfiles) {
         Tool t = new Tool() {
             @Override public String name() { return name; }
             @Override public String description() { return "stub " + name; }
             @Override public boolean primary() { return true; }
             @Override public boolean deferred() { return deferred; }
+            @Override public Set<String> allowedForProfile() { return allowedProfiles; }
             @Override public Map<String, Object> paramsSchema() { return Map.of(); }
             @Override public Map<String, Object> invoke(Map<String, Object> p, ToolInvocationContext c) {
                 return Map.of();

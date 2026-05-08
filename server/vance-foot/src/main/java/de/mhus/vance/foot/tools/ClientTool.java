@@ -4,6 +4,7 @@ import de.mhus.vance.api.tools.ToolSpec;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Foot-side specialisation of {@link Tool}. Two responsibilities:
@@ -42,6 +43,23 @@ public interface ClientTool extends Tool {
     default Map<String, Object> invoke(
             Map<String, Object> params, ToolInvocationContext ctx) {
         return invoke(params);
+    }
+
+    /**
+     * Foot-side default: client tools are restricted to direct
+     * user-driven connections ({@code user} from Foot/Web/Desktop,
+     * {@code mobile} from React-Native). They are <b>not</b> available
+     * to {@code eddie}-profile hub clients — Eddie cannot route a
+     * {@code CLIENT_TOOL_INVOKE} back to a specific user-WS (see
+     * {@code eddie-engine.md} §8.4 and {@code engine-message-routing.md}
+     * §4.1.1).
+     *
+     * <p>Individual client tools that should be even more restricted
+     * (e.g. desktop-only) can override.
+     */
+    @Override
+    default Set<String> allowedForProfile() {
+        return Set.of("user", "mobile");
     }
 
     /** Convenience: foot-side wire-spec with {@code source="client"} pinned. */

@@ -409,6 +409,25 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> base,
             de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter filter,
             Set<String> activatedDeferred) {
+        return classify(dispatcher, ctx, base, filter, activatedDeferred, null);
+    }
+
+    /**
+     * Variant with explicit {@code profile} gate (see
+     * {@code engine-message-routing.md} §4.1.1). The {@code profile} is
+     * matched against each tool's {@link Tool#allowedForProfile()};
+     * tools whose set is non-empty and does not contain {@code profile}
+     * drop out of {@code base} <i>before</i> Remove/Add/Defer overlays
+     * are applied. {@code null} profile = no profile gate (legacy
+     * behaviour).
+     */
+    public static Classification classify(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> base,
+            de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter filter,
+            Set<String> activatedDeferred,
+            @org.jspecify.annotations.Nullable String profile) {
         if (base == null || base.isEmpty()) {
             return new Classification(Set.of(), Set.of(), Set.of(), Set.of());
         }
@@ -416,8 +435,20 @@ public final class ContextToolsApi implements ToolBus {
         Set<String> add = filter == null ? Set.of() : Set.copyOf(filter.add());
         Set<String> defer = filter == null ? Set.of() : Set.copyOf(filter.defer());
 
-        // Effective dispatch pool = base − remove
-        Set<String> effective = new LinkedHashSet<>(base);
+        // Profile gate (Remove pre-step): drop tools whose
+        // allowedForProfile() is non-empty and does not contain `profile`.
+        Set<String> profileFiltered = new LinkedHashSet<>(base);
+        if (profile != null) {
+            profileFiltered.removeIf(name -> {
+                Set<String> allowed = dispatcher.resolve(name, ctx)
+                        .map(r -> r.tool().allowedForProfile())
+                        .orElse(Set.of());
+                return allowed != null && !allowed.isEmpty() && !allowed.contains(profile);
+            });
+        }
+
+        // Effective dispatch pool = profileFiltered − remove
+        Set<String> effective = new LinkedHashSet<>(profileFiltered);
         effective.removeAll(remove);
 
         // Resolve each tool to consult its default deferred() flag.

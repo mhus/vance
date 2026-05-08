@@ -86,6 +86,28 @@ public interface Tool {
     }
 
     /**
+     * Connection-profile gate. Returns the set of {@code profile} values
+     * that may invoke this tool — {@code null} or empty means
+     * unrestricted (every profile may use it). The default is
+     * unrestricted; tools that depend on resources only available to a
+     * specific profile (e.g. client-side filesystem tools that need a
+     * direct user-WS) override this.
+     *
+     * <p>Profile values mirror the connection-handshake field
+     * {@code profile} (see {@code engine-message-routing.md} §4.1.1).
+     * Initial values: {@code "user"}, {@code "mobile"}, {@code "eddie"}.
+     *
+     * <p>Filtering happens in
+     * {@code ContextToolsApi.classify} before the
+     * Add/Remove/Defer overlays — tools whose {@code allowedForProfile}
+     * does not contain the active profile drop out of the dispatch pool
+     * for that turn entirely.
+     */
+    default Set<String> allowedForProfile() {
+        return Set.of();
+    }
+
+    /**
      * If {@code true}, the tool is held back from the default LLM
      * tool-manifest. The discovery block in the system prompt advertises
      * it by name and {@link #searchHint()} only; the LLM activates it
@@ -122,6 +144,7 @@ public interface Tool {
                 .source(sourceId)
                 .paramsSchema(new LinkedHashMap<>(paramsSchema()))
                 .labels(new LinkedHashSet<>(labels()))
+                .allowedProfiles(new LinkedHashSet<>(allowedForProfile()))
                 .deferred(deferred())
                 .searchHint(searchHint())
                 .build();

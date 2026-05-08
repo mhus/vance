@@ -102,6 +102,16 @@ public class ClientToolSource implements ToolSource {
         }
 
         @Override
+        public java.util.Set<String> allowedForProfile() {
+            // Reflect the client-pushed profile restriction so server-side
+            // dispatchers respect it (e.g. eddie-profile hubs cannot
+            // route client-tool results — see eddie-engine.md §8.4).
+            return spec.getAllowedProfiles() == null
+                    ? java.util.Set.of()
+                    : java.util.Set.copyOf(spec.getAllowedProfiles());
+        }
+
+        @Override
         public boolean deferred() {
             return spec.isDeferred();
         }

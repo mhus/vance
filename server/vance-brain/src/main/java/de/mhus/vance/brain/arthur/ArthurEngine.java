@@ -180,6 +180,25 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ArthurActionSchema.TYPE_START_EXECUTION,
             ArthurActionSchema.TYPE_TODO_UPDATE);
 
+    /**
+     * Plan-mode actions that mutate state but don't end the turn —
+     * the LLM should chain real work (read/write tools) immediately
+     * after. The structured action loop applies them in place and
+     * feeds the outcome back as a tool-result, instead of returning
+     * and letting the next turn rebuild the prompt from scratch
+     * (which causes the LLM-amnesia loop where the model repeats
+     * the same TODO_UPDATE forever because it has no record of
+     * having emitted it).
+     *
+     * <p>{@link ArthurActionSchema#TYPE_PROPOSE_PLAN} stays terminal:
+     * it ends the turn with an ASSISTANT message and BLOCKED status
+     * waiting for user approval — the chain pauses there.
+     */
+    private static final Set<String> CONTINUING_ACTIONS = Set.of(
+            ArthurActionSchema.TYPE_START_PLAN,
+            ArthurActionSchema.TYPE_START_EXECUTION,
+            ArthurActionSchema.TYPE_TODO_UPDATE);
+
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     // ──────────────────── End-of-turn marker ────────────────────
@@ -338,8 +357,21 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // explicitly transition the process to BLOCKED so the user
         // sees the engine paused and can intervene, instead of leaving
         // it silently IDLE.
-        final int continuationBudget = 25;
+        //
+        // Tightened from 25 → 8 once continuing actions chain inside
+        // a single turn (see {@link StructuredActionEngine#applyContinuingAction}).
+        // With in-turn chaining, each turn does multiple LLM iterations
+        // and normally produces a chat-producing terminal action; 8
+        // outer turns is plenty even for the slowest plan execution.
+        //
+        // The silent-turn-in-a-row guard is the sharper circuit
+        // breaker: if 3 turns in a row produce no chat message
+        // (TODO_UPDATE-only loops typically), abort early instead
+        // of waiting out the full budget. The model is stuck.
+        final int continuationBudget = 8;
+        final int silentTurnsLimit = 3;
         int continuationsRemaining = continuationBudget;
+        int silentTurnsInARow = 0;
         boolean continueWithEmptyInbox = false;
         while (true) {
             // Cooperative halt-check between drain iterations.
@@ -367,7 +399,21 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
 
             de.mhus.vance.api.thinkprocess.ProcessMode modeBefore = process.getMode();
-            runTurnFor(process, ctx, drained);
+            boolean appendedChat = runTurnFor(process, ctx, drained);
+            if (appendedChat) {
+                silentTurnsInARow = 0;
+            } else {
+                silentTurnsInARow++;
+                if (silentTurnsInARow >= silentTurnsLimit) {
+                    log.warn("Arthur.runTurn id='{}' — {} silent turns in a row "
+                            + "(LLM stuck on state-only actions); transitioning "
+                            + "to BLOCKED so the user can intervene",
+                            process.getId(), silentTurnsLimit);
+                    thinkProcessService.updateStatus(
+                            process.getId(), ThinkProcessStatus.BLOCKED);
+                    return;
+                }
+            }
 
             // Decide whether to keep going. The handlers update
             // process.mode in-place — read the post-turn status from
@@ -395,7 +441,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
     // ──────────────────── One turn ────────────────────
 
-    private void runTurnFor(
+    /**
+     * Runs one turn and reports whether it produced a user-facing
+     * chat message. The caller ({@link #runTurn}) uses the silent
+     * signal to break the plan-mode self-continuation loop early
+     * when the LLM is stuck emitting only state-mutating actions
+     * (typically {@code TODO_UPDATE}) without ever advancing to a
+     * chat-producing terminal action.
+     */
+    private boolean runTurnFor(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             List<SteerMessage> inbox) {
@@ -407,7 +461,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // when the conditions don't match (mixed inbox, no active
         // delegation, worker no longer BLOCKED, etc.).
         if (tryAutoForwardToDelegatedWorker(process, ctx, inbox)) {
-            return;
+            return true;
         }
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
@@ -518,7 +572,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             awaitingUserInput = outcome.awaitingUserInput();
 
             String chatMessage = outcome.chatMessage();
-            if (chatMessage != null && !chatMessage.isBlank()) {
+            boolean appendedChat = chatMessage != null && !chatMessage.isBlank();
+            if (appendedChat) {
                 chatLog.append(ChatMessageDocument.builder()
                         .tenantId(process.getTenantId())
                         .sessionId(process.getSessionId())
@@ -540,6 +595,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // and ended awaiting user input, re-arm the pointer so
             // the user's next reply auto-routes to the worker.
             updateDelegationPointer(process, inbox, awaitingUserInput);
+            return appendedChat;
         } finally {
             ThinkProcessStatus exitStatus = awaitingUserInput
                     ? ThinkProcessStatus.BLOCKED
@@ -792,6 +848,99 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         true);
             }
         };
+    }
+
+    @Override
+    protected boolean isTerminalAction(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action) {
+        return !CONTINUING_ACTIONS.contains(action.type());
+    }
+
+    @Override
+    protected String applyContinuingAction(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        // Reuse the same dispatch as terminal actions — the per-type
+        // handlers are idempotent for these continuing types and the
+        // mode-gate is already friendly to them. Discard the
+        // ActionTurnOutcome (chatMessage / awaiting) since continuing
+        // actions don't produce chat messages and don't end the turn.
+        ActionTurnOutcome ignored = handleAction(action, process, ctx);
+        return switch (action.type()) {
+            case ArthurActionSchema.TYPE_START_PLAN -> ""
+                    + "Entered EXPLORING mode. Use read tools "
+                    + "(workspace_read, workspace_grep, doc_read, web_search, "
+                    + "client_file_read, client_file_list, etc.) to gather "
+                    + "context about the user's request. When you have "
+                    + "enough understanding, emit PROPOSE_PLAN with the plan "
+                    + "markdown plus 3-8 todos.";
+            case ArthurActionSchema.TYPE_START_EXECUTION -> ""
+                    + "Entered EXECUTING mode. Pick the first non-COMPLETED "
+                    + "TodoItem and DO THE ACTUAL WORK in this same turn — "
+                    + "call client_file_read / client_file_edit / "
+                    + "client_file_write / client_exec_run / workspace_read / "
+                    + "workspace_grep as appropriate. Do NOT emit "
+                    + "START_EXECUTION again. TODO_UPDATE alone is not work.";
+            case ArthurActionSchema.TYPE_TODO_UPDATE -> renderTodoUpdateFeedback(process);
+            default -> "Action " + action.type() + " applied.";
+        };
+    }
+
+    /**
+     * Builds the LLM-facing feedback for a TODO_UPDATE. Renders the
+     * post-update TodoList and tells the model what to do next based
+     * on the first non-COMPLETED item — without this nudge the model
+     * tends to re-emit TODO_UPDATE for the same id forever, never
+     * progressing to the actual read/write tools.
+     */
+    private String renderTodoUpdateFeedback(ThinkProcessDocument process) {
+        StringBuilder sb = new StringBuilder("TODO_UPDATE applied. Current TodoList:\n");
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        if (todos == null) todos = java.util.List.of();
+        de.mhus.vance.api.thinkprocess.TodoItem firstActive = null;
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
+            de.mhus.vance.api.thinkprocess.TodoStatus s = t.getStatus() == null
+                    ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING
+                    : t.getStatus();
+            String marker = switch (s) {
+                case PENDING -> "[ ]";
+                case IN_PROGRESS -> "[~]";
+                case COMPLETED -> "[✓]";
+            };
+            sb.append(marker).append(" (id=").append(t.getId() == null ? "" : t.getId())
+                    .append(") ").append(t.getContent() == null ? "" : t.getContent())
+                    .append('\n');
+            if (firstActive == null
+                    && s != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) {
+                firstActive = t;
+            }
+        }
+        sb.append('\n');
+        if (firstActive == null) {
+            sb.append("All todos COMPLETED. Emit ANSWER with a brief summary "
+                    + "of what was done so the user can see the final result.");
+        } else if (firstActive.getStatus()
+                == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS) {
+            sb.append("The first active item (id=")
+                    .append(firstActive.getId())
+                    .append(") is already IN_PROGRESS. Do NOT emit TODO_UPDATE "
+                            + "for it again — that's a no-op. Instead, in the "
+                            + "next iteration call read/write tools "
+                            + "(client_file_read, client_file_edit, "
+                            + "client_file_write, client_exec_run, "
+                            + "workspace_read, workspace_grep, etc.) to "
+                            + "actually make progress on this item. Once the "
+                            + "work is done, emit TODO_UPDATE to mark it "
+                            + "COMPLETED and pick the next item.");
+        } else {
+            sb.append("The first non-completed item (id=")
+                    .append(firstActive.getId())
+                    .append(") is still PENDING. Emit TODO_UPDATE to set it "
+                            + "IN_PROGRESS, then start the actual work in "
+                            + "the same iteration if possible.");
+        }
+        return sb.toString();
     }
 
     // ──────────────────── Plan-Mode action handlers ────────────────────

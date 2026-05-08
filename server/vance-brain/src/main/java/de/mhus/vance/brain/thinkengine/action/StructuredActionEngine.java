@@ -146,6 +146,36 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             ThinkEngineContext ctx);
 
     /**
+     * Whether {@code action} ends the turn (chat message, BLOCKED on
+     * user, hand-off to worker) or is a state-mutating step the LLM
+     * should chain on. Default: every action terminates. Subclasses
+     * (e.g. ArthurEngine for plan-mode {@code TODO_UPDATE} /
+     * {@code START_PLAN} / {@code START_EXECUTION}) override to mark
+     * those as continuing — the loop applies them in-place and feeds
+     * the outcome back as a tool-result so the LLM has memory of the
+     * state change inside the same turn.
+     */
+    protected boolean isTerminalAction(EngineAction action) {
+        return true;
+    }
+
+    /**
+     * Apply a non-terminal action within the action loop. Returns a
+     * short directive string the LLM sees as the action tool's
+     * tool-result — should describe what happened plus what to do
+     * next. Subclasses overriding {@link #isTerminalAction} must
+     * override this. Default throws.
+     */
+    protected String applyContinuingAction(
+            EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        throw new UnsupportedOperationException(
+                "applyContinuingAction not implemented for "
+                        + name() + " action='" + action.type() + "'");
+    }
+
+    /**
      * Final outcome of one structured-action turn. {@code chatMessage}
      * is the text appended to the assistant chat log (use
      * {@code null}/empty for silent actions like {@code WAIT} that
@@ -297,6 +327,34 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                     "{} id='{}' action='{}' reason='{}'",
                     name(), process.getId(),
                     parsed.action().type(), summarise(parsed.action().reason()));
+
+            // Continuing actions (e.g. Arthur's TODO_UPDATE / START_PLAN /
+            // START_EXECUTION) don't terminate the turn — they mutate
+            // engine state, the LLM should keep working. We apply the
+            // action right here, feed the result back as the action
+            // tool's tool-result so the LLM has a record of "I just did
+            // X, here's the new state", and continue iterating. Without
+            // this, silent actions cause an LLM-amnesia loop: the next
+            // turn rebuilds the prompt from scratch and the model
+            // repeats the same action because it has no memory of
+            // having emitted it.
+            if (!isTerminalAction(parsed.action())) {
+                String feedback;
+                try {
+                    feedback = applyContinuingAction(parsed.action(), process, ctx);
+                } catch (RuntimeException e) {
+                    log.warn("{} id='{}' continuing-action handler failed: {}",
+                            name(), process.getId(), e.toString(), e);
+                    feedback = "(internal: applyContinuingAction failed: "
+                            + e.getMessage() + ")";
+                }
+                if (feedback == null || feedback.isBlank()) {
+                    feedback = "Action " + parsed.action().type() + " applied.";
+                }
+                messages.add(ToolExecutionResultMessage.from(actionCall, feedback));
+                continue;
+            }
+
             return ActionLoopResult.action(parsed.action());
         }
 

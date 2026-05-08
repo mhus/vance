@@ -353,6 +353,107 @@ class ThinkProcessServiceTest {
                 eq(ThinkProcessDocument.class));
     }
 
+    // ─── workerLinks (Eddie's per-worker mirror) ─────────────────────────
+
+    @Test
+    void upsertWorkerLink_pullsByIdThenPushesNewSnapshot_atomic() {
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        de.mhus.vance.shared.eddie.WorkerLinkSnapshot snap =
+                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                        .workerProcessId("w-1")
+                        .workerProcessName("arthur")
+                        .workerProjectName("projA")
+                        .build();
+
+        boolean changed = service.upsertWorkerLink("eddie-1", snap);
+
+        assertThat(changed).isTrue();
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        org.bson.Document raw = captor.getValue().getUpdateObject();
+        // pull + push ride in the same update document — atomic at the
+        // Mongo level, so two upserts to different worker ids on the
+        // same process can never lose entries.
+        assertThat(raw).containsKeys("$pull", "$push");
+    }
+
+    @Test
+    void upsertWorkerLink_rejectsBlankWorkerProcessId() {
+        de.mhus.vance.shared.eddie.WorkerLinkSnapshot bad =
+                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                        .workerProcessId("")
+                        .build();
+
+        assertThatThrownBy(() -> service.upsertWorkerLink("eddie-1", bad))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(mongoTemplate, never()).updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class));
+    }
+
+    @Test
+    void removeWorkerLink_pullsTheMatchingEntry() {
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        boolean removed = service.removeWorkerLink("eddie-1", "w-2");
+
+        assertThat(removed).isTrue();
+        var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        assertThat(captor.getValue().getUpdateObject()).containsKey("$pull");
+    }
+
+    @Test
+    void findWorkerLinks_returnsEmptyList_forUnknownProcess() {
+        when(mongoTemplate.findOne(any(Query.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(null);
+
+        assertThat(service.findWorkerLinks("ghost")).isEmpty();
+    }
+
+    @Test
+    void findWorkerLinks_returnsListFromDocument() {
+        ThinkProcessDocument doc = process("eddie-1");
+        doc.setWorkerLinks(new ArrayList<>(List.of(
+                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                        .workerProcessId("w-1").build(),
+                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                        .workerProcessId("w-2").build())));
+        when(mongoTemplate.findOne(any(Query.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(doc);
+
+        var links = service.findWorkerLinks("eddie-1");
+
+        assertThat(links).extracting(
+                        de.mhus.vance.shared.eddie.WorkerLinkSnapshot::getWorkerProcessId)
+                .containsExactly("w-1", "w-2");
+    }
+
+    @Test
+    void findWorkerLink_byId_returnsMatchOrEmpty() {
+        ThinkProcessDocument doc = process("eddie-1");
+        doc.setWorkerLinks(new ArrayList<>(List.of(
+                de.mhus.vance.shared.eddie.WorkerLinkSnapshot.builder()
+                        .workerProcessId("w-1").workerProcessName("arthur").build())));
+        when(mongoTemplate.findOne(any(Query.class), eq(ThinkProcessDocument.class)))
+                .thenReturn(doc);
+
+        assertThat(service.findWorkerLink("eddie-1", "w-1"))
+                .isPresent()
+                .map(de.mhus.vance.shared.eddie.WorkerLinkSnapshot::getWorkerProcessName)
+                .contains("arthur");
+        assertThat(service.findWorkerLink("eddie-1", "missing")).isEmpty();
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────
 
     private static ThinkProcessDocument process(String id) {

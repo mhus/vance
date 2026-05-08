@@ -242,11 +242,25 @@ public class ThinkProcessDocument {
      * handshake (see {@code engine-message-routing.md} §4.1.1). Drives
      * the per-turn tool filter via {@code Tool.allowedForProfile()}.
      *
-     * <p>Initial profile values: {@code "user"}, {@code "mobile"},
-     * {@code "eddie"}. {@code null} = no profile recorded; tool filter
-     * runs in legacy unrestricted mode.
+     * <p>Canonical values: {@code "foot"}, {@code "web"}, {@code "mobile"},
+     * {@code "eddie"}, {@code "daemon"}. {@code null} = no profile
+     * recorded; tool filter runs in legacy unrestricted mode.
      */
     private @Nullable String boundProfile;
+
+    /**
+     * Eddie-only: per-worker mirror entries — one per active Working WS
+     * Eddie holds to a worker {@code ThinkProcess} in another project.
+     * Holds connection identity (for reconnect after pod reassignment),
+     * the chosen {@code ChannelMode}, the last seen plan snapshot, and
+     * triage working-memory.
+     *
+     * <p>See {@code specification/eddie-engine.md} §8 +
+     * {@code planning/eddie-moderator-erweiterung.md} +
+     * {@code planning/eddie-plan-mode.md}. Empty for non-Eddie engines.
+     */
+    @Builder.Default
+    private List<de.mhus.vance.shared.eddie.WorkerLinkSnapshot> workerLinks = new ArrayList<>();
 
     /**
      * Tools that the LLM has activated by calling {@code describe_tool}

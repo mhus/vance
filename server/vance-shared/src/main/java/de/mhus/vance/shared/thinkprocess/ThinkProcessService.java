@@ -8,6 +8,7 @@ import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
+import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
 import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
@@ -624,6 +625,78 @@ public class ThinkProcessService {
         UpdateResult result = mongoTemplate.updateMulti(
                 query, update, ThinkProcessDocument.class);
         return (int) result.getModifiedCount();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Eddie's per-worker snapshot bookkeeping (workerLinks array).
+    // See specification/eddie-engine.md §8 + planning/eddie-*.md.
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Upserts a {@link WorkerLinkSnapshot} on the given Eddie process.
+     * Match key is {@link WorkerLinkSnapshot#getWorkerProcessId()}: an
+     * existing entry with the same worker id is replaced wholesale; if
+     * none exists, the snapshot is appended.
+     *
+     * <p>Caller passes a complete snapshot — no partial-merge semantics.
+     * Channel-Adapter and Plan-Mirror update the relevant fields on the
+     * loaded snapshot, then write the whole record back. Eddie's lane
+     * is single-threaded, so this read-modify-write is race-free per
+     * process.
+     *
+     * <p>The Mongo update is atomic: a {@code $pull} (matching by
+     * {@code workerProcessId}) and a {@code $push} ride in the same
+     * update document, so even concurrent upserts to <em>different</em>
+     * worker ids on the same process commute cleanly.
+     *
+     * @return {@code true} if the document existed and was modified
+     */
+    public boolean upsertWorkerLink(String processId, WorkerLinkSnapshot snapshot) {
+        if (snapshot.getWorkerProcessId() == null || snapshot.getWorkerProcessId().isBlank()) {
+            throw new IllegalArgumentException(
+                    "WorkerLinkSnapshot.workerProcessId must be set");
+        }
+        Query query = new Query(Criteria.where("_id").is(processId));
+        Update update = new Update()
+                .pull("workerLinks", new org.bson.Document(
+                        "workerProcessId", snapshot.getWorkerProcessId()))
+                .push("workerLinks", snapshot);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
+     * Removes the worker-link snapshot with the given
+     * {@code workerProcessId}. No-op if no such entry exists.
+     *
+     * @return {@code true} if a snapshot was actually removed
+     */
+    public boolean removeWorkerLink(String processId, String workerProcessId) {
+        Query query = new Query(Criteria.where("_id").is(processId));
+        Update update = new Update().pull("workerLinks",
+                new org.bson.Document("workerProcessId", workerProcessId));
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
+     * Reads all worker-link snapshots on the given Eddie process. Empty
+     * list when the process is unknown or has none.
+     */
+    public List<WorkerLinkSnapshot> findWorkerLinks(String processId) {
+        Query query = new Query(Criteria.where("_id").is(processId));
+        ThinkProcessDocument doc = mongoTemplate.findOne(query, ThinkProcessDocument.class);
+        if (doc == null || doc.getWorkerLinks() == null) return List.of();
+        return List.copyOf(doc.getWorkerLinks());
+    }
+
+    /** Looks up a single worker-link snapshot by its {@code workerProcessId}. */
+    public Optional<WorkerLinkSnapshot> findWorkerLink(String processId, String workerProcessId) {
+        return findWorkerLinks(processId).stream()
+                .filter(l -> workerProcessId.equals(l.getWorkerProcessId()))
+                .findFirst();
     }
 
     /**

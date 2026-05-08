@@ -2,6 +2,7 @@ package de.mhus.vance.brain.eddie.connection;
 
 import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.eddie.triage.OutputTriageService;
@@ -9,7 +10,10 @@ import de.mhus.vance.brain.eddie.triage.TriageDecision;
 import de.mhus.vance.brain.eddie.triage.TriageInput;
 import de.mhus.vance.brain.eddie.triage.TriageResult;
 import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -70,6 +74,7 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
     private final ObjectMapper objectMapper;
     private final EddieWorkerConnectionPool pool;
     private final ClientEventPublisher clientEventPublisher;
+    private final ProcessEventEmitter processEventEmitter;
 
     @Override
     public void onChatFrame(WebSocketEnvelope envelope, WorkerLinkSnapshot link) {
@@ -152,6 +157,46 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
         // so the <delegated_workers> prompt block surfaces it).
         if (result.decision() == TriageDecision.VERBATIM) {
             forwardVerbatim(eddieProcessId, data);
+        } else {
+            // Non-VERBATIM = Eddie has to decide RELAY / RELAY_INBOX
+            // herself based on the snapshot's triage summary. The
+            // engine-bind PROCESS_EVENT path is suppressed for
+            // workers Eddie watches (see {@link ParentNotificationListener}),
+            // so we wake her lane here directly: synthesise a
+            // PROCESS_EVENT in her pending queue + schedule a turn.
+            // Without this hand-off Eddie would never speak again
+            // after a long worker reply.
+            wakeEddieForWorkerReply(eddieProcessId, link, data, result);
+        }
+    }
+
+    private void wakeEddieForWorkerReply(
+            String eddieProcessId,
+            WorkerLinkSnapshot link,
+            ChatMessageAppendedData data,
+            TriageResult result) {
+        String summary = result.memorySummary() != null && !result.memorySummary().isBlank()
+                ? result.memorySummary()
+                : data.getContent();
+        PendingMessageDocument event = PendingMessageDocument.builder()
+                .type(PendingMessageType.PROCESS_EVENT)
+                .at(Instant.now())
+                .sourceProcessId(link.getWorkerProcessId())
+                .eventType(ProcessEventType.SUMMARY)
+                .content(summary)
+                .build();
+        try {
+            boolean appended = thinkProcessService.appendPending(
+                    eddieProcessId, event, link.getWorkerProcessId());
+            if (!appended) {
+                log.debug("wakeEddieForWorkerReply: Eddie process gone id='{}'",
+                        eddieProcessId);
+                return;
+            }
+            processEventEmitter.scheduleTurn(eddieProcessId);
+        } catch (RuntimeException e) {
+            log.warn("wakeEddieForWorkerReply: failed eddie={} worker={}: {}",
+                    eddieProcessId, link.getWorkerProcessId(), e.toString());
         }
     }
 

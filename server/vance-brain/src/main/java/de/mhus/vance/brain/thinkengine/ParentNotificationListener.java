@@ -70,6 +70,22 @@ public class ParentNotificationListener {
         if (eventType == null) {
             return;
         }
+        // Eddie holds a Working WS to every worker she delegates to —
+        // see {@code specification/eddie-engine.md} §6/§7. When the
+        // parent is registered as the WS-holder for this child (via
+        // {@code workerLinks}), the lifecycle event must ride that WS,
+        // not the engine-bind / Mongo-inbox detour the router does.
+        // The Working-WS frame handler ({@code EddieChatFrameHandler})
+        // is responsible for waking the parent's lane on those frames.
+        // Without this guard, podless parent projects (e.g.
+        // {@code _user_<login>}) try a cross-pod push that has nowhere
+        // to land and the parent never gets woken.
+        if (thinkProcessService.findWorkerLink(parentId, event.processId()).isPresent()) {
+            log.debug("Parent {} watches child {} via Working WS — "
+                            + "engine-bind notification suppressed (event={})",
+                    parentId, event.processId(), eventType);
+            return;
+        }
         // Parent-initiated stops loop right back to the caller — suppress.
         if (eventType == ProcessEventType.STOPPED) {
             String initiator = stopInitiatorRegistry.consume(event.processId()).orElse(null);

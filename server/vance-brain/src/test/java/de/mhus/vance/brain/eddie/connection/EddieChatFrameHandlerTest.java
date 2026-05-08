@@ -15,7 +15,10 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.eddie.triage.OutputTriageService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.eddie.WorkerLinkSnapshot;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.Optional;
@@ -38,12 +41,13 @@ class EddieChatFrameHandlerTest {
     private final ThinkProcessService thinkProcessService = mock(ThinkProcessService.class);
     private final EddieWorkerConnectionPool pool = mock(EddieWorkerConnectionPool.class);
     private final ClientEventPublisher publisher = mock(ClientEventPublisher.class);
+    private final ProcessEventEmitter eventEmitter = mock(ProcessEventEmitter.class);
     // jackson 3 ObjectMapper. Real instance — convertValue path is the
     // production path we want to exercise.
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     private final EddieChatFrameHandler handler = new EddieChatFrameHandler(
-            triage, thinkProcessService, objectMapper, pool, publisher);
+            triage, thinkProcessService, objectMapper, pool, publisher, eventEmitter);
 
     @Test
     void assistantMessage_runsTriage_andPersistsSummary_andForwardsVerbatim() {
@@ -77,6 +81,48 @@ class EddieChatFrameHandlerTest {
         assertThat(forwarded.getValue().getThinkProcessId()).isEqualTo("eddie-1");
         assertThat(forwarded.getValue().getProcessName()).isEqualTo("eddie");
         assertThat(forwarded.getValue().getContent()).isEqualTo("Tests sind grün.");
+
+        // VERBATIM is the auto-forward branch — Eddie must NOT think
+        // again on top of it, otherwise she'd reformulate text the
+        // user already heard.
+        verify(eventEmitter, never()).scheduleTurn(any());
+        verify(thinkProcessService, never()).appendPending(any(), any(), any());
+    }
+
+    @Test
+    void nonVerbatimAssistantMessage_wakesEddieLane() {
+        // Voice-mode mid-length plain prose → REFORMULATE; Eddie has
+        // to decide RELAY/RELAY_INBOX. The engine-bind PROCESS_EVENT
+        // detour is suppressed (parent watches via Working WS), so the
+        // chat frame handler is the only path that wakes her lane.
+        WorkerLinkSnapshot link = link("w-1");
+        when(pool.findEddieIdForWorker("w-1")).thenReturn(Optional.of("eddie-1"));
+        when(thinkProcessService.findById("eddie-1")).thenReturn(Optional.of(eddie("eddie-1")));
+        when(thinkProcessService.appendPending(eq("eddie-1"), any(), eq("w-1")))
+                .thenReturn(true);
+
+        String midLength = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(4);
+        handler.onChatFrame(envelope(MessageType.CHAT_MESSAGE_APPENDED,
+                ChatMessageAppendedData.builder()
+                        .role(ChatRole.ASSISTANT)
+                        .content(midLength)
+                        .build()),
+                link);
+
+        // No verbatim forward — non-VERBATIM branch.
+        verify(publisher, never())
+                .publish(eq("eddie-sess"), eq(MessageType.CHAT_MESSAGE_APPENDED), any());
+
+        // The pending PROCESS_EVENT must carry the worker's source-id
+        // so Eddie's prompt block can resolve <process-event sourceProcessId="...">.
+        ArgumentCaptor<PendingMessageDocument> pending =
+                ArgumentCaptor.forClass(PendingMessageDocument.class);
+        verify(thinkProcessService).appendPending(eq("eddie-1"), pending.capture(), eq("w-1"));
+        assertThat(pending.getValue().getType()).isEqualTo(PendingMessageType.PROCESS_EVENT);
+        assertThat(pending.getValue().getSourceProcessId()).isEqualTo("w-1");
+        assertThat(pending.getValue().getContent()).isNotBlank();
+
+        verify(eventEmitter).scheduleTurn("eddie-1");
     }
 
     @Test
@@ -85,6 +131,8 @@ class EddieChatFrameHandlerTest {
         WorkerLinkSnapshot link = link("w-1");
         when(pool.findEddieIdForWorker("w-1")).thenReturn(Optional.of("eddie-1"));
         when(thinkProcessService.findById("eddie-1")).thenReturn(Optional.of(eddie("eddie-1")));
+        when(thinkProcessService.appendPending(eq("eddie-1"), any(), eq("w-1")))
+                .thenReturn(true);
 
         String midLength = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(4);
         handler.onChatFrame(envelope(MessageType.CHAT_MESSAGE_APPENDED,
@@ -98,6 +146,25 @@ class EddieChatFrameHandlerTest {
         verify(thinkProcessService).upsertWorkerLink(eq("eddie-1"), eq(link));
         verify(publisher, never())
                 .publish(eq("eddie-sess"), eq(MessageType.CHAT_MESSAGE_APPENDED), any());
+    }
+
+    @Test
+    void unresolvedEddieOwner_doesNotWakeAnyLane() {
+        // The wake-up is also gated on the pool reverse-lookup —
+        // without an Eddie owner, there is no lane to schedule.
+        WorkerLinkSnapshot link = link("w-orphan");
+        when(pool.findEddieIdForWorker("w-orphan")).thenReturn(Optional.empty());
+
+        String midLength = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(4);
+        handler.onChatFrame(envelope(MessageType.CHAT_MESSAGE_APPENDED,
+                ChatMessageAppendedData.builder()
+                        .role(ChatRole.ASSISTANT)
+                        .content(midLength)
+                        .build()),
+                link);
+
+        verify(thinkProcessService, never()).appendPending(any(), any(), any());
+        verify(eventEmitter, never()).scheduleTurn(any());
     }
 
     @Test

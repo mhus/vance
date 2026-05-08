@@ -251,6 +251,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool workerConnectionPool;
     private final de.mhus.vance.brain.eddie.connection.EddieFrameRouter workerFrameRouter;
     private final de.mhus.vance.shared.jwt.JwtService jwtService;
+    private final de.mhus.vance.shared.access.ProfileRegistry profileRegistry;
 
     public EddieEngine(
             StreamingProperties streamingProperties,
@@ -267,7 +268,8 @@ public class EddieEngine extends StructuredActionEngine {
             DocumentService documentService,
             de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool workerConnectionPool,
             de.mhus.vance.brain.eddie.connection.EddieFrameRouter workerFrameRouter,
-            de.mhus.vance.shared.jwt.JwtService jwtService) {
+            de.mhus.vance.shared.jwt.JwtService jwtService,
+            de.mhus.vance.shared.access.ProfileRegistry profileRegistry) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -281,6 +283,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.workerConnectionPool = workerConnectionPool;
         this.workerFrameRouter = workerFrameRouter;
         this.jwtService = jwtService;
+        this.profileRegistry = profileRegistry;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1262,6 +1265,23 @@ public class EddieEngine extends StructuredActionEngine {
             EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
+        // Capability gate: only profiles with canMediate=true (foot, web)
+        // can return from a mediation. Mobile (voice-only, no /hub
+        // trigger) gets a polite explanation instead — leaving the user
+        // stranded on a worker session would be a UX trap.
+        de.mhus.vance.shared.access.ProfileCapabilities caps =
+                profileRegistry.capabilities(process.getBoundProfile());
+        if (!caps.canMediate()) {
+            log.info("Eddie id='{}' MEDIATE skipped — profile '{}' canMediate=false",
+                    process.getId(), process.getBoundProfile());
+            return new ActionTurnOutcome(
+                    "Du bist auf einem Client unterwegs, der keinen Rückweg "
+                            + "aus einer Direktverbindung hat. Ich bleibe für dich da — "
+                            + "wenn du Client-Tools brauchst, wechsle bitte am Desktop "
+                            + "in das Projekt selbst.",
+                    true);
+        }
+
         String source = action.stringParam(EddieActionSchema.PARAM_SOURCE);
         if (source == null || source.isBlank()) {
             log.warn("Eddie id='{}' MEDIATE missing source — reason='{}'",

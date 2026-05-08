@@ -71,6 +71,16 @@ allow-list at turn time. Skills are **additive only** — they can grant
 extra capabilities but cannot remove engine defaults. Empty list means
 "the skill needs no extra tools".
 
+### `manualPaths`
+*list of strings, optional* — folder paths (relative to the document
+root) the skill contributes to `manual_read` / `manual_list` while it
+is active. Useful for the *short-skill / on-demand-manual* pattern: the
+skill body stays compact, deeper guidance lives in markdown manuals
+that the model pulls in on demand. Skills are additive — recipe-level
+`params.manualPaths` keep their precedence; the skill's paths are
+appended after them. Sanitisation is identical to `manual_read`:
+backslashes are normalised to `/`, no `..` segments, no leading `/`.
+
 ## Reference documents
 
 ### `referenceDocs`
@@ -80,13 +90,21 @@ glossaries that the model should keep in context.
 
 Each doc has:
 
-- **`title`**: short label for the doc (shown in trace logs and the
-  admin UI).
-- **`content`**: markdown body.
+- **`title`**: short label for the doc. For `INLINE` it is the doc
+  header in the prompt; for `ON_DEMAND` it doubles as the
+  `manual_read` argument the model will call to pull the body.
+- **`file`**: path relative to the skill subtree, e.g.
+  `references/checklist.md`. The file is loaded from the same cascade
+  layer the `SKILL.md` itself came from (no re-cascading).
+- **`summary`** *(optional)*: one-line teaser shown after the title in
+  the on-demand listing. Ignored for `INLINE`.
 - **`loadMode`**:
-  - `INLINE` — appended to the system prompt at activation.
-  - `ON_DEMAND` — *reserved for future use*; today behaves like
-    `INLINE`.
+  - `INLINE` — body is embedded in the system prompt at activation.
+  - `ON_DEMAND` — body is *not* embedded. The doc is announced as
+    "On-demand references — load via `manual_read`:" so the model can
+    fetch it via the manual tools when actually needed. Pairs with
+    `manualPaths` to keep the system prompt small while still offering
+    deep, model-pull-driven documentation.
 
 ## Tags
 

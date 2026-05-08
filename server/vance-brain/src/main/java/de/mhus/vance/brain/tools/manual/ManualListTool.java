@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.tools.manual;
 
+import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -43,6 +45,8 @@ public class ManualListTool implements Tool {
 
     private final DocumentService documentService;
     private final ThinkProcessService thinkProcessService;
+    private final SkillResolver skillResolver;
+    private final SessionService sessionService;
 
     @Override
     public String name() {
@@ -79,12 +83,13 @@ public class ManualListTool implements Tool {
         if (ctx == null || ctx.tenantId() == null || ctx.tenantId().isBlank()) {
             throw new ToolException("manual_list requires a tenant scope");
         }
-        List<String> folders = ManualPaths.readFor(ctx, thinkProcessService);
+        List<String> folders = ManualPaths.readFor(
+                ctx, thinkProcessService, skillResolver, sessionService);
         if (folders.isEmpty()) {
             Map<String, Object> empty = new LinkedHashMap<>();
             empty.put("manuals", List.of());
             empty.put("count", 0);
-            empty.put("note", "No manualPaths configured in the recipe.");
+            empty.put("note", "No manualPaths configured in the recipe or active skills.");
             return empty;
         }
 

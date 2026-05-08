@@ -2,13 +2,22 @@ package de.mhus.vance.brain.tools.manual;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.api.skills.SkillScope;
+import de.mhus.vance.brain.skill.ResolvedSkill;
+import de.mhus.vance.brain.skill.SkillResolver;
+import de.mhus.vance.brain.skill.SkillScopeContext;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.List;
@@ -34,17 +43,23 @@ class ManualReadToolTest {
 
     private DocumentService documentService;
     private ThinkProcessService thinkProcessService;
+    private SkillResolver skillResolver;
+    private SessionService sessionService;
     private ManualReadTool tool;
     private ToolInvocationContext ctx;
+    private ThinkProcessDocument process;
 
     @BeforeEach
     void setUp() {
         documentService = mock(DocumentService.class);
         thinkProcessService = mock(ThinkProcessService.class);
-        tool = new ManualReadTool(documentService, thinkProcessService);
+        skillResolver = mock(SkillResolver.class);
+        sessionService = mock(SessionService.class);
+        tool = new ManualReadTool(documentService, thinkProcessService,
+                skillResolver, sessionService);
         ctx = new ToolInvocationContext(TENANT, PROJECT, SESSION, PROCESS, "user-1");
 
-        ThinkProcessDocument process = new ThinkProcessDocument();
+        process = new ThinkProcessDocument();
         process.setId(PROCESS);
         process.setTenantId(TENANT);
         process.setProjectId(PROJECT);
@@ -119,5 +134,64 @@ class ManualReadToolTest {
                 .isInstanceOf(ToolException.class)
                 .hasMessageContaining("Manual not found")
                 .hasMessageContaining("manual_list");
+    }
+
+    @Test
+    void activeSkillContributesItsOwnManualPaths() {
+        // Recipe folder doesn't contain MANUAL — but the active skill's
+        // own manualPath does. The tool must find it via the skill
+        // contribution.
+        String skillFolder = "manuals/decision/";
+        process.setActiveSkills(List.of(
+                ActiveSkillRefEmbedded.builder().name("decision-frame").build()));
+
+        SessionDocument session = new SessionDocument();
+        session.setSessionId(SESSION);
+        session.setUserId("user-1");
+        session.setProjectId(PROJECT);
+        when(sessionService.findBySessionId(SESSION)).thenReturn(Optional.of(session));
+
+        ResolvedSkill skill = new ResolvedSkill(
+                "decision-frame", "Decision Frame", "desc", "1.0.0",
+                List.of(), null, List.of(), List.of(skillFolder),
+                List.of(), List.of(), true, SkillScope.PROJECT);
+        when(skillResolver.resolve(any(SkillScopeContext.class), eq("decision-frame")))
+                .thenReturn(Optional.of(skill));
+
+        LookupResult res = mock(LookupResult.class);
+        when(res.content()).thenReturn("# Decision protocol\n");
+        when(res.source()).thenReturn(LookupResult.Source.PROJECT);
+        when(documentService.lookupCascade(TENANT, PROJECT, skillFolder + "PROTOCOL.md"))
+                .thenReturn(Optional.of(res));
+
+        Map<String, Object> out = tool.invoke(Map.of("name", "PROTOCOL"), ctx);
+        assertThat(out).containsEntry("name", "PROTOCOL")
+                .containsEntry("folder", skillFolder);
+    }
+
+    @Test
+    void recipePathsTakePrecedenceOverSkillPaths() {
+        // Both recipe and skill point at the same stem — recipe folder
+        // appears first in the effective list, so its hit wins.
+        String skillFolder = "manuals/decision/";
+        process.setActiveSkills(List.of(
+                ActiveSkillRefEmbedded.builder().name("decision-frame").build()));
+
+        SessionDocument session = new SessionDocument();
+        session.setSessionId(SESSION);
+        session.setUserId("user-1");
+        session.setProjectId(PROJECT);
+        when(sessionService.findBySessionId(SESSION)).thenReturn(Optional.of(session));
+
+        ResolvedSkill skill = new ResolvedSkill(
+                "decision-frame", "Decision Frame", "desc", "1.0.0",
+                List.of(), null, List.of(), List.of(skillFolder),
+                List.of(), List.of(), true, SkillScope.PROJECT);
+        when(skillResolver.resolve(any(SkillScopeContext.class), eq("decision-frame")))
+                .thenReturn(Optional.of(skill));
+
+        // Recipe folder (FOLDER from the parent setUp) wins for stem "STYLE".
+        Map<String, Object> out = tool.invoke(Map.of("name", "STYLE"), ctx);
+        assertThat(out).containsEntry("folder", FOLDER);
     }
 }

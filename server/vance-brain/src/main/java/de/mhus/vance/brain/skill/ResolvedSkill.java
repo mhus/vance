@@ -20,6 +20,7 @@ public record ResolvedSkill(
         List<Trigger> triggers,
         @Nullable String promptExtension,
         List<String> tools,
+        List<String> manualPaths,
         List<ReferenceDoc> referenceDocs,
         List<String> tags,
         boolean enabled,
@@ -34,6 +35,7 @@ public record ResolvedSkill(
     public record ReferenceDoc(
             String title,
             String content,
-            SkillReferenceDocLoadMode loadMode) {
+            SkillReferenceDocLoadMode loadMode,
+            @Nullable String summary) {
     }
 }

@@ -1,10 +1,12 @@
 package de.mhus.vance.brain.tools.manual;
 
+import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,6 +45,8 @@ public class ManualReadTool implements Tool {
 
     private final DocumentService documentService;
     private final ThinkProcessService thinkProcessService;
+    private final SkillResolver skillResolver;
+    private final SessionService sessionService;
 
     @Override
     public String name() {
@@ -88,7 +92,8 @@ public class ManualReadTool implements Tool {
             throw new ToolException("Invalid manual name: " + rawName);
         }
 
-        List<String> folders = ManualPaths.readFor(ctx, thinkProcessService);
+        List<String> folders = ManualPaths.readFor(
+                ctx, thinkProcessService, skillResolver, sessionService);
         if (folders.isEmpty()) {
             throw new ToolException("No manualPaths configured in the recipe.");
         }

@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.skill;
 
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -24,8 +25,13 @@ public class SkillPromptComposer {
      * is empty — callers should treat that as "no skill section".
      *
      * <p>Reference docs with {@link SkillReferenceDocLoadMode#INLINE}
-     * are embedded inline; {@code ON_DEMAND} docs are skipped (v1: not
-     * yet implemented as a tool, treated as no-op).
+     * are embedded verbatim under {@code --- Reference Doc: ... ---}.
+     * {@link SkillReferenceDocLoadMode#ON_DEMAND} docs are listed as
+     * pull-targets under "On-demand references — load via
+     * {@code manual_read}:" so the model can fetch them via the manual
+     * tools without paying token cost up-front. The {@code title}
+     * doubles as the {@code manual_read} argument; an optional
+     * {@code summary} is appended after a dash for a one-line teaser.
      */
     public @Nullable String compose(List<ResolvedSkill> skills) {
         if (skills == null || skills.isEmpty()) {
@@ -43,10 +49,24 @@ public class SkillPromptComposer {
             if (skill.promptExtension() != null && !skill.promptExtension().isBlank()) {
                 out.append("\n").append(skill.promptExtension().trim()).append("\n");
             }
+            List<ResolvedSkill.ReferenceDoc> onDemand = new ArrayList<>();
             for (ResolvedSkill.ReferenceDoc doc : skill.referenceDocs()) {
-                if (doc.loadMode() == SkillReferenceDocLoadMode.INLINE) {
-                    out.append("\n--- Reference Doc: ").append(doc.title()).append(" ---\n");
-                    out.append(doc.content().trim()).append("\n");
+                switch (doc.loadMode()) {
+                    case INLINE -> {
+                        out.append("\n--- Reference Doc: ").append(doc.title()).append(" ---\n");
+                        out.append(doc.content().trim()).append("\n");
+                    }
+                    case ON_DEMAND -> onDemand.add(doc);
+                }
+            }
+            if (!onDemand.isEmpty()) {
+                out.append("\nOn-demand references — load via `manual_read`:\n");
+                for (ResolvedSkill.ReferenceDoc doc : onDemand) {
+                    out.append("- ").append(doc.title());
+                    if (doc.summary() != null && !doc.summary().isBlank()) {
+                        out.append(" — ").append(doc.summary().trim());
+                    }
+                    out.append("\n");
                 }
             }
         }
@@ -72,4 +92,5 @@ public class SkillPromptComposer {
         }
         return out;
     }
+
 }

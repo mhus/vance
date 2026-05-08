@@ -294,6 +294,7 @@ public class SkillLoader {
 
         List<ResolvedSkill.Trigger> triggers = parseTriggers(spec.get("triggers"), stem);
         List<String> tools = stringList(spec.get("tools"), stem, "tools");
+        List<String> manualPaths = parseManualPaths(spec.get("manualPaths"), stem);
         List<String> tags = stringList(spec.get("tags"), stem, "tags");
         boolean enabled = !(spec.get("enabled") instanceof Boolean b) || b;
         String promptExtension = fm.body.isBlank() ? null : fm.body.strip();
@@ -302,7 +303,36 @@ public class SkillLoader {
 
         return new ResolvedSkill(
                 name, title, description, version,
-                triggers, promptExtension, tools, refDocs, tags, enabled, scope);
+                triggers, promptExtension, tools, manualPaths, refDocs, tags, enabled, scope);
+    }
+
+    /**
+     * Parses the {@code manualPaths} frontmatter list — folder paths
+     * (relative to the document root) the skill contributes to
+     * {@code manual_read} / {@code manual_list} when active. Each entry
+     * is sanitised exactly like {@code ManualReadTool} sanitises its
+     * runtime input so a malicious skill cannot trick the tool into
+     * resolving outside the document tree:
+     * <ul>
+     *   <li>{@code \\} → {@code /} (normalisation)</li>
+     *   <li>no {@code ..} segments anywhere</li>
+     *   <li>no leading {@code /} (paths stay relative)</li>
+     * </ul>
+     * Empty / missing list yields {@link List#of()}.
+     */
+    private static List<String> parseManualPaths(Object raw, String stem) {
+        List<String> rawList = stringList(raw, stem, "manualPaths");
+        if (rawList.isEmpty()) return List.of();
+        List<String> out = new ArrayList<>(rawList.size());
+        for (String p : rawList) {
+            String norm = p.replace('\\', '/').trim();
+            if (norm.contains("..") || norm.startsWith("/")) {
+                throw new IllegalStateException(
+                        "skill '" + stem + "': invalid manualPaths entry '" + p + "'");
+            }
+            out.add(norm);
+        }
+        return List.copyOf(out);
     }
 
     private record Frontmatter(String frontmatter, String body) {}
@@ -407,7 +437,8 @@ public class SkillLoader {
                     .orElseThrow(() -> new IllegalStateException(
                             "skill '" + stem + "': reference file '" + relativePath
                                     + "' not found in this layer"));
-            out.add(new ResolvedSkill.ReferenceDoc(title, content, loadMode));
+            String summary = stringOrNull(spec.get("summary"));
+            out.add(new ResolvedSkill.ReferenceDoc(title, content, loadMode, summary));
         }
         return List.copyOf(out);
     }

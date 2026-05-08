@@ -190,6 +190,9 @@ public class EddieEngine extends StructuredActionEngine {
             "doc_import_url",
             "team_list",
             "team_describe",
+            // Eddie can post inbox items for her own research output
+            // (not just as part of a RELAY_INBOX worker forward).
+            "inbox_post",
             "peer_notify",
             "process_observe",
             "manual_list",

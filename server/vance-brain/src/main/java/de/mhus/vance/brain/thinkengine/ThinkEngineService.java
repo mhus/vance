@@ -36,7 +36,6 @@ import org.springframework.stereotype.Service;
  */
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class ThinkEngineService {
 
     private final Map<String, ThinkEngine> engines;

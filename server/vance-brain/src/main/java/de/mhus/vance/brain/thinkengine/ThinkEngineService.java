@@ -52,6 +52,38 @@ public class ThinkEngineService {
     /** Lazy provider — RecipeResolver depends on us, so the bean graph cycles otherwise. */
     private final ObjectProvider<RecipeResolver> recipeResolverProvider;
 
+    public ThinkEngineService(
+            List<ThinkEngine> engineBeans,
+            AiModelService aiModelService,
+            SettingService settingService,
+            ChatMessageService chatMessageService,
+            ToolDispatcher toolDispatcher,
+            ClientEventPublisher eventPublisher,
+            SessionService sessionService,
+            ThinkProcessService thinkProcessService,
+            ProcessEventEmitter processEventEmitter,
+            ProgressToolListener progressToolListener,
+            LlmTraceService llmTraceService,
+            ObjectProvider<RecipeResolver> recipeResolverProvider) {
+        this.engines = engineBeans.stream().collect(
+                Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
+                    throw new IllegalStateException(
+                            "Duplicate ThinkEngine name: " + a.name()
+                                    + " — " + a.getClass() + " vs " + b.getClass());
+                }));
+        this.aiModelService = aiModelService;
+        this.settingService = settingService;
+        this.chatMessageService = chatMessageService;
+        this.toolDispatcher = toolDispatcher;
+        this.eventPublisher = eventPublisher;
+        this.sessionService = sessionService;
+        this.thinkProcessService = thinkProcessService;
+        this.processEventEmitter = processEventEmitter;
+        this.progressToolListener = progressToolListener;
+        this.llmTraceService = llmTraceService;
+        this.recipeResolverProvider = recipeResolverProvider;
+    }
+
     /** Setting key driving per-process LLM-trace persistence. */
     public static final String SETTING_TRACE_LLM = "tracing.llm";
 

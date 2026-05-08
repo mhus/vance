@@ -1,9 +1,12 @@
 package de.mhus.vance.foot.cli;
 
+import de.mhus.vance.foot.agent.ClientAgentDocService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -27,16 +30,27 @@ public class DaemonCommand implements Callable<Integer> {
             description = "Skip the auto-bootstrap from vance.bootstrap config after welcome.")
     boolean noBootstrap;
 
-    private final ChatTerminal terminal;
+    @Option(names = "--agent-file",
+            paramLabel = "<path>",
+            description = "Override the agent doc uploaded to the brain. "
+                    + "Without this option the cascade is ./agent.md → ./CLAUDE.md.")
+    @Nullable Path agentFile;
 
-    public DaemonCommand(ChatTerminal terminal) {
+    private final ChatTerminal terminal;
+    private final ClientAgentDocService agentDoc;
+
+    public DaemonCommand(ChatTerminal terminal, ClientAgentDocService agentDoc) {
         this.terminal = terminal;
+        this.agentDoc = agentDoc;
     }
 
     @Override
     public Integer call() throws InterruptedException {
         if (noBootstrap) {
             System.setProperty(AutoBootstrapService.SKIP_PROPERTY, "true");
+        }
+        if (agentFile != null) {
+            agentDoc.setOverridePath(agentFile);
         }
         terminal.info("Daemon mode — Ctrl-C to exit, drive via /debug REST.");
         CountDownLatch park = new CountDownLatch(1);

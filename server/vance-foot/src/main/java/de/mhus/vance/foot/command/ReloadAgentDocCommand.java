@@ -7,9 +7,10 @@ import java.util.List;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code /reload} — re-reads {@code ./agent.md} from the foot process's
- * cwd and re-uploads it to the brain. Auto-fires on session-bind; this
- * is the manual trigger after editing the file mid-session.
+ * {@code /reload} — re-reads the resolved agent doc (override,
+ * {@code ./agent.md}, or {@code ./CLAUDE.md}) and re-uploads it. Auto-fires
+ * on session-bind; this is the manual trigger after editing the file
+ * mid-session.
  */
 @Component
 public class ReloadAgentDocCommand implements SlashCommand {
@@ -29,15 +30,15 @@ public class ReloadAgentDocCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Re-read ./agent.md and re-upload it to the brain. "
-                + "Auto-fires on session-bind.";
+        return "Re-read the agent doc (./agent.md or ./CLAUDE.md, or --agent-file override) "
+                + "and re-upload it. Auto-fires on session-bind.";
     }
 
     @Override
     public void execute(List<String> args) {
         Path resolved = agentDoc.resolvedPath();
         if (resolved == null) {
-            terminal.info("→ no agent.md in cwd — nothing to upload");
+            terminal.info("→ no agent doc in cwd (looked for agent.md, CLAUDE.md) — nothing to upload");
             return;
         }
         boolean uploaded = agentDoc.uploadIfPresent();

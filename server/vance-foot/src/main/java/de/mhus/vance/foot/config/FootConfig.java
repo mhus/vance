@@ -24,6 +24,7 @@ public class FootConfig {
     private History history = new History();
     private Bootstrap bootstrap = new Bootstrap();
     private Ui ui = new Ui();
+    private Ide ide = new Ide();
 
     @Data
     public static class Brain {
@@ -127,6 +128,21 @@ public class FootConfig {
         private String debug = "fg:bright-black";
         private String warn = "fg:yellow";
         private String error = "fg:red";
+    }
+
+    /**
+     * IDE-bridge configuration. Disabled by default — the {@code chat}
+     * subcommand turns Claude on with {@code --intellij-claude}
+     * (planning/foot-ide-bridge.md §10).
+     */
+    @Data
+    public static class Ide {
+        private Claude claude = new Claude();
+    }
+
+    @Data
+    public static class Claude {
+        private boolean enabled = false;
     }
 
     @Data

@@ -3,8 +3,11 @@
  Source: de.mhus.vance.api.thinkprocess.ProcessSteerRequest
 */
 
+import { IdeContext } from './IdeContext';
+
 export interface ProcessSteerRequest {
   processName: string;
   content: string;
   idempotencyKey?: string;
+  ideContext?: IdeContext;
 }

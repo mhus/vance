@@ -7,6 +7,7 @@ import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
+import de.mhus.vance.foot.ide.IdeContextBuilder;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -47,6 +48,7 @@ public class ChatInputService {
     private final ChatTerminal chatTerminal;
     private final PromptGate promptGate;
     private final BusyIndicator busyIndicator;
+    private final IdeContextBuilder ideContextBuilder;
 
     /**
      * Background executor for async chat submission. Keeps the REPL
@@ -65,13 +67,15 @@ public class ChatInputService {
                             SessionService sessions,
                             ChatTerminal chatTerminal,
                             PromptGate promptGate,
-                            BusyIndicator busyIndicator) {
+                            BusyIndicator busyIndicator,
+                            IdeContextBuilder ideContextBuilder) {
         this.commandService = commandService;
         this.connection = connection;
         this.sessions = sessions;
         this.chatTerminal = chatTerminal;
         this.promptGate = promptGate;
         this.busyIndicator = busyIndicator;
+        this.ideContextBuilder = ideContextBuilder;
     }
 
     /**
@@ -239,12 +243,14 @@ public class ChatInputService {
         // back and waiting for input.
         busyIndicator.enter("chat-roundtrip");
         try {
+            ProcessSteerRequest steer = ProcessSteerRequest.builder()
+                    .processName(process)
+                    .content(line)
+                    .ideContext(ideContextBuilder.buildAndConsumeForSteer().orElse(null))
+                    .build();
             ProcessSteerResponse response = connection.request(
                     MessageType.PROCESS_STEER,
-                    ProcessSteerRequest.builder()
-                            .processName(process)
-                            .content(line)
-                            .build(),
+                    steer,
                     ProcessSteerResponse.class,
                     timeout);
             chatTerminal.verbose("→ steered " + response.getProcessName()

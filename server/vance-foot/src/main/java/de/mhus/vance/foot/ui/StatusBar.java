@@ -2,6 +2,8 @@ package de.mhus.vance.foot.ui;
 
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
+import de.mhus.vance.foot.config.FootConfig;
+import de.mhus.vance.foot.ide.IdeSelectionState;
 import de.mhus.vance.foot.session.SessionService;
 import jakarta.annotation.PreDestroy;
 import java.util.ArrayList;
@@ -52,6 +54,8 @@ public class StatusBar {
     private final BusyIndicator busy;
     private final ThinkingPhrases phrases;
     private final ObjectProvider<PlanModeState> planMode;
+    private final ObjectProvider<IdeSelectionState> ideSelection;
+    private final FootConfig config;
     private final AtomicReference<@Nullable Terminal> terminal = new AtomicReference<>();
     private final AtomicReference<@Nullable Status> status = new AtomicReference<>();
     private final AtomicInteger frame = new AtomicInteger();
@@ -59,6 +63,8 @@ public class StatusBar {
             new AtomicReference<>();
     /** True when the last paint included the busy spinner — drives "clear once" on idle. */
     private volatile boolean lastPaintedBusy = false;
+    /** Last IDE selection text we painted; drives "repaint on selection change". */
+    private volatile String lastPaintedSelection = "";
     /**
      * Phrase chosen at the most recent idle → busy transition. Stable
      * for the whole busy period so it doesn't strobe through quotes.
@@ -68,11 +74,15 @@ public class StatusBar {
     public StatusBar(SessionService sessions,
                      BusyIndicator busy,
                      ThinkingPhrases phrases,
-                     ObjectProvider<PlanModeState> planMode) {
+                     ObjectProvider<PlanModeState> planMode,
+                     ObjectProvider<IdeSelectionState> ideSelection,
+                     FootConfig config) {
         this.sessions = sessions;
         this.busy = busy;
         this.phrases = phrases;
         this.planMode = planMode;
+        this.ideSelection = ideSelection;
+        this.config = config;
     }
 
     /**
@@ -81,6 +91,9 @@ public class StatusBar {
      * Starts the background animation ticker.
      */
     public void attach(Terminal t) {
+        if (!config.getUi().getStatusBar().isEnabled()) {
+            return;
+        }
         terminal.set(t);
         status.set(Status.getStatus(t));
         startTicker();
@@ -137,6 +150,9 @@ public class StatusBar {
 
     private void tick() {
         boolean nowBusy = busy.isBusy();
+        boolean animated = config.getUi().getStatusBar().isAnimated();
+        String selectionNow = ideSelectionText();
+        boolean selectionChanged = !selectionNow.equals(lastPaintedSelection);
         if (nowBusy) {
             // Idle → busy transition: pick a fresh phrase. Keep it
             // stable for the rest of this busy period — strobe-y
@@ -144,15 +160,22 @@ public class StatusBar {
             if (!lastPaintedBusy) {
                 currentPhrase = phrases.random();
                 frame.set(0);
-            } else {
-                frame.incrementAndGet();
+                repaint();
+            } else if (animated || selectionChanged) {
+                if (animated) frame.incrementAndGet();
+                repaint();
             }
-            repaint();
-        } else if (lastPaintedBusy) {
-            // Just transitioned busy → idle — paint once to drop the spinner.
+            // Else: not animated, busy state unchanged, selection unchanged → no repaint.
+        } else if (lastPaintedBusy || selectionChanged) {
+            // Busy→idle transition or live selection update — paint once.
             repaint();
         }
         // Idle and already-clean: no-op, save the syscalls.
+    }
+
+    private String ideSelectionText() {
+        IdeSelectionState state = ideSelection.getIfAvailable();
+        return state == null ? "" : state.displayString().orElse("");
     }
 
     // ─── Painting ──────────────────────────────────────────────────
@@ -169,14 +192,31 @@ public class StatusBar {
 
     /**
      * Composes the pinned status block, top-to-bottom: optional Plan-Mode
-     * todo panel for the active process, then the always-visible session
-     * /process/busy line.
+     * todo panel for the active process, the always-visible session
+     * /process/busy line, then a blank trailing row.
+     *
+     * <p>The trailing blank is what Claude Code does as well — it stops
+     * terminals that don't honor JLine's reserved-region cursor moves
+     * from scrolling each repaint into the buffer. The cursor lives on
+     * the blank row; the spinner sits one row above it and stays put.
      */
     private List<AttributedString> buildLines() {
         List<AttributedString> out = new ArrayList<>();
         appendTodoPanel(out);
+        appendIdeSelection(out);
         out.add(persistentLine());
+        out.add(AttributedString.EMPTY);
         return out;
+    }
+
+    private void appendIdeSelection(List<AttributedString> sink) {
+        IdeSelectionState state = ideSelection.getIfAvailable();
+        if (state == null) return;
+        state.displayString().ifPresent(text -> sink.add(
+                new AttributedStringBuilder()
+                        .style(AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
+                        .append(text)
+                        .toAttributedString()));
     }
 
     private void appendTodoPanel(List<AttributedString> sink) {
@@ -240,11 +280,14 @@ public class StatusBar {
         }
         boolean isBusy = busy.isBusy();
         if (isBusy) {
-            String f = FRAMES[Math.floorMod(frame.get(), FRAMES.length)];
+            String marker = config.getUi().getStatusBar().isAnimated()
+                    ? FRAMES[Math.floorMod(frame.get(), FRAMES.length)]
+                    : "●";
             b.style(AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW));
-            b.append("  ").append(currentPhrase).append(' ').append(f);
+            b.append("  ").append(currentPhrase).append(' ').append(marker);
         }
         lastPaintedBusy = isBusy;
+        lastPaintedSelection = ideSelectionText();
         return b.toAttributedString();
     }
 }

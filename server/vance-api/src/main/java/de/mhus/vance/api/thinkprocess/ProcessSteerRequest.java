@@ -35,4 +35,12 @@ public class ProcessSteerRequest {
 
     /** Optional idempotency key for client retries. */
     private @Nullable String idempotencyKey;
+
+    /**
+     * Optional editor-context metadata when the client is wired to an IDE
+     * plugin (foot {@code --intellij-claude}). The brain renders this into
+     * the prompt as {@code <ide-at-mention/>} and {@code <ide-selection/>}
+     * hints. {@code null} when no IDE is attached.
+     */
+    private @Nullable IdeContext ideContext;
 }

@@ -93,6 +93,8 @@ export * from './skills/SkillTriggerDto';
 export * from './skills/SkillTriggerType';
 
 export * from './thinkprocess/BootstrappedProcess';
+export * from './thinkprocess/IdeContext';
+export * from './thinkprocess/IdeFileRange';
 export * from './thinkprocess/PlanProposedNotification';
 export * from './thinkprocess/ProcessMode';
 export * from './thinkprocess/ProcessModeChangedNotification';

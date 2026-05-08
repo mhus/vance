@@ -112,6 +112,19 @@ public class FootConfig {
     public static class Ui {
         private int lineMaxChars = 140;
         private Colors colors = new Colors();
+        private StatusBar statusBar = new StatusBar();
+    }
+
+    /**
+     * Controls the pinned status line at the bottom of the JLine REPL.
+     * The status block always ends with one blank trailing row so the
+     * cursor never sits on the same physical line as the spinner; that
+     * stops some terminals from scrolling each repaint into the buffer.
+     */
+    @Data
+    public static class StatusBar {
+        private boolean enabled = true;
+        private boolean animated = true;
     }
 
     /**

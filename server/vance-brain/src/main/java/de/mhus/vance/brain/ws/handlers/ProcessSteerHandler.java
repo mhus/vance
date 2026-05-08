@@ -2,6 +2,8 @@ package de.mhus.vance.brain.ws.handlers;
 
 import de.mhus.vance.api.chat.ChatMessageAppendedData;
 import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.thinkprocess.IdeContext;
+import de.mhus.vance.api.thinkprocess.IdeFileRange;
 import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
@@ -160,9 +162,16 @@ public class ProcessSteerHandler implements WsHandler {
         // halted — without this, Arthur replies from his unchanged
         // chat-history and tends to hallucinate that paused workers
         // are still running.
-        String content = wasResumed
-                ? buildResumeContext(tenantId, sessionId, processId) + request.getContent()
-                : request.getContent();
+        StringBuilder enriched = new StringBuilder();
+        if (wasResumed) {
+            enriched.append(buildResumeContext(tenantId, sessionId, processId));
+        }
+        String ideBlock = renderIdeContext(request.getIdeContext());
+        if (!ideBlock.isEmpty()) {
+            enriched.append(ideBlock);
+        }
+        enriched.append(request.getContent());
+        String content = enriched.toString();
 
         SteerMessage.UserChatInput userInput = new SteerMessage.UserChatInput(
                 Instant.now(),
@@ -271,6 +280,47 @@ public class ProcessSteerHandler implements WsHandler {
         }
         b.append(". Call process_list if unsure of current state.]\n\n");
         return b.toString();
+    }
+
+    /**
+     * Renders the IDE-bridge metadata as a tag block prepended to the
+     * user's chat content, so the LLM sees what file/range the user
+     * is looking at without the foot having to send the buffer. The
+     * tags are the contract — engines that wire IDE-tools (Step 2)
+     * resolve them via {@code ide_get_selection}/{@code ide_read_buffer}
+     * on demand. Empty string when nothing to render.
+     */
+    static String renderIdeContext(@Nullable IdeContext ideContext) {
+        if (ideContext == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        appendRange(sb, "ide-at-mention", ideContext.getAtMention());
+        appendRange(sb, "ide-selection", ideContext.getCurrentSelection());
+        if (sb.length() > 0) {
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    private static void appendRange(StringBuilder sb, String tag,
+                                    @Nullable IdeFileRange range) {
+        if (range == null || isBlank(range.getFilePath())) {
+            return;
+        }
+        sb.append('<').append(tag).append(" file=\"")
+                .append(escapeAttr(range.getFilePath())).append('"');
+        if (range.getLineStart() != null) {
+            sb.append(" lineStart=\"").append(range.getLineStart()).append('"');
+        }
+        if (range.getLineEnd() != null) {
+            sb.append(" lineEnd=\"").append(range.getLineEnd()).append('"');
+        }
+        sb.append("/>\n");
+    }
+
+    private static String escapeAttr(String s) {
+        return s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;");
     }
 
     private static ChatMessageAppendedData toDto(ChatMessageDocument doc, String processName) {

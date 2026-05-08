@@ -605,19 +605,30 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 // Plan-mode mid-refactor pause: the LLM was actively
                 // calling tools (file reads, file writes, exec runs,
                 // continuing actions) and just hit the per-turn cap
-                // before reaching a terminal action. Don't surface a
-                // chat-message stub or BLOCK the user — yield silently
-                // and let the outer self-continuation pick up the next
-                // turn with a fresh iter budget. The outer loop's
-                // silent-turns guard counts only fully-stalled turns
-                // (no chat AND no tool use), so this can't infinitely
-                // loop: a turn that produces zero tool calls AND zero
-                // chat will trip the guard normally.
+                // before reaching a terminal action. Don't BLOCK the
+                // user — yield non-awaiting and let the outer
+                // self-continuation pick up the next turn with a fresh
+                // iter budget.
+                //
+                // Persist the LLM's free-text narration (anything it
+                // said alongside tool calls) as an ASSISTANT message
+                // before yielding. Without this, the LLM in the next
+                // turn rebuilds its prompt from the chat log alone —
+                // which contains zero record of its in-turn work — and
+                // happily re-emits TODO_UPDATE to "start the first
+                // step" again, regressing already-COMPLETED items.
+                // The narration acts as cross-turn memory so the LLM
+                // sees "I just refactored X, Y" in history.
+                String narration = loopResult.fallbackText();
+                String chatNote = (narration == null || narration.isBlank())
+                        ? null
+                        : narration;
                 log.info("Arthur.turn id='{}' max-iters with progress "
-                        + "({} tool invocations) — yielding silently for "
-                        + "outer continuation",
-                        process.getId(), loopResult.toolInvocations());
-                outcome = new ActionTurnOutcome(/*chatMessage*/ null, /*awaiting*/ false);
+                        + "({} tool invocations, narration={} chars) — "
+                        + "yielding for outer continuation",
+                        process.getId(), loopResult.toolInvocations(),
+                        narration == null ? 0 : narration.length());
+                outcome = new ActionTurnOutcome(chatNote, /*awaiting*/ false);
             } else {
                 // Structural fallback: LLM never produced a valid
                 // arthur_action despite corrections. Use whatever
@@ -1736,12 +1747,23 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
             sb.append(content).append('\n');
         }
-        sb.append("\nGuidance: pick the first item that is not COMPLETED. "
-                + "If it's PENDING, your next TODO_UPDATE should set it "
-                + "IN_PROGRESS. If it's already IN_PROGRESS, do the actual "
-                + "work for that step now (e.g. call client_file_write to "
-                + "create / edit the relevant files), then TODO_UPDATE it "
-                + "to COMPLETED in the same turn or the next.\n");
+        sb.append("\nGuidance: pick the first item that is **not [✓] "
+                + "COMPLETED**. If it's [ ] PENDING, your next TODO_UPDATE "
+                + "should set it IN_PROGRESS. If it's [~] IN_PROGRESS, do "
+                + "the actual work for that step now (e.g. call "
+                + "client_file_write / client_file_edit / client_exec_run "
+                + "to create / edit the relevant files), then TODO_UPDATE "
+                + "it to COMPLETED in the same turn or the next.\n\n"
+                + "**Hard rules — never regress state:**\n"
+                + "- NEVER emit TODO_UPDATE that downgrades an item: "
+                + "[✓] COMPLETED stays COMPLETED forever; [~] IN_PROGRESS "
+                + "must not go back to [ ] PENDING.\n"
+                + "- If you see [✓] COMPLETED items above, that work is "
+                + "**already done in a previous turn** — DO NOT redo it. "
+                + "Skip past them to the first non-COMPLETED row.\n"
+                + "- If everything is [✓] COMPLETED, emit ANSWER with a "
+                + "brief summary of what was done. Do not look for "
+                + "additional work the plan didn't list.\n");
         return sb.toString();
     }
 

@@ -118,22 +118,26 @@ public class FootConfig {
     /**
      * Controls the pinned status line at the bottom of the JLine REPL.
      *
-     * <p>{@link #bottomPadding} blank rows sit between the spinner row
-     * and the bottom of the terminal. Empirically this is what
-     * stops embedded terminals (notably IntelliJ's built-in console)
-     * from spamming each repaint into the scrollback — the buffer
-     * rows absorb the auto-scroll the terminal would otherwise
-     * trigger when the cursor lands on the last visible row. Claude
-     * Code does the same and sits ~5 rows up. Default 4 = spinner
-     * five rows above the bottom.
+     * <p><b>Disabled by default.</b> JLine's {@code Status} reserves a
+     * region using DECSTBM scroll-region escapes. IntelliJ's built-in
+     * terminal (and a handful of other embedded TTY emulators) does not
+     * honour the region across repaints — each {@code Status.update}
+     * leaks the rendered lines into the scrollback, producing a
+     * cascading "spinner trail" that has been our reproducible failure
+     * mode. The proper fix is bespoke pinned-status rendering via
+     * direct ANSI (mirror Claude Code's cell-grid + cursor save/restore
+     * approach). Until that lands, the bar is opt-in: set
+     * {@code vance.ui.status-bar.enabled: true} to get it back, ideally
+     * only in known-good terminals (xterm, iTerm2, kitty, ghostty,
+     * Terminal.app — anything that handles DECSTBM cleanly).
      *
-     * <p>If the bar misbehaves entirely (orphaned lines on every
-     * keystroke, wrong cursor position), set {@code enabled: false}.
+     * <p>{@link #animated} and {@link #bottomPadding} only matter when
+     * {@link #enabled} is on.
      */
     @Data
     public static class StatusBar {
-        private boolean enabled = true;
-        private boolean animated = false;
+        private boolean enabled = false;
+        private boolean animated = true;
         private int bottomPadding = 4;
     }
 

@@ -7,6 +7,7 @@ import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 /**
@@ -31,8 +32,14 @@ public class IntellijMcpRegistrationService {
     private final ConnectionService connection;
     private final ChatTerminal terminal;
 
+    /**
+     * {@code @Lazy} on {@link ConnectionService} mirrors the same trick
+     * {@code WelcomeHandler} uses to break the
+     * {@code ConnectionService → MessageDispatcher → handlers}
+     * dependency cycle.
+     */
     public IntellijMcpRegistrationService(FootConfig config,
-                                          ConnectionService connection,
+                                          @Lazy ConnectionService connection,
                                           ChatTerminal terminal) {
         this.config = config;
         this.connection = connection;

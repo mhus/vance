@@ -1,7 +1,5 @@
 package de.mhus.vance.foot.ui;
 
-import de.mhus.vance.api.thinkprocess.TodoItem;
-import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.ide.IdeSelectionState;
 import de.mhus.vance.foot.session.SessionService;
@@ -53,7 +51,6 @@ public class StatusBar {
     private final SessionService sessions;
     private final BusyIndicator busy;
     private final ThinkingPhrases phrases;
-    private final ObjectProvider<PlanModeState> planMode;
     private final ObjectProvider<IdeSelectionState> ideSelection;
     private final FootConfig config;
     private final AtomicReference<@Nullable Terminal> terminal = new AtomicReference<>();
@@ -74,13 +71,11 @@ public class StatusBar {
     public StatusBar(SessionService sessions,
                      BusyIndicator busy,
                      ThinkingPhrases phrases,
-                     ObjectProvider<PlanModeState> planMode,
                      ObjectProvider<IdeSelectionState> ideSelection,
                      FootConfig config) {
         this.sessions = sessions;
         this.busy = busy;
         this.phrases = phrases;
-        this.planMode = planMode;
         this.ideSelection = ideSelection;
         this.config = config;
     }
@@ -154,9 +149,6 @@ public class StatusBar {
         String selectionNow = ideSelectionText();
         boolean selectionChanged = !selectionNow.equals(lastPaintedSelection);
         if (nowBusy) {
-            // Idle → busy transition: pick a fresh phrase. Keep it
-            // stable for the rest of this busy period — strobe-y
-            // changes per frame would be hard to read.
             if (!lastPaintedBusy) {
                 currentPhrase = phrases.random();
                 frame.set(0);
@@ -165,12 +157,9 @@ public class StatusBar {
                 if (animated) frame.incrementAndGet();
                 repaint();
             }
-            // Else: not animated, busy state unchanged, selection unchanged → no repaint.
         } else if (lastPaintedBusy || selectionChanged) {
-            // Busy→idle transition or live selection update — paint once.
             repaint();
         }
-        // Idle and already-clean: no-op, save the syscalls.
     }
 
     private String ideSelectionText() {
@@ -191,28 +180,38 @@ public class StatusBar {
     }
 
     /**
-     * Composes the pinned status block, top-to-bottom: optional Plan-Mode
-     * todo panel for the active process, the always-visible session
-     * /process/busy line, then a blank trailing row.
+     * Composes the pinned status block. The line count is held
+     * <strong>constant</strong> across repaints — variable shapes
+     * (different number of lines from one update to the next) make
+     * JLine's reserved-region accounting drift and push old rows into
+     * scrollback as new ones arrive.
      *
-     * <p>Two anti-scroll defences happen here:
-     * <ul>
-     *   <li>Every line is clamped to {@code terminalWidth - 1} columns —
-     *       a status line that hits the exact terminal width auto-wraps
-     *       to the next row in many terminals (notably IntelliJ's
-     *       built-in console), which moves the cursor below the
-     *       reserved region and turns the next repaint into a fresh
-     *       scrollback row.</li>
-     *   <li>The trailing blank rows ({@code bottomPadding}) keep the
-     *       cursor parked well above the actual bottom edge so any
-     *       residual auto-scroll is absorbed by the buffer rows.</li>
-     * </ul>
+     * <p>Layout, top-to-bottom:
+     * <ol>
+     *   <li>One reserved line for the IDE selection — empty when no
+     *       selection / no bridge. Always present so its appearance /
+     *       disappearance does not change the block height.</li>
+     *   <li>One persistent line: session / process / spinner.</li>
+     *   <li>{@code bottomPadding} blank trailing rows (default 4) — the
+     *       cursor lives in this padding region so auto-scroll triggered
+     *       on the bottom row never affects the spinner row.</li>
+     * </ol>
+     *
+     * <p>Plan-mode todos used to be rendered above this block; they are
+     * intentionally dropped from the pinned status while we stabilise
+     * rendering in IntelliJ's terminal. They will return as a separate
+     * Lanterna excursion or via {@code /plan} once the live-status flow
+     * here is reliable.
+     *
+     * <p>Width clamp: every line is truncated to {@code terminalWidth - 1}
+     * columns. A status line at exact terminal width auto-wraps to the
+     * next row in many terminals (notably IntelliJ's built-in console),
+     * which moves the cursor below the reserved region.
      */
     private List<AttributedString> buildLines() {
         int maxCols = safeWidth() - 1;
         List<AttributedString> out = new ArrayList<>();
-        appendTodoPanel(out);
-        appendIdeSelection(out);
+        out.add(buildIdeSelectionLine());
         out.add(persistentLine());
         clampInPlace(out, maxCols);
         int padding = Math.max(0, config.getUi().getStatusBar().getBottomPadding());
@@ -220,6 +219,25 @@ public class StatusBar {
             out.add(AttributedString.EMPTY);
         }
         return out;
+    }
+
+    /**
+     * Builds a single fixed-position row for the current IDE selection.
+     * Returns {@link AttributedString#EMPTY} when nothing is selected /
+     * the bridge is offline — the row is reserved either way so repaints
+     * do not change the block height.
+     */
+    private AttributedString buildIdeSelectionLine() {
+        IdeSelectionState state = ideSelection.getIfAvailable();
+        if (state == null) {
+            return AttributedString.EMPTY;
+        }
+        return state.displayString()
+                .map(text -> new AttributedStringBuilder()
+                        .style(AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
+                        .append(text)
+                        .toAttributedString())
+                .orElse(AttributedString.EMPTY);
     }
 
     private int safeWidth() {
@@ -243,63 +261,6 @@ public class StatusBar {
                 lines.set(i, line.subSequence(0, maxCols));
             }
         }
-    }
-
-    private void appendIdeSelection(List<AttributedString> sink) {
-        IdeSelectionState state = ideSelection.getIfAvailable();
-        if (state == null) return;
-        state.displayString().ifPresent(text -> sink.add(
-                new AttributedStringBuilder()
-                        .style(AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
-                        .append(text)
-                        .toAttributedString()));
-    }
-
-    private void appendTodoPanel(List<AttributedString> sink) {
-        PlanModeState state = planMode.getIfAvailable();
-        if (state == null) return;
-        String active = sessions.activeProcess();
-        if (active == null) return;
-        List<TodoItem> items = state.todos(active);
-        if (items.isEmpty()) return;
-        sink.add(dim("─── Plan ───"));
-        for (TodoItem item : items) {
-            sink.add(formatTodo(item));
-        }
-        sink.add(dim("────────────"));
-    }
-
-    private static AttributedString dim(String text) {
-        return new AttributedStringBuilder()
-                .style(AttributedStyle.DEFAULT.foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK))
-                .append(text)
-                .toAttributedString();
-    }
-
-    private static AttributedString formatTodo(TodoItem item) {
-        TodoStatus status = item.getStatus() == null ? TodoStatus.PENDING : item.getStatus();
-        String marker = switch (status) {
-            case PENDING -> "[ ]";
-            case IN_PROGRESS -> "[~]";
-            case COMPLETED -> "[✓]";
-        };
-        String label = status == TodoStatus.IN_PROGRESS
-                && item.getActiveForm() != null
-                && !item.getActiveForm().isBlank()
-                ? item.getActiveForm()
-                : item.getContent();
-        AttributedStyle style = switch (status) {
-            case IN_PROGRESS -> AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW);
-            case COMPLETED -> AttributedStyle.DEFAULT
-                    .foreground(AttributedStyle.BRIGHT + AttributedStyle.BLACK);
-            case PENDING -> AttributedStyle.DEFAULT;
-        };
-        return new AttributedStringBuilder()
-                .style(style)
-                .append(marker)
-                .append(' ')
-                .append(label == null ? "" : label)
-                .toAttributedString();
     }
 
     private AttributedString persistentLine() {

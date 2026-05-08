@@ -56,7 +56,7 @@ import tools.jackson.databind.ObjectMapper;
  * </ul>
  */
 @Slf4j
-public final class EddieWorkerConnection implements AutoCloseable {
+public class EddieWorkerConnection implements AutoCloseable {
 
     private static final String CLIENT_VERSION = "vance-eddie/1";
     private static final String CLIENT_NAME = "eddie";

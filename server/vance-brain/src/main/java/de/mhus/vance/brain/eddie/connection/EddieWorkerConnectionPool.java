@@ -74,8 +74,7 @@ public class EddieWorkerConnectionPool {
         ConcurrentMap<String, EddieWorkerConnection> perEddie =
                 byEddie.computeIfAbsent(eddieProcessId, k -> new ConcurrentHashMap<>());
         return perEddie.computeIfAbsent(link.getWorkerProcessId(), k -> {
-            EddieWorkerConnection conn = new EddieWorkerConnection(
-                    httpClient, objectMapper, router, link, userJwt);
+            EddieWorkerConnection conn = createConnection(link, userJwt, router);
             try {
                 conn.connect();
             } catch (RuntimeException e) {
@@ -84,6 +83,17 @@ public class EddieWorkerConnectionPool {
             }
             return conn;
         });
+    }
+
+    /**
+     * Connection factory hook — overridable in tests so the pool can be
+     * exercised without a real WebSocket server. Production builds the
+     * real {@link EddieWorkerConnection} against the shared
+     * {@link HttpClient}.
+     */
+    protected EddieWorkerConnection createConnection(
+            WorkerLinkSnapshot link, String userJwt, EddieFrameRouter router) {
+        return new EddieWorkerConnection(httpClient, objectMapper, router, link, userJwt);
     }
 
     /** Looks up an existing connection without creating one. */

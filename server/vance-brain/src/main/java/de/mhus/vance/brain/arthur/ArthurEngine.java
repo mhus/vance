@@ -399,14 +399,20 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
 
             de.mhus.vance.api.thinkprocess.ProcessMode modeBefore = process.getMode();
-            boolean appendedChat = runTurnFor(process, ctx, drained);
-            if (appendedChat) {
+            TurnSignal signal = runTurnFor(process, ctx, drained);
+            // "Made progress" = chat appended OR tools dispatched. The
+            // silent-loop guard only fires when neither happened — that
+            // means the LLM is genuinely stuck (no output at all). A
+            // turn that wrote files but ran out of action-loop iters
+            // before reaching a terminal action counts as progress and
+            // the outer loop continues with a fresh per-turn budget.
+            if (signal.madeProgress()) {
                 silentTurnsInARow = 0;
             } else {
                 silentTurnsInARow++;
                 if (silentTurnsInARow >= silentTurnsLimit) {
                     log.warn("Arthur.runTurn id='{}' — {} silent turns in a row "
-                            + "(LLM stuck on state-only actions); transitioning "
+                            + "(LLM stuck — no chat, no tool calls); transitioning "
                             + "to BLOCKED so the user can intervene",
                             process.getId(), silentTurnsLimit);
                     thinkProcessService.updateStatus(
@@ -442,14 +448,30 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     // ──────────────────── One turn ────────────────────
 
     /**
-     * Runs one turn and reports whether it produced a user-facing
-     * chat message. The caller ({@link #runTurn}) uses the silent
-     * signal to break the plan-mode self-continuation loop early
-     * when the LLM is stuck emitting only state-mutating actions
-     * (typically {@code TODO_UPDATE}) without ever advancing to a
-     * chat-producing terminal action.
+     * Per-turn signal returned by {@link #runTurnFor}. The outer
+     * {@link #runTurn} self-continuation logic uses this to decide
+     * whether the engine made progress (chat message, tool calls,
+     * file writes — anything user-meaningful) or if the LLM stalled.
+     * Stalled turns count toward the silent-loop circuit-breaker;
+     * productive-but-silent turns (e.g. mid-multi-file refactor that
+     * exhausted the per-turn iteration cap) do not, so the outer
+     * loop keeps the work flowing.
      */
-    private boolean runTurnFor(
+    private record TurnSignal(boolean appendedChat, boolean toolUsed) {
+        boolean madeProgress() {
+            return appendedChat || toolUsed;
+        }
+    }
+
+    /**
+     * Runs one turn and reports whether it produced a user-facing
+     * chat message and/or invoked tools. The caller ({@link #runTurn})
+     * uses the {@link TurnSignal} to break the plan-mode
+     * self-continuation loop early when the LLM is genuinely stuck
+     * (no progress at all) without aborting on every productive but
+     * silent turn (e.g. file writes in a long refactor).
+     */
+    private TurnSignal runTurnFor(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             List<SteerMessage> inbox) {
@@ -461,7 +483,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // when the conditions don't match (mixed inbox, no active
         // delegation, worker no longer BLOCKED, etc.).
         if (tryAutoForwardToDelegatedWorker(process, ctx, inbox)) {
-            return true;
+            return new TurnSignal(/*appendedChat=*/ false, /*toolUsed=*/ true);
         }
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
@@ -527,10 +549,20 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // (~6) is sized for NORMAL action loops; lift the floor
             // for the entire plan-mode trio (EXPLORING / PLANNING /
             // EXECUTING) so the model has room to settle.
+            //
+            // EXECUTING gets the highest floor (24) because TODO_UPDATE
+            // was promoted to a continuing action — items now chain
+            // inside a single turn instead of each ending the turn.
+            // A 4-item refactor realistically needs ~16-20 iterations
+            // (TODO_UPDATE→read→write→TODO_UPDATE per item, plus a
+            // final ANSWER); 12 cuts the LLM off mid-refactor and the
+            // free-text fallback puts Arthur into BLOCKED with the
+            // work half-done.
             de.mhus.vance.api.thinkprocess.ProcessMode currentMode = process.getMode();
-            if (currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
-                    || currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING
-                    || currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING) {
+            if (currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING) {
+                maxIters = Math.max(maxIters, 24);
+            } else if (currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
+                    || currentMode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
                 maxIters = Math.max(maxIters, 12);
             }
             boolean validation = paramBool(process, "validation", false);
@@ -556,6 +588,27 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ActionTurnOutcome outcome;
             if (loopResult.isAction()) {
                 outcome = handleAction(loopResult.action(), process, ctx);
+            } else if ("max-iters".equals(loopResult.fallbackReason())
+                    && loopResult.madeProgress()
+                    && (process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
+                        || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
+                        || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING)) {
+                // Plan-mode mid-refactor pause: the LLM was actively
+                // calling tools (file reads, file writes, exec runs,
+                // continuing actions) and just hit the per-turn cap
+                // before reaching a terminal action. Don't surface a
+                // chat-message stub or BLOCK the user — yield silently
+                // and let the outer self-continuation pick up the next
+                // turn with a fresh iter budget. The outer loop's
+                // silent-turns guard counts only fully-stalled turns
+                // (no chat AND no tool use), so this can't infinitely
+                // loop: a turn that produces zero tool calls AND zero
+                // chat will trip the guard normally.
+                log.info("Arthur.turn id='{}' max-iters with progress "
+                        + "({} tool invocations) — yielding silently for "
+                        + "outer continuation",
+                        process.getId(), loopResult.toolInvocations());
+                outcome = new ActionTurnOutcome(/*chatMessage*/ null, /*awaiting*/ false);
             } else {
                 // Structural fallback: LLM never produced a valid
                 // arthur_action despite corrections. Use whatever
@@ -595,7 +648,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // and ended awaiting user input, re-arm the pointer so
             // the user's next reply auto-routes to the worker.
             updateDelegationPointer(process, inbox, awaitingUserInput);
-            return appendedChat;
+            return new TurnSignal(appendedChat, loopResult.madeProgress());
         } finally {
             ThinkProcessStatus exitStatus = awaitingUserInput
                     ? ThinkProcessStatus.BLOCKED

@@ -231,6 +231,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         allSpecs.add(buildActionToolSpec());
 
         int corrections = 0;
+        int toolInvocations = 0;
         String bestFreeText = "";
 
         for (int iter = 0; iter < maxIters; iter++) {
@@ -247,7 +248,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                     log.warn(
                             "{} id='{}' action-loop LLM failure ({}) — falling back to best free-text seen ({} chars)",
                             name(), process.getId(), e.toString(), bestFreeText.length());
-                    return ActionLoopResult.fallback(bestFreeText, "llm-failure", e);
+                    return ActionLoopResult.fallback(bestFreeText, "llm-failure",
+                            e, toolInvocations);
                 }
                 log.warn("{} id='{}' action-loop LLM failure with no recoverable text",
                         name(), process.getId());
@@ -273,7 +275,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 log.warn(
                         "{} id='{}' action-loop: out of corrections, falling back to free-text",
                         name(), process.getId());
-                return ActionLoopResult.fallback(bestFreeText, "no-action-tool-call", null);
+                return ActionLoopResult.fallback(bestFreeText, "no-action-tool-call",
+                        null, toolInvocations);
             }
 
             // Split: action call vs. read calls. The action call (if
@@ -296,6 +299,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             for (ToolExecutionRequest call : readCalls) {
                 String result = invokeReadTool(tools, call, process.getId());
                 messages.add(ToolExecutionResultMessage.from(call, result));
+                toolInvocations++;
             }
 
             if (actionCall == null) {
@@ -320,7 +324,8 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 log.warn(
                         "{} id='{}' action-loop: invalid action after {} corrections, falling back",
                         name(), process.getId(), corrections);
-                return ActionLoopResult.fallback(bestFreeText, "invalid-action", null);
+                return ActionLoopResult.fallback(bestFreeText, "invalid-action",
+                        null, toolInvocations);
             }
 
             log.info(
@@ -352,16 +357,17 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                     feedback = "Action " + parsed.action().type() + " applied.";
                 }
                 messages.add(ToolExecutionResultMessage.from(actionCall, feedback));
+                toolInvocations++;
                 continue;
             }
 
-            return ActionLoopResult.action(parsed.action());
+            return ActionLoopResult.action(parsed.action(), toolInvocations);
         }
 
         log.warn(
-                "{} id='{}' action-loop: exceeded {} iterations, falling back",
-                name(), process.getId(), maxIters);
-        return ActionLoopResult.fallback(bestFreeText, "max-iters", null);
+                "{} id='{}' action-loop: exceeded {} iterations, falling back (toolInvocations={})",
+                name(), process.getId(), maxIters, toolInvocations);
+        return ActionLoopResult.fallback(bestFreeText, "max-iters", null, toolInvocations);
     }
 
     /**
@@ -374,14 +380,18 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             @Nullable EngineAction action,
             @Nullable String fallbackText,
             @Nullable String fallbackReason,
-            @Nullable Throwable cause) {
+            @Nullable Throwable cause,
+            int toolInvocations) {
 
-        static ActionLoopResult action(EngineAction a) {
-            return new ActionLoopResult(a, null, null, null);
+        static ActionLoopResult action(EngineAction a, int toolInvocations) {
+            return new ActionLoopResult(a, null, null, null, toolInvocations);
         }
 
-        static ActionLoopResult fallback(String text, String reason, @Nullable Throwable cause) {
-            return new ActionLoopResult(null, text == null ? "" : text, reason, cause);
+        static ActionLoopResult fallback(String text, String reason,
+                                          @Nullable Throwable cause,
+                                          int toolInvocations) {
+            return new ActionLoopResult(null, text == null ? "" : text, reason,
+                    cause, toolInvocations);
         }
 
         public boolean isAction() {
@@ -390,6 +400,17 @@ public abstract class StructuredActionEngine implements ThinkEngine {
 
         public boolean isFallback() {
             return action == null;
+        }
+
+        /**
+         * Whether the loop actually got something done — read tool
+         * dispatched, continuing-action handler invoked. Plan-mode
+         * engines use this to distinguish "model is genuinely stuck"
+         * from "model is mid-multi-file-refactor and just hit the
+         * per-turn iteration cap".
+         */
+        public boolean madeProgress() {
+            return toolInvocations > 0;
         }
     }
 

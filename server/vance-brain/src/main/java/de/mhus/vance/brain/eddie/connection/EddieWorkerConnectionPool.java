@@ -94,6 +94,23 @@ public class EddieWorkerConnectionPool {
     }
 
     /**
+     * Reverse lookup: given a {@code workerProcessId}, find the Eddie
+     * process that opened the observation channel. There is at most
+     * one — workers are single-tenant single-user, and the pool keys
+     * collisions out via the {@code (eddieProcessId, workerProcessId)}
+     * pair. Used by frame handlers that receive a worker frame and
+     * need to write back to the owning Eddie's persisted snapshot.
+     */
+    public Optional<String> findEddieIdForWorker(String workerProcessId) {
+        for (Map.Entry<String, ConcurrentMap<String, EddieWorkerConnection>> e : byEddie.entrySet()) {
+            if (e.getValue().containsKey(workerProcessId)) {
+                return Optional.of(e.getKey());
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Closes one worker connection on the given Eddie process. No-op
      * if the connection isn't open.
      */

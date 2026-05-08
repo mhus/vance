@@ -78,6 +78,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.StructuredActionEngine {
 
     public static final String NAME = "arthur";
@@ -868,6 +869,27 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // spawn a worker or hand a non-plan reply to the user.
         de.mhus.vance.api.thinkprocess.ProcessMode mode = process.getMode();
         if (mode == null) mode = de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
+        // Common LLM confusion in PLANNING after user approval: the
+        // model emits TODO_UPDATE (mark first item IN_PROGRESS) instead
+        // of START_EXECUTION, conflating "start working" with "set
+        // status". Translate transparently — the user already approved,
+        // execution mode is what they want. Without this, TODO_UPDATE
+        // squeaks through PLAN_MODE_IDEMPOTENT_ACTIONS, the LLM tries
+        // to do real work in the read-only PLANNING tool spec and
+        // burns max-iters until it stumbles into START_EXECUTION.
+        if (mode == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING
+                && ArthurActionSchema.TYPE_TODO_UPDATE.equals(action.type())) {
+            log.info("Arthur id='{}' translating TODO_UPDATE in PLANNING → "
+                    + "START_EXECUTION (model conflated mode-transition with "
+                    + "status-update). reason: '{}'",
+                    process.getId(), action.reason());
+            return handleStartExecution(
+                    new de.mhus.vance.brain.thinkengine.action.EngineAction(
+                            ArthurActionSchema.TYPE_START_EXECUTION,
+                            action.reason(),
+                            java.util.Map.of()),
+                    process, ctx);
+        }
         if (!ArthurActionSchema.typesForMode(mode).contains(action.type())) {
             if (PLAN_MODE_IDEMPOTENT_ACTIONS.contains(action.type())) {
                 log.info("Arthur id='{}' action '{}' is idempotent in mode {} — "

@@ -44,8 +44,18 @@ public class ProjectManagerService {
      * on the document; lifecycle status is left untouched (transition runs
      * via {@code ProjectLifecycleService}). Takes over from another pod
      * (logged at warn). Throws on CLOSED or unknown.
+     *
+     * <p>Podless system projects (see {@link ProjectService#isPodless})
+     * are returned unchanged — they live on whichever pod the user's
+     * WS lands on and must not be pinned via {@code podIp}.
      */
     public ProjectDocument claimForLocalPod(String tenantId, String projectName) {
+        if (ProjectService.isPodless(projectName)) {
+            return projectService.findByTenantAndName(tenantId, projectName)
+                    .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                            "Project '" + projectName + "' not found in tenant '"
+                                    + tenantId + "'"));
+        }
         String endpoint = locationService.getPodAddress();
         ProjectDocument doc = projectService.claim(tenantId, projectName, endpoint);
         log.debug("Project '{}/{}' claimed for pod '{}'", tenantId, projectName, endpoint);
@@ -128,6 +138,11 @@ public class ProjectManagerService {
      *     never {@code null}.
      */
     public ClaimResult claimForLocalPodOrRedirect(String tenantId, String projectName) {
+        if (ProjectService.isPodless(projectName)) {
+            // Podless system projects (e.g. _user_<login>, _vance) live
+            // wherever the WS lands — never redirect, never pin podIp.
+            return new ClaimResult.Local(claimForLocalPod(tenantId, projectName));
+        }
         Optional<String> existing = findProjectEndpoint(tenantId, projectName);
         if (existing.isPresent() && !isLocalPod(existing.get())) {
             return new ClaimResult.Redirect(existing.get());

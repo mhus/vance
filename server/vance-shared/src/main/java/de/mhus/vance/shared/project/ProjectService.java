@@ -30,6 +30,22 @@ public class ProjectService {
      */
     public static final String SYSTEM_NAME_PREFIX = "_";
 
+    /**
+     * Returns {@code true} when {@code projectName} refers to a system
+     * project that intentionally has no Home Pod — currently every
+     * project whose name starts with {@link #SYSTEM_NAME_PREFIX}
+     * ({@code _vance}, {@code _user_<login>}). These projects live
+     * pod-locally on whichever brain process the user's WS lands on
+     * and are never claimed via {@code podIp}; lifecycle and pod-claim
+     * paths short-circuit on this check.
+     *
+     * <p>Rationale and consequences are spelled out in
+     * {@code specification/eddie-engine.md} §2.4.
+     */
+    public static boolean isPodless(String projectName) {
+        return projectName != null && projectName.startsWith(SYSTEM_NAME_PREFIX);
+    }
+
     /** Field names — kept here so atomic queries don't drift. */
     private static final String F_TENANT = "tenantId";
     private static final String F_NAME = "name";

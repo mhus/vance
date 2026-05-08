@@ -195,8 +195,17 @@ public class ProjectLifecycleService {
      * {@link ProjectEnginesStartRequested}, transition to RUNNING.
      * Idempotent — repeated calls on a RUNNING project just refresh
      * the pod claim.
+     *
+     * <p>Podless system projects (see {@link ProjectService#isPodless})
+     * skip the claim and the status transitions: their lifecycle is
+     * tied to the WS connection, not to a pod claim. The local
+     * workspace is still initialised and engines are still started so
+     * Eddie has a usable scratch area on this pod.
      */
     public ProjectDocument bring(String tenantId, String projectName) {
+        if (ProjectService.isPodless(projectName)) {
+            return bringPodless(tenantId, projectName);
+        }
         ProjectDocument doc = projectManager.claimForLocalPod(tenantId, projectName);
         if (doc.getStatus() == ProjectStatus.RUNNING) {
             log.debug("Project '{}/{}' already RUNNING — claim refreshed", tenantId, projectName);
@@ -218,6 +227,24 @@ public class ProjectLifecycleService {
         return doc;
     }
 
+    private ProjectDocument bringPodless(String tenantId, String projectName) {
+        ProjectDocument doc = projectService.findByTenantAndName(tenantId, projectName)
+                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                        "Project '" + projectName + "' not found in tenant '"
+                                + tenantId + "'"));
+        try {
+            workspaceService.init(tenantId, projectName);
+        } catch (RuntimeException e) {
+            log.error("Workspace init failed for podless project '{}/{}': {}",
+                    tenantId, projectName, e.toString());
+            throw e;
+        }
+        eventPublisher.publishEvent(new ProjectEnginesStartRequested(tenantId, projectName));
+        log.debug("Podless project '{}/{}' brought up locally (no pod claim, status unchanged)",
+                tenantId, projectName);
+        return doc;
+    }
+
     /**
      * Move a RUNNING project to SUSPENDED: transition to SUSPENDING,
      * publish {@link ProjectEnginesStopRequested}, suspend the workspace
@@ -229,6 +256,15 @@ public class ProjectLifecycleService {
         ProjectDocument doc = projectService.findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
+        if (ProjectService.isPodless(projectName)) {
+            // Podless projects (e.g. _user_<login>, _vance) are pod-local
+            // and ephemeral — there is nothing to snapshot to Mongo and
+            // no pod-affinity to release. Engine teardown happens via
+            // SessionLifecycleService cascades.
+            log.debug("Podless project '{}/{}' — suspend is a no-op",
+                    tenantId, projectName);
+            return doc;
+        }
         switch (doc.getStatus()) {
             case SUSPENDED -> {
                 log.debug("Project '{}/{}' already SUSPENDED", tenantId, projectName);
@@ -268,6 +304,14 @@ public class ProjectLifecycleService {
      * if needed).
      */
     public ProjectDocument close(String tenantId, String projectName, String closedGroupId) {
+        if (ProjectService.isPodless(projectName)) {
+            // Podless projects are also SYSTEM-kind, so projectService.close
+            // would throw SystemProjectProtectedException anyway — but doing
+            // it here surfaces the right reason and skips the pointless
+            // workspaceService.dispose that runs before that check.
+            throw new ProjectService.SystemProjectProtectedException(
+                    "Project '" + projectName + "' is a podless system project — cannot close");
+        }
         workspaceService.dispose(tenantId, projectName);
         ProjectDocument doc = projectService.close(tenantId, projectName, closedGroupId);
         log.info("Project '{}/{}' closed → group '{}'", tenantId, projectName, closedGroupId);

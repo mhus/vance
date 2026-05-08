@@ -1,9 +1,11 @@
 package de.mhus.vance.brain.eddie.triage;
 
 import de.mhus.vance.api.inbox.Criticality;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -48,6 +50,23 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class OutputTriageService {
 
+    private final @Nullable LlmTriageStage llmStage;
+
+    /**
+     * Spring constructor — {@link LlmTriageStage} is optional; without
+     * a registered bean the service is heuristic-only.
+     */
+    @Autowired
+    public OutputTriageService(
+            @Autowired(required = false) @Nullable LlmTriageStage llmStage) {
+        this.llmStage = llmStage;
+    }
+
+    /** No-arg constructor for tests / heuristic-only callers. */
+    public OutputTriageService() {
+        this(null);
+    }
+
     /** Voice-mode upper bound for VERBATIM (chars). */
     static final int VOICE_VERBATIM_MAX = 60;
     /** Voice-mode lower bound for INBOX (chars). */
@@ -69,11 +88,13 @@ public class OutputTriageService {
     private static final Pattern JSON_BODY = Pattern.compile("(?s)^\\s*[{\\[].*[}\\]]\\s*$");
 
     /**
-     * Classifies a worker frame. Never returns {@code null}.
+     * Classifies a worker frame, heuristic-only. Never returns
+     * {@code null}. Pure-function shape — same input → same result.
      *
-     * <p>Pure-function shape: the same input produces the same result
-     * deterministically. The Channel-Adapter calls this once per
-     * incoming worker frame.
+     * <p>The Channel-Adapter calls this when no Eddie process context
+     * is available (e.g. the unit-test path). When context is known,
+     * use {@link #classifyWithContext} to engage the LLM stage on
+     * mid-length cases.
      */
     public TriageResult classify(TriageInput input) {
         String hint = input.normalisedHint();
@@ -81,6 +102,43 @@ public class OutputTriageService {
             return fromHint(hint, input);
         }
         return heuristic(input);
+    }
+
+    /**
+     * Classifies a worker frame with optional LLM refinement.
+     *
+     * <p>Pipeline:
+     * <ol>
+     *   <li>Heuristic stage (the trivial 70-80% — VERBATIM short prose,
+     *       INBOX over-the-cutoff, hint-respect).</li>
+     *   <li><b>Iff</b> the heuristic returns
+     *       {@link TriageDecision#REFORMULATE} <b>and</b> an
+     *       {@link LlmTriageStage} bean is registered: refine via the
+     *       LLM. The stage may upgrade decision / criticality and
+     *       produce a real {@code memorySummary} +
+     *       {@code spokenAnnouncement}.</li>
+     *   <li>Hard-override clamp (CRITICAL+REFORMULATE → INBOX) on the
+     *       final result.</li>
+     * </ol>
+     *
+     * <p>On any LLM stage exception we degrade to the heuristic — the
+     * tradeoff is „better summary nice-to-have, never block the
+     * pipeline".
+     */
+    public TriageResult classifyWithContext(TriageInput input, ThinkProcessDocument context) {
+        TriageResult heuristic = classify(input);
+        if (llmStage == null
+                || heuristic.decision() != TriageDecision.REFORMULATE
+                || context == null) {
+            return applyHardOverrides(heuristic, input);
+        }
+        try {
+            TriageResult refined = llmStage.refine(input, heuristic, context);
+            return applyHardOverrides(refined == null ? heuristic : refined, input);
+        } catch (RuntimeException e) {
+            log.debug("LLM triage stage failed, falling back to heuristic: {}", e.toString());
+            return applyHardOverrides(heuristic, input);
+        }
     }
 
     private TriageResult fromHint(String hint, TriageInput input) {

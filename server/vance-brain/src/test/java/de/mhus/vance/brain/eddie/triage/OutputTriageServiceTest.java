@@ -3,6 +3,7 @@ package de.mhus.vance.brain.eddie.triage;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.api.inbox.Criticality;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -157,7 +158,109 @@ class OutputTriageServiceTest {
         assertThat(r.memorySummary()).doesNotContain("Details folgen");
     }
 
+    // ─── LLM stage hook ──────────────────────────────────────────────────
+
+    @Test
+    void classifyWithContext_skipsLlm_whenStageNull() {
+        OutputTriageService svc = new OutputTriageService();
+        ThinkProcessDocument eddie = ThinkProcessDocument.builder()
+                .id("eddie-1").tenantId("t").projectId("_user_x").sessionId("s").build();
+
+        // Mid-length plain prose → heuristic REFORMULATE; without an
+        // LLM stage we get the heuristic verdict back, with hard-
+        // override applied (LOW criticality, no clamp triggers).
+        String midLength = "Lorem ipsum dolor sit amet ".repeat(8);
+        TriageResult r = svc.classifyWithContext(input(midLength, true), eddie);
+
+        assertThat(r.decision()).isEqualTo(TriageDecision.REFORMULATE);
+    }
+
+    @Test
+    void classifyWithContext_engagesLlmStage_onReformulate() {
+        var stage = new RecordingLlmStage(new TriageResult(
+                TriageDecision.INBOX, Criticality.NORMAL,
+                "Eddie says lots in inbox", "structured plan"));
+        OutputTriageService svc = new OutputTriageService(stage);
+        ThinkProcessDocument eddie = ThinkProcessDocument.builder()
+                .id("eddie-1").tenantId("t").projectId("_user_x").sessionId("s").build();
+
+        String midLength = "Lorem ipsum dolor sit amet ".repeat(8);
+        TriageResult r = svc.classifyWithContext(input(midLength, true), eddie);
+
+        // LLM upgraded the routing.
+        assertThat(r.decision()).isEqualTo(TriageDecision.INBOX);
+        assertThat(r.memorySummary()).isEqualTo("structured plan");
+        assertThat(stage.calls).isEqualTo(1);
+    }
+
+    @Test
+    void classifyWithContext_skipsLlm_onShortVerbatim() {
+        var stage = new RecordingLlmStage(new TriageResult(
+                TriageDecision.INBOX, Criticality.NORMAL, "x", "x"));
+        OutputTriageService svc = new OutputTriageService(stage);
+        ThinkProcessDocument eddie = ThinkProcessDocument.builder()
+                .id("eddie-1").tenantId("t").projectId("_user_x").sessionId("s").build();
+
+        TriageResult r = svc.classifyWithContext(input("Tests sind grün.", true), eddie);
+
+        // Heuristic decided VERBATIM — LLM not consulted (Eddie pays
+        // the LLM call only when the heuristic is unsure).
+        assertThat(r.decision()).isEqualTo(TriageDecision.VERBATIM);
+        assertThat(stage.calls).isZero();
+    }
+
+    @Test
+    void classifyWithContext_clampsCriticalReformulate_evenAfterLlm() {
+        // A misbehaving LLM upgrades to CRITICAL but keeps REFORMULATE.
+        // The hard-override has to clamp it back to INBOX so we don't
+        // hallucinate around a sensitive output.
+        var stage = new RecordingLlmStage(new TriageResult(
+                TriageDecision.REFORMULATE, Criticality.CRITICAL,
+                "the plan", "plan vorgelegt"));
+        OutputTriageService svc = new OutputTriageService(stage);
+        ThinkProcessDocument eddie = ThinkProcessDocument.builder()
+                .id("eddie-1").tenantId("t").projectId("_user_x").sessionId("s").build();
+
+        String midLength = "Lorem ipsum dolor sit amet ".repeat(8);
+        TriageResult r = svc.classifyWithContext(input(midLength, true), eddie);
+
+        assertThat(r.decision()).isEqualTo(TriageDecision.INBOX);
+        assertThat(r.criticality()).isEqualTo(Criticality.CRITICAL);
+    }
+
+    @Test
+    void classifyWithContext_fallsBackToHeuristic_onLlmException() {
+        var stage = new ThrowingLlmStage();
+        OutputTriageService svc = new OutputTriageService(stage);
+        ThinkProcessDocument eddie = ThinkProcessDocument.builder()
+                .id("eddie-1").tenantId("t").projectId("_user_x").sessionId("s").build();
+
+        String midLength = "Lorem ipsum dolor sit amet ".repeat(8);
+        TriageResult r = svc.classifyWithContext(input(midLength, true), eddie);
+
+        // Heuristic verdict survives.
+        assertThat(r.decision()).isEqualTo(TriageDecision.REFORMULATE);
+    }
+
     private static TriageInput input(String text, boolean voiceMode) {
         return new TriageInput(text, null, "arthur", voiceMode);
+    }
+
+    private static final class RecordingLlmStage implements LlmTriageStage {
+        final TriageResult retval;
+        int calls = 0;
+        RecordingLlmStage(TriageResult retval) { this.retval = retval; }
+        @Override
+        public TriageResult refine(TriageInput in, TriageResult heur, ThinkProcessDocument ctx) {
+            calls++;
+            return retval;
+        }
+    }
+
+    private static final class ThrowingLlmStage implements LlmTriageStage {
+        @Override
+        public TriageResult refine(TriageInput in, TriageResult heur, ThinkProcessDocument ctx) {
+            throw new RuntimeException("nope");
+        }
     }
 }

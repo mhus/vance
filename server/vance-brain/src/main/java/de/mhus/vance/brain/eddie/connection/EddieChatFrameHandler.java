@@ -101,10 +101,23 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
                 /*outputHint=*/ null,
                 link.getWorkerProcessName(),
                 /*voiceMode=*/ true);
+        // Resolve the Eddie process so the LLM-stage of the triage can
+        // run with the right tenant/project for settings cascade. The
+        // pool reverse-lookup is the canonical mapping.
+        String eddieIdForLlm = pool.findEddieIdForWorker(link.getWorkerProcessId())
+                .orElse(null);
+        ThinkProcessDocument eddieContext = eddieIdForLlm == null
+                ? null
+                : thinkProcessService.findById(eddieIdForLlm).orElse(null);
+
         TriageResult result;
         try {
-            TriageResult raw = triageService.classify(input);
-            result = triageService.applyHardOverrides(raw, input);
+            // classifyWithContext degrades to heuristic when no LLM
+            // stage bean is registered; the hard-override clamp is
+            // applied inside.
+            result = eddieContext != null
+                    ? triageService.classifyWithContext(input, eddieContext)
+                    : triageService.applyHardOverrides(triageService.classify(input), input);
         } catch (RuntimeException e) {
             log.warn("EddieChatFrameHandler: triage failed for worker={}: {}",
                     link.getWorkerProcessId(), e.toString());

@@ -4,6 +4,7 @@ import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.Map;
@@ -58,6 +59,7 @@ public class MemoryContextLoader {
     private final SettingService settingService;
     private final SessionService sessionService;
     private final DocumentService documentService;
+    private final LanguageResolver languageResolver;
 
     /**
      * Returns the Markdown block to append to the system prompt, or
@@ -72,11 +74,54 @@ public class MemoryContextLoader {
         String projectId = resolveProjectId(process);
         StringBuilder sb = new StringBuilder();
 
+        appendLanguages(sb, process, projectId);
         appendMemorySettings(sb, process, projectId);
         appendAgentDocument(sb, process, projectId);
         appendClientAgentDoc(sb, process);
 
         return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /**
+     * Renders a {@code ## Languages} block when at least one of
+     * {@code chat.language} / {@code content.language} is set anywhere
+     * in the cascade. Both keys are read independently — chat picks up
+     * the user-layer too, content does not (see {@link LanguageResolver}).
+     *
+     * <p>Skipped when both keys come back null. The fallback default
+     * stays implicit ({@link LanguageResolver#DEFAULT_LANGUAGE}) — no
+     * point telling the LLM "respond in en" if the operator hasn't
+     * actually picked anything.
+     */
+    private void appendLanguages(
+            StringBuilder sb,
+            ThinkProcessDocument process,
+            @Nullable String projectId) {
+        // userId for the chat-language cascade comes from the session
+        // (ThinkProcessDocument doesn't carry it directly — workers
+        // inherit it via the session binding).
+        @Nullable String userId = null;
+        if (process.getSessionId() != null && !process.getSessionId().isBlank()) {
+            userId = sessionService.findBySessionId(process.getSessionId())
+                    .map(SessionDocument::getUserId)
+                    .orElse(null);
+        }
+        @Nullable String chat = languageResolver.findChatLanguage(
+                process.getTenantId(), userId, projectId, process.getId());
+        @Nullable String content = languageResolver.findContentLanguage(
+                process.getTenantId(), projectId, process.getId());
+        if ((chat == null || chat.isBlank()) && (content == null || content.isBlank())) {
+            return;
+        }
+        if (sb.length() > 0) sb.append('\n');
+        sb.append("## Languages\n");
+        if (chat != null && !chat.isBlank()) {
+            sb.append("- Chat: respond and listen in ").append(chat).append('\n');
+        }
+        if (content != null && !content.isBlank()) {
+            sb.append("- Content: write documents, insights, and memory entries in ")
+                    .append(content).append('\n');
+        }
     }
 
     private void appendMemorySettings(

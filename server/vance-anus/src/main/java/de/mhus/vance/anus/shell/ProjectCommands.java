@@ -1,6 +1,8 @@
 package de.mhus.vance.anus.shell;
 
 import de.mhus.vance.anus.access.RequiresAuth;
+import de.mhus.vance.anus.brain.AnusBrainClient;
+import de.mhus.vance.anus.brain.AnusBrainClient.Response;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.util.Arrays;
@@ -24,6 +26,7 @@ import org.springframework.shell.standard.ShellOption;
 public class ProjectCommands {
 
     private final ProjectService projectService;
+    private final AnusBrainClient brainClient;
 
     @ShellMethod(key = "project list", value = "List projects in a tenant.")
     public String list(@ShellOption(value = {"--tenant", "-T"}) String tenant) {
@@ -91,8 +94,48 @@ public class ProjectCommands {
             @ShellOption(value = {"--closed-group"}, defaultValue = "_closed",
                     help = "Project-group bucket the closed project moves into.")
             String closedGroup) {
+        // Direct DB close — workspace disposition / engine teardown happens
+        // out of band. For a fully-orchestrated close use the Brain's
+        // 'DELETE /brain/{tenant}/admin/projects/{name}' (see project resume
+        // for the pattern), but that requires the project's home pod to be
+        // reachable. This local path is the operator's last resort.
         ProjectDocument project = projectService.close(tenant, name, closedGroup);
         return "Closed:\n" + renderOne(project);
+    }
+
+    // ─── Brain-orchestrated lifecycle ──────────────────────────────────────
+    //
+    // These commands go through Brain REST instead of the local repository
+    // because the lifecycle owns more than the document — workspace folders,
+    // engine processes, pod claims. Touching the document directly here
+    // would diverge from the Brain's view and is unsupported.
+
+    @ShellMethod(key = "project suspend",
+            value = "Stop engines + snapshot workspace + mark SUSPENDED. Brain-orchestrated.")
+    public String suspend(
+            @ShellOption(value = {"--tenant", "-T"}) String tenant,
+            @ShellOption(value = {"--name", "-n"}) String name) {
+        Response response = brainClient.post(
+                tenant, "/brain/" + tenant + "/admin/projects/" + name + "/suspend", "{}");
+        return formatResponse("Suspend", tenant, name, response);
+    }
+
+    @ShellMethod(key = "project resume",
+            value = "Claim project for a pod, recover workspace, start engines, mark RUNNING.")
+    public String resume(
+            @ShellOption(value = {"--tenant", "-T"}) String tenant,
+            @ShellOption(value = {"--name", "-n"}) String name) {
+        Response response = brainClient.post(
+                tenant, "/brain/" + tenant + "/admin/projects/" + name + "/resume", "{}");
+        return formatResponse("Resume", tenant, name, response);
+    }
+
+    private static String formatResponse(String op, String tenant, String name, Response response) {
+        if (response.isSuccess()) {
+            return op + " OK — tenant='" + tenant + "' project='" + name + "'\n"
+                    + response.body();
+        }
+        return op + " FAILED — HTTP " + response.statusCode() + "\n" + response.body();
     }
 
     private static @Nullable List<String> parseList(@Nullable String csv) {

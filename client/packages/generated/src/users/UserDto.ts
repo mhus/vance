@@ -8,5 +8,7 @@ export interface UserDto {
   title?: string;
   email?: string;
   status: string;
+  loginEnabled: boolean;
+  serviceAccount: boolean;
   createdAt?: Date;
 }

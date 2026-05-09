@@ -30,5 +30,15 @@ public class UserDto {
 
     private String status;
 
+    /**
+     * Whether the user can log in via the password / refresh-token flow.
+     * Service accounts are always {@code false}; human users default to
+     * {@code true} but can be temporarily blocked by an admin.
+     */
+    private boolean loginEnabled;
+
+    /** {@code true} for accounts that exist purely to anchor automated identities. */
+    private boolean serviceAccount;
+
     private @Nullable Instant createdAt;
 }

@@ -15,7 +15,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * Persistent tenant record.
  *
  * {@code name} is the technical, unique business identifier used everywhere else
- * in the system (e.g. {@code "default"}). {@code id} is the internal MongoDB id
+ * in the system (e.g. {@code "_vance"} for the bundled system tenant, or any
+ * customer name like {@code "acme"}). {@code id} is the internal MongoDB id
  * and is not exposed outside {@code vance-shared}.
  */
 @Document(collection = "tenants")

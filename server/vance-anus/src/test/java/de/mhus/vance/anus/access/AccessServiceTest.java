@@ -10,7 +10,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 class AccessServiceTest {
 
-    private static final String SECRET = "vance-anus-login";
+    // Deliberately different from AccessService.DEFAULT_PASSWORD so the
+    // "configured hash does not silently accept the default" test is meaningful.
+    private static final String SECRET = "test-correct-horse-battery-staple";
     private AccessProperties props;
     private AccessService service;
 
@@ -23,12 +25,27 @@ class AccessServiceTest {
     }
 
     @Test
-    void boot_withBlankHash_throws() {
+    void boot_withBlankHash_fallsBackToV1DefaultPassword() {
+        // No hash configured → service must accept the v1 default plaintext
+        // password and flag itself as running on the default. Wrong passwords
+        // are still rejected.
         AccessProperties empty = new AccessProperties();
         empty.setPasswordHash("   ");
-        assertThatThrownBy(() -> new AccessService(empty))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("VANCE_ANUS_PASSWORD_HASH");
+
+        AccessService fallback = new AccessService(empty);
+
+        assertThat(fallback.isUsingDefaultPassword()).isTrue();
+        assertThat(fallback.login("anything")).isFalse();
+        assertThat(fallback.login(AccessService.DEFAULT_PASSWORD)).isTrue();
+        assertThat(fallback.isAuthorized()).isTrue();
+    }
+
+    @Test
+    void boot_withConfiguredHash_doesNotAcceptDefaultPassword() {
+        // Sanity: configured hash must NOT silently accept the v1 default.
+        assertThat(service.isUsingDefaultPassword()).isFalse();
+        assertThat(service.login(AccessService.DEFAULT_PASSWORD)).isFalse();
+        assertThat(service.isAuthorized()).isFalse();
     }
 
     @Test

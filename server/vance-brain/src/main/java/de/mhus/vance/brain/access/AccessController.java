@@ -150,6 +150,16 @@ public class AccessController {
             return unauthorized();
         }
 
+        // Service accounts and temporarily login-blocked users (e.g. lockouts)
+        // are rejected at this gate. Existing tokens stay valid until they
+        // expire — the JWT filter does NOT consult loginEnabled, only the
+        // mint endpoints do.
+        if (!user.isLoginEnabled()) {
+            log.debug("Login rejected: loginEnabled=false tenant='{}' name='{}' serviceAccount={}",
+                    tenant, username, user.isServiceAccount());
+            return unauthorized();
+        }
+
         if (hasPassword) {
             String hash = user.getPasswordHash();
             if (hash == null) {
@@ -357,6 +367,13 @@ public class AccessController {
         Optional<UserDocument> userOpt = userService.findByTenantAndName(tenant, username);
         if (userOpt.isEmpty() || userOpt.get().getStatus() != UserStatus.ACTIVE) {
             log.debug("Refresh rejected: user inactive or missing tenant='{}' name='{}'", tenant, username);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        // Refresh is a re-mint — same gate as initial login. A user whose
+        // loginEnabled flipped to false must not silently extend their
+        // session via the refresh cookie.
+        if (!userOpt.get().isLoginEnabled()) {
+            log.debug("Refresh rejected: loginEnabled=false tenant='{}' name='{}'", tenant, username);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 

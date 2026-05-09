@@ -45,7 +45,7 @@ public class JwtService {
      * the historical default. New code that mints refresh tokens must use
      * {@link #createToken(String, String, Instant, TokenType)}.
      *
-     * @param tenantId  tenant business name (e.g. {@code "default"})
+     * @param tenantId  tenant business name (e.g. {@code "acme"})
      * @param username  the human-readable user identifier that ends up as {@code sub}
      * @param expiresAt absolute expiration time, or {@code null} for a non-expiring token
      * @return the compact JWT string

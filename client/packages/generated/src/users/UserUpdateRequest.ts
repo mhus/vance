@@ -7,4 +7,5 @@ export interface UserUpdateRequest {
   title?: string;
   email?: string;
   status?: string;
+  loginEnabled?: boolean;
 }

@@ -82,7 +82,7 @@ public class ProfileController {
             // this endpoint. Title and email are the only mutable
             // fields exposed here.
             UserDocument saved = userService.update(
-                    tenant, username, request.getTitle(), request.getEmail(), null);
+                    tenant, username, request.getTitle(), request.getEmail(), null, null);
             log.info("Profile updated tenant='{}' user='{}'", tenant, username);
             return toDto(saved, loadTeams(tenant, username), loadSettings(tenant, username));
         } catch (UserService.UserNotFoundException e) {

@@ -58,11 +58,19 @@ public class AccessCommands {
 
     @ShellMethod(key = "status", value = "Show current authorisation state.")
     public String status() {
-        if (!accessService.isAuthorized()) {
-            return "Not authorized.";
+        StringBuilder sb = new StringBuilder();
+        if (accessService.isAuthorized()) {
+            sb.append("Authorized. Expires in ")
+                    .append(formatDuration(accessService.remaining()))
+                    .append('.');
+        } else {
+            sb.append("Not authorized.");
         }
-        Duration left = accessService.remaining();
-        return "Authorized. Expires in " + formatDuration(left) + ".";
+        if (accessService.isUsingDefaultPassword()) {
+            sb.append("\nWARNING: running on the v1 default password — "
+                    + "set VANCE_ANUS_PASSWORD_HASH for anything beyond local dev.");
+        }
+        return sb.toString();
     }
 
     @ShellMethod(key = "hash",

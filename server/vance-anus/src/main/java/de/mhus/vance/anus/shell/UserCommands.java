@@ -40,12 +40,14 @@ public class UserCommands {
             return "(no users in tenant '" + tenant + "')";
         }
         return Tables.render(
-                List.of("NAME", "TITLE", "EMAIL", "STATUS"),
+                List.of("NAME", "TITLE", "EMAIL", "STATUS", "LOGIN", "TYPE"),
                 List.<Function<UserDocument, @Nullable Object>>of(
                         UserDocument::getName,
                         UserDocument::getTitle,
                         UserDocument::getEmail,
-                        UserDocument::getStatus),
+                        UserDocument::getStatus,
+                        UserDocument::isLoginEnabled,
+                        u -> u.isServiceAccount() ? "service" : "user"),
                 all);
     }
 
@@ -69,7 +71,11 @@ public class UserCommands {
             @Nullable String password,
             @ShellOption(value = {"--no-password"}, defaultValue = "false",
                     help = "Create the user without setting a password (e.g. for SSO-only accounts).")
-            boolean noPassword) {
+            boolean noPassword,
+            @ShellOption(value = {"--service-account"}, defaultValue = "false",
+                    help = "Mark as service account. Name must start with '_' and not with '_vance-'. "
+                            + "Login is disabled by default; tokens must be minted out-of-band.")
+            boolean serviceAccount) {
         @Nullable String hash = null;
         if (!noPassword) {
             String plain = StringUtils.isBlank(password)
@@ -80,7 +86,9 @@ public class UserCommands {
             }
             hash = new BCryptPasswordEncoder(12).encode(plain);
         }
-        UserDocument user = userService.create(tenant, name, hash, title, email);
+        UserDocument user = serviceAccount
+                ? userService.createServiceAccount(tenant, name, hash, title, email)
+                : userService.create(tenant, name, hash, title, email);
         return "Created:\n" + renderOne(user);
     }
 
@@ -92,8 +100,11 @@ public class UserCommands {
             @ShellOption(value = {"--email", "-e"}, defaultValue = ShellOption.NULL) @Nullable String email,
             @ShellOption(value = {"--status", "-s"}, defaultValue = ShellOption.NULL,
                     help = "ACTIVE | DISABLED")
-            @Nullable UserStatus status) {
-        UserDocument user = userService.update(tenant, name, title, email, status);
+            @Nullable UserStatus status,
+            @ShellOption(value = {"--login-enabled"}, defaultValue = ShellOption.NULL,
+                    help = "Toggle the password-login gate. Cannot be set to true on service accounts.")
+            @Nullable Boolean loginEnabled) {
+        UserDocument user = userService.update(tenant, name, title, email, status, loginEnabled);
         return "Updated:\n" + renderOne(user);
     }
 
@@ -123,13 +134,15 @@ public class UserCommands {
     }
 
     private static String renderOne(UserDocument u) {
-        return "  tenantId  : " + u.getTenantId() + "\n"
-                + "  name      : " + u.getName() + "\n"
-                + "  title     : " + (u.getTitle() == null ? "" : u.getTitle()) + "\n"
-                + "  email     : " + (u.getEmail() == null ? "" : u.getEmail()) + "\n"
-                + "  status    : " + u.getStatus() + "\n"
-                + "  hasHash   : " + (u.getPasswordHash() != null) + "\n"
-                + "  created   : " + (u.getCreatedAt() == null ? "" : u.getCreatedAt()) + "\n"
-                + "  id        : " + (u.getId() == null ? "" : u.getId());
+        return "  tenantId    : " + u.getTenantId() + "\n"
+                + "  name        : " + u.getName() + "\n"
+                + "  title       : " + (u.getTitle() == null ? "" : u.getTitle()) + "\n"
+                + "  email       : " + (u.getEmail() == null ? "" : u.getEmail()) + "\n"
+                + "  status      : " + u.getStatus() + "\n"
+                + "  loginEnabled: " + u.isLoginEnabled() + "\n"
+                + "  serviceAcct : " + u.isServiceAccount() + "\n"
+                + "  hasHash     : " + (u.getPasswordHash() != null) + "\n"
+                + "  created     : " + (u.getCreatedAt() == null ? "" : u.getCreatedAt()) + "\n"
+                + "  id          : " + (u.getId() == null ? "" : u.getId());
     }
 }

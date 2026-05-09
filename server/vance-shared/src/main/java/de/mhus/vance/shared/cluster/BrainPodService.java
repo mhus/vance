@@ -77,6 +77,11 @@ public class BrainPodService {
         return repository.findByClusterId(clusterId);
     }
 
+    /** Every registered pod, regardless of cluster. Used by admin tooling. */
+    public List<BrainPodDocument> listAll() {
+        return repository.findAll();
+    }
+
     public boolean nodeNameTaken(String clusterId, String nodeName) {
         return repository.existsByClusterIdAndNodeName(clusterId, nodeName);
     }

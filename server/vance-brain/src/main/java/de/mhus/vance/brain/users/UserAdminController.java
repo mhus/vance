@@ -113,10 +113,13 @@ public class UserAdminController {
         }
         try {
             UserDocument saved = userService.update(
-                    tenant, name, request.getTitle(), request.getEmail(), status);
+                    tenant, name, request.getTitle(), request.getEmail(), status,
+                    request.getLoginEnabled());
             return toDto(saved);
         } catch (UserService.UserNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
+        } catch (UserService.ServiceAccountLoginException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         }
     }
 
@@ -181,6 +184,8 @@ public class UserAdminController {
                 .title(u.getTitle())
                 .email(u.getEmail())
                 .status(u.getStatus() == null ? "" : u.getStatus().name())
+                .loginEnabled(u.isLoginEnabled())
+                .serviceAccount(u.isServiceAccount())
                 .createdAt(u.getCreatedAt())
                 .build();
     }

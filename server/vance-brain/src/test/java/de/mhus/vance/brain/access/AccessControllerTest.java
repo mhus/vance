@@ -171,6 +171,36 @@ class AccessControllerTest {
     }
 
     @Test
+    void passwordLogin_withLoginDisabledUser_returns401() {
+        // Service accounts (and temporarily login-blocked humans) must not
+        // be able to mint tokens via the password flow even with the right
+        // password — only out-of-band paths (Anus admin shell) may.
+        UserDocument blocked = UserDocument.builder()
+                .tenantId(TENANT)
+                .name(USERNAME)
+                .passwordHash("hash")
+                .status(UserStatus.ACTIVE)
+                .loginEnabled(false)
+                .build();
+        when(userService.findByTenantAndName(TENANT, USERNAME))
+                .thenReturn(Optional.of(blocked));
+        when(passwordService.verify("right-password", "hash")).thenReturn(true);
+
+        AccessTokenRequest req = AccessTokenRequest.builder()
+                .password("right-password")
+                .build();
+
+        ResponseEntity<AccessTokenResponse> resp = controller.createToken(TENANT, USERNAME, req, emptyRequest());
+
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verify(jwtService, never()).createToken(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void passwordLogin_withInactiveUser_returns401() {
         UserDocument inactive = UserDocument.builder()
                 .tenantId(TENANT)

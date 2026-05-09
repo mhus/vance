@@ -18,23 +18,29 @@ import org.springframework.stereotype.Service;
  * are persisted together. {@link #ensure(String, String)} is idempotent for
  * both: an existing tenant without a key gets one on the next call.
  *
- * <p>On startup the {@value #DEFAULT_TENANT} tenant is ensured so a fresh DB
- * can mint tokens immediately.
+ * <p>On startup the {@value #SYSTEM_TENANT} tenant is ensured so a fresh DB
+ * has a usable home for first-party identities ({@code _vance-admin}) and
+ * cross-tenant infrastructure right out of the box.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class TenantService {
 
-    /** Business name of the default tenant created on first startup. */
-    public static final String DEFAULT_TENANT = "default";
+    /**
+     * Business name of the Vance-internal tenant created on first startup.
+     * Hosts first-party service accounts (e.g. {@code _vance-admin}) and
+     * any future cross-tenant metadata. Customer tenants live alongside
+     * it but never inherit from it.
+     */
+    public static final String SYSTEM_TENANT = "_vance";
 
     private final TenantRepository repository;
     private final KeyService keyService;
 
     @PostConstruct
-    void bootstrapDefaultTenant() {
-        defaultTenant();
+    void bootstrapSystemTenant() {
+        systemTenant();
     }
 
     public Optional<TenantDocument> findByName(String name) {
@@ -87,9 +93,9 @@ public class TenantService {
         return tenant;
     }
 
-    /** Returns the {@value #DEFAULT_TENANT} tenant, creating it on first call. */
-    public TenantDocument defaultTenant() {
-        return ensure(DEFAULT_TENANT, "Default");
+    /** Returns the {@value #SYSTEM_TENANT} tenant, creating it on first call. */
+    public TenantDocument systemTenant() {
+        return ensure(SYSTEM_TENANT, "Vance internal");
     }
 
     private void ensureJwtKey(TenantDocument tenant) {

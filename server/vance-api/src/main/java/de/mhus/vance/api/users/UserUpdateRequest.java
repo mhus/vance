@@ -27,4 +27,11 @@ public class UserUpdateRequest {
 
     /** {@code ACTIVE} / {@code DISABLED} / {@code PENDING}. */
     private @Nullable String status;
+
+    /**
+     * Whether the user may log in. {@code null} = leave unchanged.
+     * Cannot be set to {@code true} on a service account — the server
+     * rejects such updates with HTTP 409.
+     */
+    private @Nullable Boolean loginEnabled;
 }

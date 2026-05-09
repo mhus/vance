@@ -24,21 +24,43 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class AccessService {
 
+    /**
+     * v1 default plaintext password. Used when no hash is configured —
+     * see the note on the constructor below. Kept as a constant so tests
+     * can pin it without copy-pasting.
+     */
+    public static final String DEFAULT_PASSWORD = "vance-anus-login";
+
     private final AccessProperties properties;
     private final BCryptPasswordEncoder encoder;
+    /** Effective hash — either the configured one, or a freshly generated one for {@link #DEFAULT_PASSWORD}. */
+    private final String effectiveHash;
+    private final boolean usingDefault;
 
     @Nullable private volatile Instant authorizedUntil;
 
     public AccessService(AccessProperties properties) {
         this.properties = properties;
-        if (StringUtils.isBlank(properties.getPasswordHash())) {
-            throw new IllegalStateException(
-                    "vance.anus.access.password-hash is not set. "
-                            + "Provide it via the VANCE_ANUS_PASSWORD_HASH "
-                            + "environment variable. Use the 'hash' command "
-                            + "to generate a fresh BCrypt hash.");
-        }
         this.encoder = new BCryptPasswordEncoder();
+        if (StringUtils.isBlank(properties.getPasswordHash())) {
+            // v1 fallback: no hash configured → accept the well-known
+            // default. The hash is regenerated per process so a leak of
+            // an old hash is meaningless. Operators are loudly told to
+            // override this in production via VANCE_ANUS_PASSWORD_HASH.
+            this.effectiveHash = encoder.encode(DEFAULT_PASSWORD);
+            this.usingDefault = true;
+            log.warn("vance.anus.access.password-hash is not set — falling back to "
+                    + "the v1 default password. Set VANCE_ANUS_PASSWORD_HASH "
+                    + "(e.g. in confidential/anus.env) for anything beyond local dev.");
+        } else {
+            this.effectiveHash = properties.getPasswordHash();
+            this.usingDefault = false;
+        }
+    }
+
+    /** {@code true} iff the service is running on the built-in v1 default password. */
+    public boolean isUsingDefaultPassword() {
+        return usingDefault;
     }
 
     /**
@@ -51,7 +73,7 @@ public class AccessService {
         if (StringUtils.isBlank(plainPassword)) {
             return false;
         }
-        boolean ok = encoder.matches(plainPassword, properties.getPasswordHash());
+        boolean ok = encoder.matches(plainPassword, effectiveHash);
         if (ok) {
             extendWindow();
             log.info("Anus login succeeded — window armed for {}", properties.getTimeout());

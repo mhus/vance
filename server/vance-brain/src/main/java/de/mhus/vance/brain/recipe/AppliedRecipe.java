@@ -24,6 +24,18 @@ public record AppliedRecipe(
         String engine,
         Map<String, Object> params,
         @Nullable String promptOverride,
+        /**
+         * Profile-block's {@code promptPrefixAppend} as a separate Pebble
+         * template — kept apart from {@link #promptOverride} so the recipe
+         * template can decide where to splice it in via
+         * {@code {{ profileAppend }}}. When the recipe template doesn't
+         * reference the variable, {@link
+         * de.mhus.vance.brain.thinkengine.SystemPrompts#compose} falls back
+         * to legacy auto-append at the end. {@code null} when the active
+         * profile-block carries no append. See
+         * {@code planning/prompt-inlining.md} §3.
+         */
+        @Nullable String promptOverrideAppend,
         PromptMode promptMode,
         @Nullable String dataRelayCorrection,
         @Nullable Set<String> effectiveAllowedTools,

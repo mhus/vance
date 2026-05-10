@@ -258,6 +258,7 @@ public class ProcessCreateTool implements Tool {
                 applied.params(),
                 applied.name(),
                 applied.promptOverride(),
+                applied.promptOverrideAppend(),
                 applied.promptMode(),
                 applied.dataRelayCorrection(),
                 applied.effectiveAllowedTools(),

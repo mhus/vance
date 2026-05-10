@@ -130,6 +130,106 @@ class SystemPromptsTest {
     }
 
     @Test
+    void compose_autoAppendsProfileAppendWhenTemplateDoesNotReferenceVariable() {
+        // Recipe template doesn't mention {{ profileAppend }} → legacy
+        // behaviour: profile-append is glued to the end of the rendered
+        // override.
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride("Recipe rules.");
+        process.setPromptOverrideAppend("Profile note.");
+        process.setPromptMode(PromptMode.OVERWRITE);
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .tier(ModelSize.LARGE).build();
+
+        String out = SystemPrompts.compose(
+                process, "engine default", renderer, ctx);
+
+        assertThat(out).contains("Recipe rules.").contains("Profile note.");
+        // Auto-appended → split with the standard double-newline separator.
+        int recipeIdx = out.indexOf("Recipe rules.");
+        int profileIdx = out.indexOf("Profile note.");
+        assertThat(profileIdx).isGreaterThan(recipeIdx);
+    }
+
+    @Test
+    void compose_skipsAutoAppendWhenTemplateReferencesProfileAppendVariable() {
+        // Recipe template explicitly places {{ profileAppend }} →
+        // the renderer must NOT auto-append at the end.
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride(
+                "Top.\n\n[client] {{ profileAppend }}\n\nBottom.");
+        process.setPromptOverrideAppend("Profile note.");
+        process.setPromptMode(PromptMode.OVERWRITE);
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .tier(ModelSize.LARGE).build();
+
+        String out = SystemPrompts.compose(
+                process, "engine default", renderer, ctx);
+
+        assertThat(out)
+                .contains("Top.")
+                .contains("[client] Profile note.")
+                .contains("Bottom.");
+        // The string "Profile note." should appear EXACTLY ONCE — no
+        // duplicate auto-append at the end.
+        assertThat(out.indexOf("Profile note."))
+                .isEqualTo(out.lastIndexOf("Profile note."));
+    }
+
+    @Test
+    void compose_profileAppendVariableRendersItsOwnPebbleSyntax() {
+        // The profile-append is itself a Pebble template, so its body
+        // can branch on tier/profile too. The renderer evaluates it
+        // first and exposes the result as {{ profileAppend }}.
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride("Body. {{ profileAppend }}");
+        process.setPromptOverrideAppend(
+                "{% if profile == \"foot\" %}foot-note{% else %}other-note{% endif %}");
+        process.setPromptMode(PromptMode.OVERWRITE);
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .profile("foot").build();
+
+        String out = SystemPrompts.compose(
+                process, "engine default", renderer, ctx);
+
+        assertThat(out).isEqualTo("Body. foot-note");
+    }
+
+    @Test
+    void compose_blankProfileAppendSkipsAutoAppendEvenWhenVariableMissing() {
+        // No profile-append at all → no auto-append, regardless of
+        // whether the template references the variable.
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride("Just the recipe.");
+        process.setPromptOverrideAppend(null);
+        process.setPromptMode(PromptMode.OVERWRITE);
+        Map<String, Object> ctx = PromptContextBuilder.create().build();
+
+        String out = SystemPrompts.compose(
+                process, "engine default", renderer, ctx);
+
+        assertThat(out).isEqualTo("Just the recipe.");
+    }
+
+    @Test
+    void compose_appendsProfileAppendToEngineDefaultWhenNoOverride() {
+        // No recipe override at all → engine default + profile-append.
+        // Engine default doesn't get scanned for the variable since
+        // it's not the recipe's template.
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride(null);
+        process.setPromptOverrideAppend("Profile-only note.");
+        Map<String, Object> ctx = PromptContextBuilder.create().build();
+
+        String out = SystemPrompts.compose(
+                process, "engine default", renderer, ctx);
+
+        assertThat(out)
+                .contains("engine default")
+                .contains("Profile-only note.");
+    }
+
+    @Test
     void compose_legacyOverloadStillWorksWithoutRendering() {
         // Legacy 2-arg path — used in places that have already-rendered
         // text, or by tests that don't care about templating. Pebble

@@ -138,7 +138,7 @@ public class ThinkProcessService {
         return create(tenantId, projectId, sessionId, name, thinkEngine,
                 thinkEngineVersion, title, goal, parentProcessId,
                 engineParams, recipeName,
-                promptOverride, promptMode,
+                promptOverride, /*promptOverrideAppend*/ null, promptMode,
                 /*dataRelayCorrectionOverride*/ null,
                 allowedToolsOverride,
                 /*connectionProfile*/ null,
@@ -147,9 +147,11 @@ public class ThinkProcessService {
     }
 
     /**
-     * Full create — also accepts the per-recipe validator overrides
-     * and the connection-profile that was active at spawn time
-     * (audit-only).
+     * Full create — also accepts the profile-block append template
+     * (separate from {@code promptOverride} for inline-via-variable
+     * placement; see {@code planning/prompt-inlining.md}), the
+     * per-recipe validator overrides, and the connection-profile
+     * that was active at spawn time (audit-only).
      */
     public ThinkProcessDocument create(
             String tenantId,
@@ -164,6 +166,7 @@ public class ThinkProcessService {
             @Nullable Map<String, Object> engineParams,
             @Nullable String recipeName,
             @Nullable String promptOverride,
+            @Nullable String promptOverrideAppend,
             @Nullable PromptMode promptMode,
             @Nullable String dataRelayCorrectionOverride,
             @Nullable Set<String> allowedToolsOverride,
@@ -196,6 +199,7 @@ public class ThinkProcessService {
                 .recipeName(recipeName)
                 .connectionProfile(connectionProfile)
                 .promptOverride(promptOverride)
+                .promptOverrideAppend(promptOverrideAppend)
                 .promptMode(promptMode == null ? PromptMode.APPEND : promptMode)
                 .dataRelayCorrectionOverride(dataRelayCorrectionOverride)
                 .allowedToolsOverride(allowed)

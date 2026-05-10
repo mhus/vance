@@ -1809,6 +1809,7 @@ public class MarvinEngine implements ThinkEngine {
                     applied.params(),
                     applied.name(),
                     applied.promptOverride(),
+                    applied.promptOverrideAppend(),
                     applied.promptMode(),
                     applied.dataRelayCorrection(),
                     applied.effectiveAllowedTools(),

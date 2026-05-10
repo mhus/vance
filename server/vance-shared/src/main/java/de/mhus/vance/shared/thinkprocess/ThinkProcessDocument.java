@@ -130,6 +130,17 @@ public class ThinkProcessDocument {
      */
     private @Nullable String promptOverride;
 
+    /**
+     * Profile-block's {@code promptPrefixAppend} carried separately
+     * from {@link #promptOverride} so the recipe template can splice
+     * it in at any position via {@code {{ profileAppend }}}. When the
+     * recipe template doesn't reference the variable, the renderer
+     * falls back to legacy auto-append at the end of
+     * {@link #promptOverride}. {@code null} when the active profile-
+     * block carries no append. See {@code planning/prompt-inlining.md}.
+     */
+    private @Nullable String promptOverrideAppend;
+
     @Builder.Default
     private PromptMode promptMode = PromptMode.APPEND;
 

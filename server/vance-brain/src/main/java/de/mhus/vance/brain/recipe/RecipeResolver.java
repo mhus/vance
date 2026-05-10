@@ -162,19 +162,21 @@ public class RecipeResolver {
         Set<String> effectiveAllowed = computeAllowed(
                 engine.allowedTools(), expandedAdd, expandedRemove);
 
-        // Profile-append is always additive. Both pieces are Pebble
-        // templates; rendering with tier/mode/profile context happens
-        // later in SystemPrompts.compose — here we just stitch the
-        // unrendered text together, separator marks the join so the
-        // template author can rely on a guaranteed empty-line gap.
-        String effectivePromptOverride = appendIfPresent(
-                r.promptPrefix(), profileBlock.promptPrefixAppend());
+        // Recipe override and profile-append are kept separate so the
+        // recipe template can place {{ profileAppend }} at any position
+        // in its body. SystemPrompts.compose renders both; if the
+        // template doesn't reference the variable AND profile-append is
+        // non-blank, the renderer falls back to legacy auto-append at
+        // the end. See planning/prompt-inlining.md §3.
+        String effectivePromptOverride = r.promptPrefix();
+        String effectivePromptOverrideAppend = profileBlock.promptPrefixAppend();
 
         return new AppliedRecipe(
                 r.name(),
                 r.engine(),
                 mergedParams,
                 effectivePromptOverride,
+                effectivePromptOverrideAppend,
                 r.promptMode(),
                 r.dataRelayCorrection(),
                 effectiveAllowed,
@@ -213,13 +215,6 @@ public class RecipeResolver {
             if (l != null && !l.isEmpty()) out.addAll(l);
         }
         return out;
-    }
-
-    private static @Nullable String appendIfPresent(
-            @Nullable String base, @Nullable String append) {
-        if (append == null || append.isBlank()) return base;
-        if (base == null || base.isBlank()) return append;
-        return base + "\n\n" + append;
     }
 
     /**

@@ -135,6 +135,18 @@ public final class PromptContextBuilder {
         return this;
     }
 
+    /**
+     * Pre-rendered profile-block append text — exposed to recipe
+     * templates as {@code {{ profileAppend }}} so the author can place
+     * it at any position in the prompt body. Normally set by
+     * {@link de.mhus.vance.brain.thinkengine.SystemPrompts#compose}, not
+     * by engines directly. See {@code planning/prompt-inlining.md} §3.
+     */
+    public PromptContextBuilder profileAppend(@Nullable String profileAppend) {
+        if (profileAppend != null) map.put("profileAppend", profileAppend);
+        return this;
+    }
+
     public PromptContextBuilder params(@Nullable Map<String, Object> params) {
         if (params != null && !params.isEmpty()) {
             // Defensive copy — recipe params can be mutated by other

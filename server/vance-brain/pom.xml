@@ -62,6 +62,24 @@
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-google-ai-gemini</artifactId>
         </dependency>
+        <!--
+            OpenAI SDK via langchain4j. Used by OpenAiProvider and
+            (with custom baseUrl) by LmStudioProvider — LM Studio exposes
+            an OpenAI-compatible /v1 endpoint.
+        -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
+        </dependency>
+        <!--
+            Ollama SDK via langchain4j. Used by OllamaProvider for local
+            Ollama servers and by OllamaCloudProvider for ollama.com
+            (same wire protocol, different baseUrl + Bearer auth header).
+        -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-ollama</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.bsc.langgraph4j</groupId>
             <artifactId>langgraph4j-core</artifactId>

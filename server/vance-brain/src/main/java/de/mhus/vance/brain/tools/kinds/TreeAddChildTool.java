@@ -45,7 +45,7 @@ public class TreeAddChildTool implements Tool {
     }
 
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-tree", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("kind-tree", "eddie", "write", "document"); }
 
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }

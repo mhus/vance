@@ -50,7 +50,7 @@ public class DocToWorkspaceTool implements Tool {
                 + "flushed first so the workspace file matches the latest in-flight content.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("workspace-bridge", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("workspace-bridge", "eddie", "write", "workspace"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

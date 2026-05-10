@@ -2,6 +2,8 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.history.BufferingHistoryTagSink;
+import de.mhus.vance.brain.history.HistoryTagBuilder;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
@@ -57,7 +59,9 @@ record DefaultThinkEngineContext(
         ToolInvocationListener toolInvocationListener,
         Duration activationDecayTtl,
         boolean traceLlm,
-        LlmTraceService llmTraceService
+        LlmTraceService llmTraceService,
+        HistoryTagBuilder historyTagBuilder,
+        BufferingHistoryTagSink historyTagSink
 ) implements ThinkEngineContext {
 
     @Override
@@ -92,7 +96,8 @@ record DefaultThinkEngineContext(
         return new ContextToolsApi(
                 toolDispatcher, scope,
                 c.allowed(), c.primary(), c.deferred(), c.activatedDeferred(),
-                toolInvocationListener, refresh);
+                toolInvocationListener, refresh,
+                historyTagBuilder, historyTagSink);
     }
 
     /**

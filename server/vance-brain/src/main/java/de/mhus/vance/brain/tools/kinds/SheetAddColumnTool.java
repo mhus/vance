@@ -30,7 +30,7 @@ public class SheetAddColumnTool implements Tool {
                 + "Cells in the new column are empty until set.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("kind-sheet", "eddie", "write", "document"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

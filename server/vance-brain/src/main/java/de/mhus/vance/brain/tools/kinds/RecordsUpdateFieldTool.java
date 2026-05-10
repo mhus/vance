@@ -39,7 +39,7 @@ public class RecordsUpdateFieldTool implements Tool {
         return "Update one cell in a `kind: records` document — set `field` of `rowIndex` to `value`.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write", "document"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

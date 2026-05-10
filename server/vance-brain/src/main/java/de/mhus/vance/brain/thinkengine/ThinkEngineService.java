@@ -49,6 +49,7 @@ public class ThinkEngineService {
     private final ProcessEventEmitter processEventEmitter;
     private final ProgressToolListener progressToolListener;
     private final LlmTraceService llmTraceService;
+    private final de.mhus.vance.brain.history.HistoryTagBuilder historyTagBuilder;
     /** Lazy provider — RecipeResolver depends on us, so the bean graph cycles otherwise. */
     private final ObjectProvider<RecipeResolver> recipeResolverProvider;
 
@@ -64,6 +65,7 @@ public class ThinkEngineService {
             ProcessEventEmitter processEventEmitter,
             ProgressToolListener progressToolListener,
             LlmTraceService llmTraceService,
+            de.mhus.vance.brain.history.HistoryTagBuilder historyTagBuilder,
             ObjectProvider<RecipeResolver> recipeResolverProvider) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
@@ -81,6 +83,7 @@ public class ThinkEngineService {
         this.processEventEmitter = processEventEmitter;
         this.progressToolListener = progressToolListener;
         this.llmTraceService = llmTraceService;
+        this.historyTagBuilder = historyTagBuilder;
         this.recipeResolverProvider = recipeResolverProvider;
     }
 
@@ -187,6 +190,12 @@ public class ThinkEngineService {
                 || "on".equalsIgnoreCase(traceFlag.trim()));
         Duration decayTtl = resolveDeferralActivationTtl(
                 process.getTenantId(), projectId, process.getId());
+        // Fresh per-turn sink — engine flushes after persisting its
+        // assistant ChatMessageDocument (see ArthurEngine.handleTodoUpdate
+        // and the runTurn finally block for the wiring). Sink lives for
+        // the lifetime of this context only.
+        de.mhus.vance.brain.history.BufferingHistoryTagSink tagSink =
+                new de.mhus.vance.brain.history.BufferingHistoryTagSink();
         return new DefaultThinkEngineContext(
                 process, projectId, userId, base,
                 aiModelService, settingService, chatMessageService,
@@ -196,7 +205,9 @@ public class ThinkEngineService {
                 progressToolListener.forProcess(process),
                 decayTtl,
                 traceLlm,
-                llmTraceService);
+                llmTraceService,
+                historyTagBuilder,
+                tagSink);
     }
 
     /**

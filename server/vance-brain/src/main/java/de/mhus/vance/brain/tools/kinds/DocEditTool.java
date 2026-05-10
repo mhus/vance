@@ -55,7 +55,7 @@ public class DocEditTool implements Tool {
                 + "the target — avoid pasting 10+ lines when 2-4 are enough.";
     }
     @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("text-edit", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("text-edit", "eddie", "write", "document"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

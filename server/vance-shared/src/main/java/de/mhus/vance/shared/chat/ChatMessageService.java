@@ -4,6 +4,7 @@ import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.shared.session.SessionService;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -11,6 +12,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.TextCriteria;
+import org.springframework.data.mongodb.core.query.TextQuery;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
@@ -109,6 +112,84 @@ public class ChatMessageService {
             log.debug("Archived {} chat message(s) into memory '{}'", n, memoryId);
         }
         return n;
+    }
+
+    /**
+     * Atomically appends {@code newTags} to the message's tag set.
+     * Idempotent: re-adding existing tags is a no-op (Mongo {@code $addToSet}).
+     * A missing message id is silently ignored — Mongo {@code updateFirst}
+     * matches zero rows in that case and returns without throwing.
+     *
+     * <p>Used by the tool-dispatcher hook to mark turns with markers like
+     * {@code TOOL_CALL:*}, {@code RESOURCE:*}, {@code FILE_EDIT}; see
+     * {@code planning/process-history-search.md} §5.
+     */
+    public void tag(String messageId, Set<String> newTags) {
+        if (messageId == null || messageId.isBlank()) return;
+        if (newTags == null || newTags.isEmpty()) return;
+        Query q = new Query(Criteria.where("_id").is(messageId));
+        Update u = new Update().addToSet("tags").each(newTags.toArray());
+        mongoTemplate.updateFirst(q, u, ChatMessageDocument.class);
+    }
+
+    /**
+     * Searches chat messages within a single process scope using
+     * tag-AND, optional full-text query, and optional time floor.
+     * Traverses <em>all</em> messages — including those rolled into a
+     * compaction memory — so the LLM can look up turns no longer in the
+     * active context window.
+     *
+     * <p>When {@code text} is set, Mongo's text index is queried and
+     * results are sorted by score descending, then by {@code createdAt}
+     * descending. Without text, ordering is {@code createdAt} descending.
+     * The {@code limit} is honoured as-is (already clamped by the
+     * {@link ChatMessageSearchQuery} constructor).
+     */
+    public List<ChatMessageDocument> search(ChatMessageSearchQuery q) {
+        Criteria c = Criteria.where("tenantId").is(q.tenantId())
+                .and("thinkProcessId").is(q.thinkProcessId());
+        if (!q.tags().isEmpty()) {
+            c = c.and("tags").all(q.tags());
+        }
+        if (q.since() != null) {
+            c = c.and("createdAt").gte(q.since());
+        }
+
+        Query mongoQ;
+        if (q.text() != null && !q.text().isBlank()) {
+            TextCriteria tc = TextCriteria.forDefaultLanguage().matching(q.text());
+            mongoQ = TextQuery.queryText(tc)
+                    .sortByScore()
+                    .addCriteria(c)
+                    .with(Sort.by(Sort.Direction.DESC, "createdAt"))
+                    .limit(q.limit());
+        } else {
+            mongoQ = new Query(c)
+                    .with(Sort.by(Sort.Direction.DESC, "createdAt"))
+                    .limit(q.limit());
+        }
+        return mongoTemplate.find(mongoQ, ChatMessageDocument.class);
+    }
+
+    /**
+     * Looks up messages by id, strictly filtered to {@code tenantId} and
+     * {@code thinkProcessId} — cross-tenant or cross-process leakage is
+     * the explicit non-feature here, since the {@code history_recall}
+     * LLM tool relies on this method for isolation.
+     *
+     * <p>Order is {@code createdAt} ascending (chronological). Missing
+     * ids are silently skipped: callers commonly pass ids returned by
+     * an earlier {@code search} and should treat the response as a
+     * filter, not as a strict resolve.
+     */
+    public List<ChatMessageDocument> findByIds(
+            String tenantId, String thinkProcessId, Collection<String> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        Query q = new Query(Criteria.where("_id").in(ids)
+                .and("tenantId").is(tenantId)
+                .and("thinkProcessId").is(thinkProcessId))
+                .with(Sort.by(Sort.Direction.ASC, "createdAt"));
+        return mongoTemplate.find(q, ChatMessageDocument.class);
     }
 
     /** Drops all messages of a think-process (process deletion). */

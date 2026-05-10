@@ -2,6 +2,7 @@ package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.events.ClientEventPublisher;
+import de.mhus.vance.brain.history.BufferingHistoryTagSink;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
@@ -101,4 +102,16 @@ public interface ThinkEngineContext {
      * conditional injection.
      */
     LlmTraceService llmTraceService();
+
+    /**
+     * Per-turn buffer for history marker tags. The tool-dispatcher hook
+     * writes {@code TOOL_CALL:*} / {@code RESOURCE:*} / {@code FILE_EDIT}
+     * / {@code DOC_EDIT} / {@code ERROR} tags into it as tools run, and
+     * engines emit {@code PLAN_STEP_*} / {@code MODE:*} tags directly.
+     * The engine flushes the buffer to its assistant
+     * {@link ChatMessageService chat-message} immediately after persisting
+     * the turn, so tags land on the right turn id. See
+     * {@code planning/process-history-search.md} §5.
+     */
+    BufferingHistoryTagSink historyTagSink();
 }

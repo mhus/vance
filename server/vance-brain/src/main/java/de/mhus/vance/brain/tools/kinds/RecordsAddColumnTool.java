@@ -37,7 +37,7 @@ public class RecordsAddColumnTool implements Tool {
         return "Append a new column to the schema. Existing rows get an empty string for the new field.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write", "document"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

@@ -39,7 +39,7 @@ public class ListAppendTool implements Tool {
     }
 
     @Override public boolean primary() { return true; }
-    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("kind-list", "eddie", "write", "document"); }
 
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }

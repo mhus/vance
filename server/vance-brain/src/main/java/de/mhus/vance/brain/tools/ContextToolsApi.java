@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.tools;
 
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.brain.history.HistoryTagBuilder;
+import de.mhus.vance.brain.history.HistoryTagSink;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
@@ -10,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -56,10 +59,12 @@ public final class ContextToolsApi implements ToolBus {
     private final Set<String> activatedDeferred;
     private final ToolInvocationListener listener;
     private final java.util.function.Consumer<String> activationRefresh;
+    private final HistoryTagBuilder historyTagBuilder;
+    private final HistoryTagSink historyTagSink;
 
     public ContextToolsApi(ToolDispatcher dispatcher, ToolInvocationContext ctx) {
         this(dispatcher, ctx, Set.of(), Set.of(), Set.of(), Set.of(),
-                ToolInvocationListener.NOOP, null);
+                ToolInvocationListener.NOOP, null, null, HistoryTagSink.NOOP);
     }
 
     public ContextToolsApi(
@@ -67,7 +72,7 @@ public final class ContextToolsApi implements ToolBus {
             ToolInvocationContext ctx,
             Set<String> allowed) {
         this(dispatcher, ctx, allowed, allowed, Set.of(), Set.of(),
-                ToolInvocationListener.NOOP, null);
+                ToolInvocationListener.NOOP, null, null, HistoryTagSink.NOOP);
     }
 
     public ContextToolsApi(
@@ -75,7 +80,8 @@ public final class ContextToolsApi implements ToolBus {
             ToolInvocationContext ctx,
             Set<String> allowed,
             ToolInvocationListener listener) {
-        this(dispatcher, ctx, allowed, allowed, Set.of(), Set.of(), listener, null);
+        this(dispatcher, ctx, allowed, allowed, Set.of(), Set.of(),
+                listener, null, null, HistoryTagSink.NOOP);
     }
 
     public ContextToolsApi(
@@ -86,7 +92,21 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> deferred,
             Set<String> activatedDeferred,
             ToolInvocationListener listener) {
-        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred, listener, null);
+        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
+                listener, null, null, HistoryTagSink.NOOP);
+    }
+
+    public ContextToolsApi(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> allowed,
+            Set<String> primary,
+            Set<String> deferred,
+            Set<String> activatedDeferred,
+            ToolInvocationListener listener,
+            java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh) {
+        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
+                listener, activationRefresh, null, HistoryTagSink.NOOP);
     }
 
     /**
@@ -100,6 +120,16 @@ public final class ContextToolsApi implements ToolBus {
      * {@code activatedDeferred} set. The wiring layer uses it to bump
      * the activation timestamp on the process so frequently-used
      * deferred tools resist TTL decay (sliding TTL, see §6).
+     *
+     * <p>{@code historyTagBuilder} + {@code historyTagSink}, when both
+     * non-null/non-NOOP, install the history-tagging hook: on every
+     * successful {@link #invoke} the builder computes marker tags from
+     * the resolved tool's labels and the result map, and the sink
+     * receives them. Engines wire the sink to the assistant
+     * {@code ChatMessageDocument} they are currently building so the
+     * tags land on the right turn. Default is {@link HistoryTagSink#NOOP}
+     * — older call sites stay tag-less without code changes. See
+     * {@code planning/process-history-search.md} §5.
      */
     public ContextToolsApi(
             ToolDispatcher dispatcher,
@@ -109,7 +139,9 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> deferred,
             Set<String> activatedDeferred,
             ToolInvocationListener listener,
-            java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh) {
+            java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh,
+            @org.jspecify.annotations.Nullable HistoryTagBuilder historyTagBuilder,
+            @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink) {
         this.dispatcher = dispatcher;
         this.ctx = ctx;
         this.allowed = allowed == null ? Set.of() : Set.copyOf(allowed);
@@ -118,6 +150,8 @@ public final class ContextToolsApi implements ToolBus {
         this.activatedDeferred = activatedDeferred == null ? Set.of() : Set.copyOf(activatedDeferred);
         this.listener = listener == null ? ToolInvocationListener.NOOP : listener;
         this.activationRefresh = activationRefresh;
+        this.historyTagBuilder = historyTagBuilder == null ? new HistoryTagBuilder() : historyTagBuilder;
+        this.historyTagSink = historyTagSink == null ? HistoryTagSink.NOOP : historyTagSink;
     }
 
     /** All tools visible in this scope (after the engine's allow-filter). */
@@ -229,6 +263,9 @@ public final class ContextToolsApi implements ToolBus {
     private Map<String, Object> doInvoke(String name, Map<String, Object> params) {
         listener.before(name);
         long startMs = System.currentTimeMillis();
+        // Resolve once up-front so the history hook can inspect the
+        // tool's labels without a second resolve. Cheap (map lookup).
+        Optional<ToolDispatcher.Resolved> resolved = dispatcher.resolve(name, ctx);
         try {
             Map<String, Object> result = dispatcher.invoke(name, params, ctx, this);
             listener.after(name, System.currentTimeMillis() - startMs, null);
@@ -243,10 +280,30 @@ public final class ContextToolsApi implements ToolBus {
                     // already succeeded; let the caller see the result.
                 }
             }
+            emitHistoryTags(historyTagBuilder.onSuccess(
+                    name,
+                    resolved.map(ToolDispatcher.Resolved::tool).orElse(null),
+                    params, result, ctx));
             return result;
         } catch (RuntimeException e) {
             listener.after(name, System.currentTimeMillis() - startMs, e);
+            emitHistoryTags(historyTagBuilder.onError(name));
             throw e;
+        }
+    }
+
+    /**
+     * Best-effort emit to the history-tag sink. Tag-write failures must
+     * not cascade back to the LLM — they are surfaced only via the
+     * sink's own logging, never as a thrown exception from the tool
+     * call path.
+     */
+    private void emitHistoryTags(Set<String> tags) {
+        if (historyTagSink == HistoryTagSink.NOOP || tags.isEmpty()) return;
+        try {
+            historyTagSink.emit(tags);
+        } catch (RuntimeException ignored) {
+            // Sink errors are non-fatal — see HistoryTagSink Javadoc.
         }
     }
 

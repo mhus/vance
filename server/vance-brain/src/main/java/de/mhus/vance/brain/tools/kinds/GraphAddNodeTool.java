@@ -39,7 +39,7 @@ public class GraphAddNodeTool implements Tool {
         return "Add a node with the given unique id (and optional label/color) to a `kind: graph` document.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("kind-graph", "eddie", "write", "document"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

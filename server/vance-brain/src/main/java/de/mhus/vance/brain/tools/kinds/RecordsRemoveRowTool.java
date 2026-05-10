@@ -38,7 +38,7 @@ public class RecordsRemoveRowTool implements Tool {
                 + "Subsequent row indices shift down by one.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("kind-records", "eddie", "write", "document"); }
     @Override public boolean deferred() { return true; }
     @Override public String searchHint() { return "Bulk-destructive collection ops"; }
 

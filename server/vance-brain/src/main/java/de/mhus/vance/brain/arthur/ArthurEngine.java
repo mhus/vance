@@ -653,18 +653,28 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             String chatMessage = outcome.chatMessage();
             boolean appendedChat = chatMessage != null && !chatMessage.isBlank();
             if (appendedChat) {
-                chatLog.append(ChatMessageDocument.builder()
+                ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
                         .tenantId(process.getTenantId())
                         .sessionId(process.getSessionId())
                         .thinkProcessId(process.getId())
                         .role(ChatRole.ASSISTANT)
                         .content(chatMessage)
                         .build());
+                // Flush buffered history tags onto the freshly persisted
+                // assistant message. The tool-dispatcher hook + plan-mode
+                // hooks above buffer their markers via ctx.historyTagSink();
+                // this is where they land on a concrete turn id.
+                if (saved != null && saved.getId() != null) {
+                    ctx.historyTagSink().flushTo(saved.getId(), chatLog);
+                }
                 String preview = chatMessage.length() > 120
                         ? chatMessage.substring(0, 120) + "…" : chatMessage;
                 log.info("Arthur.turn id='{}' awaiting={} -> '{}'",
                         process.getId(), awaitingUserInput, preview);
             } else {
+                // No assistant turn this round — drop any buffered tags
+                // rather than letting them leak onto the next turn.
+                ctx.historyTagSink().discard();
                 log.info("Arthur.turn id='{}' awaiting={} (silent — no chat append)",
                         process.getId(), awaitingUserInput);
             }
@@ -1117,6 +1127,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (prior != de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
             planModeEventEmitter.emitModeChanged(
                     process, prior, de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING);
+            ctx.historyTagSink().emit(java.util.Set.of("MODE:plan"));
         }
         log.info("Arthur id='{}' PROPOSE_PLAN summary='{}' todos.size={} reason='{}'",
                 process.getId(), summary, todos.size(), action.reason());
@@ -1143,6 +1154,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
         planModeEventEmitter.emitModeChanged(
                 process, prior, de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
+        ctx.historyTagSink().emit(java.util.Set.of("MODE:execute"));
         log.info("Arthur id='{}' entered EXECUTING — notes='{}' reason='{}'",
                 process.getId(), notes, action.reason());
         // No user-facing message; the next turn picks up the first
@@ -1176,6 +1188,20 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 process.setTodos(refreshed.getTodos());
                 planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos());
             });
+            // History markers: one tag per transition the LLM commanded.
+            // Tags accumulate in the per-turn sink and flush onto the
+            // eventual assistant message (often several action loops later,
+            // when an ANSWER action emits a chat message).
+            java.util.Set<String> tags = new java.util.LinkedHashSet<>();
+            for (java.util.Map.Entry<String, de.mhus.vance.api.thinkprocess.TodoStatus> e
+                    : updates.entrySet()) {
+                switch (e.getValue()) {
+                    case IN_PROGRESS -> tags.add("PLAN_STEP_STARTED:" + e.getKey());
+                    case COMPLETED -> tags.add("PLAN_STEP_DONE:" + e.getKey());
+                    default -> { /* PENDING / CANCELLED — no marker */ }
+                }
+            }
+            if (!tags.isEmpty()) ctx.historyTagSink().emit(tags);
         }
         return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
     }

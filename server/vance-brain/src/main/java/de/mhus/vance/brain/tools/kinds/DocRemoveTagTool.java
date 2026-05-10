@@ -33,7 +33,7 @@ public class DocRemoveTagTool implements Tool {
         return "Remove a tag from a document. No-op when the tag isn't there.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("tags", "eddie", "write"); }
+    @Override public Set<String> labels() { return Set.of("tags", "eddie", "write", "document"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 

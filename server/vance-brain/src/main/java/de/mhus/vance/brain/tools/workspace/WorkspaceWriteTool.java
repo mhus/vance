@@ -66,7 +66,10 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("write", "side-effect");
+        // "workspace" tells the history-tagging hook to encode the
+        // returned "path" as a WORKSPACE: resource key — see
+        // planning/process-history-search.md §5.1.
+        return java.util.Set.of("write", "side-effect", "workspace");
     }
 
     @Override

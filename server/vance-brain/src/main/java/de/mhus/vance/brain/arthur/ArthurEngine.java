@@ -240,6 +240,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
     private final PlanModeEventEmitter planModeEventEmitter;
+    private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -254,7 +255,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory,
             de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher,
             de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
-            PlanModeEventEmitter planModeEventEmitter) {
+            PlanModeEventEmitter planModeEventEmitter,
+            de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -266,6 +268,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.skillTriggerMatcher = skillTriggerMatcher;
         this.messageRouter = messageRouter;
         this.planModeEventEmitter = planModeEventEmitter;
+        this.attachmentResolver = attachmentResolver;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -550,7 +553,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     paramString(process, "modelSize", null), modelInfo.size());
 
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, inbox, effectiveSize, ctx);
+                    process, chatLog, inbox, effectiveSize, ctx, config, modelInfo);
             int maxIters = paramInt(process, "maxIterations",
                     arthurProperties.getMaxToolIterations());
             // Plan-Mode turns chain multiple read/write tool calls
@@ -1462,7 +1465,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ChatMessageService chatLog,
             List<SteerMessage> inbox,
             ModelSize modelSize,
-            ThinkEngineContext ctx) {
+            ThinkEngineContext ctx,
+            de.mhus.vance.brain.ai.AiChatConfig chatConfig,
+            ModelInfo modelInfo) {
         List<ChatMessage> messages = new ArrayList<>();
 
         // ── STATIC system prefix — Anthropic cache anchors here ──
@@ -1516,17 +1521,34 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             if (m instanceof SteerMessage.UserChatInput) userInputCount++;
         }
 
-        // History up to the just-appended user inputs is the "old"
-        // conversation. The trailing N user messages are the current
-        // turn — they're already represented as USER chat messages.
-        for (ChatMessageDocument msg : history) {
-            messages.add(toLangchain(msg));
+        // Old history first — every entry except the trailing N user
+        // chat messages that correspond to this turn's UserChatInput
+        // items in the inbox. Those trailing entries are rendered
+        // fresh from the inbox below so we can attach multimodal
+        // content blocks for any attachments the user sent.
+        int oldHistorySize = Math.max(0, history.size() - userInputCount);
+        for (int i = 0; i < oldHistorySize; i++) {
+            messages.add(toLangchain(history.get(i)));
+        }
+
+        // Current-turn user messages: rebuilt from the inbox so
+        // attachments (image / PDF / text) ride along as content
+        // blocks. Text-only inputs match the legacy path 1:1.
+        de.mhus.vance.brain.ai.ProviderType providerType =
+                de.mhus.vance.brain.ai.ProviderType.requireWireName(chatConfig.provider());
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci) {
+                messages.add(buildUserMessageWithAttachments(
+                        uci, process, chatConfig.fullName(),
+                        providerType, modelInfo.capabilities()));
+            }
         }
 
         // Now append the non-user inbox items (events, tool results,
         // external commands) as user-role messages with the XML
         // wrapper Arthur's prompt is trained on.
         for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput) continue;
             String wrapped = renderForLlm(m);
             if (wrapped != null) {
                 messages.add(UserMessage.from(wrapped));
@@ -1534,6 +1556,55 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
 
         return messages;
+    }
+
+    /**
+     * Build a {@link UserMessage} for one current-turn
+     * {@link SteerMessage.UserChatInput}. Text-only when there are no
+     * attachments (fast path). When attachments are present, resolves
+     * them via {@link de.mhus.vance.brain.ai.attachment.AttachmentResolver}
+     * (validates project scope + size) and produces a multimodal
+     * message — image / PDF / text content blocks ahead of the
+     * question text. Provider/capability-aware via
+     * {@link de.mhus.vance.brain.ai.StandardAiChat#toContentBlock}.
+     *
+     * <p>Attachment resolution failures (missing doc, foreign project,
+     * oversize) are caught and downgraded to a clear text-only message
+     * — Arthur should reply gracefully rather than crash the turn. The
+     * underlying error is logged so operators can see what happened.
+     */
+    private UserMessage buildUserMessageWithAttachments(
+            SteerMessage.UserChatInput uci,
+            ThinkProcessDocument process,
+            String chatName,
+            de.mhus.vance.brain.ai.ProviderType providerType,
+            java.util.Set<de.mhus.vance.brain.ai.ModelCapability> capabilities) {
+        if (uci.attachments().isEmpty()) {
+            return UserMessage.from(uci.content());
+        }
+        List<de.mhus.vance.brain.ai.attachment.ResolvedAttachment> resolved;
+        try {
+            resolved = attachmentResolver.resolveAll(
+                    uci.attachments(), process.getTenantId(), process.getProjectId());
+        } catch (de.mhus.vance.brain.ai.attachment.AttachmentException e) {
+            log.warn("Arthur: attachment resolution failed for process '{}': {} — "
+                            + "falling back to text-only turn",
+                    process.getId(), e.getMessage());
+            return UserMessage.from(uci.content()
+                    + "\n\n[Attachment resolution failed: " + e.getMessage() + "]");
+        }
+        List<dev.langchain4j.data.message.Content> blocks = new ArrayList<>();
+        for (de.mhus.vance.brain.ai.attachment.ResolvedAttachment att : resolved) {
+            try {
+                blocks.add(de.mhus.vance.brain.ai.StandardAiChat.toContentBlock(
+                        att, chatName, providerType, capabilities));
+            } catch (de.mhus.vance.brain.ai.attachment.AttachmentException e) {
+                log.warn("Arthur: attachment '{}' rejected by model '{}': {} — skipping",
+                        att.originalFilename(), chatName, e.getMessage());
+            }
+        }
+        blocks.add(dev.langchain4j.data.message.TextContent.from(uci.content()));
+        return UserMessage.from(blocks);
     }
 
     /**

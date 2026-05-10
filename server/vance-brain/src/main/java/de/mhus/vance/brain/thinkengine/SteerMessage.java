@@ -1,11 +1,13 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -42,12 +44,42 @@ public sealed interface SteerMessage
      *                        {@code "process:<id>"} when an orchestrator
      *                        steers a child via a tool call
      * @param content         the typed text
+     * @param attachments     refs to {@code DocumentDocument}s the user
+     *                        uploaded with this turn — never {@code null},
+     *                        empty list when text-only. Resolution
+     *                        happens at engine-drain time
+     *                        (cross-project access blocked there).
      */
     record UserChatInput(
             Instant at,
             @Nullable String idempotencyKey,
             String fromUser,
-            String content) implements SteerMessage {
+            String content,
+            List<AttachmentRef> attachments) implements SteerMessage {
+
+        /**
+         * Compact-form null-safety: {@code attachments == null} is
+         * coerced to the empty list so consumers never need to
+         * defend. The list is also defensively copied so the record
+         * stays immutable in spirit even if the caller hands in a
+         * mutable list.
+         */
+        public UserChatInput {
+            attachments = attachments == null ? List.of() : List.copyOf(attachments);
+        }
+
+        /**
+         * Backward-compatible constructor for the many call sites that
+         * predate multimodal attachments. Equivalent to passing
+         * {@link List#of()} for {@code attachments}.
+         */
+        public UserChatInput(
+                Instant at,
+                @Nullable String idempotencyKey,
+                String fromUser,
+                String content) {
+            this(at, idempotencyKey, fromUser, content, List.of());
+        }
     }
 
     /**

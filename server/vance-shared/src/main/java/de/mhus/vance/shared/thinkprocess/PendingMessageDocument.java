@@ -6,6 +6,7 @@ import de.mhus.vance.api.thinkprocess.PeerEventType;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -50,6 +51,15 @@ public class PendingMessageDocument {
     /** Free-form text payload — used by {@code USER_CHAT_INPUT} and as
      *  the human-readable summary of {@code PROCESS_EVENT}. */
     private @Nullable String content;
+
+    /**
+     * Document ids that should ride with this user chat input as
+     * multimodal attachments (image / PDF / text). Only the ids are
+     * persisted; the brain re-resolves and re-validates against the
+     * project scope every time the engine drains the queue. {@code null}
+     * or empty when the turn is text-only.
+     */
+    private @Nullable List<String> attachmentDocumentIds;
 
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /** {@code ThinkProcessDocument.id} of the emitter. */

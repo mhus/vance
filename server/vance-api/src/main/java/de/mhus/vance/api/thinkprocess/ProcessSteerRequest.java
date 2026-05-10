@@ -2,7 +2,9 @@ package de.mhus.vance.api.thinkprocess;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.attachment.AttachmentRef;
 import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -43,4 +45,19 @@ public class ProcessSteerRequest {
      * hints. {@code null} when no IDE is attached.
      */
     private @Nullable IdeContext ideContext;
+
+    /**
+     * Optional multimodal attachments riding with the user-text turn —
+     * each item points at a {@code DocumentDocument} the user uploaded
+     * into the project (image, PDF, …). The brain resolves the refs
+     * against the caller's project scope (tenant + project derived from
+     * the WS session, never trusted from the client) and feeds the
+     * binary content to the LLM as image / pdf / text content blocks.
+     *
+     * <p>Empty / {@code null} means "no attachments — text-only turn".
+     * Attachments only ride on the turn that submitted them; future
+     * turns of the same conversation see the chat history without the
+     * attachments. The user must re-attach to refer back to them.
+     */
+    private @Nullable List<AttachmentRef> attachments;
 }

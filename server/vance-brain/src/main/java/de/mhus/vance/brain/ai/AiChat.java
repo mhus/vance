@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.attachment.ResolvedAttachment;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -38,7 +40,23 @@ public interface AiChat {
      *
      * @throws AiChatException on any provider or transport failure
      */
-    String ask(String question);
+    default String ask(String question) {
+        return ask(question, List.of());
+    }
+
+    /**
+     * Synchronous one-shot with multimodal attachments. The attachments
+     * are inserted as content blocks (image / PDF / text) on the user
+     * message, ahead of the question text — they're treated as static
+     * context, the question is the dynamic instruction.
+     *
+     * <p>Providers / models without native PDF support apply a PDFBox
+     * text-extract fallback transparently; image-without-vision-capability
+     * models reject the call up-front rather than wasting a round trip.
+     *
+     * @throws AiChatException on any provider or transport failure
+     */
+    String ask(String question, List<ResolvedAttachment> attachments);
 
     /**
      * Streaming one-shot: partial tokens are handed to {@code tokenConsumer}
@@ -47,7 +65,19 @@ public interface AiChat {
      *
      * @throws AiChatException on any provider or transport failure
      */
-    String askStream(String question, Consumer<String> tokenConsumer);
+    default String askStream(String question, Consumer<String> tokenConsumer) {
+        return askStream(question, tokenConsumer, List.of());
+    }
+
+    /**
+     * Streaming variant of {@link #ask(String, List)}.
+     *
+     * @throws AiChatException on any provider or transport failure
+     */
+    String askStream(
+            String question,
+            Consumer<String> tokenConsumer,
+            List<ResolvedAttachment> attachments);
 
     /**
      * The underlying langchain4j sync model. Use when the caller needs

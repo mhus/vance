@@ -5,6 +5,7 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
+import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
@@ -35,9 +36,12 @@ public class LmStudioProvider implements AiModelProvider {
     public static final String NAME = ProviderType.LM_STUDIO.wireName();
 
     private final String baseUrl;
+    private final ModelCatalog modelCatalog;
 
     public LmStudioProvider(
+            ModelCatalog modelCatalog,
             @Value("${vance.ai.lmstudio.base-url:http://localhost:1234/v1}") String baseUrl) {
+        this.modelCatalog = modelCatalog;
         this.baseUrl = baseUrl;
     }
 
@@ -88,7 +92,12 @@ public class LmStudioProvider implements AiModelProvider {
                     config.modelName(), baseUrl, options.getMaxTokens(),
                     options.getTemperature(), reasoningEffort);
             return new StandardAiChat(
-                    config.fullName(), ProviderType.LM_STUDIO, sync, streaming, options);
+                    config.fullName(),
+                    ProviderType.LM_STUDIO,
+                    modelCatalog.lookupOrDefault(NAME, config.modelName()).capabilities(),
+                    sync,
+                    streaming,
+                    options);
         } catch (RuntimeException e) {
             throw new AiChatException(
                     "Failed to build LM Studio chat for " + config.fullName(), e);

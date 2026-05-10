@@ -5,6 +5,7 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
+import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
@@ -34,9 +35,12 @@ public class OllamaCloudProvider implements AiModelProvider {
     public static final String NAME = ProviderType.OLLAMA_CLOUD.wireName();
 
     private final String baseUrl;
+    private final ModelCatalog modelCatalog;
 
     public OllamaCloudProvider(
+            ModelCatalog modelCatalog,
             @Value("${vance.ai.ollama-cloud.base-url:https://ollama.com}") String baseUrl) {
+        this.modelCatalog = modelCatalog;
         this.baseUrl = baseUrl;
     }
 
@@ -84,7 +88,12 @@ public class OllamaCloudProvider implements AiModelProvider {
                     config.modelName(), baseUrl, options.getMaxTokens(),
                     options.getTemperature(), think);
             return new StandardAiChat(
-                    config.fullName(), ProviderType.OLLAMA_CLOUD, sync, streaming, options);
+                    config.fullName(),
+                    ProviderType.OLLAMA_CLOUD,
+                    modelCatalog.lookupOrDefault(NAME, config.modelName()).capabilities(),
+                    sync,
+                    streaming,
+                    options);
         } catch (RuntimeException e) {
             throw new AiChatException(
                     "Failed to build Ollama Cloud chat for " + config.fullName(), e);

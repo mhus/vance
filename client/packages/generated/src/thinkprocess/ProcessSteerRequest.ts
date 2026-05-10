@@ -4,10 +4,12 @@
 */
 
 import { IdeContext } from './IdeContext';
+import { AttachmentRef } from '../attachment/AttachmentRef';
 
 export interface ProcessSteerRequest {
   processName: string;
   content: string;
   idempotencyKey?: string;
   ideContext?: IdeContext;
+  attachments?: AttachmentRef[];
 }

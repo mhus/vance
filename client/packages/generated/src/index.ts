@@ -6,6 +6,8 @@ export * from './access/AccessTokenResponse';
 export * from './access/RefreshTokenResponse';
 export * from './access/WebUiSessionData';
 
+export * from './attachment/AttachmentRef';
+
 export * from './profile/ProfileDto';
 export * from './profile/ProfileSettingWriteRequest';
 export * from './profile/ProfileUpdateRequest';

@@ -1,7 +1,7 @@
 # Token-window metadata for known AI models. Used by ModelCatalog to
 # decide when to compact a chat (default trigger: 90% of contextWindow,
-# see vance.ford.compactionTriggerRatio) and to size the request's
-# max-output-tokens.
+# see vance.ford.compactionTriggerRatio), to size the request's
+# max-output-tokens, and to gate multimodal attachments.
 #
 # Format:
 #   <provider>:
@@ -10,6 +10,9 @@
 #       defaultMaxOutputTokens: <int>  # cap on a single response
 #       size: SMALL|LARGE              # capability class — drives
 #                                      # prompt-variant selection in recipes
+#       capabilities: [vision, pdf]    # optional input modalities; absent
+#                                      # / unknown models are treated as
+#                                      # text-only (pessimistic default)
 #
 # Adjust freely; this file is committed (no secrets here).
 
@@ -18,25 +21,32 @@ anthropic:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
     size: LARGE
+    capabilities: [vision, pdf]
   claude-opus-4:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
     size: LARGE
+    capabilities: [vision, pdf]
   claude-haiku-4-5:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
     size: SMALL
+    capabilities: [vision, pdf]
 
 gemini:
   gemini-2.5-flash:
     contextWindowTokens: 1048576
     defaultMaxOutputTokens: 8192
     size: SMALL
+    capabilities: [vision, pdf]
   gemini-2.5-pro:
     contextWindowTokens: 2097152
     defaultMaxOutputTokens: 8192
     size: LARGE
+    capabilities: [vision, pdf]
   gemini-2.0-flash:
     contextWindowTokens: 1048576
     defaultMaxOutputTokens: 8192
     size: SMALL
+    # 2.0-flash predates Gemini's PDF document mode; vision works.
+    capabilities: [vision]

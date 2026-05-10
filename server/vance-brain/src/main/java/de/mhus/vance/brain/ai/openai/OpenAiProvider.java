@@ -7,6 +7,7 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
+import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
@@ -68,10 +69,13 @@ public class OpenAiProvider implements AiModelProvider {
 
     private final String baseUrl;
     private final boolean cacheEnabled;
+    private final ModelCatalog modelCatalog;
 
     public OpenAiProvider(
+            ModelCatalog modelCatalog,
             @Value("${vance.ai.openai.base-url:https://api.openai.com/v1}") String baseUrl,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
+        this.modelCatalog = modelCatalog;
         this.baseUrl = baseUrl;
         this.cacheEnabled = cacheEnabled;
         if (!cacheEnabled) {
@@ -132,7 +136,12 @@ public class OpenAiProvider implements AiModelProvider {
                     config.modelName(), baseUrl, options.getMaxTokens(),
                     options.getTemperature(), cacheParams.keySet(), reasoningEffort);
             return new StandardAiChat(
-                    config.fullName(), ProviderType.OPENAI, sync, streaming, options);
+                    config.fullName(),
+                    ProviderType.OPENAI,
+                    modelCatalog.lookupOrDefault(NAME, config.modelName()).capabilities(),
+                    sync,
+                    streaming,
+                    options);
         } catch (RuntimeException e) {
             throw new AiChatException(
                     "Failed to build OpenAI chat for " + config.fullName(), e);

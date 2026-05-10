@@ -9,11 +9,16 @@ import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.Content;
+import dev.langchain4j.data.message.ImageContent;
+import dev.langchain4j.data.message.PdfFileContent;
 import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -198,6 +203,117 @@ class AnthropicRequestMapperTest {
         assertThat(budgetMinimal).isGreaterThanOrEqualTo(1024);
     }
 
+    @Test
+    void userMessage_textOnly_emitsPlainStringContent() {
+        ChatRequest request = buildRequest(List.of(
+                SystemMessage.from("rule"),
+                UserMessage.from("plain question")));
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(
+                request, AiChatOptions.defaults());
+        List<Map<String, Object>> messages = userMessages(body);
+
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0).get("content")).isEqualTo("plain question");
+    }
+
+    @Test
+    void userMessage_singleTextContentBlock_unwrapsToString() {
+        // UserMessage built with one TextContent should render as a
+        // bare string for cache-key stability with the legacy path.
+        ChatRequest request = buildRequest(List.of(
+                UserMessage.from(List.of(TextContent.from("just text")))));
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(
+                request, AiChatOptions.defaults());
+        List<Map<String, Object>> messages = userMessages(body);
+
+        assertThat(messages.get(0).get("content")).isEqualTo("just text");
+    }
+
+    @Test
+    void userMessage_imageAndText_emitsImageBlockBeforeText() {
+        byte[] png = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47};
+        String base64 = Base64.getEncoder().encodeToString(png);
+        UserMessage user = UserMessage.from(List.of(
+                ImageContent.from(base64, "image/png"),
+                TextContent.from("describe this")));
+        ChatRequest request = buildRequest(List.of(user));
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(
+                request, AiChatOptions.defaults());
+        List<Map<String, Object>> blocks = userContentBlocks(body, 0);
+
+        assertThat(blocks).hasSize(2);
+        assertThat(blocks.get(0).get("type")).isEqualTo("image");
+        assertThat(blocks.get(1).get("type")).isEqualTo("text");
+        assertThat(blocks.get(1).get("text")).isEqualTo("describe this");
+        Map<?, ?> source = (Map<?, ?>) blocks.get(0).get("source");
+        assertThat(source.get("type")).isEqualTo("base64");
+        assertThat(source.get("media_type")).isEqualTo("image/png");
+        assertThat(source.get("data")).isEqualTo(base64);
+    }
+
+    @Test
+    void userMessage_pdfBlock_emitsDocumentType() {
+        byte[] pdf = new byte[]{0x25, 0x50, 0x44, 0x46};
+        String base64 = Base64.getEncoder().encodeToString(pdf);
+        UserMessage user = UserMessage.from(List.of(
+                PdfFileContent.from(base64, "application/pdf"),
+                TextContent.from("summarise")));
+        ChatRequest request = buildRequest(List.of(user));
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(
+                request, AiChatOptions.defaults());
+        List<Map<String, Object>> blocks = userContentBlocks(body, 0);
+
+        assertThat(blocks.get(0).get("type")).isEqualTo("document");
+        Map<?, ?> source = (Map<?, ?>) blocks.get(0).get("source");
+        assertThat(source.get("media_type")).isEqualTo("application/pdf");
+    }
+
+    @Test
+    void userMessage_attachmentCacheMarkerOnLastAttachment_whenCacheBoundaryActive() {
+        byte[] dummy = new byte[]{1, 2, 3};
+        String base64 = Base64.getEncoder().encodeToString(dummy);
+        UserMessage user = UserMessage.from(List.of(
+                ImageContent.from(base64, "image/png"),
+                PdfFileContent.from(base64, "application/pdf"),
+                TextContent.from("describe both")));
+        ChatRequest request = buildRequest(List.of(user));
+        AiChatOptions options = AiChatOptions.builder()
+                .cacheBoundary(CacheBoundary.SYSTEM_AND_TOOLS)
+                .build();
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        List<Map<String, Object>> blocks = userContentBlocks(body, 0);
+
+        // Image (idx 0) — no marker
+        assertThat(blocks.get(0)).doesNotContainKey("cache_control");
+        // PDF (idx 1, last attachment) — marker
+        assertThat(blocks.get(1)).containsKey("cache_control");
+        // Text (idx 2) — no marker
+        assertThat(blocks.get(2)).doesNotContainKey("cache_control");
+    }
+
+    @Test
+    void userMessage_noAttachmentCacheMarker_whenBoundaryNone() {
+        byte[] dummy = new byte[]{1};
+        String base64 = Base64.getEncoder().encodeToString(dummy);
+        UserMessage user = UserMessage.from(List.of(
+                PdfFileContent.from(base64, "application/pdf"),
+                TextContent.from("summarise")));
+        ChatRequest request = buildRequest(List.of(user));
+        AiChatOptions options = AiChatOptions.builder()
+                .cacheBoundary(CacheBoundary.NONE)
+                .build();
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+        List<Map<String, Object>> blocks = userContentBlocks(body, 0);
+
+        assertThat(blocks.get(0)).doesNotContainKey("cache_control");
+    }
+
     // ──────────────────── helpers ────────────────────
 
     private static ChatRequest buildRequest(List<ChatMessage> messages) {
@@ -238,5 +354,22 @@ class AnthropicRequestMapperTest {
             return List.of();
         }
         return (List<Map<String, Object>>) raw;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> userMessages(Map<String, Object> body) {
+        return (List<Map<String, Object>>) body.get("messages");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> userContentBlocks(
+            Map<String, Object> body, int messageIndex) {
+        Map<String, Object> message = userMessages(body).get(messageIndex);
+        Object content = message.get("content");
+        if (content instanceof List<?> list) {
+            return (List<Map<String, Object>>) list;
+        }
+        throw new IllegalStateException(
+                "user message content is not a block list: " + content);
     }
 }

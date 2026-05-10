@@ -1,22 +1,32 @@
 package de.mhus.vance.brain.ai;
 
+import java.util.Set;
+
 /**
- * Static facts about a provider/model pair — context window and a
- * sensible per-call output cap. Sourced from
+ * Static facts about a provider/model pair — context window, a
+ * sensible per-call output cap, and the set of optional input
+ * capabilities (vision, PDF, …). Sourced from
  * {@code vance-brain/src/main/resources/ai-models.yaml} and looked up
  * by {@link ModelCatalog}.
  *
- * <p>Used (so far) to drive memory compaction: when the replayed chat
- * history's token estimate exceeds a fraction of {@link
- * #contextWindowTokens()}, the engine compacts older messages into a
- * summary before sending the next request.
+ * <p>Used to drive memory compaction (token-budget gate against
+ * {@link #contextWindowTokens()}) and the attachment dispatch in
+ * {@code StandardAiChat} (vision/PDF gate against
+ * {@link #capabilities()}).
  */
 public record ModelInfo(
         String provider,
         String modelName,
         int contextWindowTokens,
         int defaultMaxOutputTokens,
-        ModelSize size) {
+        ModelSize size,
+        Set<ModelCapability> capabilities) {
+
+    public ModelInfo {
+        // Defensive copy + immutability so callers can hand the record
+        // around without worrying about Set mutation.
+        capabilities = capabilities == null ? Set.of() : Set.copyOf(capabilities);
+    }
 
     /** Tokens at which compaction should fire, given a trigger ratio. */
     public int compactionTriggerTokens(double ratio) {
@@ -25,5 +35,9 @@ public record ModelInfo(
                     "compaction ratio must be in (0,1]: " + ratio);
         }
         return (int) Math.floor(contextWindowTokens * ratio);
+    }
+
+    public boolean supports(ModelCapability capability) {
+        return capabilities.contains(capability);
     }
 }

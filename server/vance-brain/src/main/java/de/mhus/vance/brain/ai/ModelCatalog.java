@@ -2,9 +2,12 @@ package de.mhus.vance.brain.ai;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
@@ -31,7 +34,7 @@ public class ModelCatalog {
 
     private static final String RESOURCE = "ai-models.yaml";
     private static final ModelInfo FALLBACK_TEMPLATE = new ModelInfo(
-            "?", "?", 8192, 4096, ModelSize.LARGE);
+            "?", "?", 8192, 4096, ModelSize.LARGE, Set.of());
 
     private final Map<String, ModelInfo> byKey = new ConcurrentHashMap<>();
 
@@ -50,14 +53,16 @@ public class ModelCatalog {
      */
     public ModelInfo lookupOrDefault(String provider, String modelName) {
         return lookup(provider, modelName).orElseGet(() -> {
-            log.warn("ModelCatalog: no entry for '{}/{}' — falling back to {}-token context",
+            log.warn("ModelCatalog: no entry for '{}/{}' — falling back to {}-token context, "
+                            + "no capabilities",
                     provider, modelName, FALLBACK_TEMPLATE.contextWindowTokens());
             return new ModelInfo(
                     provider == null ? "?" : provider,
                     modelName == null ? "?" : modelName,
                     FALLBACK_TEMPLATE.contextWindowTokens(),
                     FALLBACK_TEMPLATE.defaultMaxOutputTokens(),
-                    FALLBACK_TEMPLATE.size());
+                    FALLBACK_TEMPLATE.size(),
+                    FALLBACK_TEMPLATE.capabilities());
         });
     }
 
@@ -103,7 +108,9 @@ public class ModelCatalog {
                 int out = readInt(spec.get("defaultMaxOutputTokens"),
                         FALLBACK_TEMPLATE.defaultMaxOutputTokens());
                 ModelSize size = readSize(spec.get("size"), provider, modelName);
-                ModelInfo info = new ModelInfo(provider, modelName, ctx, out, size);
+                Set<ModelCapability> caps = readCapabilities(
+                        spec.get("capabilities"), provider, modelName);
+                ModelInfo info = new ModelInfo(provider, modelName, ctx, out, size, caps);
                 byKey.put(key(provider, modelName), info);
                 loaded++;
             }
@@ -121,6 +128,27 @@ public class ModelCatalog {
             }
         }
         return fallback;
+    }
+
+    private static Set<ModelCapability> readCapabilities(
+            Object raw, String provider, String modelName) {
+        if (raw == null) {
+            return Set.of();
+        }
+        if (!(raw instanceof List<?> list)) {
+            log.warn("ModelCatalog: '{}/{}' has non-list capabilities '{}' — ignoring",
+                    provider, modelName, raw);
+            return Set.of();
+        }
+        EnumSet<ModelCapability> caps = EnumSet.noneOf(ModelCapability.class);
+        for (Object element : list) {
+            if (element == null) continue;
+            ModelCapability.fromString(element.toString()).ifPresentOrElse(
+                    caps::add,
+                    () -> log.warn("ModelCatalog: '{}/{}' has unknown capability '{}' — skipped",
+                            provider, modelName, element));
+        }
+        return caps;
     }
 
     private static ModelSize readSize(Object raw, String provider, String modelName) {

@@ -47,6 +47,11 @@
         <!-- HTML → text extraction for WebFetchTool's 'text' flag. Robust against
              broken markup, drops script/style content, decodes entities. -->
         <jsoup.version>1.18.3</jsoup.version>
+        <!-- PDFBox: PDF→text fallback for providers/models without
+             native PDF vision (OpenAI lc4j adapter, Ollama, LM Studio).
+             Streamed: AttachmentResolver passes an InputStream straight
+             into PDFBox's Loader, no full-file byte[] held twice. -->
+        <pdfbox.version>3.0.4</pdfbox.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
@@ -145,6 +150,11 @@
                 <groupId>org.jsoup</groupId>
                 <artifactId>jsoup</artifactId>
                 <version>${jsoup.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>pdfbox</artifactId>
+                <version>${pdfbox.version}</version>
             </dependency>
             <!--
                 Direct Anthropic SDK — used by AnthropicDirectChatModel for

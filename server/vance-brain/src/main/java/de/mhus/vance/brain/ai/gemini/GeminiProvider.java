@@ -5,6 +5,7 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
+import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
@@ -47,6 +48,12 @@ public class GeminiProvider implements AiModelProvider {
 
     public static final String NAME = ProviderType.GEMINI.wireName();
 
+    private final ModelCatalog modelCatalog;
+
+    public GeminiProvider(ModelCatalog modelCatalog) {
+        this.modelCatalog = modelCatalog;
+    }
+
     @Override
     public ProviderType getType() {
         return ProviderType.GEMINI;
@@ -88,7 +95,12 @@ public class GeminiProvider implements AiModelProvider {
                     config.modelName(), options.getMaxTokens(),
                     options.getTemperature(), options.getThinkingLevel());
             return new StandardAiChat(
-                    config.fullName(), ProviderType.GEMINI, sync, streaming, options);
+                    config.fullName(),
+                    ProviderType.GEMINI,
+                    modelCatalog.lookupOrDefault(NAME, config.modelName()).capabilities(),
+                    sync,
+                    streaming,
+                    options);
         } catch (RuntimeException e) {
             throw new AiChatException(
                     "Failed to build Gemini chat for " + config.fullName(), e);

@@ -12,7 +12,11 @@ import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.Content;
+import dev.langchain4j.data.message.ImageContent;
+import dev.langchain4j.data.message.PdfFileContent;
 import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -122,7 +126,7 @@ final class AnthropicRequestMapper {
         }
 
         // ─── Messages ──────────────────────────────────────────────
-        body.put("messages", buildMessages(request));
+        body.put("messages", buildMessages(request, boundary, ttl));
         return body;
     }
 
@@ -278,14 +282,15 @@ final class AnthropicRequestMapper {
         return jsonSchema(spec.parameters());
     }
 
-    private static List<Map<String, Object>> buildMessages(ChatRequest request) {
+    private static List<Map<String, Object>> buildMessages(
+            ChatRequest request, CacheBoundary boundary, @Nullable String ttl) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (ChatMessage m : safeMessages(request)) {
             if (m instanceof SystemMessage) {
                 continue; // already lifted to top-level "system"
             }
             if (m instanceof UserMessage u) {
-                out.add(userMessage(u));
+                out.add(userMessage(u, boundary, ttl));
             } else if (m instanceof AiMessage a) {
                 out.add(aiMessage(a));
             } else if (m instanceof ToolExecutionResultMessage t) {
@@ -298,19 +303,112 @@ final class AnthropicRequestMapper {
         return out;
     }
 
-    private static Map<String, Object> userMessage(UserMessage u) {
-        String text;
-        try {
-            text = u.singleText();
-        } catch (RuntimeException e) {
-            // Multimodal — for now we render a placeholder. Image /
-            // file blocks land here once the engines start using them.
-            text = "(unsupported multimodal content)";
-        }
+    private static Map<String, Object> userMessage(
+            UserMessage u, CacheBoundary boundary, @Nullable String ttl) {
         Map<String, Object> msg = new LinkedHashMap<>();
         msg.put("role", "user");
-        msg.put("content", text == null ? "" : text);
+        List<Content> contents = u.contents();
+        if (contents == null || contents.isEmpty()) {
+            // Pure-text legacy path (UserMessage.from(String)).
+            String text = safeSingleText(u);
+            msg.put("content", text == null ? "" : text);
+            return msg;
+        }
+        if (contents.size() == 1 && contents.get(0) instanceof TextContent textOnly) {
+            // Single text block — render as plain string for cache-key
+            // stability with non-multimodal turns.
+            msg.put("content", textOnly.text() == null ? "" : textOnly.text());
+            return msg;
+        }
+        // Multimodal: emit a content-block array. Cache marker lives
+        // on the LAST attachment block (image/document) when caching is
+        // active — symmetric to system/tools. The user's static
+        // attachments are exactly the kind of prefix worth caching.
+        msg.put("content", buildUserContentBlocks(contents, boundary, ttl));
         return msg;
+    }
+
+    private static List<Map<String, Object>> buildUserContentBlocks(
+            List<Content> contents, CacheBoundary boundary, @Nullable String ttl) {
+        List<Map<String, Object>> blocks = new ArrayList<>(contents.size());
+        int lastAttachmentIdx = -1;
+        for (int i = 0; i < contents.size(); i++) {
+            Content c = contents.get(i);
+            Map<String, Object> block = userContentBlock(c);
+            if (block == null) {
+                continue;
+            }
+            if (c instanceof ImageContent || c instanceof PdfFileContent) {
+                lastAttachmentIdx = blocks.size();
+            }
+            blocks.add(block);
+        }
+        if (boundary != CacheBoundary.NONE && lastAttachmentIdx >= 0) {
+            blocks.get(lastAttachmentIdx).put("cache_control", cacheControl(ttl));
+        }
+        return blocks;
+    }
+
+    private static @Nullable Map<String, Object> userContentBlock(Content c) {
+        if (c instanceof TextContent t) {
+            Map<String, Object> block = new LinkedHashMap<>();
+            block.put("type", "text");
+            block.put("text", t.text() == null ? "" : t.text());
+            return block;
+        }
+        if (c instanceof ImageContent img) {
+            return imageBlock(img);
+        }
+        if (c instanceof PdfFileContent pdf) {
+            return pdfBlock(pdf);
+        }
+        // Unknown content kind (audio/video) — not supported by the
+        // current adapter. Skip silently rather than crashing the call;
+        // the engine will see a partial-but-valid request.
+        return null;
+    }
+
+    private static Map<String, Object> imageBlock(ImageContent img) {
+        Map<String, Object> source = new LinkedHashMap<>();
+        if (img.image().url() != null) {
+            source.put("type", "url");
+            source.put("url", img.image().url().toString());
+        } else {
+            source.put("type", "base64");
+            source.put("media_type", img.image().mimeType());
+            source.put("data", img.image().base64Data());
+        }
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("type", "image");
+        block.put("source", source);
+        return block;
+    }
+
+    private static Map<String, Object> pdfBlock(PdfFileContent pdf) {
+        Map<String, Object> source = new LinkedHashMap<>();
+        if (pdf.pdfFile().url() != null) {
+            source.put("type", "url");
+            source.put("url", pdf.pdfFile().url().toString());
+        } else {
+            source.put("type", "base64");
+            source.put("media_type",
+                    pdf.pdfFile().mimeType() == null
+                            ? "application/pdf"
+                            : pdf.pdfFile().mimeType());
+            source.put("data", pdf.pdfFile().base64Data());
+        }
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("type", "document");
+        block.put("source", source);
+        return block;
+    }
+
+    private static @Nullable String safeSingleText(UserMessage u) {
+        try {
+            return u.singleText();
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private static Map<String, Object> aiMessage(AiMessage a) {

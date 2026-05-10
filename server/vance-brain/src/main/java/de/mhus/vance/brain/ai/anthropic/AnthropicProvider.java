@@ -8,6 +8,7 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.CacheBoundary;
+import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import dev.langchain4j.model.chat.ChatModel;
@@ -44,9 +45,12 @@ public class AnthropicProvider implements AiModelProvider {
     private static final int DEFAULT_MAX_TOKENS = 4096;
 
     private final boolean cacheEnabled;
+    private final ModelCatalog modelCatalog;
 
     public AnthropicProvider(
+            ModelCatalog modelCatalog,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
+        this.modelCatalog = modelCatalog;
         this.cacheEnabled = cacheEnabled;
         if (!cacheEnabled) {
             log.info("Anthropic prompt caching DISABLED via vance.ai.cache.enabled=false");
@@ -83,7 +87,12 @@ public class AnthropicProvider implements AiModelProvider {
                     config.modelName(), maxTokens,
                     effective.getCacheBoundary(), effective.getCacheTtl());
             return new StandardAiChat(
-                    config.fullName(), ProviderType.ANTHROPIC, sync, streaming, effective);
+                    config.fullName(),
+                    ProviderType.ANTHROPIC,
+                    modelCatalog.lookupOrDefault(NAME, config.modelName()).capabilities(),
+                    sync,
+                    streaming,
+                    effective);
         } catch (RuntimeException e) {
             throw new AiChatException(
                     "Failed to build Anthropic chat for " + config.fullName(), e);

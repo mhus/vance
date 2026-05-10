@@ -114,6 +114,14 @@
             <artifactId>jsoup</artifactId>
         </dependency>
 
+        <!-- PDF → text fallback for providers without native PDF vision
+             (OpenAI lc4j adapter has no PdfFileContent support, Ollama
+             and LM Studio can't ingest PDFs at all). -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

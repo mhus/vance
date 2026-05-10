@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.thinkengine;
 
+import de.mhus.vance.api.attachment.AttachmentRef;
 import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.api.inbox.InboxItemType;
@@ -9,11 +10,13 @@ import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Bidirectional translation between the engine-side sealed
@@ -48,6 +51,7 @@ public final class SteerMessageCodec {
                     .type(PendingMessageType.USER_CHAT_INPUT)
                     .fromUser(u.fromUser())
                     .content(u.content())
+                    .attachmentDocumentIds(toDocumentIds(u.attachments()))
                     .build();
 
             case SteerMessage.ProcessEvent e -> b
@@ -104,7 +108,8 @@ public final class SteerMessageCodec {
             case USER_CHAT_INPUT -> new SteerMessage.UserChatInput(
                     at, idem,
                     nullToEmpty(d.getFromUser()),
-                    nullToEmpty(d.getContent()));
+                    nullToEmpty(d.getContent()),
+                    fromDocumentIds(d.getAttachmentDocumentIds()));
 
             case PROCESS_EVENT -> new SteerMessage.ProcessEvent(
                     at, idem,
@@ -187,5 +192,29 @@ public final class SteerMessageCodec {
 
     private static String nullToEmpty(String s) {
         return s == null ? "" : s;
+    }
+
+    private static @Nullable List<String> toDocumentIds(List<AttachmentRef> refs) {
+        if (refs == null || refs.isEmpty()) {
+            return null;
+        }
+        List<String> ids = new ArrayList<>(refs.size());
+        for (AttachmentRef ref : refs) {
+            ids.add(ref.documentId());
+        }
+        return ids;
+    }
+
+    private static List<AttachmentRef> fromDocumentIds(@Nullable List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<AttachmentRef> refs = new ArrayList<>(ids.size());
+        for (String id : ids) {
+            if (id != null && !id.isBlank()) {
+                refs.add(new AttachmentRef(id));
+            }
+        }
+        return refs;
     }
 }

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.brain.ai.attachment.ResolvedAttachment;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import java.time.Duration;
@@ -76,14 +77,17 @@ class ChainedAiChat implements AiChat {
     }
 
     @Override
-    public String ask(String question) {
-        return entries.get(0).ask(question);
+    public String ask(String question, List<ResolvedAttachment> attachments) {
+        return entries.get(0).ask(question, attachments);
     }
 
     @Override
-    public String askStream(String question, Consumer<String> tokenConsumer) {
+    public String askStream(
+            String question,
+            Consumer<String> tokenConsumer,
+            List<ResolvedAttachment> attachments) {
         // Convenience wrapper — engines use streamingChatModel() directly.
         // Single-entry primary delegation keeps this simple.
-        return entries.get(0).askStream(question, tokenConsumer);
+        return entries.get(0).askStream(question, tokenConsumer, attachments);
     }
 }

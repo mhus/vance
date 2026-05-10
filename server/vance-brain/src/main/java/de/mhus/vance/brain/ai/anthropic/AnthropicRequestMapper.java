@@ -4,6 +4,7 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
 import de.mhus.vance.brain.ai.SystemBlockKind;
+import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
 import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.MessageCreateParams;
@@ -114,9 +115,44 @@ final class AnthropicRequestMapper {
             body.put("tools", tools);
         }
 
+        // ─── Thinking ──────────────────────────────────────────────
+        @Nullable Map<String, Object> thinking = buildThinking(options.getThinkingLevel());
+        if (thinking != null) {
+            body.put("thinking", thinking);
+        }
+
         // ─── Messages ──────────────────────────────────────────────
         body.put("messages", buildMessages(request));
         return body;
+    }
+
+    /**
+     * Build Anthropic's {@code thinking} block — {@code null} when
+     * {@link ThinkingLevel#OFF} (no extended-thinking, fastest path).
+     * Token budgets are tuned to match the analogous tiers on other
+     * providers ({@code reasoning_effort} on OpenAI,
+     * {@code thinkingLevel} on Gemini): MINIMAL=1024 (Anthropic's
+     * documented minimum), LOW=2000, MEDIUM=8000, HIGH=16000.
+     *
+     * <p>Anthropic uses {@code budget_tokens}; max_tokens on the request
+     * must be ≥ budget_tokens, but that's the engine's responsibility —
+     * we don't second-guess it here.
+     */
+    static @Nullable Map<String, Object> buildThinking(ThinkingLevel level) {
+        if (level == null || level == ThinkingLevel.OFF) {
+            return null;
+        }
+        int budget = switch (level) {
+            case MINIMAL -> 1024;
+            case LOW -> 2000;
+            case MEDIUM -> 8000;
+            case HIGH -> 16000;
+            case OFF -> throw new IllegalStateException("OFF handled above");
+        };
+        Map<String, Object> block = new LinkedHashMap<>();
+        block.put("type", "enabled");
+        block.put("budget_tokens", budget);
+        return block;
     }
 
     private static @Nullable Double readTemperature(

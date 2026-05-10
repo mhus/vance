@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.SystemBlockKind;
+import de.mhus.vance.brain.ai.ThinkingLevel;
 import de.mhus.vance.brain.ai.VanceSystemMessage;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.ChatMessage;
@@ -146,6 +147,55 @@ class AnthropicRequestMapperTest {
         assertThat(system.get(1)).doesNotContainKey("cache_control");
         // Marker on the last block — the "all STATIC" specialcase.
         assertThat(system.get(2)).containsKey("cache_control");
+    }
+
+    @Test
+    void thinking_off_omitsBlock() {
+        ChatRequest request = buildRequest(List.of(
+                SystemMessage.from("rule"),
+                UserMessage.from("hi")));
+        AiChatOptions options = AiChatOptions.builder()
+                .thinkingLevel(ThinkingLevel.OFF)
+                .build();
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+
+        assertThat(body).doesNotContainKey("thinking");
+    }
+
+    @Test
+    void thinking_high_emitsEnabledBlockWith16kBudget() {
+        ChatRequest request = buildRequest(List.of(
+                SystemMessage.from("rule"),
+                UserMessage.from("hi")));
+        AiChatOptions options = AiChatOptions.builder()
+                .thinkingLevel(ThinkingLevel.HIGH)
+                .build();
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+
+        assertThat(body).containsKey("thinking");
+        assertThat(body.get("thinking"))
+                .isEqualTo(Map.of("type", "enabled", "budget_tokens", 16000));
+    }
+
+    @Test
+    void thinking_budgetsRiseMonotonically() {
+        Map<String, Object> minimal = AnthropicRequestMapper.buildThinking(ThinkingLevel.MINIMAL);
+        Map<String, Object> low = AnthropicRequestMapper.buildThinking(ThinkingLevel.LOW);
+        Map<String, Object> medium = AnthropicRequestMapper.buildThinking(ThinkingLevel.MEDIUM);
+        Map<String, Object> high = AnthropicRequestMapper.buildThinking(ThinkingLevel.HIGH);
+
+        int budgetMinimal = (int) minimal.get("budget_tokens");
+        int budgetLow = (int) low.get("budget_tokens");
+        int budgetMedium = (int) medium.get("budget_tokens");
+        int budgetHigh = (int) high.get("budget_tokens");
+
+        assertThat(budgetMinimal).isLessThan(budgetLow);
+        assertThat(budgetLow).isLessThan(budgetMedium);
+        assertThat(budgetMedium).isLessThan(budgetHigh);
+        // Anthropic's documented minimum is 1024 tokens.
+        assertThat(budgetMinimal).isGreaterThanOrEqualTo(1024);
     }
 
     // ──────────────────── helpers ────────────────────

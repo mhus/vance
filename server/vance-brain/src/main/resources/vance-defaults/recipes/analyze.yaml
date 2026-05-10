@@ -6,6 +6,11 @@ params:
   model: default:analyze
   validation: true
   maxIterations: 10
+  # Multi-step analysis with cross-evidence synthesis benefits from
+  # moderate reasoning budget. Provider mapping: Anthropic 8k tokens,
+  # OpenAI reasoning_effort=medium, Gemini thinkingLevel=MEDIUM,
+  # Ollama think=true. Requires the resolved model to support it.
+  thinking: medium
   manualPaths:
     - manuals/
 promptPrefix: |

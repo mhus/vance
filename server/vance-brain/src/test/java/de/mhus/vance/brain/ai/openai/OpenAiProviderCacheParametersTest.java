@@ -6,6 +6,7 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
+import de.mhus.vance.brain.ai.ThinkingLevel;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -100,5 +101,18 @@ class OpenAiProviderCacheParametersTest {
                 new AiChatConfig("openai", "gpt-4o-mini", "sk-secret-leak"));
 
         assertThat(key).doesNotContain("sk-secret-leak");
+    }
+
+    @Test
+    void mapReasoningEffort_offReturnsNull() {
+        assertThat(OpenAiProvider.mapReasoningEffort(ThinkingLevel.OFF)).isNull();
+    }
+
+    @Test
+    void mapReasoningEffort_emitsLowerCaseWireName() {
+        assertThat(OpenAiProvider.mapReasoningEffort(ThinkingLevel.MINIMAL)).isEqualTo("minimal");
+        assertThat(OpenAiProvider.mapReasoningEffort(ThinkingLevel.LOW)).isEqualTo("low");
+        assertThat(OpenAiProvider.mapReasoningEffort(ThinkingLevel.MEDIUM)).isEqualTo("medium");
+        assertThat(OpenAiProvider.mapReasoningEffort(ThinkingLevel.HIGH)).isEqualTo("high");
     }
 }

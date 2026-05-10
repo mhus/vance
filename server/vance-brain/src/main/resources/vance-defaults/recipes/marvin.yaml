@@ -16,6 +16,17 @@ params:
   # mid-tree.
   fallbackModels:
     - default:fast
+  # Marvin's PLAN/AGGREGATE turns are the showcase for extended
+  # reasoning — decomposing a goal and synthesising sibling artifacts
+  # benefits substantially from a high thinking budget. Mapped per
+  # provider:
+  #   Anthropic       → thinking: {type:enabled, budget_tokens:16000}
+  #   OpenAI/LMStudio → reasoning_effort: high (o-series / gpt-5)
+  #   Gemini          → thinkingConfig.thinkingLevel: HIGH (2.5+)
+  #   Ollama(Cloud)   → think: true
+  # Requires the tenant's default:analyze alias to point at a model
+  # that supports reasoning; otherwise the API rejects the field.
+  thinking: high
   manualPaths:
     - manuals/
 promptPrefix: |

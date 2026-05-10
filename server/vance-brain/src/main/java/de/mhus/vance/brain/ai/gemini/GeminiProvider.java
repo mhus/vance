@@ -7,10 +7,13 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
+import de.mhus.vance.brain.ai.ThinkingLevel;
+import dev.langchain4j.model.googleai.GeminiThinkingConfig;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
 import dev.langchain4j.model.googleai.GoogleAiGeminiStreamingChatModel;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -56,30 +59,62 @@ public class GeminiProvider implements AiModelProvider {
                     "GeminiProvider received config for provider '" + config.provider() + "'");
         }
         Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
+        @Nullable GeminiThinkingConfig thinking = mapThinking(options.getThinkingLevel());
         try {
-            GoogleAiGeminiChatModel sync = GoogleAiGeminiChatModel.builder()
-                    .apiKey(config.apiKey())
-                    .modelName(config.modelName())
-                    .temperature(options.getTemperature())
-                    .maxOutputTokens(options.getMaxTokens())
-                    .timeout(timeout)
-                    .logRequestsAndResponses(options.getLogRequests())
-                    .build();
-            GoogleAiGeminiStreamingChatModel streaming = GoogleAiGeminiStreamingChatModel.builder()
-                    .apiKey(config.apiKey())
-                    .modelName(config.modelName())
-                    .temperature(options.getTemperature())
-                    .maxOutputTokens(options.getMaxTokens())
-                    .timeout(timeout)
-                    .logRequestsAndResponses(options.getLogRequests())
-                    .build();
-            log.debug("Built Gemini chat pair: model='{}', maxOutputTokens={}, temperature={}",
-                    config.modelName(), options.getMaxTokens(), options.getTemperature());
+            GoogleAiGeminiChatModel.GoogleAiGeminiChatModelBuilder syncBuilder =
+                    GoogleAiGeminiChatModel.builder()
+                            .apiKey(config.apiKey())
+                            .modelName(config.modelName())
+                            .temperature(options.getTemperature())
+                            .maxOutputTokens(options.getMaxTokens())
+                            .timeout(timeout)
+                            .logRequestsAndResponses(options.getLogRequests());
+            GoogleAiGeminiStreamingChatModel.GoogleAiGeminiStreamingChatModelBuilder streamBuilder =
+                    GoogleAiGeminiStreamingChatModel.builder()
+                            .apiKey(config.apiKey())
+                            .modelName(config.modelName())
+                            .temperature(options.getTemperature())
+                            .maxOutputTokens(options.getMaxTokens())
+                            .timeout(timeout)
+                            .logRequestsAndResponses(options.getLogRequests());
+            if (thinking != null) {
+                syncBuilder.thinkingConfig(thinking);
+                streamBuilder.thinkingConfig(thinking);
+            }
+            GoogleAiGeminiChatModel sync = syncBuilder.build();
+            GoogleAiGeminiStreamingChatModel streaming = streamBuilder.build();
+            log.debug("Built Gemini chat pair: model='{}', maxOutputTokens={}, "
+                            + "temperature={}, thinkingLevel={}",
+                    config.modelName(), options.getMaxTokens(),
+                    options.getTemperature(), options.getThinkingLevel());
             return new StandardAiChat(
                     config.fullName(), ProviderType.GEMINI, sync, streaming, options);
         } catch (RuntimeException e) {
             throw new AiChatException(
                     "Failed to build Gemini chat for " + config.fullName(), e);
         }
+    }
+
+    /**
+     * Map a {@link ThinkingLevel} to a {@link GeminiThinkingConfig}, or
+     * {@code null} when no config should be set on the builder (the
+     * default for {@link ThinkingLevel#OFF}). Gemini 2.5+ models honor
+     * MINIMAL/LOW/MEDIUM/HIGH; older models reject the field with an
+     * API error — that's a recipe/model mismatch and should fail loudly.
+     */
+    static @Nullable GeminiThinkingConfig mapThinking(ThinkingLevel level) {
+        if (level == null || level == ThinkingLevel.OFF) {
+            return null;
+        }
+        GeminiThinkingConfig.GeminiThinkingLevel native_ = switch (level) {
+            case MINIMAL -> GeminiThinkingConfig.GeminiThinkingLevel.MINIMAL;
+            case LOW -> GeminiThinkingConfig.GeminiThinkingLevel.LOW;
+            case MEDIUM -> GeminiThinkingConfig.GeminiThinkingLevel.MEDIUM;
+            case HIGH -> GeminiThinkingConfig.GeminiThinkingLevel.HIGH;
+            case OFF -> throw new IllegalStateException("OFF handled above");
+        };
+        return GeminiThinkingConfig.builder()
+                .thinkingLevel(native_)
+                .build();
     }
 }

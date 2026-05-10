@@ -79,6 +79,19 @@ public class AiChatOptions {
     @Builder.Default
     private CacheTtl cacheTtl = CacheTtl.DEFAULT_5MIN;
 
+    /**
+     * Reasoning / "extended thinking" intensity. {@link ThinkingLevel#OFF}
+     * by default — reasoning models cost more and respond slower, so
+     * callers opt in explicitly. Recipe param {@code params.thinking}
+     * (e.g. {@code high}) is parsed by
+     * {@link EngineChatFactory} and lands here. Each provider maps the
+     * level to its native parameter; providers whose models don't
+     * support reasoning surface a clean error from the API rather than
+     * silently ignoring the field.
+     */
+    @Builder.Default
+    private ThinkingLevel thinkingLevel = ThinkingLevel.OFF;
+
     public static AiChatOptions defaults() {
         return AiChatOptions.builder().build();
     }

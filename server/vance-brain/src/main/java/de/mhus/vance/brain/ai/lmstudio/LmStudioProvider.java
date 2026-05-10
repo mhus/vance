@@ -7,7 +7,10 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
+import de.mhus.vance.brain.ai.ThinkingLevel;
+import de.mhus.vance.brain.ai.openai.OpenAiProvider;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +54,7 @@ public class LmStudioProvider implements AiModelProvider {
         }
         Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
         try {
-            OpenAiChatModel sync = OpenAiChatModel.builder()
+            OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
                     .baseUrl(baseUrl)
                     .apiKey(config.apiKey())
                     .modelName(config.modelName())
@@ -59,20 +62,31 @@ public class LmStudioProvider implements AiModelProvider {
                     .maxTokens(options.getMaxTokens())
                     .timeout(timeout)
                     .logRequests(options.getLogRequests())
-                    .logResponses(options.getLogRequests())
-                    .build();
-            OpenAiStreamingChatModel streaming = OpenAiStreamingChatModel.builder()
-                    .baseUrl(baseUrl)
-                    .apiKey(config.apiKey())
-                    .modelName(config.modelName())
-                    .temperature(options.getTemperature())
-                    .maxTokens(options.getMaxTokens())
-                    .timeout(timeout)
-                    .logRequests(options.getLogRequests())
-                    .logResponses(options.getLogRequests())
-                    .build();
-            log.debug("Built LM Studio chat pair: model='{}', baseUrl='{}', maxTokens={}, temperature={}",
-                    config.modelName(), baseUrl, options.getMaxTokens(), options.getTemperature());
+                    .logResponses(options.getLogRequests());
+            OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder streamBuilder =
+                    OpenAiStreamingChatModel.builder()
+                            .baseUrl(baseUrl)
+                            .apiKey(config.apiKey())
+                            .modelName(config.modelName())
+                            .temperature(options.getTemperature())
+                            .maxTokens(options.getMaxTokens())
+                            .timeout(timeout)
+                            .logRequests(options.getLogRequests())
+                            .logResponses(options.getLogRequests());
+            String reasoningEffort = OpenAiProvider.mapReasoningEffort(options.getThinkingLevel());
+            if (reasoningEffort != null) {
+                OpenAiChatRequestParameters defaults = OpenAiChatRequestParameters.builder()
+                        .reasoningEffort(reasoningEffort)
+                        .build();
+                syncBuilder.defaultRequestParameters(defaults);
+                streamBuilder.defaultRequestParameters(defaults);
+            }
+            OpenAiChatModel sync = syncBuilder.build();
+            OpenAiStreamingChatModel streaming = streamBuilder.build();
+            log.debug("Built LM Studio chat pair: model='{}', baseUrl='{}', maxTokens={}, "
+                            + "temperature={}, reasoningEffort={}",
+                    config.modelName(), baseUrl, options.getMaxTokens(),
+                    options.getTemperature(), reasoningEffort);
             return new StandardAiChat(
                     config.fullName(), ProviderType.LM_STUDIO, sync, streaming, options);
         } catch (RuntimeException e) {

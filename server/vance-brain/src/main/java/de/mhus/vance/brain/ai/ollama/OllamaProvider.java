@@ -7,6 +7,7 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
+import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
 import java.time.Duration;
@@ -54,6 +55,7 @@ public class OllamaProvider implements AiModelProvider {
                     "OllamaProvider received config for provider '" + config.provider() + "'");
         }
         Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
+        boolean think = options.getThinkingLevel() != ThinkingLevel.OFF;
         try {
             OllamaChatModel sync = OllamaChatModel.builder()
                     .baseUrl(baseUrl)
@@ -61,6 +63,8 @@ public class OllamaProvider implements AiModelProvider {
                     .temperature(options.getTemperature())
                     .numPredict(options.getMaxTokens())
                     .timeout(timeout)
+                    .think(think)
+                    .returnThinking(think)
                     .logRequests(options.getLogRequests())
                     .logResponses(options.getLogRequests())
                     .build();
@@ -70,11 +74,15 @@ public class OllamaProvider implements AiModelProvider {
                     .temperature(options.getTemperature())
                     .numPredict(options.getMaxTokens())
                     .timeout(timeout)
+                    .think(think)
+                    .returnThinking(think)
                     .logRequests(options.getLogRequests())
                     .logResponses(options.getLogRequests())
                     .build();
-            log.debug("Built Ollama chat pair: model='{}', baseUrl='{}', numPredict={}, temperature={}",
-                    config.modelName(), baseUrl, options.getMaxTokens(), options.getTemperature());
+            log.debug("Built Ollama chat pair: model='{}', baseUrl='{}', numPredict={}, "
+                            + "temperature={}, think={}",
+                    config.modelName(), baseUrl, options.getMaxTokens(),
+                    options.getTemperature(), think);
             return new StandardAiChat(
                     config.fullName(), ProviderType.OLLAMA, sync, streaming, options);
         } catch (RuntimeException e) {

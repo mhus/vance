@@ -130,7 +130,48 @@ public class EngineChatFactory {
             // 1h TTL only when caching is still on — pointless otherwise.
             base.setCacheTtl(CacheTtl.LONG_1H);
         }
+        // Recipe-level reasoning intensity. Caller's explicit
+        // thinkingLevel always wins; we only fill in OFF defaults.
+        if (base.getThinkingLevel() == ThinkingLevel.OFF) {
+            ThinkingLevel level = readThinkingLevel(process);
+            if (level != ThinkingLevel.OFF) {
+                base.setThinkingLevel(level);
+            }
+        }
         return base;
+    }
+
+    /**
+     * Read {@code params.thinking} from the process's engine params and
+     * resolve to a {@link ThinkingLevel}. Tolerant of casing and
+     * whitespace; unknown values fall back to {@link ThinkingLevel#OFF}
+     * with a one-time warning rather than blowing up the spawn.
+     *
+     * <p>Package-private + static so the unit test can pin the recipe-
+     * to-enum mapping without standing the bean up.
+     */
+    static ThinkingLevel readThinkingLevel(ThinkProcessDocument process) {
+        Map<String, Object> params = process.getEngineParams();
+        if (params == null) {
+            return ThinkingLevel.OFF;
+        }
+        Object v = params.get("thinking");
+        if (v == null) {
+            return ThinkingLevel.OFF;
+        }
+        if (v instanceof Boolean b) {
+            return b ? ThinkingLevel.MEDIUM : ThinkingLevel.OFF;
+        }
+        if (v instanceof String s) {
+            return ThinkingLevel.fromString(s).orElseGet(() -> {
+                log.warn("Unknown params.thinking='{}' on process '{}' — falling back to OFF",
+                        s, process.getId());
+                return ThinkingLevel.OFF;
+            });
+        }
+        log.warn("params.thinking on process '{}' has unexpected type {} — ignoring",
+                process.getId(), v.getClass().getSimpleName());
+        return ThinkingLevel.OFF;
     }
 
     private static boolean recipeDisablesCache(ThinkProcessDocument process) {

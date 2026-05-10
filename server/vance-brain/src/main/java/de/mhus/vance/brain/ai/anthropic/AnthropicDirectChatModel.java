@@ -5,6 +5,7 @@ import com.anthropic.models.messages.Message;
 import com.anthropic.models.messages.MessageCreateParams;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.CacheTtl;
+import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
@@ -56,6 +57,14 @@ public class AnthropicDirectChatModel implements ChatModel {
         if (options.getCacheTtl() == CacheTtl.LONG_1H) {
             builder.putAdditionalHeader(
                     "anthropic-beta", "extended-cache-ttl-2025-04-11");
+        }
+        if (options.getThinkingLevel() != null
+                && options.getThinkingLevel() != ThinkingLevel.OFF) {
+            // Interleaved thinking lets the model reason between tool
+            // calls inside one turn — required for tool-use sessions
+            // where extended thinking is enabled.
+            builder.putAdditionalHeader(
+                    "anthropic-beta", "interleaved-thinking-2025-05-14");
         }
         AnthropicRequestMapper.apply(builder, request, options);
         return builder.build();

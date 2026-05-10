@@ -8,6 +8,11 @@ params:
   manualPaths:
     - manuals/
   pattern: COUNCIL
+  # Synthesis turn benefits from reconciling three perspectives —
+  # set a moderate reasoning budget on Zaphod's combine-step. The
+  # heads themselves are independent Ford workers and don't inherit
+  # this; their own thinking config (if any) lives in their recipe.
+  thinking: medium
   heads:
     - name: optimist
       recipe: ford

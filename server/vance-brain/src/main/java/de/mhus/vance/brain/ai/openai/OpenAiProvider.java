@@ -9,7 +9,9 @@ import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
+import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -115,12 +117,20 @@ public class OpenAiProvider implements AiModelProvider {
                 syncBuilder.customParameters(cacheParams);
                 streamBuilder.customParameters(cacheParams);
             }
+            String reasoningEffort = mapReasoningEffort(options.getThinkingLevel());
+            if (reasoningEffort != null) {
+                OpenAiChatRequestParameters defaults = OpenAiChatRequestParameters.builder()
+                        .reasoningEffort(reasoningEffort)
+                        .build();
+                syncBuilder.defaultRequestParameters(defaults);
+                streamBuilder.defaultRequestParameters(defaults);
+            }
             OpenAiChatModel sync = syncBuilder.build();
             OpenAiStreamingChatModel streaming = streamBuilder.build();
             log.debug("Built OpenAI chat pair: model='{}', baseUrl='{}', maxTokens={}, "
-                            + "temperature={}, cacheParams={}",
+                            + "temperature={}, cacheParams={}, reasoningEffort={}",
                     config.modelName(), baseUrl, options.getMaxTokens(),
-                    options.getTemperature(), cacheParams.keySet());
+                    options.getTemperature(), cacheParams.keySet(), reasoningEffort);
             return new StandardAiChat(
                     config.fullName(), ProviderType.OPENAI, sync, streaming, options);
         } catch (RuntimeException e) {
@@ -146,6 +156,21 @@ public class OpenAiProvider implements AiModelProvider {
             params.put("prompt_cache_retention", "24h");
         }
         return params;
+    }
+
+    /**
+     * Map a {@link ThinkingLevel} to OpenAI's {@code reasoning_effort}
+     * wire value, or {@code null} when no field should be set on the
+     * request (the default for {@link ThinkingLevel#OFF}). Reasoning
+     * models like o1/o3/gpt-5 honor "minimal", "low", "medium", "high";
+     * non-reasoning models reject the field with an API error — that's
+     * a recipe/model mismatch and should fail loudly.
+     */
+    public static @org.jspecify.annotations.Nullable String mapReasoningEffort(ThinkingLevel level) {
+        if (level == null || level == ThinkingLevel.OFF) {
+            return null;
+        }
+        return level.wireName();
     }
 
     /**

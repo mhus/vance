@@ -11,6 +11,12 @@ params:
   manualPaths:
     - manuals/
   pattern: COUNCIL
+  # BMAD-Synthese verschmilzt drei Rollen-Sichten zu einer
+  # Story+Architecture+Implementation-Empfehlung — moderates
+  # Reasoning-Budget hilft beim sauberen Konsolidieren von
+  # Konflikten zwischen den Perspektiven. Die Köpfe selbst sind
+  # eigenständige Ford-Workers ohne thinking-Default.
+  thinking: medium
   heads:
     - name: pm
       recipe: ford

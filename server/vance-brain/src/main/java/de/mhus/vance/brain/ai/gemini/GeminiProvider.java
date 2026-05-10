@@ -21,6 +21,22 @@ import org.springframework.stereotype.Component;
  * parameters, wraps them in a shared {@link StandardAiChat}. Gemini field
  * names differ slightly from Anthropic's (maxOutputTokens,
  * logRequestsAndResponses) — handled here, hidden from callers.
+ *
+ * <p><b>Prompt caching.</b> Gemini 2.5+ enables <i>implicit</i> caching
+ * server-side by default — no client marker, no setup. The cache hits
+ * automatically when a request shares a prefix with a recent one
+ * (≥ 1024 tokens for Flash, 4096 for Pro). There is intentionally
+ * <b>no client-side lever</b> here: the per-call
+ * {@link de.mhus.vance.brain.ai.AiChatOptions#getCacheBoundary()} and
+ * {@link de.mhus.vance.brain.ai.AiChatOptions#getCacheTtl()} are
+ * silently ignored — Gemini doesn't expose comparable controls. The
+ * explicit {@code cachedContents.create} API exists but requires its
+ * own resource lifecycle (TTL, refresh, delete) and is impractical for
+ * Vance's short-lived sessions with dynamic system prompts.
+ *
+ * <p>The kill-switch {@code vance.ai.cache.enabled=false} is therefore
+ * unenforceable here and not consulted; Anthropic and OpenAI still
+ * honour it.
  */
 @Component
 @Slf4j

@@ -34,6 +34,23 @@ export const StorageKeys = {
   /** Username of the currently signed-in user. Mirror semantics like
    *  {@link identityTenantId}. */
   identityUsername: 'vance.identity.username',
+  /** Brain HTTP base URL (e.g. {@code http://10.0.0.5:8080}) the
+   *  user pointed the app at on the last successful login. Mobile
+   *  only — Web pulls the brain origin from {@code window.location}.
+   *  Pre-fills the login screen on subsequent launches and serves as
+   *  the boot-time {@code configurePlatform} input ahead of the
+   *  {@code app.config.ts} default. */
+  identityBrainUrl: 'vance.identity.brainUrl',
+  /** Multi-account inventory — JSON-encoded {@code Account[]} listing
+   *  every {@code (brainUrl, tenantId, username)} the user has signed
+   *  in with on this device. Mobile only — Web is single-account per
+   *  browser tab. */
+  accountsList: 'vance.accounts.list',
+  /** Active-account pointer — id of the entry in
+   *  {@link accountsList} whose tokens currently mirror into the flat
+   *  identity / auth keys. Empty / missing means no active account
+   *  (post-logout, pre-first-login). */
+  accountsCurrent: 'vance.accounts.current',
   /** Currently active session id. Set when the user enters a Chat
    *  session, cleared on logout. */
   activeSessionId: 'vance.activeSessionId',

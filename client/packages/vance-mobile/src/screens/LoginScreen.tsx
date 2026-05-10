@@ -3,9 +3,15 @@ import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { clearRememberedLogin, getRememberedLogin, setRememberedLogin } from '@vance/shared';
-import { LoginError, login } from '@/auth';
+import {
+  brainBaseUrl,
+  clearRememberedLogin,
+  getRememberedLogin,
+  setRememberedLogin,
+} from '@vance/shared';
+import { LoginError, listAccounts, login } from '@/auth';
 import { VAlert, VButton, VInput } from '@/components';
+import { AccountSwitchModal } from './AccountSwitchModal';
 import type { RootStackParamList } from '@/navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Login'>;
@@ -21,8 +27,20 @@ export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
+  // Advanced settings: brain URL is hidden behind a toggle to keep the
+  // form clean for the 90% of users on a single deployment. Default is
+  // the URL bootNative.ts already configured (persisted from a previous
+  // login, otherwise the app.config.ts default).
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [brainUrl, setBrainUrl] = useState(() => brainBaseUrl());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // When the user landed here via "Add account" from the switcher,
+  // there are already accounts on the device — surface a link back to
+  // the switch modal so they can hop to an existing account without
+  // re-entering credentials. The link is hidden on a fresh install.
+  const [showSwitcher, setShowSwitcher] = useState(false);
+  const hasOtherAccounts = listAccounts().length > 0;
 
   useEffect(() => {
     const r = getRememberedLogin();
@@ -33,7 +51,11 @@ export default function LoginScreen() {
     }
   }, []);
 
-  const submitDisabled = submitting || username.trim() === '' || password === '';
+  const submitDisabled =
+    submitting
+    || username.trim() === ''
+    || password === ''
+    || brainUrl.trim() === '';
 
   async function onSubmit() {
     if (submitDisabled) return;
@@ -41,8 +63,9 @@ export default function LoginScreen() {
     setSubmitting(true);
     const t = tenant.trim();
     const u = username.trim();
+    const url = brainUrl.trim();
     try {
-      await login({ tenant: t, username: u, password });
+      await login({ tenant: t, username: u, password, brainUrl: url });
       if (remember) {
         setRememberedLogin({ tenant: t, username: u });
       } else {
@@ -124,6 +147,33 @@ export default function LoginScreen() {
                 Remember tenant and username
               </Text>
             </Pressable>
+
+            {/* Advanced settings — collapsed by default. Most users
+                are on a single deployment and don't need to think
+                about the server URL; power users (multiple tenants,
+                self-hosted brain, dev/staging swap) can expand. */}
+            <Pressable
+              onPress={() => setShowAdvanced((v) => !v)}
+              className="flex-row items-center gap-2 py-1"
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showAdvanced }}
+            >
+              <Text className="text-sm text-slate-500 dark:text-slate-400">
+                {showAdvanced ? '▾' : '▸'} Advanced settings
+              </Text>
+            </Pressable>
+            {showAdvanced ? (
+              <VInput
+                label="Brain URL"
+                value={brainUrl}
+                onChangeText={setBrainUrl}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                editable={!submitting}
+                placeholder="https://brain.example.com"
+              />
+            ) : null}
           </View>
 
           {error !== null ? <VAlert variant="error">{error}</VAlert> : null}
@@ -137,8 +187,25 @@ export default function LoginScreen() {
           >
             Sign in
           </VButton>
+
+          {hasOtherAccounts ? (
+            <Pressable
+              onPress={() => setShowSwitcher(true)}
+              className="py-2"
+              accessibilityRole="button"
+            >
+              <Text className="text-sm text-center text-blue-600 dark:text-blue-400">
+                ← Use existing account
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
+
+      <AccountSwitchModal
+        visible={showSwitcher}
+        onClose={() => setShowSwitcher(false)}
+      />
     </SafeAreaView>
   );
 }

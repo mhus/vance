@@ -11,27 +11,47 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/api/queryClient';
-import { ensureAuthenticated } from '@/auth';
+import {
+  currentAccountId,
+  ensureAuthenticated,
+  subscribeAccounts,
+} from '@/auth';
 import { navigationRef } from '@/navigation/navigationRef';
 import { RootNavigator } from '@/navigation/RootNavigator';
 import type { RootStackParamList } from '@/navigation/types';
 
 type BootState =
   | { kind: 'loading' }
-  | { kind: 'ready'; initialRoute: keyof RootStackParamList }
+  | { kind: 'ready' }
   | { kind: 'error'; message: string };
+
+const NO_ACCOUNT_KEY = '__no-account__';
 
 export default function App() {
   const [state, setState] = useState<BootState>({ kind: 'loading' });
+  // Drives the {@code <RootNavigator key=…>} re-mount on account
+  // switch. Initialised inside the boot effect (where we know the
+  // current id is resolved post-migration); mutated by the
+  // subscribeAccounts handler whenever the active account flips.
+  // Doubles as the source of truth for {@code initialRoute}: a
+  // non-empty key means "active account exists, head straight to
+  // Main"; the sentinel means "no signed-in account, show Login".
+  const [accountKey, setAccountKey] = useState<string>(NO_ACCOUNT_KEY);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         await bootStoragePromise;
-        const authed = await ensureAuthenticated();
+        // ensureAuthenticated either confirms the active mirror's
+        // tokens are usable or refreshes them. Either way the active
+        // account is the right one to mount; if no account is set
+        // (fresh install / explicit sign-out), accountKey stays at
+        // the sentinel and the navigator routes to Login.
+        await ensureAuthenticated();
         if (cancelled) return;
-        setState({ kind: 'ready', initialRoute: authed ? 'Main' : 'Login' });
+        setAccountKey(currentAccountId() ?? NO_ACCOUNT_KEY);
+        setState({ kind: 'ready' });
       } catch (e) {
         if (cancelled) return;
         setState({
@@ -43,6 +63,18 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Listen for account inventory / active-account changes so the
+  // RootNavigator re-mounts on switch / sign-out / add-account. The
+  // subscription persists across the whole app lifetime; the cleanup
+  // unhooks on hot-reload to avoid duplicate subscribers.
+  useEffect(() => {
+    const off = subscribeAccounts(() => {
+      const next = currentAccountId() ?? NO_ACCOUNT_KEY;
+      setAccountKey((prev) => (prev === next ? prev : next));
+    });
+    return off;
   }, []);
 
   if (state.kind === 'loading') {
@@ -74,11 +106,21 @@ export default function App() {
     );
   }
 
+  // accountKey === sentinel ⇒ no active account ⇒ start at Login.
+  // Anything else ⇒ active account exists ⇒ start at Main.
+  // The same value drives the navigator's key, so any change (sign-in,
+  // switch, sign-out) tears down and remounts the whole subtree.
+  const initialRoute: keyof RootStackParamList =
+    accountKey === NO_ACCOUNT_KEY ? 'Login' : 'Main';
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <NavigationContainer ref={navigationRef}>
-          <RootNavigator initialRoute={state.initialRoute} />
+          {/* Key on accountKey forces a full re-mount of the navigator
+              on account switch — every screen's useEffect runs again,
+              REST queries refetch, the WS hook reconnects to the new
+              brain. Cold-restart semantics on a tap. */}
+          <RootNavigator key={accountKey} initialRoute={initialRoute} />
           <StatusBar style="auto" />
         </NavigationContainer>
       </SafeAreaProvider>

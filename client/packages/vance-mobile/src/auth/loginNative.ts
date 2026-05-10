@@ -1,5 +1,24 @@
 import type { AccessTokenRequest, AccessTokenResponse } from '@vance/generated';
-import { brainBaseUrl, getStorage, StorageKeys } from '@vance/shared';
+import {
+  brainBaseUrl,
+  configurePlatform,
+  getRestConfig,
+  getStorage,
+  StorageKeys,
+} from '@vance/shared';
+import {
+  type Account,
+  currentAccount,
+  fallbackAccountAfter,
+  removeAccount,
+  saveTokensFor,
+  setCurrent,
+  upsertAccount,
+} from './accountStore';
+import {
+  clearActiveMirror,
+  switchToAccount,
+} from './accountSwitch';
 
 export class LoginError extends Error {
   constructor(
@@ -56,20 +75,76 @@ function persistTokens(tenant: string, username: string, resp: AccessTokenRespon
 }
 
 /**
+ * Rebind the platform's REST baseUrl to {@code newBaseUrl} and
+ * persist it under {@link StorageKeys.identityBrainUrl} so a future
+ * cold-start picks up the same URL. Re-uses the rest of the
+ * configuration ({@code authMode}, {@code refreshAccess},
+ * {@code onUnauthorized}) — those are owned by {@code bootNative.ts}
+ * and don't change at login time.
+ */
+function applyBrainUrl(newBaseUrl: string): void {
+  const trimmed = newBaseUrl.replace(/\/+$/, '');
+  const current = getRestConfig();
+  if (current.baseUrl === trimmed) return;
+  configurePlatform({
+    storage: getStorage(),
+    rest: {
+      ...current,
+      baseUrl: trimmed,
+    },
+  });
+  getStorage().prefsStore.set(StorageKeys.identityBrainUrl, trimmed);
+}
+
+/**
  * Initial login. Trades password for access + refresh tokens.
+ *
+ * <p>If {@code brainUrl} is provided, rebinds the platform's REST
+ * baseUrl and persists the value before the credentials hit the
+ * network — so the {@code postAccess} call below already targets the
+ * user's chosen server.
+ *
+ * <p>On success the account is registered in the multi-account
+ * inventory ({@code accountStore}) and marked as current; the new
+ * tokens land both in the per-account backup and in the flat
+ * active-mirror keys. Existing entries with the same
+ * {@code (brainUrl, tenantId, username)} triple are reused — repeat
+ * logins for the same account don't pile up duplicates.
  */
 export async function login(params: {
   tenant: string;
   username: string;
   password: string;
-}): Promise<void> {
+  brainUrl?: string;
+  /** Optional human-friendly label for the account; falls back to
+   *  {@code username@tenant}. Honoured only when a fresh entry is
+   *  created — re-logins keep the existing display name unless
+   *  callers explicitly pass a new one. */
+  displayName?: string;
+}): Promise<Account> {
+  if (params.brainUrl !== undefined && params.brainUrl.trim().length > 0) {
+    applyBrainUrl(params.brainUrl.trim());
+  }
+  const resolvedBrainUrl = getRestConfig().baseUrl;
   const resp = await postAccess(params.tenant, params.username, {
     password: params.password,
     requestRefreshToken: true,
     requestCookies: false,
     includeWebUiSettings: false,
   });
-  persistTokens(params.tenant, params.username, resp);
+  const account = upsertAccount({
+    brainUrl: resolvedBrainUrl,
+    tenantId: params.tenant,
+    username: params.username,
+    displayName: params.displayName,
+  });
+  setCurrent(account.id);
+  await saveTokensFor(account.id, resp.token, resp.refreshToken ?? undefined);
+  // Mirror identity into the flat keys for synchronous readers
+  // (getTenantId, getUsername, ...) — same shape as before, just
+  // sourced from the account record now.
+  persistTokens(account.tenantId, account.username, resp);
+  return account;
 }
 
 /**
@@ -112,20 +187,43 @@ async function doRefresh(): Promise<boolean> {
 }
 
 /**
- * Local-only logout. Bearer tokens are stateless on the server
- * (no revocation list), so a server round-trip would be a no-op
- * for Mobile — we just forget them. The `/logout` endpoint exists
- * to clear browser cookies and is irrelevant to the bearer flow.
+ * Sign the active account out. Bearer tokens are stateless on the
+ * server (no revocation list), so the server round-trip would be a
+ * no-op for Mobile — we just forget the tokens locally.
  *
- * After this call any pending REST/WS request that holds the old
+ * <p>Multi-account semantics:
+ *
+ * <ul>
+ *   <li>Removes the active account from the inventory (its per-account
+ *       token backup is wiped along with it).</li>
+ *   <li>If another account remains, switches to the most-recently-used
+ *       one — flat-mirror is updated, brain URL rebound,
+ *       {@code queryClient} cleared. Returns the new active account
+ *       so the caller can decide whether to navigate (most callers
+ *       simply rely on the {@code <RootNavigator key=…>} re-mount
+ *       triggered by the {@code accountStore} subscription).</li>
+ *   <li>If no other account remains, the active mirror is wiped and
+ *       the function returns {@code null} — the caller should reset
+ *       to the login screen.</li>
+ * </ul>
+ *
+ * <p>After this call any pending REST/WS request that holds the old
  * token will continue with it until expiry; callers that need a
  * hard cut-off must additionally cancel in-flight work.
  */
-export function logoutLocal(): void {
-  const store = getStorage();
-  store.secureStore.remove(StorageKeys.authAccessToken);
-  store.secureStore.remove(StorageKeys.authRefreshToken);
-  store.prefsStore.remove(StorageKeys.identityTenantId);
-  store.prefsStore.remove(StorageKeys.identityUsername);
-  store.prefsStore.remove(StorageKeys.activeSessionId);
+export async function logoutLocal(): Promise<Account | null> {
+  const active = currentAccount();
+  if (active === null) {
+    // No active account — only flat mirror to clean up.
+    clearActiveMirror();
+    return null;
+  }
+  await removeAccount(active.id);
+  const next = fallbackAccountAfter(active.id);
+  if (next === null) {
+    clearActiveMirror();
+    return null;
+  }
+  return switchToAccount(next.id);
 }
+

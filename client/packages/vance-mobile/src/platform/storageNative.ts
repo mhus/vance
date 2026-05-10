@@ -41,6 +41,9 @@ const SECURE_KEYS: readonly string[] = [
 const PREF_KEYS: readonly string[] = [
   StorageKeys.identityTenantId,
   StorageKeys.identityUsername,
+  StorageKeys.identityBrainUrl,
+  StorageKeys.accountsList,
+  StorageKeys.accountsCurrent,
   StorageKeys.activeSessionId,
   StorageKeys.rememberedLogin,
   StorageKeys.speechLanguage,

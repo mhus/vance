@@ -1,26 +1,43 @@
+import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getTenantId, getUsername } from '@vance/shared';
-import { logoutLocal } from '@/auth';
+import {
+  type Account,
+  currentAccount,
+  describeAccount,
+  listAccounts,
+  logoutLocal,
+  subscribeAccounts,
+} from '@/auth';
 import { resetToLogin } from '@/navigation/navigationRef';
 import { MobileShell } from '@/components';
+import { AccountSwitchModal } from './AccountSwitchModal';
 
 /**
- * Settings entry-point. Phase F+1 lands the logout action here so
- * each tab's header is free for tab-specific affordances; future
- * phases will fill the list with profile, voice, brain-URL, theme
- * choices etc.
- *
- * Section pattern: a list of `<Row>` items rendered uniformly so a
+ * Settings entry-point. Hosts the multi-account section (current
+ * account display, switch, sign-out) plus future toggles (theme,
+ * voice, …). Each row uses the uniform {@link Row} primitive so a
  * future row only needs to drop in.
  */
 export default function SettingsScreen() {
-  const tenant = getTenantId();
-  const username = getUsername();
+  const [active, setActive] = useState<Account | null>(() => currentAccount());
+  const [accountCount, setAccountCount] = useState<number>(() => listAccounts().length);
+  const [switcherOpen, setSwitcherOpen] = useState<boolean>(false);
 
-  function onSignOut() {
-    logoutLocal();
-    resetToLogin();
+  useEffect(() => {
+    return subscribeAccounts(() => {
+      setActive(currentAccount());
+      setAccountCount(listAccounts().length);
+    });
+  }, []);
+
+  async function onSignOut() {
+    const next = await logoutLocal();
+    if (next === null) {
+      resetToLogin();
+    }
+    // Otherwise: App.tsx's accountStore subscriber flips the
+    // RootNavigator key and re-mounts the whole tree.
   }
 
   return (
@@ -31,20 +48,39 @@ export default function SettingsScreen() {
             Signed in as
           </Text>
           <Text className="text-base font-semibold text-slate-900 dark:text-slate-100 mt-0.5">
-            {username ?? '—'}
+            {active !== null ? describeAccount(active) : '—'}
           </Text>
-          <Text className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Tenant: {tenant ?? '—'}
+          <Text
+            className="text-xs text-slate-500 dark:text-slate-400 mt-0.5"
+            numberOfLines={1}
+          >
+            {active !== null ? active.brainUrl : ''}
           </Text>
         </View>
 
         <Row
+          icon="people-outline"
+          label={
+            accountCount > 1
+              ? `Switch account (${accountCount})`
+              : 'Switch account'
+          }
+          onPress={() => setSwitcherOpen(true)}
+        />
+        <Row
           icon="log-out-outline"
           label="Sign out"
           danger
-          onPress={onSignOut}
+          onPress={() => {
+            void onSignOut();
+          }}
         />
       </View>
+
+      <AccountSwitchModal
+        visible={switcherOpen}
+        onClose={() => setSwitcherOpen(false)}
+      />
     </MobileShell>
   );
 }

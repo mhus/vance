@@ -145,7 +145,6 @@ public class SlartibartfastFallback {
                 engineParams,
                 /*recipeName*/ null,
                 /*promptOverride*/ null,
-                /*promptOverrideSmall*/ null,
                 /*promptMode*/ null,
                 /*dataRelayCorrectionOverride*/ null,
                 /*allowedToolsOverride*/ null,

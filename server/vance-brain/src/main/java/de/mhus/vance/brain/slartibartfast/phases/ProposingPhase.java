@@ -262,6 +262,22 @@ public class ProposingPhase {
             user-facing content language is carried separately by
             the goal text and is not your concern here.
 
+            ── promptPrefix is a Pebble template ──
+
+            promptPrefix is rendered through Pebble before the
+            PLAN-LLM sees it, so plain prose passes through verbatim.
+            If you need a tier-aware variant (rare for PLAN nodes),
+            you may use:
+                {% if tier == "small" %}…{% else %}…{% endif %}
+            with `elseif` (NOT `elif`). Available variables:
+            tier, model, provider, mode, profile, recipe, engine,
+            params. Avoid Pebble syntax unless you actually need it
+            — plain text is the safer default. Anything that looks
+            like {{ … }} or {% … %} but isn't intended as a
+            template will be parsed as Pebble; escape with
+            {% raw %}…{% endraw %} if you must include braces
+            literally.
+
             ── justifications map ──
 
             Every constraint-key you set in the YAML (params.X or

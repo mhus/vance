@@ -227,7 +227,7 @@ class RecipeSelectorServiceTest {
                 "stub recipe " + name,
                 engine,
                 java.util.Map.of(),
-                null, null,
+                null,
                 PromptMode.APPEND,
                 null,
                 java.util.List.of(),

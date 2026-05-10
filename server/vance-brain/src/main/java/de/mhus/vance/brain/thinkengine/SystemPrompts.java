@@ -1,16 +1,21 @@
 package de.mhus.vance.brain.thinkengine;
 
 import de.mhus.vance.api.thinkprocess.PromptMode;
-import de.mhus.vance.brain.ai.ModelSize;
+import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import org.jspecify.annotations.Nullable;
+import java.util.Map;
 
 /**
- * Helpers for combining an engine's built-in system prompt with a
- * recipe-supplied {@code promptOverride}, plus the size-aware
- * variant selection. Centralised so every engine stays consistent —
- * composition rules are a Recipe-level concern, not an
- * engine-specific one.
+ * Helpers for combining an engine's built-in system prompt with the
+ * recipe-supplied {@code promptOverride}. Both pieces are Pebble
+ * templates — the renderer evaluates them with the per-turn context
+ * (tier / model / provider / mode / profile / lang / params) before
+ * the {@link PromptMode} blending kicks in.
+ *
+ * <p>Tier/model/mode/profile-aware variation lives <em>inside</em> the
+ * template body now (Pebble {@code {% if tier == "small" %}…}). There
+ * is no more dual-string {@code promptOverrideSmall}; the recipe
+ * carries one templated string and the engine renders it per turn.
  */
 public final class SystemPrompts {
 
@@ -19,59 +24,57 @@ public final class SystemPrompts {
     private SystemPrompts() {}
 
     /**
-     * Returns the effective system-prompt text for one turn. Picks
-     * the size-matched variant from the process and blends it with
-     * the engine default per the recipe's {@link PromptMode}.
+     * Renders both pieces with {@code ctx} and blends them per
+     * {@link PromptMode}. {@code engineDefault} is the unrendered
+     * Pebble template that an engine ships as its built-in prompt.
+     * {@code process.getPromptOverride()} is the recipe-supplied
+     * (also Pebble) override.
      *
-     * <p>Variant selection:
      * <ul>
-     *   <li>Engine has resolved a SMALL model AND
-     *       {@code process.promptOverrideSmall} is set →
-     *       use small variant.</li>
-     *   <li>Otherwise → use {@code process.promptOverride}
-     *       (the default-sized variant).</li>
+     *   <li>No override → rendered engine default.</li>
+     *   <li>{@link PromptMode#APPEND} → rendered default + separator + rendered override.</li>
+     *   <li>{@link PromptMode#OVERWRITE} → rendered override alone.</li>
      * </ul>
      *
-     * <p>Composition by mode:
-     * <ul>
-     *   <li>No override → engine default unchanged.</li>
-     *   <li>{@link PromptMode#APPEND} → engine default + separator + override.</li>
-     *   <li>{@link PromptMode#OVERWRITE} → override alone (engine
-     *       default discarded; the recipe must re-state any hard
-     *       rules it cares about).</li>
-     * </ul>
+     * <p>{@code engineDefault} of {@code null} is treated as the empty
+     * string — useful for engines whose persona <em>is</em> the
+     * recipe (Eddie pattern).
      */
     public static String compose(
             ThinkProcessDocument process,
             String engineDefault,
-            ModelSize modelSize) {
-        String override = pickOverride(process, modelSize);
+            PromptTemplateRenderer renderer,
+            Map<String, Object> ctx) {
+        String renderedDefault = renderer.render(engineDefault, ctx);
+        if (renderedDefault == null) renderedDefault = "";
+        String renderedOverride = renderer.render(process.getPromptOverride(), ctx);
+        if (renderedOverride == null || renderedOverride.isBlank()) {
+            return renderedDefault;
+        }
+        PromptMode mode = process.getPromptMode() == null
+                ? PromptMode.APPEND : process.getPromptMode();
+        return switch (mode) {
+            case OVERWRITE -> renderedOverride;
+            case APPEND -> renderedDefault + SEPARATOR + renderedOverride;
+        };
+    }
+
+    /**
+     * Convenience overload for callers that don't need rendering — the
+     * inputs are already-rendered text. Drops both the renderer and
+     * the context. Used by tests and by code paths whose prompts are
+     * known to be plain markdown without Pebble syntax.
+     */
+    public static String compose(ThinkProcessDocument process, String engineDefault) {
+        String override = process.getPromptOverride();
         if (override == null || override.isBlank()) {
-            return engineDefault;
+            return engineDefault == null ? "" : engineDefault;
         }
         PromptMode mode = process.getPromptMode() == null
                 ? PromptMode.APPEND : process.getPromptMode();
         return switch (mode) {
             case OVERWRITE -> override;
-            case APPEND -> engineDefault + SEPARATOR + override;
+            case APPEND -> (engineDefault == null ? "" : engineDefault) + SEPARATOR + override;
         };
-    }
-
-    /**
-     * Convenience overload for engines that haven't resolved a model
-     * size yet. Falls back to the default (large) variant — keeps
-     * existing call sites working until they're upgraded.
-     */
-    public static String compose(ThinkProcessDocument process, String engineDefault) {
-        return compose(process, engineDefault, ModelSize.LARGE);
-    }
-
-    private static @Nullable String pickOverride(
-            ThinkProcessDocument process, ModelSize modelSize) {
-        String small = process.getPromptOverrideSmall();
-        if (modelSize == ModelSize.SMALL && small != null && !small.isBlank()) {
-            return small;
-        }
-        return process.getPromptOverride();
     }
 }

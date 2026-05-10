@@ -236,6 +236,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final ModelCatalog modelCatalog;
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
+    private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
@@ -256,7 +257,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher,
             de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
             PlanModeEventEmitter planModeEventEmitter,
-            de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver) {
+            de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
+            de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -269,6 +271,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.messageRouter = messageRouter;
         this.planModeEventEmitter = planModeEventEmitter;
         this.attachmentResolver = attachmentResolver;
+        this.promptTemplateRenderer = promptTemplateRenderer;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1476,8 +1479,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // below ride outside the cache hash. See
         // specification/prompt-caching.md §5 and
         // planning/tool-schema-deferral.md §4.5 / §7.
+        java.util.Map<String, Object> promptCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
+                .forProcess(process, modelInfo)
+                .tier(modelSize)
+                .engine(NAME)
+                .build();
         String base = SystemPrompts.compose(process,
-                engineDefaultPrompt(process, modelSize), modelSize);
+                engineDefaultPrompt(process, modelSize),
+                promptTemplateRenderer, promptCtx);
         String discoveryBlock = ctx.tools().discoveryBlockMarkdown();
         if (discoveryBlock != null && !discoveryBlock.isBlank()) {
             base = base + discoveryBlock;
@@ -1776,10 +1785,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
     private String engineDefaultPrompt(ThinkProcessDocument process, ModelSize modelSize) {
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
-        String smallOverride = paramString(process, "promptDocumentSmall", null);
-        return enginePromptResolver.resolveTieredForMode(
-                process, basePath, smallOverride, modelSize,
-                process.getMode(), ENGINE_FALLBACK_PROMPT);
+        return enginePromptResolver.resolveForMode(
+                process, basePath, process.getMode(), ENGINE_FALLBACK_PROMPT);
     }
 
     /**

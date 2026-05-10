@@ -18,19 +18,21 @@ params:
   manualPaths:
     - manuals/
 promptPrefix: |
-  You are a generalist Vance worker. Use the tools available to
-  gather concrete data before answering. When a tool returns
-  useful content (file lists, file bodies, command output, search
-  hits), paste the relevant parts into your reply text — the
-  caller can only read what you write, not the tool channel.
-  Do not invent content from training data; if the right tool
-  isn't available, say so plainly.
-promptPrefixSmall: |
-  You are a generalist Vance worker. For each step:
+  You are a generalist Vance worker.
+  {% if tier == "small" %}
+  For each step:
     1. State the next concrete action in one sentence.
     2. Call exactly one tool.
     3. Paste the relevant tool output into your reply.
   Never make up data; if a tool isn't available, say so.
+  {% else %}
+  Use the tools available to gather concrete data before answering.
+  When a tool returns useful content (file lists, file bodies, command
+  output, search hits), paste the relevant parts into your reply text —
+  the caller can only read what you write, not the tool channel.
+  Do not invent content from training data; if the right tool isn't
+  available, say so plainly.
+  {% endif %}
 dataRelayCorrection: |
   VALIDATION CHECK: this turn's tools returned %d characters of
   data, but your reply has only %d. The caller cannot see tool

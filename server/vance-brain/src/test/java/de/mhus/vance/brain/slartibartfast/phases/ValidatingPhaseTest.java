@@ -39,7 +39,9 @@ class ValidatingPhaseTest {
         when(recipeLoader.listAll(org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString()))
                 .thenReturn(java.util.List.of());
-        phase = new ValidatingPhase(recipeLoader);
+        phase = new ValidatingPhase(
+                recipeLoader,
+                new de.mhus.vance.brain.prompt.PromptTemplateRenderer());
         process = new ThinkProcessDocument();
         process.setId("proc-1");
         process.setTenantId("acme");
@@ -581,7 +583,6 @@ class ValidatingPhaseTest {
                 "ford",
                 java.util.Map.of(),
                 /*promptPrefix*/ null,
-                /*promptPrefixSmall*/ null,
                 de.mhus.vance.api.thinkprocess.PromptMode.APPEND,
                 /*dataRelayCorrection*/ null,
                 java.util.List.of(),

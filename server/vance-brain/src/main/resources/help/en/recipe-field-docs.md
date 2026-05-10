@@ -64,14 +64,16 @@ capabilities than the engine default.
 ## System-prompt overrides
 
 ### `promptPrefix`
-*string, optional* — system-prompt fragment carried into the spawned
-process. Combined with the engine prompt according to `promptMode`.
-
-### `promptPrefixSmall`
-*string, optional* — variant for `SMALL` model class (Haiku-/Flash-
-style). When the recipe is resolved to a small model, the engine uses
-this string instead of `promptPrefix`. `null` means "use `promptPrefix`
-for all sizes".
+*string (Pebble template), optional* — system-prompt fragment carried
+into the spawned process. Combined with the engine prompt according to
+`promptMode`. Rendered per turn with `tier` (`"small"` / `"large"`),
+`model`, `provider`, `mode`, `profile`, `recipe`, `engine`, `lang`,
+`params` available in the context. Tier/model variants live inside the
+template body via `{% if tier == "small" %}…{% else %}…{% endif %}` —
+there is no separate small-variant field. Allowed Pebble subset:
+`{{ var }}`, `{% if/elseif/else/endif %}`,
+`{% if x is matching("regex") %}`, `{% raw %}…{% endraw %}`. Compile-
+validated at recipe load.
 
 ## Validator overrides
 

@@ -203,7 +203,6 @@ class RecipeResolverTest {
                 "arthur", // engine
                 new LinkedHashMap<>(params),
                 null, // promptPrefix
-                null, // promptPrefixSmall
                 PromptMode.APPEND,
                 null, // dataRelayCorrection
                 List.of(), List.of(),

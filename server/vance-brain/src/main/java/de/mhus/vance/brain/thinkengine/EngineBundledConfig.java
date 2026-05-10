@@ -24,9 +24,9 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  *   <li>{@code params} — engine params written to
  *       {@code ThinkProcessDocument.engineParams}.</li>
- *   <li>{@code promptOverride} — system prompt (markdown-flavoured)
- *       used by the engine's chat machinery.</li>
- *   <li>{@code promptOverrideSmall} — variant for small models.</li>
+ *   <li>{@code promptOverride} — system prompt (markdown-flavoured),
+ *       optionally Pebble-templated, used by the engine's chat
+ *       machinery.</li>
  *   <li>{@code promptMode} — APPEND or REPLACE relative to the
  *       engine's fallback prompt.</li>
  *   <li>{@code dataRelayCorrection} — optional validator template
@@ -42,7 +42,6 @@ import org.jspecify.annotations.Nullable;
 public record EngineBundledConfig(
         Map<String, Object> params,
         @Nullable String promptOverride,
-        @Nullable String promptOverrideSmall,
         PromptMode promptMode,
         @Nullable String dataRelayCorrection,
         @Nullable Set<String> allowedTools) {

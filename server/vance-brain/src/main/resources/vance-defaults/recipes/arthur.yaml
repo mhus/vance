@@ -24,16 +24,18 @@ params:
   # recipe. Recipe order = precedence on duplicate filenames.
   manualPaths:
     - manuals/
-  # Default prompts live in the document cascade — the Arthur engine
+  # Default prompt lives in the document cascade — the Arthur engine
   # loads prompts/arthur-prompt.md (project → _vance → classpath:
-  # vance-defaults/prompts/) as the engineDefault. Tenants override
-  # the prompt by placing a file at the matching path in their _vance
-  # project (or per-user in _user_<login>); the small-model variant
-  # comes from prompts/arthur-prompt-small.md the same way.
+  # vance-defaults/prompts/) as the engineDefault. The file is a
+  # Pebble template: tier/mode variants live inside via
+  # {% if tier == "small" %}…{% endif %}. Tenants override by placing
+  # the file at the matching path in their _vance project (or per-user
+  # in _user_<login>). Plan-mode-specific prompts still use suffix
+  # files: -exploring.md, -planning.md, -executing.md.
   #
   # Recipes that want a different prompt either set promptPrefix
-  # directly here (highest precedence) or point promptDocument /
-  # promptDocumentSmall at a different cascade path.
+  # directly here (highest precedence) or point promptDocument at a
+  # different cascade path.
 # Open Arthur's dispatch pool to every read-only tool registered in the
 # brain — workspace_grep / workspace_find / doc_grep / client_file_grep
 # and friends. The engine's hardcoded ALLOWED_TOOLS lists only the

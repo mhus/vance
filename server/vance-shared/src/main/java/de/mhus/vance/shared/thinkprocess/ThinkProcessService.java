@@ -138,7 +138,7 @@ public class ThinkProcessService {
         return create(tenantId, projectId, sessionId, name, thinkEngine,
                 thinkEngineVersion, title, goal, parentProcessId,
                 engineParams, recipeName,
-                promptOverride, /*promptOverrideSmall*/ null, promptMode,
+                promptOverride, promptMode,
                 /*dataRelayCorrectionOverride*/ null,
                 allowedToolsOverride,
                 /*connectionProfile*/ null,
@@ -147,9 +147,9 @@ public class ThinkProcessService {
     }
 
     /**
-     * Full create — also accepts the size-aware prompt variant, the
-     * per-recipe validator overrides, and the connection-profile that
-     * was active at spawn time (audit-only).
+     * Full create — also accepts the per-recipe validator overrides
+     * and the connection-profile that was active at spawn time
+     * (audit-only).
      */
     public ThinkProcessDocument create(
             String tenantId,
@@ -164,7 +164,6 @@ public class ThinkProcessService {
             @Nullable Map<String, Object> engineParams,
             @Nullable String recipeName,
             @Nullable String promptOverride,
-            @Nullable String promptOverrideSmall,
             @Nullable PromptMode promptMode,
             @Nullable String dataRelayCorrectionOverride,
             @Nullable Set<String> allowedToolsOverride,
@@ -197,7 +196,6 @@ public class ThinkProcessService {
                 .recipeName(recipeName)
                 .connectionProfile(connectionProfile)
                 .promptOverride(promptOverride)
-                .promptOverrideSmall(promptOverrideSmall)
                 .promptMode(promptMode == null ? PromptMode.APPEND : promptMode)
                 .dataRelayCorrectionOverride(dataRelayCorrectionOverride)
                 .allowedToolsOverride(allowed)

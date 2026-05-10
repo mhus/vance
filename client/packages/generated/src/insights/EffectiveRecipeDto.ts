@@ -10,7 +10,6 @@ export interface EffectiveRecipeDto {
   source: string;
   paramsCount: number;
   hasPromptPrefix: boolean;
-  hasPromptPrefixSmall: boolean;
   allowedToolsAdd: string[];
   allowedToolsRemove: string[];
   defaultActiveSkills: string[];

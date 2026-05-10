@@ -501,7 +501,6 @@ public class InsightsAdminController {
                     .source(r.source().name())
                     .paramsCount(r.params() == null ? 0 : r.params().size())
                     .hasPromptPrefix(r.promptPrefix() != null && !r.promptPrefix().isBlank())
-                    .hasPromptPrefixSmall(r.promptPrefixSmall() != null && !r.promptPrefixSmall().isBlank())
                     .allowedToolsAdd(r.allowedToolsAdd())
                     .allowedToolsRemove(r.allowedToolsRemove())
                     .defaultActiveSkills(r.defaultActiveSkills())

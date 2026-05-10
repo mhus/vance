@@ -258,7 +258,6 @@ public class SessionBootstrapHandler implements WsHandler {
                             applied.params(),
                             applied.name(),
                             applied.promptOverride(),
-                            applied.promptOverrideSmall(),
                             applied.promptMode(),
                             applied.dataRelayCorrection(),
                             applied.effectiveAllowedTools(),

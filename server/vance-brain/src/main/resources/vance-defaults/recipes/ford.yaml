@@ -20,16 +20,16 @@ params:
     - default:fast
   manualPaths:
     - manuals/
-  # Default prompts live in the document cascade — the Ford engine
+  # Default prompt lives in the document cascade — the Ford engine
   # loads prompts/ford-prompt.md (project → _vance → classpath:
-  # vance-defaults/prompts/) as the engineDefault, and
-  # prompts/ford-prompt-small.md for SMALL-tier models. Tenants
-  # override by placing files at the matching paths in their _vance
-  # project.
+  # vance-defaults/prompts/) as the engineDefault. The file is a
+  # Pebble template: tier/mode variants live inside via
+  # {% if tier == "small" %}…{% endif %}. Tenants override by placing
+  # the file at the matching path in their _vance project.
   #
-  # Recipes that want a different prompt either set promptPrefix /
-  # promptPrefixSmall directly here (highest precedence) or point
-  # promptDocument / promptDocumentSmall at a different cascade path.
+  # Recipes that want a different prompt either set promptPrefix
+  # directly here (highest precedence) or point promptDocument at a
+  # different cascade path.
 dataRelayCorrection: |
   VALIDATION CHECK: this turn's tools returned %d characters of
   data, but your reply has only %d. The caller cannot see tool

@@ -181,6 +181,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
+    private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final FordProperties fordProperties;
     private final MemoryService memoryService;
@@ -307,7 +308,7 @@ public class Ford implements ThinkEngine {
             ModelSize effectiveSize = ModelSize.parseOrAuto(
                     paramString(process, "modelSize", null), modelInfo.size());
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, effectiveSize, skillSection);
+                    process, chatLog, modelInfo, effectiveSize, skillSection);
             int estimatedTokens = estimateTokens(messages);
             int triggerTokens = modelInfo.compactionTriggerTokens(
                     fordProperties.getCompactionTriggerRatio());
@@ -331,7 +332,7 @@ public class Ford implements ThinkEngine {
                         // Rebuild the prompt: the active-history shrunk and a
                         // new ARCHIVED_CHAT memory pinned the summary at top.
                         messages = buildPromptMessages(
-                                process, chatLog, effectiveSize, skillSection);
+                                process, chatLog, modelInfo, effectiveSize, skillSection);
                     } else {
                         log.info("Ford.turn id='{}' compaction skipped: {}",
                                 process.getId(), result.reason());
@@ -951,10 +952,15 @@ public class Ford implements ThinkEngine {
      */
     private List<ChatMessage> buildPromptMessages(
             ThinkProcessDocument process, ChatMessageService chatLog,
-            ModelSize modelSize, @Nullable String skillSection) {
+            ModelInfo modelInfo, ModelSize tier, @Nullable String skillSection) {
         List<ChatMessage> messages = new ArrayList<>();
+        java.util.Map<String, Object> ctx = de.mhus.vance.brain.prompt.PromptContextBuilder
+                .forProcess(process, modelInfo)
+                .tier(tier)
+                .engine(NAME)
+                .build();
         String base = SystemPrompts.compose(process,
-                engineDefaultPrompt(process, modelSize), modelSize);
+                engineDefaultPrompt(process), promptTemplateRenderer, ctx);
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             base = base + "\n\n" + memoryBlock;
@@ -1032,21 +1038,17 @@ public class Ford implements ThinkEngine {
     }
 
     /**
-     * Resolves the engine-default prompt for the current turn through
-     * the tier-aware document cascade. Recipe params
-     * {@code promptDocument} (base path) and {@code promptDocumentSmall}
-     * (optional explicit small-variant path) override the engine
-     * defaults; the resolver derives a {@code -small} suffix
-     * automatically and falls through to the base when no small variant
-     * exists, so engines don't have to maintain two files unless they
-     * want differentiated tiers. {@link #SYSTEM_PROMPT} is the
-     * last-resort fallback.
+     * Resolves the engine-default prompt template for the current turn
+     * through the document cascade. The recipe param
+     * {@code promptDocument} overrides the engine default path. The
+     * returned text is a Pebble template; tier/mode variation lives
+     * inside via {@code {% if tier == "small" %}…{% endif %}} —
+     * {@link SystemPrompts#compose} renders it with the per-turn
+     * context. {@link #SYSTEM_PROMPT} is the last-resort fallback.
      */
-    private String engineDefaultPrompt(ThinkProcessDocument process, ModelSize modelSize) {
+    private String engineDefaultPrompt(ThinkProcessDocument process) {
         String basePath = paramString(process, "promptDocument", DEFAULT_PROMPT_PATH);
-        String smallOverride = paramString(process, "promptDocumentSmall", null);
-        return enginePromptResolver.resolveTiered(
-                process, basePath, smallOverride, modelSize, SYSTEM_PROMPT);
+        return enginePromptResolver.resolve(process, basePath, SYSTEM_PROMPT);
     }
 
     // ──────────────────── engineParams helpers ────────────────────

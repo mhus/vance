@@ -258,6 +258,7 @@ public class MarvinEngine implements ThinkEngine {
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
+    private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final ObjectMapper objectMapper;
     private final ProcessEventEmitter eventEmitter;
@@ -941,12 +942,14 @@ public class MarvinEngine implements ThinkEngine {
                     anyConstraint ? 2 : 0);
 
             List<ChatMessage> messages = new ArrayList<>();
-            messages.add(SystemMessage.from(enginePromptResolver.resolveTiered(
-                    process,
-                    PLAN_PROMPT_PATH,
-                    /*smallOverride*/ null,
-                    de.mhus.vance.brain.ai.ModelSize.LARGE,
-                    PLAN_SYSTEM_PROMPT)));
+            String planTpl = enginePromptResolver.resolve(
+                    process, PLAN_PROMPT_PATH, PLAN_SYSTEM_PROMPT);
+            java.util.Map<String, Object> planCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
+                    .forProcess(process, null)
+                    .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
+                    .engine(NAME)
+                    .build();
+            messages.add(SystemMessage.from(promptTemplateRenderer.render(planTpl, planCtx)));
             String body = "ROOT goal of the Marvin process:\n"
                     + nullSafe(process.getGoal()) + "\n\n"
                     + "PARENT goal of the node you are decomposing:\n"
@@ -1806,7 +1809,6 @@ public class MarvinEngine implements ThinkEngine {
                     applied.params(),
                     applied.name(),
                     applied.promptOverride(),
-                    applied.promptOverrideSmall(),
                     applied.promptMode(),
                     applied.dataRelayCorrection(),
                     applied.effectiveAllowedTools(),
@@ -2018,12 +2020,14 @@ public class MarvinEngine implements ThinkEngine {
             AiChatConfig config = aggregateBundle.primaryConfig();
 
             List<ChatMessage> messages = new ArrayList<>();
-            messages.add(SystemMessage.from(enginePromptResolver.resolveTiered(
-                    process,
-                    AGGREGATE_PROMPT_PATH,
-                    /*smallOverride*/ null,
-                    de.mhus.vance.brain.ai.ModelSize.LARGE,
-                    AGGREGATE_SYSTEM_PROMPT)));
+            String aggrTpl = enginePromptResolver.resolve(
+                    process, AGGREGATE_PROMPT_PATH, AGGREGATE_SYSTEM_PROMPT);
+            java.util.Map<String, Object> aggrCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
+                    .forProcess(process, null)
+                    .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
+                    .engine(NAME)
+                    .build();
+            messages.add(SystemMessage.from(promptTemplateRenderer.render(aggrTpl, aggrCtx)));
             StringBuilder body = new StringBuilder();
             body.append("Goal of this AGGREGATE node:\n").append(node.getGoal()).append("\n\n");
             if (customPrompt != null) {

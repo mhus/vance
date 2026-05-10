@@ -118,21 +118,17 @@ public class ThinkProcessDocument {
     private @Nullable String connectionProfile;
 
     /**
-     * Recipe-derived system-prompt fragment. Engines blend this with
-     * their built-in prompt according to {@link #promptMode}.
-     * {@code null} means "no recipe override".
+     * Recipe-derived system-prompt fragment, optionally Pebble-
+     * templated. Engines blend the rendered text with their built-in
+     * prompt according to {@link #promptMode}. {@code null} means
+     * "no recipe override".
+     *
+     * <p>Tier/model/mode/profile-aware variation is expressed inside
+     * the template body via {@code {% if tier == "small" %}…{% endif %}}
+     * and similar — the field is a single source of truth, no longer
+     * paired with a {@code promptOverrideSmall} variant.
      */
     private @Nullable String promptOverride;
-
-    /**
-     * Recipe's small-model variant of {@link #promptOverride}. The
-     * engine picks this when the resolved AI model has
-     * {@code ModelSize.SMALL}; otherwise it falls back to
-     * {@link #promptOverride}. {@code null} means "use the
-     * default-size prompt for all models" — the recipe shipped just
-     * one variant.
-     */
-    private @Nullable String promptOverrideSmall;
 
     @Builder.Default
     private PromptMode promptMode = PromptMode.APPEND;

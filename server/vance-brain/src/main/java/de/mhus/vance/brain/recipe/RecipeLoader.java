@@ -5,6 +5,8 @@ import de.mhus.vance.api.session.IdlePolicy;
 import de.mhus.vance.api.session.SessionLifecycleConfig;
 import de.mhus.vance.api.session.SuspendPolicy;
 import de.mhus.vance.api.thinkprocess.PromptMode;
+import de.mhus.vance.brain.prompt.PromptTemplateException;
+import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.home.HomeBootstrapService;
@@ -49,13 +51,15 @@ public class RecipeLoader {
     public static final String RECIPE_PATH_SUFFIX = ".yaml";
 
     private final DocumentService documentService;
+    private final PromptTemplateRenderer templateRenderer;
 
     /**
      * Resolve {@code name} in the project/_vance/classpath cascade.
      * Returns empty if no tier carries the recipe.
      *
      * @throws RecipeParseException when the YAML at the matched layer
-     *         is malformed or missing required fields
+     *         is malformed, missing required fields, or carries a
+     *         {@code promptPrefix} that fails Pebble compilation
      */
     public Optional<ResolvedRecipe> load(
             String tenantId, @Nullable String projectId, String name) {
@@ -70,7 +74,7 @@ public class RecipeLoader {
         }
         LookupResult result = hit.get();
         try {
-            return Optional.of(parse(name.toLowerCase().trim(), result));
+            return Optional.of(parse(name.toLowerCase().trim(), result, templateRenderer));
         } catch (RuntimeException e) {
             throw new RecipeParseException(
                     "Failed to parse recipe '" + name + "' from "
@@ -97,7 +101,7 @@ public class RecipeLoader {
             String name = nameFromPath(path);
             if (name == null) continue;
             try {
-                out.add(parse(name, e.getValue()));
+                out.add(parse(name, e.getValue(), templateRenderer));
             } catch (RuntimeException ex) {
                 log.warn("RecipeLoader: skipping malformed recipe path='{}' source={}: {}",
                         path, e.getValue().source(), ex.getMessage());
@@ -125,7 +129,8 @@ public class RecipeLoader {
     }
 
     @SuppressWarnings("unchecked")
-    private static ResolvedRecipe parse(String name, LookupResult hit) {
+    private static ResolvedRecipe parse(
+            String name, LookupResult hit, PromptTemplateRenderer renderer) {
         Yaml yaml = new Yaml();
         Object parsed = yaml.load(hit.content());
         if (!(parsed instanceof Map<?, ?> rawMap)) {
@@ -154,14 +159,16 @@ public class RecipeLoader {
         }
 
         String promptPrefix = stringOrNull(spec.get("promptPrefix"));
-        String promptPrefixSmall = stringOrNull(spec.get("promptPrefixSmall"));
+        // Compile-validate the template now so a syntax error fails the
+        // recipe load, not the first turn that picks the recipe.
+        compileTemplate(renderer, promptPrefix, "promptPrefix");
         PromptMode promptMode = parsePromptMode(spec.get("promptMode"));
         String dataRelayCorrection = stringOrNull(spec.get("dataRelayCorrection"));
         List<String> add = stringList(spec.get("allowedToolsAdd"), "allowedToolsAdd");
         List<String> remove = stringList(spec.get("allowedToolsRemove"), "allowedToolsRemove");
         List<String> defer = stringList(spec.get("allowedToolsDefer"), "allowedToolsDefer");
         Map<String, RecipeModeBlock> baseModes = parseModes(spec.get("modes"), "modes");
-        Map<String, ProfileBlock> profiles = parseProfiles(spec.get("profiles"));
+        Map<String, ProfileBlock> profiles = parseProfiles(spec.get("profiles"), renderer);
         List<String> defaultActiveSkills = stringList(
                 spec.get("defaultActiveSkills"), "defaultActiveSkills");
         List<String> allowedSkills = parseAllowedSkills(spec.get("allowedSkills"));
@@ -171,12 +178,30 @@ public class RecipeLoader {
 
         return new ResolvedRecipe(
                 name, description, engine, params,
-                promptPrefix, promptPrefixSmall, promptMode,
+                promptPrefix, promptMode,
                 dataRelayCorrection,
                 add, remove, defer, baseModes, profiles,
                 defaultActiveSkills, allowedSkills,
                 locked, tags,
                 mapSource(hit.source()));
+    }
+
+    /**
+     * Compile-validate a Pebble template and surface a clean recipe-load
+     * error. {@code null} / blank templates are no-ops (they mean "no
+     * override" — there's nothing to compile).
+     */
+    private static void compileTemplate(
+            PromptTemplateRenderer renderer,
+            @Nullable String template,
+            String fieldName) {
+        if (template == null || template.isBlank()) return;
+        try {
+            renderer.compile(template);
+        } catch (PromptTemplateException e) {
+            throw new IllegalStateException(
+                    "'" + fieldName + "' is not a valid Pebble template: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -216,7 +241,8 @@ public class RecipeLoader {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, ProfileBlock> parseProfiles(Object raw) {
+    private static Map<String, ProfileBlock> parseProfiles(
+            Object raw, PromptTemplateRenderer renderer) {
         if (raw == null) return Map.of();
         if (!(raw instanceof Map<?, ?> rawMap)) {
             throw new IllegalStateException("'profiles' must be a map");
@@ -249,6 +275,7 @@ public class RecipeLoader {
             Map<String, RecipeModeBlock> blockModes = parseModes(
                     blockMap.get("modes"), "profiles." + key + ".modes");
             String blockAppend = stringOrNull(blockMap.get("promptPrefixAppend"));
+            compileTemplate(renderer, blockAppend, "profiles." + key + ".promptPrefixAppend");
             Map<String, Object> blockParams = new LinkedHashMap<>();
             Object rawBlockParams = blockMap.get("params");
             if (rawBlockParams != null) {

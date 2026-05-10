@@ -45,9 +45,6 @@ public class EffectiveRecipeDto {
     /** Whether the recipe carries a non-empty {@code promptPrefix}. */
     private boolean hasPromptPrefix;
 
-    /** Whether the recipe carries a non-empty {@code promptPrefixSmall}. */
-    private boolean hasPromptPrefixSmall;
-
     private List<String> allowedToolsAdd;
 
     private List<String> allowedToolsRemove;

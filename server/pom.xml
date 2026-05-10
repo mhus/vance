@@ -52,6 +52,11 @@
              Streamed: AttachmentResolver passes an InputStream straight
              into PDFBox's Loader, no full-file byte[] held twice. -->
         <pdfbox.version>3.0.4</pdfbox.version>
+        <!-- Pebble: Jinja2-style template engine for recipe / engine prompt
+             templating. ~150 KB with slf4j as only transitive dep. Drives
+             tier/mode/profile-aware prompt rendering — see
+             planning/prompt-template-migration.md. -->
+        <pebble.version>3.2.2</pebble.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
@@ -155,6 +160,11 @@
                 <groupId>org.apache.pdfbox</groupId>
                 <artifactId>pdfbox</artifactId>
                 <version>${pdfbox.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.pebbletemplates</groupId>
+                <artifactId>pebble</artifactId>
+                <version>${pebble.version}</version>
             </dependency>
             <!--
                 Direct Anthropic SDK — used by AnthropicDirectChatModel for

@@ -113,6 +113,7 @@ public class ZaphodEngine implements ThinkEngine {
     private final RecipeResolver recipeResolver;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
+    private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
@@ -287,7 +288,6 @@ public class ZaphodEngine implements ThinkEngine {
                     applied.params(),
                     applied.name(),
                     applied.promptOverride(),
-                    applied.promptOverrideSmall(),
                     applied.promptMode(),
                     applied.dataRelayCorrection(),
                     applied.effectiveAllowedTools(),
@@ -429,13 +429,14 @@ public class ZaphodEngine implements ThinkEngine {
             }
             List<ChatMessage> messages = new ArrayList<>();
             String basePath = paramString(process, "promptDocument", SYNTHESIS_PROMPT_PATH);
-            String smallOverride = paramString(process, "promptDocumentSmall", null);
-            messages.add(SystemMessage.from(enginePromptResolver.resolveTiered(
-                    process,
-                    basePath,
-                    smallOverride,
-                    de.mhus.vance.brain.ai.ModelSize.LARGE,
-                    SYNTHESIS_SYSTEM_PROMPT)));
+            String synthTpl = enginePromptResolver.resolve(
+                    process, basePath, SYNTHESIS_SYSTEM_PROMPT);
+            java.util.Map<String, Object> synthCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
+                    .forProcess(process, null)
+                    .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
+                    .engine(NAME)
+                    .build();
+            messages.add(SystemMessage.from(promptTemplateRenderer.render(synthTpl, synthCtx)));
             messages.add(UserMessage.from(body.toString()));
             String modelAlias = config.provider() + ":" + config.modelName();
             long startMs = System.currentTimeMillis();

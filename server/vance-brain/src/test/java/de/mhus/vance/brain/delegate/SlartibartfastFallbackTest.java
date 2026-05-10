@@ -92,7 +92,7 @@ class SlartibartfastFallbackTest {
                         && "do something nice".equals(p.get(SlartibartfastEngine.USER_DESCRIPTION_KEY))
                         && SlartibartfastFallback.DEFAULT_OUTPUT_SCHEMA.equals(
                                 p.get(SlartibartfastEngine.OUTPUT_SCHEMA_TYPE_KEY))),
-                any(), any(), any(), any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any(), any());
         verify(thinkEngineService, times(1)).start(any());
     }
 
@@ -185,7 +185,7 @@ class SlartibartfastFallbackTest {
         when(thinkProcessService.create(
                 anyString(), anyString(), anyString(), anyString(),
                 anyString(), anyString(), any(), any(), anyString(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(spawned);
     }
 

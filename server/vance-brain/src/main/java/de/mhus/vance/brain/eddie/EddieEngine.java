@@ -207,9 +207,7 @@ public class EddieEngine extends StructuredActionEngine {
             "manual_read");
 
     private static final String PROMPT_PATH = "prompts/eddie-prompt.md";
-    private static final String PROMPT_SMALL_PATH = "prompts/eddie-prompt-small.md";
     private static final String PROMPT_RESOURCE = "vance-defaults/prompts/eddie-prompt.md";
-    private static final String PROMPT_SMALL_RESOURCE = "vance-defaults/prompts/eddie-prompt-small.md";
 
     private static final int DEFAULT_MAX_ITERATIONS = 4;
     private static final String DEFAULT_MODEL_ALIAS = "default:analyze";
@@ -254,6 +252,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final ModelCatalog modelCatalog;
     private final EngineChatFactory engineChatFactory;
     private final EnginePromptResolver enginePromptResolver;
+    private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
     private final MemoryContextLoader memoryContextLoader;
     private final EddieActivityService activityService;
     private final de.mhus.vance.shared.session.SessionService sessionService;
@@ -280,7 +279,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool workerConnectionPool,
             de.mhus.vance.brain.eddie.connection.EddieFrameRouter workerFrameRouter,
             de.mhus.vance.shared.jwt.JwtService jwtService,
-            de.mhus.vance.shared.access.ProfileRegistry profileRegistry) {
+            de.mhus.vance.shared.access.ProfileRegistry profileRegistry,
+            de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -295,6 +295,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.workerFrameRouter = workerFrameRouter;
         this.jwtService = jwtService;
         this.profileRegistry = profileRegistry;
+        this.promptTemplateRenderer = promptTemplateRenderer;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -335,8 +336,7 @@ public class EddieEngine extends StructuredActionEngine {
     public Optional<EngineBundledConfig> bundledConfig() {
         EngineBundledConfig cached = cachedConfig;
         if (cached == null) {
-            cached = buildBundledConfig(loadResource(PROMPT_RESOURCE),
-                    loadResource(PROMPT_SMALL_RESOURCE));
+            cached = buildBundledConfig(loadResource(PROMPT_RESOURCE));
             cachedConfig = cached;
         }
         return Optional.of(cached);
@@ -346,22 +346,19 @@ public class EddieEngine extends StructuredActionEngine {
     public Optional<EngineBundledConfig> bundledConfig(
             String tenantId, @Nullable String projectId) {
         String promptFallback = loadResource(PROMPT_RESOURCE);
-        String promptSmallFallback = loadResource(PROMPT_SMALL_RESOURCE);
         String prompt = enginePromptResolver.resolveForTenant(
                 tenantId, projectId, PROMPT_PATH, promptFallback);
-        String promptSmall = enginePromptResolver.resolveForTenant(
-                tenantId, projectId, PROMPT_SMALL_PATH, promptSmallFallback);
-        return Optional.of(buildBundledConfig(prompt, promptSmall));
+        return Optional.of(buildBundledConfig(prompt));
     }
 
-    private EngineBundledConfig buildBundledConfig(String prompt, String promptSmall) {
+    private EngineBundledConfig buildBundledConfig(String prompt) {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("model", DEFAULT_MODEL_ALIAS);
         params.put("validation", true);
         params.put("maxIterations", DEFAULT_MAX_ITERATIONS);
         params.put("manualPaths", List.of("eddie/manuals/", "manuals/"));
         return new EngineBundledConfig(
-                params, prompt, promptSmall, PromptMode.OVERWRITE,
+                params, prompt, PromptMode.OVERWRITE,
                 /*dataRelayCorrection*/ null,
                 /*allowedTools*/ null);
     }
@@ -598,7 +595,7 @@ public class EddieEngine extends StructuredActionEngine {
                     paramString(process, "modelSize", null), modelInfo.size());
 
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, inbox, effectiveSize);
+                    process, chatLog, inbox, modelInfo, effectiveSize);
             int maxIters = paramInt(process, "maxIterations",
                     DEFAULT_MAX_ITERATIONS);
             log.debug("Eddie.turn id='{}' inbox={} historyMsgs={} model={} maxIters={}",
@@ -1493,6 +1490,7 @@ public class EddieEngine extends StructuredActionEngine {
             ThinkProcessDocument process,
             ChatMessageService chatLog,
             List<SteerMessage> inbox,
+            ModelInfo modelInfo,
             ModelSize modelSize) {
         List<ChatMessage> messages = new ArrayList<>();
 
@@ -1501,11 +1499,16 @@ public class EddieEngine extends StructuredActionEngine {
         // block (displayName / userId) is session-stable too, so it
         // joins the static prefix; the cache marker lands on the
         // last static block. See specification/prompt-caching.md §5.
+        java.util.Map<String, Object> promptCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
+                .forProcess(process, modelInfo)
+                .tier(modelSize)
+                .engine(NAME)
+                .build();
         String base = SystemPrompts.compose(process,
                 process.getPromptOverride() == null
                         ? GREETING
                         : process.getPromptOverride(),
-                modelSize);
+                promptTemplateRenderer, promptCtx);
         messages.add(SystemMessage.from(base));
         String userBlock = composeUserContextBlock(process);
         if (userBlock != null && !userBlock.isBlank()) {

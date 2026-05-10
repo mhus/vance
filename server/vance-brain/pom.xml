@@ -122,6 +122,14 @@
             <artifactId>pdfbox</artifactId>
         </dependency>
 
+        <!-- Pebble: Jinja2-style templates for recipe and engine prompts.
+             Drives tier/mode/profile-aware rendering through
+             PromptTemplateRenderer. See planning/prompt-template-migration.md. -->
+        <dependency>
+            <groupId>io.pebbletemplates</groupId>
+            <artifactId>pebble</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

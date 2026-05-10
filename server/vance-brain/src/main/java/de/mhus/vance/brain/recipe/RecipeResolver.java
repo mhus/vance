@@ -162,21 +162,19 @@ public class RecipeResolver {
         Set<String> effectiveAllowed = computeAllowed(
                 engine.allowedTools(), expandedAdd, expandedRemove);
 
-        // Profile-append is always additive — applied to both prompt variants
-        // regardless of promptMode. The OVERWRITE/APPEND mode controls how the
-        // engine combines this with its fallback later (see specification/recipes.md §5.2).
+        // Profile-append is always additive. Both pieces are Pebble
+        // templates; rendering with tier/mode/profile context happens
+        // later in SystemPrompts.compose — here we just stitch the
+        // unrendered text together, separator marks the join so the
+        // template author can rely on a guaranteed empty-line gap.
         String effectivePromptOverride = appendIfPresent(
                 r.promptPrefix(), profileBlock.promptPrefixAppend());
-        String effectivePromptOverrideSmall = r.promptPrefixSmall() == null
-                ? null
-                : appendIfPresent(r.promptPrefixSmall(), profileBlock.promptPrefixAppend());
 
         return new AppliedRecipe(
                 r.name(),
                 r.engine(),
                 mergedParams,
                 effectivePromptOverride,
-                effectivePromptOverrideSmall,
                 r.promptMode(),
                 r.dataRelayCorrection(),
                 effectiveAllowed,

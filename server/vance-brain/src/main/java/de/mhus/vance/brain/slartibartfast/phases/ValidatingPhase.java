@@ -8,6 +8,8 @@ import de.mhus.vance.api.slartibartfast.RecipeDraft;
 import de.mhus.vance.api.slartibartfast.RecoveryRequest;
 import de.mhus.vance.api.slartibartfast.Subgoal;
 import de.mhus.vance.api.slartibartfast.ValidationCheck;
+import de.mhus.vance.brain.prompt.PromptTemplateException;
+import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -57,6 +59,8 @@ public class ValidatingPhase {
             "marvin-recipe-shape";
     public static final String RULE_MARVIN_PROMPT_PREFIX =
             "marvin-recipe-prompt-prefix-present";
+    public static final String RULE_PROMPT_PREFIX_TEMPLATE_VALID =
+            "recipe-prompt-prefix-pebble-template-valid";
     public static final String RULE_MARVIN_RECIPES_EXIST =
             "marvin-recipe-allowed-recipes-exist";
     public static final String RULE_JUSTIFICATION_RESOLVES =
@@ -65,6 +69,7 @@ public class ValidatingPhase {
             "outputSchemaType-supported";
 
     private final RecipeLoader recipeLoader;
+    private final PromptTemplateRenderer promptTemplateRenderer;
 
     public void execute(
             ArchitectState state,
@@ -228,6 +233,24 @@ public class ValidatingPhase {
                         .rule(RULE_MARVIN_PROMPT_PREFIX).passed(true)
                         .message("promptPrefix present (" + ppStr.length()
                                 + " chars)").build());
+                // Recipes carry promptPrefix as a Pebble template (tier /
+                // mode / model conditions live inside the body). Compile
+                // it now so a syntax slip surfaces at validation time, not
+                // at first turn.
+                try {
+                    promptTemplateRenderer.compile(ppStr);
+                    report.add(ValidationCheck.builder()
+                            .rule(RULE_PROMPT_PREFIX_TEMPLATE_VALID).passed(true)
+                            .message("promptPrefix is a valid Pebble template").build());
+                } catch (PromptTemplateException e) {
+                    ValidationCheck v = ValidationCheck.builder()
+                            .rule(RULE_PROMPT_PREFIX_TEMPLATE_VALID).passed(false)
+                            .message("promptPrefix is not a valid Pebble template: "
+                                    + e.getMessage())
+                            .build();
+                    report.add(v);
+                    firstFail = v;
+                }
             }
             Object params = recipeMap.get("params");
             if (firstFail == null

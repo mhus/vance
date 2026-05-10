@@ -24,7 +24,6 @@ public record AppliedRecipe(
         String engine,
         Map<String, Object> params,
         @Nullable String promptOverride,
-        @Nullable String promptOverrideSmall,
         PromptMode promptMode,
         @Nullable String dataRelayCorrection,
         @Nullable Set<String> effectiveAllowedTools,

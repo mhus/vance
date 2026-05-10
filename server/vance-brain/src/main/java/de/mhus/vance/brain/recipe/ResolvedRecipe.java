@@ -17,7 +17,6 @@ public record ResolvedRecipe(
         String engine,
         Map<String, Object> params,
         @Nullable String promptPrefix,
-        @Nullable String promptPrefixSmall,
         PromptMode promptMode,
         @Nullable String dataRelayCorrection,
         List<String> allowedToolsAdd,

@@ -232,7 +232,7 @@ class RecipeResolverModeFilterTest {
                 "test recipe",
                 "arthur",
                 Map.of(),
-                null, null, PromptMode.APPEND, null,
+                null, PromptMode.APPEND, null,
                 baseAdd, baseRemove, baseDefer, baseModes, profiles,
                 List.of(), null, false, List.of(), RecipeSource.RESOURCE);
     }

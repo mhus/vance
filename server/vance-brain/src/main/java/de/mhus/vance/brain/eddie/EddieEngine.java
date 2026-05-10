@@ -642,18 +642,26 @@ public class EddieEngine extends StructuredActionEngine {
 
             String chatMessage = outcome.chatMessage();
             if (chatMessage != null && !chatMessage.isBlank()) {
-                chatLog.append(ChatMessageDocument.builder()
+                ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
                         .tenantId(process.getTenantId())
                         .sessionId(process.getSessionId())
                         .thinkProcessId(process.getId())
                         .role(ChatRole.ASSISTANT)
                         .content(chatMessage)
                         .build());
+                // Flush buffered history tags (TOOL_CALL/RESOURCE/FILE_EDIT
+                // from the dispatcher hook) onto the assistant turn.
+                if (saved != null && saved.getId() != null) {
+                    ctx.historyTagSink().flushTo(saved.getId(), chatLog);
+                }
                 String preview = chatMessage.length() > 120
                         ? chatMessage.substring(0, 120) + "…" : chatMessage;
                 log.info("Eddie.turn id='{}' awaiting={} -> '{}'",
                         process.getId(), awaitingUserInput, preview);
             } else {
+                // No assistant turn this round — drop buffered tags
+                // rather than letting them leak onto the next turn.
+                ctx.historyTagSink().discard();
                 log.info("Eddie.turn id='{}' awaiting={} (silent — no chat append)",
                         process.getId(), awaitingUserInput);
             }

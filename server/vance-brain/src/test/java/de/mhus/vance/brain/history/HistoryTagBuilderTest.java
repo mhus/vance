@@ -155,6 +155,55 @@ class HistoryTagBuilderTest {
     }
 
     @Test
+    void onSuccess_documentEdit_fallsBackToNewId_forCrossDocCopy() {
+        Tool tool = stubTool(Set.of("write", "document"));
+
+        // CrossDocCopyTool returns newId (the produced copy) — not documentId.
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("sourceId", "65f-source");
+        result.put("newId", "65f-fresh-copy");
+
+        Set<String> tags = builder.onSuccess("doc_copy_cross_project",
+                tool, Map.of(), result, ctx("p-1"));
+
+        // newId beats sourceId — the edit landed on the new resource.
+        assertThat(tags).contains("RESOURCE:DOCUMENT:65f-fresh-copy", "DOC_EDIT");
+        assertThat(tags).doesNotContain("RESOURCE:DOCUMENT:65f-source");
+    }
+
+    @Test
+    void onSuccess_documentEdit_fallsBackToPurgedId_forDocPurge() {
+        Tool tool = stubTool(Set.of("write", "document"));
+
+        Set<String> tags = builder.onSuccess("doc_purge",
+                tool, Map.of(), Map.of("purgedId", "65f-gone"), ctx("p-1"));
+
+        assertThat(tags).contains("RESOURCE:DOCUMENT:65f-gone", "DOC_EDIT");
+    }
+
+    @Test
+    void onSuccess_documentEdit_fallsBackToId_forDocCreateKind() {
+        Tool tool = stubTool(Set.of("write", "document"));
+
+        // DocCreateKindTool returns "id".
+        Set<String> tags = builder.onSuccess("doc_create_kind",
+                tool, Map.of(), Map.of("id", "65f-new-doc"), ctx("p-1"));
+
+        assertThat(tags).contains("RESOURCE:DOCUMENT:65f-new-doc", "DOC_EDIT");
+    }
+
+    @Test
+    void onSuccess_documentEdit_sourceIdAlone_usedWhenNothingElsePresent() {
+        Tool tool = stubTool(Set.of("write", "document"));
+
+        // Last-resort fallback when only sourceId is present.
+        Set<String> tags = builder.onSuccess("some_doc_op",
+                tool, Map.of(), Map.of("sourceId", "65f-only"), ctx("p-1"));
+
+        assertThat(tags).contains("RESOURCE:DOCUMENT:65f-only");
+    }
+
+    @Test
     void onError_emitsToolCallAndErrorTag() {
         Set<String> tags = builder.onError("client_file_edit");
 

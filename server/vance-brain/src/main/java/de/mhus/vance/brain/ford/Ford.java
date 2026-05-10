@@ -361,13 +361,20 @@ public class Ford implements ThinkEngine {
             awaitingUserInput = outcome.awaitingUserInput();
             String finalText = outcome.finalText();
 
-            chatLog.append(ChatMessageDocument.builder()
+            ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
                     .tenantId(process.getTenantId())
                     .sessionId(process.getSessionId())
                     .thinkProcessId(process.getId())
                     .role(ChatRole.ASSISTANT)
                     .content(finalText)
                     .build());
+            // Flush buffered history tags onto the assistant turn.
+            // Tool-dispatcher hook in ContextToolsApi has been emitting
+            // TOOL_CALL/RESOURCE/FILE_EDIT markers into the per-turn sink
+            // throughout runToolLoop; they land here.
+            if (saved != null && saved.getId() != null) {
+                ctx.historyTagSink().flushTo(saved.getId(), chatLog);
+            }
 
             String preview = finalText.length() > 120 ? finalText.substring(0, 120) + "…" : finalText;
             log.info("Ford.steer id='{}' awaiting={} -> '{}'",

@@ -92,16 +92,49 @@ public class HistoryTagBuilder {
                 tags.add(TAG_FILE_EDIT);
             }
         } else if (labels.contains(LABEL_DOCUMENT)) {
-            String docId = stringFrom(result, "documentId");
-            if (docId == null) docId = stringFrom(result, "docId");
-            if (docId == null) docId = stringFrom(params, "documentId");
-            if (docId == null) docId = stringFrom(params, "docId");
+            String docId = documentIdFrom(result);
+            if (docId == null) docId = documentIdFrom(params);
             if (docId != null) {
                 tags.add(TAG_RESOURCE_PREFIX + "DOCUMENT:" + docId);
                 tags.add(TAG_DOC_EDIT);
             }
         }
         return tags;
+    }
+
+    /**
+     * Probes a result/params map for a document identifier under any of
+     * the names the kind-tools use today. Order matches the conceptual
+     * "what was just produced" → "what was operated on" → "what we
+     * found by source".
+     *
+     * <p>Discrepancy in tool returns is the reason this kicks: <ul>
+     *   <li>{@link de.mhus.vance.brain.tools.kinds.DocEditTool} returns
+     *       {@code documentId} (canonical).</li>
+     *   <li>{@link de.mhus.vance.brain.tools.kinds.DocCreateKindTool}
+     *       returns {@code id} (Mongo-style short).</li>
+     *   <li>{@link de.mhus.vance.brain.tools.kinds.DocPurgeTool}
+     *       returns {@code purgedId}.</li>
+     *   <li>{@code CrossDocCopy} / {@code CrossDocMove} / {@code DocCopy}
+     *       return {@code newId} (the produced copy) plus
+     *       {@code sourceId}; we tag against {@code newId} since that is
+     *       the freshly written resource.</li>
+     * </ul>
+     * Standardising the tool returns would be cleaner long-term; this
+     * fallback chain pays the cost in one place instead.
+     */
+    private static @Nullable String documentIdFrom(@Nullable Map<String, Object> map) {
+        if (map == null) return null;
+        String s = stringFrom(map, "documentId");
+        if (s == null) s = stringFrom(map, "docId");
+        // newId = freshly produced copy/created doc (CrossDocCopy/Move,
+        // DocCopy, DocCreateKind family). Prefer over sourceId because the
+        // edit landed on the new resource.
+        if (s == null) s = stringFrom(map, "newId");
+        if (s == null) s = stringFrom(map, "purgedId");
+        if (s == null) s = stringFrom(map, "id");
+        if (s == null) s = stringFrom(map, "sourceId");
+        return s;
     }
 
     /**

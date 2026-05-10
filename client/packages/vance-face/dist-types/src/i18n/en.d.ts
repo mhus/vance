@@ -88,6 +88,11 @@ declare const _default: {
         sessionOccupiedBy: string;
         sessionNotFound: string;
         sessionForbidden: string;
+        attachments: {
+            pickerTooltip: string;
+            dropToAttach: string;
+            remove: string;
+        };
         speech: {
             startSpeechToText: string;
             stopSpeechToText: string;

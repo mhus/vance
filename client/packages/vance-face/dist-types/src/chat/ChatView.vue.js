@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n';
 import { WebSocketRequestError, AUTO_LANGUAGE, SUPPORTED_SPEECH_LANGUAGES, getSpeechLanguage, resolveSpeechLanguage, setSpeechLanguage, getSpeakerEnabled, getSpeechRate, getSpeechVoiceURI, getSpeechVolume, setSpeakerEnabled, setSpeechRate, setSpeechVoiceURI, setSpeechVolume, stripMarkdown, MIN_RATE, MAX_RATE, MIN_VOLUME, MAX_VOLUME, } from '@vance/shared';
 import { buildUtterance, isSpeechSynthesisSupported, listVoices, onVoicesChanged, } from '../platform/speechWeb';
 import { useChatHistory } from '@composables/useChatHistory';
+import { uploadChatboxAttachments, ChatboxUploadError, } from '@composables/useChatboxUpload';
 import { VAlert, VButton, VSelect, VTextarea } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
@@ -48,6 +49,22 @@ const modeBadge = computed(() => {
 const composerText = ref('');
 const sending = ref(false);
 const sendError = ref(null);
+/** Files the user dragged onto the composer or picked via the
+ *  paperclip button. Cleared on successful send; entries are
+ *  uploaded to {@code _chatbox/...} just before the steer call. */
+const selectedFiles = ref([]);
+/** True while attachment uploads are in flight — drives the send-button
+ *  spinner and disables further drops. Always falsy once {@code sending}
+ *  is true (we don't double-spin). */
+const uploading = ref(false);
+/** Visual highlight while a drag-over event fires on the composer
+ *  footer. Doesn't gate behaviour, just lights up the drop zone. */
+const dragActive = ref(false);
+/** Project that owns this chat session. Captured in
+ *  {@code resolveSessionAndProcess} from the session-list response.
+ *  Required for attachment uploads — the documents endpoint is
+ *  project-scoped. */
+const chatProjectId = ref('');
 /**
  * Composer mode: single-line uses Enter to send (Shift+Enter for a hard
  * break), multi-line uses Ctrl/Cmd+Enter (because plain Enter is the
@@ -323,9 +340,12 @@ async function resolveSessionAndProcess() {
         const resp = await props.socket.send('session-list', {});
         const summary = resp.sessions?.find((s) => s.sessionId === props.sessionId);
         sessionDisplay.value = summary?.displayName ?? props.sessionId;
+        // Project id needed for attachment uploads — see send() / drop handler.
+        chatProjectId.value = summary?.projectId ?? '';
     }
     catch {
         sessionDisplay.value = props.sessionId;
+        chatProjectId.value = '';
     }
     // The chat-process name is fixed by SessionChatBootstrapper to
     // `CHAT_PROCESS_NAME = "chat"` — there is exactly one per session.
@@ -433,30 +453,70 @@ function scrollToBottom() {
 }
 async function send() {
     const text = composerText.value.trim();
-    if (!text || sending.value || !chatProcessName.value)
+    const filesSnapshot = selectedFiles.value.slice();
+    // Allow attachment-only sends so the user can drop a PDF and hit
+    // send without typing — Arthur can then ask "what should I do with
+    // this?" rather than the UI silently rejecting the click.
+    if (sending.value || !chatProcessName.value)
+        return;
+    if (!text && filesSnapshot.length === 0)
         return;
     sending.value = true;
     sendError.value = null;
-    // Optimistic local echo: the server only emits chat-message-appended
-    // for the user message *after* the engine drains its pending queue
-    // (same lane turn that generates the assistant reply). To give the
-    // user immediate feedback we render the bubble now and let
+    // Stage 1 — upload attachments (if any). All-or-nothing: any
+    // failure aborts the send so the user doesn't end up with a
+    // half-sent message that references files which never made it.
+    let attachmentRefs = [];
+    if (filesSnapshot.length > 0) {
+        uploading.value = true;
+        try {
+            attachmentRefs = await uploadChatboxAttachments(chatProjectId.value, filesSnapshot);
+        }
+        catch (e) {
+            if (e instanceof ChatboxUploadError) {
+                sendError.value = e.message;
+            }
+            else {
+                sendError.value = e instanceof Error
+                    ? e.message
+                    : 'Attachment upload failed.';
+            }
+            sending.value = false;
+            uploading.value = false;
+            return;
+        }
+        uploading.value = false;
+    }
+    // Stage 2 — steer the chat process. Optimistic local echo: the
+    // server only emits chat-message-appended for the user message
+    // *after* the engine drains its pending queue (same lane turn that
+    // generates the assistant reply). To give the user immediate
+    // feedback we render the bubble now and let
     // {@link appendMessageBubble} drop this temp entry when the
     // canonical frame arrives. If the steer fails, we remove it again.
     const optimisticId = `${OPTIMISTIC_PREFIX}${++optimisticSeq}`;
+    const echoText = filesSnapshot.length > 0
+        // Show the attachments inline in the optimistic bubble so the
+        // user sees what they just sent — the canonical chat-message
+        // from the server only carries text. Cosmetic only; gets
+        // replaced once the server's frame arrives.
+        ? attachmentEchoPrefix(filesSnapshot) + text
+        : text;
     liveMessages.value.push({
         messageId: optimisticId,
         thinkProcessId: '',
         role: 'USER',
-        content: text,
+        content: echoText,
         createdAt: new Date(),
     });
     composerText.value = '';
+    selectedFiles.value = [];
     scrollToBottom();
     try {
         await props.socket.send('process-steer', {
             processName: chatProcessName.value,
             content: text,
+            attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
         });
     }
     catch (e) {
@@ -475,6 +535,82 @@ async function send() {
     finally {
         sending.value = false;
     }
+}
+/** Compose the inline echo of attachments shown in the optimistic
+ *  user bubble. Plain markdown so MessageBubble renders it without a
+ *  custom DTO field. The server-side frame only carries the text body
+ *  and replaces this bubble on arrival. */
+function attachmentEchoPrefix(files) {
+    const lines = files.map((f) => `📎 ${f.name} _(${formatBytes(f.size)})_`);
+    return lines.join('\n') + (files.length > 0 ? '\n\n' : '');
+}
+function formatBytes(bytes) {
+    if (bytes < 1024)
+        return `${bytes} B`;
+    if (bytes < 1024 * 1024)
+        return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+// ──────────────── Drag-and-drop / picker ────────────────
+const fileInputRef = ref(null);
+function onComposerDragEnter(event) {
+    if (sending.value || uploading.value)
+        return;
+    event.preventDefault();
+    dragActive.value = true;
+}
+function onComposerDragOver(event) {
+    if (sending.value || uploading.value)
+        return;
+    // dragover must call preventDefault for the drop event to fire.
+    event.preventDefault();
+    dragActive.value = true;
+}
+function onComposerDragLeave(event) {
+    // dragleave fires for child elements too; only deactivate when the
+    // pointer actually leaves the drop zone.
+    const related = event.relatedTarget;
+    if (related && event.currentTarget.contains(related))
+        return;
+    dragActive.value = false;
+}
+function onComposerDrop(event) {
+    event.preventDefault();
+    dragActive.value = false;
+    if (sending.value || uploading.value)
+        return;
+    const incoming = event.dataTransfer?.files;
+    if (!incoming || incoming.length === 0)
+        return;
+    appendFiles(Array.from(incoming));
+}
+function onFilePickerChange(event) {
+    const input = event.target;
+    if (input.files) {
+        appendFiles(Array.from(input.files));
+    }
+    // Reset so picking the same file twice in a row still fires `change`.
+    input.value = '';
+}
+function appendFiles(incoming) {
+    // Dedupe by name + size + lastModified so dragging the same file
+    // twice doesn't show twice — same fingerprint logic as VFileInput.
+    const merged = selectedFiles.value.slice();
+    const fingerprint = (f) => `${f.name}|${f.size}|${f.lastModified}`;
+    const seen = new Set(merged.map(fingerprint));
+    for (const f of incoming) {
+        const key = fingerprint(f);
+        if (!seen.has(key)) {
+            merged.push(f);
+            seen.add(key);
+        }
+    }
+    selectedFiles.value = merged;
+}
+function removeFile(index) {
+    const next = selectedFiles.value.slice();
+    next.splice(index, 1);
+    selectedFiles.value = next;
 }
 /**
  * Fire-and-forget {@code process-pause} for the bound session. Mirrors
@@ -708,8 +844,21 @@ const __VLS_22 = __VLS_21({
     planMeta: (__VLS_ctx.planMeta),
 }, ...__VLS_functionalComponentArgsRest(__VLS_21));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.footer, __VLS_intrinsicElements.footer)({
-    ...{ class: "border-t border-base-300 bg-base-100 p-4" },
+    ...{ onDragenter: (__VLS_ctx.onComposerDragEnter) },
+    ...{ onDragover: (__VLS_ctx.onComposerDragOver) },
+    ...{ onDragleave: (__VLS_ctx.onComposerDragLeave) },
+    ...{ onDrop: (__VLS_ctx.onComposerDrop) },
+    ...{ class: "border-t border-base-300 bg-base-100 p-4 relative" },
 });
+if (__VLS_ctx.dragActive) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "\u0061\u0062\u0073\u006f\u006c\u0075\u0074\u0065\u0020\u0069\u006e\u0073\u0065\u0074\u002d\u0030\u0020\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u006a\u0075\u0073\u0074\u0069\u0066\u0079\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0032\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0064\u0061\u0073\u0068\u0065\u0064\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0070\u0072\u0069\u006d\u0061\u0072\u0079\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u0067\u002d\u0070\u0072\u0069\u006d\u0061\u0072\u0079\u002f\u0031\u0030\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0070\u006f\u0069\u006e\u0074\u0065\u0072\u002d\u0065\u0076\u0065\u006e\u0074\u0073\u002d\u006e\u006f\u006e\u0065\u0020\u007a\u002d\u0031\u0030" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "text-sm font-semibold text-primary" },
+    });
+    (__VLS_ctx.$t('chat.attachments.dropToAttach'));
+}
 if (__VLS_ctx.sendError) {
     const __VLS_24 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
@@ -758,35 +907,86 @@ if (__VLS_ctx.speechError) {
     (__VLS_ctx.speechError);
     var __VLS_35;
 }
+if (__VLS_ctx.selectedFiles.length > 0) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "max-w-3xl mx-auto mb-2 flex flex-wrap gap-2" },
+    });
+    for (const [file, idx] of __VLS_getVForSourceType((__VLS_ctx.selectedFiles))) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            key: (`att-${file.name}-${idx}`),
+            ...{ class: "\u0066\u006c\u0065\u0078\u0020\u0069\u0074\u0065\u006d\u0073\u002d\u0063\u0065\u006e\u0074\u0065\u0072\u0020\u0067\u0061\u0070\u002d\u0032\u0020\u0070\u0078\u002d\u0032\u0020\u0070\u0079\u002d\u0031\u000a\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u0020\u0062\u006f\u0072\u0064\u0065\u0072\u002d\u0062\u0061\u0073\u0065\u002d\u0033\u0030\u0030\u0020\u0072\u006f\u0075\u006e\u0064\u0065\u0064\u0020\u0062\u0067\u002d\u0062\u0061\u0073\u0065\u002d\u0032\u0030\u0030\u0020\u0074\u0065\u0078\u0074\u002d\u0073\u006d" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            'aria-hidden': "true",
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "font-mono truncate max-w-xs" },
+        });
+        (file.name);
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-xs opacity-60" },
+        });
+        (__VLS_ctx.formatBytes(file.size));
+        const __VLS_36 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            disabled: (__VLS_ctx.sending || __VLS_ctx.uploading),
+            title: (__VLS_ctx.$t('chat.attachments.remove')),
+        }));
+        const __VLS_38 = __VLS_37({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            disabled: (__VLS_ctx.sending || __VLS_ctx.uploading),
+            title: (__VLS_ctx.$t('chat.attachments.remove')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_37));
+        let __VLS_40;
+        let __VLS_41;
+        let __VLS_42;
+        const __VLS_43 = {
+            onClick: (...[$event]) => {
+                if (!(__VLS_ctx.selectedFiles.length > 0))
+                    return;
+                __VLS_ctx.removeFile(idx);
+            }
+        };
+        __VLS_39.slots.default;
+        var __VLS_39;
+    }
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "max-w-3xl mx-auto flex gap-2 items-end" },
 });
-const __VLS_36 = {}.VButton;
+const __VLS_44 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({
+const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
 }));
-const __VLS_38 = __VLS_37({
+const __VLS_46 = __VLS_45({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_37));
-let __VLS_40;
-let __VLS_41;
-let __VLS_42;
-const __VLS_43 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_45));
+let __VLS_48;
+let __VLS_49;
+let __VLS_50;
+const __VLS_51 = {
     onClick: (...[$event]) => {
         __VLS_ctx.multiline = !__VLS_ctx.multiline;
     }
 };
-__VLS_39.slots.default;
+__VLS_47.slots.default;
 (__VLS_ctx.multiline ? '▲' : '▼');
-var __VLS_39;
+var __VLS_47;
 if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "relative" },
@@ -795,33 +995,6 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
         ...{ class: "flex gap-1" },
     });
     if (__VLS_ctx.speechSupported) {
-        const __VLS_44 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({
-            ...{ 'onClick': {} },
-            variant: "ghost",
-            size: "sm",
-            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
-            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
-        }));
-        const __VLS_46 = __VLS_45({
-            ...{ 'onClick': {} },
-            variant: "ghost",
-            size: "sm",
-            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
-            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_45));
-        let __VLS_48;
-        let __VLS_49;
-        let __VLS_50;
-        const __VLS_51 = {
-            onClick: (__VLS_ctx.toggleSpeech)
-        };
-        __VLS_47.slots.default;
-        var __VLS_47;
-    }
-    if (__VLS_ctx.speakerSupported) {
         const __VLS_52 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
@@ -829,53 +1002,80 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
-            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
-            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
+            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
+            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
         }));
         const __VLS_54 = __VLS_53({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
-            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
-            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
+            ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
+            title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
         }, ...__VLS_functionalComponentArgsRest(__VLS_53));
         let __VLS_56;
         let __VLS_57;
         let __VLS_58;
         const __VLS_59 = {
-            onClick: (__VLS_ctx.toggleSpeaker)
+            onClick: (__VLS_ctx.toggleSpeech)
         };
         __VLS_55.slots.default;
-        (__VLS_ctx.speakerEnabled ? '🔊' : '🔇');
         var __VLS_55;
     }
-    const __VLS_60 = {}.VButton;
+    if (__VLS_ctx.speakerSupported) {
+        const __VLS_60 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
+            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
+        }));
+        const __VLS_62 = __VLS_61({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+            ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
+            title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+        let __VLS_64;
+        let __VLS_65;
+        let __VLS_66;
+        const __VLS_67 = {
+            onClick: (__VLS_ctx.toggleSpeaker)
+        };
+        __VLS_63.slots.default;
+        (__VLS_ctx.speakerEnabled ? '🔊' : '🔇');
+        var __VLS_63;
+    }
+    const __VLS_68 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
+    const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         title: (__VLS_ctx.$t('chat.speech.settings')),
     }));
-    const __VLS_62 = __VLS_61({
+    const __VLS_70 = __VLS_69({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         title: (__VLS_ctx.$t('chat.speech.settings')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
-    let __VLS_64;
-    let __VLS_65;
-    let __VLS_66;
-    const __VLS_67 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+    let __VLS_72;
+    let __VLS_73;
+    let __VLS_74;
+    const __VLS_75 = {
         onClick: (...[$event]) => {
             if (!(__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported))
                 return;
             __VLS_ctx.speechSettingsOpen = !__VLS_ctx.speechSettingsOpen;
         }
     };
-    __VLS_63.slots.default;
-    var __VLS_63;
+    __VLS_71.slots.default;
+    var __VLS_71;
     if (__VLS_ctx.speechSettingsOpen) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "absolute bottom-full mb-2 left-0 z-10 w-80 bg-base-100 border border-base-300 rounded shadow-lg p-3 flex flex-col gap-3" },
@@ -885,52 +1085,52 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
             ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
         });
         (__VLS_ctx.$t('chat.speech.language'));
-        const __VLS_68 = {}.VSelect;
+        const __VLS_76 = {}.VSelect;
         /** @type {[typeof __VLS_components.VSelect, ]} */ ;
         // @ts-ignore
-        const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
+        const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.speechLanguageStored),
             options: (__VLS_ctx.speechLanguageOptions),
         }));
-        const __VLS_70 = __VLS_69({
+        const __VLS_78 = __VLS_77({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.speechLanguageStored),
             options: (__VLS_ctx.speechLanguageOptions),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_69));
-        let __VLS_72;
-        let __VLS_73;
-        let __VLS_74;
-        const __VLS_75 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_77));
+        let __VLS_80;
+        let __VLS_81;
+        let __VLS_82;
+        const __VLS_83 = {
             'onUpdate:modelValue': (__VLS_ctx.onLanguageChanged)
         };
-        var __VLS_71;
+        var __VLS_79;
         if (__VLS_ctx.speakerSupported) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
             });
             (__VLS_ctx.$t('chat.speech.voice'));
-            const __VLS_76 = {}.VSelect;
+            const __VLS_84 = {}.VSelect;
             /** @type {[typeof __VLS_components.VSelect, ]} */ ;
             // @ts-ignore
-            const __VLS_77 = __VLS_asFunctionalComponent(__VLS_76, new __VLS_76({
+            const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.speechVoiceUri ?? '__auto__'),
                 options: (__VLS_ctx.voiceOptions),
             }));
-            const __VLS_78 = __VLS_77({
+            const __VLS_86 = __VLS_85({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.speechVoiceUri ?? '__auto__'),
                 options: (__VLS_ctx.voiceOptions),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_77));
-            let __VLS_80;
-            let __VLS_81;
-            let __VLS_82;
-            const __VLS_83 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_85));
+            let __VLS_88;
+            let __VLS_89;
+            let __VLS_90;
+            const __VLS_91 = {
                 'onUpdate:modelValue': (__VLS_ctx.onVoiceChanged)
             };
-            var __VLS_79;
+            var __VLS_87;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between" },
@@ -976,90 +1176,125 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
         (__VLS_ctx.$t('chat.speech.savedLocally'));
     }
 }
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "flex-1" },
+__VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+    ...{ onChange: (__VLS_ctx.onFilePickerChange) },
+    ref: "fileInputRef",
+    type: "file",
+    ...{ class: "hidden" },
+    multiple: true,
 });
-const __VLS_84 = {}.VTextarea;
-/** @type {[typeof __VLS_components.VTextarea, ]} */ ;
-// @ts-ignore
-const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
-    ...{ 'onKeydown': {} },
-    modelValue: (__VLS_ctx.composerText),
-    placeholder: (__VLS_ctx.composerPlaceholder),
-    rows: (__VLS_ctx.composerRows),
-}));
-const __VLS_86 = __VLS_85({
-    ...{ 'onKeydown': {} },
-    modelValue: (__VLS_ctx.composerText),
-    placeholder: (__VLS_ctx.composerPlaceholder),
-    rows: (__VLS_ctx.composerRows),
-}, ...__VLS_functionalComponentArgsRest(__VLS_85));
-let __VLS_88;
-let __VLS_89;
-let __VLS_90;
-const __VLS_91 = {
-    onKeydown: (__VLS_ctx.onComposerKeydown)
-};
-var __VLS_87;
+/** @type {typeof __VLS_ctx.fileInputRef} */ ;
 const __VLS_92 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
 const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
     ...{ 'onClick': {} },
-    variant: "primary",
-    disabled: (!__VLS_ctx.composerText.trim() || __VLS_ctx.sending || !__VLS_ctx.chatProcessName),
-    loading: (__VLS_ctx.sending),
+    variant: "ghost",
+    size: "sm",
+    disabled: (__VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
+    title: (__VLS_ctx.$t('chat.attachments.pickerTooltip')),
 }));
 const __VLS_94 = __VLS_93({
     ...{ 'onClick': {} },
-    variant: "primary",
-    disabled: (!__VLS_ctx.composerText.trim() || __VLS_ctx.sending || !__VLS_ctx.chatProcessName),
-    loading: (__VLS_ctx.sending),
+    variant: "ghost",
+    size: "sm",
+    disabled: (__VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
+    title: (__VLS_ctx.$t('chat.attachments.pickerTooltip')),
 }, ...__VLS_functionalComponentArgsRest(__VLS_93));
 let __VLS_96;
 let __VLS_97;
 let __VLS_98;
 const __VLS_99 = {
-    onClick: (__VLS_ctx.send)
+    onClick: (() => __VLS_ctx.fileInputRef?.click())
 };
 __VLS_95.slots.default;
-(__VLS_ctx.$t('chat.send'));
 var __VLS_95;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "flex-1" },
+});
+const __VLS_100 = {}.VTextarea;
+/** @type {[typeof __VLS_components.VTextarea, ]} */ ;
+// @ts-ignore
+const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
+    ...{ 'onKeydown': {} },
+    modelValue: (__VLS_ctx.composerText),
+    placeholder: (__VLS_ctx.composerPlaceholder),
+    rows: (__VLS_ctx.composerRows),
+}));
+const __VLS_102 = __VLS_101({
+    ...{ 'onKeydown': {} },
+    modelValue: (__VLS_ctx.composerText),
+    placeholder: (__VLS_ctx.composerPlaceholder),
+    rows: (__VLS_ctx.composerRows),
+}, ...__VLS_functionalComponentArgsRest(__VLS_101));
+let __VLS_104;
+let __VLS_105;
+let __VLS_106;
+const __VLS_107 = {
+    onKeydown: (__VLS_ctx.onComposerKeydown)
+};
+var __VLS_103;
+const __VLS_108 = {}.VButton;
+/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+// @ts-ignore
+const __VLS_109 = __VLS_asFunctionalComponent(__VLS_108, new __VLS_108({
+    ...{ 'onClick': {} },
+    variant: "primary",
+    disabled: ((!__VLS_ctx.composerText.trim() && __VLS_ctx.selectedFiles.length === 0)
+        || __VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
+    loading: (__VLS_ctx.sending || __VLS_ctx.uploading),
+}));
+const __VLS_110 = __VLS_109({
+    ...{ 'onClick': {} },
+    variant: "primary",
+    disabled: ((!__VLS_ctx.composerText.trim() && __VLS_ctx.selectedFiles.length === 0)
+        || __VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
+    loading: (__VLS_ctx.sending || __VLS_ctx.uploading),
+}, ...__VLS_functionalComponentArgsRest(__VLS_109));
+let __VLS_112;
+let __VLS_113;
+let __VLS_114;
+const __VLS_115 = {
+    onClick: (__VLS_ctx.send)
+};
+__VLS_111.slots.default;
+(__VLS_ctx.$t('chat.send'));
+var __VLS_111;
 if (__VLS_ctx.sending) {
-    const __VLS_100 = {}.VButton;
+    const __VLS_116 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
+    const __VLS_117 = __VLS_asFunctionalComponent(__VLS_116, new __VLS_116({
         ...{ 'onClick': {} },
         variant: "danger",
         title: (__VLS_ctx.$t('chat.pauseTooltip')),
     }));
-    const __VLS_102 = __VLS_101({
+    const __VLS_118 = __VLS_117({
         ...{ 'onClick': {} },
         variant: "danger",
         title: (__VLS_ctx.$t('chat.pauseTooltip')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_101));
-    let __VLS_104;
-    let __VLS_105;
-    let __VLS_106;
-    const __VLS_107 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_117));
+    let __VLS_120;
+    let __VLS_121;
+    let __VLS_122;
+    const __VLS_123 = {
         onClick: (__VLS_ctx.pause)
     };
-    __VLS_103.slots.default;
+    __VLS_119.slots.default;
     (__VLS_ctx.$t('chat.pause'));
-    var __VLS_103;
+    var __VLS_119;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
     ...{ class: "w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto" },
 });
 /** @type {[typeof ProgressFeed, ]} */ ;
 // @ts-ignore
-const __VLS_108 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
+const __VLS_124 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
     events: (__VLS_ctx.progressEvents),
 }));
-const __VLS_109 = __VLS_108({
+const __VLS_125 = __VLS_124({
     events: (__VLS_ctx.progressEvents),
-}, ...__VLS_functionalComponentArgsRest(__VLS_108));
+}, ...__VLS_functionalComponentArgsRest(__VLS_124));
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
@@ -1109,9 +1344,46 @@ const __VLS_109 = __VLS_108({
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['relative']} */ ;
+/** @type {__VLS_StyleScopedClasses['absolute']} */ ;
+/** @type {__VLS_StyleScopedClasses['inset-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-dashed']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-primary']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-primary/10']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['pointer-events-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['z-10']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-primary']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['max-w-3xl']} */ ;
+/** @type {__VLS_StyleScopedClasses['mx-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['max-w-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-w-3xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['mx-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -1173,6 +1445,7 @@ const __VLS_109 = __VLS_108({
 /** @type {__VLS_StyleScopedClasses['w-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['hidden']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['w-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
@@ -1207,6 +1480,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             composerText: composerText,
             sending: sending,
             sendError: sendError,
+            selectedFiles: selectedFiles,
+            uploading: uploading,
+            dragActive: dragActive,
             multiline: multiline,
             composerRows: composerRows,
             composerPlaceholder: composerPlaceholder,
@@ -1237,6 +1513,14 @@ const __VLS_self = (await import('vue')).defineComponent({
             visibleDraft: visibleDraft,
             visibleWorkerDrafts: visibleWorkerDrafts,
             send: send,
+            formatBytes: formatBytes,
+            fileInputRef: fileInputRef,
+            onComposerDragEnter: onComposerDragEnter,
+            onComposerDragOver: onComposerDragOver,
+            onComposerDragLeave: onComposerDragLeave,
+            onComposerDrop: onComposerDrop,
+            onFilePickerChange: onFilePickerChange,
+            removeFile: removeFile,
             pause: pause,
             onComposerKeydown: onComposerKeydown,
         };

@@ -98,6 +98,11 @@ export default {
         sessionOccupiedBy: 'Session "{id}" is held by another connection.',
         sessionNotFound: 'Session "{id}" no longer exists. Pick another.',
         sessionForbidden: 'Session "{id}" belongs to another user.',
+        attachments: {
+            pickerTooltip: 'Attach a file (or drop one onto the message box)',
+            dropToAttach: 'Drop to attach',
+            remove: 'Remove attachment',
+        },
         speech: {
             startSpeechToText: 'Start speech-to-text',
             stopSpeechToText: 'Stop speech-to-text',

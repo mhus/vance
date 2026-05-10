@@ -107,6 +107,11 @@ export default {
     sessionOccupiedBy: 'Session „{id}" wird von einer anderen Verbindung gehalten.',
     sessionNotFound: 'Session „{id}" existiert nicht mehr. Bitte eine andere wählen.',
     sessionForbidden: 'Session „{id}" gehört einem anderen Benutzer.',
+    attachments: {
+      pickerTooltip: 'Datei anhängen (oder ins Eingabefeld ziehen)',
+      dropToAttach: 'Zum Anhängen loslassen',
+      remove: 'Anhang entfernen',
+    },
     speech: {
       startSpeechToText: 'Spracheingabe starten',
       stopSpeechToText: 'Spracheingabe stoppen',

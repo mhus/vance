@@ -30,6 +30,7 @@ import {
   onVoicesChanged,
 } from '../platform/speechWeb';
 import type {
+  AttachmentRef,
   ChatMessageAppendedData,
   ChatMessageChunkData,
   ChatMessageDto,
@@ -46,6 +47,10 @@ import type {
   TodosUpdatedNotification,
 } from '@vance/generated';
 import { useChatHistory } from '@composables/useChatHistory';
+import {
+  uploadChatboxAttachments,
+  ChatboxUploadError,
+} from '@composables/useChatboxUpload';
 import { VAlert, VButton, VSelect, VTextarea } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
@@ -113,6 +118,23 @@ const modeBadge = computed<string | null>(() => {
 const composerText = ref('');
 const sending = ref(false);
 const sendError = ref<string | null>(null);
+
+/** Files the user dragged onto the composer or picked via the
+ *  paperclip button. Cleared on successful send; entries are
+ *  uploaded to {@code _chatbox/...} just before the steer call. */
+const selectedFiles = ref<File[]>([]);
+/** True while attachment uploads are in flight — drives the send-button
+ *  spinner and disables further drops. Always falsy once {@code sending}
+ *  is true (we don't double-spin). */
+const uploading = ref(false);
+/** Visual highlight while a drag-over event fires on the composer
+ *  footer. Doesn't gate behaviour, just lights up the drop zone. */
+const dragActive = ref(false);
+/** Project that owns this chat session. Captured in
+ *  {@code resolveSessionAndProcess} from the session-list response.
+ *  Required for attachment uploads — the documents endpoint is
+ *  project-scoped. */
+const chatProjectId = ref<string>('');
 
 /**
  * Composer mode: single-line uses Enter to send (Shift+Enter for a hard
@@ -430,8 +452,11 @@ async function resolveSessionAndProcess(): Promise<void> {
       'session-list', {});
     const summary = resp.sessions?.find((s) => s.sessionId === props.sessionId);
     sessionDisplay.value = summary?.displayName ?? props.sessionId;
+    // Project id needed for attachment uploads — see send() / drop handler.
+    chatProjectId.value = summary?.projectId ?? '';
   } catch {
     sessionDisplay.value = props.sessionId;
+    chatProjectId.value = '';
   }
   // The chat-process name is fixed by SessionChatBootstrapper to
   // `CHAT_PROCESS_NAME = "chat"` — there is exactly one per session.
@@ -545,31 +570,70 @@ function scrollToBottom(): void {
 
 async function send(): Promise<void> {
   const text = composerText.value.trim();
-  if (!text || sending.value || !chatProcessName.value) return;
+  const filesSnapshot = selectedFiles.value.slice();
+  // Allow attachment-only sends so the user can drop a PDF and hit
+  // send without typing — Arthur can then ask "what should I do with
+  // this?" rather than the UI silently rejecting the click.
+  if (sending.value || !chatProcessName.value) return;
+  if (!text && filesSnapshot.length === 0) return;
   sending.value = true;
   sendError.value = null;
 
-  // Optimistic local echo: the server only emits chat-message-appended
-  // for the user message *after* the engine drains its pending queue
-  // (same lane turn that generates the assistant reply). To give the
-  // user immediate feedback we render the bubble now and let
+  // Stage 1 — upload attachments (if any). All-or-nothing: any
+  // failure aborts the send so the user doesn't end up with a
+  // half-sent message that references files which never made it.
+  let attachmentRefs: AttachmentRef[] = [];
+  if (filesSnapshot.length > 0) {
+    uploading.value = true;
+    try {
+      attachmentRefs = await uploadChatboxAttachments(
+        chatProjectId.value, filesSnapshot);
+    } catch (e) {
+      if (e instanceof ChatboxUploadError) {
+        sendError.value = e.message;
+      } else {
+        sendError.value = e instanceof Error
+          ? e.message
+          : 'Attachment upload failed.';
+      }
+      sending.value = false;
+      uploading.value = false;
+      return;
+    }
+    uploading.value = false;
+  }
+
+  // Stage 2 — steer the chat process. Optimistic local echo: the
+  // server only emits chat-message-appended for the user message
+  // *after* the engine drains its pending queue (same lane turn that
+  // generates the assistant reply). To give the user immediate
+  // feedback we render the bubble now and let
   // {@link appendMessageBubble} drop this temp entry when the
   // canonical frame arrives. If the steer fails, we remove it again.
   const optimisticId = `${OPTIMISTIC_PREFIX}${++optimisticSeq}`;
+  const echoText = filesSnapshot.length > 0
+    // Show the attachments inline in the optimistic bubble so the
+    // user sees what they just sent — the canonical chat-message
+    // from the server only carries text. Cosmetic only; gets
+    // replaced once the server's frame arrives.
+    ? attachmentEchoPrefix(filesSnapshot) + text
+    : text;
   liveMessages.value.push({
     messageId: optimisticId,
     thinkProcessId: '',
     role: 'USER' as unknown as ChatRole,
-    content: text,
+    content: echoText,
     createdAt: new Date(),
   });
   composerText.value = '';
+  selectedFiles.value = [];
   scrollToBottom();
 
   try {
     await props.socket.send<ProcessSteerRequest, ProcessSteerResponse>('process-steer', {
       processName: chatProcessName.value,
       content: text,
+      attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
     });
   } catch (e) {
     // Roll back the optimistic bubble — the server didn't accept the
@@ -584,6 +648,86 @@ async function send(): Promise<void> {
   } finally {
     sending.value = false;
   }
+}
+
+/** Compose the inline echo of attachments shown in the optimistic
+ *  user bubble. Plain markdown so MessageBubble renders it without a
+ *  custom DTO field. The server-side frame only carries the text body
+ *  and replaces this bubble on arrival. */
+function attachmentEchoPrefix(files: File[]): string {
+  const lines = files.map((f) => `📎 ${f.name} _(${formatBytes(f.size)})_`);
+  return lines.join('\n') + (files.length > 0 ? '\n\n' : '');
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+// ──────────────── Drag-and-drop / picker ────────────────
+
+const fileInputRef = ref<HTMLInputElement | null>(null);
+
+function onComposerDragEnter(event: DragEvent): void {
+  if (sending.value || uploading.value) return;
+  event.preventDefault();
+  dragActive.value = true;
+}
+
+function onComposerDragOver(event: DragEvent): void {
+  if (sending.value || uploading.value) return;
+  // dragover must call preventDefault for the drop event to fire.
+  event.preventDefault();
+  dragActive.value = true;
+}
+
+function onComposerDragLeave(event: DragEvent): void {
+  // dragleave fires for child elements too; only deactivate when the
+  // pointer actually leaves the drop zone.
+  const related = event.relatedTarget as Node | null;
+  if (related && (event.currentTarget as Node).contains(related)) return;
+  dragActive.value = false;
+}
+
+function onComposerDrop(event: DragEvent): void {
+  event.preventDefault();
+  dragActive.value = false;
+  if (sending.value || uploading.value) return;
+  const incoming = event.dataTransfer?.files;
+  if (!incoming || incoming.length === 0) return;
+  appendFiles(Array.from(incoming));
+}
+
+function onFilePickerChange(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  if (input.files) {
+    appendFiles(Array.from(input.files));
+  }
+  // Reset so picking the same file twice in a row still fires `change`.
+  input.value = '';
+}
+
+function appendFiles(incoming: File[]): void {
+  // Dedupe by name + size + lastModified so dragging the same file
+  // twice doesn't show twice — same fingerprint logic as VFileInput.
+  const merged = selectedFiles.value.slice();
+  const fingerprint = (f: File): string => `${f.name}|${f.size}|${f.lastModified}`;
+  const seen = new Set(merged.map(fingerprint));
+  for (const f of incoming) {
+    const key = fingerprint(f);
+    if (!seen.has(key)) {
+      merged.push(f);
+      seen.add(key);
+    }
+  }
+  selectedFiles.value = merged;
+}
+
+function removeFile(index: number): void {
+  const next = selectedFiles.value.slice();
+  next.splice(index, 1);
+  selectedFiles.value = next;
 }
 
 /**
@@ -741,10 +885,57 @@ watch(() => props.sessionId, async (newId, oldId) => {
         :plan-meta="planMeta"
       />
 
-      <footer class="border-t border-base-300 bg-base-100 p-4">
+      <footer
+        class="border-t border-base-300 bg-base-100 p-4 relative"
+        @dragenter="onComposerDragEnter"
+        @dragover="onComposerDragOver"
+        @dragleave="onComposerDragLeave"
+        @drop="onComposerDrop"
+      >
+        <!-- Drag-overlay: lights up the entire composer footer while
+             a file is being dragged over. pointer-events-none so the
+             underlying composer keeps its event handlers. -->
+        <div
+          v-if="dragActive"
+          class="absolute inset-0 flex items-center justify-center
+                 border-2 border-dashed border-primary
+                 bg-primary/10 rounded pointer-events-none z-10"
+        >
+          <span class="text-sm font-semibold text-primary">
+            {{ $t('chat.attachments.dropToAttach') }}
+          </span>
+        </div>
+
         <VAlert v-if="sendError" variant="error" class="mb-2">{{ sendError }}</VAlert>
         <VAlert v-if="sessionResolveError" variant="warning" class="mb-2">{{ sessionResolveError }}</VAlert>
         <VAlert v-if="speechError" variant="warning" class="mb-2">{{ speechError }}</VAlert>
+
+        <!-- Pending-attachment chips. Each chip carries filename +
+             size + remove-X. Removed before send completes when the
+             user clicks ✕; otherwise cleared by send() on success. -->
+        <div
+          v-if="selectedFiles.length > 0"
+          class="max-w-3xl mx-auto mb-2 flex flex-wrap gap-2"
+        >
+          <div
+            v-for="(file, idx) in selectedFiles"
+            :key="`att-${file.name}-${idx}`"
+            class="flex items-center gap-2 px-2 py-1
+                   border border-base-300 rounded bg-base-200 text-sm"
+          >
+            <span aria-hidden="true">📎</span>
+            <span class="font-mono truncate max-w-xs">{{ file.name }}</span>
+            <span class="text-xs opacity-60">{{ formatBytes(file.size) }}</span>
+            <VButton
+              variant="ghost"
+              size="sm"
+              :disabled="sending || uploading"
+              :title="$t('chat.attachments.remove')"
+              @click="removeFile(idx)"
+            >✕</VButton>
+          </div>
+        </div>
+
         <div class="max-w-3xl mx-auto flex gap-2 items-end">
           <VButton
             variant="ghost"
@@ -850,6 +1041,25 @@ watch(() => props.sessionId, async (newId, oldId) => {
               </p>
             </div>
           </div>
+          <!-- Hidden file picker — paperclip button below opens it.
+               Drag-and-drop on the surrounding footer bypasses this
+               input entirely; this is just the explicit-pick path. -->
+          <input
+            ref="fileInputRef"
+            type="file"
+            class="hidden"
+            multiple
+            @change="onFilePickerChange"
+          />
+          <VButton
+            variant="ghost"
+            size="sm"
+            :disabled="sending || uploading || !chatProcessName"
+            :title="$t('chat.attachments.pickerTooltip')"
+            @click="() => fileInputRef?.click()"
+          >
+            📎
+          </VButton>
           <div class="flex-1">
             <VTextarea
               v-model="composerText"
@@ -860,8 +1070,9 @@ watch(() => props.sessionId, async (newId, oldId) => {
           </div>
           <VButton
             variant="primary"
-            :disabled="!composerText.trim() || sending || !chatProcessName"
-            :loading="sending"
+            :disabled="(!composerText.trim() && selectedFiles.length === 0)
+              || sending || uploading || !chatProcessName"
+            :loading="sending || uploading"
             @click="send"
           >
             {{ $t('chat.send') }}

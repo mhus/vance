@@ -241,6 +241,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
     private final PlanModeEventEmitter planModeEventEmitter;
+    private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
 
     public ArthurEngine(
@@ -257,6 +258,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher,
             de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter,
             PlanModeEventEmitter planModeEventEmitter,
+            de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
             de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer) {
         super(streamingProperties, llmCallTracker, objectMapper);
@@ -270,6 +272,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.skillTriggerMatcher = skillTriggerMatcher;
         this.messageRouter = messageRouter;
         this.planModeEventEmitter = planModeEventEmitter;
+        this.planModeService = planModeService;
         this.attachmentResolver = attachmentResolver;
         this.promptTemplateRenderer = promptTemplateRenderer;
     }
@@ -910,7 +913,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     + "START_EXECUTION (model conflated mode-transition with "
                     + "status-update). reason: '{}'",
                     process.getId(), action.reason());
-            return handleStartExecution(
+            return planModeService.dispatch(
                     new de.mhus.vance.brain.thinkengine.action.EngineAction(
                             ArthurActionSchema.TYPE_START_EXECUTION,
                             action.reason(),
@@ -936,6 +939,11 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 return new ActionTurnOutcome(hint, /*awaitingUserInput*/ true);
             }
         }
+        // Plan-Mode actions go through the shared service first — if
+        // it recognises the action it returns the outcome; otherwise
+        // null and we fall through to Arthur-specific actions.
+        ActionTurnOutcome planOutcome = planModeService.dispatch(action, process, ctx);
+        if (planOutcome != null) return planOutcome;
         return switch (action.type()) {
             case ArthurActionSchema.TYPE_ANSWER          -> handleAnswer(action);
             case ArthurActionSchema.TYPE_ASK_USER        -> handleAskUser(action);
@@ -943,10 +951,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             case ArthurActionSchema.TYPE_RELAY           -> handleRelay(action, process, ctx);
             case ArthurActionSchema.TYPE_WAIT            -> handleWait(action);
             case ArthurActionSchema.TYPE_REJECT          -> handleReject(action);
-            case ArthurActionSchema.TYPE_START_PLAN      -> handleStartPlan(action, process, ctx);
-            case ArthurActionSchema.TYPE_PROPOSE_PLAN    -> handleProposePlan(action, process, ctx);
-            case ArthurActionSchema.TYPE_START_EXECUTION -> handleStartExecution(action, process, ctx);
-            case ArthurActionSchema.TYPE_TODO_UPDATE     -> handleTodoUpdate(action, process, ctx);
             default -> {
                 // Should never happen — the base class validates against
                 // supportedActionTypes() before reaching here. Surface as
@@ -1038,226 +1042,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                             + "the same iteration if possible.");
         }
         return sb.toString();
-    }
-
-    // ──────────────────── Plan-Mode action handlers ────────────────────
-
-    /**
-     * {@code START_PLAN} — switch the process into EXPLORING mode. The
-     * LLM has decided the user's request is non-trivial and wants to
-     * explore-then-plan-then-execute. Read-only tool filter activates
-     * via the recipe-driven mode-cascade (see
-     * {@code planning/tool-schema-deferral.md} §14) on the next
-     * per-call context build.
-     *
-     * <p>Recipe property {@code planMode: disabled} blocks this action.
-     * {@code planMode: auto} (default) and {@code planMode: required}
-     * allow it.
-     */
-    private ActionTurnOutcome handleStartPlan(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
-        String planMode = paramString(process, "planMode", "auto");
-        if ("disabled".equalsIgnoreCase(planMode)) {
-            log.info("Arthur id='{}' START_PLAN rejected — planMode=disabled",
-                    process.getId());
-            return new ActionTurnOutcome(
-                    "(plan mode is disabled for this recipe — pick a different "
-                            + "action: ANSWER, DELEGATE, ASK_USER, …)",
-                    /*awaitingUserInput*/ false);
-        }
-        de.mhus.vance.api.thinkprocess.ProcessMode prior = process.getMode();
-        boolean ok = thinkProcessService.updateMode(
-                process.getId(),
-                de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING);
-        if (!ok) {
-            log.warn("Arthur id='{}' START_PLAN failed — process not found",
-                    process.getId());
-            return new ActionTurnOutcome(
-                    "(internal: failed to enter plan mode)", true);
-        }
-        process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING);
-        planModeEventEmitter.emitModeChanged(
-                process, prior, de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING);
-        log.info("Arthur id='{}' entered EXPLORING — reason='{}'",
-                process.getId(), action.reason());
-        // No user-facing chat message — the next turn will run in
-        // EXPLORING mode and produce the actual exploration output.
-        // awaitingUserInput=false so the engine auto-wakes for the
-        // next turn instead of waiting on the user.
-        return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
-    }
-
-    /**
-     * {@code PROPOSE_PLAN} — submit plan + TodoList for user approval.
-     * Persists the TodoList atomically, switches mode to PLANNING,
-     * emits the plan text as a normal assistant chat message.
-     */
-    private ActionTurnOutcome handleProposePlan(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
-        String plan = action.stringParam(ArthurActionSchema.PARAM_PLAN);
-        String summary = action.stringParam(ArthurActionSchema.PARAM_SUMMARY);
-        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos =
-                parseTodos(action.params().get(ArthurActionSchema.PARAM_TODOS));
-        if (plan == null || plan.isBlank()) {
-            log.warn("Arthur id='{}' PROPOSE_PLAN missing plan — reason='{}'",
-                    process.getId(), action.reason());
-            return new ActionTurnOutcome(
-                    "(internal: PROPOSE_PLAN missing plan text — re-emit with the full plan markdown)",
-                    false);
-        }
-        if (todos.isEmpty()) {
-            log.warn("Arthur id='{}' PROPOSE_PLAN missing todos — reason='{}'",
-                    process.getId(), action.reason());
-            return new ActionTurnOutcome(
-                    "(internal: PROPOSE_PLAN must include 3–8 todos — re-emit)",
-                    false);
-        }
-        de.mhus.vance.api.thinkprocess.ProcessMode prior = process.getMode();
-        thinkProcessService.setTodos(process.getId(), todos);
-        thinkProcessService.updateMode(
-                process.getId(),
-                de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING);
-        process.setTodos(todos);
-        process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING);
-        planModeEventEmitter.emitTodosUpdated(process, todos);
-        planModeEventEmitter.emitPlanProposed(process, summary, /*planVersion*/ 1);
-        if (prior != de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING) {
-            planModeEventEmitter.emitModeChanged(
-                    process, prior, de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING);
-            ctx.historyTagSink().emit(java.util.Set.of("MODE:plan"));
-        }
-        log.info("Arthur id='{}' PROPOSE_PLAN summary='{}' todos.size={} reason='{}'",
-                process.getId(), summary, todos.size(), action.reason());
-        // Plan text becomes the assistant chat message — user sees it
-        // directly. awaitingUserInput=true → process goes BLOCKED until
-        // user replies (approval / edit / reject).
-        return new ActionTurnOutcome(plan, /*awaitingUserInput*/ true);
-    }
-
-    /**
-     * {@code START_EXECUTION} — user accepted the plan, begin work.
-     * Switches mode to EXECUTING. Tool filter relaxes back to
-     * Arthur's full pool.
-     */
-    private ActionTurnOutcome handleStartExecution(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
-        String notes = action.stringParam(ArthurActionSchema.PARAM_NOTES);
-        de.mhus.vance.api.thinkprocess.ProcessMode prior = process.getMode();
-        thinkProcessService.updateMode(
-                process.getId(),
-                de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
-        process.setMode(de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
-        planModeEventEmitter.emitModeChanged(
-                process, prior, de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING);
-        ctx.historyTagSink().emit(java.util.Set.of("MODE:execute"));
-        log.info("Arthur id='{}' entered EXECUTING — notes='{}' reason='{}'",
-                process.getId(), notes, action.reason());
-        // No user-facing message; the next turn picks up the first
-        // PENDING todo and starts work.
-        return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
-    }
-
-    /**
-     * {@code TODO_UPDATE} — mark TodoList items as IN_PROGRESS or
-     * COMPLETED during execution. No chat message, no mode change.
-     */
-    private ActionTurnOutcome handleTodoUpdate(
-            de.mhus.vance.brain.thinkengine.action.EngineAction action,
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx) {
-        Object updatesRaw = action.params().get(ArthurActionSchema.PARAM_UPDATES);
-        java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> updates =
-                parseTodoUpdates(updatesRaw);
-        if (updates.isEmpty()) {
-            log.warn("Arthur id='{}' TODO_UPDATE empty — reason='{}'",
-                    process.getId(), action.reason());
-            return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
-        }
-        boolean ok = thinkProcessService.updateTodoStatuses(process.getId(), updates);
-        log.info("Arthur id='{}' TODO_UPDATE applied={} count={} reason='{}'",
-                process.getId(), ok, updates.size(), action.reason());
-        if (ok) {
-            // Reload to read the persisted list, then publish the full set —
-            // clients replace verbatim (no diff/patch protocol).
-            thinkProcessService.findById(process.getId()).ifPresent(refreshed -> {
-                process.setTodos(refreshed.getTodos());
-                planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos());
-            });
-            // History markers: one tag per transition the LLM commanded.
-            // Tags accumulate in the per-turn sink and flush onto the
-            // eventual assistant message (often several action loops later,
-            // when an ANSWER action emits a chat message).
-            java.util.Set<String> tags = new java.util.LinkedHashSet<>();
-            for (java.util.Map.Entry<String, de.mhus.vance.api.thinkprocess.TodoStatus> e
-                    : updates.entrySet()) {
-                switch (e.getValue()) {
-                    case IN_PROGRESS -> tags.add("PLAN_STEP_STARTED:" + e.getKey());
-                    case COMPLETED -> tags.add("PLAN_STEP_DONE:" + e.getKey());
-                    default -> { /* PENDING / CANCELLED — no marker */ }
-                }
-            }
-            if (!tags.isEmpty()) ctx.historyTagSink().emit(tags);
-        }
-        return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
-    }
-
-    @SuppressWarnings("unchecked")
-    private java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> parseTodos(
-            @org.jspecify.annotations.Nullable Object raw) {
-        if (!(raw instanceof java.util.List<?> list)) {
-            return java.util.List.of();
-        }
-        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> out =
-                new java.util.ArrayList<>();
-        for (Object o : list) {
-            if (!(o instanceof java.util.Map<?, ?> mapRaw)) continue;
-            java.util.Map<String, Object> m = (java.util.Map<String, Object>) mapRaw;
-            String id = strOrNull(m.get("id"));
-            String content = strOrNull(m.get("content"));
-            String activeForm = strOrNull(m.get("activeForm"));
-            if (id == null || id.isBlank() || content == null || content.isBlank()) {
-                continue;
-            }
-            out.add(de.mhus.vance.api.thinkprocess.TodoItem.builder()
-                    .id(id)
-                    .status(de.mhus.vance.api.thinkprocess.TodoStatus.PENDING)
-                    .content(content)
-                    .activeForm(activeForm)
-                    .build());
-        }
-        return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> parseTodoUpdates(
-            @org.jspecify.annotations.Nullable Object raw) {
-        java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> out =
-                new java.util.LinkedHashMap<>();
-        if (!(raw instanceof java.util.List<?> list)) return out;
-        for (Object o : list) {
-            if (!(o instanceof java.util.Map<?, ?> mapRaw)) continue;
-            java.util.Map<String, Object> m = (java.util.Map<String, Object>) mapRaw;
-            String id = strOrNull(m.get("id"));
-            String statusStr = strOrNull(m.get("status"));
-            if (id == null || id.isBlank() || statusStr == null) continue;
-            try {
-                out.put(id, de.mhus.vance.api.thinkprocess.TodoStatus.valueOf(statusStr));
-            } catch (IllegalArgumentException ignored) {
-                // unknown status — skip, validator catches it via re-prompt
-            }
-        }
-        return out;
-    }
-
-    private static @org.jspecify.annotations.Nullable String strOrNull(
-            @org.jspecify.annotations.Nullable Object o) {
-        return o instanceof String s ? s : null;
     }
 
     /**

@@ -115,9 +115,14 @@ public class EddieWorkerConnection implements AutoCloseable {
                     .buildAsync(uri, listener)
                     .get(CONNECT_TIMEOUT.toMillis() + 5_000, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
+            // Surface the root-cause message — without it the outer
+            // "Cannot open Working-WS" wrapper hides the real reason
+            // (401, connection refused, TLS, ...) from log.warn callers
+            // that use only .toString().
             throw new EddieWorkerConnectException(
                     "Cannot open Working-WS to " + link.getWorkerPodAddress()
-                            + " for worker=" + link.getWorkerProcessId(), e);
+                            + " for worker=" + link.getWorkerProcessId()
+                            + " — " + rootCauseMessage(e), e);
         }
         this.socket = ws;
         log.debug("Eddie working-ws opened to {} for worker={}",
@@ -304,6 +309,26 @@ public class EddieWorkerConnection implements AutoCloseable {
             log.warn("Eddie working-ws error to {}: {}",
                     link.getWorkerPodAddress(), error.toString());
         }
+    }
+
+    /**
+     * Walks the {@link Throwable#getCause()} chain and returns the
+     * deepest non-blank message — typical Java HttpClient WS failures
+     * wrap {@link java.util.concurrent.ExecutionException} around the
+     * actual {@link java.io.IOException} / {@code WebSocketHandshakeException},
+     * and {@link Throwable#toString()} on the wrapper hides the
+     * diagnostic.
+     */
+    private static String rootCauseMessage(Throwable t) {
+        Throwable cur = t;
+        String last = null;
+        while (cur != null) {
+            String m = cur.getMessage();
+            if (m != null && !m.isBlank()) last = m;
+            if (cur.getCause() == null || cur.getCause() == cur) break;
+            cur = cur.getCause();
+        }
+        return last != null ? last : t.getClass().getSimpleName();
     }
 
     /** Connect / bind failure. The pool decides retry semantics. */

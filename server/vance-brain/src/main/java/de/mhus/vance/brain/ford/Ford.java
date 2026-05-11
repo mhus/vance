@@ -294,7 +294,6 @@ public class Ford implements ThinkEngine {
             AiChatConfig config = chatBundle.primaryConfig();
 
             List<ResolvedSkill> activeSkills = resolveActiveSkills(process);
-            String skillSection = skillPromptComposer.compose(activeSkills);
 
             ContextToolsApi tools = ctx.tools()
                     .withAdditional(skillPromptComposer.mergedTools(activeSkills));
@@ -309,7 +308,7 @@ public class Ford implements ThinkEngine {
             ModelSize effectiveSize = ModelSize.parseOrAuto(
                     paramString(process, "modelSize", null), modelInfo.size());
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, modelInfo, effectiveSize, skillSection);
+                    process, chatLog, modelInfo, effectiveSize, activeSkills);
             int estimatedTokens = estimateTokens(messages);
             int triggerTokens = modelInfo.compactionTriggerTokens(
                     fordProperties.getCompactionTriggerRatio());
@@ -333,7 +332,7 @@ public class Ford implements ThinkEngine {
                         // Rebuild the prompt: the active-history shrunk and a
                         // new ARCHIVED_CHAT memory pinned the summary at top.
                         messages = buildPromptMessages(
-                                process, chatLog, modelInfo, effectiveSize, skillSection);
+                                process, chatLog, modelInfo, effectiveSize, activeSkills);
                     } else {
                         log.info("Ford.turn id='{}' compaction skipped: {}",
                                 process.getId(), result.reason());
@@ -953,14 +952,16 @@ public class Ford implements ThinkEngine {
      * active chat history. Re-callable so {@code runTurn} can rebuild
      * after a mid-turn compaction.
      *
-     * @param skillSection composed skill block from
-     *        {@link SkillPromptComposer#compose}, or {@code null} when
-     *        no skills are active. Appended as a separate
+     * @param activeSkills skills resolved for this turn. The body of
+     *        each skill is rendered through the same Pebble context the
+     *        engine-default prompt and recipe {@code promptPrefix} use,
+     *        so {@code {% if tier == "small" %}} and friends work in
+     *        skill bodies too. Appended as a separate
      *        {@link SystemMessage} after the engine-default prompt.
      */
     private List<ChatMessage> buildPromptMessages(
             ThinkProcessDocument process, ChatMessageService chatLog,
-            ModelInfo modelInfo, ModelSize tier, @Nullable String skillSection) {
+            ModelInfo modelInfo, ModelSize tier, List<ResolvedSkill> activeSkills) {
         List<ChatMessage> messages = new ArrayList<>();
         java.util.Map<String, Object> ctx = de.mhus.vance.brain.prompt.PromptContextBuilder
                 .forProcess(process, modelInfo)
@@ -974,6 +975,7 @@ public class Ford implements ThinkEngine {
             base = base + "\n\n" + memoryBlock;
         }
         messages.add(SystemMessage.from(base));
+        String skillSection = skillPromptComposer.compose(activeSkills, ctx);
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }

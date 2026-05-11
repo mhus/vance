@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.api.skills.SkillScope;
+import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -14,7 +16,8 @@ import org.junit.jupiter.api.Test;
  */
 class SkillPromptComposerTest {
 
-    private final SkillPromptComposer composer = new SkillPromptComposer();
+    private final SkillPromptComposer composer =
+            new SkillPromptComposer(new PromptTemplateRenderer());
 
     private static ResolvedSkill skill(
             String name, String body, List<ResolvedSkill.ReferenceDoc> docs) {
@@ -69,6 +72,77 @@ class SkillPromptComposerTest {
         String out = composer.compose(List.of(s));
 
         assertThat(out).contains("- manual-name\n").doesNotContain("- manual-name —");
+    }
+
+    // ─── Pebble templating in skill bodies ──────────────────────────
+
+    @Test
+    void bodyWithoutPebbleTokens_roundTripsUnchanged() {
+        ResolvedSkill s = skill("plain",
+                "## Default protocol\n\n1. Step.\n2. Step.", List.of());
+        String out = composer.compose(List.of(s));
+
+        assertThat(out)
+                .contains("## Default protocol")
+                .contains("1. Step.");
+    }
+
+    @Test
+    void bodyWithTierBranch_rendersTheActiveBranch() {
+        String body = "{% if tier == \"small\" %}TIGHT{% else %}FULL{% endif %}";
+        ResolvedSkill s = skill("tier-aware", body, List.of());
+
+        String small = composer.compose(List.of(s), Map.of("tier", "small"));
+        assertThat(small).contains("TIGHT").doesNotContain("FULL");
+
+        String large = composer.compose(List.of(s), Map.of("tier", "large"));
+        assertThat(large).contains("FULL").doesNotContain("TIGHT");
+    }
+
+    @Test
+    void bodyReferencingMode_rendersTheActiveMode() {
+        String body = "Active mode: {{ mode }}.";
+        ResolvedSkill s = skill("mode-aware", body, List.of());
+
+        String executing = composer.compose(List.of(s),
+                Map.of("mode", "EXECUTING"));
+        assertThat(executing).contains("Active mode: EXECUTING.");
+
+        // Lenient mode: missing variable renders empty, no crash.
+        String empty = composer.compose(List.of(s), Map.of());
+        assertThat(empty).contains("Active mode: .");
+    }
+
+    @Test
+    void skillWithBrokenPebble_isSkippedNotPropagated() {
+        ResolvedSkill broken = skill("broken",
+                "{% if tier ==\n", // unterminated tag → Pebble parse error
+                List.of());
+        ResolvedSkill ok = skill("ok", "Plain body that works.", List.of());
+
+        String out = composer.compose(List.of(broken, ok),
+                Map.of("tier", "small"));
+
+        // Broken skill is dropped entirely — no header, no body.
+        assertThat(out)
+                .doesNotContain("--- Skill: broken ---")
+                .contains("--- Skill: ok ---")
+                .contains("Plain body that works.");
+    }
+
+    @Test
+    void referenceDocContent_isNotPebbleRendered() {
+        // Reference-doc content with literal {% %} must not be parsed —
+        // it's author-controlled data, not a template.
+        ResolvedSkill s = skill("with-ref", "Body.", List.of(
+                new ResolvedSkill.ReferenceDoc(
+                        "literal", "Use {% raw %}{% if x %}{% endif %}{% endraw %}",
+                        SkillReferenceDocLoadMode.INLINE, null)));
+
+        String out = composer.compose(List.of(s), Map.of("tier", "small"));
+
+        assertThat(out)
+                .contains("Use {% raw %}{% if x %}{% endif %}{% endraw %}");
     }
 
     @Test

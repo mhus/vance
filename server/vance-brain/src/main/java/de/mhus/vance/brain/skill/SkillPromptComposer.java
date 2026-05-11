@@ -1,10 +1,14 @@
 package de.mhus.vance.brain.skill;
 
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
+import de.mhus.vance.brain.prompt.PromptTemplateException;
+import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
@@ -15,9 +19,26 @@ import org.springframework.stereotype.Service;
  * <p>The composed text is appended <em>after</em> the engine-default
  * system prompt and the recipe's {@code promptPrefix} (see
  * {@code Ford.runTurn} and {@code SystemPrompts.compose}).
+ *
+ * <p>Skill bodies are rendered as Pebble templates against the same
+ * variable map ({@code tier}, {@code model}, {@code provider},
+ * {@code mode}, {@code profile}, {@code recipe}, {@code engine},
+ * {@code lang}, {@code params}) that engine-default prompts and recipe
+ * {@code promptPrefix} use — see
+ * {@link de.mhus.vance.brain.prompt.PromptContextBuilder}. A skill with
+ * syntactically invalid Pebble is skipped with a {@code WARN} log and
+ * does not crash the turn; the rest of the skill list composes
+ * normally.
  */
 @Service
+@Slf4j
 public class SkillPromptComposer {
+
+    private final PromptTemplateRenderer templateRenderer;
+
+    public SkillPromptComposer(PromptTemplateRenderer templateRenderer) {
+        this.templateRenderer = templateRenderer;
+    }
 
     /**
      * Renders the active skills into a single markdown block ready to
@@ -34,6 +55,17 @@ public class SkillPromptComposer {
      * {@code summary} is appended after a dash for a one-line teaser.
      */
     public @Nullable String compose(List<ResolvedSkill> skills) {
+        return compose(skills, Map.of());
+    }
+
+    /**
+     * Renders {@code skills} with Pebble against {@code pebbleContext}.
+     * Use the {@code Map.of()}-form when no per-turn context is
+     * available; a body without {@code {% %}} or {@code {{ }}} tokens
+     * round-trips through Pebble unchanged.
+     */
+    public @Nullable String compose(
+            List<ResolvedSkill> skills, Map<String, Object> pebbleContext) {
         if (skills == null || skills.isEmpty()) {
             return null;
         }
@@ -42,12 +74,20 @@ public class SkillPromptComposer {
         out.append("The following skills are active for this turn. ")
                 .append("Follow their guidance and use the tools they grant.\n");
         for (ResolvedSkill skill : skills) {
+            String renderedBody;
+            try {
+                renderedBody = renderBody(skill, pebbleContext);
+            } catch (PromptTemplateException e) {
+                log.warn("Skill '{}' has invalid Pebble template — skipping: {}",
+                        skill.name(), e.getMessage());
+                continue;
+            }
             out.append("\n--- Skill: ").append(skill.name()).append(" ---\n");
             if (skill.description() != null && !skill.description().isBlank()) {
                 out.append(skill.description().trim()).append("\n");
             }
-            if (skill.promptExtension() != null && !skill.promptExtension().isBlank()) {
-                out.append("\n").append(skill.promptExtension().trim()).append("\n");
+            if (renderedBody != null && !renderedBody.isBlank()) {
+                out.append("\n").append(renderedBody.trim()).append("\n");
             }
             List<ResolvedSkill.ReferenceDoc> onDemand = new ArrayList<>();
             for (ResolvedSkill.ReferenceDoc doc : skill.referenceDocs()) {
@@ -71,6 +111,20 @@ public class SkillPromptComposer {
             }
         }
         return out.toString();
+    }
+
+    /**
+     * Renders the skill body through Pebble. {@code null} / blank
+     * bodies round-trip unchanged. Reference-doc {@code content} is
+     * intentionally <em>not</em> rendered — references are author-
+     * controlled data, not templates, and rendering them would surprise
+     * skills that include literal {@code {% %}} text in a reference.
+     */
+    private @Nullable String renderBody(
+            ResolvedSkill skill, Map<String, Object> pebbleContext) {
+        String body = skill.promptExtension();
+        if (body == null || body.isBlank()) return body;
+        return templateRenderer.render(body, pebbleContext);
     }
 
     /**

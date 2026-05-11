@@ -70,10 +70,20 @@ management:
       probes:
         enabled: true
       show-details: always
+    # Each endpoint needs both exposure AND access in Spring Boot 4 —
+    # @ConditionalOnAvailableEndpoint checks both. Default access is
+    # NONE (no public read), so we open prometheus explicitly.
+    prometheus:
+      access: unrestricted
   endpoints:
+    access:
+      default: unrestricted
     web:
       exposure:
-        include: health,info,prometheus
+        include:
+          - health
+          - info
+          - prometheus
   metrics:
     tags:
       # Pin every metric with the application name so Prometheus /
@@ -81,6 +91,16 @@ management:
       # with other services that share the cluster's Prometheus
       # (Nimbus pods etc.).
       application: vance-brain
+  # Spring Boot 4 split metrics-export out of the actuator default
+  # auto-config: PrometheusMetricsExportAutoConfiguration is gated by
+  # @ConditionalOnEnabledMetricsExport, which looks at
+  # `management.<id>.metrics.export.enabled` (id=prometheus here). The
+  # registry+endpoint stay 404 unless we flip it on. See
+  # spring-boot-micrometer-metrics-4.0.6/.../OnMetricsExportEnabledCondition.class.
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 logging:
   file:

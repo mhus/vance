@@ -46,10 +46,21 @@
             Prometheus exporter — exposes /actuator/prometheus when the
             actuator endpoint is included in
             management.endpoints.web.exposure (see application.yml).
-            Spring Boot auto-configures the PrometheusMeterRegistry
-            once this is on the classpath. MetricService in vance-shared
-            registers all counters/timers/gauges into this registry.
+            MetricService in vance-shared registers all counters /
+            timers / gauges into the auto-configured registry.
+
+            In Spring Boot 4, MetricsAutoConfiguration +
+            PrometheusMetricsExportAutoConfiguration moved out of
+            spring-boot-actuator-autoconfigure into the new
+            spring-boot-micrometer-metrics module — the starter
+            pulls in both that module and micrometer-registry-prometheus.
+            Without it /actuator/prometheus 404s even with the registry
+            jar on the classpath.
         -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-micrometer-metrics</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>

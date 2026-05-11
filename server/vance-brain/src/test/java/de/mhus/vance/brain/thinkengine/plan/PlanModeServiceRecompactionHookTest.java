@@ -20,6 +20,7 @@ import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -60,9 +61,11 @@ class PlanModeServiceRecompactionHookTest {
         eventEmitter = mock(PlanModeEventEmitter.class);
         chatMessageService = mock(ChatMessageService.class);
         inboxItemService = mock(InboxItemService.class);
+        MetricService metricService = new MetricService(
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         service = new PlanModeService(
                 thinkProcessService, eventEmitter,
-                chatMessageService, inboxItemService);
+                chatMessageService, inboxItemService, metricService);
 
         // Default: enough pre-plan USER turns. Individual tests override.
         when(chatMessageService.findActiveInRange(

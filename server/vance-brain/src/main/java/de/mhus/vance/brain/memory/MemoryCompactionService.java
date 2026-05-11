@@ -12,6 +12,7 @@ import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryKind;
 import de.mhus.vance.shared.memory.MemoryService;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -89,6 +90,7 @@ public class MemoryCompactionService {
     private final FordProperties properties;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
+    private final MetricService metricService;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -181,6 +183,10 @@ public class MemoryCompactionService {
         }
         log.info("Compaction process='{}' compacted={} archived={} memoryId='{}' superseded='{}' summaryChars={}",
                 processId, olderIds.size(), archived, saved.getId(), supersededId, summary.length());
+
+        metricService.counter("vance.memory.compaction", "mode", "sliding").increment();
+        metricService.summary("vance.memory.compaction.messages", "mode", "sliding")
+                .record(olderIds.size());
 
         return CompactionResult.success(
                 olderIds.size(), summary.length(), saved.getId(), supersededId);
@@ -305,6 +311,10 @@ public class MemoryCompactionService {
 
         log.info("Recompaction process='{}' topic='{}' range={} archived={} memoryId='{}' summaryChars={}",
                 processId, topicLabel, rangeIds.size(), archived, saved.getId(), summary.length());
+
+        metricService.counter("vance.memory.compaction", "mode", "range").increment();
+        metricService.summary("vance.memory.compaction.messages", "mode", "range")
+                .record(rangeIds.size());
 
         return CompactionResult.success(
                 rangeIds.size(), summary.length(), saved.getId(), /*supersededMemoryId*/ null);

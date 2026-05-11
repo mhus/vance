@@ -14,6 +14,7 @@ import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.shared.inbox.InboxItemAnsweredEvent;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -50,8 +51,10 @@ class RecompactionOfferAnsweredListenerTest {
     void setUp() {
         compactionService = mock(MemoryCompactionService.class);
         thinkProcessService = mock(ThinkProcessService.class);
+        MetricService metricService = new MetricService(
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         listener = new RecompactionOfferAnsweredListener(
-                compactionService, thinkProcessService);
+                compactionService, thinkProcessService, metricService);
 
         ThinkProcessDocument p = new ThinkProcessDocument();
         p.setId("p-1");

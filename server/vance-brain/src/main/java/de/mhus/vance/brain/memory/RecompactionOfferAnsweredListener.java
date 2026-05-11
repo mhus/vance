@@ -4,6 +4,7 @@ import de.mhus.vance.api.inbox.AnswerOutcome;
 import de.mhus.vance.api.inbox.AnswerPayload;
 import de.mhus.vance.shared.inbox.InboxItemAnsweredEvent;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -40,6 +41,7 @@ public class RecompactionOfferAnsweredListener {
 
     private final MemoryCompactionService compactionService;
     private final ThinkProcessService thinkProcessService;
+    private final MetricService metricService;
 
     @EventListener
     public void onAnswered(InboxItemAnsweredEvent event) {
@@ -53,11 +55,13 @@ public class RecompactionOfferAnsweredListener {
             log.info("RecompactionOffer item='{}' answered without DECIDED outcome ({}); no-op",
                     item.getId(),
                     answer == null ? "null" : answer.getOutcome());
+            metricService.counter("vance.recompaction.offer", "outcome", "undecided").increment();
             return;
         }
         if (!isApproved(answer.getValue())) {
             log.info("RecompactionOffer item='{}' answered DECIDED but not approved; no-op",
                     item.getId());
+            metricService.counter("vance.recompaction.offer", "outcome", "rejected").increment();
             return;
         }
 
@@ -98,9 +102,11 @@ public class RecompactionOfferAnsweredListener {
                             + "messagesCompacted={} memoryId='{}'",
                     item.getId(), processId, topicLabel,
                     result.messagesCompacted(), result.memoryId());
+            metricService.counter("vance.recompaction.offer", "outcome", "accepted").increment();
         } else {
             log.info("RecompactionOffer item='{}' compactRange noop — process='{}' reason='{}'",
                     item.getId(), processId, result.reason());
+            metricService.counter("vance.recompaction.offer", "outcome", "accepted_noop").increment();
         }
     }
 

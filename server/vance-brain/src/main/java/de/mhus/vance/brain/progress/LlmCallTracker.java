@@ -1,9 +1,11 @@
 package de.mhus.vance.brain.progress;
 
 import de.mhus.vance.api.progress.MetricsPayload;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.TokenUsage;
+import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -28,6 +30,7 @@ import org.springframework.stereotype.Component;
 public class LlmCallTracker {
 
     private final ProgressEmitter emitter;
+    private final MetricService metricService;
 
     private final ConcurrentMap<String, AtomicReference<Counters>> byProcess = new ConcurrentHashMap<>();
 
@@ -65,6 +68,21 @@ public class LlmCallTracker {
                 .lastCallTokensIn(dIn == 0 ? null : dIn)
                 .lastCallTokensOut(dOut == 0 ? null : dOut)
                 .build());
+
+        // Prometheus telemetry: per-model-alias call count + token
+        // counts + latency. modelAlias is intentionally low-cardinality
+        // (it's an alias like "default:fast", not the full
+        // provider/version string) so it's safe to use as a tag.
+        String alias = modelAlias == null || modelAlias.isBlank() ? "unknown" : modelAlias;
+        metricService.counter("vance.llm.calls", "model", alias).increment();
+        metricService.timer("vance.llm.call.duration", "model", alias)
+                .record(Duration.ofMillis(elapsedMs));
+        if (dIn > 0) {
+            metricService.summary("vance.llm.tokens.input", "model", alias).record(dIn);
+        }
+        if (dOut > 0) {
+            metricService.summary("vance.llm.tokens.output", "model", alias).record(dOut);
+        }
     }
 
     /** Drop counters for a process — call when the process is deleted. */

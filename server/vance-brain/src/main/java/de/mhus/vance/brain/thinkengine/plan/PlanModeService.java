@@ -15,6 +15,7 @@ import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -71,6 +72,7 @@ public class PlanModeService {
     private final PlanModeEventEmitter planModeEventEmitter;
     private final ChatMessageService chatMessageService;
     private final InboxItemService inboxItemService;
+    private final MetricService metricService;
 
     /**
      * Engine entry point. Returns the outcome when {@code action} is a
@@ -82,6 +84,12 @@ public class PlanModeService {
         if (action == null || !PlanModeActionSchema.isPlanModeAction(action.type())) {
             return null;
         }
+        // Per-action-type counter, scoped by engine (arthur/eddie/...)
+        // so dashboards can see plan-mode usage split between hub and
+        // worker chats.
+        metricService.counter("vance.planmode.actions",
+                "type", action.type(),
+                "engine", engineName(process)).increment();
         return switch (action.type()) {
             case PlanModeActionSchema.TYPE_START_PLAN      -> handleStartPlan(action, process, ctx);
             case PlanModeActionSchema.TYPE_PROPOSE_PLAN    -> handleProposePlan(action, process, ctx);

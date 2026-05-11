@@ -24,6 +24,7 @@ import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryKind;
 import de.mhus.vance.shared.memory.MemoryService;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -58,6 +59,7 @@ class MemoryCompactionServiceRangeTest {
     private FordProperties properties;
     private LlmCallTracker llmCallTracker;
     private ProgressEmitter progressEmitter;
+    private MetricService metricService;
     private MemoryCompactionService service;
 
     private AiChat aiChat;
@@ -76,10 +78,11 @@ class MemoryCompactionServiceRangeTest {
         properties = new FordProperties();
         llmCallTracker = mock(LlmCallTracker.class);
         progressEmitter = mock(ProgressEmitter.class);
+        metricService = new MetricService(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         service = new MemoryCompactionService(
                 chatMessageService, memoryService, aiModelService,
                 sessionService, settingService, properties,
-                llmCallTracker, progressEmitter);
+                llmCallTracker, progressEmitter, metricService);
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);

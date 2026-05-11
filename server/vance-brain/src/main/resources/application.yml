@@ -73,7 +73,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,prometheus
+  metrics:
+    tags:
+      # Pin every metric with the application name so Prometheus /
+      # Grafana queries can scope to vance-brain without colliding
+      # with other services that share the cluster's Prometheus
+      # (Nimbus pods etc.).
+      application: vance-brain
 
 logging:
   file:

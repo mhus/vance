@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -59,6 +60,7 @@ public class ToolResultStorage {
     private final Path baseDir;
     private final int thresholdBytes;
 
+    @Autowired
     public ToolResultStorage(
             ObjectMapper objectMapper,
             @Value("${vance.dir:#{systemProperties['user.home']}/.vance}") String baseDirSetting,

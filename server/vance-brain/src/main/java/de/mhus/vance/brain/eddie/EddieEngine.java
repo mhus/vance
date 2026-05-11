@@ -157,7 +157,11 @@ public class EddieEngine extends StructuredActionEngine {
             "process_observe",
             // Manuals
             "manual_list",
-            "manual_read");
+            "manual_read",
+            // History (cross-process — Eddie sees what her workers did)
+            "history_search",
+            "history_recall",
+            "list_edited_resources");
 
     /**
      * Subset of {@link #ALLOWED_TOOLS} that the LLM is allowed to see

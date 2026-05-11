@@ -147,7 +147,8 @@ class ContextToolsApiHistoryHookTest {
                 ToolInvocationListener.NOOP,
                 null,
                 new HistoryTagBuilder(),
-                sink);
+                sink,
+                null);
     }
 
     private void stubResolveAndInvoke(String name, Set<String> labels,

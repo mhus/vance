@@ -7,6 +7,7 @@ import de.mhus.vance.brain.history.HistoryTagBuilder;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.brain.tools.ToolResultStorage;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.brain.tools.ToolInvocationListener;
 import de.mhus.vance.shared.chat.ChatMessageService;
@@ -61,7 +62,8 @@ record DefaultThinkEngineContext(
         boolean traceLlm,
         LlmTraceService llmTraceService,
         HistoryTagBuilder historyTagBuilder,
-        BufferingHistoryTagSink historyTagSink
+        BufferingHistoryTagSink historyTagSink,
+        @Nullable ToolResultStorage toolResultStorage
 ) implements ThinkEngineContext {
 
     @Override
@@ -97,7 +99,8 @@ record DefaultThinkEngineContext(
                 toolDispatcher, scope,
                 c.allowed(), c.primary(), c.deferred(), c.activatedDeferred(),
                 toolInvocationListener, refresh,
-                historyTagBuilder, historyTagSink);
+                historyTagBuilder, historyTagSink,
+                toolResultStorage);
     }
 
     /**

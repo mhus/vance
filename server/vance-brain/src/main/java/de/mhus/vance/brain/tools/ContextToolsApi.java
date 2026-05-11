@@ -61,10 +61,11 @@ public final class ContextToolsApi implements ToolBus {
     private final java.util.function.Consumer<String> activationRefresh;
     private final HistoryTagBuilder historyTagBuilder;
     private final HistoryTagSink historyTagSink;
+    private final @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage;
 
     public ContextToolsApi(ToolDispatcher dispatcher, ToolInvocationContext ctx) {
         this(dispatcher, ctx, Set.of(), Set.of(), Set.of(), Set.of(),
-                ToolInvocationListener.NOOP, null, null, HistoryTagSink.NOOP);
+                ToolInvocationListener.NOOP, null, null, HistoryTagSink.NOOP, null);
     }
 
     public ContextToolsApi(
@@ -72,7 +73,7 @@ public final class ContextToolsApi implements ToolBus {
             ToolInvocationContext ctx,
             Set<String> allowed) {
         this(dispatcher, ctx, allowed, allowed, Set.of(), Set.of(),
-                ToolInvocationListener.NOOP, null, null, HistoryTagSink.NOOP);
+                ToolInvocationListener.NOOP, null, null, HistoryTagSink.NOOP, null);
     }
 
     public ContextToolsApi(
@@ -81,7 +82,7 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> allowed,
             ToolInvocationListener listener) {
         this(dispatcher, ctx, allowed, allowed, Set.of(), Set.of(),
-                listener, null, null, HistoryTagSink.NOOP);
+                listener, null, null, HistoryTagSink.NOOP, null);
     }
 
     public ContextToolsApi(
@@ -93,7 +94,7 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> activatedDeferred,
             ToolInvocationListener listener) {
         this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
-                listener, null, null, HistoryTagSink.NOOP);
+                listener, null, null, HistoryTagSink.NOOP, null);
     }
 
     public ContextToolsApi(
@@ -106,7 +107,22 @@ public final class ContextToolsApi implements ToolBus {
             ToolInvocationListener listener,
             java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh) {
         this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
-                listener, activationRefresh, null, HistoryTagSink.NOOP);
+                listener, activationRefresh, null, HistoryTagSink.NOOP, null);
+    }
+
+    public ContextToolsApi(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> allowed,
+            Set<String> primary,
+            Set<String> deferred,
+            Set<String> activatedDeferred,
+            ToolInvocationListener listener,
+            java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh,
+            @org.jspecify.annotations.Nullable HistoryTagBuilder historyTagBuilder,
+            @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink) {
+        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
+                listener, activationRefresh, historyTagBuilder, historyTagSink, null);
     }
 
     /**
@@ -131,6 +147,19 @@ public final class ContextToolsApi implements ToolBus {
      * — older call sites stay tag-less without code changes. See
      * {@code planning/process-history-search.md} §5.
      */
+    /**
+     * Full constructor (11-arg variant). Adds {@code toolResultStorage}
+     * to install the output-truncation hook: when a tool returns a
+     * result whose JSON-serialized form exceeds the configured threshold,
+     * the original is persisted to disk and the LLM receives a stub map
+     * with first-2KB preview + storage path. See
+     * {@code planning/brain-context-assembler.md} §7.
+     *
+     * <p>Tag computation runs <em>before</em> truncation so the
+     * history-search markers still extract the real {@code documentId} /
+     * {@code path} from the full result — the truncation only affects
+     * what the LLM sees this turn.
+     */
     public ContextToolsApi(
             ToolDispatcher dispatcher,
             ToolInvocationContext ctx,
@@ -141,7 +170,8 @@ public final class ContextToolsApi implements ToolBus {
             ToolInvocationListener listener,
             java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh,
             @org.jspecify.annotations.Nullable HistoryTagBuilder historyTagBuilder,
-            @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink) {
+            @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink,
+            @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage) {
         this.dispatcher = dispatcher;
         this.ctx = ctx;
         this.allowed = allowed == null ? Set.of() : Set.copyOf(allowed);
@@ -152,6 +182,7 @@ public final class ContextToolsApi implements ToolBus {
         this.activationRefresh = activationRefresh;
         this.historyTagBuilder = historyTagBuilder == null ? new HistoryTagBuilder() : historyTagBuilder;
         this.historyTagSink = historyTagSink == null ? HistoryTagSink.NOOP : historyTagSink;
+        this.toolResultStorage = toolResultStorage;
     }
 
     /** All tools visible in this scope (after the engine's allow-filter). */
@@ -284,7 +315,11 @@ public final class ContextToolsApi implements ToolBus {
                     name,
                     resolved.map(ToolDispatcher.Resolved::tool).orElse(null),
                     params, result, ctx));
-            return result;
+            // Output-truncation comes AFTER tag extraction — the
+            // builder needs the full result to find a documentId /
+            // path. The LLM only sees the (possibly stubbed) form
+            // returned here.
+            return maybeTruncateResult(name, result);
         } catch (RuntimeException e) {
             listener.after(name, System.currentTimeMillis() - startMs, e);
             emitHistoryTags(historyTagBuilder.onError(name));
@@ -304,6 +339,27 @@ public final class ContextToolsApi implements ToolBus {
             historyTagSink.emit(tags);
         } catch (RuntimeException ignored) {
             // Sink errors are non-fatal — see HistoryTagSink Javadoc.
+        }
+    }
+
+    /**
+     * Passes the result through {@link ToolResultStorage#truncateIfLarge}
+     * when storage is wired. Caller gets back either the original map
+     * (small result) or a stub map with first-2KB preview + on-disk
+     * storage path (large result). No-op when storage is null
+     * (e.g. test ctors).
+     */
+    private Map<String, Object> maybeTruncateResult(String toolName, Map<String, Object> result) {
+        if (toolResultStorage == null) return result;
+        try {
+            ToolResultPayload p = toolResultStorage.truncateIfLarge(result, ctx);
+            return p.result();
+        } catch (RuntimeException ignored) {
+            // Truncation must never fail the tool call. Storage's own
+            // fail-open contract handles disk errors; this catch covers
+            // any other surprise. Return the original — noisy LLM
+            // context beats a crashed turn.
+            return result;
         }
     }
 

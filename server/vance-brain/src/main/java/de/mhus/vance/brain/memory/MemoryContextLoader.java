@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.memory;
 
+import de.mhus.vance.brain.context.ReadStateService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -56,10 +57,27 @@ public class MemoryContextLoader {
 
     private static final String MEMORY_HEADING = "## Project Memory";
 
+    /** Key prefix for the in-process read-state cache. Per
+     *  {@code planning/brain-context-assembler.md} §3 the {@code MEMORY:}
+     *  namespace covers abstract context entries that aren't a single
+     *  file or document — agent docs from the cascade live here. */
+    static final String AGENT_DOC_KEY_PREFIX = "MEMORY:agent-doc:";
+    static final String CLIENT_AGENT_DOC_KEY_PREFIX = "MEMORY:client-agent-doc:";
+
+    /** Stub line the LLM sees when an auto-attachment was already shown
+     *  in this process with the same content hash. Brief enough not to
+     *  poison the cache marker; explicit enough that the model knows
+     *  to scroll back for the actual content. */
+    static final String DEDUP_AGENT_STUB =
+            "(Agent notes unchanged from an earlier turn — full content is in this conversation's history.)";
+    static final String DEDUP_CLIENT_AGENT_STUB =
+            "(Client-supplied agent notes unchanged from an earlier turn — see history.)";
+
     private final SettingService settingService;
     private final SessionService sessionService;
     private final DocumentService documentService;
     private final LanguageResolver languageResolver;
+    private final ReadStateService readStateService;
 
     /**
      * Returns the Markdown block to append to the system prompt, or
@@ -154,11 +172,37 @@ public class MemoryContextLoader {
         if (path == null) return;
         documentService.lookupCascade(process.getTenantId(), projectId, path)
                 .ifPresent(result -> {
-                    if (sb.length() > 0) sb.append('\n');
-                    sb.append(agentHeading(result)).append('\n');
                     String content = result.content();
-                    if (content != null && !content.isBlank()) {
-                        sb.append(content.trim()).append('\n');
+                    if (content == null || content.isBlank()) {
+                        // Empty agent doc — render the heading only.
+                        if (sb.length() > 0) sb.append('\n');
+                        sb.append(agentHeading(result)).append('\n');
+                        return;
+                    }
+                    String hash = ReadStateService.hashContent(content);
+                    String key = AGENT_DOC_KEY_PREFIX + projectId + ":" + path;
+                    if (readStateService.hasFresh(process, key, hash)) {
+                        // Same content already shown earlier — append a
+                        // brief stub instead of the full body. Saves
+                        // tokens + keeps the prompt-cache marker stable
+                        // across turns. Plan §5.2.
+                        if (sb.length() > 0) sb.append('\n');
+                        sb.append(agentHeading(result)).append('\n')
+                                .append(DEDUP_AGENT_STUB).append('\n');
+                        return;
+                    }
+                    if (sb.length() > 0) sb.append('\n');
+                    sb.append(agentHeading(result)).append('\n')
+                            .append(content.trim()).append('\n');
+                    // Best-effort record — failures don't break the
+                    // prompt build (the doc is still inlined this turn).
+                    try {
+                        readStateService.recordRead(process, key, hash,
+                                /*partialView*/ false,
+                                (long) content.getBytes(
+                                        java.nio.charset.StandardCharsets.UTF_8).length);
+                    } catch (RuntimeException e) {
+                        log.debug("ReadState recordRead failed for {}: {}", key, e.toString());
                     }
                 });
     }
@@ -178,12 +222,28 @@ public class MemoryContextLoader {
         sessionService.findBySessionId(sessionId).ifPresent(session -> {
             String content = session.getClientAgentDoc();
             if (content == null || content.isBlank()) return;
-            if (sb.length() > 0) sb.append('\n');
             String path = session.getClientAgentDocPath();
-            sb.append("## Agent Notes (from client: ")
-                    .append(path == null || path.isBlank() ? "agent.md" : path)
-                    .append(")\n")
-                    .append(content.trim()).append('\n');
+            String heading = "## Agent Notes (from client: "
+                    + (path == null || path.isBlank() ? "agent.md" : path) + ")";
+
+            String hash = ReadStateService.hashContent(content);
+            String key = CLIENT_AGENT_DOC_KEY_PREFIX + sessionId;
+            if (readStateService.hasFresh(process, key, hash)) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(heading).append('\n')
+                        .append(DEDUP_CLIENT_AGENT_STUB).append('\n');
+                return;
+            }
+            if (sb.length() > 0) sb.append('\n');
+            sb.append(heading).append('\n').append(content.trim()).append('\n');
+            try {
+                readStateService.recordRead(process, key, hash,
+                        /*partialView*/ false,
+                        (long) content.getBytes(
+                                java.nio.charset.StandardCharsets.UTF_8).length);
+            } catch (RuntimeException e) {
+                log.debug("ReadState recordRead failed for {}: {}", key, e.toString());
+            }
         });
     }
 

@@ -10,6 +10,7 @@ import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -301,6 +302,37 @@ public class ThinkProcessDocument {
      * Drives no behaviour.
      */
     private @Nullable CloseReason closeReason;
+
+    /**
+     * LRU cache of resources the process has already read into context.
+     * Ordered oldest-first; when the configured bound is exceeded, the
+     * head is dropped. Keys use the same typed-resource namespace as
+     * the history-search markers
+     * ({@code CLIENT_FILE:/abs/path}, {@code WORKSPACE:<proc>/<rel>},
+     * {@code DOCUMENT:<id>}, {@code MEMORY:<id>}).
+     *
+     * <p>Drives read-dedup at prompt-assembly time: a re-injection of
+     * the same {@code (key, contentHash)} pair is skipped. See
+     * {@code planning/brain-context-assembler.md} §3 + §4.
+     *
+     * <p>Volatile — kein audit-relevantes Datum. Darf jederzeit
+     * geclearert werden ohne Verlust.
+     */
+    @Builder.Default
+    private List<ReadStateEntry> readState = new ArrayList<>();
+
+    /**
+     * One-shot injection markers — once a key is in this set, the
+     * corresponding auto-attachment is never re-injected for the
+     * lifetime of the process. Used for things that semantically
+     * belong injected exactly once (CLAUDE.md, Memory-Pin,
+     * Kit-Welcome). Unlike {@link #readState}, no LRU eviction —
+     * append-only.
+     *
+     * <p>See {@code planning/brain-context-assembler.md} §3.
+     */
+    @Builder.Default
+    private Set<String> shownOnce = new LinkedHashSet<>();
 
     /**
      * Out-of-band signal for engines that drive a drain-loop inside

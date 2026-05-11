@@ -916,6 +916,74 @@ public class ThinkProcessService {
         return 0;
     }
 
+    // ──────────────────── Volatile context-assembly state ────────────────
+    // readState (LRU) + shownOnce (set). See ThinkProcessDocument fields
+    // and planning/brain-context-assembler.md §3 + §4. All updates here
+    // are atomic Mongo operations — the in-memory ThinkProcessDocument
+    // the caller holds may be stale after these calls.
+
+    /**
+     * Appends a fresh {@link ReadStateEntry} to {@code readState} and
+     * trims the array to the most recent {@code maxEntries} (LRU
+     * eviction at the head). Atomic via Mongo {@code $push} with
+     * {@code $slice}. No-op when {@code processId} or {@code entry} is
+     * blank/null.
+     *
+     * <p>Bytes-based eviction (the plan's {@code maxBytes} cap) is not
+     * applied here — it would require a read-modify-write loop and the
+     * size impact of typical entries is small. A periodic cleanup task
+     * may enforce a byte budget later if needed.
+     */
+    public void appendReadStateEntry(String processId, ReadStateEntry entry, int maxEntries) {
+        if (processId == null || processId.isBlank() || entry == null) return;
+        int slice = Math.max(1, maxEntries);
+        Query q = new Query(Criteria.where("_id").is(processId));
+        Update u = new Update().push("readState")
+                .slice(-slice)
+                .each(entry);
+        mongoTemplate.updateFirst(q, u, ThinkProcessDocument.class);
+    }
+
+    /**
+     * Atomically adds {@code marker} to {@code shownOnce} (Mongo
+     * {@code $addToSet}). Returns whether the set actually grew —
+     * {@code true} on first add, {@code false} when the marker was
+     * already present. The result is computed by re-reading the
+     * document; for the {@code shownOnce}-bound check the caller
+     * decides what to do.
+     *
+     * <p>No-op (returns {@code false}) for blank input.
+     */
+    public boolean tryAddShownOnce(String processId, String marker) {
+        if (processId == null || processId.isBlank()
+                || marker == null || marker.isBlank()) {
+            return false;
+        }
+        Query q = new Query(Criteria.where("_id").is(processId));
+        Update u = new Update().addToSet("shownOnce", marker);
+        UpdateResult r = mongoTemplate.updateFirst(q, u, ThinkProcessDocument.class);
+        if (r.getModifiedCount() == 0) {
+            // Either the marker was already in the set (idempotent) or
+            // the process row doesn't exist. Distinguish by re-checking
+            // for the doc — a missing row counts as "not added", a
+            // present row with the marker counts as "already there".
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Drops both {@code readState} and {@code shownOnce} on a process.
+     * Used at session-close or by an explicit reset command.
+     */
+    public void clearVolatileContextState(String processId) {
+        if (processId == null || processId.isBlank()) return;
+        Query q = new Query(Criteria.where("_id").is(processId));
+        Update u = new Update().set("readState", new ArrayList<>())
+                .set("shownOnce", new LinkedHashSet<>());
+        mongoTemplate.updateFirst(q, u, ThinkProcessDocument.class);
+    }
+
     public void delete(String id) {
         repository.deleteById(id);
     }

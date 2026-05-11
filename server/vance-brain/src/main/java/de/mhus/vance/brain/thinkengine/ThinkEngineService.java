@@ -50,6 +50,7 @@ public class ThinkEngineService {
     private final ProgressToolListener progressToolListener;
     private final LlmTraceService llmTraceService;
     private final de.mhus.vance.brain.history.HistoryTagBuilder historyTagBuilder;
+    private final de.mhus.vance.brain.tools.ToolResultStorage toolResultStorage;
     /** Lazy provider — RecipeResolver depends on us, so the bean graph cycles otherwise. */
     private final ObjectProvider<RecipeResolver> recipeResolverProvider;
 
@@ -66,6 +67,7 @@ public class ThinkEngineService {
             ProgressToolListener progressToolListener,
             LlmTraceService llmTraceService,
             de.mhus.vance.brain.history.HistoryTagBuilder historyTagBuilder,
+            de.mhus.vance.brain.tools.ToolResultStorage toolResultStorage,
             ObjectProvider<RecipeResolver> recipeResolverProvider) {
         this.engines = engineBeans.stream().collect(
                 Collectors.toMap(ThinkEngine::name, e -> e, (a, b) -> {
@@ -84,6 +86,7 @@ public class ThinkEngineService {
         this.progressToolListener = progressToolListener;
         this.llmTraceService = llmTraceService;
         this.historyTagBuilder = historyTagBuilder;
+        this.toolResultStorage = toolResultStorage;
         this.recipeResolverProvider = recipeResolverProvider;
     }
 
@@ -207,7 +210,8 @@ public class ThinkEngineService {
                 traceLlm,
                 llmTraceService,
                 historyTagBuilder,
-                tagSink);
+                tagSink,
+                toolResultStorage);
     }
 
     /**

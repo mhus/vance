@@ -21,6 +21,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -183,6 +184,130 @@ public class MemoryCompactionService {
 
         return CompactionResult.success(
                 olderIds.size(), summary.length(), saved.getId(), supersededId);
+    }
+
+    /**
+     * Range-based recompaction — folds a specific time-window of the
+     * active history (typically a sub-topic plan from
+     * {@code planning/topic-recompaction.md}) into one
+     * {@link MemoryKind#ARCHIVED_CHAT} memory and replaces the originals
+     * with a {@code SYSTEM} marker carrying the summary.
+     *
+     * <p>Same archival semantics as {@link #compact}: rows get an
+     * {@code archivedInMemoryId} set, so they drop out of
+     * {@code activeHistory(...)} but remain audit-readable via
+     * {@code history(...)}. The marker {@code ChatMessageDocument}
+     * inserted at the end of the range carries the tag
+     * {@code RECOMPACTION:<topicLabel>} so {@code history_search} can
+     * find it later.
+     *
+     * <p>The summarizer call uses the same provider/model that the
+     * sliding-window path uses; no prior-summary chaining (a sub-topic
+     * is by definition its own thing — chaining would dilute it).
+     * Idempotent on an empty range — already-archived rows are skipped
+     * by the finder.
+     */
+    public CompactionResult compactRange(
+            ThinkProcessDocument process,
+            @Nullable Instant fromCreatedAtInclusive,
+            @Nullable Instant toCreatedAtInclusive,
+            String topicLabel) {
+        AiChatConfig config = resolveAiConfig(process);
+        return compactRange(process, fromCreatedAtInclusive, toCreatedAtInclusive,
+                topicLabel, config);
+    }
+
+    /** Same as {@link #compactRange(ThinkProcessDocument, java.time.Instant,
+     *  java.time.Instant, String)} but with a pre-resolved
+     *  {@link AiChatConfig}. */
+    public CompactionResult compactRange(
+            ThinkProcessDocument process,
+            @Nullable Instant fromCreatedAtInclusive,
+            @Nullable Instant toCreatedAtInclusive,
+            String topicLabel,
+            AiChatConfig config) {
+        String tenantId = process.getTenantId();
+        String sessionId = process.getSessionId();
+        String processId = process.getId();
+
+        List<ChatMessageDocument> range = chatMessageService.findActiveInRange(
+                tenantId, processId, fromCreatedAtInclusive, toCreatedAtInclusive);
+        if (range.isEmpty()) {
+            return CompactionResult.noop("empty range — nothing to recompact");
+        }
+
+        String summary;
+        try {
+            summary = callSummarizer(process, config, /*priorSummary*/ null, range);
+        } catch (RuntimeException e) {
+            log.warn("Range-compaction summarizer failed for process='{}' topic='{}': {}",
+                    processId, topicLabel, e.toString());
+            return CompactionResult.noop("summarizer failed: " + e.getMessage());
+        }
+        if (summary.isBlank()) {
+            return CompactionResult.noop("summarizer returned empty text");
+        }
+
+        List<String> rangeIds = range.stream()
+                .map(ChatMessageDocument::getId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("compactedMessages", rangeIds.size());
+        metadata.put("provider", config.provider());
+        metadata.put("model", config.modelName());
+        metadata.put("topicLabel", topicLabel);
+        metadata.put("recompaction", true);
+        if (fromCreatedAtInclusive != null) {
+            metadata.put("rangeFromAt", fromCreatedAtInclusive.toString());
+        }
+        if (toCreatedAtInclusive != null) {
+            metadata.put("rangeToAt", toCreatedAtInclusive.toString());
+        }
+
+        String projectId = sessionService.findBySessionId(sessionId)
+                .map(SessionDocument::getProjectId)
+                .orElse("");
+        MemoryDocument fresh = MemoryDocument.builder()
+                .tenantId(tenantId)
+                .projectId(projectId)
+                .sessionId(sessionId)
+                .thinkProcessId(processId)
+                .kind(MemoryKind.ARCHIVED_CHAT)
+                .title("Recompaction " + topicLabel)
+                .content(summary)
+                .sourceRefs(new ArrayList<>(rangeIds))
+                .metadata(metadata)
+                .build();
+        MemoryDocument saved = memoryService.save(fresh);
+
+        long archived = chatMessageService.markArchived(rangeIds, saved.getId());
+
+        // Drop a SYSTEM-role marker carrying the summary so the LLM-replay
+        // sees one stitch in place of the archived range. createdAt is
+        // pinned one millisecond after the last range row so chronology
+        // is preserved across both archived + active reads.
+        Instant markerAt = range.getLast().getCreatedAt() == null
+                ? Instant.now()
+                : range.getLast().getCreatedAt().plusMillis(1);
+        ChatMessageDocument marker = ChatMessageDocument.builder()
+                .tenantId(tenantId)
+                .sessionId(sessionId)
+                .thinkProcessId(processId)
+                .role(ChatRole.SYSTEM)
+                .content(summary)
+                .tags(new java.util.LinkedHashSet<>(
+                        java.util.Set.of("RECOMPACTION:" + topicLabel)))
+                .createdAt(markerAt)
+                .build();
+        chatMessageService.append(marker);
+
+        log.info("Recompaction process='{}' topic='{}' range={} archived={} memoryId='{}' summaryChars={}",
+                processId, topicLabel, rangeIds.size(), archived, saved.getId(), summary.length());
+
+        return CompactionResult.success(
+                rangeIds.size(), summary.length(), saved.getId(), /*supersededMemoryId*/ null);
     }
 
     private String callSummarizer(

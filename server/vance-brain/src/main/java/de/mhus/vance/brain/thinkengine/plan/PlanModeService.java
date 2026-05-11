@@ -1,19 +1,29 @@
 package de.mhus.vance.brain.thinkengine.plan;
 
+import de.mhus.vance.api.chat.ChatRole;
+import de.mhus.vance.api.inbox.Criticality;
+import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.thinkprocess.TodoItem;
 import de.mhus.vance.api.thinkprocess.TodoStatus;
 import de.mhus.vance.brain.arthur.PlanModeEventEmitter;
+import de.mhus.vance.brain.memory.RecompactionTags;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.action.EngineAction;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine.ActionTurnOutcome;
+import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.inbox.InboxItemDocument;
+import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,8 +59,18 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class PlanModeService {
 
+    /**
+     * Minimum count of {@code USER}-role turns before the
+     * {@code MODE:plan} marker for the recompaction-offer hook to fire.
+     * Below that, the plan WAS the conversation — folding it away would
+     * empty the chat. See {@code planning/topic-recompaction.md} §7.
+     */
+    private static final int MIN_PRE_PLAN_USER_TURNS = 2;
+
     private final ThinkProcessService thinkProcessService;
     private final PlanModeEventEmitter planModeEventEmitter;
+    private final ChatMessageService chatMessageService;
+    private final InboxItemService inboxItemService;
 
     /**
      * Engine entry point. Returns the outcome when {@code action} is a
@@ -190,6 +210,7 @@ public class PlanModeService {
             thinkProcessService.findById(process.getId()).ifPresent(refreshed -> {
                 process.setTodos(refreshed.getTodos());
                 planModeEventEmitter.emitTodosUpdated(refreshed, refreshed.getTodos());
+                maybeOfferRecompaction(refreshed);
             });
             // History markers: one tag per transition the LLM commanded.
             // Tags accumulate in the per-turn sink and flush onto the
@@ -206,6 +227,84 @@ public class PlanModeService {
             if (!tags.isEmpty()) ctx.historyTagSink().emit(tags);
         }
         return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
+    }
+
+    /**
+     * Plan-completion hook: when the last {@code TODO_UPDATE} brings
+     * every todo into {@code COMPLETED} and there is substantial
+     * pre-plan history, posts a {@code RECOMPACTION_OFFER} inbox-item
+     * so the user can roll the plan-segment into a memory summary.
+     *
+     * <p>Pre-plan-context-check counts {@code USER}-role messages with
+     * {@code createdAt &lt;} the latest {@code MODE:plan} marker; below
+     * {@link #MIN_PRE_PLAN_USER_TURNS} the hook stays quiet. Without a
+     * pre-plan thread there is no "topic A" to protect, so the offer
+     * would only add noise.
+     *
+     * <p>Idempotency: posting the same offer twice is cheap (one
+     * extra inbox row) but visually redundant. We rely on the user to
+     * dismiss duplicates; a stricter dedup (skip if a pending
+     * {@code RECOMPACTION_OFFER} for this process already exists)
+     * may be added if we see real duplicates in practice.
+     *
+     * <p>See {@code planning/topic-recompaction.md} §4.
+     */
+    void maybeOfferRecompaction(ThinkProcessDocument refreshed) {
+        List<TodoItem> todos = refreshed.getTodos();
+        if (todos == null || todos.isEmpty()) return;
+        boolean allCompleted = todos.stream()
+                .allMatch(t -> t.getStatus() == TodoStatus.COMPLETED);
+        if (!allCompleted) return;
+
+        Optional<Instant> planStartOpt = chatMessageService.findLatestCreatedAtForTag(
+                refreshed.getTenantId(), Set.of(refreshed.getId()), "MODE:plan");
+        if (planStartOpt.isEmpty()) return;
+        Instant planStart = planStartOpt.get();
+
+        List<ChatMessageDocument> prePlan = chatMessageService.findActiveInRange(
+                refreshed.getTenantId(), refreshed.getId(),
+                /*from*/ null, planStart.minusMillis(1));
+        long userTurnsBefore = prePlan.stream()
+                .filter(m -> m.getRole() == ChatRole.USER)
+                .count();
+        if (userTurnsBefore < MIN_PRE_PLAN_USER_TURNS) {
+            log.debug("PlanMode recompaction hook skipped for process='{}' — "
+                            + "only {} pre-plan USER turn(s) (need {})",
+                    refreshed.getId(), userTurnsBefore, MIN_PRE_PLAN_USER_TURNS);
+            return;
+        }
+
+        String topicLabel = "plan-" + refreshed.getId() + "-" + planStart.toEpochMilli();
+        Instant now = Instant.now();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put(RecompactionTags.PAYLOAD_RANGE_START_AT, planStart.toString());
+        payload.put(RecompactionTags.PAYLOAD_RANGE_END_AT, now.toString());
+        payload.put(RecompactionTags.PAYLOAD_TOPIC_LABEL, topicLabel);
+        payload.put(RecompactionTags.PAYLOAD_TODO_COUNT, todos.size());
+
+        InboxItemDocument offer = InboxItemDocument.builder()
+                .tenantId(refreshed.getTenantId())
+                .originatorUserId("plan-mode:" + refreshed.getId())
+                .assignedToUserId("")   // unassigned — anyone with access can answer
+                .originProcessId(refreshed.getId())
+                .originSessionId(refreshed.getSessionId())
+                .type(InboxItemType.APPROVAL)
+                .criticality(Criticality.NORMAL)
+                .tags(new ArrayList<>(List.of(RecompactionTags.TAG_INBOX_OFFER)))
+                .title("Plan abgeschlossen — Topic in Memory rollen?")
+                .body("Der Plan ist durch. Soll ich die "
+                        + todos.size() + " Todo-Turns zu einer Zusammenfassung "
+                        + "verdichten? Der rote Faden zum vorherigen Thema "
+                        + "bleibt klar — Originale stehen weiter über "
+                        + "history_search bereit.")
+                .payload(payload)
+                .requiresAction(true)
+                .build();
+        InboxItemDocument saved = inboxItemService.create(offer);
+        log.info("PlanMode recompaction offer posted process='{}' inboxItem='{}' "
+                        + "topicLabel='{}' todoCount={} userTurnsBefore={}",
+                refreshed.getId(), saved.getId(), topicLabel,
+                todos.size(), userTurnsBefore);
     }
 
     // ──────────────────── Helpers ────────────────────

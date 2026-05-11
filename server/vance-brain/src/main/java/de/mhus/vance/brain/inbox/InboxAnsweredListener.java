@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.inbox;
 
+import de.mhus.vance.brain.memory.RecompactionTags;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SteerMessageCodec;
@@ -45,6 +46,15 @@ public class InboxAnsweredListener {
     @EventListener
     public void onAnswered(InboxItemAnsweredEvent event) {
         InboxItemDocument item = event.item();
+        // Recompaction-offers handle their own answers in
+        // RecompactionOfferAnsweredListener (act on chat history directly,
+        // no engine round-trip needed). Skip routing for them so the
+        // origin process doesn't receive a generic SteerMessage it has
+        // no semantics for.
+        if (item.getTags() != null
+                && item.getTags().contains(RecompactionTags.TAG_INBOX_OFFER)) {
+            return;
+        }
         String processId = item.getOriginProcessId();
         if (processId == null || processId.isBlank()) {
             return; // not waiting on a process

@@ -259,6 +259,45 @@ public class ChatMessageService {
     }
 
     /**
+     * Returns active (non-archived) chat messages of one think-process
+     * whose {@code createdAt} falls inside the inclusive range
+     * {@code [fromCreatedAtInclusive, toCreatedAtInclusive]}, ordered
+     * chronologically.
+     *
+     * <p>Used by topic-recompaction to materialise the slice that should
+     * be folded into a summary memory. Already-archived rows
+     * ({@code archivedInMemoryId != null}) are skipped so the call is
+     * idempotent: re-running compactRange over the same window touches
+     * nothing on the second pass.
+     *
+     * <p>{@code null} bounds open the corresponding side; both
+     * {@code null} reduces to "all active messages of this process". An
+     * empty / blank {@code thinkProcessId} returns an empty list — never
+     * an unbounded fetch.
+     */
+    public List<ChatMessageDocument> findActiveInRange(
+            String tenantId,
+            String thinkProcessId,
+            @org.jspecify.annotations.Nullable Instant fromCreatedAtInclusive,
+            @org.jspecify.annotations.Nullable Instant toCreatedAtInclusive) {
+        if (thinkProcessId == null || thinkProcessId.isBlank()) {
+            return List.of();
+        }
+        Criteria c = Criteria.where("tenantId").is(tenantId)
+                .and("thinkProcessId").is(thinkProcessId)
+                .and("archivedInMemoryId").isNull();
+        if (fromCreatedAtInclusive != null && toCreatedAtInclusive != null) {
+            c = c.and("createdAt").gte(fromCreatedAtInclusive).lte(toCreatedAtInclusive);
+        } else if (fromCreatedAtInclusive != null) {
+            c = c.and("createdAt").gte(fromCreatedAtInclusive);
+        } else if (toCreatedAtInclusive != null) {
+            c = c.and("createdAt").lte(toCreatedAtInclusive);
+        }
+        Query q = new Query(c).with(BY_CREATED);
+        return mongoTemplate.find(q, ChatMessageDocument.class);
+    }
+
+    /**
      * Aggregates the distinct {@code RESOURCE:*} tag values seen within
      * the given scope, optionally floored at {@code since}. Each returned
      * string is a typed resource key — {@code CLIENT_FILE:/abs/path},

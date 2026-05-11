@@ -19,6 +19,8 @@ import de.mhus.vance.brain.history.BufferingHistoryTagSink;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.action.EngineAction;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine.ActionTurnOutcome;
+import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.util.ArrayList;
@@ -44,6 +46,8 @@ class PlanModeServiceTest {
 
     private ThinkProcessService thinkProcessService;
     private PlanModeEventEmitter eventEmitter;
+    private ChatMessageService chatMessageService;
+    private InboxItemService inboxItemService;
     private PlanModeService service;
     private ThinkEngineContext ctx;
     /** Real buffer — we inspect via {@link BufferingHistoryTagSink#peek()}. */
@@ -56,7 +60,11 @@ class PlanModeServiceTest {
     void setUp() {
         thinkProcessService = mock(ThinkProcessService.class);
         eventEmitter = mock(PlanModeEventEmitter.class);
-        service = new PlanModeService(thinkProcessService, eventEmitter);
+        chatMessageService = mock(ChatMessageService.class);
+        inboxItemService = mock(InboxItemService.class);
+        service = new PlanModeService(
+                thinkProcessService, eventEmitter,
+                chatMessageService, inboxItemService);
         ctx = mock(ThinkEngineContext.class);
         emittedSnapshots.clear();
         // BufferingHistoryTagSink is final → use Mockito spy + doAnswer to

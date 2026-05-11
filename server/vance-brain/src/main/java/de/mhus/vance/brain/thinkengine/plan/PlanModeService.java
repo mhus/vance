@@ -249,7 +249,7 @@ public class PlanModeService {
      *
      * <p>See {@code planning/topic-recompaction.md} §4.
      */
-    void maybeOfferRecompaction(ThinkProcessDocument refreshed) {
+    public void maybeOfferRecompaction(ThinkProcessDocument refreshed) {
         List<TodoItem> todos = refreshed.getTodos();
         if (todos == null || todos.isEmpty()) return;
         boolean allCompleted = todos.stream()

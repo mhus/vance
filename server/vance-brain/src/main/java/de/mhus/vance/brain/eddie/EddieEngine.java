@@ -266,6 +266,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.eddie.connection.EddieFrameRouter workerFrameRouter;
     private final de.mhus.vance.shared.jwt.JwtService jwtService;
     private final de.mhus.vance.shared.access.ProfileRegistry profileRegistry;
+    private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
 
     public EddieEngine(
             StreamingProperties streamingProperties,
@@ -284,6 +285,7 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.eddie.connection.EddieFrameRouter workerFrameRouter,
             de.mhus.vance.shared.jwt.JwtService jwtService,
             de.mhus.vance.shared.access.ProfileRegistry profileRegistry,
+            de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
@@ -299,6 +301,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.workerFrameRouter = workerFrameRouter;
         this.jwtService = jwtService;
         this.profileRegistry = profileRegistry;
+        this.planModeService = planModeService;
         this.promptTemplateRenderer = promptTemplateRenderer;
     }
 
@@ -705,6 +708,11 @@ public class EddieEngine extends StructuredActionEngine {
             EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
+        // Plan-Mode actions go through the shared service first. When
+        // the service recognises the action it returns the outcome;
+        // otherwise null and we fall through to Eddie-specific actions.
+        ActionTurnOutcome planOutcome = planModeService.dispatch(action, process, ctx);
+        if (planOutcome != null) return planOutcome;
         return switch (action.type()) {
             case EddieActionSchema.TYPE_ANSWER           -> handleAnswer(action);
             case EddieActionSchema.TYPE_ASK_USER         -> handleAskUser(action);

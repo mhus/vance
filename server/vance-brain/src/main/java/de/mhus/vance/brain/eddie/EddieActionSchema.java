@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.eddie;
 
+import de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,13 +73,35 @@ public final class EddieActionSchema {
     public static final String TYPE_WAIT             = "WAIT";
     public static final String TYPE_REJECT           = "REJECT";
 
-    public static final Set<String> SUPPORTED_TYPES = Set.of(
+    /**
+     * Eddie's own action types — used for the schema enum and the
+     * structured-action validator. Plan-Mode types from
+     * {@link PlanModeActionSchema#ALL_TYPES} are unioned into
+     * {@link #SUPPORTED_TYPES} below; they're routed by
+     * {@code EddieEngine.handleAction(...)} through
+     * {@code PlanModeService.dispatch(...)} before the Eddie-specific
+     * switch runs.
+     */
+    public static final Set<String> EDDIE_OWN_TYPES = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER,
             TYPE_DELEGATE_PROJECT, TYPE_STEER_PROJECT,
             TYPE_RELAY, TYPE_RELAY_INBOX,
             TYPE_LEARN,
             TYPE_MEDIATE,
             TYPE_WAIT, TYPE_REJECT);
+
+    /**
+     * Full set the structured-action validator accepts: Eddie's own
+     * types plus the shared Plan-Mode types. The order is preserved
+     * via {@link LinkedHashSet} so the schema enum stays deterministic.
+     */
+    public static final Set<String> SUPPORTED_TYPES = buildSupportedTypes();
+
+    private static Set<String> buildSupportedTypes() {
+        Set<String> all = new LinkedHashSet<>(EDDIE_OWN_TYPES);
+        all.addAll(PlanModeActionSchema.ALL_TYPES);
+        return Set.copyOf(all);
+    }
 
     /** LEARN scope: persistent persona summary, always loaded into Eddie's prompt. */
     public static final String LEARN_SCOPE_PERSONA = "persona";
@@ -149,7 +173,12 @@ public final class EddieActionSchema {
                 TYPE_RELAY, TYPE_RELAY_INBOX,
                 TYPE_LEARN,
                 TYPE_MEDIATE,
-                TYPE_WAIT, TYPE_REJECT));
+                TYPE_WAIT, TYPE_REJECT,
+                // Plan-Mode types — handled by the shared PlanModeService.
+                PlanModeActionSchema.TYPE_START_PLAN,
+                PlanModeActionSchema.TYPE_PROPOSE_PLAN,
+                PlanModeActionSchema.TYPE_START_EXECUTION,
+                PlanModeActionSchema.TYPE_TODO_UPDATE));
         typeProp.put("description",
                 "Which branch this turn takes. ANSWER = direct spoken "
                         + "reply. ASK_USER = clarification question. "
@@ -165,7 +194,14 @@ public final class EddieActionSchema {
                         + "direct conversation (use when the user needs "
                         + "client-side tools the worker has but Eddie can't "
                         + "route — see eddie-engine §8.5). WAIT = async work "
-                        + "running. REJECT = out of scope.");
+                        + "running. REJECT = out of scope. "
+                        + "START_PLAN = enter EXPLORING mode for a non-"
+                        + "trivial task that benefits from explore-then-"
+                        + "plan-then-execute (rarely needed in Eddie's "
+                        + "orchestrator role — usually DELEGATE_PROJECT "
+                        + "or STEER_PROJECT to a worker is the better "
+                        + "match). PROPOSE_PLAN / START_EXECUTION / "
+                        + "TODO_UPDATE — see specification/plan-mode.md.");
 
         Map<String, Object> reasonProp = new LinkedHashMap<>();
         reasonProp.put("type", "string");
@@ -267,6 +303,77 @@ public final class EddieActionSchema {
                         + "existing summary. Ignored for scope=fact "
                         + "(facts are always appended).");
 
+        // Plan-Mode property descriptors. Same descriptions as Arthur's
+        // schema — Eddie reuses the shared semantics. The fields are
+        // optional in the schema (per-type required-field validation
+        // sits in PlanModeService), so any unused property only adds a
+        // few bytes to the LLM's tool spec.
+        Map<String, Object> planGoalProp = new LinkedHashMap<>();
+        planGoalProp.put("type", "string");
+        planGoalProp.put("description",
+                "Optional one-liner restating the task. Used for START_PLAN.");
+
+        Map<String, Object> planProp = new LinkedHashMap<>();
+        planProp.put("type", "string");
+        planProp.put("description",
+                "Markdown plan text. Required for PROPOSE_PLAN.");
+
+        Map<String, Object> planSummaryProp = new LinkedHashMap<>();
+        planSummaryProp.put("type", "string");
+        planSummaryProp.put("description",
+                "One-line summary of the plan. Required for PROPOSE_PLAN.");
+
+        Map<String, Object> todoItemSchema = new LinkedHashMap<>();
+        todoItemSchema.put("type", "object");
+        Map<String, Object> todoItemProps = new LinkedHashMap<>();
+        Map<String, Object> todoIdProp = new LinkedHashMap<>();
+        todoIdProp.put("type", "string");
+        todoIdProp.put("description", "Stable id within the plan.");
+        Map<String, Object> todoContentProp = new LinkedHashMap<>();
+        todoContentProp.put("type", "string");
+        todoContentProp.put("description", "Imperative form of the todo.");
+        Map<String, Object> todoActiveFormProp = new LinkedHashMap<>();
+        todoActiveFormProp.put("type", "string");
+        todoActiveFormProp.put("description", "Optional present-continuous.");
+        todoItemProps.put("id", todoIdProp);
+        todoItemProps.put("content", todoContentProp);
+        todoItemProps.put("activeForm", todoActiveFormProp);
+        todoItemSchema.put("properties", todoItemProps);
+        todoItemSchema.put("required", List.of("id", "content"));
+
+        Map<String, Object> todosProp = new LinkedHashMap<>();
+        todosProp.put("type", "array");
+        todosProp.put("items", todoItemSchema);
+        todosProp.put("description",
+                "TodoList: 3–8 plan steps. Required for PROPOSE_PLAN.");
+
+        Map<String, Object> planNotesProp = new LinkedHashMap<>();
+        planNotesProp.put("type", "string");
+        planNotesProp.put("description",
+                "Optional extra context from the user's approval. "
+                        + "Used for START_EXECUTION.");
+
+        Map<String, Object> updateItemSchema = new LinkedHashMap<>();
+        updateItemSchema.put("type", "object");
+        Map<String, Object> updateItemProps = new LinkedHashMap<>();
+        Map<String, Object> updateIdProp = new LinkedHashMap<>();
+        updateIdProp.put("type", "string");
+        updateIdProp.put("description", "TodoItem id to update.");
+        Map<String, Object> statusProp = new LinkedHashMap<>();
+        statusProp.put("type", "string");
+        statusProp.put("enum", List.of("PENDING", "IN_PROGRESS", "COMPLETED"));
+        statusProp.put("description", "New status for the TodoItem.");
+        updateItemProps.put("id", updateIdProp);
+        updateItemProps.put("status", statusProp);
+        updateItemSchema.put("properties", updateItemProps);
+        updateItemSchema.put("required", List.of("id", "status"));
+
+        Map<String, Object> updatesProp = new LinkedHashMap<>();
+        updatesProp.put("type", "array");
+        updatesProp.put("items", updateItemSchema);
+        updatesProp.put("description",
+                "TodoItem status updates. Required for TODO_UPDATE.");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("type", typeProp);
         properties.put("reason", reasonProp);
@@ -282,6 +389,13 @@ public final class EddieActionSchema {
         properties.put(PARAM_SPOKEN, spokenProp);
         properties.put(PARAM_SCOPE, scopeProp);
         properties.put(PARAM_MODE, modeProp);
+        // Plan-Mode params from PlanModeActionSchema.
+        properties.put(PlanModeActionSchema.PARAM_GOAL, planGoalProp);
+        properties.put(PlanModeActionSchema.PARAM_PLAN, planProp);
+        properties.put(PlanModeActionSchema.PARAM_SUMMARY, planSummaryProp);
+        properties.put(PlanModeActionSchema.PARAM_TODOS, todosProp);
+        properties.put(PlanModeActionSchema.PARAM_NOTES, planNotesProp);
+        properties.put(PlanModeActionSchema.PARAM_UPDATES, updatesProp);
 
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("type", "object");

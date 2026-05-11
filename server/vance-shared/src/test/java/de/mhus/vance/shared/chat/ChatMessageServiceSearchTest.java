@@ -84,7 +84,13 @@ class ChatMessageServiceSearchTest {
         Query issued = captureQuery();
         Document criteria = issued.getQueryObject();
         assertThat(criteria.get("tenantId")).isEqualTo("t");
-        assertThat(criteria.get("thinkProcessId")).isEqualTo("p");
+        // The single-arg search delegates to the multi-process variant
+        // with allowedProcessIds={p}, so the wire query uses $in even
+        // for the trivial single-process case.
+        Document procClause = criteria.get("thinkProcessId", Document.class);
+        @SuppressWarnings("unchecked")
+        Iterable<Object> procIds = (Iterable<Object>) procClause.get("$in");
+        assertThat(procIds).containsExactly("p");
         assertThat(issued.getSortObject().get("createdAt")).isEqualTo(-1);
         assertThat(issued.getLimit()).isEqualTo(ChatMessageSearchQuery.DEFAULT_LIMIT);
         assertThat(issued).isNotInstanceOf(TextQuery.class);
@@ -137,10 +143,37 @@ class ChatMessageServiceSearchTest {
         Document criteria = issued.getQueryObject();
         // Tenant + process pinning must survive the TextQuery switch.
         assertThat(criteria.get("tenantId")).isEqualTo("t");
-        assertThat(criteria.get("thinkProcessId")).isEqualTo("p");
+        Document procClause = criteria.get("thinkProcessId", Document.class);
+        @SuppressWarnings("unchecked")
+        Iterable<Object> procIds = (Iterable<Object>) procClause.get("$in");
+        assertThat(procIds).containsExactly("p");
         // The Mongo text-search operator is encoded as $text.$search.
         Document textOp = criteria.get("$text", Document.class);
         assertThat(textOp.get("$search")).isEqualTo("provider caching");
+    }
+
+    @Test
+    void search_withMultipleProcessIds_widensInClause() {
+        service.search(ChatMessageSearchQuery.of("t", "p"),
+                Set.of("p", "child-1", "child-2"));
+
+        Query issued = captureQuery();
+        Document criteria = issued.getQueryObject();
+        assertThat(criteria.get("tenantId")).isEqualTo("t");
+        Document procClause = criteria.get("thinkProcessId", Document.class);
+        @SuppressWarnings("unchecked")
+        Iterable<Object> procs = (Iterable<Object>) procClause.get("$in");
+        assertThat(procs).containsExactlyInAnyOrder("p", "child-1", "child-2");
+    }
+
+    @Test
+    void search_emptyAllowedProcessIds_returnsEmpty_andSkipsMongoFind() {
+        List<de.mhus.vance.shared.chat.ChatMessageDocument> out =
+                service.search(ChatMessageSearchQuery.of("t", "p"), Set.of());
+
+        assertThat(out).isEmpty();
+        org.mockito.Mockito.verify(mongoTemplate, org.mockito.Mockito.never())
+                .find(any(Query.class), eq(ChatMessageDocument.class));
     }
 
     @Test

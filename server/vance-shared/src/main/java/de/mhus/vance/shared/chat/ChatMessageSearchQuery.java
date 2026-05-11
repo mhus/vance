@@ -6,11 +6,15 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Query parameters for {@link ChatMessageService#search(ChatMessageSearchQuery)}.
+ * Query parameters for {@link ChatMessageService#search(ChatMessageSearchQuery,
+ *                                                       java.util.Set)}.
  *
- * <p>{@code tenantId} and {@code thinkProcessId} are required and pin the
- * search to a single process scope — cross-tenant or cross-process lookup
- * is intentionally not exposed at this layer.
+ * <p>{@code tenantId} and {@code thinkProcessId} are required and identify
+ * the calling process. The {@code processIds} parameter on the service
+ * call expands the visible process set when the caller chose a wider
+ * scope ({@code SESSION}, {@code CHILDREN}); when the set is empty or
+ * contains only {@code thinkProcessId}, the search is process-local —
+ * the same as v1 behaviour.
  *
  * <p>{@code tags} are matched with AND semantics (all listed tags must
  * be present). {@code text} triggers a Mongo text-index lookup against

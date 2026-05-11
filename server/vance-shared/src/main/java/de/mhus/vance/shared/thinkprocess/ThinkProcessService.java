@@ -283,6 +283,50 @@ public class ThinkProcessService {
                 .orElse(List.of());
     }
 
+    /**
+     * BFS over the {@code parentProcessId} tree rooted at {@code rootProcessId}.
+     * The result includes the root id plus every descendant id reachable
+     * via transitive parent links, scoped to the root's tenant.
+     *
+     * <p>Used by {@code history_search} / {@code history_recall} when the
+     * caller asks for {@code scope=children} — the resulting set becomes
+     * the {@code $in} filter that bounds the cross-process query.
+     *
+     * <p>Cycle-guarded via a visited set: a corrupted database with a
+     * cycle in the parent chain would otherwise loop forever. We log
+     * once on detection and short-circuit; the set is still returned so
+     * callers can proceed.
+     *
+     * <p>Returns an empty set when the root is missing or blank — the
+     * caller treats that as "scope yields nothing", a safer default
+     * than expanding to all processes.
+     */
+    public java.util.Set<String> findDescendantIds(String rootProcessId) {
+        if (rootProcessId == null || rootProcessId.isBlank()) {
+            return java.util.Set.of();
+        }
+        ThinkProcessDocument root = repository.findById(rootProcessId).orElse(null);
+        if (root == null) return java.util.Set.of();
+        String tenantId = root.getTenantId();
+
+        java.util.Set<String> result = new java.util.LinkedHashSet<>();
+        result.add(rootProcessId);
+        java.util.Deque<String> frontier = new java.util.ArrayDeque<>();
+        frontier.add(rootProcessId);
+        while (!frontier.isEmpty()) {
+            String parentId = frontier.poll();
+            for (ThinkProcessDocument child :
+                    repository.findByTenantIdAndParentProcessId(tenantId, parentId)) {
+                String cid = child.getId();
+                if (cid == null) continue;
+                if (result.add(cid)) {
+                    frontier.add(cid);
+                }
+            }
+        }
+        return java.util.Set.copyOf(result);
+    }
+
     // ────────────────── Mutations ──────────────────
 
     /**

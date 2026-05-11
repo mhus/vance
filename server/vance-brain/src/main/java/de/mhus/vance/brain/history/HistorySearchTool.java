@@ -3,6 +3,7 @@ package de.mhus.vance.brain.history;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageSearchQuery;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -38,6 +39,23 @@ public class HistorySearchTool implements Tool {
     /** Truncated content length surfaced in the search response. */
     static final int SNIPPET_CHARS = 200;
 
+    /** Default scope when caller does not pass one — process-local. */
+    public static final String SCOPE_PROCESS = "process";
+
+    /**
+     * Includes the calling process plus every descendant reachable via
+     * {@code parentProcessId}. Use case: an orchestrator like Eddie
+     * looking back over what the workers it spawned have done.
+     */
+    public static final String SCOPE_CHILDREN = "children";
+
+    /**
+     * Includes every process in the same {@code sessionId} as the
+     * calling process. Use case: chat-process looking at a sibling
+     * worker that lives in the same session.
+     */
+    public static final String SCOPE_SESSION = "session";
+
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", Map.of(
@@ -68,10 +86,19 @@ public class HistorySearchTool implements Tool {
                                             + 1
                                             + ", "
                                             + ChatMessageSearchQuery.MAX_LIMIT
-                                            + "].")),
+                                            + "]."),
+                    "scope", Map.of(
+                            "type", "string",
+                            "description",
+                                    "Process scope to search. 'process' (default) "
+                                            + "= only this process; 'children' = this "
+                                            + "process plus every descendant via "
+                                            + "parentProcessId; 'session' = every "
+                                            + "process in this session.")),
             "required", List.of());
 
     private final ChatMessageService chatMessageService;
+    private final ThinkProcessService thinkProcessService;
 
     @Override public String name() { return "history_search"; }
 
@@ -104,10 +131,13 @@ public class HistorySearchTool implements Tool {
         String text = stringOrNull(params, "query");
         Instant since = parseSince(params);
         int limit = parseLimit(params);
+        String scope = parseScope(params);
+        Set<String> allowedProcessIds = HistoryScopeResolver.resolve(
+                scope, ctx, thinkProcessService);
 
         ChatMessageSearchQuery q = new ChatMessageSearchQuery(
                 ctx.tenantId(), ctx.processId(), tagSet, text, since, limit);
-        List<ChatMessageDocument> hits = chatMessageService.search(q);
+        List<ChatMessageDocument> hits = chatMessageService.search(q, allowedProcessIds);
 
         List<Map<String, Object>> out = new ArrayList<>(hits.size());
         for (ChatMessageDocument m : hits) {
@@ -115,6 +145,7 @@ public class HistorySearchTool implements Tool {
             entry.put("turnId", m.getId());
             entry.put("createdAt", m.getCreatedAt() == null ? null : m.getCreatedAt().toString());
             entry.put("role", m.getRole() == null ? null : m.getRole().name());
+            entry.put("processId", m.getThinkProcessId());
             entry.put("tags", new ArrayList<>(m.getTags()));
             entry.put("snippet", snippet(m.getContent()));
             out.add(entry);
@@ -122,7 +153,26 @@ public class HistorySearchTool implements Tool {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("hits", out);
         result.put("count", out.size());
+        result.put("scope", scope);
         return result;
+    }
+
+    private static String parseScope(Map<String, Object> params) {
+        Object raw = params == null ? null : params.get("scope");
+        if (raw == null) return SCOPE_PROCESS;
+        if (!(raw instanceof String s)) {
+            throw new ToolException("'scope' must be a string");
+        }
+        String trimmed = s.trim().toLowerCase();
+        if (trimmed.isEmpty()) return SCOPE_PROCESS;
+        if (!trimmed.equals(SCOPE_PROCESS)
+                && !trimmed.equals(SCOPE_CHILDREN)
+                && !trimmed.equals(SCOPE_SESSION)) {
+            throw new ToolException("'scope' must be one of: "
+                    + SCOPE_PROCESS + ", " + SCOPE_CHILDREN + ", " + SCOPE_SESSION
+                    + " (got '" + s + "')");
+        }
+        return trimmed;
     }
 
     private static Set<String> parseStringArray(Map<String, Object> params, String key) {

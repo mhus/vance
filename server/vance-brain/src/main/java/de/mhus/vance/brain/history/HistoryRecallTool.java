@@ -2,6 +2,7 @@ package de.mhus.vance.brain.history;
 
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -43,10 +44,18 @@ public class HistoryRecallTool implements Tool {
                             "items", Map.of("type", "string"),
                             "description",
                                     "Turn IDs returned by an earlier history_search call. "
-                                            + "Max " + MAX_RECALL + " ids per call.")),
+                                            + "Max " + MAX_RECALL + " ids per call."),
+                    "scope", Map.of(
+                            "type", "string",
+                            "description",
+                                    "Process scope (must match the scope used for the "
+                                            + "search that produced these ids). 'process' "
+                                            + "(default), 'children' or 'session' — see "
+                                            + "history_search.")),
             "required", List.of("turnIds"));
 
     private final ChatMessageService chatMessageService;
+    private final ThinkProcessService thinkProcessService;
 
     @Override public String name() { return "history_recall"; }
 
@@ -78,8 +87,12 @@ public class HistoryRecallTool implements Tool {
             throw new ToolException("history_recall accepts at most " + MAX_RECALL
                     + " turnIds per call (got " + ids.size() + ")");
         }
+        String scope = parseScope(params);
+        Set<String> allowedProcessIds = HistoryScopeResolver.resolve(
+                scope, ctx, thinkProcessService);
+
         List<ChatMessageDocument> turns =
-                chatMessageService.findByIds(ctx.tenantId(), ctx.processId(), ids);
+                chatMessageService.findByIds(ctx.tenantId(), allowedProcessIds, ids);
 
         List<Map<String, Object>> out = new ArrayList<>(turns.size());
         for (ChatMessageDocument m : turns) {
@@ -87,6 +100,7 @@ public class HistoryRecallTool implements Tool {
             entry.put("turnId", m.getId());
             entry.put("createdAt", m.getCreatedAt() == null ? null : m.getCreatedAt().toString());
             entry.put("role", m.getRole() == null ? null : m.getRole().name());
+            entry.put("processId", m.getThinkProcessId());
             entry.put("content", m.getContent());
             entry.put("tags", new ArrayList<>(m.getTags()));
             out.add(entry);
@@ -94,7 +108,25 @@ public class HistoryRecallTool implements Tool {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("turns", out);
         result.put("count", out.size());
+        result.put("scope", scope);
         return result;
+    }
+
+    private static String parseScope(Map<String, Object> params) {
+        Object raw = params == null ? null : params.get("scope");
+        if (raw == null) return HistorySearchTool.SCOPE_PROCESS;
+        if (!(raw instanceof String s)) {
+            throw new ToolException("'scope' must be a string");
+        }
+        String trimmed = s.trim().toLowerCase();
+        if (trimmed.isEmpty()) return HistorySearchTool.SCOPE_PROCESS;
+        if (!trimmed.equals(HistorySearchTool.SCOPE_PROCESS)
+                && !trimmed.equals(HistorySearchTool.SCOPE_CHILDREN)
+                && !trimmed.equals(HistorySearchTool.SCOPE_SESSION)) {
+            throw new ToolException("'scope' must be one of: process, children, session "
+                    + "(got '" + s + "')");
+        }
+        return trimmed;
     }
 
     private static Set<String> parseIds(Map<String, Object> params) {

@@ -60,11 +60,40 @@ class ChatMessageServiceFindByIdsTest {
         Document criteria = cap.getValue().getQueryObject();
 
         assertThat(criteria.get("tenantId")).isEqualTo("t");
-        assertThat(criteria.get("thinkProcessId")).isEqualTo("p");
+        // The single-process overload delegates to the multi-process
+        // variant; the wire query is always $in for consistency.
+        Document procClause = criteria.get("thinkProcessId", Document.class);
+        @SuppressWarnings("unchecked")
+        Iterable<Object> procs = (Iterable<Object>) procClause.get("$in");
+        assertThat(procs).containsExactly("p");
         Document idClause = criteria.get("_id", Document.class);
         @SuppressWarnings("unchecked")
         Iterable<Object> ids = (Iterable<Object>) idClause.get("$in");
         assertThat(ids).containsExactlyInAnyOrder("m-1", "m-2");
+    }
+
+    @Test
+    void multiProcessOverload_widensProcessInClause() {
+        service.findByIds("t", Set.of("p", "child-1"), Set.of("m-1"));
+
+        ArgumentCaptor<Query> cap = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).find(cap.capture(), eq(ChatMessageDocument.class));
+        Document criteria = cap.getValue().getQueryObject();
+
+        Document procClause = criteria.get("thinkProcessId", Document.class);
+        @SuppressWarnings("unchecked")
+        Iterable<Object> procs = (Iterable<Object>) procClause.get("$in");
+        assertThat(procs).containsExactlyInAnyOrder("p", "child-1");
+    }
+
+    @Test
+    void multiProcessOverload_emptyProcessSet_returnsEmpty() {
+        List<ChatMessageDocument> out =
+                service.findByIds("t", Set.of(), Set.of("m-1"));
+
+        assertThat(out).isEmpty();
+        verify(mongoTemplate, org.mockito.Mockito.never())
+                .find(any(Query.class), eq(ChatMessageDocument.class));
     }
 
     @Test

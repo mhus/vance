@@ -2,14 +2,19 @@ package de.mhus.vance.shared.chat;
 
 import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.shared.session.SessionService;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.AggregationResults;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.TextCriteria;
@@ -133,21 +138,39 @@ public class ChatMessageService {
     }
 
     /**
-     * Searches chat messages within a single process scope using
-     * tag-AND, optional full-text query, and optional time floor.
-     * Traverses <em>all</em> messages — including those rolled into a
-     * compaction memory — so the LLM can look up turns no longer in the
-     * active context window.
-     *
-     * <p>When {@code text} is set, Mongo's text index is queried and
-     * results are sorted by score descending, then by {@code createdAt}
-     * descending. Without text, ordering is {@code createdAt} descending.
-     * The {@code limit} is honoured as-is (already clamped by the
-     * {@link ChatMessageSearchQuery} constructor).
+     * Process-local search — equivalent to
+     * {@link #search(ChatMessageSearchQuery, java.util.Set)} with the
+     * scope set to just {@code q.thinkProcessId()}. Kept as the default
+     * call-site so existing callers do not need to think about scope.
      */
     public List<ChatMessageDocument> search(ChatMessageSearchQuery q) {
+        return search(q, java.util.Set.of(q.thinkProcessId()));
+    }
+
+    /**
+     * Searches chat messages across an explicit set of allowed process
+     * ids. {@code allowedProcessIds} is the resolved scope — for
+     * {@code PROCESS} it is {@code {q.thinkProcessId()}}; for
+     * {@code SESSION}/{@code CHILDREN} the caller (the tool layer)
+     * pre-computes the set via {@code ThinkProcessService} so this
+     * service stays scope-agnostic.
+     *
+     * <p>An empty {@code allowedProcessIds} returns an empty result —
+     * never an unbounded search. Tenant pinning is unconditional and
+     * applied before the {@code $in} filter.
+     *
+     * <p>{@code text} switches to a Mongo {@link TextQuery}; otherwise
+     * a plain {@link Query} sorted by {@code createdAt} descending.
+     * {@code tags} use {@code $all} (AND). {@code limit} is honoured
+     * as-is (already clamped on the query).
+     */
+    public List<ChatMessageDocument> search(
+            ChatMessageSearchQuery q, java.util.Set<String> allowedProcessIds) {
+        if (allowedProcessIds == null || allowedProcessIds.isEmpty()) {
+            return List.of();
+        }
         Criteria c = Criteria.where("tenantId").is(q.tenantId())
-                .and("thinkProcessId").is(q.thinkProcessId());
+                .and("thinkProcessId").in(allowedProcessIds);
         if (!q.tags().isEmpty()) {
             c = c.and("tags").all(q.tags());
         }
@@ -172,10 +195,22 @@ public class ChatMessageService {
     }
 
     /**
+     * Process-local id lookup — equivalent to
+     * {@link #findByIds(String, java.util.Set, java.util.Collection)}
+     * with the scope set to just {@code thinkProcessId}.
+     */
+    public List<ChatMessageDocument> findByIds(
+            String tenantId, String thinkProcessId, Collection<String> ids) {
+        if (thinkProcessId == null || thinkProcessId.isBlank()) return List.of();
+        return findByIds(tenantId, java.util.Set.of(thinkProcessId), ids);
+    }
+
+    /**
      * Looks up messages by id, strictly filtered to {@code tenantId} and
-     * {@code thinkProcessId} — cross-tenant or cross-process leakage is
-     * the explicit non-feature here, since the {@code history_recall}
-     * LLM tool relies on this method for isolation.
+     * the {@code allowedProcessIds} set — the resolved scope from the
+     * tool layer. Mongo {@code $in} on {@code thinkProcessId} keeps the
+     * isolation explicit; an empty set yields an empty list, never an
+     * unbounded fetch.
      *
      * <p>Order is {@code createdAt} ascending (chronological). Missing
      * ids are silently skipped: callers commonly pass ids returned by
@@ -183,13 +218,88 @@ public class ChatMessageService {
      * filter, not as a strict resolve.
      */
     public List<ChatMessageDocument> findByIds(
-            String tenantId, String thinkProcessId, Collection<String> ids) {
+            String tenantId,
+            java.util.Set<String> allowedProcessIds,
+            Collection<String> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
+        if (allowedProcessIds == null || allowedProcessIds.isEmpty()) {
+            return List.of();
+        }
         Query q = new Query(Criteria.where("_id").in(ids)
                 .and("tenantId").is(tenantId)
-                .and("thinkProcessId").is(thinkProcessId))
+                .and("thinkProcessId").in(allowedProcessIds))
                 .with(Sort.by(Sort.Direction.ASC, "createdAt"));
         return mongoTemplate.find(q, ChatMessageDocument.class);
+    }
+
+    /**
+     * Finds the most recent {@code createdAt} of a message carrying
+     * {@code tag} within the given scope. Returns empty when no such
+     * message exists — callers commonly treat that as "no boundary yet,
+     * search from the start of the process".
+     *
+     * <p>Used by {@code list_edited_resources} to translate a
+     * {@code sinceTag} parameter (e.g. {@code PLAN_STEP_STARTED:cleanup})
+     * into a concrete time floor, so the LLM does not need to chain
+     * {@code history_search} + {@code list_edited_resources} manually.
+     */
+    public Optional<Instant> findLatestCreatedAtForTag(
+            String tenantId, Set<String> allowedProcessIds, String tag) {
+        if (allowedProcessIds == null || allowedProcessIds.isEmpty()
+                || tag == null || tag.isBlank()) {
+            return Optional.empty();
+        }
+        Query q = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("thinkProcessId").in(allowedProcessIds)
+                .and("tags").is(tag))
+                .with(Sort.by(Sort.Direction.DESC, "createdAt"))
+                .limit(1);
+        ChatMessageDocument hit = mongoTemplate.findOne(q, ChatMessageDocument.class);
+        return Optional.ofNullable(hit == null ? null : hit.getCreatedAt());
+    }
+
+    /**
+     * Aggregates the distinct {@code RESOURCE:*} tag values seen within
+     * the given scope, optionally floored at {@code since}. Each returned
+     * string is a typed resource key — {@code CLIENT_FILE:/abs/path},
+     * {@code WORKSPACE:<proc>/<rel>}, {@code DOCUMENT:<id>} — projected
+     * straight from the tag (no {@code RESOURCE:} prefix in the response).
+     *
+     * <p>The implementation is a four-stage aggregation: match by
+     * tenant + process + (optional) createdAt + tag prefix, unwind the
+     * tags array, re-match the unwound rows to drop non-RESOURCE tags
+     * that rode along on the same message, group on the tag value, sort
+     * lexicographically.
+     */
+    public List<String> distinctResourceKeys(
+            String tenantId, Set<String> allowedProcessIds, @org.jspecify.annotations.Nullable Instant since) {
+        if (allowedProcessIds == null || allowedProcessIds.isEmpty()) {
+            return List.of();
+        }
+        Criteria match = Criteria.where("tenantId").is(tenantId)
+                .and("thinkProcessId").in(allowedProcessIds)
+                .and("tags").regex("^RESOURCE:");
+        if (since != null) {
+            match = match.and("createdAt").gte(since);
+        }
+        Aggregation agg = Aggregation.newAggregation(
+                Aggregation.match(match),
+                Aggregation.unwind("tags"),
+                Aggregation.match(Criteria.where("tags").regex("^RESOURCE:")),
+                Aggregation.group("tags"),
+                Aggregation.sort(Sort.Direction.ASC, "_id"));
+
+        AggregationResults<org.bson.Document> results =
+                mongoTemplate.aggregate(agg, ChatMessageDocument.class, org.bson.Document.class);
+
+        List<String> out = new ArrayList<>();
+        for (org.bson.Document row : results.getMappedResults()) {
+            Object id = row.get("_id");
+            if (id instanceof String s && s.startsWith("RESOURCE:")) {
+                out.add(s.substring("RESOURCE:".length()));
+            }
+        }
+        return out;
     }
 
     /** Drops all messages of a think-process (process deletion). */

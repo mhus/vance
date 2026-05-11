@@ -495,6 +495,64 @@ class ThinkProcessServiceTest {
         assertThat(captor.getValue().getUpdateObject()).containsKey("$unset");
     }
 
+    // ─── findDescendantIds (cross-process history scope resolution) ─────
+
+    @Test
+    void findDescendantIds_unknownRoot_returnsEmpty() {
+        when(repository.findById("ghost")).thenReturn(Optional.empty());
+
+        assertThat(service.findDescendantIds("ghost")).isEmpty();
+    }
+
+    @Test
+    void findDescendantIds_blankRoot_returnsEmpty() {
+        assertThat(service.findDescendantIds("")).isEmpty();
+        assertThat(service.findDescendantIds(null)).isEmpty();
+    }
+
+    @Test
+    void findDescendantIds_leafProcess_returnsOnlySelf() {
+        when(repository.findById("p-leaf")).thenReturn(Optional.of(process("p-leaf")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "p-leaf"))
+                .thenReturn(List.of());
+
+        assertThat(service.findDescendantIds("p-leaf")).containsExactly("p-leaf");
+    }
+
+    @Test
+    void findDescendantIds_walksMultipleGenerations() {
+        // tree: root → a, b ; a → a1, a2 ; b → b1
+        when(repository.findById("root")).thenReturn(Optional.of(process("root")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "root"))
+                .thenReturn(List.of(process("a"), process("b")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "a"))
+                .thenReturn(List.of(process("a1"), process("a2")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "b"))
+                .thenReturn(List.of(process("b1")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "a1"))
+                .thenReturn(List.of());
+        when(repository.findByTenantIdAndParentProcessId("acme", "a2"))
+                .thenReturn(List.of());
+        when(repository.findByTenantIdAndParentProcessId("acme", "b1"))
+                .thenReturn(List.of());
+
+        assertThat(service.findDescendantIds("root"))
+                .containsExactlyInAnyOrder("root", "a", "b", "a1", "a2", "b1");
+    }
+
+    @Test
+    void findDescendantIds_brokenCycle_isBoundedAndReturnsVisitedSet() {
+        // Pathological data: a → b, b → a. The BFS must not loop forever.
+        when(repository.findById("a")).thenReturn(Optional.of(process("a")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "a"))
+                .thenReturn(List.of(process("b")));
+        when(repository.findByTenantIdAndParentProcessId("acme", "b"))
+                .thenReturn(List.of(process("a")));
+
+        assertThat(service.findDescendantIds("a"))
+                .containsExactlyInAnyOrder("a", "b");
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────
 
     private static ThinkProcessDocument process(String id) {

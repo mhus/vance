@@ -3,6 +3,14 @@
 # see vance.ford.compactionTriggerRatio), to size the request's
 # max-output-tokens, and to gate multimodal attachments.
 #
+# Bundled defaults — overridable per tenant (document path
+# ai-models.yaml in the _vance system project) or per project (same
+# path in the project itself). Cascade matches recipes: project →
+# _vance → this classpath file. Merge is deep, per <provider>:<modelName>:
+# an override only needs to carry the fields it changes; fields not
+# listed inherit from the next outer layer. Lists (capabilities) are
+# replaced, not concatenated.
+#
 # Format:
 #   <provider>:
 #     <modelName>:

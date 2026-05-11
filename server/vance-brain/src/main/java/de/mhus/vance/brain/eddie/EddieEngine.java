@@ -594,6 +594,7 @@ public class EddieEngine extends StructuredActionEngine {
             ContextToolsApi tools = ctx.tools();
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                    process.getTenantId(), process.getProjectId(),
                     config.provider(), config.modelName());
             ModelSize effectiveSize = ModelSize.parseOrAuto(
                     paramString(process, "modelSize", null), modelInfo.size());

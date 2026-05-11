@@ -92,6 +92,20 @@ public class AiChatOptions {
     @Builder.Default
     private ThinkingLevel thinkingLevel = ThinkingLevel.OFF;
 
+    /**
+     * Scope hints used by {@link ModelCatalog} to apply cascade
+     * overrides (project → _vance → bundled) on
+     * {@code ai-models.yaml}. {@code null} on either field means
+     * "no scope" → bundled-only catalog read. Engines populate both
+     * from the spawning {@code ThinkProcessDocument} via
+     * {@link EngineChatFactory}, so providers that consult
+     * {@link ModelCatalog} for capability/size info honour any
+     * tenant- or project-level model overrides automatically.
+     */
+    private @Nullable String tenantId;
+
+    private @Nullable String projectId;
+
     public static AiChatOptions defaults() {
         return AiChatOptions.builder().build();
     }

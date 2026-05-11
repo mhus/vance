@@ -90,7 +90,9 @@ public class OllamaCloudProvider implements AiModelProvider {
             return new StandardAiChat(
                     config.fullName(),
                     ProviderType.OLLAMA_CLOUD,
-                    modelCatalog.lookupOrDefault(NAME, config.modelName()).capabilities(),
+                    modelCatalog.lookupOrDefault(
+                            options.getTenantId(), options.getProjectId(),
+                            NAME, config.modelName()).capabilities(),
                     sync,
                     streaming,
                     options);

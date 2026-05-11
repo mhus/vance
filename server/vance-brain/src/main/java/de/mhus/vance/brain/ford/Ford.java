@@ -300,6 +300,7 @@ public class Ford implements ThinkEngine {
                     .withAdditional(skillPromptComposer.mergedTools(activeSkills));
             List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                    process.getTenantId(), process.getProjectId(),
                     config.provider(), config.modelName());
 
             // params.modelSize: SMALL/LARGE force the prompt variant

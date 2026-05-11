@@ -94,7 +94,9 @@ public class LmStudioProvider implements AiModelProvider {
             return new StandardAiChat(
                     config.fullName(),
                     ProviderType.LM_STUDIO,
-                    modelCatalog.lookupOrDefault(NAME, config.modelName()).capabilities(),
+                    modelCatalog.lookupOrDefault(
+                            options.getTenantId(), options.getProjectId(),
+                            NAME, config.modelName()).capabilities(),
                     sync,
                     streaming,
                     options);

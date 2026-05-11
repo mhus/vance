@@ -73,6 +73,22 @@ public class DocumentService {
         return repository.findByTenantIdAndProjectIdAndPath(tenantId, projectId, normalizePath(path));
     }
 
+    /**
+     * Decode a document's body as UTF-8 text, transparently handling both
+     * inline payloads and storage-backed blobs. Public hand-off of the
+     * same helper {@link #lookupCascade} uses internally — exposed so
+     * callers that walk specific layers (e.g. {@link de.mhus.vance.brain.ai.ModelCatalog}
+     * doing deep-merge across all three) can read content without
+     * re-implementing the inline-vs-storage branch.
+     *
+     * <p>Returns the empty string on read failure (logged) rather than
+     * propagating; the alternative would force every caller into a
+     * try/catch for a corner case that already produces a WARN line.
+     */
+    public String readContent(DocumentDocument doc) {
+        return readAsString(doc);
+    }
+
     /** All {@link DocumentStatus#ACTIVE} documents in the project. */
     public List<DocumentDocument> listByProject(String tenantId, String projectId) {
         return repository.findByTenantIdAndProjectIdAndStatus(tenantId, projectId, DocumentStatus.ACTIVE);

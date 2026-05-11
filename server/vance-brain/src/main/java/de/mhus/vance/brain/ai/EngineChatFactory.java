@@ -106,6 +106,16 @@ public class EngineChatFactory {
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             String engineName) {
+        // Thread the process's scope into the options so the per-call
+        // provider (Anthropic/Gemini/OpenAI/…) consults ModelCatalog
+        // with the same tenant/project view that the engine sees. Any
+        // value the caller set explicitly wins.
+        if (base.getTenantId() == null) {
+            base.setTenantId(process.getTenantId());
+        }
+        if (base.getProjectId() == null) {
+            base.setProjectId(process.getProjectId());
+        }
         // Default user-notifier — only fires for resilience events
         // (retry, chain-advance). Caller's notifier always wins.
         if (base.getUserNotifier() == null) {

@@ -58,3 +58,208 @@ gemini:
     size: SMALL
     # 2.0-flash predates Gemini's PDF document mode; vision works.
     capabilities: [vision]
+
+# OpenAI proper plus open-weight models reachable through OpenAI-
+# wire gateways (cortecs.ai, OpenRouter, vLLM, …). The provider key
+# is `openai` because Vance routes them all through the OpenAI
+# adapter — what differs at runtime is only `vance.ai.openai.base-url`.
+# Metadata comes from the model owner's spec / the cortecs catalog;
+# costs are not tracked here (see project-level overrides if needed).
+openai:
+  # ── OpenAI proper ─────────────────────────────────────────────
+  gpt-5:
+    contextWindowTokens: 400000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    capabilities: [vision]
+  gpt-5-mini:
+    contextWindowTokens: 400000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+    capabilities: [vision]
+  gpt-5-nano:
+    contextWindowTokens: 400000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+    capabilities: [vision]
+  gpt-4.1:
+    contextWindowTokens: 1047576
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    capabilities: [vision]
+  gpt-4.1-mini:
+    contextWindowTokens: 1047576
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+    capabilities: [vision]
+  gpt-4.1-nano:
+    contextWindowTokens: 1047576
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+    capabilities: [vision]
+  gpt-4o:
+    contextWindowTokens: 128000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    capabilities: [vision]
+  gpt-4o-mini:
+    contextWindowTokens: 128000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+    capabilities: [vision]
+  o3:
+    contextWindowTokens: 200000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+
+  # ── OpenAI open-weight (gpt-oss family) ───────────────────────
+  gpt-oss-20b:
+    contextWindowTokens: 131000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+  gpt-oss-120b:
+    contextWindowTokens: 131000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+
+  # ── DeepSeek (open-weight, MoE) ───────────────────────────────
+  deepseek-v3.2:
+    contextWindowTokens: 163840
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  deepseek-v4-flash:
+    contextWindowTokens: 1048576
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+  deepseek-v4-pro:
+    contextWindowTokens: 1048576
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  deepseek-r1-0528:
+    contextWindowTokens: 164000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  deepseek-chat-v3.1:
+    contextWindowTokens: 164000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+
+  # ── Qwen (Alibaba, open-weight) ───────────────────────────────
+  qwen3.5-9b:
+    contextWindowTokens: 262000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+  qwen3.5-122b-a10b:
+    contextWindowTokens: 262144
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  qwen3-coder-next:
+    contextWindowTokens: 256000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  qwen3-coder-30b-a3b-instruct:
+    contextWindowTokens: 262000
+    defaultMaxOutputTokens: 8192
+    # 30B parameters but MoE with 3B active — treat as SMALL for
+    # prompt-variant selection (it's the "fast tier" of the coder line).
+    size: SMALL
+  qwen3-30b-a3b-instruct-2507:
+    contextWindowTokens: 262000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+  qwen3-235b-a22b-instruct-2507:
+    contextWindowTokens: 131000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  qwen-2.5-72b-instruct:
+    contextWindowTokens: 33000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+
+  # ── Meta Llama (open-weight) ──────────────────────────────────
+  llama-3.3-70b-instruct:
+    contextWindowTokens: 131000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  llama-3.1-405b-instruct:
+    contextWindowTokens: 128000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  llama-3.1-8b-instruct:
+    contextWindowTokens: 128000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+  llama-4-maverick:
+    contextWindowTokens: 1050000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+
+  # ── Mistral (mixed open-weight / commercial) ──────────────────
+  mistral-large-2512:
+    contextWindowTokens: 256000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    capabilities: [vision]
+  mistral-medium-3.5:
+    contextWindowTokens: 256000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    capabilities: [vision]
+  mistral-small-2506:
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+    capabilities: [vision]
+  mistral-small-2503:
+    contextWindowTokens: 128000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+    capabilities: [vision]
+  codestral-2508:
+    contextWindowTokens: 256000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  devstral-medium-2507:
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+
+  # ── NVIDIA Nemotron (open-weight) ─────────────────────────────
+  nemotron-3-super-120b-a12b:
+    contextWindowTokens: 262144
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  nemotron-nano-v2-12b:
+    contextWindowTokens: 128000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+
+  # ── Z.ai GLM (open-weight) ────────────────────────────────────
+  glm-4.6:
+    contextWindowTokens: 203000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  glm-4.7:
+    contextWindowTokens: 202752
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  glm-4.7-flash:
+    contextWindowTokens: 203000
+    defaultMaxOutputTokens: 8192
+    size: SMALL
+
+  # ── MiniMax (open-weight) ─────────────────────────────────────
+  minimax-m2.5:
+    contextWindowTokens: 196608
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+
+  # ── Nous Research Hermes (open-weight, Llama-based fine-tunes) ─
+  hermes-4-70b:
+    contextWindowTokens: 128000
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+  hermes-4-405b:
+    contextWindowTokens: 128000
+    defaultMaxOutputTokens: 8192
+    size: LARGE

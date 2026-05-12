@@ -264,6 +264,19 @@ public class RecipeResolver {
      * {@code (engineDefault ∪ add) ∖ remove}. Returns {@code null} if
      * the result equals the engine default — the spawner then leaves
      * {@code allowedToolsOverride} empty on the process.
+     *
+     * <p>Special case: when {@code engineDefault} is empty
+     * ({@link ThinkEngine#allowedTools()} default, the "no engine-level
+     * restriction" signal — Ford and friends), an {@code add} list at
+     * the recipe layer must NOT collapse the allow-set to just the
+     * added entries. That would hide the rest of the catalog
+     * ({@code workspace_*}, {@code find_tools}, {@code describe_tool},
+     * …) and brick the worker. The per-turn {@code ToolFilter} still
+     * carries the add list and uses it for primary-vs-deferred
+     * classification, which is the actual intent of
+     * {@code allowedToolsAdd} in this case. {@code remove}-only at the
+     * recipe layer is similarly handled by the per-turn filter, so
+     * empty engineDefault + remove also stays null at spawn.
      */
     private static @Nullable Set<String> computeAllowed(
             Set<String> engineDefault,
@@ -273,6 +286,11 @@ public class RecipeResolver {
         boolean removePresent = remove != null && !remove.isEmpty();
         if (!addPresent && !removePresent) {
             return null; // no adjustment
+        }
+        if (engineDefault.isEmpty()) {
+            // No engine-level restriction → keep "no restriction" at spawn.
+            // The per-turn ToolFilter handles add/remove/defer instead.
+            return null;
         }
         Set<String> effective = new LinkedHashSet<>(engineDefault);
         if (addPresent) effective.addAll(add);

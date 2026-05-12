@@ -541,12 +541,28 @@ public final class ContextToolsApi implements ToolBus {
             de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter filter,
             Set<String> activatedDeferred,
             @org.jspecify.annotations.Nullable String profile) {
-        if (base == null || base.isEmpty()) {
-            return new Classification(Set.of(), Set.of(), Set.of(), Set.of());
-        }
         Set<String> remove = filter == null ? Set.of() : Set.copyOf(filter.remove());
         Set<String> add = filter == null ? Set.of() : Set.copyOf(filter.add());
         Set<String> defer = filter == null ? Set.of() : Set.copyOf(filter.defer());
+        boolean filterEmpty = remove.isEmpty() && add.isEmpty() && defer.isEmpty();
+
+        if (base == null || base.isEmpty()) {
+            if (filterEmpty) {
+                // No engine restriction and no per-turn overlay — caller
+                // falls back to per-tool primary() via visibleResolved.
+                return new Classification(Set.of(), Set.of(), Set.of(), Set.of());
+            }
+            // Engine doesn't restrict, but the recipe carries a filter.
+            // Expand the base to every dispatchable tool so add/remove/defer
+            // can operate. Without this expansion, allowedToolsAdd in a
+            // Ford-style recipe would collapse to "ONLY the added tools",
+            // hiding workspace_*, find_tools, describe_tool, etc.
+            Set<String> all = new java.util.LinkedHashSet<>();
+            for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
+                all.add(r.tool().name());
+            }
+            base = all;
+        }
 
         // Profile gate (Remove pre-step): drop tools whose
         // allowedForProfile() is non-empty and does not contain `profile`.

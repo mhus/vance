@@ -533,6 +533,52 @@ public class WorkspaceService {
     }
 
     // ---------------------------------------------------------------------
+    // Handler-specific service operations
+    // ---------------------------------------------------------------------
+
+    /**
+     * Rebuild the venv of a Python RootDir with a (possibly different)
+     * interpreter. Wipes {@code .venv}, recreates it via the given
+     * {@code pythonPath}, and reinstalls from {@code requirements.txt}
+     * if present. Source files are untouched. The descriptor is
+     * updated with the new {@code pythonPath} and rewritten.
+     *
+     * <p>Throws {@link WorkspaceException} when the named RootDir is
+     * missing, has a non-Python type, or the venv tooling reports a
+     * non-zero exit. Synchronous — the call blocks until the venv is
+     * ready.
+     */
+    public void rebuildPythonVenv(String tenantId, String projectId, String dirName, String pythonPath) {
+        requireTenant(tenantId);
+        requireProject(projectId);
+        if (StringUtils.isBlank(dirName)) {
+            throw new WorkspaceException("dirName is required");
+        }
+        if (StringUtils.isBlank(pythonPath)) {
+            throw new WorkspaceException("pythonPath is required");
+        }
+        RootDirHandle handle = getRootDir(tenantId, projectId, dirName)
+                .orElseThrow(() -> new WorkspaceException(
+                        "Unknown RootDir: " + tenantId + "/" + projectId + "/" + dirName));
+        if (!PythonHandler.TYPE.equals(handle.getType())) {
+            throw new WorkspaceException(
+                    "rebuildPythonVenv refused: RootDir " + dirName
+                            + " has type '" + handle.getType() + "', expected '"
+                            + PythonHandler.TYPE + "'");
+        }
+        WorkspaceContentHandler handler = handlersByType.get(PythonHandler.TYPE);
+        if (!(handler instanceof PythonHandler python)) {
+            throw new WorkspaceException(
+                    "PythonHandler is not registered — cannot rebuild venv for " + dirName);
+        }
+        python.rebuildVenv(handle, pythonPath);
+        Path descriptorFile = handle.getPath().getParent().resolve(dirName + DESCRIPTOR_SUFFIX);
+        rewriteDescriptor(descriptorFile, handle.getDescriptor());
+        log.info("python rebuildVenv: tenant={} projectId={} dirName={} pythonPath={}",
+                tenantId, projectId, dirName, pythonPath);
+    }
+
+    // ---------------------------------------------------------------------
     // Path operations within a RootDir
     // ---------------------------------------------------------------------
 

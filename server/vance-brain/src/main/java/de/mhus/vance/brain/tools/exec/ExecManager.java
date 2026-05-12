@@ -109,6 +109,39 @@ public class ExecManager {
         return tenantId + "/" + projectId;
     }
 
+    /**
+     * Convenience for tools that want the full submit-track-wait-render
+     * pipeline without having to touch the internal {@link ExecJob}
+     * type: starts the command in the named RootDir, registers it with
+     * {@link ExecutionRegistryService}, waits up to {@code waitMs} for
+     * completion, and returns the renderer's response map (same shape
+     * as {@code exec_run}).
+     */
+    public Map<String, Object> submitTrackedAndRender(
+            String tenantId, String projectId,
+            @Nullable String sessionId, @Nullable String processId,
+            String dirName, String command, long waitMs) {
+        ExecJob job = submit(tenantId, projectId, dirName, command);
+        registry.register(new de.mhus.vance.brain.execution.ExecutionRegistryEntry(
+                job.id(),
+                de.mhus.vance.brain.execution.ExecutionOwner.Brain.INSTANCE,
+                tenantId,
+                projectId,
+                sessionId,
+                processId,
+                job.command(),
+                dirName,
+                job.startedAt(),
+                job.lastOutputAt(),
+                null,
+                de.mhus.vance.brain.execution.ExecutionStatus.RUNNING,
+                null,
+                job.stdoutFile().toString(),
+                job.stderrFile().toString()));
+        waitFor(job, waitMs);
+        return ExecJobRenderer.render(job, properties.getInlineOutputCharCap());
+    }
+
     /** Blocks up to {@code maxMillis} for a RUNNING job to finish. */
     public ExecJob waitFor(ExecJob job, long maxMillis) {
         long deadline = System.currentTimeMillis() + maxMillis;

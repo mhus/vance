@@ -517,6 +517,19 @@ public class WorkspaceService {
         }
     }
 
+    /**
+     * Distinct RootDir handler types present in a project's workspace.
+     * Useful for callers that need to know "do we have a python env?"
+     * without iterating descriptors twice. Returns an empty set when
+     * the workspace folder is missing.
+     */
+    public java.util.Set<String> getRootDirTypes(String tenantId, String projectId) {
+        return listRootDirs(tenantId, projectId).stream()
+                .map(RootDirHandle::getType)
+                .filter(StringUtils::isNotBlank)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     /** Look up a single RootDir by name. */
     public Optional<RootDirHandle> getRootDir(String tenantId, String projectId, String dirName) {
         requireTenant(tenantId);

@@ -277,6 +277,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.shared.jwt.JwtService jwtService;
     private final de.mhus.vance.shared.access.ProfileRegistry profileRegistry;
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
+    private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
 
     public EddieEngine(
             StreamingProperties streamingProperties,
@@ -296,7 +297,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.shared.jwt.JwtService jwtService,
             de.mhus.vance.shared.access.ProfileRegistry profileRegistry,
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
-            de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer) {
+            de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
+            de.mhus.vance.shared.workspace.WorkspaceService workspaceService) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -313,6 +315,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.profileRegistry = profileRegistry;
         this.planModeService = planModeService;
         this.promptTemplateRenderer = promptTemplateRenderer;
+        this.workspaceService = workspaceService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1534,6 +1537,8 @@ public class EddieEngine extends StructuredActionEngine {
                 .forProcess(process, modelInfo)
                 .tier(modelSize)
                 .engine(NAME)
+                .withRootDirTypes(workspaceService.getRootDirTypes(
+                        process.getTenantId(), process.getProjectId()))
                 .build();
         String base = SystemPrompts.compose(process,
                 process.getPromptOverride() == null

@@ -6,7 +6,10 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.api.thinkprocess.ProcessMode;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -35,6 +38,11 @@ import org.jspecify.annotations.Nullable;
  *       (see {@code instructions/_todo.md}).</li>
  *   <li>{@code params} — the merged recipe params map (read-only),
  *       so templates can read e.g. {@code {{ params.maxIterations }}}.</li>
+ *   <li>{@code has_<type>_rootdir} — one boolean per workspace RootDir
+ *       type present in the current project, e.g.
+ *       {@code has_python_rootdir}, {@code has_git_rootdir}. Set by
+ *       {@link #withRootDirTypes}; unset entries are falsy in lenient
+ *       mode. Templates use these to gate type-specific tool hints.</li>
  * </ul>
  *
  * <p>Unset values default to empty strings via the renderer's lenient
@@ -146,6 +154,34 @@ public final class PromptContextBuilder {
         if (profileAppend != null) map.put("profileAppend", profileAppend);
         return this;
     }
+
+    /**
+     * Exposes one boolean per workspace RootDir type present in the
+     * current project, keyed as {@code has_<type>_rootdir}. Empty or
+     * {@code null} input leaves all flags unset (lenient mode renders
+     * them as empty string in {@code {% if has_*_rootdir %}} — which is
+     * falsy in Pebble).
+     *
+     * <p>Example: a project with one {@code python} and two {@code git}
+     * RootDirs ⇒ {@code has_python_rootdir=true, has_git_rootdir=true}.
+     * Templates use it with {@code {% if has_python_rootdir %} … {% endif %}}
+     * to gate type-specific tool hints without per-recipe configuration.
+     *
+     * <p>Type names are lower-cased and filtered to {@code [a-z0-9_]} so
+     * a malformed descriptor can't inject arbitrary Pebble variables.
+     */
+    public PromptContextBuilder withRootDirTypes(@Nullable Set<String> types) {
+        if (types == null || types.isEmpty()) return this;
+        for (String raw : types) {
+            if (raw == null || raw.isBlank()) continue;
+            String normalised = raw.toLowerCase(Locale.ROOT);
+            if (!SAFE_TYPE.matcher(normalised).matches()) continue;
+            map.put("has_" + normalised + "_rootdir", Boolean.TRUE);
+        }
+        return this;
+    }
+
+    private static final Pattern SAFE_TYPE = Pattern.compile("[a-z0-9_]+");
 
     public PromptContextBuilder params(@Nullable Map<String, Object> params) {
         if (params != null && !params.isEmpty()) {

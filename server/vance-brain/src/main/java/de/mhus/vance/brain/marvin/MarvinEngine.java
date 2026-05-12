@@ -264,6 +264,7 @@ public class MarvinEngine implements ThinkEngine {
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final DocumentExpander documentExpander;
+    private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     /** Used to route recipe-less PLAN-WORKER children through the
      *  selector. PLAN-LLM may emit just a {@code goal} without
      *  picking a recipe — the selector reads project recipes at
@@ -948,6 +949,8 @@ public class MarvinEngine implements ThinkEngine {
                     .forProcess(process, null)
                     .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
                     .engine(NAME)
+                    .withRootDirTypes(workspaceService.getRootDirTypes(
+                            process.getTenantId(), process.getProjectId()))
                     .build();
             messages.add(SystemMessage.from(promptTemplateRenderer.render(planTpl, planCtx)));
             String body = "ROOT goal of the Marvin process:\n"
@@ -2027,6 +2030,8 @@ public class MarvinEngine implements ThinkEngine {
                     .forProcess(process, null)
                     .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
                     .engine(NAME)
+                    .withRootDirTypes(workspaceService.getRootDirTypes(
+                            process.getTenantId(), process.getProjectId()))
                     .build();
             messages.add(SystemMessage.from(promptTemplateRenderer.render(aggrTpl, aggrCtx)));
             StringBuilder body = new StringBuilder();

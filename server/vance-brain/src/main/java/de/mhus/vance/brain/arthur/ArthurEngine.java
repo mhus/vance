@@ -243,6 +243,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final PlanModeEventEmitter planModeEventEmitter;
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
+    private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -260,7 +261,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             PlanModeEventEmitter planModeEventEmitter,
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
-            de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer) {
+            de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
+            de.mhus.vance.shared.workspace.WorkspaceService workspaceService) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -275,6 +277,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.planModeService = planModeService;
         this.attachmentResolver = attachmentResolver;
         this.promptTemplateRenderer = promptTemplateRenderer;
+        this.workspaceService = workspaceService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1294,6 +1297,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 .forProcess(process, modelInfo)
                 .tier(modelSize)
                 .engine(NAME)
+                .withRootDirTypes(workspaceService.getRootDirTypes(
+                        process.getTenantId(), process.getProjectId()))
                 .build();
         String base = SystemPrompts.compose(process,
                 engineDefaultPrompt(process, modelSize),

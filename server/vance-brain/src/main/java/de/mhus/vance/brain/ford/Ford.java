@@ -190,6 +190,7 @@ public class Ford implements ThinkEngine {
     private final SkillPromptComposer skillPromptComposer;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final SessionService sessionService;
+    private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -967,6 +968,8 @@ public class Ford implements ThinkEngine {
                 .forProcess(process, modelInfo)
                 .tier(tier)
                 .engine(NAME)
+                .withRootDirTypes(workspaceService.getRootDirTypes(
+                        process.getTenantId(), process.getProjectId()))
                 .build();
         String base = SystemPrompts.compose(process,
                 engineDefaultPrompt(process), promptTemplateRenderer, ctx);

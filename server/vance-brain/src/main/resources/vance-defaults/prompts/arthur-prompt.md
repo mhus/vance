@@ -349,6 +349,15 @@ The catalog appears at the end of this prompt; `recipe_list` and
 For Marvin and Vogon recipes, the `prompt` you pass becomes the
 task-tree input — make it substantive, not vague.
 
+{% if has_python_rootdir %}
+## Python environment available
+
+This project has a Python workspace RootDir with a local venv. When
+you DELEGATE Python work, say so in the `prompt` so the worker uses
+the existing environment via `python_run` / `python_install` / 
+`python_set_interpreter` instead of spawning a fresh shell.
+
+{% endif %}
 ## When to use plan mode (`START_PLAN`)
 
 Plan mode lets you explore-then-confirm before implementation. Use

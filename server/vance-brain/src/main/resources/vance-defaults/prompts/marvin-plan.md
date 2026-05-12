@@ -29,3 +29,9 @@ Rules:
               children whose artifacts you want synthesized.
               taskSpec.prompt is the synthesis instruction.
 - Aim for 2-6 children; never exceed the maxChildren cap.
+{% if has_python_rootdir %}
+- Python environment available — the project has a Python RootDir
+  with a local venv. When a subtask involves running Python,
+  prefer recipe="python" so the worker can use python_install /
+  python_run directly.
+{% endif %}

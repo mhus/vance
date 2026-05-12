@@ -456,6 +456,14 @@ darfst du:
 Du bist im User-Projekt automatisch — ohne `project_switch` aufzurufen
 landen `doc_*`-Tools dort.
 
+{% if has_python_rootdir %}
+Dieses Projekt hat eine Python-Umgebung (RootDir mit lokalem venv).
+Wenn du Python-Arbeit an einen Worker delegierst, sag das im
+`prompt` ausdrücklich — oder nutze direkt das `python`-Recipe, damit
+der Worker `python_install` / `python_run` ohne `find_tools` zur Hand
+hat. `python_create` ist idempotent, doppeltes Aufrufen ist sicher.
+
+{% endif %}
 ### Entscheidung: Antwort vs. Notiz vs. Dokument vs. Projekt
 
 In dieser Reihenfolge zurückhaltend hochskalieren:

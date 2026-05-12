@@ -84,6 +84,13 @@ public class SessionListHandler implements WsHandler {
                 .lastActivityAt(toEpochMillis(doc.getLastActivityAt()))
                 .bound(doc.getBoundConnectionId() != null)
                 .displayName(doc.getDisplayName())
+                .title(doc.getTitle())
+                .icon(doc.getIcon())
+                .color(doc.getColor())
+                .tags(doc.getTags() == null
+                        ? java.util.List.of()
+                        : new java.util.ArrayList<>(doc.getTags()))
+                .pinned(doc.isPinned())
                 .profile(doc.getProfile())
                 .firstUserMessage(doc.getFirstUserMessage())
                 .lastMessagePreview(doc.getLastMessagePreview())

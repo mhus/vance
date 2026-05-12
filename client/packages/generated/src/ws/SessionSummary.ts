@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.ws.SessionSummary
 */
 
+import { SessionColor } from '../session/SessionColor';
+
 export interface SessionSummary {
   sessionId: string;
   projectId: string;
@@ -11,6 +13,11 @@ export interface SessionSummary {
   lastActivityAt: number;
   bound: boolean;
   displayName?: string;
+  title?: string;
+  icon?: string;
+  color?: SessionColor;
+  tags: string[];
+  pinned: boolean;
   profile?: string;
   firstUserMessage?: string;
   lastMessagePreview?: string;

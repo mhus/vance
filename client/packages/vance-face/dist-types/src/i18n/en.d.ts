@@ -109,6 +109,27 @@ declare const _default: {
             microphoneError: string;
             recordStartFailed: string;
         };
+        sessionHeader: {
+            untitled: string;
+            editTitlePlaceholder: string;
+            iconLabel: string;
+            colorLabel: string;
+            pinTooltip: string;
+            unpinTooltip: string;
+            archiveTooltip: string;
+            archive: string;
+            archiveConfirm: string;
+            reactivate: string;
+            reactivateConfirm: string;
+            delete: string;
+            deleteConfirm: string;
+            archived: string;
+            autoTitle: string;
+            saveError: string;
+            tagsLabel: string;
+            tagsTooltip: string;
+            tagsPlaceholder: string;
+        };
         picker: {
             projectsTitle: string;
             loading: string;
@@ -130,6 +151,28 @@ declare const _default: {
             relativeMinutes: string;
             relativeHours: string;
             relativeDays: string;
+            searchTooltip: string;
+            showArchived: string;
+        };
+        search: {
+            title: string;
+            placeholder: string;
+            scopeBoth: string;
+            scopeMetadata: string;
+            scopeContent: string;
+            includeArchived: string;
+            empty: string;
+            emptyBody: string;
+            noResults: string;
+            noResultsBody: string;
+            headlineMetadata: string;
+            headlineContent: string;
+            open: string;
+            preview: string;
+            previewLoading: string;
+            previewError: string;
+            previewClose: string;
+            failed: string;
         };
         progress: {
             title: string;

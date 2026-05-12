@@ -118,6 +118,19 @@ export * from './server-tools/ServerToolDto';
 export * from './server-tools/ServerToolWriteRequest';
 export * from './server-tools/ToolTypeDto';
 
+export * from './session/DisconnectPolicy';
+export * from './session/IdlePolicy';
+export * from './session/SessionColor';
+export * from './session/SessionLifecycleConfig';
+export * from './session/SessionMetadataDto';
+export * from './session/SessionMetadataPatchRequest';
+export * from './session/SessionSearchHitDto';
+export * from './session/SessionSearchScope';
+export * from './session/SessionStatus';
+export * from './session/SessionSummaryRichDto';
+export * from './session/SuspendCause';
+export * from './session/SuspendPolicy';
+
 export * from './settings/SettingDto';
 export * from './settings/SettingType';
 export * from './settings/SettingWriteRequest';

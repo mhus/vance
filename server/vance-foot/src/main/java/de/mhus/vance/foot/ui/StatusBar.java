@@ -270,7 +270,19 @@ public class StatusBar {
         if (bound == null) {
             b.append(" ── no session ── ");
         } else {
-            b.append(" session=").append(bound.sessionId());
+            // Icon + title prefix (emoji terminals support them; if a
+            // terminal can't render the codepoint, it shows a tofu box,
+            // which the user can avoid by clearing the icon).
+            if (bound.icon() != null && !bound.icon().isBlank()) {
+                b.append(' ').append(bound.icon());
+            }
+            if (bound.title() != null && !bound.title().isBlank()) {
+                b.append(' ').append(bound.title());
+                b.append("  · ");
+            } else {
+                b.append(' ');
+            }
+            b.append("session=").append(bound.sessionId());
             b.append("  project=").append(bound.projectId());
             String active = sessions.activeProcess();
             b.append("  process=").append(active == null ? "—" : active);

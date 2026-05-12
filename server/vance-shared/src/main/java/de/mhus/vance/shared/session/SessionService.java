@@ -11,8 +11,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -96,6 +98,55 @@ public class SessionService {
     public List<SessionDocument> listForUserAndProject(
             String tenantId, String userId, String projectId) {
         return repository.findByTenantIdAndUserIdAndProjectId(tenantId, userId, projectId);
+    }
+
+    /**
+     * Filtered list query for the Web UI session list and search paths.
+     * All optional filters narrow the result; missing filters are
+     * ignored. Result is sorted by {@code pinned} desc, then
+     * {@code lastActivityAt} desc — matching the index
+     * {@code pinned_activity_idx}.
+     *
+     * @param statuses set of statuses to include. Empty/{@code null}
+     *                 means "all non-{@code CLOSED}". {@code CLOSED}
+     *                 sessions are never returned by this method — they
+     *                 are eligible for hard-delete and should not show
+     *                 up in UI lists.
+     * @param tag      optional single-tag filter (lowercase). {@code null}
+     *                 to ignore.
+     */
+    public List<SessionDocument> listWithFilters(
+            String tenantId,
+            String userId,
+            @Nullable String projectId,
+            @Nullable Set<SessionStatus> statuses,
+            @Nullable String tag) {
+        Criteria c = Criteria.where("tenantId").is(tenantId)
+                .and("userId").is(userId);
+        if (projectId != null && !projectId.isBlank()) {
+            c = c.and("projectId").is(projectId);
+        }
+        Set<SessionStatus> effective;
+        if (statuses == null || statuses.isEmpty()) {
+            effective = EnumSet.of(
+                    SessionStatus.INIT,
+                    SessionStatus.RUNNING,
+                    SessionStatus.IDLE,
+                    SessionStatus.SUSPENDED,
+                    SessionStatus.ARCHIVED);
+        } else {
+            effective = EnumSet.copyOf(statuses);
+            effective.remove(SessionStatus.CLOSED);
+        }
+        c = c.and(F_STATUS).in(effective);
+        if (tag != null && !tag.isBlank()) {
+            c = c.and(F_TAGS).is(tag.trim().toLowerCase(Locale.ROOT));
+        }
+        Query q = new Query(c).with(
+                org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Order.desc(F_PINNED),
+                        org.springframework.data.domain.Sort.Order.desc(F_LAST_ACTIVITY)));
+        return mongoTemplate.find(q, SessionDocument.class);
     }
 
     /** Admin-style cross-user listing — used by the insights inspector. */

@@ -51,7 +51,7 @@ import {
   uploadChatboxAttachments,
   ChatboxUploadError,
 } from '@composables/useChatboxUpload';
-import { VAlert, VButton, VSelect, VTextarea } from '@components/index';
+import { SessionHeader, VAlert, VButton, VSelect, VTextarea } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
 import ProgressFeed from './ProgressFeed.vue';
@@ -832,16 +832,18 @@ watch(() => props.sessionId, async (newId, oldId) => {
         <VButton variant="ghost" size="sm" @click="emit('leave')">
           {{ $t('chat.backToSessions') }}
         </VButton>
-        <div class="flex-1 min-w-0 truncate flex items-center gap-2">
-          <span class="font-medium">{{ sessionDisplay ?? sessionId }}</span>
-          <span
-            v-if="modeBadge"
-            class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30"
-            :title="$t('chat.planMode.modeBadgeTooltip')"
-          >
-            {{ modeBadge }}
-          </span>
-        </div>
+        <SessionHeader
+          :session-id="sessionId"
+          @archived="emit('leave')"
+          @deleted="emit('leave')"
+        />
+        <span
+          v-if="modeBadge"
+          class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30"
+          :title="$t('chat.planMode.modeBadgeTooltip')"
+        >
+          {{ modeBadge }}
+        </span>
       </header>
 
       <div ref="messageContainer" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">

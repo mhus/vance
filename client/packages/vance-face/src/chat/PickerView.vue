@@ -4,18 +4,26 @@ import { useI18n } from 'vue-i18n';
 import {
   type BrainWsApi,
   WebSocketRequestError,
+  listSessions,
+  reactivateSession,
 } from '@vance/shared';
-import type {
-  ProjectGroupSummary,
-  ProjectSummary,
-  SessionListRequest,
-  SessionListResponse,
-  SessionSummary,
-  SessionBootstrapRequest,
-  SessionBootstrapResponse,
+import {
+  SessionColor,
+  SessionStatus,
+  type ProjectGroupSummary,
+  type ProjectSummary,
+  type SessionBootstrapRequest,
+  type SessionBootstrapResponse,
+  type SessionSummaryRichDto,
 } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
-import { VAlert, VButton, VEmptyState } from '@components/index';
+import {
+  VAlert,
+  VButton,
+  VCheckbox,
+  VEmptyState,
+} from '@components/index';
+import SessionSearchModal from './SessionSearchModal.vue';
 
 const { t } = useI18n();
 
@@ -32,12 +40,15 @@ const emit = defineEmits<{
 const { groups, projects, loading: projectsLoading, error: projectsError, reload: loadProjects } =
   useTenantProjects();
 
-const sessions = ref<SessionSummary[]>([]);
+const sessions = ref<SessionSummaryRichDto[]>([]);
 const selectedProjectName = ref<string | null>(null);
 const sessionsLoading = ref(false);
 const sessionsError = ref<string | null>(null);
 const bootstrapping = ref(false);
 const bootstrapError = ref<string | null>(null);
+const showArchived = ref(false);
+const reactivating = ref<string | null>(null);
+const searchOpen = ref(false);
 
 interface GroupBlock {
   group: ProjectGroupSummary | null;
@@ -72,11 +83,11 @@ async function loadSessions(projectName: string): Promise<void> {
   sessionsLoading.value = true;
   sessionsError.value = null;
   try {
-    const response = await props.socket.send<SessionListRequest, SessionListResponse>(
-      'session-list', { projectId: projectName });
-    const sorted = (response.sessions ?? []).slice().sort(
-      (a, b) => b.lastActivityAt - a.lastActivityAt);
-    sessions.value = sorted;
+    // REST list is owner-scoped + sorted by pinned, lastActivityAt desc.
+    sessions.value = await listSessions({
+      projectId: projectName,
+      includeArchived: showArchived.value,
+    });
   } catch (e) {
     sessionsError.value = describeError(e, t('chat.picker.failedToLoadSessions'));
     sessions.value = [];
@@ -89,9 +100,23 @@ function selectProject(projectName: string): void {
   selectedProjectName.value = projectName;
 }
 
-function pickSession(session: SessionSummary): void {
+function pickSession(session: SessionSummaryRichDto): void {
   if (session.bound) return;
+  if (session.status === SessionStatus.ARCHIVED) return;
   emit('session-picked', session.sessionId);
+}
+
+async function reactivateAndOpen(session: SessionSummaryRichDto): Promise<void> {
+  if (!window.confirm(t('chat.sessionHeader.reactivateConfirm'))) return;
+  reactivating.value = session.sessionId;
+  try {
+    await reactivateSession(session.sessionId);
+    emit('session-picked', session.sessionId);
+  } catch (e) {
+    sessionsError.value = describeError(e, t('chat.picker.failedToLoadSessions'));
+  } finally {
+    reactivating.value = null;
+  }
 }
 
 async function bootstrapNew(): Promise<void> {
@@ -117,7 +142,16 @@ function describeError(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
 
-function formatRelativeTime(epochMillis: number): string {
+function toEpochMillis(d: Date | string | number | undefined): number {
+  if (d === undefined || d === null) return 0;
+  if (d instanceof Date) return d.getTime();
+  if (typeof d === 'number') return d;
+  const parsed = new Date(d).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatRelativeTime(value: Date | string | number | undefined): string {
+  const epochMillis = toEpochMillis(value);
   if (!epochMillis) return '';
   const diffMs = Date.now() - epochMillis;
   const seconds = Math.floor(diffMs / 1000);
@@ -141,6 +175,39 @@ function groupLabel(block: GroupBlock): string {
   return block.group.title || block.group.name;
 }
 
+function sessionTitle(session: SessionSummaryRichDto): string {
+  if (session.title && session.title.trim().length > 0) return session.title;
+  if (session.firstUserMessage && session.firstUserMessage.trim().length > 0) {
+    return session.firstUserMessage;
+  }
+  return t('chat.sessionHeader.untitled');
+}
+
+const COLOR_BORDER: Record<SessionColor, string> = {
+  [SessionColor.SLATE]: 'border-l-slate-500',
+  [SessionColor.RED]: 'border-l-red-500',
+  [SessionColor.ORANGE]: 'border-l-orange-500',
+  [SessionColor.AMBER]: 'border-l-amber-500',
+  [SessionColor.GREEN]: 'border-l-green-500',
+  [SessionColor.TEAL]: 'border-l-teal-500',
+  [SessionColor.CYAN]: 'border-l-cyan-500',
+  [SessionColor.BLUE]: 'border-l-blue-500',
+  [SessionColor.INDIGO]: 'border-l-indigo-500',
+  [SessionColor.PURPLE]: 'border-l-purple-500',
+  [SessionColor.PINK]: 'border-l-pink-500',
+  [SessionColor.ROSE]: 'border-l-rose-500',
+};
+
+function colorBorderClass(session: SessionSummaryRichDto): string {
+  if (session.color === undefined) return 'border-l-base-300';
+  return COLOR_BORDER[session.color] ?? 'border-l-base-300';
+}
+
+function onSearchPick(sessionId: string): void {
+  searchOpen.value = false;
+  emit('session-picked', sessionId);
+}
+
 onMounted(async () => {
   await loadProjects();
   if (!selectedProjectName.value && projects.value.length > 0) {
@@ -151,14 +218,28 @@ onMounted(async () => {
 watch(selectedProjectName, async (newName) => {
   if (newName) await loadSessions(newName);
 });
+
+watch(showArchived, async () => {
+  if (selectedProjectName.value) await loadSessions(selectedProjectName.value);
+});
 </script>
 
 <template>
   <div class="flex h-full min-h-0">
     <!-- Sidebar: project groups → projects -->
     <aside class="w-72 shrink-0 border-r border-base-300 bg-base-100 overflow-y-auto p-4 flex flex-col gap-4">
-      <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">
-        {{ $t('chat.picker.projectsTitle') }}
+      <div class="flex items-center justify-between">
+        <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">
+          {{ $t('chat.picker.projectsTitle') }}
+        </div>
+        <VButton
+          variant="ghost"
+          size="sm"
+          :title="$t('chat.picker.searchTooltip')"
+          @click="searchOpen = true"
+        >
+          🔍
+        </VButton>
       </div>
 
       <div v-if="projectsLoading" class="text-sm opacity-60">
@@ -212,14 +293,20 @@ watch(selectedProjectName, async (newName) => {
               </template>
             </p>
           </div>
-          <VButton
-            variant="primary"
-            :disabled="!selectedProjectName || bootstrapping"
-            :loading="bootstrapping"
-            @click="bootstrapNew"
-          >
-            {{ $t('chat.picker.newSession') }}
-          </VButton>
+          <div class="flex items-center gap-3">
+            <VCheckbox
+              v-model="showArchived"
+              :label="$t('chat.picker.showArchived')"
+            />
+            <VButton
+              variant="primary"
+              :disabled="!selectedProjectName || bootstrapping"
+              :loading="bootstrapping"
+              @click="bootstrapNew"
+            >
+              {{ $t('chat.picker.newSession') }}
+            </VButton>
+          </div>
         </div>
 
         <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
@@ -239,26 +326,48 @@ watch(selectedProjectName, async (newName) => {
           <li
             v-for="session in sessions"
             :key="session.sessionId"
+            class="card bg-base-100 shadow-sm border border-base-300 border-l-4"
             :class="[
-              'card bg-base-100 shadow-sm border border-base-300',
+              colorBorderClass(session),
               session.bound
-                ? 'opacity-60 cursor-not-allowed'
-                : 'cursor-pointer hover:border-primary',
+                ? 'opacity-60'
+                : '',
+              session.status !== SessionStatus.ARCHIVED && !session.bound
+                ? 'hover:border-primary cursor-pointer'
+                : '',
+              session.status === SessionStatus.ARCHIVED ? 'bg-base-200/40' : '',
             ]"
             @click="pickSession(session)"
           >
             <div class="card-body p-4 flex flex-row items-start gap-3">
-              <span
-                class="inline-block w-2.5 h-2.5 rounded-full shrink-0 mt-1.5"
-                :class="session.bound ? 'bg-error' : 'bg-base-content/40'"
-                :title="session.bound ? $t('chat.picker.occupiedTooltip') : $t('chat.picker.available')"
-              />
+              <div class="text-2xl leading-none shrink-0 mt-0.5 w-8 text-center">
+                <span v-if="session.icon">{{ session.icon }}</span>
+                <span v-else class="opacity-30">💬</span>
+              </div>
               <div class="flex-1 min-w-0">
-                <div
-                  class="font-medium truncate"
-                  :title="session.firstUserMessage ?? session.displayName ?? session.sessionId"
-                >
-                  {{ session.firstUserMessage || session.displayName || session.sessionId }}
+                <div class="flex items-center gap-2 min-w-0">
+                  <span
+                    v-if="session.pinned"
+                    class="shrink-0 text-xs"
+                    :title="$t('chat.sessionHeader.pinTooltip')"
+                  >📌</span>
+                  <span
+                    class="font-medium truncate"
+                    :title="sessionTitle(session)"
+                  >
+                    {{ sessionTitle(session) }}
+                  </span>
+                  <span
+                    v-if="session.titleAutoGenerated && session.title"
+                    class="text-[10px] uppercase tracking-wide px-1 py-0.5 rounded bg-base-200 opacity-60 shrink-0"
+                    :title="$t('chat.sessionHeader.autoTitle')"
+                  >AI</span>
+                  <span
+                    v-if="session.status === SessionStatus.ARCHIVED"
+                    class="text-xs uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 shrink-0"
+                  >
+                    {{ $t('chat.sessionHeader.archived') }}
+                  </span>
                 </div>
                 <div
                   v-if="session.lastMessagePreview"
@@ -270,14 +379,43 @@ watch(selectedProjectName, async (newName) => {
                 <div class="text-xs opacity-60 truncate mt-0.5">
                   {{ session.status }} · {{ formatRelativeTime(session.lastActivityAt) }}
                 </div>
+                <div
+                  v-if="session.tags && session.tags.length > 0"
+                  class="flex flex-wrap gap-1 mt-2"
+                >
+                  <span
+                    v-for="tag in session.tags"
+                    :key="tag"
+                    class="text-[10px] px-1.5 py-0.5 rounded bg-base-200"
+                  >
+                    {{ tag }}
+                  </span>
+                </div>
               </div>
-              <span v-if="session.bound" class="text-xs text-error shrink-0 mt-1">
-                {{ $t('chat.picker.occupied') }}
-              </span>
+              <div class="shrink-0 flex flex-col items-end gap-1">
+                <span v-if="session.bound" class="text-xs text-error">
+                  {{ $t('chat.picker.occupied') }}
+                </span>
+                <VButton
+                  v-if="session.status === SessionStatus.ARCHIVED"
+                  variant="primary"
+                  size="sm"
+                  :disabled="reactivating === session.sessionId"
+                  @click.stop="reactivateAndOpen(session)"
+                >
+                  {{ $t('chat.sessionHeader.reactivate') }}
+                </VButton>
+              </div>
             </div>
           </li>
         </ul>
       </div>
     </section>
+
+    <SessionSearchModal
+      v-if="searchOpen"
+      @close="searchOpen = false"
+      @pick="onSearchPick"
+    />
   </div>
 </template>

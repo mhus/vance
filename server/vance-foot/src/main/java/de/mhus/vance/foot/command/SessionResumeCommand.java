@@ -95,6 +95,24 @@ public class SessionResumeCommand implements SlashCommand {
                 Duration.ofSeconds(10));
 
         sessions.bind(response.getSessionId(), response.getProjectId());
+        // Pull title + icon into the status-bar cache; best-effort.
+        try {
+            SessionListResponse list = connection.request(
+                    MessageType.SESSION_LIST,
+                    SessionListRequest.builder().build(),
+                    SessionListResponse.class,
+                    Duration.ofSeconds(5));
+            if (list.getSessions() != null) {
+                for (SessionSummary s : list.getSessions()) {
+                    if (response.getSessionId().equals(s.getSessionId())) {
+                        sessions.setMetadata(s.getSessionId(), s.getTitle(), s.getIcon());
+                        break;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Status-bar prefix stays empty — not worth blocking the resume.
+        }
         terminal.info("Session resumed: " + response.getSessionId()
                 + " (project=" + response.getProjectId() + ")");
     }

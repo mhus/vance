@@ -57,12 +57,26 @@ public class SessionService {
     }
 
     public void bind(String sessionId, String projectId) {
-        current.set(new BoundSession(sessionId, projectId));
+        current.set(new BoundSession(sessionId, projectId, null, null));
         notifyStatusBar();
         notifyClientTools();
         uploadClientAgentDoc();
         invalidateSuggestions();
         publishExecSnapshot();
+    }
+
+    /**
+     * Updates the cached title / icon of the currently bound session.
+     * No-op when the bound session id does not match, or when no
+     * session is bound. Triggers a status-bar repaint so the prompt
+     * picks up the new metadata immediately.
+     */
+    public void setMetadata(String sessionId, @Nullable String title, @Nullable String icon) {
+        BoundSession existing = current.get();
+        if (existing == null || !existing.sessionId().equals(sessionId)) return;
+        current.set(new BoundSession(
+                existing.sessionId(), existing.projectId(), title, icon));
+        notifyStatusBar();
     }
 
     public void clear() {
@@ -116,6 +130,17 @@ public class SessionService {
         }
     }
 
-    /** The session-id and project-id the Brain confirmed when binding. */
-    public record BoundSession(String sessionId, String projectId) {}
+    /**
+     * The session-id and project-id the Brain confirmed when binding,
+     * plus the cached title / icon. The metadata fields are populated
+     * lazily by {@link #setMetadata}; they remain {@code null} until
+     * a path that reads the session-list (or runs a metadata patch)
+     * fills them in.
+     */
+    public record BoundSession(
+            String sessionId,
+            String projectId,
+            @Nullable String title,
+            @Nullable String icon) {
+    }
 }

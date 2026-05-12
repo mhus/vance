@@ -2,6 +2,8 @@ package de.mhus.vance.api.ws;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
+import de.mhus.vance.api.session.SessionColor;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -39,6 +41,29 @@ public class SessionSummary {
 
     /** Client-supplied display name at session-create time. */
     private @Nullable String displayName;
+
+    /**
+     * Editable session title (user-set or LLM-auto-suggested). Display
+     * fallback chain in the UI: {@code title} → {@code firstUserMessage}
+     * → {@code displayName} → {@code sessionId}.
+     */
+    private @Nullable String title;
+
+    /**
+     * Unicode emoji codepoint or ZWJ sequence chosen by the user or
+     * the LLM auto-suggester. {@code null} means the UI should fall
+     * back to a status-derived glyph.
+     */
+    private @Nullable String icon;
+
+    /** Accent color from the restricted palette; {@code null} if unset. */
+    private @Nullable SessionColor color;
+
+    /** User-supplied tags (lowercase, deduped). Empty list when untagged. */
+    private List<String> tags = List.of();
+
+    /** {@code true} when the user pinned the session. */
+    private boolean pinned;
 
     /**
      * Connection-profile of the client that originally created the session

@@ -152,7 +152,16 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
           {},
         );
         const summary = listResp.sessions?.find((s) => s.sessionId === sessionId);
-        if (summary?.displayName) setSessionDisplay(summary.displayName);
+        if (summary) {
+          // Fallback chain matching the spec: title → firstUserMessage
+          // → displayName → raw sessionId. Icon prefix when present.
+          const label =
+            (summary.title && summary.title.trim()) ||
+            (summary.firstUserMessage && summary.firstUserMessage.trim()) ||
+            summary.displayName ||
+            sessionId;
+          setSessionDisplay(summary.icon ? `${summary.icon} ${label}` : label);
+        }
       } catch {
         // Fall back to the raw id.
       }

@@ -17,6 +17,17 @@ public final class MessageType {
     public static final String SESSION_RESUME = "session-resume";
     public static final String SESSION_UNBIND = "session-unbind";
     public static final String SESSION_LIST = "session-list";
+
+    /**
+     * Client → brain: patch the user-facing metadata of the bound
+     * session ({@code title}, {@code icon}, {@code color},
+     * {@code tags}, {@code pinned}). Mirrors the REST
+     * {@code PATCH /sessions/{id}/metadata} endpoint — exposed over
+     * WS so that {@code foot} (WS-only) can edit metadata too.
+     * Reply: {@code SessionMetadataDto} carrying the post-patch state.
+     * See {@code specification/session-lifecycle.md} §14.2.
+     */
+    public static final String SESSION_METADATA_PATCH = "session-metadata-patch";
     public static final String PROJECT_LIST = "project-list";
     public static final String PROJECTGROUP_LIST = "projectgroup-list";
 

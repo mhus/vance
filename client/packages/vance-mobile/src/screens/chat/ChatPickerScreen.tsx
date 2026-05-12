@@ -220,7 +220,12 @@ function SessionRow({
   project: { title: string; isHome: boolean } | undefined;
   onPress: () => void;
 }) {
+  // Fallback chain: title → firstUserMessage → displayName → sessionId.
+  // The icon (when present) is rendered as a leading column so the
+  // text headline doesn't shift when one session has an emoji and
+  // another doesn't.
   const heading =
+    (item.title && item.title.trim()) ||
     (item.firstUserMessage && item.firstUserMessage.trim()) ||
     (item.displayName && item.displayName.trim()) ||
     item.sessionId;
@@ -229,31 +234,36 @@ function SessionRow({
     <Pressable
       onPress={item.bound ? undefined : onPress}
       disabled={item.bound}
-      className={`px-4 py-3 border-b border-slate-100 dark:border-slate-900 ${
+      className={`px-4 py-3 border-b border-slate-100 dark:border-slate-900 flex-row gap-3 ${
         item.bound ? 'opacity-60' : 'active:bg-slate-50 dark:active:bg-slate-900'
       }`}
     >
-      <Text
-        numberOfLines={2}
-        className="text-base font-semibold text-slate-900 dark:text-slate-100"
-      >
-        {heading}
+      <Text className="text-2xl leading-7 w-7 text-center">
+        {item.icon ?? '💬'}
       </Text>
-      {subtitle ? (
+      <View className="flex-1 min-w-0">
         <Text
-          numberOfLines={1}
-          className="text-sm text-slate-600 dark:text-slate-400 mt-0.5"
+          numberOfLines={2}
+          className="text-base font-semibold text-slate-900 dark:text-slate-100"
         >
-          {subtitle}
+          {heading}
         </Text>
-      ) : null}
-      <View className="flex-row items-center gap-2 mt-1">
-        <Text className="text-xs text-slate-500 dark:text-slate-500">
-          {relativeTime(item.lastActivityAt)}
-        </Text>
-        {item.bound ? (
-          <Text className="text-xs text-amber-600 dark:text-amber-400">· in use</Text>
+        {subtitle ? (
+          <Text
+            numberOfLines={1}
+            className="text-sm text-slate-600 dark:text-slate-400 mt-0.5"
+          >
+            {subtitle}
+          </Text>
         ) : null}
+        <View className="flex-row items-center gap-2 mt-1">
+          <Text className="text-xs text-slate-500 dark:text-slate-500">
+            {relativeTime(item.lastActivityAt)}
+          </Text>
+          {item.bound ? (
+            <Text className="text-xs text-amber-600 dark:text-amber-400">· in use</Text>
+          ) : null}
+        </View>
       </View>
     </Pressable>
   );

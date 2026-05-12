@@ -173,6 +173,27 @@ class PythonHandlerTest {
     }
 
     @Test
+    void init_withRequirementsFile_autoInstallsAfterClone() throws IOException {
+        assumePython3Available();
+        Path rootDir = createRootDirFolder("autoinstall");
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put(GitHandler.META_REPO_URL, "https://example.invalid/repo.git");
+        WorkspaceDescriptor descriptor = descriptor("autoinstall", meta);
+        RootDirHandle handle = handle(rootDir, descriptor);
+        // Simulate the clone result: a cloned repo carries a
+        // requirements.txt. The mocked GitHandler.init is a no-op, so
+        // we drop the file ourselves before init runs.
+        Files.writeString(rootDir.resolve(PythonHandler.REQUIREMENTS_FILE),
+                "pip\n", StandardCharsets.UTF_8);
+
+        handler.init(handle, spec("autoinstall"));
+
+        // Auto-install ran without error → venv + pip-installed package present.
+        assertThat(rootDir.resolve(".venv/bin/python")).exists();
+        assertThat(rootDir.resolve(PythonHandler.REQUIREMENTS_FILE)).exists();
+    }
+
+    @Test
     void rebuildVenv_withRequirementsFile_runsPipInstall() throws IOException {
         assumePython3Available();
         Path rootDir = createRootDirFolder("withreqs");

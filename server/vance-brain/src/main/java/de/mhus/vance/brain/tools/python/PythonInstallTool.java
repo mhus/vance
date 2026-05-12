@@ -9,6 +9,7 @@ import de.mhus.vance.shared.workspace.WorkspaceService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,12 +18,14 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 /**
- * Installs a Python package via {@code pip} into the named Python
- * RootDir's venv and refreshes {@code requirements.txt} with
- * {@code pip freeze}. Optional {@code flags} string is appended verbatim
- * to the {@code pip install} command — power-users pass
- * {@code "--upgrade"}, {@code "--index-url ..."}, etc. without per-flag
- * schema bloat.
+ * Installs one or more Python packages via {@code pip} into the named
+ * Python RootDir's venv and refreshes {@code requirements.txt} with
+ * {@code pip freeze}. Accepts either a single {@code package} (string)
+ * or a {@code packages} (array of strings) — multi-package mode runs
+ * one {@code pip install pkg1 pkg2 …} so the LLM doesn't have to
+ * chain N tool calls. Optional {@code flags} string is appended
+ * verbatim to {@code pip install} for power-user switches
+ * ({@code --upgrade}, {@code --no-deps}, {@code --index-url …}).
  */
 @Component
 @RequiredArgsConstructor
@@ -34,8 +37,16 @@ public class PythonInstallTool implements Tool {
                     "package", Map.of(
                             "type", "string",
                             "description",
-                                    "Package spec for pip (e.g. 'requests', "
-                                            + "'flask==3.0', 'numpy>=2'). Required."),
+                                    "Single package spec for pip (e.g. 'requests', "
+                                            + "'flask==3.0', 'numpy>=2'). Provide this "
+                                            + "OR 'packages'."),
+                    "packages", Map.of(
+                            "type", "array",
+                            "items", Map.of("type", "string"),
+                            "description",
+                                    "Multiple package specs installed in one pip call. "
+                                            + "Faster than chaining python_install. "
+                                            + "Provide this OR 'package'."),
                     "dirName", Map.of(
                             "type", "string",
                             "description",
@@ -49,7 +60,7 @@ public class PythonInstallTool implements Tool {
                     "waitMs", Map.of(
                             "type", "integer",
                             "description", "Milliseconds to wait before returning early.")),
-            "required", List.of("package"));
+            "required", List.of());
 
     private final WorkspaceService workspaceService;
     private final ExecManager execManager;
@@ -62,9 +73,11 @@ public class PythonInstallTool implements Tool {
 
     @Override
     public String description() {
-        return "Install a Python package via pip into the named Python "
-                + "RootDir's venv. Refreshes requirements.txt with pip "
-                + "freeze afterwards so suspend captures the new pin.";
+        return "Install one or more Python packages via pip into the named "
+                + "Python RootDir's venv. Pass 'package' for a single spec "
+                + "or 'packages' for a batch — one pip call either way. "
+                + "Refreshes requirements.txt with pip freeze afterwards so "
+                + "suspend captures the new pins.";
     }
 
     @Override
@@ -94,7 +107,7 @@ public class PythonInstallTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        String pkg = requireString(params, "package");
+        List<String> pkgs = collectPackages(params);
         String flags = stringOrNull(params, "flags");
         long waitMs = waitMs(params, properties.getDefaultWaitMs());
 
@@ -102,9 +115,12 @@ public class PythonInstallTool implements Tool {
                 workspaceService, ctx, stringOrNull(params, "dirName"));
         ensurePythonType(ctx, dirName);
 
-        String pipInstall = ".venv/bin/python -m pip install " + PythonShellEscape.quote(pkg);
+        StringBuilder pipInstall = new StringBuilder(".venv/bin/python -m pip install");
+        for (String pkg : pkgs) {
+            pipInstall.append(' ').append(PythonShellEscape.quote(pkg));
+        }
         if (StringUtils.isNotBlank(flags)) {
-            pipInstall += " " + flags;
+            pipInstall.append(' ').append(flags);
         }
         String command = pipInstall
                 + " && .venv/bin/python -m pip freeze > " + PythonHandler.REQUIREMENTS_FILE;
@@ -119,6 +135,28 @@ public class PythonInstallTool implements Tool {
         }
     }
 
+    private static List<String> collectPackages(Map<String, Object> params) {
+        List<String> out = new ArrayList<>();
+        String single = stringOrNull(params, "package");
+        if (single != null) {
+            out.add(single);
+        }
+        Object rawList = params == null ? null : params.get("packages");
+        if (rawList instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof String s && !s.isBlank()) {
+                    out.add(s);
+                }
+            }
+        }
+        if (out.isEmpty()) {
+            throw new ToolException(
+                    "python_install needs 'package' (string) or "
+                            + "'packages' (non-empty list of strings)");
+        }
+        return out;
+    }
+
     private void ensurePythonType(ToolInvocationContext ctx, String dirName) {
         RootDirHandle handle = workspaceService.getRootDir(ctx.tenantId(), ctx.projectId(), dirName)
                 .orElseThrow(() -> new ToolException(
@@ -128,14 +166,6 @@ public class PythonInstallTool implements Tool {
                     + "' has type '" + handle.getType() + "', expected '"
                     + PythonHandler.TYPE + "'");
         }
-    }
-
-    private static String requireString(Map<String, Object> params, String key) {
-        Object raw = params == null ? null : params.get(key);
-        if (!(raw instanceof String s) || s.isBlank()) {
-            throw new ToolException("'" + key + "' is required and must be a non-empty string");
-        }
-        return s;
     }
 
     private static String stringOrNull(Map<String, Object> params, String key) {

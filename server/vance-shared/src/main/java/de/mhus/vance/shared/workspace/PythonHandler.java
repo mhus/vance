@@ -89,10 +89,21 @@ public class PythonHandler implements WorkspaceContentHandler {
         writeDefaultGitignore(handle.getPath());
         buildVenv(handle.getPath(), pythonPath);
 
+        // Auto-install dependencies if the clone shipped a
+        // requirements.txt. Mirrors the recover-path: "set up Python
+        // for this project" means "make the dependencies available".
+        // Skipped for non-repo inits (the file simply isn't there).
+        Path requirements = handle.getPath().resolve(REQUIREMENTS_FILE);
+        if (Files.isRegularFile(requirements)) {
+            pipInstallRequirements(handle.getPath(), pythonPath);
+        }
+
         meta.put(META_PYTHON_PATH, pythonPath);
         handle.getDescriptor().setMetadata(meta);
-        log.info("python init: {} (pythonPath={}, repoUrl={})",
-                handle.getDirName(), pythonPath, repoUrl == null ? "none" : repoUrl);
+        log.info("python init: {} (pythonPath={}, repoUrl={}, requirements={})",
+                handle.getDirName(), pythonPath,
+                repoUrl == null ? "none" : repoUrl,
+                Files.isRegularFile(requirements) ? "installed" : "absent");
     }
 
     @Override

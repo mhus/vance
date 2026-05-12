@@ -3,7 +3,7 @@ package de.mhus.vance.api.session;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 
 /**
- * Lifecycle state of a session. Five values; orthogonal to the
+ * Lifecycle state of a session. Six values; orthogonal to the
  * {@code bound}/{@code unbound} state (whether a client connection
  * is currently attached).
  *
@@ -19,10 +19,21 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  *       {@code IDLE} or {@code SUSPENDED}, or there are no engines.
  *       Derived rollup over engine statuses.</li>
  *   <li>{@link #SUSPENDED} — session is externally halted; carries
- *       {@code suspendCause} and {@code deleteAt} fields on the
- *       persisted document.</li>
+ *       {@code suspendCause} and {@code transitionAt} fields on the
+ *       persisted document. Transient: the sweeper moves it on to
+ *       {@code ARCHIVED} or {@code CLOSED} once {@code transitionAt}
+ *       passes.</li>
+ *   <li>{@link #ARCHIVED} — long-term storage. All engines closed
+ *       ({@code closeReason=ARCHIVED}), pod-lease released, pending
+ *       queues drained. Conversation history and user metadata
+ *       remain and stay searchable. Re-entered only via an explicit
+ *       user {@code reactivate} call — no auto-wakeup. UI default
+ *       filter blends this out.</li>
  *   <li>{@link #CLOSED} — terminal. All engines terminated, no resume
- *       possible.</li>
+ *       possible. Eligible for hard-delete. Reached only via (a)
+ *       explicit user delete from {@code ARCHIVED}, (b) the
+ *       {@code onSuspend=CLOSE} sweeper path (daemon / event-driven),
+ *       or (c) abandoned-detection.</li>
  * </ul>
  */
 @GenerateTypeScript("session")
@@ -31,5 +42,6 @@ public enum SessionStatus {
     RUNNING,
     IDLE,
     SUSPENDED,
+    ARCHIVED,
     CLOSED
 }

@@ -6,5 +6,9 @@
 export enum CloseReason {
   DONE,
   STOPPED,
-  STALE
+  STALE,
+  ARCHIVED,
+  USER_DELETE,
+  ABANDONED,
+  AUTO_CLOSE
 }

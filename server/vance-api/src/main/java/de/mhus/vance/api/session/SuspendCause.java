@@ -4,8 +4,8 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 
 /**
  * Why a session entered {@link SessionStatus#SUSPENDED}. Stamped on
- * the session at suspend-time; drives the computation of {@code deleteAt}
- * (see {@code specification/session-lifecycle.md} §9).
+ * the session at suspend-time; drives the computation of
+ * {@code transitionAt} (see {@code specification/session-lifecycle.md} §9).
  *
  * <ul>
  *   <li>{@link #IDLE} — idle-detection sweep: session was quiet long
@@ -14,8 +14,9 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  *       {@code onDisconnect=SUSPEND} policy applies.</li>
  *   <li>{@link #FORCED} — system intervention during running work
  *       (pod-shutdown, lease-loss, admin suspend). Different from the
- *       other two: ignores {@code onSuspend=CLOSE} and uses the
- *       system-wide {@code FORCED_FLOOR} for {@code deleteAt}.</li>
+ *       other two: always uses the system-wide {@code FORCED_FLOOR}
+ *       duration for {@code transitionAt}, regardless of
+ *       {@code onSuspend}.</li>
  * </ul>
  */
 @GenerateTypeScript("session")

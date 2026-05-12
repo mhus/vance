@@ -225,4 +225,25 @@ public class EngineMessageService {
                 q, "targetProcessId", EngineMessageDocument.class, String.class);
         return new LinkedHashSet<>(distinct);
     }
+
+    /**
+     * Hard-deletes every engine message whose sender or target belongs
+     * to one of {@code processIds}. Used by the session archive /
+     * hard-delete cascade — once the engines are closed there's no
+     * point keeping their pending inbox around.
+     *
+     * @return number of messages removed
+     */
+    public long purgeForProcesses(Collection<String> processIds) {
+        if (processIds == null || processIds.isEmpty()) return 0;
+        Query q = Query.query(new Criteria().orOperator(
+                Criteria.where("senderProcessId").in(processIds),
+                Criteria.where("targetProcessId").in(processIds)));
+        long n = mongoTemplate.remove(q, EngineMessageDocument.class).getDeletedCount();
+        if (n > 0) {
+            log.info("Purged {} engine message(s) for {} process(es)",
+                    n, processIds.size());
+        }
+        return n;
+    }
 }

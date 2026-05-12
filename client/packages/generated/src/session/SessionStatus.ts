@@ -8,5 +8,6 @@ export enum SessionStatus {
   RUNNING,
   IDLE,
   SUSPENDED,
+  ARCHIVED,
   CLOSED
 }

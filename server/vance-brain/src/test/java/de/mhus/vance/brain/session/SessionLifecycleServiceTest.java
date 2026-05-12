@@ -40,7 +40,10 @@ class SessionLifecycleServiceTest {
 
     private SessionService sessionService;
     private ThinkProcessService thinkProcessService;
+    private de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
+    private de.mhus.vance.shared.enginemessage.EngineMessageService engineMessageService;
     private ThinkEngineService engineService;
+    private SessionChatBootstrapper chatBootstrapper;
     private LaneScheduler laneScheduler;
     private SessionLifecycleService lifecycle;
 
@@ -48,15 +51,24 @@ class SessionLifecycleServiceTest {
     void setUp() {
         sessionService = mock(SessionService.class);
         thinkProcessService = mock(ThinkProcessService.class);
+        chatMessageService = mock(de.mhus.vance.shared.chat.ChatMessageService.class);
+        engineMessageService = mock(de.mhus.vance.shared.enginemessage.EngineMessageService.class);
         engineService = mock(ThinkEngineService.class);
+        chatBootstrapper = mock(SessionChatBootstrapper.class);
         laneScheduler = new LaneScheduler();
 
         @SuppressWarnings("unchecked")
         ObjectProvider<ThinkEngineService> engineProvider = mock(ObjectProvider.class);
         when(engineProvider.getObject()).thenReturn(engineService);
 
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SessionChatBootstrapper> bootstrapperProvider = mock(ObjectProvider.class);
+        when(bootstrapperProvider.getObject()).thenReturn(chatBootstrapper);
+
         lifecycle = new SessionLifecycleService(
-                sessionService, thinkProcessService, engineProvider, laneScheduler);
+                sessionService, thinkProcessService,
+                chatMessageService, engineMessageService,
+                engineProvider, bootstrapperProvider, laneScheduler);
         // Default forced-suspend floor — value doesn't matter for these tests.
         ReflectionTestUtils.setField(lifecycle, "forcedFloorMs", 1000L);
     }

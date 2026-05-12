@@ -2,11 +2,14 @@ package de.mhus.vance.shared.session;
 
 import de.mhus.vance.api.session.DisconnectPolicy;
 import de.mhus.vance.api.session.IdlePolicy;
+import de.mhus.vance.api.session.SessionColor;
 import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.session.SuspendCause;
 import de.mhus.vance.api.session.SuspendPolicy;
 import de.mhus.vance.api.ws.Profiles;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,6 +18,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
+import org.springframework.data.mongodb.core.index.TextIndexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
@@ -35,6 +39,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * <p>Exactly one connection may be bound at a time —
  * {@link SessionService#tryBind(String, String)} enforces this with a
  * conditional {@code updateFirst}.
+ *
+ * <p>User-facing metadata ({@link #title}, {@link #icon}, {@link #color},
+ * {@link #tags}, {@link #pinned}) is separate from
+ * {@link #displayName} — the latter carries the user's identity-derived
+ * name (set from the connection context at create time and used by
+ * engines like Eddie for the prompt salutation); the former is the
+ * session's editable title and is set by the user or the LLM
+ * auto-suggester. See {@code specification/session-lifecycle.md} §14.
  */
 @Document(collection = "sessions")
 @CompoundIndexes({
@@ -42,7 +54,15 @@ import org.springframework.data.mongodb.core.mapping.Document;
         @CompoundIndex(name = "tenant_user_idx", def = "{ 'tenantId': 1, 'userId': 1 }"),
         @CompoundIndex(name = "tenant_user_project_idx",
                 def = "{ 'tenantId': 1, 'userId': 1, 'projectId': 1 }"),
-        @CompoundIndex(name = "status_activity_idx", def = "{ 'status': 1, 'lastActivityAt': 1 }")
+        @CompoundIndex(name = "status_activity_idx", def = "{ 'status': 1, 'lastActivityAt': 1 }"),
+        // Suspend-sweep query: status=SUSPENDED + transitionAt <= now.
+        @CompoundIndex(name = "status_transition_idx",
+                def = "{ 'status': 1, 'transitionAt': 1 }"),
+        // Default list ordering: pinned first, then most recent.
+        @CompoundIndex(name = "pinned_activity_idx",
+                def = "{ 'pinned': -1, 'lastActivityAt': -1 }"),
+        // Tag-filter on the session list view.
+        @CompoundIndex(name = "tags_idx", def = "{ 'tags': 1 }")
 })
 @Data
 @Builder
@@ -64,6 +84,13 @@ public class SessionDocument {
     /** Project the session operates in — {@code ProjectDocument.name}. */
     private String projectId = "";
 
+    /**
+     * Identity-derived label captured at session-create from the
+     * connection context (typically the user's display name). Used
+     * by engines (e.g. Eddie) for prompt salutations and as a
+     * fallback label in older UIs. The session's editable title is
+     * {@link #title} — not this field.
+     */
     private @Nullable String displayName;
 
     /** Connection profile of the client that created this session — open string. */
@@ -105,13 +132,17 @@ public class SessionDocument {
     /** What happens when all engines are idle for {@link #idleTimeoutMs}. */
     private IdlePolicy onIdle = IdlePolicy.NONE;
 
-    /** What happens after a non-FORCED suspend. FORCED ignores this and uses FORCED_FLOOR. */
+    /**
+     * What happens after a non-FORCED suspend. {@code KEEP} →
+     * {@code ARCHIVED} once {@code transitionAt} passes; {@code CLOSE}
+     * → {@code CLOSED}.
+     */
     private SuspendPolicy onSuspend = SuspendPolicy.KEEP;
 
     /** Idle threshold in milliseconds (used when {@link #onIdle} == SUSPEND). */
     private long idleTimeoutMs = 1_800_000L; // 30 min
 
-    /** Time spent in SUSPENDED before sweeper closes (non-FORCED causes). */
+    /** Time spent in SUSPENDED before the sweeper transitions to ARCHIVED/CLOSED (non-FORCED causes). */
     private long suspendKeepDurationMs = 86_400_000L; // 24 h
 
     // ─── Suspend runtime state (mutable; null while OPEN/INIT) — see §9 ───
@@ -123,11 +154,13 @@ public class SessionDocument {
     private @Nullable SuspendCause suspendCause;
 
     /**
-     * When the suspend-sweeper is allowed to close this session. Stamped
-     * at suspend-time. Null while non-SUSPENDED. Mutable — admin/UI may
-     * push it forward to extend the keep-window without resuming.
+     * When the suspend-sweeper transitions this session to its next
+     * status — either {@code ARCHIVED} (onSuspend=KEEP) or
+     * {@code CLOSED} (onSuspend=CLOSE). Stamped at suspend-time. Null
+     * while non-SUSPENDED. Mutable — admin/UI may push it forward to
+     * extend the keep-window without resuming.
      */
-    private @Nullable Instant deleteAt;
+    private @Nullable Instant transitionAt;
 
     /**
      * Mongo id of the auto-spawned session-chat think-process —
@@ -172,4 +205,72 @@ public class SessionDocument {
 
     /** When the {@link #lastMessagePreview} message was created. */
     private @Nullable Instant lastMessageAt;
+
+    // ─── User-facing metadata — see specification/session-lifecycle.md §14 ───
+
+    /**
+     * Editable session title. Either set by the user or filled by the
+     * LLM auto-suggester after the first Q&amp;A pair. UI fallback chain
+     * for display: {@code title} → {@code firstUserMessage} → "Untitled".
+     */
+    @TextIndexed(weight = 10)
+    private @Nullable String title;
+
+    /**
+     * {@code true} while {@link #title} originates from the auto-suggester
+     * and the user has not edited it. Flips to {@code false} on the first
+     * user edit; the auto-suggester never touches the field again.
+     */
+    private boolean titleAutoGenerated;
+
+    /**
+     * Unicode emoji codepoint or ZWJ sequence (≤ 8 chars). Portable
+     * across web / mobile / CLI; no font-icon-set versioning. {@code null}
+     * means UI falls back to a status-derived glyph.
+     */
+    private @Nullable String icon;
+
+    /**
+     * Accent color from the restricted 12-value palette. {@code null}
+     * means no color set; UI renders neutral.
+     */
+    private @Nullable SessionColor color;
+
+    /**
+     * User-supplied tags. Stored normalised (lowercase, trimmed, deduped,
+     * ≤ 20 entries, each ≤ 50 chars). Empty when untagged.
+     */
+    @TextIndexed(weight = 5)
+    private List<String> tags = new ArrayList<>();
+
+    /**
+     * {@code true} when the user pinned the session — pinned entries
+     * float above the rest in the default list order
+     * ({@code pinned: -1, lastActivityAt: -1}).
+     */
+    private boolean pinned;
+
+    /**
+     * Stamped the first time a user-driven action modifies this
+     * session's metadata or lifecycle properties (manual archive,
+     * manual title edit, tagging, pin, etc.). Used by the
+     * abandoned-detection predicate to distinguish "user invested
+     * in this session" from "system-set defaults only". Never reset.
+     */
+    private @Nullable Instant userTouchedAt;
+
+    // ─── Archive runtime state — see §11 ───
+
+    /**
+     * When the session entered {@link SessionStatus#ARCHIVED}. Stamped
+     * by the archive cascade, cleared by reactivate.
+     */
+    private @Nullable Instant archivedAt;
+
+    /**
+     * Last time the session was reactivated out of {@code ARCHIVED}.
+     * Audit-only — does not drive lifecycle behaviour. Survives further
+     * archive/reactivate cycles (overwritten on each reactivate).
+     */
+    private @Nullable Instant reactivatedAt;
 }

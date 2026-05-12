@@ -361,4 +361,57 @@ public class ChatMessageService {
         }
         return n;
     }
+
+    /**
+     * Counts messages of a session with a given role. Used by
+     * abandoned-session detection (§9.1) to determine whether a complete
+     * Q&amp;A pair exists.
+     */
+    public long countBySessionAndRole(
+            String tenantId, String sessionId, de.mhus.vance.api.chat.ChatRole role) {
+        Query q = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("sessionId").is(sessionId)
+                .and("role").is(role));
+        return mongoTemplate.count(q, ChatMessageDocument.class);
+    }
+
+    /**
+     * Returns the number of session messages carrying at least one tag
+     * whose prefix matches one of {@code tagPrefixes}. Used by
+     * abandoned-session detection to recognise tool-call activity
+     * (e.g. {@code TOOL_CALL:*}, {@code FILE_EDIT}, {@code RESOURCE:*}).
+     */
+    public long countBySessionAndAnyTagPrefix(
+            String tenantId, String sessionId, Collection<String> tagPrefixes) {
+        if (tagPrefixes == null || tagPrefixes.isEmpty()) return 0;
+        List<java.util.regex.Pattern> patterns = new ArrayList<>();
+        for (String prefix : tagPrefixes) {
+            if (prefix == null || prefix.isBlank()) continue;
+            patterns.add(java.util.regex.Pattern.compile(
+                    "^" + java.util.regex.Pattern.quote(prefix)));
+        }
+        if (patterns.isEmpty()) return 0;
+        Query q = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("sessionId").is(sessionId)
+                .and("tags").in(patterns));
+        return mongoTemplate.count(q, ChatMessageDocument.class);
+    }
+
+    /**
+     * Returns the first {@code limit} messages of a session in
+     * chronological order, restricted to the given roles. Used by the
+     * LLM auto-suggester to feed an opening-window summary into the
+     * title/icon/color prompt.
+     */
+    public List<ChatMessageDocument> openingWindow(
+            String tenantId, String sessionId,
+            Collection<de.mhus.vance.api.chat.ChatRole> roles, int limit) {
+        if (roles == null || roles.isEmpty() || limit <= 0) return List.of();
+        Query q = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("sessionId").is(sessionId)
+                .and("role").in(roles))
+                .with(Sort.by(Sort.Direction.ASC, "createdAt"))
+                .limit(limit);
+        return mongoTemplate.find(q, ChatMessageDocument.class);
+    }
 }

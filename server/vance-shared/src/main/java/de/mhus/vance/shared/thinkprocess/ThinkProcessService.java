@@ -379,6 +379,26 @@ public class ThinkProcessService {
     }
 
     /**
+     * Renames a closed process by overwriting its {@code name}. Used by
+     * the session reactivate flow to free up the {@code "chat"} name
+     * slot so a fresh chat process can be spawned with that conventional
+     * name. Only allowed on CLOSED processes — names on live processes
+     * are part of their addressing contract.
+     */
+    public boolean renameClosedProcess(String id, String newName) {
+        Query query = new Query(Criteria.where("_id").is(id)
+                .and("status").is(ThinkProcessStatus.CLOSED));
+        Update update = new Update().set("name", newName);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        if (result.getModifiedCount() == 1) {
+            log.info("Renamed closed process id='{}' to name='{}'", id, newName);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Atomically sets {@code status} on the process with the given Mongo id.
      * For non-CLOSED transitions {@code closeReason} is cleared. For
      * CLOSED transitions, {@code closeReason} <em>must</em> be set —
@@ -453,6 +473,30 @@ public class ThinkProcessService {
                 prior.getStatus(),
                 ThinkProcessStatus.CLOSED));
         return true;
+    }
+
+    /**
+     * Rewrites the {@link CloseReason} on an already-CLOSED process to a
+     * more specific value. Used by the archive / hard-delete cascades that
+     * call {@code engine.stop} (which closes with {@code STOPPED}) and
+     * then re-stamp the audit reason to {@code ARCHIVED} or
+     * {@code USER_DELETE}.
+     *
+     * <p>Only overwrites when the current reason is {@link CloseReason#STOPPED}
+     * so meaningful reasons ({@code DONE}, {@code STALE}) are not lost.
+     * No event fires — status itself is unchanged.
+     */
+    public void overrideCloseReason(String id, CloseReason newReason) {
+        Query query = new Query(Criteria.where("_id").is(id)
+                .and("status").is(ThinkProcessStatus.CLOSED)
+                .and("closeReason").is(CloseReason.STOPPED));
+        Update update = new Update().set("closeReason", newReason);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        if (result.getModifiedCount() == 1) {
+            log.debug("Think-process closeReason rewritten id='{}' STOPPED -> {}",
+                    id, newReason);
+        }
     }
 
     // ────────────────── Pending Queue ──────────────────

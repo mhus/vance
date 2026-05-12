@@ -8,10 +8,13 @@ import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -23,14 +26,16 @@ import org.springframework.stereotype.Service;
 
 /**
  * Centralised lifecycle transitions on the session level — suspend
- * cascade, close cascade, disconnect dispatch, forced suspend handling.
+ * cascade, archive cascade, close cascade, disconnect dispatch,
+ * forced suspend handling.
  *
- * <p>See {@code specification/session-lifecycle.md} §3, §6, §8.
+ * <p>See {@code specification/session-lifecycle.md} §3, §6, §8, §11.
  *
  * <p>The service is the only allowed entry point for transitioning a
- * session to {@code SUSPENDED} or {@code CLOSED}. Direct calls to
- * {@code SessionService.close()} are permitted only from inside this
- * service or from the {@code RestoreFromSuspendOnce} test path.
+ * session to {@code SUSPENDED}, {@code ARCHIVED} or {@code CLOSED}.
+ * Direct calls to {@code SessionService.close()} are permitted only
+ * from inside this service or from the {@code RestoreFromSuspendOnce}
+ * test path.
  */
 @Service
 @RequiredArgsConstructor
@@ -39,12 +44,19 @@ public class SessionLifecycleService {
 
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
+    private final ChatMessageService chatMessageService;
+    private final EngineMessageService engineMessageService;
     /**
      * Lazy — {@link ThinkEngineService} pulls in tools/recipes that
      * transitively reach this service in the bean graph; an eager
      * dependency closes the cycle.
      */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    /**
+     * Lazy — {@link SessionChatBootstrapper} depends on
+     * {@code ThinkEngineService} too. Used only by {@code reactivateFromArchive}.
+     */
+    private final ObjectProvider<SessionChatBootstrapper> chatBootstrapperProvider;
     private final LaneScheduler laneScheduler;
 
     /**
@@ -66,6 +78,7 @@ public class SessionLifecycleService {
         SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
         if (session == null) return;
         if (session.getStatus() == SessionStatus.CLOSED
+                || session.getStatus() == SessionStatus.ARCHIVED
                 || session.getStatus() == SessionStatus.SUSPENDED) {
             return;
         }
@@ -73,7 +86,7 @@ public class SessionLifecycleService {
         if (policy == null) policy = DisconnectPolicy.KEEP_OPEN;
         switch (policy) {
             case SUSPEND -> suspendCascade(sessionId, SuspendCause.DISCONNECT);
-            case CLOSE -> closeWithCascade(sessionId);
+            case CLOSE -> closeWithCascade(sessionId, CloseReason.STOPPED);
             case KEEP_OPEN -> {
                 // Engines run on; idle-detection or explicit stop will
                 // catch this session later.
@@ -88,7 +101,7 @@ public class SessionLifecycleService {
      * {@code SUSPENDED}, the session document is flipped to
      * {@code SUSPENDED} with the given {@link SuspendCause}.
      *
-     * <p>{@code FORCED} is the override case — {@code deleteAt} is
+     * <p>{@code FORCED} is the override case — {@code transitionAt} is
      * computed from {@code forcedFloorMs} regardless of the session's
      * {@code onSuspend} policy, see
      * {@code specification/session-lifecycle.md} §9.
@@ -97,6 +110,7 @@ public class SessionLifecycleService {
         SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
         if (session == null) return;
         if (session.getStatus() == SessionStatus.CLOSED
+                || session.getStatus() == SessionStatus.ARCHIVED
                 || session.getStatus() == SessionStatus.SUSPENDED) {
             return;
         }
@@ -104,7 +118,7 @@ public class SessionLifecycleService {
         List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
                 session.getTenantId(), sessionId);
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
-        List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (ThinkProcessDocument p : processes) {
             if (p.getStatus() == ThinkProcessStatus.CLOSED
                     || p.getStatus() == ThinkProcessStatus.SUSPENDED) {
@@ -127,21 +141,38 @@ public class SessionLifecycleService {
     }
 
     /**
-     * Close-cascade: every non-terminal engine receives {@code engine.stop(...)}
-     * on its lane. Once all engines are {@code CLOSED}, the session document
-     * is flipped to {@code CLOSED}. Used by the logout path, the suspend
-     * sweeper (deleteAt-driven), and event-driven session auto-close.
+     * Backwards-compatible overload for legacy callers that did not
+     * thread through a {@link CloseReason}. Treats the close as a
+     * {@code STOPPED} cascade (logout / direct stop).
      */
     public void closeWithCascade(String sessionId) {
+        closeWithCascade(sessionId, CloseReason.STOPPED);
+    }
+
+    /**
+     * Close-cascade: every non-terminal engine receives {@code engine.stop(...)}
+     * on its lane. Once all engines are {@code CLOSED}, the session
+     * document is flipped to {@code CLOSED}.
+     *
+     * <p>{@code reason} is the audit reason stamped on every closed
+     * process: {@link CloseReason#STOPPED} for logout, user-stop, or
+     * disconnect-CLOSE; {@link CloseReason#AUTO_CLOSE} for the
+     * {@code onSuspend=CLOSE} sweeper path; {@link CloseReason#ABANDONED}
+     * for the abandoned-detection sweep path;
+     * {@link CloseReason#USER_DELETE} for the hard-delete endpoint.
+     */
+    public void closeWithCascade(String sessionId, CloseReason reason) {
         SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
         if (session == null) return;
         if (session.getStatus() == SessionStatus.CLOSED) return;
-        log.info("Close cascade sessionId='{}'", sessionId);
+        log.info("Close cascade sessionId='{}' reason={}", sessionId, reason);
         List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
                 session.getTenantId(), sessionId);
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
-        List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        List<String> closedProcessIds = new ArrayList<>();
         for (ThinkProcessDocument p : processes) {
+            closedProcessIds.add(p.getId());
             if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
             futures.add(laneScheduler.submit(p.getId(), () -> {
                 try {
@@ -155,7 +186,143 @@ public class SessionLifecycleService {
             }));
         }
         joinAll(futures);
+        // Engines closed with reason=STOPPED — re-stamp to the cascade's
+        // audit reason for everything that actually went through stop.
+        // closeProcess is idempotent, but our overrideCloseReason only
+        // rewrites the STOPPED case so DONE/STALE survives.
+        if (reason != CloseReason.STOPPED) {
+            for (String id : closedProcessIds) {
+                thinkProcessService.overrideCloseReason(id, reason);
+            }
+        }
+        // Drop pending engine messages — the session is going terminal.
+        engineMessageService.purgeForProcesses(closedProcessIds);
         sessionService.close(sessionId);
+    }
+
+    /**
+     * Archive-cascade: stop every non-CLOSED engine ({@code closeReason=ARCHIVED}),
+     * purge the engine-message inbox, then flip the session to
+     * {@link SessionStatus#ARCHIVED}. Conversation history in
+     * {@code chat_messages} is left in place — it is the substance of
+     * the archive.
+     *
+     * <p>Idempotent — re-archiving a session already in ARCHIVED is a
+     * no-op. See {@code specification/session-lifecycle.md} §11.1.
+     */
+    public void archiveWithCascade(String sessionId) {
+        SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
+        if (session == null) return;
+        if (session.getStatus() == SessionStatus.ARCHIVED
+                || session.getStatus() == SessionStatus.CLOSED) {
+            return;
+        }
+        log.info("Archive cascade sessionId='{}'", sessionId);
+        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
+                session.getTenantId(), sessionId);
+        ThinkEngineService engines = thinkEngineServiceProvider.getObject();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        List<String> closedProcessIds = new ArrayList<>();
+        for (ThinkProcessDocument p : processes) {
+            closedProcessIds.add(p.getId());
+            if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
+            futures.add(laneScheduler.submit(p.getId(), () -> {
+                try {
+                    engines.stop(p);
+                } catch (RuntimeException e) {
+                    log.warn("engine.stop failed during archive cascade id='{}': {}",
+                            p.getId(), e.toString());
+                    thinkProcessService.closeProcess(p.getId(), CloseReason.STOPPED);
+                }
+                return null;
+            }));
+        }
+        joinAll(futures);
+        for (String id : closedProcessIds) {
+            thinkProcessService.overrideCloseReason(id, CloseReason.ARCHIVED);
+        }
+        engineMessageService.purgeForProcesses(closedProcessIds);
+        sessionService.archive(sessionId);
+    }
+
+    /**
+     * Reactivates an {@link SessionStatus#ARCHIVED} session: flips it back
+     * to {@code IDLE}, renames the old chat-process so its name slot is
+     * free, clears the {@code chatProcessId} link, and spawns a fresh
+     * chat-process via the bootstrapper. The new engine sees an empty
+     * conversation context by default — engine-specific replay of the
+     * archived {@code ChatMessageDocument} history is the engine's
+     * concern (see {@code specification/session-lifecycle.md} §11.2).
+     *
+     * <p>Throws {@link IllegalStateException} when called on a session
+     * that is not {@code ARCHIVED}.
+     */
+    public void reactivateFromArchive(String sessionId) {
+        SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
+        if (session == null) {
+            throw new IllegalStateException("Session not found: " + sessionId);
+        }
+        if (session.getStatus() != SessionStatus.ARCHIVED) {
+            throw new IllegalStateException(
+                    "Session is not ARCHIVED: " + sessionId + " status=" + session.getStatus());
+        }
+        log.info("Reactivate session sessionId='{}'", sessionId);
+
+        // Rename the old chat-process so the "chat" name slot is free
+        // for the fresh spawn. Old conversation history in chat_messages
+        // remains queryable by sessionId; the renamed process keeps its
+        // CLOSED status with closeReason=ARCHIVED.
+        String oldChatProcessId = session.getChatProcessId();
+        if (oldChatProcessId != null) {
+            String archivedName = SessionChatBootstrapper.CHAT_PROCESS_NAME
+                    + "_archived_"
+                    + (session.getArchivedAt() == null
+                            ? java.time.Instant.now().toEpochMilli()
+                            : session.getArchivedAt().toEpochMilli());
+            thinkProcessService.renameClosedProcess(oldChatProcessId, archivedName);
+        }
+        sessionService.replaceChatProcessId(sessionId, null);
+
+        // Status: ARCHIVED → IDLE.
+        sessionService.reactivate(sessionId);
+
+        // Spawn the new chat-process.
+        SessionDocument refreshed = sessionService.findBySessionId(sessionId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Session disappeared mid-reactivate: " + sessionId));
+        chatBootstrapperProvider.getObject().ensureChatProcess(refreshed);
+    }
+
+    /**
+     * Hard-delete a session: archive cascade (if not already archived
+     * or closed) → close cascade with {@code reason=USER_DELETE} → drop
+     * chat messages, processes, then the session document itself.
+     *
+     * <p>UI confirm-prompt is the caller's responsibility — this method
+     * does not undo.
+     */
+    public void deleteSession(String sessionId) {
+        SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
+        if (session == null) return;
+        log.info("Hard-delete session sessionId='{}'", sessionId);
+        if (session.getStatus() != SessionStatus.CLOSED
+                && session.getStatus() != SessionStatus.ARCHIVED) {
+            // Drive through the close cascade so engines see stop and
+            // the per-process audit reason is correct.
+            closeWithCascade(sessionId, CloseReason.USER_DELETE);
+        } else if (session.getStatus() == SessionStatus.ARCHIVED) {
+            // Already archived — engines are CLOSED with reason=ARCHIVED;
+            // rewrite reason to USER_DELETE for the audit trail.
+            List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
+                    session.getTenantId(), sessionId);
+            for (ThinkProcessDocument p : processes) {
+                thinkProcessService.overrideCloseReason(p.getId(), CloseReason.USER_DELETE);
+            }
+        }
+        // Hard-delete the dependent collections, then the session row.
+        chatMessageService.deleteBySession(session.getTenantId(), sessionId);
+        thinkProcessService.deleteBySession(session.getTenantId(), sessionId);
+        sessionService.delete(sessionId);
     }
 
     /**
@@ -176,15 +343,14 @@ public class SessionLifecycleService {
      * @return the names of the processes that were paused (empty
      *         when nothing was active)
      */
-    public java.util.List<String> pauseActiveInSession(String sessionId) {
-        de.mhus.vance.shared.session.SessionDocument session =
-                sessionService.findBySessionId(sessionId).orElse(null);
-        if (session == null) return java.util.List.of();
+    public List<String> pauseActiveInSession(String sessionId) {
+        SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
+        if (session == null) return List.of();
 
-        java.util.List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
+        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
                 session.getTenantId(), sessionId);
-        java.util.List<String> pausedNames = new java.util.ArrayList<>();
-        java.util.List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
+        List<String> pausedNames = new ArrayList<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (ThinkProcessDocument p : processes) {
             ThinkProcessStatus s = p.getStatus();
             if (s == ThinkProcessStatus.CLOSED
@@ -242,7 +408,7 @@ public class SessionLifecycleService {
 
     /**
      * Stop every non-CLOSED <em>child</em> of the session's chat-process.
-     * The hard counterpart to {@link #pauseChildrenOfChat}: workers
+     * The hard counterpart to {@link #pauseActiveInSession}: workers
      * receive {@code engine.stop} on their lanes and transition to
      * {@code CLOSED} with {@code closeReason=STOPPED}. Chat-process
      * itself is never closed by this — use the close-cascade
@@ -256,17 +422,17 @@ public class SessionLifecycleService {
      * @return the names of the processes that were stopped (empty
      *         when no active workers existed)
      */
-    public java.util.List<String> stopChildrenOfChat(String sessionId) {
+    public List<String> stopChildrenOfChat(String sessionId) {
         SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
-        if (session == null) return java.util.List.of();
+        if (session == null) return List.of();
         String chatProcessId = session.getChatProcessId();
-        if (chatProcessId == null) return java.util.List.of();
+        if (chatProcessId == null) return List.of();
 
-        java.util.List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
+        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
                 session.getTenantId(), sessionId);
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
-        java.util.List<String> stoppedNames = new java.util.ArrayList<>();
-        java.util.List<CompletableFuture<Void>> futures = new java.util.ArrayList<>();
+        List<String> stoppedNames = new ArrayList<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (ThinkProcessDocument p : processes) {
             if (!chatProcessId.equals(p.getParentProcessId())) continue;
             if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;

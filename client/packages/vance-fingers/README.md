@@ -1,4 +1,4 @@
-# @vance/vance-mobile
+# @vance/vance-fingers (Vance Fingers)
 
 React-Native + Expo client for Vance. iOS and Android. Phase A — boot adapter only; the rest of the views land in B–F.
 
@@ -13,7 +13,7 @@ cd repos/vance/client
 pnpm install
 
 # 2. Expo-Versions-Sanity (Expo prüft, ob alle SDK-Plugins zur expo-Version passen, und korrigiert)
-pnpm --filter @vance/vance-mobile expo:install
+pnpm --filter @vance/vance-fingers expo:install
 
 # 3. Brain-URL setzen (sonst zeigt die App den "boot failed"-Screen).
 #    Simulator: localhost ist OK.
@@ -24,7 +24,7 @@ export VANCE_BRAIN_URL=http://localhost:8080
 cd ../../server/vance-brain && mvn spring-boot:run
 
 # 5. Expo Dev-Server
-cd ../../client && pnpm --filter @vance/vance-mobile start
+cd ../../client && pnpm --filter @vance/vance-fingers start
 ```
 
 Im Expo-Terminal-UI:
@@ -38,7 +38,7 @@ Vance Mobile
 Phase A — boot adapter ready ✓
 ```
 
-Falls stattdessen "Boot failed: vance-mobile: brainUrl is not configured" — `VANCE_BRAIN_URL` setzen und neu starten.
+Falls stattdessen "Boot failed: vance-fingers: brainUrl is not configured" — `VANCE_BRAIN_URL` setzen und neu starten.
 
 ## Was Phase A leistet
 
@@ -72,14 +72,14 @@ Falls stattdessen "Boot failed: vance-mobile: brainUrl is not configured" — `V
 `package.json` pinnt Expo SDK 54, RN 0.81, React 19. Wenn Expo eine neuere Variante empfiehlt:
 
 ```bash
-pnpm --filter @vance/vance-mobile expo:install
+pnpm --filter @vance/vance-fingers expo:install
 ```
 
 aktualisiert die Pins auf das, was Expo für die installierte SDK als kompatibel testet.
 
 ## Troubleshooting
 
-- **"Cannot find module @vance/shared"**: `pnpm install` im client-Root nicht gelaufen, oder Metro-Cache stale. `pnpm --filter @vance/vance-mobile start --clear` löscht den Cache.
+- **"Cannot find module @vance/shared"**: `pnpm install` im client-Root nicht gelaufen, oder Metro-Cache stale. `pnpm --filter @vance/vance-fingers start --clear` löscht den Cache.
 - **iOS-Simulator startet nicht**: Xcode + Command-Line-Tools müssen installiert sein. `xcode-select --install`.
 - **Android-Emulator startet nicht**: Android Studio + ein erstelltes AVD. Doku: https://docs.expo.dev/workflow/android-studio-emulator/
-- **TypeScript-Fehler in Dependencies**: `pnpm --filter @vance/vance-mobile typecheck` rennt `tsc --noEmit` lokal. Wenn ein Workspace-Sibling ungebaut ist: `pnpm --filter @vance/shared build` zuerst.
+- **TypeScript-Fehler in Dependencies**: `pnpm --filter @vance/vance-fingers typecheck` rennt `tsc --noEmit` lokal. Wenn ein Workspace-Sibling ungebaut ist: `pnpm --filter @vance/shared build` zuerst.

@@ -1,8 +1,8 @@
 {
-  "name": "@vance/vance-mobile",
+  "name": "@vance/vance-fingers",
   "version": "0.1.0",
   "private": true,
-  "description": "Vance mobile app — React Native + Expo. Inbox, Chat with voice, Documents.",
+  "description": "Vance Fingers — touch client (React Native + Expo). Inbox, Chat with voice, Documents.",
   "license": "SEE LICENSE IN ../../LICENSE.txt",
   "main": "index.ts",
   "scripts": {

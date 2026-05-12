@@ -64,7 +64,7 @@
 
             <!--
               After the TS interfaces are written into client/packages/generated/src,
-              compile @vance/generated's dist/ so consumers (vance-face, vance-mobile)
+              compile @vance/generated's dist/ so consumers (vance-face, vance-fingers)
               actually see the new fields at runtime. Without this step, Mobile + Web
               load a stale dist/index.js that pre-dates the latest Java edits and
               imports of newly added DTO fields fail at module load (Mobile shows

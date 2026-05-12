@@ -21,15 +21,15 @@ import type { ExpoConfig, ConfigContext } from 'expo/config';
  */
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: 'Vance',
-  slug: 'vance-mobile',
+  name: 'Vance Fingers',
+  slug: 'vance-fingers',
   scheme: 'vance',
   version: '0.1.0',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
   ios: {
-    bundleIdentifier: 'de.mhus.vance.mobile',
+    bundleIdentifier: 'de.mhus.vance.fingers',
     supportsTablet: false,
     infoPlist: {
       // Phase F (Voice) prompts trigger on the first mic-button press;
@@ -45,7 +45,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   android: {
-    package: 'de.mhus.vance.mobile',
+    package: 'de.mhus.vance.fingers',
     permissions: ['RECORD_AUDIO'],
   },
   // Expo config plugins. Each native module that ships its own

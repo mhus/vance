@@ -82,28 +82,21 @@ class PythonRecipeTest {
     }
 
     @Test
-    void load_promptPrefixRendersWithPythonRootDir() {
+    void load_promptPrefixCoversTheTypicalSequence() {
         ResolvedRecipe r = loader.load("acme", "proj", RECIPE_NAME).orElseThrow();
         PromptTemplateRenderer renderer = new PromptTemplateRenderer();
 
-        String rendered = renderer.render(r.promptPrefix(),
-                Map.of("has_python_rootdir", Boolean.TRUE));
-
-        assertThat(rendered)
-                .contains("already has a Python RootDir")
-                .doesNotContain("No Python RootDir exists yet");
-    }
-
-    @Test
-    void load_promptPrefixRendersWithoutPythonRootDir() {
-        ResolvedRecipe r = loader.load("acme", "proj", RECIPE_NAME).orElseThrow();
-        PromptTemplateRenderer renderer = new PromptTemplateRenderer();
-
+        // The prompt is no longer dual-branched on has_python_rootdir
+        // (python_create is idempotent now), so a single render with
+        // an empty context must cover all four numbered steps.
         String rendered = renderer.render(r.promptPrefix(), Map.of());
 
         assertThat(rendered)
-                .contains("No Python RootDir exists yet")
-                .doesNotContain("already has a Python RootDir");
+                .contains("python_create")
+                .contains("python_install")
+                .contains("python_run")
+                .contains("idempotent")
+                .contains("respond");
     }
 
     @Test

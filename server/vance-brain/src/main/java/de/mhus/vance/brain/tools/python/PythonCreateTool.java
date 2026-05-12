@@ -18,11 +18,21 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 /**
- * Creates a Python RootDir: clones a git repo (optional), runs
- * {@code python -m venv .venv}, writes a default {@code .gitignore}.
- * Default {@code label = "python"} so the RootDir lands as
- * {@code dirName=python} (or {@code python-2}, …) and is filterable
- * by {@code descriptor.label}. Optionally promoted to the current
+ * Ensures a Python RootDir exists: idempotent on the requested
+ * {@code label} (default {@code "python"}). If a python-type RootDir
+ * with that label is already in the project, the tool returns its
+ * dirName + path with {@code status="exists"} and leaves the
+ * existing venv untouched. Otherwise it creates a fresh RootDir,
+ * cloning a git repo when {@code repoUrl} is set and running
+ * {@code python -m venv .venv}; the response carries
+ * {@code status="created"}.
+ *
+ * <p>The idempotency layer addresses an observed LLM failure mode:
+ * Gemini Flash would loop on {@code python_create} across turns even
+ * when the recipe prompt asked it not to. Making the tool itself a
+ * no-op for the default case removes the foot-gun.
+ *
+ * <p>Optionally promotes the resulting RootDir to the current
  * process's working RootDir so subsequent {@code workspace_*} and
  * {@code python_*} calls without {@code dirName} default to it.
  */
@@ -76,10 +86,13 @@ public class PythonCreateTool implements Tool {
 
     @Override
     public String description() {
-        return "Create a Python workspace RootDir with a local .venv. "
-                + "Optionally clones a git repo for source persistence. "
-                + "Returns the dirName so python_install, python_run and "
-                + "workspace_* tools can operate inside it.";
+        return "Ensure a Python workspace RootDir with a local .venv exists. "
+                + "Idempotent on 'label' (default 'python') — if a Python "
+                + "RootDir with that label is already there, returns it "
+                + "untouched (status='exists') rather than creating a "
+                + "parallel one. Optional git repo URL for source "
+                + "persistence. Returns the dirName so python_install, "
+                + "python_run and workspace_* tools can operate inside it.";
     }
 
     @Override
@@ -104,7 +117,7 @@ public class PythonCreateTool implements Tool {
 
     @Override
     public String searchHint() {
-        return "Create Python venv RootDir for pip/run";
+        return "Ensure Python venv RootDir exists (idempotent)";
     }
 
     @Override
@@ -125,6 +138,18 @@ public class PythonCreateTool implements Tool {
         String label = stringOr(params, "label", DEFAULT_LABEL);
         String credentialAlias = stringOrNull(params, "credentialAlias");
         boolean asWorkingDir = params != null && Boolean.TRUE.equals(params.get("asWorkingDir"));
+
+        // Idempotency: if a python-type RootDir with this label already
+        // exists, return it instead of creating a parallel one. The LLM
+        // looping on python_create across turns was a real observed
+        // failure mode; the recipe prompt can't reliably gate it.
+        RootDirHandle existing = findExistingPythonRootDir(tenantId, projectId, label);
+        if (existing != null) {
+            if (asWorkingDir) {
+                workspaceService.setWorkingDir(tenantId, projectId, creator, existing.getDirName());
+            }
+            return response(existing, pythonPath, repoUrl, asWorkingDir, "exists");
+        }
 
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put(PythonHandler.META_PYTHON_PATH, pythonPath);
@@ -152,13 +177,33 @@ public class PythonCreateTool implements Tool {
         if (asWorkingDir) {
             workspaceService.setWorkingDir(tenantId, projectId, creator, handle.getDirName());
         }
+        return response(handle, pythonPath, repoUrl, asWorkingDir, "created");
+    }
 
+    private @org.jspecify.annotations.Nullable RootDirHandle findExistingPythonRootDir(
+            String tenantId, String projectId, String label) {
+        for (RootDirHandle h : workspaceService.listRootDirs(tenantId, projectId)) {
+            if (!PythonHandler.TYPE.equals(h.getType())) continue;
+            String existingLabel = h.getDescriptor() == null
+                    ? null : h.getDescriptor().getLabel();
+            if (label.equals(existingLabel)) {
+                return h;
+            }
+        }
+        return null;
+    }
+
+    private static Map<String, Object> response(
+            RootDirHandle handle, String pythonPath,
+            @org.jspecify.annotations.Nullable String repoUrl,
+            boolean asWorkingDir, String status) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("dirName", handle.getDirName());
         out.put("path", handle.getPath().toString());
         out.put("pythonPath", pythonPath);
         if (repoUrl != null) out.put("repoUrl", repoUrl);
         out.put("workingDir", asWorkingDir);
+        out.put("status", status);
         return out;
     }
 

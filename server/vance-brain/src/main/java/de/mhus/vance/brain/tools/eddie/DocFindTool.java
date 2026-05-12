@@ -42,6 +42,13 @@ public class DocFindTool implements Tool {
                             "type", "string",
                             "description", "Substring to match against "
                                     + "path, name, title, or tag (case-insensitive)."),
+                    "pathPrefix", Map.of(
+                            "type", "string",
+                            "description", "Path-prefix scope. Omitted → defaults to "
+                                    + "'documents/' (excludes trash, kit config, chat "
+                                    + "attachments, engine scratch, and other system "
+                                    + "folders). Pass '*' to search the entire project. "
+                                    + "Any specific prefix overrides both."),
                     "limit", Map.of(
                             "type", "integer",
                             "description", "Max number of hits "
@@ -88,6 +95,9 @@ public class DocFindTool implements Tool {
         }
         String needle = query.trim().toLowerCase(Locale.ROOT);
         int limit = clampLimit(params == null ? null : params.get("limit"));
+        Object rawPrefix = params == null ? null : params.get("pathPrefix");
+        String pathPrefix = DocumentService.resolveScope(
+                rawPrefix instanceof String s && !s.isBlank() ? s : null);
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         List<DocumentDocument> all =
@@ -95,6 +105,8 @@ public class DocFindTool implements Tool {
 
         List<Map<String, Object>> rows = new ArrayList<>();
         for (DocumentDocument d : all) {
+            if (!pathPrefix.isEmpty()
+                    && (d.getPath() == null || !d.getPath().startsWith(pathPrefix))) continue;
             if (matches(d, needle)) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("id", d.getId());

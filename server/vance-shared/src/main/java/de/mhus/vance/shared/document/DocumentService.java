@@ -625,6 +625,19 @@ public class DocumentService {
      *  not nested under the system folder. */
     public static final String TRASH_FOLDER_PREFIX = "_bin/";
 
+    /** Default folder for user-content documents. Search / list tools
+     *  scope to this prefix by default so trash, kit manifests
+     *  ({@code _vance/}), chat attachments ({@code _chatbox/}),
+     *  Slartibartfast scratch ({@code _slart/}) and similar
+     *  system-managed paths stay out of the LLM's noise. Callers can
+     *  override by passing an explicit {@code pathPrefix} (including
+     *  an empty string to search project-wide).
+     *
+     *  <p>Creation tools without an explicit path land here too —
+     *  otherwise a freshly created doc would be invisible to the same
+     *  default search the LLM uses to find it again. */
+    public static final String DOCUMENTS_FOLDER_PREFIX = "documents/";
+
     /** Header key used by {@link #trash(String)} to remember where a
      *  trashed document lived before, so {@link #restore} can put it
      *  back without the caller having to track that separately. */
@@ -727,6 +740,44 @@ public class DocumentService {
      *  folder. Useful for filtering trash out of regular listings. */
     public static boolean isTrash(@Nullable String path) {
         return path != null && path.startsWith(TRASH_FOLDER_PREFIX);
+    }
+
+    /** {@code true} when the path lives under the default
+     *  user-documents folder ({@link #DOCUMENTS_FOLDER_PREFIX}). */
+    public static boolean isInDocuments(@Nullable String path) {
+        return path != null && path.startsWith(DOCUMENTS_FOLDER_PREFIX);
+    }
+
+    /** Magic value the search / list tools accept on
+     *  {@code pathPrefix} to opt out of the default
+     *  {@link #DOCUMENTS_FOLDER_PREFIX} scope and search project-wide
+     *  (trash + system folders included). Cleaner LLM ergonomics than
+     *  "pass an empty string" — the trim-on-read in
+     *  {@code paramString} already collapses blank input to {@code null},
+     *  so we couldn't tell "empty" from "missing" anyway. */
+    public static final String SCOPE_ALL = "*";
+
+    /**
+     * Resolves a tool-supplied {@code pathPrefix} argument against the
+     * documents-folder default. Returns the prefix actually used as a
+     * filter:
+     *
+     * <ul>
+     *   <li>{@code null} or blank → {@link #DOCUMENTS_FOLDER_PREFIX}
+     *       (default scope; trash + system folders fall out).</li>
+     *   <li>{@link #SCOPE_ALL} ({@code "*"}) → empty string (explicit
+     *       project-wide search, no filter).</li>
+     *   <li>any other value → that value verbatim.</li>
+     * </ul>
+     *
+     * <p>Search / list tools call this on every invocation so the
+     * default lives in one place rather than copied across each
+     * {@code if (pathPrefix == null) pathPrefix = "documents/"}.
+     */
+    public static String resolveScope(@Nullable String pathPrefix) {
+        if (pathPrefix == null || pathPrefix.isBlank()) return DOCUMENTS_FOLDER_PREFIX;
+        if (SCOPE_ALL.equals(pathPrefix.trim())) return "";
+        return pathPrefix;
     }
 
     /**

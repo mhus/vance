@@ -27,8 +27,10 @@ public class DocListInFolderTool implements Tool {
                     "projectId", Map.of("type", "string",
                             "description", "Optional project name. Defaults to the active project."),
                     "folder", Map.of("type", "string",
-                            "description", "Folder path inside the project (e.g. 'notes/2024'). "
-                                    + "Empty string = project root."),
+                            "description", "Folder path inside the project (e.g. "
+                                    + "'documents/notes/2024'). Omitted/blank → defaults to "
+                                    + "'documents/' (excludes trash and system folders). "
+                                    + "Pass '*' for the project root (lists every folder)."),
                     "recursive", Map.of("type", "boolean",
                             "description", "Include documents in subfolders too. Default: false.")),
             "required", List.of());
@@ -48,12 +50,15 @@ public class DocListInFolderTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
-        String folder = KindToolSupport.paramString(params, "folder");
+        String folder = DocumentService.resolveScope(
+                KindToolSupport.paramString(params, "folder"));
         boolean recursive = Boolean.TRUE.equals(KindToolSupport.paramBoolean(params, "recursive"));
 
-        String prefix = folder == null || folder.isBlank()
-                ? ""
-                : (folder.endsWith("/") ? folder : folder + "/");
+        // resolveScope returns "documents/" with the trailing slash, ""
+        // for the SCOPE_ALL escape, or whatever the caller passed.
+        // Re-normalise so callers passing 'notes/2024' (no trailing
+        // slash) still work as before.
+        String prefix = folder.isEmpty() ? "" : (folder.endsWith("/") ? folder : folder + "/");
 
         List<DocumentDocument> all = support.documentService()
                 .listByProject(ctx.tenantId(), project.getName());

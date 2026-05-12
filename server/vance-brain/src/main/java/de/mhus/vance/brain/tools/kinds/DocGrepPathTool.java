@@ -43,8 +43,11 @@ public class DocGrepPathTool implements Tool {
         p.put("projectId", Map.of("type", "string",
                 "description", "Optional project name. Defaults to the active project."));
         p.put("pathPrefix", Map.of("type", "string",
-                "description", "Restrict the search to documents whose path starts with this "
-                        + "prefix (e.g. 'notes/', 'recipes/'). Empty/omitted = entire project."));
+                "description", "Path-prefix scope. Omitted/blank → defaults to 'documents/' "
+                        + "(excludes trash, kit config, chat attachments, engine scratch, "
+                        + "and other system folders). Pass '*' to search the entire "
+                        + "project. Pass any specific prefix (e.g. 'documents/notes/', "
+                        + "'_bin/') to narrow further or address a system folder explicitly."));
         p.put("pattern", Map.of("type", "string",
                 "description", "Java regex pattern. Use plain substrings for literal match."));
         p.put("caseInsensitive", Map.of("type", "boolean",
@@ -74,7 +77,8 @@ public class DocGrepPathTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String patternStr = KindToolSupport.requireString(params, "pattern");
-        String pathPrefix = KindToolSupport.paramString(params, "pathPrefix");
+        String pathPrefix = de.mhus.vance.shared.document.DocumentService.resolveScope(
+                KindToolSupport.paramString(params, "pathPrefix"));
         boolean ci = Boolean.TRUE.equals(KindToolSupport.paramBoolean(params, "caseInsensitive"));
         String outputMode = KindToolSupport.paramString(params, "outputMode");
         if (outputMode == null) outputMode = "content";
@@ -96,7 +100,7 @@ public class DocGrepPathTool implements Tool {
             List<Map<String, Object>> hits = new ArrayList<>();
             int scanned = 0;
             for (DocumentDocument d : all) {
-                if (pathPrefix != null && !d.getPath().startsWith(pathPrefix)) continue;
+                if (!pathPrefix.isEmpty() && !d.getPath().startsWith(pathPrefix)) continue;
                 if (d.getInlineText() == null) continue;
                 scanned++;
                 if (containsMatch(d.getInlineText(), pattern)) {

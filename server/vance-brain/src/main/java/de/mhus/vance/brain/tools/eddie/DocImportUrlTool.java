@@ -59,9 +59,11 @@ public class DocImportUrlTool implements Tool {
                                     + "to fetch and import."),
                     "path", Map.of(
                             "type", "string",
-                            "description", "Document path inside the project, "
-                                    + "e.g. 'imports/apollo-13.html'. "
-                                    + "Must be unique per project."),
+                            "description", "Optional document path inside the project, "
+                                    + "e.g. 'documents/imports/apollo-13.html'. "
+                                    + "Must be unique per project. Omitted → auto-"
+                                    + "generated under 'documents/' from the URL's "
+                                    + "last path segment (or title slug)."),
                     "title", Map.of(
                             "type", "string",
                             "description", "Optional human title (defaults to the URL)."),
@@ -70,7 +72,7 @@ public class DocImportUrlTool implements Tool {
                             "items", Map.of("type", "string"),
                             "description", "Optional tags. 'imported' is "
                                     + "added automatically.")),
-            "required", List.of("url", "path"));
+            "required", List.of("url"));
 
     private final HttpClient http = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
@@ -118,7 +120,6 @@ public class DocImportUrlTool implements Tool {
         String rawUrl = paramString(params, "url");
         String path = paramString(params, "path");
         if (rawUrl == null) throw new ToolException("'url' is required");
-        if (path == null) throw new ToolException("'path' is required");
 
         URI uri;
         try {
@@ -137,6 +138,9 @@ public class DocImportUrlTool implements Tool {
         String title = paramString(params, "title");
         if (title == null) {
             title = rawUrl;
+        }
+        if (path == null) {
+            path = autoPath(uri, title);
         }
         List<String> tags = paramStringList(params, "tags");
         if (tags == null) tags = new ArrayList<>();
@@ -212,6 +216,41 @@ public class DocImportUrlTool implements Tool {
         out.put("sourceUrl", rawUrl);
         out.put("httpStatus", status);
         return out;
+    }
+
+    /**
+     * Auto-place an imported doc under
+     * {@link de.mhus.vance.shared.document.DocumentService#DOCUMENTS_FOLDER_PREFIX}
+     * when the caller didn't supply a path. Prefers the URL's last
+     * path segment so {@code https://example.com/notes/apollo-13}
+     * becomes {@code documents/apollo-13}. Falls back to a title slug
+     * when the URL has no useful path tail, and to a short UUID when
+     * even that is empty.
+     */
+    static String autoPath(URI uri, @org.jspecify.annotations.Nullable String title) {
+        String tail = "";
+        String uriPath = uri.getPath();
+        if (uriPath != null && !uriPath.isBlank()) {
+            String trimmed = uriPath.endsWith("/")
+                    ? uriPath.substring(0, uriPath.length() - 1)
+                    : uriPath;
+            int slash = trimmed.lastIndexOf('/');
+            tail = slash >= 0 ? trimmed.substring(slash + 1) : trimmed;
+        }
+        String slug = slugify(tail.isEmpty() ? title : tail);
+        String filename = slug.isEmpty()
+                ? java.util.UUID.randomUUID().toString().substring(0, 8)
+                : slug;
+        return de.mhus.vance.shared.document.DocumentService.DOCUMENTS_FOLDER_PREFIX
+                + filename;
+    }
+
+    private static String slugify(@org.jspecify.annotations.Nullable String s) {
+        if (s == null) return "";
+        String slug = s.trim().toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9.]+", "-")
+                .replaceAll("^-+|-+$", "");
+        return slug.length() > 50 ? slug.substring(0, 50) : slug;
     }
 
     private static @org.jspecify.annotations.Nullable String paramString(

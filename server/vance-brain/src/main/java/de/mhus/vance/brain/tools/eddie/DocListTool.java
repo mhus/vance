@@ -33,7 +33,14 @@ public class DocListTool implements Tool {
                     "tag", Map.of(
                             "type", "string",
                             "description", "Optional: filter to documents "
-                                    + "carrying this tag.")),
+                                    + "carrying this tag."),
+                    "pathPrefix", Map.of(
+                            "type", "string",
+                            "description", "Path-prefix scope. Omitted → defaults to "
+                                    + "'documents/' (excludes trash, kit config, chat "
+                                    + "attachments, engine scratch, and other system "
+                                    + "folders). Pass '*' to list every document in "
+                                    + "the project.")),
             "required", List.of());
 
     private final EddieContext eddieContext;
@@ -71,6 +78,9 @@ public class DocListTool implements Tool {
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
         Object rawTag = params == null ? null : params.get("tag");
         String tag = rawTag instanceof String s && !s.isBlank() ? s.trim() : null;
+        Object rawPrefix = params == null ? null : params.get("pathPrefix");
+        String pathPrefix = DocumentService.resolveScope(
+                rawPrefix instanceof String s2 && !s2.isBlank() ? s2 : null);
 
         List<DocumentDocument> docs = tag == null
                 ? documentService.listByProject(ctx.tenantId(), project.getName())
@@ -78,6 +88,8 @@ public class DocListTool implements Tool {
 
         List<Map<String, Object>> rows = new ArrayList<>(docs.size());
         for (DocumentDocument d : docs) {
+            if (!pathPrefix.isEmpty()
+                    && (d.getPath() == null || !d.getPath().startsWith(pathPrefix))) continue;
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", d.getId());
             row.put("path", d.getPath());

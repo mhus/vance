@@ -29,7 +29,10 @@ public class DocListByTagTool implements Tool {
                             "description", "Optional project name. Defaults to the active project."),
                     "tag", Map.of("type", "string", "description", "Tag to filter by."),
                     "pathPrefix", Map.of("type", "string",
-                            "description", "Optional path-prefix filter on top of the tag.")),
+                            "description", "Path-prefix scope on top of the tag. Omitted → "
+                                    + "defaults to 'documents/' (excludes trash, kit config, "
+                                    + "chat attachments, engine scratch). Pass '*' to include "
+                                    + "every tagged document regardless of folder.")),
             "required", List.of("tag"));
 
     private final KindToolSupport support;
@@ -48,13 +51,20 @@ public class DocListByTagTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         ProjectDocument project = support.eddieContext().resolveProject(params, ctx, false);
         String tag = KindToolSupport.requireString(params, "tag");
-        String pathPrefix = KindToolSupport.paramString(params, "pathPrefix");
+        String pathPrefix = DocumentService.resolveScope(
+                KindToolSupport.paramString(params, "pathPrefix"));
         List<DocumentDocument> hits = support.documentService()
                 .listByTag(ctx.tenantId(), project.getName(), tag);
         List<Map<String, Object>> entries = new ArrayList<>();
         for (DocumentDocument d : hits) {
-            if (DocumentService.isTrash(d.getPath())) continue;
-            if (pathPrefix != null && !d.getPath().startsWith(pathPrefix)) continue;
+            // The scope filter already excludes _bin/ when on the
+            // default 'documents/' scope. The explicit isTrash check
+            // is only needed when the caller opted into '*' (all) —
+            // tag search across the whole project shouldn't return
+            // trashed hits unless they ask for a _bin/ prefix.
+            if (pathPrefix.isEmpty() && DocumentService.isTrash(d.getPath())) continue;
+            if (!pathPrefix.isEmpty()
+                    && (d.getPath() == null || !d.getPath().startsWith(pathPrefix))) continue;
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("id", d.getId());
             entry.put("path", d.getPath());

@@ -33,12 +33,15 @@ public class DocCreateTextTool implements Tool {
                                     + "to the active project."),
                     "path", Map.of(
                             "type", "string",
-                            "description", "Document path inside the project, "
-                                    + "e.g. 'imports/apollo-13.md'. Must be "
-                                    + "unique per project."),
+                            "description", "Optional document path inside the project, "
+                                    + "e.g. 'documents/imports/apollo-13.md'. Must be "
+                                    + "unique per project. Omitted → auto-generated "
+                                    + "under 'documents/' using a slug of the title "
+                                    + "(or a short UUID if no title)."),
                     "title", Map.of(
                             "type", "string",
-                            "description", "Optional human title."),
+                            "description", "Optional human title. Also seeds the "
+                                    + "auto-generated path when 'path' is omitted."),
                     "tags", Map.of(
                             "type", "array",
                             "items", Map.of("type", "string"),
@@ -46,7 +49,7 @@ public class DocCreateTextTool implements Tool {
                     "content", Map.of(
                             "type", "string",
                             "description", "Document body (markdown / plain text).")),
-            "required", List.of("path", "content"));
+            "required", List.of("content"));
 
     private final EddieContext eddieContext;
     private final DocumentService documentService;
@@ -59,8 +62,9 @@ public class DocCreateTextTool implements Tool {
     @Override
     public String description() {
         return "Create a new text document in the active project. "
-                + "Pass path, content, optional title and tags. "
-                + "Path must be unique per project.";
+                + "Path is optional — omit it to auto-place the doc "
+                + "under 'documents/' (so the default search finds it "
+                + "back). Pass content, optional title and tags.";
     }
 
     @Override
@@ -82,10 +86,13 @@ public class DocCreateTextTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         String path = paramString(params, "path");
         String content = paramString(params, "content");
-        if (path == null) throw new ToolException("'path' is required");
         if (content == null) throw new ToolException("'content' is required");
         String title = paramString(params, "title");
         List<String> tags = paramStringList(params, "tags");
+
+        if (path == null) {
+            path = autoPath(title);
+        }
 
         ProjectDocument project = eddieContext.resolveProject(params, ctx, false);
 
@@ -114,6 +121,29 @@ public class DocCreateTextTool implements Tool {
             out.put("tags", created.getTags());
         }
         return out;
+    }
+
+    /**
+     * Auto-place a new doc under {@link DocumentService#DOCUMENTS_FOLDER_PREFIX}
+     * when the caller didn't supply a path. Uses a slug of the title
+     * when available, otherwise a short UUID — collision is the
+     * caller's problem in either case ({@code createText} throws on
+     * dup, and the LLM can react by passing a more specific path).
+     */
+    static String autoPath(@org.jspecify.annotations.Nullable String title) {
+        String slug = slugify(title);
+        String filename = slug.isEmpty()
+                ? java.util.UUID.randomUUID().toString().substring(0, 8)
+                : slug;
+        return DocumentService.DOCUMENTS_FOLDER_PREFIX + filename + ".md";
+    }
+
+    private static String slugify(@org.jspecify.annotations.Nullable String title) {
+        if (title == null) return "";
+        String slug = title.trim().toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-+|-+$", "");
+        return slug.length() > 50 ? slug.substring(0, 50) : slug;
     }
 
     private static @org.jspecify.annotations.Nullable String paramString(

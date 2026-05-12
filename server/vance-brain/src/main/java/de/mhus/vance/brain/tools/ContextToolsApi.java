@@ -252,11 +252,15 @@ public final class ContextToolsApi implements ToolBus {
      */
     /**
      * LLM-emitted tool call. Must be in {@link #primary()} or
-     * {@link #activatedDeferred()} — i.e. the visible tool manifest at
-     * turn start. Calls for deferred-but-not-activated tools fail even
-     * if the tool is in the dispatch pool: the LLM should not be able
-     * to side-step the discovery flow. Activation via
-     * {@code describe_tool} takes effect from the <i>next</i> turn (see
+     * {@link #activatedDeferred()} — i.e. the visible tool manifest of
+     * this {@code ContextToolsApi} instance. Calls for
+     * deferred-but-not-activated tools fail even if the tool is in
+     * the dispatch pool: the LLM should not be able to side-step the
+     * discovery flow. Activation via {@code describe_tool} writes to
+     * Mongo immediately; the structured-action loop refreshes its
+     * {@link ContextToolsApi} via {@code ctx.tools()} after every
+     * iteration with read-tool calls, so the activated tool becomes
+     * visible on the next iteration (see
      * {@code planning/tool-schema-deferral.md} §4.5).
      *
      * <p>Engine action handlers that need to invoke any allow-set tool
@@ -267,8 +271,9 @@ public final class ContextToolsApi implements ToolBus {
     public Map<String, Object> invoke(String name, Map<String, Object> params) {
         if (!isLlmVisible(name)) {
             throw new ToolException(
-                    "Tool '" + name + "' is not visible to the LLM in this turn"
-                            + " — call describe_tool to activate it (effect from next turn)");
+                    "Tool '" + name + "' is not visible to the LLM yet"
+                            + " — call describe_tool to activate it"
+                            + " (effect from the next action-loop iteration)");
         }
         return doInvoke(name, params);
     }

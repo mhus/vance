@@ -922,6 +922,26 @@ public class ThinkProcessService {
     }
 
     /**
+     * Reads the live {@code activatedDeferredTools} map from Mongo for
+     * the given process — bypasses any caller-side {@link ThinkProcessDocument}
+     * snapshot. Used by the engine context so within-turn activations
+     * (via {@code describe_tool}) become visible to the next
+     * action-loop iteration without reloading the entire process doc.
+     *
+     * @return the activation map (possibly empty); empty map if the
+     *         process doesn't exist
+     */
+    public Map<String, Instant> getActivatedDeferredTools(String id) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        query.fields().include("activatedDeferredTools");
+        ThinkProcessDocument doc = mongoTemplate.findOne(query, ThinkProcessDocument.class);
+        if (doc == null || doc.getActivatedDeferredTools() == null) {
+            return Map.of();
+        }
+        return Map.copyOf(doc.getActivatedDeferredTools());
+    }
+
+    /**
      * Drops every entry from {@link ThinkProcessDocument#getActivatedDeferredTools()}
      * whose timestamp is strictly older than {@code cutoff}. Implementation
      * does a read-update-write with optimistic locking — concurrent

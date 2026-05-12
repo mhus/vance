@@ -33,7 +33,6 @@ import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
-import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -552,7 +551,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             AiChat aiChat = chatBundle.chat();
             AiChatConfig config = chatBundle.primaryConfig();
             ContextToolsApi tools = ctx.tools();
-            List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     process.getTenantId(), process.getProjectId(),
                     config.provider(), config.modelName());
@@ -600,12 +598,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // mode cascade (see planning/tool-schema-deferral.md §14).
             // Arthur's bundled recipe pins per-mode allowedToolsRemove /
             // Defer; the resulting primary set is what
-            // ContextToolsApi.primaryAsLc4j() returns.
-            List<ToolSpecification> readToolSpecs = toolSpecs;
-
+            // ContextToolsApi.primaryAsLc4j() returns. The action loop
+            // re-derives this on every iteration so describe_tool
+            // activations propagate within the turn.
             ActionLoopResult loopResult = runStructuredActionLoop(
-                    aiChat, readToolSpecs, tools, messages, ctx, process,
-                    maxIters, modelAlias);
+                    aiChat, ContextToolsApi::primaryAsLc4j,
+                    messages, ctx, process, maxIters, modelAlias);
 
             ActionTurnOutcome outcome;
             if (loopResult.isAction()) {

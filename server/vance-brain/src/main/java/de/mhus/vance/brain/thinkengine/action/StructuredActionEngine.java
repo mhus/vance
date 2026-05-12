@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -200,14 +201,22 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      *
      * @param aiChat        chat handle from EngineChatFactory (carries
      *                      ChatBehavior resilience semantics)
-     * @param readToolSpecs side-effect-free tools the LLM may call
-     *                      between rounds (recipe_list, manual_read,
-     *                      etc.). The action tool is appended by the
-     *                      base class — subclass does NOT include it.
-     * @param tools         the engine's invocation API for read tools
+     * @param readToolSpecsFactory derives the per-iteration list of
+     *                      side-effect-free tool specs from the
+     *                      current {@link ContextToolsApi}. Called
+     *                      once at loop start and again after any
+     *                      iteration that invoked read tools, so
+     *                      tools activated mid-loop via
+     *                      {@code describe_tool} become visible to
+     *                      the next iteration. The action tool is
+     *                      appended by the base class — the factory
+     *                      does NOT include it.
      * @param messages      mutable conversation buffer; the loop
      *                      appends to it as it iterates
-     * @param ctx           engine context for streaming events
+     * @param ctx           engine context — also the source of the
+     *                      live {@link ContextToolsApi} (re-fetched
+     *                      per iteration to pick up deferred-tool
+     *                      activations)
      * @param process       the running process
      * @param maxIters      per-turn iteration cap
      * @param modelAlias    label for LLM-call telemetry
@@ -216,18 +225,18 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     protected ActionLoopResult runStructuredActionLoop(
             AiChat aiChat,
-            List<ToolSpecification> readToolSpecs,
-            ContextToolsApi tools,
+            Function<ContextToolsApi, List<ToolSpecification>> readToolSpecsFactory,
             List<ChatMessage> messages,
             ThinkEngineContext ctx,
             ThinkProcessDocument process,
             int maxIters,
             String modelAlias) {
 
-        // Compose the spec list once: the action tool is always last
-        // so model-side prompts that reference it by ordinal stay
-        // stable. Read tools come first.
-        List<ToolSpecification> allSpecs = new ArrayList<>(readToolSpecs);
+        // Fresh tools + spec list per loop. Refreshed after any
+        // iteration that called read tools so describe_tool
+        // activations take effect on the very next iteration.
+        ContextToolsApi tools = ctx.tools();
+        List<ToolSpecification> allSpecs = new ArrayList<>(readToolSpecsFactory.apply(tools));
         allSpecs.add(buildActionToolSpec());
 
         int corrections = 0;
@@ -300,6 +309,16 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                 String result = invokeReadTool(tools, call, process.getId());
                 messages.add(ToolExecutionResultMessage.from(call, result));
                 toolInvocations++;
+            }
+
+            // Refresh tool view after any read-tool dispatch so a
+            // describe_tool activation in this iteration is visible
+            // to the next one — DefaultThinkEngineContext.tools()
+            // re-reads activatedDeferredTools from Mongo each call.
+            if (!readCalls.isEmpty()) {
+                tools = ctx.tools();
+                allSpecs = new ArrayList<>(readToolSpecsFactory.apply(tools));
+                allSpecs.add(buildActionToolSpec());
             }
 
             if (actionCall == null) {

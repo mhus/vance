@@ -104,14 +104,19 @@ record DefaultThinkEngineContext(
     }
 
     /**
-     * Reads {@code process.activatedDeferredTools} and applies the TTL
-     * decay filter. Stale entries (timestamp older than now − ttl) are
-     * dropped from the in-memory set; persistent cleanup is the
+     * Reads the {@code activatedDeferredTools} map fresh from Mongo and
+     * applies the TTL decay filter. Sourcing this from the DB (not from
+     * the in-memory {@code process} snapshot) lets within-turn
+     * activations from {@code describe_tool} take effect on the very
+     * next {@link #tools()} call — the action-loop refreshes its
+     * {@link ContextToolsApi} after each iteration that invoked read
+     * tools. Stale entries (timestamp older than now − ttl) are
+     * dropped from the returned set; persistent cleanup is the
      * caller's job (see {@link ThinkProcessService#cleanupDecayedActivations}).
      * Zero TTL disables decay.
      */
     private Set<String> liveActivatedDeferredTools() {
-        Map<String, Instant> map = process.getActivatedDeferredTools();
+        Map<String, Instant> map = thinkProcessService.getActivatedDeferredTools(process.getId());
         if (map == null || map.isEmpty()) return Set.of();
         if (activationDecayTtl == null || activationDecayTtl.isZero() || activationDecayTtl.isNegative()) {
             return Set.copyOf(map.keySet());

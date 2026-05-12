@@ -27,7 +27,6 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.thinkengine.action.EngineAction;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine.ActionLoopResult;
-import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
@@ -37,7 +36,6 @@ import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
-import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -607,8 +605,6 @@ public class EddieEngine extends StructuredActionEngine {
                     engineChatFactory.forProcess(process, ctx, NAME);
             AiChat aiChat = chatBundle.chat();
             AiChatConfig config = chatBundle.primaryConfig();
-            ContextToolsApi tools = ctx.tools();
-            List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     process.getTenantId(), process.getProjectId(),
                     config.provider(), config.modelName());
@@ -628,13 +624,14 @@ public class EddieEngine extends StructuredActionEngine {
             // LLM sees only read-only tools — action-equivalent tools
             // (project_create, project_chat_send, inbox_post) are
             // engine-internal, invoked by handlers via tools.invoke().
-            List<ToolSpecification> readToolSpecs = toolSpecs.stream()
-                    .filter(t -> LLM_VISIBLE_TOOLS.contains(t.name()))
-                    .toList();
-
+            // The factory is re-applied per iteration so describe_tool
+            // activations propagate within the turn.
             ActionLoopResult loopResult = runStructuredActionLoop(
-                    aiChat, readToolSpecs, tools, messages, ctx, process,
-                    maxIters, modelAlias);
+                    aiChat,
+                    api -> api.primaryAsLc4j().stream()
+                            .filter(t -> LLM_VISIBLE_TOOLS.contains(t.name()))
+                            .toList(),
+                    messages, ctx, process, maxIters, modelAlias);
 
             ActionTurnOutcome outcome;
             if (loopResult.isAction()) {

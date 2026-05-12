@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  * Permanently delete a document — Mongo row gone, storage blob
  * scheduled for cleanup. There is no undo. To accidentally-protect,
  * the tool requires the document to already be in the trash folder
- * ({@code _vance/bin/}) — a two-step delete: first {@code doc_delete}
+ * ({@code _bin/}) — a two-step delete: first {@code doc_delete}
  * (soft), then {@code doc_purge} (hard). Set
  * {@code force: true} to skip the trash requirement when you really
  * mean it.

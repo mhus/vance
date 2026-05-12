@@ -29,7 +29,7 @@ public class DocListTrashTool implements Tool {
 
     @Override public String name() { return "doc_list_trash"; }
     @Override public String description() {
-        return "List every document currently in the project's trash folder (`_vance/bin/`). "
+        return "List every document currently in the project's trash folder (`_bin/`). "
                 + "Each entry includes the trashed path, original path (if recorded) and the id "
                 + "for restore / purge.";
     }

@@ -391,13 +391,13 @@ const isSheetDocument = computed<boolean>(() => {
   return isSheetMime(sel.mimeType);
 });
 
-// Trash convention: documents under `_vance/bin/` are already in the
+// Trash convention: documents under `_bin/` are already in the
 // project's trash folder (mirrors DocumentService.TRASH_FOLDER_PREFIX
 // on the server). The DELETE endpoint dispatches on this — first
 // click moves regular docs to the bin, a second click on the bin
 // entry hard-deletes it. The UI swaps button label and confirmation
 // text to match.
-const TRASH_PREFIX = '_vance/bin/';
+const TRASH_PREFIX = '_bin/';
 const isSelectedInTrash = computed<boolean>(() =>
   (docsState.selected.value?.path ?? '').startsWith(TRASH_PREFIX),
 );
@@ -1452,7 +1452,7 @@ const formatBytes = (n: number): string => {
     </div>
 
     <!-- Delete confirmation. Two flavours — soft-trash (default) and
-         permanent (when the doc already lives in `_vance/bin/`). The
+         permanent (when the doc already lives in `_bin/`). The
          server picks the actual operation from the same path; the UI
          just relabels the prompt so the user understands the impact.
          See specification/web-ui.md §7.7.1 (destructive actions). -->

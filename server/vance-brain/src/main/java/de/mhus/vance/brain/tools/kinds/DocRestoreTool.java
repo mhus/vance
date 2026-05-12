@@ -13,7 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Restore a trashed document from {@code _vance/bin/} back to its
+ * Restore a trashed document from {@code _bin/} back to its
  * original path (or to a path the caller specifies). Errors when the
  * target path is occupied — caller picks a different one.
  */
@@ -38,7 +38,7 @@ public class DocRestoreTool implements Tool {
 
     @Override public String name() { return "doc_restore"; }
     @Override public String description() {
-        return "Restore a trashed document from `_vance/bin/`. By default it goes back to its "
+        return "Restore a trashed document from `_bin/`. By default it goes back to its "
                 + "original path; pass `newPath` to land it somewhere else. Errors when the "
                 + "target is already occupied.";
     }

@@ -617,11 +617,13 @@ public class DocumentService {
     }
 
     /** Trash-folder convention: every project has a virtual
-     *  {@code _vance/bin/} folder that holds soft-deleted documents.
+     *  {@code _bin/} folder that holds soft-deleted documents.
      *  Names there always carry a UUID prefix so collisions with
      *  active documents (or earlier trash entries with the same
-     *  basename) are impossible. */
-    public static final String TRASH_FOLDER_PREFIX = "_vance/bin/";
+     *  basename) are impossible. Lives one level above
+     *  {@code _vance/} so it's a peer of the project's own work,
+     *  not nested under the system folder. */
+    public static final String TRASH_FOLDER_PREFIX = "_bin/";
 
     /** Header key used by {@link #trash(String)} to remember where a
      *  trashed document lived before, so {@link #restore} can put it
@@ -630,7 +632,7 @@ public class DocumentService {
 
     /**
      * Soft-delete a document by moving it into the project's trash
-     * folder ({@value #TRASH_FOLDER_PREFIX}). The document keeps its
+     * folder ({@code _bin/}). The document keeps its
      * id, body and metadata; only {@link DocumentDocument#getPath()}
      * and {@link DocumentDocument#getName()} change. The original
      * path is recorded in the document's header map under

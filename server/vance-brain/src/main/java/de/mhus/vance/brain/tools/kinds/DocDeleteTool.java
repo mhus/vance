@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Soft-delete a document — moves it into the project's trash folder
- * ({@code _vance/bin/<UUID>_<name>}). The document keeps its id and
+ * ({@code _bin/<UUID>_<name>}). The document keeps its id and
  * body; only the path changes. Use {@code doc_restore} to bring it
  * back, {@code doc_purge} to delete permanently.
  */
@@ -30,7 +30,7 @@ public class DocDeleteTool implements Tool {
     @Override public String name() { return "doc_delete"; }
     @Override public String description() {
         return "Soft-delete a document by moving it to the project's trash folder "
-                + "(`_vance/bin/<UUID>_<name>`). The id stays valid for `doc_restore`. "
+                + "(`_bin/<UUID>_<name>`). The id stays valid for `doc_restore`. "
                 + "For permanent removal use `doc_purge`.";
     }
     @Override public boolean primary() { return false; }

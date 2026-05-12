@@ -51,7 +51,7 @@ public class CrossDocMoveTool implements Tool {
     @Override public String name() { return "cross_doc_move"; }
     @Override public String description() {
         return "Move a document into a different project. Implemented as copy-to-target + trash-source "
-                + "(the source ends up in its project's `_vance/bin/`). The new copy gets a fresh id; "
+                + "(the source ends up in its project's `_bin/`). The new copy gets a fresh id; "
                 + "the source id stays valid (now points at the trashed entry, restorable for 30s by the "
                 + "buffer-flush window).";
     }

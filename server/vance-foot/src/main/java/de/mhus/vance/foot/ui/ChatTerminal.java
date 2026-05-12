@@ -46,6 +46,7 @@ public class ChatTerminal {
     private final Deque<Line> buffer = new ArrayDeque<>(BUFFER_LIMIT);
     private final Object bufferLock = new Object();
     private final FootConfig config;
+    private final StatusBar statusBar;
 
     private final @Nullable AttributedStyle styleChat;
     private final @Nullable AttributedStyle styleWorker;
@@ -55,8 +56,9 @@ public class ChatTerminal {
     private final @Nullable AttributedStyle styleWarn;
     private final @Nullable AttributedStyle styleError;
 
-    public ChatTerminal(FootConfig config) {
+    public ChatTerminal(FootConfig config, StatusBar statusBar) {
         this.config = config;
+        this.statusBar = statusBar;
         FootConfig.Colors c = config.getUi().getColors();
         this.styleChat = StyleParser.parse(c.getChat());
         this.styleWorker = StyleParser.parse(c.getWorker());
@@ -143,13 +145,17 @@ public class ChatTerminal {
         record(level, plain);
         LineReader r = jlineReader.get();
         if (r != null) {
-            r.printAbove(styled);
+            synchronized (statusBar.writeLock()) {
+                r.printAbove(styled);
+            }
             return;
         }
         Terminal t = jlineTerminal.get();
         PrintWriter w = writer();
-        w.println(t != null ? styled.toAnsi(t) : styled.toAnsi());
-        w.flush();
+        synchronized (statusBar.writeLock()) {
+            w.println(t != null ? styled.toAnsi(t) : styled.toAnsi());
+            w.flush();
+        }
     }
 
     public void error(String message) {
@@ -246,13 +252,17 @@ public class ChatTerminal {
     private void emitStyled(AttributedString styled) {
         LineReader r = jlineReader.get();
         if (r != null) {
-            r.printAbove(styled);
+            synchronized (statusBar.writeLock()) {
+                r.printAbove(styled);
+            }
             return;
         }
         Terminal t = jlineTerminal.get();
         PrintWriter w = writer();
-        w.println(t != null ? styled.toAnsi(t) : styled.toAnsi());
-        w.flush();
+        synchronized (statusBar.writeLock()) {
+            w.println(t != null ? styled.toAnsi(t) : styled.toAnsi());
+            w.flush();
+        }
     }
 
     private void emit(String line) {
@@ -261,12 +271,16 @@ public class ChatTerminal {
             // printAbove is the JLine primitive for async output: pushes the
             // line above the prompt and redraws the prompt below, regardless
             // of whether readLine is currently blocked or between iterations.
-            r.printAbove(line);
+            synchronized (statusBar.writeLock()) {
+                r.printAbove(line);
+            }
             return;
         }
         PrintWriter w = writer();
-        w.println(line);
-        w.flush();
+        synchronized (statusBar.writeLock()) {
+            w.println(line);
+            w.flush();
+        }
     }
 
     /**
@@ -280,8 +294,10 @@ public class ChatTerminal {
     public void streamRaw(String text) {
         if (text == null || text.isEmpty()) return;
         PrintWriter w = writer();
-        w.print(text);
-        w.flush();
+        synchronized (statusBar.writeLock()) {
+            w.print(text);
+            w.flush();
+        }
     }
 
     private PrintWriter writer() {
@@ -301,8 +317,13 @@ public class ChatTerminal {
         }
         Terminal t = jlineTerminal.get();
         if (t != null) {
-            t.puts(InfoCmp.Capability.clear_screen);
-            t.flush();
+            synchronized (statusBar.writeLock()) {
+                t.puts(InfoCmp.Capability.clear_screen);
+                t.flush();
+            }
+            // StatusBar reserved rows were wiped along with the screen —
+            // request a fresh paint so its lines reappear immediately.
+            statusBar.refresh();
         }
     }
 

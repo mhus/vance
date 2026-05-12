@@ -128,29 +128,25 @@ public class FootConfig {
     }
 
     /**
-     * Controls the pinned status line at the bottom of the JLine REPL.
+     * Controls the pinned status block at the bottom of the JLine REPL.
      *
-     * <p><b>Disabled by default.</b> JLine's {@code Status} reserves a
-     * region using DECSTBM scroll-region escapes. IntelliJ's built-in
-     * terminal (and a handful of other embedded TTY emulators) does not
-     * honour the region across repaints — each {@code Status.update}
-     * leaks the rendered lines into the scrollback, producing a
-     * cascading "spinner trail" that has been our reproducible failure
-     * mode. The proper fix is bespoke pinned-status rendering via
-     * direct ANSI (mirror Claude Code's cell-grid + cursor save/restore
-     * approach). Until that lands, the bar is opt-in: set
-     * {@code vance.ui.status-bar.enabled: true} to get it back, ideally
-     * only in known-good terminals (xterm, iTerm2, kitty, ghostty,
-     * Terminal.app — anything that handles DECSTBM cleanly).
+     * <p>The renderer is a bespoke ANSI painter (no JLine {@code Status})
+     * that manages DECSTBM scroll region + manual cursor save/restore.
+     * Works in IntelliJ's built-in terminal as well as xterm, iTerm2,
+     * Terminal.app, kitty, ghostty. See
+     * {@code readme/foot-status-bar-rendering.md} for the design.
      *
-     * <p>{@link #animated} and {@link #bottomPadding} only matter when
-     * {@link #enabled} is on.
+     * <p>{@link #bottomPadding} reserves additional empty rows below
+     * the two status lines as a safety margin against bottom-row
+     * auto-scroll triggers in some terminals. A minimum of 1 row is
+     * always enforced; setting it higher gives the user more breathing
+     * room between the prompt and the status block.
      */
     @Data
     public static class StatusBar {
-        private boolean enabled = false;
+        private boolean enabled = true;
         private boolean animated = true;
-        private int bottomPadding = 4;
+        private int bottomPadding = 1;
     }
 
     /**

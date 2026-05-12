@@ -11,6 +11,15 @@ import type { DocumentsStackParamList } from '@/navigation/types';
 type Nav = NativeStackNavigationProp<DocumentsStackParamList, 'DocumentList'>;
 type Route = RouteProp<DocumentsStackParamList, 'DocumentList'>;
 
+/** Default scope: only documents under the user-content prefix
+ *  (mirrors DocumentService.DOCUMENTS_FOLDER_PREFIX on the server).
+ *  Trash and system folders (`_bin/`, `_vance/`, `_chatbox/`, …) stay
+ *  out of the mobile view — same convention as vance-face. The mobile
+ *  app has no escape hatch yet; that's intentional for v1 since the
+ *  surface is read-only and a system-folder toggle would just be
+ *  clutter on small screens. */
+const DEFAULT_PATH_PREFIX = 'documents/';
+
 /**
  * Documents inside a chosen project. Reached from `ProjectListScreen`;
  * the `projectId` is required, the `projectTitle` is just for the
@@ -19,7 +28,7 @@ type Route = RouteProp<DocumentsStackParamList, 'DocumentList'>;
 export default function DocumentListScreen() {
   const nav = useNavigation<Nav>();
   const { projectId, projectTitle } = useRoute<Route>().params;
-  const query = useDocumentList({ projectId });
+  const query = useDocumentList({ projectId, pathPrefix: DEFAULT_PATH_PREFIX });
   const items: DocumentSummary[] = query.data?.items ?? [];
 
   return (

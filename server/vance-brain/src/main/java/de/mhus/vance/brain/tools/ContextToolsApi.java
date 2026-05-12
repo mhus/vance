@@ -231,10 +231,11 @@ public final class ContextToolsApi implements ToolBus {
         if (entries.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n## Available deferred tools\n\n")
-                .append("These tools are visible to you only by name + hint. To use one, "
-                        + "first call `describe_tool(name=\"<name>\")` — it returns the "
-                        + "full schema and activates the tool, so subsequent turns can "
-                        + "call it directly.\n\n");
+                .append("These tools are listed by name + hint only (full schemas "
+                        + "are kept out of the manifest to save tokens). You can "
+                        + "call them directly — the engine activates them on first "
+                        + "use. If you need the full parameter schema first, call "
+                        + "`describe_tool(name=\"<name>\")`.\n\n");
         for (ToolSpec spec : entries) {
             String hint = spec.getSearchHint() == null || spec.getSearchHint().isBlank()
                     ? spec.getDescription()
@@ -251,17 +252,22 @@ public final class ContextToolsApi implements ToolBus {
      * after dispatch — including on the failure path.
      */
     /**
-     * LLM-emitted tool call. Must be in {@link #primary()} or
-     * {@link #activatedDeferred()} — i.e. the visible tool manifest of
-     * this {@code ContextToolsApi} instance. Calls for
-     * deferred-but-not-activated tools fail even if the tool is in
-     * the dispatch pool: the LLM should not be able to side-step the
-     * discovery flow. Activation via {@code describe_tool} writes to
-     * Mongo immediately; the structured-action loop refreshes its
-     * {@link ContextToolsApi} via {@code ctx.tools()} after every
-     * iteration with read-tool calls, so the activated tool becomes
-     * visible on the next iteration (see
-     * {@code planning/tool-schema-deferral.md} §4.5).
+     * LLM-emitted tool call.
+     *
+     * <ul>
+     *   <li>In {@link #primary()} or {@link #activatedDeferred()} —
+     *       dispatched normally.</li>
+     *   <li>In {@link #deferred()} but not yet activated —
+     *       auto-activated on the spot (Mongo stamp via
+     *       {@code activationRefresh}) and then dispatched. The
+     *       discovery block already told the LLM the tool exists;
+     *       insisting on a separate {@code describe_tool} round-trip
+     *       is pure ceremony for tools the model can call by name.
+     *       Activation persists for the session (subject to TTL
+     *       decay), so subsequent {@link #tools()} snapshots will
+     *       carry the tool in {@link #primaryAsLc4j()} too.</li>
+     *   <li>Not in this engine's allow-set — hard fail.</li>
+     * </ul>
      *
      * <p>Engine action handlers that need to invoke any allow-set tool
      * (e.g. Arthur's DELEGATE handler calling {@code process_create_delegate})
@@ -269,13 +275,29 @@ public final class ContextToolsApi implements ToolBus {
      * dispatch pool.
      */
     public Map<String, Object> invoke(String name, Map<String, Object> params) {
-        if (!isLlmVisible(name)) {
-            throw new ToolException(
-                    "Tool '" + name + "' is not visible to the LLM yet"
-                            + " — call describe_tool to activate it"
-                            + " (effect from the next action-loop iteration)");
+        if (isLlmVisible(name)) {
+            return doInvoke(name, params);
         }
-        return doInvoke(name, params);
+        if (deferred.contains(name)) {
+            // Auto-activate on first direct call. Failure to stamp
+            // Mongo is non-fatal — the tool dispatch itself is what
+            // the LLM cares about; the activation only affects future
+            // turns. Surface the activation failure via the listener
+            // path, not by rejecting the call.
+            if (activationRefresh != null) {
+                try {
+                    activationRefresh.accept(name);
+                } catch (RuntimeException ignored) {
+                    // Sliding-TTL refresh logic in doInvoke will not
+                    // re-attempt (this name is not in activatedDeferred
+                    // for the current snapshot); next ctx.tools() call
+                    // re-reads Mongo and will fix things if it recovered.
+                }
+            }
+            return doInvoke(name, params);
+        }
+        throw new ToolException(
+                "Tool '" + name + "' is not available to this engine");
     }
 
     /**

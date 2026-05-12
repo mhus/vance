@@ -563,7 +563,7 @@ public class LiveRegion {
             paintLive();
             return;
         }
-        emitStatic("  " + String.join("   ", cands));
+        emitStatic(ESC + "[34m  " + String.join("   ", cands) + ESC + "[0m");
     }
 
     private static String commonPrefix(java.util.List<String> ss) {

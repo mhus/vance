@@ -1,7 +1,9 @@
 package de.mhus.vance.brain.tools.builtins;
 
+import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -76,6 +78,12 @@ public class DescribeToolTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
+        return invoke(params, ctx, ToolBus.NOOP);
+    }
+
+    @Override
+    public Map<String, Object> invoke(
+            Map<String, Object> params, ToolInvocationContext ctx, ToolBus bus) {
         String name = params == null ? null : (String) params.get("name");
         if (name == null || name.isBlank()) {
             throw new ToolException("'name' is required");
@@ -83,7 +91,15 @@ public class DescribeToolTool implements Tool {
         ToolDispatcher.Resolved r = dispatcher.getObject().resolve(name, ctx)
                 .orElseThrow(() -> new ToolException("Unknown tool: " + name));
         Tool tool = r.tool();
-        boolean wasDeferred = tool.deferred();
+        // Engine-context deferral wins over the tool's static default:
+        // a recipe-driven ToolFilter can demote a tool whose default is
+        // primary into the per-turn deferred bucket (and vice versa).
+        // Only the bound ContextToolsApi knows which bucket the tool
+        // currently sits in for this turn — that's the bucket the LLM
+        // sees, so that's the one activation must follow.
+        boolean wasDeferred = bus instanceof ContextToolsApi tools
+                ? tools.deferred().contains(name)
+                : tool.deferred();
         boolean activated = false;
         if (wasDeferred && ctx.processId() != null && !ctx.processId().isBlank()) {
             activated = thinkProcessService.activateDeferredTool(ctx.processId(), name);

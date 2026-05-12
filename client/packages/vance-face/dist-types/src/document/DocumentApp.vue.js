@@ -80,6 +80,12 @@ const createMimeOptions = computed(() => {
         { value: 'text/css', label: 'CSS', group: webGroup },
     ];
 });
+/** Default landing scope: every new project opens inside the
+ *  `documents/` folder (mirrors DocumentService.DOCUMENTS_FOLDER_PREFIX
+ *  on the server). Trash and system folders (`_bin/`, `_vance/`,
+ *  `_chatbox/`, `_slart/`) stay out of the way unless the user clicks
+ *  "All" or types a `_*` prefix into the path input. */
+const DEFAULT_PATH_PREFIX = 'documents/';
 onMounted(async () => {
     await projectsState.reload();
     // Restore last selection from the URL, if any. URL is the source of truth
@@ -94,8 +100,12 @@ onMounted(async () => {
         selectedProjectId.value = projectsState.projects.value[0].name;
     }
     if (selectedProjectId.value) {
+        // Same default as the project-switch path below: land inside
+        // documents/ so trash + system folders don't crowd the listing
+        // on first paint.
+        docsState.pathPrefix.value = DEFAULT_PATH_PREFIX;
         await Promise.all([
-            docsState.loadPage(selectedProjectId.value, 0),
+            docsState.loadPage(selectedProjectId.value, 0, DEFAULT_PATH_PREFIX),
             docsState.loadFolders(selectedProjectId.value),
             docsState.loadKinds(selectedProjectId.value),
         ]);
@@ -131,10 +141,12 @@ watch(selectedProjectId, async (next) => {
     docsState.clearSelection();
     // Reset filters on project switch — folder/kind lists belong to
     // the new project and the previous filters won't match anyway.
-    docsState.pathPrefix.value = '';
+    // Land inside documents/ by default so the user-content view is
+    // the first thing they see.
+    docsState.pathPrefix.value = DEFAULT_PATH_PREFIX;
     docsState.kindFilter.value = '';
     await Promise.all([
-        docsState.loadPage(next, 0, '', ''),
+        docsState.loadPage(next, 0, DEFAULT_PATH_PREFIX, ''),
         docsState.loadFolders(next),
         docsState.loadKinds(next),
     ]);
@@ -200,8 +212,22 @@ async function changePage(p) {
 // the main file list to that prefix. The sidebar highlight tracks the
 // pathPrefix bidirectionally — the path-input field and the sidebar
 // stay in sync regardless of which one the user touched.
-/** First-level folders only — `recipes` yes, `recipes/sub` no. */
-const topLevelFolders = computed(() => docsState.folders.value.filter((f) => !f.includes('/')));
+/** First-level folders only — `recipes` yes, `recipes/sub` no.
+ *  System folders (`_bin`, `_vance`, `_chatbox`, `_slart`, …) are
+ *  hidden by default; they only surface when the user is already
+ *  inside one (so they can navigate within it) or when "All" is
+ *  active (the explicit project-root view). */
+const topLevelFolders = computed(() => {
+    const prefix = docsState.pathPrefix.value.trim();
+    const showSystem = prefix === '' || prefix.startsWith('_');
+    return docsState.folders.value.filter((f) => {
+        if (f.includes('/'))
+            return false;
+        if (showSystem)
+            return true;
+        return !f.startsWith('_');
+    });
+});
 /**
  * Sidebar selection key derived from the current `pathPrefix`.
  * - `''` → "All" entry highlighted (no filter)
@@ -312,13 +338,13 @@ const isSheetDocument = computed(() => {
         return false;
     return isSheetMime(sel.mimeType);
 });
-// Trash convention: documents under `_vance/bin/` are already in the
+// Trash convention: documents under `_bin/` are already in the
 // project's trash folder (mirrors DocumentService.TRASH_FOLDER_PREFIX
 // on the server). The DELETE endpoint dispatches on this — first
 // click moves regular docs to the bin, a second click on the bin
 // entry hard-deletes it. The UI swaps button label and confirmation
 // text to match.
-const TRASH_PREFIX = '_vance/bin/';
+const TRASH_PREFIX = '_bin/';
 const isSelectedInTrash = computed(() => (docsState.selected.value?.path ?? '').startsWith(TRASH_PREFIX));
 const parsedList = computed(() => {
     if (!isListDocument.value)

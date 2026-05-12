@@ -154,6 +154,13 @@ const createMimeOptions = computed(() => {
   ];
 });
 
+/** Default landing scope: every new project opens inside the
+ *  `documents/` folder (mirrors DocumentService.DOCUMENTS_FOLDER_PREFIX
+ *  on the server). Trash and system folders (`_bin/`, `_vance/`,
+ *  `_chatbox/`, `_slart/`) stay out of the way unless the user clicks
+ *  "All" or types a `_*` prefix into the path input. */
+const DEFAULT_PATH_PREFIX = 'documents/';
+
 onMounted(async () => {
   await projectsState.reload();
   // Restore last selection from the URL, if any. URL is the source of truth
@@ -167,8 +174,12 @@ onMounted(async () => {
     selectedProjectId.value = projectsState.projects.value[0].name;
   }
   if (selectedProjectId.value) {
+    // Same default as the project-switch path below: land inside
+    // documents/ so trash + system folders don't crowd the listing
+    // on first paint.
+    docsState.pathPrefix.value = DEFAULT_PATH_PREFIX;
     await Promise.all([
-      docsState.loadPage(selectedProjectId.value, 0),
+      docsState.loadPage(selectedProjectId.value, 0, DEFAULT_PATH_PREFIX),
       docsState.loadFolders(selectedProjectId.value),
       docsState.loadKinds(selectedProjectId.value),
     ]);
@@ -204,10 +215,12 @@ watch(selectedProjectId, async (next) => {
   docsState.clearSelection();
   // Reset filters on project switch — folder/kind lists belong to
   // the new project and the previous filters won't match anyway.
-  docsState.pathPrefix.value = '';
+  // Land inside documents/ by default so the user-content view is
+  // the first thing they see.
+  docsState.pathPrefix.value = DEFAULT_PATH_PREFIX;
   docsState.kindFilter.value = '';
   await Promise.all([
-    docsState.loadPage(next, 0, '', ''),
+    docsState.loadPage(next, 0, DEFAULT_PATH_PREFIX, ''),
     docsState.loadFolders(next),
     docsState.loadKinds(next),
   ]);
@@ -277,10 +290,20 @@ async function changePage(p: number): Promise<void> {
 // pathPrefix bidirectionally — the path-input field and the sidebar
 // stay in sync regardless of which one the user touched.
 
-/** First-level folders only — `recipes` yes, `recipes/sub` no. */
-const topLevelFolders = computed<string[]>(() =>
-  docsState.folders.value.filter((f) => !f.includes('/')),
-);
+/** First-level folders only — `recipes` yes, `recipes/sub` no.
+ *  System folders (`_bin`, `_vance`, `_chatbox`, `_slart`, …) are
+ *  hidden by default; they only surface when the user is already
+ *  inside one (so they can navigate within it) or when "All" is
+ *  active (the explicit project-root view). */
+const topLevelFolders = computed<string[]>(() => {
+  const prefix = docsState.pathPrefix.value.trim();
+  const showSystem = prefix === '' || prefix.startsWith('_');
+  return docsState.folders.value.filter((f) => {
+    if (f.includes('/')) return false;
+    if (showSystem) return true;
+    return !f.startsWith('_');
+  });
+});
 
 /**
  * Sidebar selection key derived from the current `pathPrefix`.

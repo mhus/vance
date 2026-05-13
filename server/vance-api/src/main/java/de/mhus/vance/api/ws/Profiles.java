@@ -51,6 +51,15 @@ public final class Profiles {
      */
     public static final String EDDIE = "eddie";
 
+    /**
+     * Cron-triggered system client — see {@code specification/scheduler.md}.
+     * No WebSocket connection, no client-side tools, no local manual. Used
+     * as the {@code profile} on the system session a scheduler owns so
+     * recipe-profile-blocks can target scheduler-spawned processes
+     * separately from human-driven ones.
+     */
+    public static final String SCHEDULER = "scheduler";
+
     /** Catch-all key for recipe-profile-blocks when no exact-match block exists. */
     public static final String DEFAULT = "default";
 

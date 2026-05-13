@@ -1,0 +1,16 @@
+description: |
+  Single-shot structured-query engine. Caller provides `prompt` and
+  `schema` (JSON Schema subset, top-level type object) via engineParams;
+  Jeltz returns one schema-validated JSON object wrapped with
+  success/attempts/data (or error/message/lastInvalid) as the final
+  assistant message, then closes the process with CloseReason.DONE.
+engine: jeltz
+params:
+  model: default:fast
+  maxAttempts: 3
+  # Jeltz brings its own schema validator — the generic Ford/Marvin
+  # validation gates would just double-fire.
+  validation: false
+tags:
+  - structured
+  - engine-default

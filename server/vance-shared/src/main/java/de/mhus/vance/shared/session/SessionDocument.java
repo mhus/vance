@@ -273,4 +273,13 @@ public class SessionDocument {
      * archive/reactivate cycles (overwritten on each reactivate).
      */
     private @Nullable Instant reactivatedAt;
+
+    /**
+     * {@code true} for sessions owned by a system-level component
+     * (e.g. a scheduler — see {@code specification/scheduler.md} §6).
+     * System sessions are hidden from the default Web-UI session list,
+     * skip auto-titling, and do not count as "user-touched". The flag
+     * is set at create-time and never changes.
+     */
+    private boolean system;
 }

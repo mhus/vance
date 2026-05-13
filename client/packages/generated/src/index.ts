@@ -114,6 +114,22 @@ export * from './thinkprocess/TodoItem';
 export * from './thinkprocess/TodoStatus';
 export * from './thinkprocess/TodosUpdatedNotification';
 
+export * from './scheduler/OverlapPolicy';
+export * from './scheduler/SchedulerDto';
+export * from './scheduler/SchedulerSaveRequest';
+export * from './scheduler/SchedulerSource';
+export * from './scheduler/SchedulerSummary';
+
+export * from './eventlog/EventLogEntryDto';
+export * from './eventlog/EventType';
+
+export * from './hooks/HookDto';
+export * from './hooks/HookEventName';
+export * from './hooks/HookSaveRequest';
+export * from './hooks/HookSource';
+export * from './hooks/HookSummary';
+export * from './hooks/HookType';
+
 export * from './server-tools/ServerToolDto';
 export * from './server-tools/ServerToolWriteRequest';
 export * from './server-tools/ToolTypeDto';

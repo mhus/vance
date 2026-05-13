@@ -91,6 +91,18 @@ public class SessionService {
         return repository.findBySessionId(sessionId);
     }
 
+    /**
+     * Find a system-owned session inside a project by its stable
+     * {@code displayName}. Used by the scheduler to recognise (or
+     * lazily create) its dedicated {@code _scheduler_<name>} session
+     * across brain restarts.
+     */
+    public Optional<SessionDocument> findSystemSession(
+            String tenantId, String projectId, String displayName) {
+        return repository.findFirstByTenantIdAndProjectIdAndDisplayNameAndSystem(
+                tenantId, projectId, displayName, true);
+    }
+
     public List<SessionDocument> listForUser(String tenantId, String userId) {
         return repository.findByTenantIdAndUserId(tenantId, userId);
     }
@@ -178,6 +190,26 @@ public class SessionService {
             String profile,
             String clientVersion,
             @Nullable String clientName) {
+        return create(tenantId, userId, projectId, displayName, profile,
+                clientVersion, clientName, false);
+    }
+
+    /**
+     * Variant that allows marking a session as {@link SessionDocument#isSystem()
+     * system-owned} (e.g. scheduler-created sessions — see
+     * {@code specification/scheduler.md} §6). System sessions are
+     * persisted with the same lifecycle defaults as user sessions; the
+     * flag is purely advisory for UI filtering and metadata behaviour.
+     */
+    public SessionDocument create(
+            String tenantId,
+            String userId,
+            String projectId,
+            @Nullable String displayName,
+            String profile,
+            String clientVersion,
+            @Nullable String clientName,
+            boolean system) {
         Instant now = Instant.now();
         SessionLifecycleConfig defaults = SessionLifecycleConfig.safeDefault();
         SessionDocument doc = SessionDocument.builder()
@@ -198,10 +230,12 @@ public class SessionService {
                 .suspendKeepDurationMs(defaults.getSuspendKeepDurationMs())
                 .createdAt(now)
                 .lastActivityAt(now)
+                .system(system)
                 .build();
         SessionDocument saved = repository.save(doc);
-        log.info("Created session sessionId='{}' tenant='{}' user='{}' project='{}'",
-                saved.getSessionId(), saved.getTenantId(), saved.getUserId(), saved.getProjectId());
+        log.info("Created session sessionId='{}' tenant='{}' user='{}' project='{}' system={}",
+                saved.getSessionId(), saved.getTenantId(), saved.getUserId(),
+                saved.getProjectId(), system);
         return saved;
     }
 

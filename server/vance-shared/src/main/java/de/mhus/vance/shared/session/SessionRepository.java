@@ -21,4 +21,13 @@ interface SessionRepository extends MongoRepository<SessionDocument, String> {
 
     List<SessionDocument> findByTenantIdAndUserIdAndProjectId(
             String tenantId, String userId, String projectId);
+
+    /**
+     * Lookup for system-owned sessions by their stable {@code displayName}.
+     * The scheduler uses this to find (or recognise) its dedicated
+     * {@code _scheduler_<name>} session — see
+     * {@code specification/scheduler.md} §6.
+     */
+    Optional<SessionDocument> findFirstByTenantIdAndProjectIdAndDisplayNameAndSystem(
+            String tenantId, String projectId, String displayName, boolean system);
 }

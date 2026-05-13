@@ -57,6 +57,8 @@ public class ConnectionService {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final ObjectMapper json = JsonMapper.builder().build();
+    /** Most recent JWT minted during {@link #connect()}; reused for REST GETs. */
+    private volatile @Nullable AccessTokenResponse currentToken;
 
     private final AtomicReference<State> state = new AtomicReference<>(State.DISCONNECTED);
     private final AtomicReference<@Nullable VanceWebSocketClient> clientRef = new AtomicReference<>();
@@ -93,6 +95,7 @@ public class ConnectionService {
         }
         try {
             AccessTokenResponse token = mintToken();
+            currentToken = token;
             terminal.verbose("Minted JWT, expires at "
                     + java.time.Instant.ofEpochMilli(token.getExpiresAtTimestamp()));
 
@@ -136,10 +139,22 @@ public class ConnectionService {
         state.set(State.DISCONNECTED);
         stopKeepAlive();
         sessions.clear();
+        currentToken = null;
         if (client != null && client.isOpen()) {
             client.close(1000, reason);
             terminal.info("Disconnected — " + reason);
         }
+    }
+
+    /**
+     * The JWT minted at the last {@link #connect()}, or {@code null} if
+     * we're not connected. Used by REST helpers (e.g. {@code BrainRestClientService})
+     * that need to authenticate against the brain's HTTP endpoints with
+     * the same credentials as the WebSocket.
+     */
+    public @Nullable String currentJwt() {
+        AccessTokenResponse t = currentToken;
+        return t == null ? null : t.getToken();
     }
 
     /**

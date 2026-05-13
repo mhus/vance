@@ -2,6 +2,7 @@ package de.mhus.vance.brain.tools.eddie;
 
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -28,9 +29,12 @@ import org.springframework.stereotype.Component;
  * </ol>
  *
  * <p>Validation enforces that the resolved project exists and is
- * non-{@link ProjectKind#SYSTEM} when {@code allowSystem == false} —
- * Eddie shouldn't accidentally write user-document operations into
- * its own hub project unless explicitly asked.
+ * non-{@link ProjectKind#SYSTEM} when {@code allowSystem == false},
+ * <i>except</i> for the caller's own user-hub project
+ * ({@code _user_<userId>}) — Eddie's chat lives there and the user
+ * expects "save as document" to work in-place without first
+ * delegating to a fresh user project. Other SYSTEM projects
+ * (tenant-wide {@code _vance}, other users' hubs) remain protected.
  */
 @Component
 @RequiredArgsConstructor
@@ -145,12 +149,26 @@ public class EddieContext {
                 .orElseThrow(() -> new ToolException(
                         "Project '" + name + "' not found in tenant '"
                                 + ctx.tenantId() + "'"));
-        if (!allowSystem && project.getKind() == ProjectKind.SYSTEM) {
+        if (!allowSystem && project.getKind() == ProjectKind.SYSTEM
+                && !isCallerOwnHub(project, ctx)) {
             throw new ToolException(
                     "Project '" + name + "' is SYSTEM (hub project) — "
                             + "this operation requires a regular user project");
         }
         return project;
+    }
+
+    /**
+     * Carve-out for the SYSTEM-kind gate: the caller's own
+     * {@code _user_<userId>} hub project IS a SYSTEM project but is
+     * also the caller's working space. Allow content tools to operate
+     * there. Other SYSTEM projects (tenant {@code _vance}, other
+     * users' hubs) stay blocked.
+     */
+    private static boolean isCallerOwnHub(ProjectDocument project, ToolInvocationContext ctx) {
+        String userId = ctx.userId();
+        if (userId == null || userId.isBlank()) return false;
+        return HomeBootstrapService.hubProjectName(userId).equals(project.getName());
     }
 
     /**

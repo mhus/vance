@@ -197,6 +197,37 @@ public class AutoBootstrapService {
         }
     }
 
+    /**
+     * Manual trigger used by the {@code --resume} flow after the user
+     * picks a session. Bypasses {@link #SKIP_PROPERTY} (which the resume
+     * flow sets to suppress the welcome-handler trigger) and otherwise
+     * runs the same bootstrap path with the current config values —
+     * so set {@code config.getBootstrap().setSessionId(...)} and
+     * {@code .setProjectId(...)} before calling.
+     */
+    public void triggerNow() {
+        FootConfig.Bootstrap b = config.getBootstrap();
+        if (b == null) {
+            terminal.error("triggerNow: no vance.bootstrap config available.");
+            return;
+        }
+        if (b.getProjectId() == null && b.getSessionId() == null) {
+            terminal.error("triggerNow: no projectId/sessionId set in bootstrap.");
+            return;
+        }
+        if (!inFlight.compareAndSet(false, true)) {
+            terminal.verbose("triggerNow: bootstrap already in flight — ignoring.");
+            return;
+        }
+        executor.submit(() -> {
+            try {
+                runBootstrap(b);
+            } finally {
+                inFlight.set(false);
+            }
+        });
+    }
+
     @PreDestroy
     void shutdown() {
         executor.shutdownNow();

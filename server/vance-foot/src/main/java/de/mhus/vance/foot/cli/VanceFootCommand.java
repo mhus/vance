@@ -5,6 +5,7 @@ import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeBridgeService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
+import de.mhus.vance.foot.session.SessionResumeFlow;
 import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.transfer.FootTransferService;
 import de.mhus.vance.foot.ui.ChatRepl;
@@ -149,6 +150,22 @@ public class VanceFootCommand implements Callable<Integer> {
                     + "Mutually exclusive with -d.")
     boolean webShortcut;
 
+    @Option(names = "--resume",
+            description = "Skip auto-bootstrap and show a session picker. "
+                    + "Combine with --project to filter, --eddie for Eddie sessions, "
+                    + "or --last to auto-pick the most recent.")
+    boolean resume;
+
+    @Option(names = "--last",
+            description = "With --resume: auto-pick the most recent matching "
+                    + "session instead of opening the picker. Implies --resume.")
+    boolean last;
+
+    @Option(names = "--eddie",
+            description = "With --resume: filter to Eddie sessions instead of foot. "
+                    + "Mutually exclusive with --project. Implies --resume.")
+    boolean eddie;
+
     private final ChatRepl repl;
     private final ConnectionService connection;
     private final ChatTerminal terminal;
@@ -157,6 +174,7 @@ public class VanceFootCommand implements Callable<Integer> {
     private final ClientAgentDocService agentDoc;
     private final ClientToolService clientTools;
     private final FootTransferService transfers;
+    private final SessionResumeFlow resumeFlow;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -165,7 +183,8 @@ public class VanceFootCommand implements Callable<Integer> {
                             IdeBridgeService ideBridge,
                             ClientAgentDocService agentDoc,
                             ClientToolService clientTools,
-                            FootTransferService transfers) {
+                            FootTransferService transfers,
+                            SessionResumeFlow resumeFlow) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -174,6 +193,7 @@ public class VanceFootCommand implements Callable<Integer> {
         this.agentDoc = agentDoc;
         this.clientTools = clientTools;
         this.transfers = transfers;
+        this.resumeFlow = resumeFlow;
     }
 
     @Override
@@ -184,6 +204,22 @@ public class VanceFootCommand implements Callable<Integer> {
         }
         applyDaemonShortcut();
         applyWebShortcut();
+
+        // --resume validation. --last and --eddie imply --resume; --eddie
+        // is mutually exclusive with --project (Eddie sessions live in
+        // user-scoped projects we resolve from the profile, so an
+        // explicit project would over-constrain things).
+        if (last) resume = true;
+        if (eddie) resume = true;
+        if (eddie && project != null && !project.isBlank()) {
+            terminal.error("--eddie and --project are mutually exclusive.");
+            return 2;
+        }
+        if (resume) {
+            // Skip the welcome-handler auto-bootstrap; SessionResumeFlow
+            // will fire bootstrap manually after the picker resolves.
+            System.setProperty(AutoBootstrapService.SKIP_PROPERTY, "true");
+        }
 
         if (noBootstrap) {
             System.setProperty(AutoBootstrapService.SKIP_PROPERTY, "true");
@@ -233,6 +269,16 @@ public class VanceFootCommand implements Callable<Integer> {
             } catch (Exception e) {
                 terminal.error("Auto-connect failed: " + e.getMessage()
                         + (noUi ? "" : " — type /connect to retry."));
+            }
+        }
+        if (resume) {
+            SessionResumeFlow.Outcome outcome = resumeFlow.run(eddie, project, last);
+            switch (outcome) {
+                case CANCELLED -> { return 1; }
+                case NO_MATCH, LIST_FAILED -> { return 2; }
+                case BOOTSTRAPPED -> {
+                    // bootstrap fired; continue to REPL
+                }
             }
         }
         if (noUi) {

@@ -104,65 +104,27 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
 
     /**
-     * Tools the runtime may dispatch in Arthur's scope. Per-mode
-     * filtering happens via the recipe-driven cascade (see
-     * {@code planning/tool-schema-deferral.md} §14) — Arthur's
-     * default recipe pins {@code allowedToolsRemove: ["@write",
-     * "@executive", "@side-effect", respond]} for {@code EXPLORING}
-     * and {@code PLANNING} so write/orchestration tools physically
-     * leave the allow-set there.
+     * Arthur's engine-base allow-set is intentionally <b>empty</b>
+     * (unrestricted). The recipe cascade drives all per-mode
+     * classification (primary / deferred / removed) via
+     * {@link de.mhus.vance.brain.tools.ContextToolsApi#classify} —
+     * when {@code base.isEmpty()} that function expands the pool to
+     * every dispatchable tool and applies the recipe's
+     * Add/Remove/Defer overlays on top, gated by the active
+     * profile and per-tool
+     * {@link de.mhus.vance.toolpack.Tool#allowedForProfile}
+     * declarations.
      *
-     * <p>The list mixes plain read tools (recipe_list, doc_read, …),
-     * orchestration tools called via Arthur's structured-action
-     * dispatch (process_create, process_steer, …), and client-pushed
-     * Foot tools (client_file_*, client_exec_*). The system prompt
-     * tells the LLM which path to use when several tools cover the
-     * same need (e.g. "DELEGATE action, not direct process_create").
+     * <p>That keeps the source of truth in one place — {@code
+     * arthur.yaml} — and removes the per-tool maintenance burden of
+     * a hard-coded Java list that silently misses any newly-added
+     * tool. Destructive / executive scoping happens via label
+     * filters ({@code @executive}, {@code @write},
+     * {@code @side-effect}, …) and a handful of explicit excludes in
+     * the recipe; see {@code arthur.yaml} for the canonical
+     * configuration.
      */
-    private static final Set<String> ALLOWED_TOOLS = Set.of(
-            "whoami",
-            "current_time",
-            "find_tools",
-            "describe_tool",
-            "process_create",
-            "process_create_delegate",
-            "process_steer",
-            "process_stop",
-            "process_pause",
-            "process_resume",
-            "process_list",
-            "process_status",
-            "recipe_list",
-            "recipe_describe",
-            "manual_list",
-            "manual_read",
-            "inbox_post",
-            "project_list",
-            "project_current",
-            "doc_read",
-            "doc_list",
-            "doc_find",
-            "scratchpad_get",
-            "scratchpad_list",
-            "data_get",
-            "web_search",
-            "web_fetch",
-            "cross_doc_list_projects",
-            "relations_find",
-            "rag_list",
-            "kit_status",
-            "exec_status",
-            // Client-pushed tools (registered by Foot on session-bind via
-            // ClientToolRegistry). Without these in the allow-set Arthur
-            // cannot inspect or modify the user's workspace at all.
-            "client_file_read",
-            "client_file_list",
-            "client_file_edit",
-            "client_file_write",
-            "client_exec_run",
-            "client_exec_status",
-            "client_exec_kill",
-            "client_javascript");
+    private static final Set<String> ALLOWED_TOOLS = Set.of();
 
     /**
      * Plan-Mode transition actions whose handlers re-set the same

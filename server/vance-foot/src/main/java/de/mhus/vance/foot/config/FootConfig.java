@@ -104,6 +104,13 @@ public class FootConfig {
         private List<BootstrapProcess> processes = new ArrayList<>();
         /** Optional first chat message steered to the first process. */
         private @Nullable String initialMessage;
+        /**
+         * On {@code --resume}: how many recent chat messages to replay
+         * into the scrollback after binding to the picked session.
+         * Set to {@code 0} to disable replay. Bumped via
+         * {@code vance.bootstrap.replay-messages}.
+         */
+        private int replayMessages = 5;
     }
 
     /**

@@ -1,0 +1,187 @@
+# Personal hub assistant. Talks to the user across all their
+# projects, delegates work into project chats via DELEGATE_PROJECT /
+# STEER_PROJECT, posts inbox items for follow-up. Default for engine
+# 'eddie' when no specific recipe is named.
+
+description: |
+  Personal hub assistant. Single conversational entry point that
+  speaks across the user's projects, delegates operational work to
+  project chats (DELEGATE_PROJECT / STEER_PROJECT), posts inbox
+  items for follow-up, and keeps her own scratchpad in the user
+  project. Default for engine 'eddie' when no specific recipe is
+  named.
+engine: eddie
+params:
+  model: default:analyze
+  validation: true
+  maxIterations: 6
+  # If the primary alias hits a demand spike or 5xx and exhausts its
+  # retry budget, the resilient layer falls through these in order.
+  fallbackModels:
+    - default:fast
+  manualPaths:
+    - eddie/manuals/
+    - manuals/
+  # Default prompt is loaded from the document cascade by
+  # EnginePromptResolver: project → _vance → classpath:
+  # vance-defaults/prompts/eddie-prompt.md.
+
+# Engine base is empty (unrestricted) — the recipe is the single
+# source of truth for what Eddie sees. See EddieEngine.ALLOWED_TOOLS
+# javadoc and planning/tool-schema-deferral.md §14.6.
+#
+# RecipeResolver.toolFilterFor uses first-match-wins through the
+# profile/mode cascade — there is no accumulation. Destructive
+# bulk-ops are repeated per mode block. Eddie only really runs in
+# NORMAL (no plan-mode), but the cascade falls through cleanly if
+# the runtime ever passes a different mode.
+#
+# Strategy:
+#   Read-only stays primary (schema in manifest). @write,
+#   @executive and @side-effect tools move into the deferred
+#   discovery block — Eddie sees them by name + hint and can call
+#   them directly via auto-activate. Token bill stays low while
+#   she keeps tier-1 reach (docs, lists, trees, sheets, records,
+#   graph, scratchpad, RAG-ingest, kit install/update,
+#   peer_notify).
+#
+# Destructive ops Eddie never invokes directly. Doc-wipes, RAG
+# create/delete, kit apply/export, workspace_delete, git_checkout —
+# these go through DELEGATE_PROJECT so the user explicitly opts
+# into them. Repeated below via a YAML anchor.
+_destructive_excludes: &destructive_excludes
+  - doc_purge
+  - doc_delete
+  - doc_restore
+  - rag_create
+  - rag_delete
+  - kit_apply
+  - kit_export
+  - workspace_delete
+  - git_checkout
+
+modes:
+  NORMAL:
+    allowedToolsRemove: *destructive_excludes
+    allowedToolsDefer:
+      - "@write"
+      - "@executive"
+      - "@side-effect"
+
+# Eddie's persona / proactivity stance — repeated across profiles
+# below because promptPrefixAppend lives per-profile (there is no
+# recipe-level append slot today; see specification/recipes.md
+# "Stance / Proactivity"). YAML anchor would only help if no profile
+# carried its own client-context text — which two of them do, so the
+# whole block is inlined per profile.
+_frontman_stance: &frontman_stance |
+  ## Stil — Frontman, nicht Bürokrat
+
+  Bei kreativ-offenen Anfragen ("schreib ein Gedicht", "leg mir
+  eine Liste an", "fass das zusammen") bist du autonom: Thema aus
+  dem Kontext oder eigenem Vorschlag, Titel aus dem Inhalt, Pfad
+  `documents/<slug>.md`. Führe direkt aus und nenne im ANSWER, was
+  du gewählt hast ("hab ich in `documents/foo.md` abgelegt"). Frag
+  nur nach, wenn die Antwort wirklich von User-Wissen abhängt
+  (welches Projekt, wen meinst du). Lieber ausführen und auf
+  Korrektur warten als drei Klärungsfragen vorab.
+
+profiles:
+  # Eddie's regular profile is "eddie" (the hub frontend). She sits
+  # in a SYSTEM project per user and bridges to project chats via
+  # actions, so client_* tools don't apply. Default keeps server
+  # tools only.
+  eddie:
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000            # 30 min
+      suspendKeepDurationMs: 86400000   # 24h
+    promptPrefixAppend: *frontman_stance
+
+  # Foot CLI variant — Eddie reachable from a terminal. Same
+  # lifecycle as Arthur on foot, plus local-file reach via client_*.
+  foot:
+    params:
+      useClientAgentDoc: true
+    session:
+      onDisconnect: SUSPEND
+      onIdle: NONE
+      onSuspend: KEEP
+      suspendKeepDurationMs: 86400000
+    promptPrefixAppend: |
+      ## Client context — local CLI
+
+      You are reachable from a foot client — the user's CLI on their
+      own machine. The user is editing files locally; reach them
+      through `client_file_read` / `client_file_list` /
+      `client_file_write` / `client_exec_run` when needed.
+
+      ## Stil — Frontman, nicht Bürokrat
+
+      Bei kreativ-offenen Anfragen ("schreib ein Gedicht", "leg mir
+      eine Liste an", "fass das zusammen") bist du autonom: Thema
+      aus dem Kontext oder eigenem Vorschlag, Titel aus dem Inhalt,
+      Pfad `documents/<slug>.md`. Führe direkt aus und nenne im
+      ANSWER, was du gewählt hast. Frag nur nach, wenn die Antwort
+      wirklich von User-Wissen abhängt (welches Projekt, wen
+      meinst du). Lieber ausführen und auf Korrektur warten als
+      drei Klärungsfragen vorab.
+
+  # Web / mobile clients can't host client_* tools.
+  web:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000
+      suspendKeepDurationMs: 86400000
+    promptPrefixAppend: |
+      ## Client context — web browser
+
+      You are reachable from a web browser — there is no local
+      filesystem on the client side. Use `workspace_read` /
+      `workspace_write` for files stored in the project.
+
+      ## Stil — Frontman, nicht Bürokrat
+
+      Bei kreativ-offenen Anfragen ("schreib ein Gedicht", "leg mir
+      eine Liste an", "fass das zusammen") bist du autonom: Thema
+      aus dem Kontext oder eigenem Vorschlag, Titel aus dem Inhalt,
+      Pfad `documents/<slug>.md`. Führe direkt aus und nenne im
+      ANSWER, was du gewählt hast. Frag nur nach, wenn die Antwort
+      wirklich von User-Wissen abhängt (welches Projekt, wen
+      meinst du). Lieber ausführen und auf Korrektur warten als
+      drei Klärungsfragen vorab.
+
+  default:
+    allowedToolsRemove:
+      - client_file_read
+      - client_file_write
+      - client_file_edit
+      - client_file_list
+      - client_exec_run
+      - client_exec_kill
+      - client_exec_status
+      - client_javascript
+    session:
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
+      onSuspend: KEEP
+      idleTimeoutMs: 1800000
+      suspendKeepDurationMs: 86400000
+    promptPrefixAppend: *frontman_stance
+
+tags:
+  - hub
+  - engine-default

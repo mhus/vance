@@ -54,6 +54,8 @@ public class LiveRegion {
 
     private final Object writeLock = new Object();
     private final AtomicBoolean stopRequested = new AtomicBoolean();
+    /** True while a Lanterna excursion (or similar) owns the TTY and we must keep our threads idle. */
+    private final AtomicBoolean paused = new AtomicBoolean();
     private final AtomicInteger frame = new AtomicInteger();
 
     private volatile @Nullable Terminal terminal;
@@ -277,6 +279,90 @@ public class LiveRegion {
         if (t != null) t.interrupt();
     }
 
+    /**
+     * Hands the TTY over to another consumer (typically a Lanterna
+     * fullscreen excursion). Tears down our animation + input threads,
+     * disables bracketed paste, restores the terminal attributes so
+     * the other consumer can configure them freely, and erases the
+     * live region. Call {@link #resume()} when the excursion is done.
+     */
+    public synchronized void pause() {
+        if (!isAttached() || paused.get()) return;
+        paused.set(true);
+        Terminal t = terminal;
+
+        ScheduledExecutorService anim = animator;
+        if (anim != null) {
+            anim.shutdownNow();
+            animator = null;
+        }
+        Thread it = inputThread;
+        if (it != null) {
+            it.interrupt();
+            try {
+                it.join(200);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            inputThread = null;
+        }
+
+        synchronized (writeLock) {
+            eraseLive();
+            writeRaw(ESC + "[?2004l");   // disable bracketed paste
+        }
+        Attributes prev = previousAttrs;
+        if (t != null && prev != null) {
+            try {
+                t.setAttributes(prev);
+            } catch (RuntimeException ignored) {
+                // best-effort restore
+            }
+        }
+    }
+
+    /**
+     * Reclaim the TTY after a {@link #pause()}. Re-applies our soft-raw
+     * attributes, re-enables bracketed paste, repaints the live region,
+     * and restarts the animator + input threads.
+     */
+    public synchronized void resume() {
+        if (!paused.get()) return;
+        Terminal t = terminal;
+        if (t == null) {
+            paused.set(false);
+            return;
+        }
+        // Re-apply soft-raw attributes (ICANON / ECHO off, OPOST left on).
+        Attributes mod = new Attributes(t.getAttributes());
+        mod.setLocalFlag(LocalFlag.ICANON, false);
+        mod.setLocalFlag(LocalFlag.ECHO, false);
+        try {
+            t.setAttributes(mod);
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
+        synchronized (writeLock) {
+            writeRaw(ESC + "[?2004h");   // re-enable bracketed paste
+        }
+        paused.set(false);
+        paintLive();
+
+        ScheduledExecutorService anim = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread th = new Thread(r, "foot-live-region-animator");
+            th.setDaemon(true);
+            return th;
+        });
+        anim.scheduleAtFixedRate(this::tickAnimate,
+                ANIMATION_INTERVAL_MS, ANIMATION_INTERVAL_MS, TimeUnit.MILLISECONDS);
+        animator = anim;
+
+        Thread it = new Thread(this::inputLoop, "foot-live-region-input");
+        it.setDaemon(true);
+        it.start();
+        inputThread = it;
+    }
+
     /** Request a redraw of the live region (e.g., when status state changed). */
     public void refresh() {
         paintLive();
@@ -359,8 +445,23 @@ public class LiveRegion {
         NonBlockingReader r = this.reader;
         if (r == null) return;
         try {
-            while (!stopRequested.get()) {
-                int b = r.read();
+            while (!stopRequested.get() && !paused.get()) {
+                int b;
+                try {
+                    b = r.read();
+                } catch (java.nio.BufferUnderflowException bue) {
+                    // JLine's NonBlockingReader can throw this when its
+                    // internal char buffer is left inconsistent — happens
+                    // after a Lanterna excursion (pause/resume) resets the
+                    // terminal state under us. Treat as transient: back
+                    // off briefly and retry. If something is genuinely
+                    // broken, the next read will see EOF and we exit.
+                    try { Thread.sleep(20); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                    continue;
+                }
                 if (b == -1) break;
                 if (b == 3 || b == 4) {  // Ctrl-C / Ctrl-D
                     fireQuit();
@@ -415,7 +516,12 @@ public class LiveRegion {
         } catch (IOException ignored) {
             // stream closed — exit cleanly
         }
-        fireQuit();
+        // Only declare a quit if we weren't deliberately paused. During
+        // a Lanterna excursion the input thread exits because the TTY
+        // was taken away; that's normal, not a quit signal.
+        if (!paused.get()) {
+            fireQuit();
+        }
     }
 
     private void fireQuit() {

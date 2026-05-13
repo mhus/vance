@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jline.terminal.Terminal;
 import org.jspecify.annotations.Nullable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 /**
@@ -20,6 +21,11 @@ public class InterfaceService {
 
     private final AtomicReference<UiMode> mode = new AtomicReference<>(UiMode.CHAT);
     private final AtomicReference<@Nullable Terminal> jlineTerminal = new AtomicReference<>();
+    private final LiveRegion liveRegion;
+
+    public InterfaceService(@Lazy LiveRegion liveRegion) {
+        this.liveRegion = liveRegion;
+    }
 
     public UiMode mode() {
         return mode.get();
@@ -50,11 +56,22 @@ public class InterfaceService {
             throw new IllegalStateException(
                     "A fullscreen excursion is already active — nested Lanterna sessions are not supported.");
         }
+        // LiveRegion still has our soft-raw mode + active input/animator
+        // threads. Tell it to pause before we hand the TTY to Lanterna,
+        // otherwise our reader keeps eating bytes that Lanterna needs to
+        // initialise its own terminal (typical symptom: EOFException).
+        boolean liveWasAttached = liveRegion.isAttached();
+        if (liveWasAttached) {
+            liveRegion.pause();
+        }
         t.pause();
         try (LanternaSession session = LanternaSession.open()) {
             excursion.run(session);
         } finally {
             t.resume();
+            if (liveWasAttached) {
+                liveRegion.resume();
+            }
             mode.set(UiMode.CHAT);
         }
     }

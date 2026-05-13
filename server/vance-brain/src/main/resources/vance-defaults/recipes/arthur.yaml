@@ -36,135 +36,52 @@ params:
   # Recipes that want a different prompt either set promptPrefix
   # directly here (highest precedence) or point promptDocument at a
   # different cascade path.
-# Open Arthur's dispatch pool to every read-only tool registered in the
-# brain — workspace_grep / workspace_find / doc_grep / client_file_grep
-# and friends. The engine's hardcoded ALLOWED_TOOLS lists only the
-# read/list variants explicitly; this label-selector picks up the
-# inspection primitives so PLANNING-mode Arthur (where @write /
-# @executive / @side-effect are stripped) still has greppable visibility
-# into project + workspace + foot host without spawning a worker. The
-# selector resolves at spawn time via RecipeResolver.computeAllowed.
-allowedToolsAdd:
-  - "@read-only"
+# Engine base is empty (unrestricted) — the recipe is now the single
+# source of truth for what Arthur sees. See ArthurEngine.ALLOWED_TOOLS
+# javadoc and planning/tool-schema-deferral.md §14.6.
+#
+# RecipeResolver.toolFilterFor uses first-match-wins through the
+# profile/mode cascade — there is no accumulation. That's why the
+# destructive bulk-ops we never want Arthur to call directly are
+# repeated in every mode block below. (The alternative would be a
+# top-level allowedToolsRemove which gets skipped whenever any mode
+# block matches.) See RecipeResolver.lookupModeBlock.
+#
+# Strategy per mode:
+#   NORMAL    — Arthur is a chat orchestrator. Read-only stays primary
+#               (schema in manifest); @write / @executive / @side-effect
+#               move to the deferred discovery block. The LLM sees them
+#               by name and can call them directly via auto-activate.
+#   EXPLORING — read-only only; writes/executive/side-effects are
+#               physically removed from dispatch.
+#   PLANNING  — same as EXPLORING.
+#   EXECUTING — falls through to engine default (no overlay, full pool).
+#
+# Destructive ops Arthur never invokes directly. Doc-deletion,
+# RAG/kit lifecycle, workspace wipes — these need explicit user
+# direction, so they live behind DELEGATE (worker spawns explicitly).
+# Kept as a shared anchor + YAML merge so we don't drift between modes.
+_destructive_excludes: &destructive_excludes
+  - doc_purge
+  - doc_delete
+  - doc_restore
+  - rag_create
+  - rag_delete
+  - kit_apply
+  - kit_install
+  - kit_update
+  - kit_export
+  - workspace_delete
+  - peer_notify
+  - git_checkout
 
-# Mode-driven tool filter — recipe-driven instead of hardcoded in
-# ArthurEngine. See planning/tool-schema-deferral.md §14.6.
-#
-# NORMAL: Arthur is a chat orchestrator. The LLM sees only the 8 lookup
-#   tools (whoami, process_list/status, recipe_list/describe,
-#   manual_list/read, inbox_post) as primary. Everything else stays in
-#   the dispatcher allow-set so Arthur's structured-action handlers can
-#   call them (process_create_delegate via DELEGATE, etc.) — they're
-#   just hidden from the LLM tool manifest, which forces the LLM to
-#   reach for DELEGATE / ASK_USER / structured actions instead of
-#   inlining work that should run in a worker.
-#
-# EXPLORING / PLANNING: physically remove write/executive/side-effect
-#   tools from the dispatch pool — Arthur is constrained to read-only
-#   exploration during plan-mode, no inline mutations.
-#
-# EXECUTING and other modes inherit the profile-base (no overlay) and
-# see the full pool.
 modes:
   NORMAL:
-    # find_tools and describe_tool stay PRIMARY here — they're the
-    # discovery primitives that let the LLM activate the deferred
-    # ones (catch-22 if they're deferred themselves: the model has
-    # no way to escape the minimal NORMAL toolset). Both are pure
-    # read-only inspection tools, no side effects.
+    allowedToolsRemove: *destructive_excludes
     allowedToolsDefer:
-      # Identity / discovery
-      - current_time
-      # Process orchestration (action-internal, only via structured actions)
-      - process_create
-      - process_create_delegate
-      - process_steer
-      - process_stop
-      - process_pause
-      - process_resume
-      # Project read
-      - project_list
-      - project_current
-      - project_switch
-      # Document read
-      - doc_read
-      - doc_list
-      - doc_find
-      - cross_doc_list_projects
-      # Document write — tier-1 content ops Arthur handles directly
-      # without spawning a worker. doc_purge / doc_delete stay hidden
-      # (destructive); the delegation path is the only way to those.
-      - doc_create_text
-      - doc_create_kind
-      - doc_edit
-      - doc_replace_lines
-      - doc_concat
-      - doc_import_url
-      - doc_add_tag
-      - doc_remove_tag
-      - doc_move
-      - doc_copy
-      # Scratchpad / per-process state
-      - scratchpad_get
-      - scratchpad_list
-      - scratchpad_set
-      - scratchpad_delete
-      # Data slots (free-form key/value)
-      - data_get
-      - data_set
-      - data_delete
-      # Lists
-      - list_append
-      - list_insert
-      - list_remove
-      - list_replace
-      - list_clear
-      # Trees
-      - tree_add_child
-      - tree_add_sibling
-      - tree_move
-      - tree_remove
-      - tree_replace_text
-      # Sheets
-      - sheet_add_row
-      - sheet_add_column
-      - sheet_set_cell
-      - sheet_clear_cell
-      # Records
-      - records_add_row
-      - records_add_column
-      - records_update_field
-      # Graph
-      - graph_add_node
-      - graph_add_edge
-      - graph_remove_node
-      - graph_remove_edge
-      - graph_set_directed
-      # Relations
-      - relations_add
-      - relations_find
-      # RAG read + light ingest (no destructive ops)
-      - rag_list
-      - rag_add_text
-      - rag_add_path
-      - rag_add_workspace_file
-      # Web
-      - web_search
-      - web_fetch
-      # Kits (read-only)
-      - kit_status
-      # Workspace scratching (server-side scratch dir)
-      - workspace_write
-      # Foot client tools
-      - exec_status
-      - client_file_read
-      - client_file_list
-      - client_file_edit
-      - client_file_write
-      - client_exec_run
-      - client_exec_status
-      - client_exec_kill
-      - client_javascript
+      - "@write"
+      - "@executive"
+      - "@side-effect"
   EXPLORING:
     allowedToolsRemove:
       - "@write"

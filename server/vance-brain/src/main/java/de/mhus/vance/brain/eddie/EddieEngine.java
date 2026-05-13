@@ -24,6 +24,7 @@ import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.thinkengine.action.EngineAction;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine;
 import de.mhus.vance.brain.thinkengine.action.StructuredActionEngine.ActionLoopResult;
@@ -97,244 +98,26 @@ public class EddieEngine extends StructuredActionEngine {
             "Hi, I'm Eddie. What can I take off your plate?";
 
     /**
-     * Eddie's tool-pool. Two layers — same pattern as Arthur:
+     * Eddie's engine-base allow-set is intentionally <b>empty</b>
+     * (unrestricted). The recipe cascade in {@code eddie.yaml} drives
+     * primary / deferred / removed classification via
+     * {@link de.mhus.vance.brain.tools.ContextToolsApi#classify} —
+     * when {@code base.isEmpty()} that function expands the pool to
+     * every dispatchable tool and applies the recipe's
+     * Add/Remove/Defer overlays.
      *
-     * <ul>
-     *   <li><b>LLM-visible</b> ({@link #LLM_VISIBLE_TOOLS}): read-only
-     *       tools the LLM may call mid-turn to inform its action choice.
-     *       Quick research, project listing, doc lookup, scratchpad,
-     *       manuals, peer-notify (still a tool because it's atomic and
-     *       has no in-conversation effect).</li>
-     *   <li><b>Action-internal</b>: {@code project_create},
-     *       {@code project_chat_send}, {@code inbox_post} — invoked by
-     *       Eddie's action handlers ({@code DELEGATE_PROJECT},
-     *       {@code STEER_PROJECT}, {@code RELAY_INBOX}). Not shown to
-     *       the LLM. Keeping them in {@code ALLOWED_TOOLS} satisfies
-     *       the dispatcher's allow-filter for engine-internal calls.</li>
-     * </ul>
+     * <p>Same pattern as Arthur. The previous static
+     * {@code ALLOWED_TOOLS} / {@code LLM_VISIBLE_TOOLS} pair carried
+     * the per-tool maintenance burden of remembering every new write
+     * tool — that's now label-driven (recipe defers
+     * {@code @write}/{@code @executive}/{@code @side-effect}) plus a
+     * small handful of explicit destructive excludes in the recipe.
+     * Action-internal tools ({@code project_create},
+     * {@code project_chat_send}, {@code inbox_post}) are reached via
+     * {@code invokeInternal}; they ride the dispatch pool same as
+     * everything else.
      */
-    private static final Set<String> ALLOWED_TOOLS = Set.of(
-            // Identity / discovery
-            "whoami",
-            "current_time",
-            "find_tools",
-            "describe_tool",
-            "invoke_tool",
-            // Quick research / compute (Eddie self-capable)
-            "web_search",
-            "web_fetch",
-            "execute_javascript",
-            // Personal memory
-            "scratchpad_get",
-            "scratchpad_set",
-            "scratchpad_list",
-            "scratchpad_delete",
-            // Data slots
-            "data_get",
-            "data_set",
-            "data_delete",
-            // Project organisation (some are read-only, some action-internal)
-            "project_list",
-            "project_switch",
-            "project_current",
-            "project_create",          // ACTION-INTERNAL (DELEGATE_PROJECT)
-            "project_chat_send",       // ACTION-INTERNAL (STEER_PROJECT)
-            "recipe_list",
-            "recipe_describe",
-            // Documents (within active project) — read + tier-1 write ops
-            "doc_list",
-            "doc_find",
-            "doc_read",
-            "doc_create_text",
-            "doc_create_kind",
-            "doc_edit",
-            "doc_replace_lines",
-            "doc_concat",
-            "doc_import_url",
-            "doc_add_tag",
-            "doc_remove_tag",
-            "doc_move",
-            "doc_copy",
-            "cross_doc_list_projects",
-            // Lists / Trees / Sheets / Records — tier-1 structured content ops
-            "list_find",
-            "list_get",
-            "list_append",
-            "list_insert",
-            "list_remove",
-            "list_replace",
-            "list_clear",
-            "tree_find",
-            "tree_get",
-            "tree_add_child",
-            "tree_add_sibling",
-            "tree_move",
-            "tree_remove",
-            "tree_replace_text",
-            "sheet_find",
-            "sheet_get_cell",
-            "sheet_get_range",
-            "sheet_add_row",
-            "sheet_add_column",
-            "sheet_set_cell",
-            "sheet_clear_cell",
-            "records_find",
-            "records_get_rows",
-            "records_get_schema",
-            "records_add_row",
-            "records_add_column",
-            "records_update_field",
-            // Graph / Relations
-            "graph_find_node",
-            "graph_get",
-            "graph_add_node",
-            "graph_add_edge",
-            "graph_remove_node",
-            "graph_remove_edge",
-            "graph_set_directed",
-            "relations_find",
-            "relations_add",
-            // RAG (light ingest, no destructive ops)
-            "rag_list",
-            "rag_query",
-            "rag_add_text",
-            "rag_add_path",
-            "rag_add_workspace_file",
-            // Teams
-            "team_list",
-            "team_describe",
-            // Inbox — ACTION-INTERNAL (RELAY_INBOX) plus optional LLM-visible
-            // calls for ad-hoc inbox posts
-            "inbox_post",
-            // Cross-hub sync
-            "peer_notify",
-            // Worker observation (Working-WS to a worker process for live frames)
-            "process_observe",
-            // Manuals
-            "manual_list",
-            "manual_read",
-            // Kit lifecycle
-            "kit_status",
-            "kit_install",
-            "kit_update",
-            // History (cross-process — Eddie sees what her workers did)
-            "history_search",
-            "history_recall",
-            "list_edited_resources");
-
-    /**
-     * Subset of {@link #ALLOWED_TOOLS} that the LLM is allowed to see
-     * and call directly each turn. Excludes the tools that have a
-     * structured-action equivalent — those are routed through
-     * {@code eddie_action} instead.
-     */
-    private static final Set<String> LLM_VISIBLE_TOOLS = Set.of(
-            // Identity / discovery
-            "whoami",
-            "current_time",
-            "find_tools",
-            "describe_tool",
-            "invoke_tool",
-            // Quick research / compute
-            "web_search",
-            "web_fetch",
-            "execute_javascript",
-            // Personal memory + data slots
-            "scratchpad_get",
-            "scratchpad_set",
-            "scratchpad_list",
-            "scratchpad_delete",
-            "data_get",
-            "data_set",
-            "data_delete",
-            // Project organisation (read-only — write/steer go via actions)
-            "project_list",
-            "project_switch",
-            "project_current",
-            "recipe_list",
-            "recipe_describe",
-            // Documents — read + tier-1 write
-            "doc_list",
-            "doc_find",
-            "doc_read",
-            "doc_create_text",
-            "doc_create_kind",
-            "doc_edit",
-            "doc_replace_lines",
-            "doc_concat",
-            "doc_import_url",
-            "doc_add_tag",
-            "doc_remove_tag",
-            "doc_move",
-            "doc_copy",
-            "cross_doc_list_projects",
-            // Lists / Trees / Sheets / Records
-            "list_find",
-            "list_get",
-            "list_append",
-            "list_insert",
-            "list_remove",
-            "list_replace",
-            "list_clear",
-            "tree_find",
-            "tree_get",
-            "tree_add_child",
-            "tree_add_sibling",
-            "tree_move",
-            "tree_remove",
-            "tree_replace_text",
-            "sheet_find",
-            "sheet_get_cell",
-            "sheet_get_range",
-            "sheet_add_row",
-            "sheet_add_column",
-            "sheet_set_cell",
-            "sheet_clear_cell",
-            "records_find",
-            "records_get_rows",
-            "records_get_schema",
-            "records_add_row",
-            "records_add_column",
-            "records_update_field",
-            // Graph / Relations
-            "graph_find_node",
-            "graph_get",
-            "graph_add_node",
-            "graph_add_edge",
-            "graph_remove_node",
-            "graph_remove_edge",
-            "graph_set_directed",
-            "relations_find",
-            "relations_add",
-            // RAG
-            "rag_list",
-            "rag_query",
-            "rag_add_text",
-            "rag_add_path",
-            "rag_add_workspace_file",
-            // Teams
-            "team_list",
-            "team_describe",
-            // Eddie can post inbox items for her own research output
-            // (not just as part of a RELAY_INBOX worker forward).
-            "inbox_post",
-            "peer_notify",
-            "process_observe",
-            // Kit lifecycle — first-class so Eddie can set up a freshly
-            // delegated project with a kit in one user-instigated step
-            // (see manual: how-to-install-kit). kit_status is read-only;
-            // kit_install / kit_update are the executive pair Eddie
-            // calls when the user explicitly says "set up that project".
-            "kit_status",
-            "kit_install",
-            "kit_update",
-            // Manuals
-            "manual_list",
-            "manual_read",
-            // History
-            "history_search",
-            "history_recall",
-            "list_edited_resources");
+    private static final Set<String> ALLOWED_TOOLS = Set.of();
 
     private static final String PROMPT_PATH = "prompts/eddie-prompt.md";
     private static final String PROMPT_RESOURCE = "vance-defaults/prompts/eddie-prompt.md";
@@ -749,16 +532,15 @@ public class EddieEngine extends StructuredActionEngine {
 
             String modelAlias = config.provider() + ":" + config.modelName();
 
-            // LLM sees only read-only tools — action-equivalent tools
-            // (project_create, project_chat_send, inbox_post) are
-            // engine-internal, invoked by handlers via tools.invoke().
-            // The factory is re-applied per iteration so describe_tool
-            // activations propagate within the turn.
+            // Recipe-driven manifest: read-only stays primary,
+            // @write/@executive/@side-effect drop to the discovery
+            // block (auto-activate on direct call). Action-internal
+            // tools like project_create / project_chat_send /
+            // inbox_post are reached from action handlers via
+            // tools.invokeInternal() — same dispatch pool, just
+            // bypassing the LLM-visibility gate.
             ActionLoopResult loopResult = runStructuredActionLoop(
-                    aiChat,
-                    api -> api.primaryAsLc4j().stream()
-                            .filter(t -> LLM_VISIBLE_TOOLS.contains(t.name()))
-                            .toList(),
+                    aiChat, ContextToolsApi::primaryAsLc4j,
                     messages, ctx, process, maxIters, modelAlias);
 
             ActionTurnOutcome outcome;
@@ -978,9 +760,14 @@ public class EddieEngine extends StructuredActionEngine {
         String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
 
         try {
+            // project_chat_send's schema names the chat input
+            // "message". The action vocabulary calls the same payload
+            // "content" so it doesn't collide with the optional user-
+            // facing "message" field on STEER_PROJECT. Translate at
+            // the handler boundary.
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("project", project);
-            params.put("content", content);
+            params.put("message", content);
             ctx.tools().invokeInternal("project_chat_send", params);
             log.info("Eddie id='{}' STEER_PROJECT project='{}' reason='{}'",
                     process.getId(), project,

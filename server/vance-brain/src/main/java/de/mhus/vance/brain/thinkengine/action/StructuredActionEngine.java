@@ -305,10 +305,12 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             }
 
             messages.add(reply);
+            boolean anyReadToolFailed = false;
             for (ToolExecutionRequest call : readCalls) {
-                String result = invokeReadTool(tools, call, process.getId());
-                messages.add(ToolExecutionResultMessage.from(call, result));
+                ReadToolOutcome outcome = invokeReadTool(tools, call, process.getId());
+                messages.add(ToolExecutionResultMessage.from(call, outcome.json()));
                 toolInvocations++;
+                if (outcome.failed()) anyReadToolFailed = true;
             }
 
             // Refresh tool view after any read-tool dispatch so a
@@ -324,6 +326,30 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             if (actionCall == null) {
                 // Read tools were called, but the LLM didn't commit
                 // to an action yet. Loop and let it see the results.
+                continue;
+            }
+
+            // Concurrent emit: read-tool + action in the same reply.
+            // If any read-tool failed, the action's content was written
+            // under the assumption that the tool succeeded — claiming
+            // success when there is none would hallucinate a result to
+            // the user. Force a re-evaluation iteration so the model
+            // sees the error and revises (or ASK_USER / different
+            // action).
+            if (anyReadToolFailed) {
+                log.info(
+                        "{} id='{}' action-loop: read-tool failure alongside action — re-prompting",
+                        name(), process.getId());
+                messages.add(SystemMessage.from(
+                        "One or more read-tool calls in your previous reply"
+                                + " returned an error. Do NOT emit an action"
+                                + " whose content assumes those tools"
+                                + " succeeded (e.g. don't say a document was"
+                                + " saved if the save call errored). Look at"
+                                + " the tool-result messages above and emit"
+                                + " a fresh "
+                                + actionToolName()
+                                + " that reflects the actual outcome."));
                 continue;
             }
 
@@ -510,9 +536,13 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     /**
      * Read-only tool dispatch: identical pattern to the engine-side
      * tool loop, but stripped of the action-call branch (handled
-     * separately).
+     * separately). Returns the serialised result plus a flag so the
+     * caller can detect whether the call succeeded (used to suppress
+     * a concurrent action that would otherwise hallucinate success).
      */
-    private String invokeReadTool(
+    private record ReadToolOutcome(String json, boolean failed) {}
+
+    private ReadToolOutcome invokeReadTool(
             ContextToolsApi tools, ToolExecutionRequest call, String processId) {
         Map<String, Object> params;
         try {
@@ -520,21 +550,23 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         } catch (RuntimeException e) {
             log.warn("{} id='{}' read-tool='{}' bad arguments: {}",
                     name(), processId, call.name(), e.getMessage());
-            return errorJson("Invalid tool arguments: " + e.getMessage());
+            return new ReadToolOutcome(
+                    errorJson("Invalid tool arguments: " + e.getMessage()), true);
         }
         log.info("{} id='{}' read_tool {}({})",
                 name(), processId, call.name(), summariseArgs(params));
         try {
             Map<String, Object> result = tools.invoke(call.name(), params);
-            return objectMapper.writeValueAsString(result);
+            return new ReadToolOutcome(objectMapper.writeValueAsString(result), false);
         } catch (ToolException e) {
             log.info("{} id='{}' read-tool='{}' returned error: {}",
                     name(), processId, call.name(), e.getMessage());
-            return errorJson(e.getMessage());
+            return new ReadToolOutcome(errorJson(e.getMessage()), true);
         } catch (RuntimeException e) {
             log.warn("{} id='{}' read-tool='{}' unexpected failure: {}",
                     name(), processId, call.name(), e.toString());
-            return errorJson("Tool failed: " + e.getMessage());
+            return new ReadToolOutcome(
+                    errorJson("Tool failed: " + e.getMessage()), true);
         }
     }
 

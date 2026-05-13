@@ -1,7 +1,11 @@
 package de.mhus.vance.brain.tools.exec;
 
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.brain.execution.ExecutionStatus;
+import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
+import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.workspace.RootDirHandle;
 import de.mhus.vance.shared.workspace.WorkspaceException;
 import de.mhus.vance.shared.workspace.WorkspaceService;
@@ -29,10 +33,16 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -59,9 +69,27 @@ public class ExecManager {
     private final ExecProperties properties;
     private final WorkspaceService workspaceService;
     private final ExecutionRegistryService registry;
+    /**
+     * {@link ObjectProvider} keeps the dependency lazy — the router
+     * pulls in {@code ProcessEventEmitter → ThinkEngineService → tools}
+     * which transitively reaches every {@code Tool} bean, including
+     * the ones backed by this manager. Direct injection would close
+     * the cycle.
+     */
+    private final ObjectProvider<EngineMessageRouter> engineMessageRouterProvider;
 
     private final Map<String, Map<String, ExecJob>> jobs = new ConcurrentHashMap<>();
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
+    /**
+     * Drives deadline-based kills. One scheduled task per job, keyed
+     * by jobId so {@link #extendDeadline} can cancel and reschedule
+     * cleanly. Single daemon thread is enough — the fire-callback
+     * dispatches the actual kill, which is a few sub-millisecond
+     * map lookups plus {@code Process.destroyForcibly()}.
+     */
+    private final ScheduledExecutorService watchdog =
+            Executors.newSingleThreadScheduledExecutor(watchdogThreadFactory());
+    private final Map<String, ScheduledFuture<?>> watchdogFutures = new ConcurrentHashMap<>();
 
     // ──────────────────── Public API ────────────────────
 
@@ -72,6 +100,41 @@ public class ExecManager {
      * calls.
      */
     public ExecJob submit(String tenantId, String projectId, String dirName, String command) {
+        return submit(tenantId, projectId, null, dirName, command, null);
+    }
+
+    /**
+     * Variant that binds the job to an owning think-process. When set,
+     * the job's natural terminal transition triggers a {@code
+     * ProcessEvent(EXEC_FINISHED)} delivery to that process's inbox so
+     * the LLM doesn't have to poll {@code exec_status}. See
+     * {@code planning/wakeup-and-exec.md} §4.2.
+     */
+    public ExecJob submit(
+            String tenantId,
+            String projectId,
+            @Nullable String ownerProcessId,
+            String dirName,
+            String command) {
+        return submit(tenantId, projectId, ownerProcessId, dirName, command, null);
+    }
+
+    /**
+     * Owner-aware variant with an optional <em>hard-kill</em> deadline.
+     * When {@code deadline} is set, the {@linkplain #watchdog watchdog}
+     * scheduler kills the subprocess and pushes an
+     * {@code EXEC_TIMEOUT} event if the job is still RUNNING when
+     * that instant passes. The deadline can be pushed out later via
+     * {@link #extendDeadline(String, String, String, java.time.Duration)}.
+     * Plan: {@code planning/wakeup-and-exec.md} Phase 3.
+     */
+    public ExecJob submit(
+            String tenantId,
+            String projectId,
+            @Nullable String ownerProcessId,
+            String dirName,
+            String command,
+            @Nullable Instant deadline) {
         requireTenant(tenantId);
         requireProject(projectId);
         Path cwd = resolveCwd(tenantId, projectId, dirName);
@@ -85,12 +148,42 @@ public class ExecManager {
                     "Cannot create exec job dir: " + e.getMessage(), e);
         }
         ExecJob job = new ExecJob(
-                jobId, projectId, command,
+                jobId, projectId, ownerProcessId, command,
                 jobDir.resolve("stdout.log"),
                 jobDir.resolve("stderr.log"));
+        if (deadline != null) {
+            job.initialDeadline(deadline);
+        }
         indexJob(scopeKey, job);
         workers.submit(() -> runJob(job, cwd));
+        if (deadline != null) {
+            rearmWatchdog(job, deadline);
+        }
         return job;
+    }
+
+    /**
+     * Pushes the deadline of {@code jobId} out by {@code extension}
+     * from now. Returns {@code false} when the job is unknown or no
+     * longer RUNNING (e.g. the natural-completion / watchdog-kill
+     * already happened — the caller's {@code exec_check} will see
+     * the terminal status reflected on the next read).
+     */
+    public boolean extendDeadline(
+            String tenantId, String projectId, String jobId, Duration extension) {
+        if (extension == null || extension.isNegative() || extension.isZero()) {
+            throw new ExecException("extension must be positive");
+        }
+        ExecJob job = get(tenantId, projectId, jobId).orElse(null);
+        if (job == null) {
+            return false;
+        }
+        Instant newDeadline = Instant.now().plus(extension);
+        if (!job.extendDeadline(newDeadline)) {
+            return false;
+        }
+        rearmWatchdog(job, newDeadline);
+        return true;
     }
 
     private Path resolveCwd(String tenantId, String projectId, String dirName) {
@@ -121,7 +214,7 @@ public class ExecManager {
             String tenantId, String projectId,
             @Nullable String sessionId, @Nullable String processId,
             String dirName, String command, long waitMs) {
-        ExecJob job = submit(tenantId, projectId, dirName, command);
+        ExecJob job = submit(tenantId, projectId, processId, dirName, command);
         registry.register(new de.mhus.vance.brain.execution.ExecutionRegistryEntry(
                 job.id(),
                 de.mhus.vance.brain.execution.ExecutionOwner.Brain.INSTANCE,
@@ -252,6 +345,7 @@ public class ExecManager {
         p.destroyForcibly();
         job.status(ExecJob.Status.KILLED);
         job.finishedAt(Instant.now());
+        cancelWatchdog(jobId);
         notifyRegistry(job);
         return true;
     }
@@ -270,6 +364,7 @@ public class ExecManager {
                     j.process().destroyForcibly();
                     j.status(ExecJob.Status.KILLED);
                     j.finishedAt(Instant.now());
+                    cancelWatchdog(j.id());
                     notifyRegistry(j);
                     killed++;
                 }
@@ -319,6 +414,140 @@ public class ExecManager {
         } finally {
             job.finishedAt(Instant.now());
             notifyRegistry(job);
+            cancelWatchdog(job.id());
+            pushCompletionIfTracked(job);
+        }
+    }
+
+    // ──────────────────── Watchdog ────────────────────
+
+    /**
+     * Schedules (or reschedules) the watchdog kill for {@code job}.
+     * Cancels any previous scheduled future so {@code extendDeadline}
+     * can't accumulate parallel timers.
+     */
+    private void rearmWatchdog(ExecJob job, Instant deadline) {
+        long delayMs = Math.max(0, Duration.between(Instant.now(), deadline).toMillis());
+        ScheduledFuture<?> future = watchdog.schedule(
+                () -> fireWatchdog(job), delayMs, TimeUnit.MILLISECONDS);
+        ScheduledFuture<?> prev = watchdogFutures.put(job.id(), future);
+        if (prev != null) {
+            prev.cancel(false);
+        }
+    }
+
+    private void cancelWatchdog(String jobId) {
+        ScheduledFuture<?> future = watchdogFutures.remove(jobId);
+        if (future != null) {
+            future.cancel(false);
+        }
+    }
+
+    /**
+     * Watchdog scheduler callback. Re-checks the deadline because it
+     * might have been extended after we were scheduled — in that case
+     * we re-arm at the new deadline instead of killing. Otherwise we
+     * try to claim the kill atomically; the worker's {@code finally}
+     * picks up the KILLED status and pushes
+     * {@link ProcessEventType#EXEC_TIMEOUT}.
+     */
+    private void fireWatchdog(ExecJob job) {
+        try {
+            Instant currentDeadline = job.deadline();
+            if (currentDeadline != null && currentDeadline.isAfter(Instant.now())) {
+                rearmWatchdog(job, currentDeadline);
+                return;
+            }
+            if (!job.attemptWatchdogKill()) {
+                return;
+            }
+            Process p = job.process();
+            if (p != null) {
+                p.destroyForcibly();
+            }
+            log.info("Watchdog killed job '{}' after deadline expired", job.id());
+        } catch (RuntimeException e) {
+            log.warn("Watchdog fire for job '{}' threw: {}", job.id(), e.toString(), e);
+        }
+    }
+
+    private static ThreadFactory watchdogThreadFactory() {
+        AtomicLong counter = new AtomicLong();
+        return r -> {
+            Thread t = new Thread(r, "exec-watchdog-" + counter.incrementAndGet());
+            t.setDaemon(true);
+            return t;
+        };
+    }
+
+    /**
+     * Pushes a {@code ProcessEvent(EXEC_FINISHED)} to the owning
+     * think-process's inbox after natural completion (the worker
+     * thread reached its {@code finally} block, regardless of exit
+     * status — COMPLETED, FAILED, or KILLED via the
+     * {@link #kill(String, String, String)} path that flips status
+     * outside the worker). The event lets the LLM react to job
+     * termination without polling {@code exec_status}.
+     *
+     * <p>No-op when the job has no owner (background submitter that
+     * doesn't care about completion delivery — e.g. internal Python
+     * tooling that uses inline output exclusively).
+     *
+     * <p>Watchdog-driven kills will use {@code EXEC_TIMEOUT} instead
+     * (Phase 3 of {@code planning/wakeup-and-exec.md}) — see that
+     * doc's §4.2 for the event-type contract.
+     */
+    private void pushCompletionIfTracked(ExecJob job) {
+        String ownerProcessId = job.ownerProcessId();
+        if (ownerProcessId == null || ownerProcessId.isBlank()) {
+            return;
+        }
+        boolean timedOut = job.killedByWatchdog();
+        ProcessEventType eventType = timedOut
+                ? ProcessEventType.EXEC_TIMEOUT
+                : ProcessEventType.EXEC_FINISHED;
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("jobId", job.id());
+            payload.put("status", job.status().name());
+            if (job.exitCode() != null) {
+                payload.put("exitCode", job.exitCode());
+            }
+            Instant finished = job.finishedAt();
+            if (finished != null) {
+                payload.put("finishedAt", finished.toString());
+            }
+            payload.put("projectId", job.projectId());
+            payload.put("stdoutTail", tailFile(job.stdoutFile(),
+                    properties.getCompletionTailLines()));
+            payload.put("stderrTail", tailFile(job.stderrFile(),
+                    properties.getCompletionTailLines()));
+            if (timedOut) {
+                long runMs = Duration.between(job.startedAt(),
+                        finished != null ? finished : Instant.now()).toMillis();
+                payload.put("killedAfterSeconds", runMs / 1000);
+            }
+
+            String summary = timedOut
+                    ? "Exec " + job.id() + " timed out"
+                    : "Exec " + job.id() + " " + job.status().name().toLowerCase();
+            PendingMessageDocument doc = PendingMessageDocument.builder()
+                    .type(PendingMessageType.PROCESS_EVENT)
+                    .at(Instant.now())
+                    .sourceProcessId(ownerProcessId)
+                    .eventType(eventType)
+                    .content(summary)
+                    .payload(payload)
+                    .build();
+            boolean ok = engineMessageRouterProvider.getObject()
+                    .dispatch(ownerProcessId, ownerProcessId, doc);
+            if (!ok) {
+                log.warn("{} dispatch dropped owner='{}' job='{}'",
+                        eventType, ownerProcessId, job.id());
+            }
+        } catch (RuntimeException e) {
+            log.warn("{} dispatch failed owner='{}' job='{}': {}",
+                    eventType, ownerProcessId, job.id(), e.toString(), e);
         }
     }
 
@@ -428,5 +657,7 @@ public class ExecManager {
             }
         }
         workers.shutdownNow();
+        watchdog.shutdownNow();
+        watchdogFutures.clear();
     }
 }

@@ -43,7 +43,20 @@ public class ExecRunTool implements Tool {
                             "description",
                                     "Milliseconds to wait for completion before "
                                             + "returning. Default is the server's "
-                                            + "configured wait.")),
+                                            + "configured wait."),
+                    "deadlineSeconds", Map.of(
+                            "type", "integer",
+                            "description",
+                                    "Optional hard-kill deadline (seconds from now). "
+                                            + "If the subprocess is still running when "
+                                            + "the deadline passes, the watchdog kills "
+                                            + "it and pushes EXEC_TIMEOUT to your inbox. "
+                                            + "Distinct from waitMs (which is just how "
+                                            + "long this call blocks): a job can have "
+                                            + "deadlineSeconds=3600 with waitMs=1000 — "
+                                            + "you'll get the jobId back fast and the "
+                                            + "watchdog handles termination. Extend with "
+                                            + "exec_check(jobId, ifRunning='extend').")),
             "required", List.of("command"));
 
     private final ExecManager execManager;
@@ -63,7 +76,15 @@ public class ExecRunTool implements Tool {
                 + "status + stdout + stderr; otherwise you get the job id and "
                 + "follow up with exec_status. stdoutPath / stderrPath are the "
                 + "complete log files on disk — page through them with bounded "
-                + "further exec_run calls (head, tail, grep -m, sed -n 'A,Bp').";
+                + "further exec_run calls (head, tail, grep -m, sed -n 'A,Bp')."
+                + "\n"
+                + "Push-completion: when the job finally exits you also get an "
+                + "EXEC_FINISHED event in your inbox (or EXEC_TIMEOUT if the "
+                + "watchdog killed it) — no need to keep polling exec_status. "
+                + "For genuinely long-running jobs pass deadlineSeconds, then "
+                + "use the wakeup_in + exec_check heartbeat pattern to keep "
+                + "the lease alive (or let it expire and the watchdog cleans "
+                + "up automatically).";
     }
 
     @Override
@@ -102,9 +123,15 @@ public class ExecRunTool implements Tool {
         if (rawWait instanceof Number n && n.longValue() >= 0) {
             waitMs = n.longValue();
         }
+        java.time.Instant deadline = null;
+        Object rawDeadline = params == null ? null : params.get("deadlineSeconds");
+        if (rawDeadline instanceof Number d && d.longValue() > 0) {
+            deadline = java.time.Instant.now().plusSeconds(d.longValue());
+        }
         String dirName = WorkspaceDirResolver.resolve(workspaceService, ctx, stringOrNull(params, "dirName"));
         try {
-            ExecJob job = execManager.submit(ctx.tenantId(), ctx.projectId(), dirName, command);
+            ExecJob job = execManager.submit(
+                    ctx.tenantId(), ctx.projectId(), ctx.processId(), dirName, command, deadline);
             registry.register(new ExecutionRegistryEntry(
                     job.id(),
                     ExecutionOwner.Brain.INSTANCE,

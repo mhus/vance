@@ -16,6 +16,7 @@ final class ExecJob {
 
     private final String id;
     private final String projectId;
+    private final @Nullable String ownerProcessId;
     private final String command;
     private final Path stdoutFile;
     private final Path stderrFile;
@@ -29,10 +30,23 @@ final class ExecJob {
     private volatile @Nullable Instant finishedAt;
     private volatile @Nullable Process process;
     private volatile Instant lastOutputAt;
+    private volatile @Nullable Instant deadline;
+    private volatile boolean killedByWatchdog;
 
     ExecJob(String id, String projectId, String command, Path stdoutFile, Path stderrFile) {
+        this(id, projectId, null, command, stdoutFile, stderrFile);
+    }
+
+    ExecJob(
+            String id,
+            String projectId,
+            @Nullable String ownerProcessId,
+            String command,
+            Path stdoutFile,
+            Path stderrFile) {
         this.id = id;
         this.projectId = projectId;
+        this.ownerProcessId = ownerProcessId;
         this.command = command;
         this.stdoutFile = stdoutFile;
         this.stderrFile = stderrFile;
@@ -42,6 +56,7 @@ final class ExecJob {
 
     String id() { return id; }
     String projectId() { return projectId; }
+    @Nullable String ownerProcessId() { return ownerProcessId; }
     String command() { return command; }
     Path stdoutFile() { return stdoutFile; }
     Path stderrFile() { return stderrFile; }
@@ -83,5 +98,54 @@ final class ExecJob {
 
     boolean isTerminal() {
         return status != Status.RUNNING;
+    }
+
+    @Nullable Instant deadline() { return deadline; }
+
+    /**
+     * Sets the deadline at submit-time, before the worker is started.
+     * Subsequent changes must go through {@link #extendDeadline(Instant)}
+     * which guards against racing with a watchdog that has already
+     * picked the job up.
+     */
+    void initialDeadline(@Nullable Instant deadline) {
+        this.deadline = deadline;
+    }
+
+    /**
+     * Pushes the deadline out. Synchronised against
+     * {@link #attemptWatchdogKill()} so a watchdog firing right now
+     * either wins (kill) or loses (extension) — never both. Returns
+     * {@code false} when the job is no longer RUNNING.
+     */
+    synchronized boolean extendDeadline(Instant newDeadline) {
+        if (status != Status.RUNNING) {
+            return false;
+        }
+        this.deadline = newDeadline;
+        return true;
+    }
+
+    /**
+     * Watchdog entry point. Atomically transitions a still-RUNNING
+     * job to KILLED with the watchdog-marker so the completion-push
+     * path knows to emit {@link
+     * de.mhus.vance.api.thinkprocess.ProcessEventType#EXEC_TIMEOUT}
+     * rather than {@code EXEC_FINISHED}. Returns {@code true} when
+     * the kill was claimed; {@code false} when the job already
+     * terminated (natural completion / user-driven kill won the race).
+     */
+    synchronized boolean attemptWatchdogKill() {
+        if (status != Status.RUNNING) {
+            return false;
+        }
+        status = Status.KILLED;
+        killedByWatchdog = true;
+        finishedAt = Instant.now();
+        return true;
+    }
+
+    boolean killedByWatchdog() {
+        return killedByWatchdog;
     }
 }

@@ -36,7 +36,9 @@ public class ExecStatusTool implements Tool {
     @Override
     public String description() {
         return "Check status and inline output of a previously started exec "
-                + "job by id. Returns the same shape as exec_run.";
+                + "job by id. Returns the same shape as exec_run. Passive "
+                + "read — use exec_check instead when you need to commit to "
+                + "extend / kill in the same call (the watchdog heartbeat).";
     }
 
     @Override

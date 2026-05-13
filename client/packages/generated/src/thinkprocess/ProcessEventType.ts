@@ -9,5 +9,8 @@ export enum ProcessEventType {
   DONE,
   FAILED,
   STOPPED,
-  SUMMARY
+  SUMMARY,
+  SCHEDULED_WAKEUP,
+  EXEC_FINISHED,
+  EXEC_TIMEOUT
 }

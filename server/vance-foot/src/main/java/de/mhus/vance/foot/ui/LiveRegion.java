@@ -67,6 +67,12 @@ public class LiveRegion {
     private int liveLines = 0;
     /** Row index of the visible cursor within the live region (0 = top). */
     private int cursorRowInLive = 0;
+    /** Wall-clock millis of the last paint — drives the heartbeat skip. */
+    private volatile long lastPaintMillis = 0;
+    /** Busy state observed at the previous animator tick (for transition detect). */
+    private boolean lastTickBusy = false;
+    /** How long the animator may skip ticks while idle before forcing one. */
+    private static final long IDLE_HEARTBEAT_MS = 10_000;
 
     private volatile String inputText = "";
     private volatile int cursorIdx = 0;
@@ -259,6 +265,18 @@ public class LiveRegion {
         }
     }
 
+    /**
+     * External request to stop. Used by slash-commands like {@code /quit}
+     * that flip {@link ChatRepl#requestStop()} but don't otherwise touch
+     * us — without this, {@link #waitUntilStopped()} keeps polling
+     * forever.
+     */
+    public void requestStop() {
+        stopRequested.set(true);
+        Thread t = inputThread;
+        if (t != null) t.interrupt();
+    }
+
     /** Request a redraw of the live region (e.g., when status state changed). */
     public void refresh() {
         paintLive();
@@ -305,9 +323,34 @@ public class LiveRegion {
 
     // ─── Animation ─────────────────────────────────────────────────
 
+    /**
+     * Animator tick. Runs at {@link #ANIMATION_INTERVAL_MS} but only
+     * actually paints when there's a reason:
+     * <ul>
+     *   <li>Currently busy → spinner needs to advance every tick.</li>
+     *   <li>Busy state just flipped (busy→idle) → one final repaint to
+     *       clear the spinner.</li>
+     *   <li>Heartbeat: it's been longer than {@link #IDLE_HEARTBEAT_MS}
+     *       since any paint (catches drift from things like terminal
+     *       resize or IDE-selection updates that didn't notify us).</li>
+     * </ul>
+     */
     private void tickAnimate() {
-        frame.incrementAndGet();
-        paintLive();
+        if (terminal == null) return;
+        boolean busyNow = statusBar.isBusy();
+        long now = System.currentTimeMillis();
+        boolean busyChanged = busyNow != lastTickBusy;
+        lastTickBusy = busyNow;
+
+        if (busyNow) {
+            frame.incrementAndGet();
+            paintLive();
+        } else if (busyChanged) {
+            paintLive();
+        } else if (now - lastPaintMillis > IDLE_HEARTBEAT_MS) {
+            paintLive();
+        }
+        // Else: nothing to do — skip the paint to spare cycles.
     }
 
     // ─── Input loop ────────────────────────────────────────────────
@@ -694,6 +737,7 @@ public class LiveRegion {
         synchronized (writeLock) {
             eraseLive();
             paintLiveInner();
+            lastPaintMillis = System.currentTimeMillis();
         }
     }
 

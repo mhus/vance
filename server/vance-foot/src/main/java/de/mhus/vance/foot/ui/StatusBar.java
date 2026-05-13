@@ -154,6 +154,15 @@ public class StatusBar {
         return state == null ? "" : state.displayString().orElse("");
     }
 
+    /**
+     * Whether the live region needs to keep animating the spinner. Used
+     * by {@link LiveRegion#tickAnimate()} to skip repaints when nothing
+     * is in flight.
+     */
+    public boolean isBusy() {
+        return busy.isBusy();
+    }
+
     private static String clamp(String s, int width, boolean considerEscapes) {
         if (!considerEscapes) {
             return s.length() <= width ? s : s.substring(0, width);

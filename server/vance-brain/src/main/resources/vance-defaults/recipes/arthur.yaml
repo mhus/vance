@@ -73,27 +73,89 @@ modes:
     # no way to escape the minimal NORMAL toolset). Both are pure
     # read-only inspection tools, no side effects.
     allowedToolsDefer:
+      # Identity / discovery
       - current_time
+      # Process orchestration (action-internal, only via structured actions)
       - process_create
       - process_create_delegate
       - process_steer
       - process_stop
       - process_pause
       - process_resume
+      # Project read
       - project_list
       - project_current
+      - project_switch
+      # Document read
       - doc_read
       - doc_list
       - doc_find
+      - cross_doc_list_projects
+      # Document write — tier-1 content ops Arthur handles directly
+      # without spawning a worker. doc_purge / doc_delete stay hidden
+      # (destructive); the delegation path is the only way to those.
+      - doc_create_text
+      - doc_create_kind
+      - doc_edit
+      - doc_replace_lines
+      - doc_concat
+      - doc_import_url
+      - doc_add_tag
+      - doc_remove_tag
+      - doc_move
+      - doc_copy
+      # Scratchpad / per-process state
       - scratchpad_get
       - scratchpad_list
+      - scratchpad_set
+      - scratchpad_delete
+      # Data slots (free-form key/value)
       - data_get
+      - data_set
+      - data_delete
+      # Lists
+      - list_append
+      - list_insert
+      - list_remove
+      - list_replace
+      - list_clear
+      # Trees
+      - tree_add_child
+      - tree_add_sibling
+      - tree_move
+      - tree_remove
+      - tree_replace_text
+      # Sheets
+      - sheet_add_row
+      - sheet_add_column
+      - sheet_set_cell
+      - sheet_clear_cell
+      # Records
+      - records_add_row
+      - records_add_column
+      - records_update_field
+      # Graph
+      - graph_add_node
+      - graph_add_edge
+      - graph_remove_node
+      - graph_remove_edge
+      - graph_set_directed
+      # Relations
+      - relations_add
+      - relations_find
+      # RAG read + light ingest (no destructive ops)
+      - rag_list
+      - rag_add_text
+      - rag_add_path
+      - rag_add_workspace_file
+      # Web
       - web_search
       - web_fetch
-      - cross_doc_list_projects
-      - relations_find
-      - rag_list
+      # Kits (read-only)
       - kit_status
+      # Workspace scratching (server-side scratch dir)
+      - workspace_write
+      # Foot client tools
       - exec_status
       - client_file_read
       - client_file_list

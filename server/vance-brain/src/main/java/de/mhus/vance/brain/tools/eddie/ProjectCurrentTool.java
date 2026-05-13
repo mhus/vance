@@ -58,13 +58,22 @@ public class ProjectCurrentTool implements Tool {
 
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
-        Optional<String> active = eddieContext.readActiveProject(ctx);
+        // Resolution order mirrors EddieContext.resolveProject:
+        // Eddie hub-process active-slot (set by project_switch) →
+        // ctx.projectId() (session-bound project for Arthur/Ford foot
+        // sessions, where there is no switch step) → null. Without
+        // the ctx fallback, this tool reports "no project active"
+        // even though the LLM is clearly operating inside one.
+        String name = eddieContext.readActiveProject(ctx)
+                .orElseGet(() -> {
+                    String bound = ctx.projectId();
+                    return (bound == null || bound.isBlank()) ? null : bound;
+                });
         Map<String, Object> out = new LinkedHashMap<>();
-        if (active.isEmpty()) {
+        if (name == null) {
             out.put("active", null);
             return out;
         }
-        String name = active.get();
         Optional<ProjectDocument> project =
                 projectService.findByTenantAndName(ctx.tenantId(), name);
         if (project.isEmpty()) {

@@ -65,6 +65,10 @@ public class ChatRepl {
 
     public void requestStop() {
         stopRequested.set(true);
+        // Also tell LiveRegion to release waitUntilStopped — otherwise
+        // /quit just flips our flag and the run loop stays parked in
+        // the inner wait.
+        liveRegion.requestStop();
     }
 
     public boolean isStopRequested() {
@@ -111,7 +115,22 @@ public class ChatRepl {
             return;
         }
         appendHistoryFile(historyFile, line);
+        echoSubmitted(line);
         input.submitFromRepl(line);
+    }
+
+    /**
+     * Echo what the user just submitted as one or more inverse-video
+     * (reverse) static lines, so it's visible above the brain's response
+     * in the scrollback. Multi-line submits are emitted line-by-line —
+     * SGR doesn't extend across {@code \n}, so wrapping each segment
+     * separately is the safe layout.
+     */
+    private void echoSubmitted(String line) {
+        String esc = "\u001b";
+        for (String segment : line.split("\n", -1)) {
+            liveRegion.emitStatic(esc + "[7m ❯ " + segment + " " + esc + "[0m");
+        }
     }
 
     private void onInterrupt() {

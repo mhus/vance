@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.client;
 
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.brain.execution.ExecutionRegistryService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -13,6 +14,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,10 +36,15 @@ public class ClientToolSource implements ToolSource {
 
     private final ClientToolRegistry registry;
     private final ClientToolChannel channel;
+    private final ExecutionRegistryService executionRegistry;
 
-    public ClientToolSource(ClientToolRegistry registry, ClientToolChannel channel) {
+    public ClientToolSource(
+            ClientToolRegistry registry,
+            ClientToolChannel channel,
+            ExecutionRegistryService executionRegistry) {
         this.registry = registry;
         this.channel = channel;
+        this.executionRegistry = executionRegistry;
     }
 
     @Override
@@ -136,7 +143,10 @@ public class ClientToolSource implements ToolSource {
             ClientToolRegistry.Pending pending = registry.beginInvocation(sessionId, name());
             try {
                 channel.sendInvoke(entry.wsSession(), pending.correlationId(), name(), params);
-                return pending.future().get(INVOCATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                Map<String, Object> result = pending.future().get(
+                        INVOCATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                maybeAttachOwnerProcessId(name(), result, ctx.processId());
+                return result;
             } catch (TimeoutException e) {
                 registry.cancel(pending.correlationId(),
                         "Client tool '" + name() + "' timed out after "
@@ -161,5 +171,28 @@ public class ClientToolSource implements ToolSource {
                         "Client tool '" + name() + "' dispatch failed: " + e.getMessage(), e);
             }
         }
+    }
+
+    /**
+     * Threads the brain-side caller's processId onto a foot-spawned
+     * exec entry so the {@link ExecutionRegistryService} can later
+     * dispatch {@code EXEC_FINISHED} / {@code EXEC_TIMEOUT} events to
+     * the right inbox when the foot's ENDED frame arrives.
+     *
+     * <p>Only {@code client_exec_run} carries an executionId in its
+     * result — other client tools are left untouched. The STARTED
+     * frame arrives over the same WebSocket as the tool-result, in
+     * order, so the registry entry exists by the time we get here.
+     * On the unlikely race (entry already dropped, e.g. instant
+     * finish + foot disconnect) the attach silently does nothing.
+     */
+    private void maybeAttachOwnerProcessId(
+            String toolName, Map<String, Object> result, @Nullable String processId) {
+        if (processId == null || processId.isBlank()) return;
+        if (!"client_exec_run".equals(toolName)) return;
+        if (result == null) return;
+        Object rawId = result.get("id");
+        if (!(rawId instanceof String execId) || execId.isBlank()) return;
+        executionRegistry.attachProcessId(execId, processId);
     }
 }

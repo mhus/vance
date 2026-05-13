@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.execution.ExecEvent;
 import de.mhus.vance.api.execution.ExecListSnapshot;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import java.io.IOException;
@@ -16,6 +17,7 @@ import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.socket.WebSocketSession;
 import tools.jackson.databind.ObjectMapper;
 
@@ -33,7 +35,10 @@ class ExecEventHandlerTest {
         registry = new ExecutionRegistryService();
         ObjectMapper mapper = new ObjectMapper();
         sender = mock(WebSocketSender.class);
-        handler = new ExecEventHandler(mapper, sender, registry);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<EngineMessageRouter> routerProvider = mock(ObjectProvider.class);
+        when(routerProvider.getObject()).thenReturn(mock(EngineMessageRouter.class));
+        handler = new ExecEventHandler(mapper, sender, registry, routerProvider);
         snapshotHandler = new ExecListSnapshotHandler(mapper, sender, registry);
         wsSession = mock(WebSocketSession.class);
         ctx = new ConnectionContext(

@@ -53,6 +53,20 @@ public class ExecutionRegistryService {
         return Optional.ofNullable(entries.get(executionId));
     }
 
+    /**
+     * Attaches the owning think-process id to an existing entry — used
+     * for foot-spawned jobs where the STARTED frame doesn't carry the
+     * brain-side processId. Returns {@code true} when the entry was
+     * found and updated; {@code false} when the executionId is
+     * unknown (caller is too early — the STARTED frame hasn't been
+     * processed yet — or the entry has already been dropped).
+     */
+    public boolean attachProcessId(String executionId, String processId) {
+        ExecutionRegistryEntry prev = entries.computeIfPresent(executionId,
+                (id, e) -> e.withProcessId(processId));
+        return prev != null;
+    }
+
     /** Snapshot view, oldest-first by {@code startedAt}. */
     public List<ExecutionRegistryEntry> list(ExecutionScopeFilter filter) {
         Collection<ExecutionRegistryEntry> snap = entries.values();

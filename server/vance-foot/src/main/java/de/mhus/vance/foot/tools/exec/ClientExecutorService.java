@@ -25,6 +25,11 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -51,6 +56,14 @@ public class ClientExecutorService {
 
     private final Map<String, ClientExecJob> jobs = Collections.synchronizedMap(new LinkedHashMap<>());
     private final ExecutorService workers = Executors.newVirtualThreadPerTaskExecutor();
+    /**
+     * Drives the optional hard-kill deadline. One scheduled task per
+     * job so a kill won't impact unrelated jobs and so the future can
+     * be cancelled cleanly on natural completion.
+     */
+    private final ScheduledExecutorService watchdog =
+            Executors.newSingleThreadScheduledExecutor(watchdogThreadFactory());
+    private final Map<String, ScheduledFuture<?>> watchdogFutures = new ConcurrentHashMap<>();
 
     /** Lazy — dispatcher in turn depends on ConnectionService which depends on this one indirectly. */
     private final ObjectProvider<FootExecEventDispatcher> dispatcher;
@@ -60,7 +73,12 @@ public class ClientExecutorService {
     }
 
     public ClientExecJob submit(String command) {
-        return submit(command, null, null);
+        return submit(command, null, null, null);
+    }
+
+    public ClientExecJob submit(
+            String command, @Nullable String sessionId, @Nullable String projectId) {
+        return submit(command, sessionId, projectId, null);
     }
 
     /**
@@ -68,9 +86,19 @@ public class ClientExecutorService {
      * session-bind, if any, so the brain registry can later filter by
      * project/session. Pass {@code null} for both scope fields when the
      * caller is the local CLI (no active brain bind).
+     *
+     * <p>When {@code deadline} is non-null, a simple hard-kill watchdog
+     * is armed: if the subprocess is still RUNNING when the instant
+     * passes, the foot kills it forcibly and marks the job
+     * {@code timedOut=true}. Unlike the brain-side variant, the foot
+     * has no extend / lease API — pass the full intended timeout up
+     * front.
      */
     public ClientExecJob submit(
-            String command, @Nullable String sessionId, @Nullable String projectId) {
+            String command,
+            @Nullable String sessionId,
+            @Nullable String projectId,
+            @Nullable Instant deadline) {
         if (command == null || command.isBlank()) {
             throw new IllegalArgumentException("command is required");
         }
@@ -87,9 +115,15 @@ public class ClientExecutorService {
                 jobDir.resolve("stdout.log"),
                 jobDir.resolve("stderr.log"),
                 sessionId, projectId);
+        if (deadline != null) {
+            job.deadline(deadline);
+        }
         index(job);
         notifyStarted(job);
         workers.submit(() -> runJob(job));
+        if (deadline != null) {
+            armWatchdog(job, deadline);
+        }
         return job;
     }
 
@@ -219,8 +253,53 @@ public class ClientExecutorService {
         p.destroyForcibly();
         job.status(ClientExecJob.Status.KILLED);
         job.finishedAt(Instant.now());
+        cancelWatchdog(id);
         notifyEnded(job);
         return true;
+    }
+
+    // ──────────────────── Watchdog ────────────────────
+
+    private void armWatchdog(ClientExecJob job, Instant deadline) {
+        long delayMs = Math.max(0,
+                Duration.between(Instant.now(), deadline).toMillis());
+        ScheduledFuture<?> future = watchdog.schedule(
+                () -> fireWatchdog(job), delayMs, TimeUnit.MILLISECONDS);
+        ScheduledFuture<?> prev = watchdogFutures.put(job.id(), future);
+        if (prev != null) {
+            prev.cancel(false);
+        }
+    }
+
+    private void cancelWatchdog(String jobId) {
+        ScheduledFuture<?> future = watchdogFutures.remove(jobId);
+        if (future != null) {
+            future.cancel(false);
+        }
+    }
+
+    private void fireWatchdog(ClientExecJob job) {
+        try {
+            if (!job.attemptWatchdogKill()) {
+                return;
+            }
+            Process p = job.process();
+            if (p != null) {
+                p.destroyForcibly();
+            }
+            log.info("Client watchdog killed job '{}' after deadline expired", job.id());
+        } catch (RuntimeException e) {
+            log.warn("Client watchdog fire for job '{}' threw: {}", job.id(), e.toString(), e);
+        }
+    }
+
+    private static ThreadFactory watchdogThreadFactory() {
+        AtomicLong counter = new AtomicLong();
+        return r -> {
+            Thread t = new Thread(r, "client-exec-watchdog-" + counter.incrementAndGet());
+            t.setDaemon(true);
+            return t;
+        };
     }
 
     // ──────────────────── Runner ────────────────────
@@ -263,6 +342,7 @@ public class ClientExecutorService {
             job.status(ClientExecJob.Status.FAILED);
         } finally {
             job.finishedAt(Instant.now());
+            cancelWatchdog(job.id());
             notifyEnded(job);
         }
     }
@@ -332,6 +412,8 @@ public class ClientExecutorService {
             }
         }
         workers.shutdownNow();
+        watchdog.shutdownNow();
+        watchdogFutures.clear();
     }
 
     /** Thrown when the executor itself can't get a job started (filesystem, etc.). */

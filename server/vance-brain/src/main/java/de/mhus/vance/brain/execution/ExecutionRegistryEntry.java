@@ -32,4 +32,11 @@ public record ExecutionRegistryEntry(
                 command, dirName, startedAt, lastOutputAt, endedAt,
                 status, exitCode, stdoutPath, stderrPath);
     }
+
+    public ExecutionRegistryEntry withProcessId(String newProcessId) {
+        return new ExecutionRegistryEntry(
+                executionId, owner, tenantId, projectId, sessionId, newProcessId,
+                command, dirName, startedAt, lastOutputAt, endedAt,
+                status, exitCode, stdoutPath, stderrPath);
+    }
 }

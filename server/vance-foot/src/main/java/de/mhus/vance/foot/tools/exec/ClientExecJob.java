@@ -30,6 +30,8 @@ final class ClientExecJob {
     private volatile @Nullable Instant finishedAt;
     private volatile @Nullable Process process;
     private volatile Instant lastOutputAt;
+    private volatile @Nullable Instant deadline;
+    private volatile boolean timedOut;
 
     ClientExecJob(String id, String command, Path stdoutFile, Path stderrFile) {
         this(id, command, stdoutFile, stderrFile, null, null);
@@ -92,5 +94,26 @@ final class ClientExecJob {
 
     boolean isTerminal() {
         return status != Status.RUNNING;
+    }
+
+    @Nullable Instant deadline() { return deadline; }
+    void deadline(@Nullable Instant d) { this.deadline = d; }
+
+    boolean timedOut() { return timedOut; }
+
+    /**
+     * Atomic watchdog kill: transition from RUNNING to KILLED and set
+     * the {@code timedOut} marker in one synchronised step so a racing
+     * natural-completion path can't both win and emit a wrong status.
+     * Returns {@code true} when this caller claimed the kill.
+     */
+    synchronized boolean attemptWatchdogKill() {
+        if (status != Status.RUNNING) {
+            return false;
+        }
+        status = Status.KILLED;
+        timedOut = true;
+        finishedAt = Instant.now();
+        return true;
     }
 }

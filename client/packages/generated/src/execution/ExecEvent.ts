@@ -16,4 +16,5 @@ export interface ExecEvent {
   exitCode?: number;
   stdoutPath?: string;
   stderrPath?: string;
+  timedOut?: boolean;
 }

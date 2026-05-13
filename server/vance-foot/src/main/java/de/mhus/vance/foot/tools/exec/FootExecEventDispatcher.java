@@ -52,6 +52,7 @@ public class FootExecEventDispatcher {
                 .endedAt(job.finishedAt())
                 .status(job.status().name())
                 .exitCode(job.exitCode())
+                .timedOut(job.timedOut() ? Boolean.TRUE : null)
                 .build();
         publish(event);
     }

@@ -33,7 +33,18 @@ public class ClientExecRunTool implements ClientTool {
                             "type", "integer",
                             "description",
                                     "Milliseconds to wait for completion before returning. "
-                                            + "Default 15 000.")),
+                                            + "Default 15 000."),
+                    "deadlineSeconds", Map.of(
+                            "type", "integer",
+                            "description",
+                                    "Optional hard-kill deadline (seconds from now). "
+                                            + "If the subprocess is still running when "
+                                            + "the deadline passes the foot kills it "
+                                            + "forcibly and the resulting EXEC_FINISHED "
+                                            + "event in your inbox is flagged with "
+                                            + "EXEC_TIMEOUT. Unlike brain's exec_run "
+                                            + "there is no extend/lease API on the foot — "
+                                            + "pass the full intended timeout up front.")),
             "required", List.of("command"));
 
     private final ClientExecutorService executor;
@@ -81,10 +92,15 @@ public class ClientExecRunTool implements ClientTool {
         if (rawWait instanceof Number n && n.longValue() >= 0) {
             waitMs = n.longValue();
         }
+        java.time.Instant deadline = null;
+        Object rawDeadline = params == null ? null : params.get("deadlineSeconds");
+        if (rawDeadline instanceof Number d && d.longValue() > 0) {
+            deadline = java.time.Instant.now().plusSeconds(d.longValue());
+        }
         SessionService.BoundSession bind = sessionService.current();
         String sessionId = bind == null ? null : bind.sessionId();
         String projectId = bind == null ? null : bind.projectId();
-        ClientExecJob job = executor.submit(command, sessionId, projectId);
+        ClientExecJob job = executor.submit(command, sessionId, projectId, deadline);
         executor.waitFor(job, waitMs);
         return ClientExecJobRenderer.render(job);
     }

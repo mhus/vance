@@ -85,4 +85,14 @@ public class ExecEvent {
 
     /** Set on STARTED. */
     private @Nullable String stderrPath;
+
+    /**
+     * Set on ENDED to {@code true} when the foot-side watchdog killed
+     * the job because its {@code deadlineSeconds} elapsed (as opposed
+     * to natural completion or an explicit {@code client_exec_kill}).
+     * Lets the brain emit {@code EXEC_TIMEOUT} instead of
+     * {@code EXEC_FINISHED} when pushing the event into the
+     * owner-process inbox.
+     */
+    private @Nullable Boolean timedOut;
 }

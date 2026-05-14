@@ -35,4 +35,14 @@ public class ProjectCreateRequest {
 
     @Builder.Default
     private List<String> teamIds = new ArrayList<>();
+
+    /**
+     * Optional — name of an entry in the tenant-wide project-kits
+     * catalog (spec: {@code project-kits-catalog.md}). When set, the
+     * catalog entry is resolved and the referenced kit is installed
+     * into the new project right after creation, in the same request.
+     * Unknown names fail the whole call so the operator never gets a
+     * half-finished project. {@code null} or blank → no kit install.
+     */
+    private @Nullable String kitName;
 }

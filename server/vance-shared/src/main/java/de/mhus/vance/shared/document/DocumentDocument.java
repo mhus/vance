@@ -34,7 +34,10 @@ import org.springframework.data.mongodb.core.mapping.Document;
                 unique = true),
         @CompoundIndex(
                 name = "tenant_project_status_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'status': 1 }")
+                def = "{ 'tenantId': 1, 'projectId': 1, 'status': 1 }"),
+        @CompoundIndex(
+                name = "tenant_project_summary_claim_idx",
+                def = "{ 'tenantId': 1, 'projectId': 1, 'summaryDirty': 1, 'autoSummary': 1, 'claimedBy': 1 }")
 })
 @Data
 @Builder
@@ -102,4 +105,32 @@ public class DocumentDocument {
 
     @CreatedDate
     private @Nullable Instant createdAt;
+
+    /**
+     * Opt-in marker for the auto-summary scheduler. Default is set in
+     * {@link DocumentService#create} from the document's mime-type
+     * (text/markdown + text/plain start out true, everything else false).
+     * User-editable afterwards.
+     */
+    private boolean autoSummary;
+
+    /**
+     * Dirty flag for the auto-summary scheduler — set in
+     * {@link DocumentService#update} when inline content changes,
+     * cleared by {@link DocumentService#writeSummary} after the
+     * scheduler successfully produced a summary.
+     */
+    private boolean summaryDirty;
+
+    /** LLM-generated summary, written by the auto-summary driver. */
+    private @Nullable String summary;
+
+    /** When the summary was last produced. */
+    private @Nullable Instant summarizedAt;
+
+    /** Pod that currently holds the summary claim ({@code null} = unclaimed). */
+    private @Nullable String claimedBy;
+
+    /** When the summary claim was acquired — used for stale-claim recovery. */
+    private @Nullable Instant claimedAt;
 }

@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, brainFetchWithMeta } from '@vance/shared';
 /**
  * CRUD on projects. {@code remove} archives — sets status to ARCHIVED and
  * moves the project into the reserved "archived" group.
@@ -26,9 +26,10 @@ export function useAdminProjects() {
         busy.value = true;
         error.value = null;
         try {
-            const created = await brainFetch('POST', 'admin/projects', { body: req });
+            const { data, response } = await brainFetchWithMeta('POST', 'admin/projects', { body: req });
+            const kitInstallError = response.headers.get('X-Vance-Kit-Install-Error');
             await reload();
-            return created;
+            return { project: data, kitInstallError };
         }
         catch (e) {
             error.value = e instanceof Error ? e.message : 'Failed to create project.';

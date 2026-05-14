@@ -18,4 +18,8 @@ export interface DocumentDto {
   inlineText?: string;
   kind?: string;
   headers: Record<string, string>;
+  autoSummary: boolean;
+  summaryDirty: boolean;
+  summary?: string;
+  summarizedAtMs?: number;
 }

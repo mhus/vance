@@ -4,6 +4,7 @@ import { EditorShell, VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VM
 import { useAdminTenant } from '@/composables/useAdminTenant';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
+import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useKitAdmin } from '@/composables/useKitAdmin';
 import { KitImportMode, SettingType, } from '@vance/generated';
@@ -14,6 +15,7 @@ const groupsState = useAdminProjectGroups();
 const projectsState = useAdminProjects();
 const settingsState = useScopeSettings();
 const kitState = useKitAdmin();
+const projectKitsCatalog = useProjectKitsCatalog();
 const selection = ref({ kind: 'tenant' });
 const banner = ref(null);
 // ─── Detail-form state ───
@@ -31,6 +33,7 @@ const showCreateProject = ref(false);
 const newProjectName = ref('');
 const newProjectTitle = ref('');
 const newProjectGroupId = ref(null);
+const newProjectKitName = ref('');
 // ─── Kit dialog state ───
 const showKitDialog = ref(false);
 const kitDialogMode = ref('install');
@@ -286,27 +289,49 @@ function openCreateProject() {
     newProjectName.value = '';
     newProjectTitle.value = '';
     newProjectGroupId.value = selection.value.kind === 'group' ? selection.value.name : null;
+    newProjectKitName.value = '';
     showCreateProject.value = true;
+    // Refresh catalog on every open so the picker reflects the latest
+    // tenant configuration. Background load — UI shows entries as they
+    // arrive, or "no kits configured" if catalog is empty.
+    void projectKitsCatalog.load();
 }
 async function submitCreateProject() {
     const name = newProjectName.value.trim();
     if (!name)
         return;
     try {
-        await projectsState.create({
+        const result = await projectsState.create({
             name,
             title: newProjectTitle.value.trim() || undefined,
             projectGroupId: newProjectGroupId.value || undefined,
             teamIds: [],
+            kitName: newProjectKitName.value.trim() || undefined,
         });
         showCreateProject.value = false;
         selectProject(name);
-        banner.value = t('scopes.project.created', { name });
+        if (result.kitInstallError) {
+            banner.value = t('scopes.project.createdWithKitError', {
+                name,
+                kit: newProjectKitName.value,
+                error: result.kitInstallError,
+            });
+        }
+        else {
+            banner.value = t('scopes.project.created', { name });
+        }
     }
     catch {
         /* state.error */
     }
 }
+const kitSelectOptions = computed(() => [
+    { value: '', label: t('scopes.createProject.kitNone') },
+    ...(projectKitsCatalog.catalog.value?.kits ?? []).map(entry => ({
+        value: entry.name,
+        label: entry.title || entry.name,
+    })),
+]);
 // ─── Kit actions ───
 const kitDialogTitle = computed(() => {
     switch (kitDialogMode.value) {
@@ -2083,55 +2108,70 @@ const __VLS_351 = __VLS_350({
     label: (__VLS_ctx.$t('scopes.project.groupLabel')),
     options: (__VLS_ctx.groupSelectOptions),
 }, ...__VLS_functionalComponentArgsRest(__VLS_350));
+const __VLS_353 = {}.VSelect;
+/** @type {[typeof __VLS_components.VSelect, ]} */ ;
+// @ts-ignore
+const __VLS_354 = __VLS_asFunctionalComponent(__VLS_353, new __VLS_353({
+    modelValue: (__VLS_ctx.newProjectKitName),
+    label: (__VLS_ctx.$t('scopes.createProject.kitLabel')),
+    options: (__VLS_ctx.kitSelectOptions),
+    help: (__VLS_ctx.$t('scopes.createProject.kitHelp')),
+}));
+const __VLS_355 = __VLS_354({
+    modelValue: (__VLS_ctx.newProjectKitName),
+    label: (__VLS_ctx.$t('scopes.createProject.kitLabel')),
+    options: (__VLS_ctx.kitSelectOptions),
+    help: (__VLS_ctx.$t('scopes.createProject.kitHelp')),
+}, ...__VLS_functionalComponentArgsRest(__VLS_354));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2" },
 });
-const __VLS_353 = {}.VButton;
+const __VLS_357 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_354 = __VLS_asFunctionalComponent(__VLS_353, new __VLS_353({
+const __VLS_358 = __VLS_asFunctionalComponent(__VLS_357, new __VLS_357({
     ...{ 'onClick': {} },
     variant: "ghost",
 }));
-const __VLS_355 = __VLS_354({
+const __VLS_359 = __VLS_358({
     ...{ 'onClick': {} },
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_354));
-let __VLS_357;
-let __VLS_358;
-let __VLS_359;
-const __VLS_360 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_358));
+let __VLS_361;
+let __VLS_362;
+let __VLS_363;
+const __VLS_364 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showCreateProject = false;
     }
 };
-__VLS_356.slots.default;
+__VLS_360.slots.default;
 (__VLS_ctx.$t('scopes.common.cancel'));
-var __VLS_356;
-const __VLS_361 = {}.VButton;
+var __VLS_360;
+const __VLS_365 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_362 = __VLS_asFunctionalComponent(__VLS_361, new __VLS_361({
+const __VLS_366 = __VLS_asFunctionalComponent(__VLS_365, new __VLS_365({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (!__VLS_ctx.newProjectName.trim()),
     loading: (__VLS_ctx.projectsState.busy.value),
 }));
-const __VLS_363 = __VLS_362({
+const __VLS_367 = __VLS_366({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (!__VLS_ctx.newProjectName.trim()),
     loading: (__VLS_ctx.projectsState.busy.value),
-}, ...__VLS_functionalComponentArgsRest(__VLS_362));
-let __VLS_365;
-let __VLS_366;
-let __VLS_367;
-const __VLS_368 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_366));
+let __VLS_369;
+let __VLS_370;
+let __VLS_371;
+const __VLS_372 = {
     onClick: (__VLS_ctx.submitCreateProject)
 };
-__VLS_364.slots.default;
+__VLS_368.slots.default;
 (__VLS_ctx.$t('scopes.common.create'));
-var __VLS_364;
+var __VLS_368;
 var __VLS_340;
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -2364,6 +2404,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             newProjectName: newProjectName,
             newProjectTitle: newProjectTitle,
             newProjectGroupId: newProjectGroupId,
+            newProjectKitName: newProjectKitName,
             showKitDialog: showKitDialog,
             kitDialogMode: kitDialogMode,
             kitForm: kitForm,
@@ -2395,6 +2436,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             submitCreateGroup: submitCreateGroup,
             openCreateProject: openCreateProject,
             submitCreateProject: submitCreateProject,
+            kitSelectOptions: kitSelectOptions,
             kitDialogTitle: kitDialogTitle,
             kitDialogSubmitLabel: kitDialogSubmitLabel,
             kitNeedsUrl: kitNeedsUrl,

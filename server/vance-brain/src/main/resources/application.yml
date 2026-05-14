@@ -63,6 +63,15 @@ vance:
       # is layered on top (engine-level granularity); set this flag
       # to false for an operator-level kill switch.
       enabled: true
+  autoSummary:
+    # Per-pod scheduler that runs Jeltz over dirty documents — see
+    # planning/auto-summary.md. Feature default is on; opt-out is the
+    # per-project `autoSummary.enabled` cascade setting.
+    intervalMs: 300000          # 5 min between ticks
+    initialDelayMs: 60000       # 1 min after pod start before first tick
+    batchSize: 10               # max documents claimed per project per tick
+    claimTtlMinutes: 10         # stale-claim recovery window
+    maxContentBytes: 200000     # prompt-content cap (head + tail truncation)
 
 management:
   endpoint:

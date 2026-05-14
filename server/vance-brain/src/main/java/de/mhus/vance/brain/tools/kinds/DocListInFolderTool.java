@@ -77,6 +77,9 @@ public class DocListInFolderTool implements Tool {
             if (d.getKind() != null) r.put("kind", d.getKind());
             r.put("size", d.getSize());
             if (d.getTags() != null && !d.getTags().isEmpty()) r.put("tags", d.getTags());
+            if (d.getSummary() != null && !d.getSummary().isBlank()) {
+                r.put("summary", d.getSummary());
+            }
             rows.add(r);
         }
         Map<String, Object> out = new LinkedHashMap<>();

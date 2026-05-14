@@ -8,4 +8,6 @@ export interface DocumentUpdateRequest {
   tags?: string[];
   inlineText?: string;
   newPath?: string;
+  autoSummary?: boolean;
+  summaryDirty?: boolean;
 }

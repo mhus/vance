@@ -73,6 +73,9 @@ public class DocListByTagTool implements Tool {
             if (d.getMimeType() != null) entry.put("mimeType", d.getMimeType());
             entry.put("size", d.getSize());
             entry.put("tags", d.getTags());
+            if (d.getSummary() != null && !d.getSummary().isBlank()) {
+                entry.put("summary", d.getSummary());
+            }
             entries.add(entry);
         }
         Map<String, Object> out = new LinkedHashMap<>();

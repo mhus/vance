@@ -273,6 +273,19 @@ export default {
       cancel: 'Abbrechen',
       apply: 'Anwenden',
       save: 'Speichern',
+      summary: {
+        heading: 'Automatische Zusammenfassung',
+        summaryLabel: 'Zusammenfassung',
+        summaryEmpty: 'Noch keine Zusammenfassung — Dirty-Flag setzen oder nächsten Scheduler-Tick abwarten.',
+        summarizedAt: 'Zuletzt zusammengefasst: {when}',
+        summarizedNever: 'Noch nie zusammengefasst.',
+        autoSummaryLabel: 'Dieses Dokument in den Auto-Summary-Scheduler einbeziehen',
+        autoSummaryHelp:
+          'Default ist „an" für text/markdown und text/plain. Ausschalten, um den Scheduler von diesem Dokument fernzuhalten.',
+        summaryDirtyLabel: 'Als dirty markieren — beim nächsten Tick neu zusammenfassen',
+        summaryDirtyHelp:
+          'Server räumt das Flag nach erfolgreichem Lauf wieder ab. Manuell setzen erzwingt einen Refresh ohne Body-Edit.',
+      },
     },
     listEditor: {
       addItem: 'Eintrag hinzufügen',
@@ -893,6 +906,7 @@ export default {
       createdLabel: 'Erstellt',
       saved: 'Projekt gespeichert.',
       created: 'Projekt „{name}" angelegt.',
+      createdWithKitError: 'Projekt „{name}" angelegt, aber Kit „{kit}" konnte nicht installiert werden: {error}',
       archived: 'Projekt archiviert.',
       confirmArchive: 'Projekt „{name}" archivieren? Es wird in die Gruppe „archived" verschoben.',
     },
@@ -992,6 +1006,9 @@ export default {
     createProject: {
       title: 'Neues Projekt',
       nameHelp: 'Kleinbuchstaben, Ziffern, „-" oder „_" erlaubt.',
+      kitLabel: 'Kit',
+      kitNone: 'Kein Kit',
+      kitHelp: 'Vorkonfiguriertes Projekt-Starterpaket — installiert Dokumente, Einstellungen und Tools nach dem Anlegen.',
     },
   },
 

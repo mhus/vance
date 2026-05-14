@@ -4,7 +4,18 @@ import type {
   ProjectDto,
   ProjectUpdateRequest,
 } from '@vance/generated';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, brainFetchWithMeta } from '@vance/shared';
+
+/** Result of a {@link useAdminProjects.create} call. */
+export interface ProjectCreateResult {
+  project: ProjectDto;
+  /**
+   * Set when the catalog kit referenced by {@code kitName} could not be
+   * installed but the project was created anyway. Backend surfaces this
+   * via the {@code X-Vance-Kit-Install-Error} response header.
+   */
+  kitInstallError: string | null;
+}
 
 /**
  * CRUD on projects. {@code remove} archives — sets status to ARCHIVED and
@@ -16,7 +27,7 @@ export function useAdminProjects(): {
   busy: Ref<boolean>;
   error: Ref<string | null>;
   reload: () => Promise<void>;
-  create: (req: ProjectCreateRequest) => Promise<ProjectDto>;
+  create: (req: ProjectCreateRequest) => Promise<ProjectCreateResult>;
   update: (name: string, req: ProjectUpdateRequest) => Promise<ProjectDto>;
   archive: (name: string) => Promise<ProjectDto>;
 } {
@@ -37,13 +48,15 @@ export function useAdminProjects(): {
     }
   }
 
-  async function create(req: ProjectCreateRequest): Promise<ProjectDto> {
+  async function create(req: ProjectCreateRequest): Promise<ProjectCreateResult> {
     busy.value = true;
     error.value = null;
     try {
-      const created = await brainFetch<ProjectDto>('POST', 'admin/projects', { body: req });
+      const { data, response } = await brainFetchWithMeta<ProjectDto>(
+        'POST', 'admin/projects', { body: req });
+      const kitInstallError = response.headers.get('X-Vance-Kit-Install-Error');
       await reload();
-      return created;
+      return { project: data, kitInstallError };
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to create project.';
       throw e;

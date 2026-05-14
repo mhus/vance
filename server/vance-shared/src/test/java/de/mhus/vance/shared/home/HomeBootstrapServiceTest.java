@@ -9,6 +9,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.shared.kit.catalog.ProjectKitsCatalogService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -24,6 +25,7 @@ class HomeBootstrapServiceTest {
     private ProjectGroupService projectGroupService;
     private ProjectService projectService;
     private UserService userService;
+    private ProjectKitsCatalogService projectKitsCatalogService;
     private HomeBootstrapService bootstrap;
 
     @BeforeEach
@@ -31,7 +33,9 @@ class HomeBootstrapServiceTest {
         projectGroupService = mock(ProjectGroupService.class);
         projectService = mock(ProjectService.class);
         userService = mock(UserService.class);
-        bootstrap = new HomeBootstrapService(projectGroupService, projectService, userService);
+        projectKitsCatalogService = mock(ProjectKitsCatalogService.class);
+        bootstrap = new HomeBootstrapService(
+                projectGroupService, projectService, userService, projectKitsCatalogService);
     }
 
     @Test
@@ -94,6 +98,10 @@ class HomeBootstrapServiceTest {
         ProjectDocument result = bootstrap.ensureVance("acme");
 
         assertThat(result.getName()).isEqualTo("_vance");
+        // Project-kits catalog seeding is triggered on every call so
+        // tenants created before the catalog landed in _vance auto-heal
+        // on the next login (idempotent via the service itself).
+        verify(projectKitsCatalogService, times(1)).seedFromSystemTenant("acme");
     }
 
     @Test

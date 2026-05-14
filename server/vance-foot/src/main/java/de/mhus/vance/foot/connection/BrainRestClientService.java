@@ -111,6 +111,23 @@ public class BrainRestClientService {
         return this.json.readValue(response.body(), type);
     }
 
+    /**
+     * Authenticated {@code POST} of a JSON body, returning the raw
+     * response so callers can inspect status, headers (e.g. the
+     * {@code X-Vance-Kit-Install-Error} warning from project create)
+     * and body separately.
+     */
+    public HttpResponse<String> postRaw(String path, Object body) throws Exception {
+        String json = this.json.writeValueAsString(body);
+        return doRequest("POST", path, json, "application/json");
+    }
+
+    /** Authenticated {@code POST} of a JSON body, returning a typed response. */
+    public <T> T post(String path, Object body, Class<T> type) throws Exception {
+        HttpResponse<String> response = postRaw(path, body);
+        return this.json.readValue(response.body(), type);
+    }
+
     /** Authenticated {@code DELETE}. Returns nothing — throws on non-2xx. */
     public void delete(String path) throws Exception {
         doRequest("DELETE", path, null, null);

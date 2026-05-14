@@ -69,4 +69,16 @@ public class DocumentDto {
      */
     @Builder.Default
     private Map<String, String> headers = new LinkedHashMap<>();
+
+    /** Per-document opt-in for the auto-summary scheduler — see {@code readme/auto-summary.md}. */
+    private boolean autoSummary;
+
+    /** Dirty flag picked up by the auto-summary scheduler on the next tick. */
+    private boolean summaryDirty;
+
+    /** Most recent LLM-generated summary; {@code null} until the driver wrote one. */
+    private @Nullable String summary;
+
+    /** Wall-clock at which the current {@link #summary} was produced. */
+    private @Nullable Long summarizedAtMs;
 }

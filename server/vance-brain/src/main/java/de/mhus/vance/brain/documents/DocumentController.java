@@ -311,7 +311,9 @@ public class DocumentController {
                     request.getTitle(),
                     request.getTags(),
                     request.getInlineText(),
-                    request.getNewPath());
+                    request.getNewPath(),
+                    request.getAutoSummary(),
+                    request.getSummaryDirty());
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {
@@ -388,6 +390,10 @@ public class DocumentController {
                 .headers(doc.getHeaders() == null
                         ? new java.util.LinkedHashMap<>()
                         : new java.util.LinkedHashMap<>(doc.getHeaders()))
+                .autoSummary(doc.isAutoSummary())
+                .summaryDirty(doc.isSummaryDirty())
+                .summary(doc.getSummary())
+                .summarizedAtMs(toEpochMillis(doc.getSummarizedAt()))
                 .build();
     }
 

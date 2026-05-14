@@ -275,6 +275,19 @@ export default {
       cancel: 'Cancel',
       apply: 'Apply',
       save: 'Save',
+      summary: {
+        heading: 'Auto-summary',
+        summaryLabel: 'Summary',
+        summaryEmpty: 'No summary yet — flip the dirty marker or wait for the next scheduler tick.',
+        summarizedAt: 'Last summarised: {when}',
+        summarizedNever: 'Never summarised.',
+        autoSummaryLabel: 'Include this document in the auto-summary scheduler',
+        autoSummaryHelp:
+          'Default is on for text/markdown and text/plain. Switch off to keep the scheduler away from this document.',
+        summaryDirtyLabel: 'Mark dirty — re-summarise on next tick',
+        summaryDirtyHelp:
+          'Server flips this off after a successful run. Flip it on manually to force a refresh without editing the body.',
+      },
     },
     listEditor: {
       addItem: 'Add item',
@@ -885,6 +898,7 @@ export default {
       createdLabel: 'Created',
       saved: 'Project saved.',
       created: 'Project "{name}" created.',
+      createdWithKitError: 'Project "{name}" created, but kit "{kit}" install failed: {error}',
       archived: 'Project archived.',
       confirmArchive: 'Archive project "{name}"? It will be moved to the "archived" group.',
     },
@@ -984,6 +998,9 @@ export default {
     createProject: {
       title: 'New project',
       nameHelp: "Lower-case alphanumerics, '-' or '_' allowed.",
+      kitLabel: 'Kit',
+      kitNone: 'No kit',
+      kitHelp: 'Pre-configured project starter — installs documents, settings and tools after create.',
     },
   },
 

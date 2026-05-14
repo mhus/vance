@@ -4,6 +4,7 @@ declare const _default: {
         saving: string;
         saved: string;
         cancel: string;
+        delete: string;
         loading: string;
         signOut: string;
         signIn: string;
@@ -242,6 +243,17 @@ declare const _default: {
             cancel: string;
             apply: string;
             save: string;
+            summary: {
+                heading: string;
+                summaryLabel: string;
+                summaryEmpty: string;
+                summarizedAt: string;
+                summarizedNever: string;
+                autoSummaryLabel: string;
+                autoSummaryHelp: string;
+                summaryDirtyLabel: string;
+                summaryDirtyHelp: string;
+            };
         };
         listEditor: {
             addItem: string;
@@ -737,6 +749,38 @@ declare const _default: {
             updated: string;
         };
     };
+    scheduler: {
+        pageTitle: string;
+        tenantWide: string;
+        projectLabel: string;
+        listLabel: string;
+        refresh: string;
+        new: string;
+        create: string;
+        enabled: string;
+        disabled: string;
+        emptyTitle: string;
+        emptyBody: string;
+        selectTitle: string;
+        selectBody: string;
+        newTitle: string;
+        nameLabel: string;
+        namePlaceholder: string;
+        namePatternHint: string;
+        invalidNameHint: string;
+        duplicateNameHint: string;
+        deleteTitle: string;
+        deleteBody: string;
+        runHistory: string;
+        noEvents: string;
+        process: string;
+        reason: string;
+        createdHint: string;
+        savedHint: string;
+        deletedHint: string;
+        refreshedHint: string;
+        saveFailed: string;
+    };
     scopes: {
         pageTitle: string;
         loading: string;
@@ -791,6 +835,7 @@ declare const _default: {
             createdLabel: string;
             saved: string;
             created: string;
+            createdWithKitError: string;
             archived: string;
             confirmArchive: string;
         };
@@ -887,6 +932,9 @@ declare const _default: {
         createProject: {
             title: string;
             nameHelp: string;
+            kitLabel: string;
+            kitNone: string;
+            kitHelp: string;
         };
     };
     inbox: {

@@ -280,6 +280,30 @@ public class SettingService {
     }
 
     /**
+     * Boolean cascade variant of {@link #getStringValueCascade}. Walks
+     * {@code think-process → project → _vance} and returns the first
+     * scope that defines {@code key}, parsed with the same
+     * {@code true/1/yes/on} semantics as {@link #getBooleanValue}.
+     * Falls back to {@code defaultValue} when no scope holds the key.
+     */
+    public boolean getBooleanValueCascade(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String thinkProcessId,
+            String key,
+            boolean defaultValue) {
+        String v = getStringValueCascade(tenantId, projectId, thinkProcessId, key);
+        if (v == null || v.isBlank()) {
+            return defaultValue;
+        }
+        String normalized = v.trim().toLowerCase();
+        return "true".equals(normalized)
+                || "1".equals(normalized)
+                || "yes".equals(normalized)
+                || "on".equals(normalized);
+    }
+
+    /**
      * Cascade variant of {@link #getDecryptedPassword} — walks
      * {@code think-process → project → _vance} and returns the
      * decrypted plaintext of the innermost layer that holds the key.

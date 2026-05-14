@@ -16,6 +16,7 @@ import {
 import { useAdminTenant } from '@/composables/useAdminTenant';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
+import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 import { useScopeSettings } from '@/composables/useScopeSettings';
 import { useKitAdmin } from '@/composables/useKitAdmin';
 import {
@@ -43,6 +44,7 @@ const groupsState = useAdminProjectGroups();
 const projectsState = useAdminProjects();
 const settingsState = useScopeSettings();
 const kitState = useKitAdmin();
+const projectKitsCatalog = useProjectKitsCatalog();
 
 const selection = ref<Selection>({ kind: 'tenant' });
 const banner = ref<string | null>(null);
@@ -64,6 +66,7 @@ const showCreateProject = ref(false);
 const newProjectName = ref('');
 const newProjectTitle = ref('');
 const newProjectGroupId = ref<string | null>(null);
+const newProjectKitName = ref<string>('');
 
 // ─── Kit dialog state ───
 const showKitDialog = ref(false);
@@ -337,26 +340,48 @@ function openCreateProject(): void {
   newProjectName.value = '';
   newProjectTitle.value = '';
   newProjectGroupId.value = selection.value.kind === 'group' ? selection.value.name : null;
+  newProjectKitName.value = '';
   showCreateProject.value = true;
+  // Refresh catalog on every open so the picker reflects the latest
+  // tenant configuration. Background load — UI shows entries as they
+  // arrive, or "no kits configured" if catalog is empty.
+  void projectKitsCatalog.load();
 }
 
 async function submitCreateProject(): Promise<void> {
   const name = newProjectName.value.trim();
   if (!name) return;
   try {
-    await projectsState.create({
+    const result = await projectsState.create({
       name,
       title: newProjectTitle.value.trim() || undefined,
       projectGroupId: newProjectGroupId.value || undefined,
       teamIds: [],
+      kitName: newProjectKitName.value.trim() || undefined,
     });
     showCreateProject.value = false;
     selectProject(name);
-    banner.value = t('scopes.project.created', { name });
+    if (result.kitInstallError) {
+      banner.value = t('scopes.project.createdWithKitError', {
+        name,
+        kit: newProjectKitName.value,
+        error: result.kitInstallError,
+      });
+    } else {
+      banner.value = t('scopes.project.created', { name });
+    }
   } catch {
     /* state.error */
   }
 }
+
+const kitSelectOptions = computed(() => [
+  { value: '', label: t('scopes.createProject.kitNone') },
+  ...(projectKitsCatalog.catalog.value?.kits ?? []).map(entry => ({
+    value: entry.name,
+    label: entry.title || entry.name,
+  })),
+]);
 
 // ─── Kit actions ───
 
@@ -1095,6 +1120,12 @@ const combinedError = computed<string | null>(() =>
           v-model="newProjectGroupId"
           :label="$t('scopes.project.groupLabel')"
           :options="groupSelectOptions"
+        />
+        <VSelect
+          v-model="newProjectKitName"
+          :label="$t('scopes.createProject.kitLabel')"
+          :options="kitSelectOptions"
+          :help="$t('scopes.createProject.kitHelp')"
         />
         <div class="flex justify-end gap-2">
           <VButton variant="ghost" @click="showCreateProject = false">

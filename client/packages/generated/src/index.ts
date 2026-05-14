@@ -47,6 +47,9 @@ export * from './kit/KitManifestDto';
 export * from './kit/KitMetadataDto';
 export * from './kit/KitOperationResultDto';
 export * from './kit/KitOriginDto';
+export * from './kit/ProjectKitEntry';
+export * from './kit/ProjectKitsCatalogDto';
+export * from './kit/ProjectKitsScanRequestDto';
 
 export * from './execution/ExecEvent';
 export * from './execution/ExecListSnapshot';

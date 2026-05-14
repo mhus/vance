@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.tools.eddie;
 
 import de.mhus.vance.api.ws.Profiles;
+import de.mhus.vance.brain.kit.KitException;
+import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -61,7 +63,14 @@ public class ProjectCreateTool implements Tool {
                             "description", "Optional first message that goes "
                                     + "straight into the new chat-process's "
                                     + "pending queue. Use this to hand the worker "
-                                    + "a substantive goal in one round-trip.")),
+                                    + "a substantive goal in one round-trip."),
+                    "kitName", Map.of(
+                            "type", "string",
+                            "description", "Optional — name of an entry in the "
+                                    + "tenant project-kits catalog (use kit_list "
+                                    + "to discover them). When set, the kit is "
+                                    + "installed into the new project right after "
+                                    + "creation. Unknown names fail the call.")),
             "required", List.of("name"));
 
     /**
@@ -73,6 +82,7 @@ public class ProjectCreateTool implements Tool {
      */
     private final ObjectProvider<ProjectLifecycleService> lifecycleServiceProvider;
     private final EddieActivityService activityService;
+    private final ProjectKitInstaller projectKitInstaller;
 
     @Override
     public String name() {
@@ -115,6 +125,7 @@ public class ProjectCreateTool implements Tool {
         String title = optString(params, "title");
         String projectGroupId = optString(params, "projectGroupId");
         String initialPrompt = optString(params, "initialPrompt");
+        String kitName = optString(params, "kitName");
 
         ProjectLifecycleService lifecycle = lifecycleServiceProvider.getObject();
 
@@ -130,6 +141,23 @@ public class ProjectCreateTool implements Tool {
         } catch (ProjectService.ProjectAlreadyExistsException
                 | ProjectService.ReservedProjectNameException e) {
             throw new ToolException(e.getMessage(), e);
+        }
+
+        // Optional kit install — caller resolved a name from kit_list.
+        String kitInstallError = null;
+        if (kitName != null) {
+            try {
+                projectKitInstaller.installFromCatalog(
+                        ctx.tenantId(), projectName, kitName, ctx.userId());
+            } catch (KitException e) {
+                // Project is created and RUNNING. Don't roll back —
+                // Eddie surfaces the kit problem to the user in the
+                // tool result so the conversation can recover (retry,
+                // pick a different kit, continue without one).
+                log.warn("project_create: kit install failed tenant='{}' project='{}' kit='{}': {}",
+                        ctx.tenantId(), projectName, kitName, e.getMessage());
+                kitInstallError = e.getMessage();
+            }
         }
 
         // bootstrapChat(): Session + chat-process + optional initialPrompt
@@ -172,6 +200,13 @@ public class ProjectCreateTool implements Tool {
         out.put("chatProcessId", bootstrap.chatProcess().getId());
         out.put("chatEngine", bootstrap.chatProcess().getThinkEngine());
         out.put("initialPromptDispatched", initialPrompt != null);
+        if (kitName != null) {
+            out.put("kitName", kitName);
+            out.put("kitInstalled", kitInstallError == null);
+            if (kitInstallError != null) {
+                out.put("kitInstallError", kitInstallError);
+            }
+        }
         return out;
     }
 

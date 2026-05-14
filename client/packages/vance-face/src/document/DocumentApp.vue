@@ -7,6 +7,7 @@ import {
   VBackButton,
   VButton,
   VCard,
+  VCheckbox,
   VDataList,
   VEmptyState,
   VFileInput,
@@ -82,6 +83,8 @@ const selectedProjectId = ref<string | null>(null);
 const editTitle = ref('');
 const editPath = ref('');
 const editInlineText = ref('');
+const editAutoSummary = ref(false);
+const editSummaryDirty = ref(false);
 const editError = ref<string | null>(null);
 const saving = ref(false);
 
@@ -341,6 +344,8 @@ function fillEditor(): void {
   editTitle.value = sel?.title ?? '';
   editPath.value = sel?.path ?? '';
   editInlineText.value = sel?.inlineText ?? '';
+  editAutoSummary.value = sel?.autoSummary ?? false;
+  editSummaryDirty.value = sel?.summaryDirty ?? false;
   editError.value = null;
   // Switching documents resets the editor mode to the kind-aware
   // default — `sheet`, `graph`, `records`, `mindmap`, `list`,
@@ -908,6 +913,14 @@ async function apply(): Promise<boolean> {
     if (newPath && newPath !== sel.path) {
       body.newPath = newPath;
     }
+    // Auto-summary toggles — only send when changed so we don't
+    // churn the document on every save.
+    if (editAutoSummary.value !== (sel.autoSummary ?? false)) {
+      body.autoSummary = editAutoSummary.value;
+    }
+    if (editSummaryDirty.value !== (sel.summaryDirty ?? false)) {
+      body.summaryDirty = editSummaryDirty.value;
+    }
     await docsState.update(sel.id, body);
     if (docsState.error.value) {
       editError.value = docsState.error.value;
@@ -1139,6 +1152,51 @@ const formatBytes = (n: number): string => {
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- ─── Auto-summary panel — read-only summary text plus the
+               two editable flags. Visible regardless of mime type so
+               users can disable the scheduler on a doc that shouldn't
+               be summarised, or force a re-run on demand. ─── -->
+          <div class="mt-3 border border-base-300 rounded-md overflow-hidden">
+            <div class="px-3 py-2 bg-base-200 text-xs uppercase opacity-70">
+              {{ $t('documents.detail.summary.heading') }}
+            </div>
+            <div class="p-3 flex flex-col gap-3">
+              <div>
+                <div class="text-xs opacity-70 mb-1">
+                  {{ $t('documents.detail.summary.summaryLabel') }}
+                </div>
+                <p
+                  v-if="docsState.selected.value.summary"
+                  class="text-sm whitespace-pre-wrap"
+                >{{ docsState.selected.value.summary }}</p>
+                <p v-else class="text-sm italic opacity-60">
+                  {{ $t('documents.detail.summary.summaryEmpty') }}
+                </p>
+                <p class="text-xs opacity-60 mt-1">
+                  {{
+                    docsState.selected.value.summarizedAtMs
+                      ? $t('documents.detail.summary.summarizedAt', {
+                          when: new Date(docsState.selected.value.summarizedAtMs).toLocaleString(),
+                        })
+                      : $t('documents.detail.summary.summarizedNever')
+                  }}
+                </p>
+              </div>
+              <VCheckbox
+                v-model="editAutoSummary"
+                :label="$t('documents.detail.summary.autoSummaryLabel')"
+                :help="$t('documents.detail.summary.autoSummaryHelp')"
+                :disabled="saving"
+              />
+              <VCheckbox
+                v-model="editSummaryDirty"
+                :label="$t('documents.detail.summary.summaryDirtyLabel')"
+                :help="$t('documents.detail.summary.summaryDirtyHelp')"
+                :disabled="saving"
+              />
+            </div>
           </div>
 
           <VAlert v-if="!docsState.selected.value.inline" variant="info" class="mt-3">

@@ -40,4 +40,18 @@ public class DocumentUpdateRequest {
      * the trailing segment.
      */
     private @Nullable String newPath;
+
+    /**
+     * Toggle the per-document auto-summary opt-in. {@code null} leaves
+     * the current value untouched.
+     */
+    private @Nullable Boolean autoSummary;
+
+    /**
+     * Manually flip the summary-dirty flag. UI mainly uses
+     * {@code true} to force the next scheduler tick to re-summarise a
+     * document that wasn't edited; {@code false} can clear a stuck
+     * marker. {@code null} leaves the current value untouched.
+     */
+    private @Nullable Boolean summaryDirty;
 }

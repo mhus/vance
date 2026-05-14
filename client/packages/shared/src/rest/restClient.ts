@@ -117,6 +117,41 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 /**
+ * Tenant-scoped REST request that returns the body **and** the raw
+ * response so callers can read non-error response headers (e.g. the
+ * {@code X-Vance-Kit-Install-Error} warning emitted by the project-create
+ * endpoint when the requested kit failed to install but the project was
+ * still saved). Auth + 401-refresh + error mapping match {@link brainFetch}.
+ */
+export async function brainFetchWithMeta<T>(
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+  path: string,
+  options: RestOptions = {},
+): Promise<{ data: T; response: Response }> {
+  const tenant = getTenantId();
+  if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
+
+  const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
+  let response = await doFetch(url, method, options);
+
+  if (response.status === 401 && options.authenticated !== false) {
+    const refreshed = await getRestConfig().refreshAccess();
+    if (refreshed) {
+      response = await doFetch(url, method, options);
+    } else {
+      redirectToLogin();
+      return new Promise<{ data: T; response: Response }>(() => {});
+    }
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new RestError(response.status, path, text || response.statusText);
+  }
+  const data = await parseJson<T>(response);
+  return { data, response };
+}
+
+/**
  * GET a tenant-scoped resource as plain text. Same auth + 401-refresh
  * behaviour as {@link brainFetch}, but returns the raw response body
  * as a string (e.g. for markdown / HTML help content). Returns

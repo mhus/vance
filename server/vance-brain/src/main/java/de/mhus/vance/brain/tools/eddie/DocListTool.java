@@ -100,6 +100,9 @@ public class DocListTool implements Tool {
             if (d.getTags() != null && !d.getTags().isEmpty()) {
                 row.put("tags", d.getTags());
             }
+            if (d.getSummary() != null && !d.getSummary().isBlank()) {
+                row.put("summary", d.getSummary());
+            }
             rows.add(row);
         }
 

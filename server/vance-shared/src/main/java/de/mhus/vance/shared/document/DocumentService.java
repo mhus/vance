@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -24,9 +26,11 @@ import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 /**
@@ -276,6 +280,7 @@ public class DocumentService {
                 .inlineText(inlineText)
                 .createdBy(createdBy)
                 .status(DocumentStatus.ACTIVE)
+                .autoSummary(isAutoSummaryEligible(mimeType))
                 .build();
         applyHeader(doc);
 
@@ -534,12 +539,32 @@ public class DocumentService {
             @Nullable List<String> newTags,
             @Nullable String newInlineText,
             @Nullable String newPath) {
+        return update(id, newTitle, newTags, newInlineText, newPath, null, null);
+    }
+
+    /**
+     * Overload that also accepts the two auto-summary flags
+     * ({@code autoSummary}, {@code summaryDirty}) — pass {@code null} to
+     * leave either untouched. Setting {@code summaryDirty = true} forces
+     * the next scheduler tick to re-summarise the document even without
+     * a content change.
+     */
+    public DocumentDocument update(
+            String id,
+            @Nullable String newTitle,
+            @Nullable List<String> newTags,
+            @Nullable String newInlineText,
+            @Nullable String newPath,
+            @Nullable Boolean newAutoSummary,
+            @Nullable Boolean newSummaryDirty) {
 
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
 
         if (newTitle != null) doc.setTitle(newTitle);
         if (newTags != null) doc.setTags(new ArrayList<>(newTags));
+        if (newAutoSummary != null) doc.setAutoSummary(newAutoSummary);
+        if (newSummaryDirty != null) doc.setSummaryDirty(newSummaryDirty);
 
         if (newInlineText != null) {
             if (doc.getInlineText() == null) {
@@ -551,6 +576,13 @@ public class DocumentService {
                 throw new IllegalArgumentException(
                         "New inline content exceeds the inline threshold ("
                                 + bytes.length + " > " + inlineThreshold + " bytes)");
+            }
+            if (!newInlineText.equals(doc.getInlineText())) {
+                // Mark dirty for the auto-summary scheduler. Header /
+                // tags / title edits without content change do not
+                // touch this flag — summary follows the body, not the
+                // metadata.
+                doc.setSummaryDirty(true);
             }
             doc.setInlineText(newInlineText);
             doc.setSize(bytes.length);
@@ -589,6 +621,97 @@ public class DocumentService {
         if (inlineText != null) { if (sb.length() > 1) sb.append(','); sb.append("inlineText"); }
         if (path != null) { if (sb.length() > 1) sb.append(','); sb.append("path"); }
         return sb.append(']').toString();
+    }
+
+    // ──────────────────── Auto-summary ────────────────────
+
+    /**
+     * Claim up to {@code batchSize} dirty documents in
+     * {@code (tenantId, projectId)} for the auto-summary scheduler.
+     * Each document is acquired via an atomic {@code findAndModify}
+     * so concurrent pods on the same project (user-project roaming)
+     * see disjoint claims.
+     *
+     * <p>Before the claim loop, stale claims older than
+     * {@code claimTtl} are released — this is the self-healing path
+     * for pod crashes between {@code claim} and {@code writeSummary}.
+     *
+     * <p>Match query: {@code summaryDirty=true ∧ autoSummary=true ∧
+     * claimedBy=null}. Documents with the dirty flag set but
+     * {@code autoSummary=false} (user-disabled or non-text mime) are
+     * skipped.
+     *
+     * @return the documents now claimed by {@code podId}. May be empty
+     *         when no dirty documents are available.
+     */
+    public List<DocumentDocument> claimForSummary(
+            String tenantId, String projectId,
+            String podId, int batchSize, Duration claimTtl) {
+
+        // 1. Stale-claim recovery: free anything that's been claimed
+        //    for longer than the TTL. Bounded by the index, single
+        //    multi-update — cheap.
+        Query stale = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("projectId").is(projectId)
+                .and("claimedBy").ne(null)
+                .and("claimedAt").lt(Instant.now().minus(claimTtl)));
+        mongoTemplate.updateMulti(stale,
+                new Update().unset("claimedBy").unset("claimedAt"),
+                DocumentDocument.class);
+
+        // 2. Claim loop: per-document findAndModify until the batch is
+        //    full or no more candidates are available.
+        List<DocumentDocument> claimed = new ArrayList<>(batchSize);
+        for (int i = 0; i < batchSize; i++) {
+            Query q = new Query(Criteria.where("tenantId").is(tenantId)
+                    .and("projectId").is(projectId)
+                    .and("summaryDirty").is(true)
+                    .and("autoSummary").is(true)
+                    .and("claimedBy").is(null));
+            Update u = new Update()
+                    .set("claimedBy", podId)
+                    .set("claimedAt", Instant.now());
+            DocumentDocument doc = mongoTemplate.findAndModify(
+                    q, u, FindAndModifyOptions.options().returnNew(true),
+                    DocumentDocument.class);
+            if (doc == null) break;
+            claimed.add(doc);
+        }
+        return claimed;
+    }
+
+    /**
+     * Persist the summary + tags produced by the auto-summary driver
+     * and release the claim. Goes through {@link MongoTemplate}
+     * directly (not {@link DocumentRepository#save}) on purpose —
+     * a full-document save would re-fire any {@code @LastModifiedDate}
+     * tracking and re-run {@code applyHeader}, and there's no scenario
+     * where overwriting tags + summary should be re-marking the
+     * document dirty.
+     */
+    public void writeSummary(String id, String summary, List<String> tags) {
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                new Update()
+                        .set("summary", summary)
+                        .set("tags", tags)
+                        .set("summarizedAt", Instant.now())
+                        .set("summaryDirty", false)
+                        .unset("claimedBy")
+                        .unset("claimedAt"),
+                DocumentDocument.class);
+    }
+
+    /**
+     * Release a claim without touching {@code summaryDirty}. The
+     * scheduler calls this when the LLM run failed — the document
+     * stays dirty so the next tick picks it up again.
+     */
+    public void releaseClaim(String id) {
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                new Update().unset("claimedBy").unset("claimedAt"),
+                DocumentDocument.class);
     }
 
     /**
@@ -914,6 +1037,21 @@ public class DocumentService {
             "application/sql",
             "application/x-java-source",
             "application/xhtml+xml");
+
+    /**
+     * Whether a freshly-created document with {@code mimeType} should
+     * default to {@code autoSummary = true}. Conservative v1 list:
+     * {@code text/markdown} and {@code text/plain} only. PDF, images
+     * and code formats stay out — users can flip the flag manually if
+     * they want.
+     */
+    private static boolean isAutoSummaryEligible(@Nullable String mimeType) {
+        if (mimeType == null) return false;
+        String mt = mimeType.toLowerCase().trim();
+        int semi = mt.indexOf(';');
+        if (semi >= 0) mt = mt.substring(0, semi).trim();
+        return "text/markdown".equals(mt) || "text/plain".equals(mt);
+    }
 
     private static boolean isTextual(@Nullable String mimeType) {
         if (mimeType == null) return false;

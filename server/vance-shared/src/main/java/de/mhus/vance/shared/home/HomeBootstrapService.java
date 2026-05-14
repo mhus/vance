@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.home;
 
+import de.mhus.vance.shared.kit.catalog.ProjectKitsCatalogService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -73,6 +74,7 @@ public class HomeBootstrapService {
     private final ProjectGroupService projectGroupService;
     private final ProjectService projectService;
     private final UserService userService;
+    private final ProjectKitsCatalogService projectKitsCatalogService;
 
     /**
      * Builds the deterministic project name of the Hub project for
@@ -129,7 +131,7 @@ public class HomeBootstrapService {
      */
     public ProjectDocument ensureVance(String tenantId) {
         ProjectGroupDocument group = ensureHomeGroup(tenantId);
-        return projectService.findByTenantAndName(tenantId, VANCE_PROJECT_NAME)
+        ProjectDocument project = projectService.findByTenantAndName(tenantId, VANCE_PROJECT_NAME)
                 .orElseGet(() -> {
                     ProjectDocument created = projectService.create(
                             tenantId,
@@ -142,6 +144,12 @@ public class HomeBootstrapService {
                             tenantId, created.getName());
                     return created;
                 });
+        // Seed project-kits catalog from the system tenant on first call.
+        // Idempotent: skips when the target already has a catalog, when
+        // the source is empty, or when the target is the system tenant
+        // itself. Cheap (one document lookup) on repeat invocations.
+        projectKitsCatalogService.seedFromSystemTenant(tenantId);
+        return project;
     }
 
     /**

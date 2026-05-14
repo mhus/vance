@@ -3,8 +3,11 @@ package de.mhus.vance.brain.projects;
 import de.mhus.vance.api.projects.ProjectCreateRequest;
 import de.mhus.vance.api.projects.ProjectDto;
 import de.mhus.vance.api.projects.ProjectUpdateRequest;
+import de.mhus.vance.brain.kit.KitException;
+import de.mhus.vance.brain.kit.catalog.ProjectKitInstaller;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectLifecycleService;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -50,6 +53,7 @@ public class ProjectAdminController {
     private final ProjectService projectService;
     private final ProjectGroupService projectGroupService;
     private final ProjectLifecycleService lifecycleService;
+    private final ProjectKitInstaller projectKitInstaller;
     private final RequestAuthority authority;
 
     @GetMapping
@@ -82,10 +86,31 @@ public class ProjectAdminController {
                     request.getProjectGroupId(),
                     request.getTeamIds(),
                     ProjectKind.NORMAL);
+            try {
+                projectKitInstaller.installFromCatalog(
+                        tenant, saved.getName(), request.getKitName(), actor(httpRequest));
+            } catch (KitException e) {
+                // Project is already saved + RUNNING. Surface the kit
+                // problem to the operator without rolling back — the
+                // web-ui shows a "project created, kit install failed"
+                // toast, foot prints both lines. Web-UI relies on the
+                // {@code X-Vance-Kit-Install-Error} header so the 2xx
+                // body can still carry the new ProjectDto.
+                log.warn("Kit install failed after project create tenant='{}' project='{}' kit='{}': {}",
+                        tenant, saved.getName(), request.getKitName(), e.getMessage());
+                return ResponseEntity.status(HttpStatus.CREATED)
+                        .header("X-Vance-Kit-Install-Error", e.getMessage())
+                        .body(toDto(saved));
+            }
             return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
         } catch (ProjectService.ProjectAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         }
+    }
+
+    private static @org.jspecify.annotations.Nullable String actor(HttpServletRequest request) {
+        Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        return u == null ? null : u.toString();
     }
 
     /**

@@ -273,6 +273,9 @@ public class LlmHookRunner implements HookRunner {
             case "log.error" -> hostApi.log.error(
                     requireString(raw, "message", idx),
                     asMap(raw.get("data")));
+            case "workflow.start" -> hostApi.workflows.start(
+                    requireString(raw, "name", idx),
+                    asMap(raw.get("params")));
             default -> throw new HookActionException(
                     "actions",
                     "actions[" + idx + "].kind '" + kindNode.asText()

@@ -49,6 +49,9 @@ public class HookDispatcher implements DisposableBean {
     private final EventLogService eventLogService;
     private final InboxItemService inboxService;
     private final SettingService settingService;
+    /** Optional — only injected when {@code vance.services.hactar=true}. */
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.brain.hactar.HactarWorkflowService> workflowServiceProvider;
 
     private final HttpClient httpClient;
     private final ExecutorService runnerPool;
@@ -65,13 +68,16 @@ public class HookDispatcher implements DisposableBean {
             LlmHookRunner llmRunner,
             EventLogService eventLogService,
             InboxItemService inboxService,
-            SettingService settingService) {
+            SettingService settingService,
+            org.springframework.beans.factory.ObjectProvider<
+                    de.mhus.vance.brain.hactar.HactarWorkflowService> workflowServiceProvider) {
         this.registry = registry;
         this.jsRunner = jsRunner;
         this.llmRunner = llmRunner;
         this.eventLogService = eventLogService;
         this.inboxService = inboxService;
         this.settingService = settingService;
+        this.workflowServiceProvider = workflowServiceProvider;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -139,8 +145,11 @@ public class HookDispatcher implements DisposableBean {
                 inboxService, ctx.tenantId(), def.name(),
                 defaultRecipient(def), def.createdByUserId());
         HookLog logApi = new HookLog(ctx);
+        HookWorkflowClient workflowsApi = new HookWorkflowClient(
+                workflowServiceProvider.getIfAvailable(),
+                ctx.tenantId(), ctx.projectId(), def.name());
         HookHostApi hostApi = new HookHostApi(
-                ctx, event.payload(), httpApi, inboxApi, logApi, settingsView);
+                ctx, event.payload(), httpApi, inboxApi, logApi, workflowsApi, settingsView);
 
         HookRunner runner = def.type() == HookType.LLM ? llmRunner : jsRunner;
         HookRunResult result;

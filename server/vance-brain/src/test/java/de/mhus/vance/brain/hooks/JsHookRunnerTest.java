@@ -112,8 +112,10 @@ class JsHookRunnerTest {
         HookInboxClient inbox = new HookInboxClient(
                 inboxSvc, ctx.tenantId(), ctx.hookName(), "user1", null);
         HookLog log = new HookLog(ctx);
+        HookWorkflowClient workflows = new HookWorkflowClient(
+                /*workflowService*/ null, ctx.tenantId(), ctx.projectId(), ctx.hookName());
         Map<String, Object> payload = new LinkedHashMap<>(eventPayload);
-        return new HookHostApi(ctx, payload, http, inbox, log, settings);
+        return new HookHostApi(ctx, payload, http, inbox, log, workflows, settings);
     }
 
     private static HookDef jsDef(String name, String script) {

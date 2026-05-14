@@ -165,7 +165,18 @@ public class SchedulerLoader {
         Map<String, Object> spec = (Map<String, Object>) rawMap;
 
         String description = stringOrThrow(spec.get("description"), "description");
-        String recipe = stringOrThrow(spec.get("recipe"), "recipe");
+        String recipe = stringOrNull(spec.get("recipe"));
+        String workflow = stringOrNull(spec.get("workflow"));
+        // Exactly one of recipe / workflow must be set.
+        if (recipe != null && workflow != null) {
+            throw new IllegalStateException(
+                    "'recipe' and 'workflow' are mutually exclusive — set exactly one");
+        }
+        if (recipe == null && workflow == null) {
+            throw new IllegalStateException(
+                    "missing trigger target — set either 'recipe' (spawns a ThinkProcess) "
+                            + "or 'workflow' (spawns a Hactar workflow run)");
+        }
         String timezone = stringOrNull(spec.get("timezone"));
 
         // Trigger: exactly one of `cron` or `at` must be set. Mutually
@@ -208,7 +219,7 @@ public class SchedulerLoader {
                 doc == null ? null : doc.getId(),
                 doc == null ? null : doc.getCreatedBy(),
                 description, cron, at, timezone, enabled,
-                recipe, Map.copyOf(params),
+                recipe, workflow, Map.copyOf(params),
                 initialMessage, runAs, overlap, lockMode, tags);
     }
 

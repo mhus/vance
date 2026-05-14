@@ -35,6 +35,7 @@ vance:
     cleanup-interval-ms: 900000   # 15 min
   services:
     storage-cleanup: true         # this brain instance runs the cleanup
+    hactar: true                  # workflow subsystem (planning/workflow-service.md)
     serverVersion: 0.1.0
     protocolVersion: 1
     pingIntervalSeconds: 30

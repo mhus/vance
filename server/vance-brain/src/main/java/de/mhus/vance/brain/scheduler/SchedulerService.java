@@ -76,6 +76,8 @@ public class SchedulerService {
      */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
+    /** Lazy-resolved — only used when a scheduler entry sets {@code workflow:}. May be absent when Hactar is disabled. */
+    private final ObjectProvider<de.mhus.vance.brain.hactar.HactarWorkflowService> workflowServiceProvider;
 
     /** Concurrent registry, keyed by {@code tenant|project|name}. */
     private final Map<String, Registration> registry = new ConcurrentHashMap<>();
@@ -458,6 +460,10 @@ public class SchedulerService {
     private void spawn(
             Registration reg, ResolvedScheduler cfg,
             String source, String correlationId, String runAs) {
+        if (cfg.isWorkflowTrigger()) {
+            spawnWorkflow(reg, cfg, source, correlationId, runAs);
+            return;
+        }
         SessionDocument session = systemSessionResolver.resolve(
                 reg.tenantId, reg.projectId, cfg.name(), runAs);
 
@@ -583,6 +589,62 @@ public class SchedulerService {
                 log.warn("Scheduler '{}/{}/{}' initialMessage dispatch failed",
                         reg.tenantId, reg.projectId, cfg.name());
             }
+        }
+    }
+
+    /**
+     * Workflow-trigger variant of {@link #spawn} — for scheduler docs
+     * that set {@code workflow:} instead of {@code recipe:}. Calls
+     * {@code HactarWorkflowService.start} and logs STARTED into the
+     * event log with the {@code workflowRunId} as a payload field.
+     *
+     * <p>No system session is created for workflow runs — workflows
+     * don't ride on a session. {@code agent_task}s inside the
+     * workflow create their own {@code _hactar_<runId>} session lazily.
+     */
+    private void spawnWorkflow(
+            Registration reg, ResolvedScheduler cfg,
+            String source, String correlationId, String runAs) {
+        de.mhus.vance.brain.hactar.HactarWorkflowService workflowService =
+                workflowServiceProvider.getIfAvailable();
+        if (workflowService == null) {
+            log.warn("Scheduler '{}/{}/{}' wants workflow '{}' but Hactar is not active "
+                            + "(vance.services.hactar=false)",
+                    reg.tenantId, reg.projectId, cfg.name(), cfg.workflow());
+            eventLogService.append(reg.tenantId, reg.projectId, source,
+                    EventType.FAILED, correlationId,
+                    /*sessionId*/ null, /*processId*/ null, runAs,
+                    Map.of("phase", "workflow_spawn",
+                            "error", "Hactar workflow subsystem is not active"));
+            return;
+        }
+        String runId;
+        try {
+            runId = workflowService.start(
+                    reg.tenantId, reg.projectId,
+                    cfg.workflow(), cfg.params(), runAs);
+        } catch (RuntimeException ex) {
+            log.warn("Scheduler '{}/{}/{}' workflow start failed: {}",
+                    reg.tenantId, reg.projectId, cfg.name(), ex.toString());
+            eventLogService.append(reg.tenantId, reg.projectId, source,
+                    EventType.FAILED, correlationId,
+                    /*sessionId*/ null, /*processId*/ null, runAs,
+                    Map.of("phase", "workflow_spawn", "error", ex.getMessage()));
+            return;
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("workflowName", cfg.workflow());
+        payload.put("workflowRunId", runId);
+        eventLogService.append(reg.tenantId, reg.projectId, source,
+                EventType.STARTED, correlationId,
+                /*sessionId*/ null, /*processId*/ null, runAs, payload);
+        log.info("Scheduler '{}/{}/{}' spawned workflow '{}' runId='{}'",
+                reg.tenantId, reg.projectId, cfg.name(), cfg.workflow(), runId);
+
+        // One-shot consumption — same trash-after-fire path as recipe spawn.
+        if (cfg.isOneShot()) {
+            trashAfterFire(reg);
         }
     }
 

@@ -273,6 +273,19 @@ public final class MessageType {
      */
     public static final String EXEC_LIST_SNAPSHOT = "exec-list-snapshot";
 
+    /**
+     * Client → Brain: start a Hactar workflow run in the bound
+     * session's project. Payload:
+     * {@link de.mhus.vance.api.hactar.HactarWorkflowStartRequest}
+     * (workflow name + optional params). Reply:
+     * {@link de.mhus.vance.api.hactar.HactarWorkflowStartResponse}
+     * carrying the new {@code workflowRunId}.
+     *
+     * <p>Symmetric to {@code POST .../workflows/{name}/start}.
+     * See {@code planning/workflow-service.md} §8.3.
+     */
+    public static final String WORKFLOW_START = "workflow-start";
+
     private MessageType() {
     }
 }

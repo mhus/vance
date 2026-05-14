@@ -40,12 +40,16 @@ public final class HookHostApi {
     /** Structured logging into the hook-run log (not the process log). */
     public final HookLog log;
 
+    /** Hactar workflow write channel — {@code workflows.start(name, params)}. */
+    public final HookWorkflowClient workflows;
+
     public HookHostApi(
             HookContext ctx,
             Map<String, @Nullable Object> event,
             HookHttpClient http,
             HookInboxClient inbox,
             HookLog log,
+            HookWorkflowClient workflows,
             HookSettingsView settings) {
         // Wrap the payload defensively: the host-side trigger emitter
         // hands over an internally-owned map and we don't want the
@@ -55,6 +59,7 @@ public final class HookHostApi {
         this.http = http;
         this.inbox = inbox;
         this.log = log;
+        this.workflows = workflows;
     }
 
     /** Read-only scope info exposed as {@code context.*}. */

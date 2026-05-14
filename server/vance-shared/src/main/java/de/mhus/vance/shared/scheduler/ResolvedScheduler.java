@@ -37,13 +37,21 @@ public record ResolvedScheduler(
         @Nullable Instant at,
         @Nullable String timezone,
         boolean enabled,
-        String recipe,
+        /** Recipe name to spawn — mutually exclusive with {@link #workflow}. */
+        @Nullable String recipe,
+        /** Workflow name to spawn — mutually exclusive with {@link #recipe}. See {@code specification/workflows.md}. */
+        @Nullable String workflow,
         Map<String, Object> params,
         @Nullable String initialMessage,
         @Nullable String runAs,
         OverlapPolicy overlap,
         LockMode lockMode,
         List<String> tags) {
+
+    /** {@code true} when this scheduler spawns a Hactar workflow run rather than a ThinkProcess. */
+    public boolean isWorkflowTrigger() {
+        return workflow != null && !workflow.isBlank();
+    }
 
     /**
      * {@code runAs} after applying the fallback rule "default to

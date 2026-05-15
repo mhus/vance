@@ -57,6 +57,7 @@ public class LmStudioProvider implements AiModelProvider {
                     "LmStudioProvider received config for provider '" + config.provider() + "'");
         }
         Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
+        Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         try {
             OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
                     .baseUrl(baseUrl)
@@ -64,6 +65,11 @@ public class LmStudioProvider implements AiModelProvider {
                     .modelName(config.modelName())
                     .temperature(options.getTemperature())
                     .maxTokens(options.getMaxTokens())
+                    .topP(options.getTopP())
+                    .frequencyPenalty(options.getFrequencyPenalty())
+                    .presencePenalty(options.getPresencePenalty())
+                    .seed(seed)
+                    .stop(options.getStopSequences())
                     .timeout(timeout)
                     .logRequests(options.getLogRequests())
                     .logResponses(options.getLogRequests());
@@ -74,6 +80,11 @@ public class LmStudioProvider implements AiModelProvider {
                             .modelName(config.modelName())
                             .temperature(options.getTemperature())
                             .maxTokens(options.getMaxTokens())
+                            .topP(options.getTopP())
+                            .frequencyPenalty(options.getFrequencyPenalty())
+                            .presencePenalty(options.getPresencePenalty())
+                            .seed(seed)
+                            .stop(options.getStopSequences())
                             .timeout(timeout)
                             .logRequests(options.getLogRequests())
                             .logResponses(options.getLogRequests());

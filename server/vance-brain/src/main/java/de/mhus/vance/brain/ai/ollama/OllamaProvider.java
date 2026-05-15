@@ -60,12 +60,17 @@ public class OllamaProvider implements AiModelProvider {
         }
         Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
         boolean think = options.getThinkingLevel() != ThinkingLevel.OFF;
+        Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         try {
             OllamaChatModel sync = OllamaChatModel.builder()
                     .baseUrl(baseUrl)
                     .modelName(config.modelName())
                     .temperature(options.getTemperature())
                     .numPredict(options.getMaxTokens())
+                    .topP(options.getTopP())
+                    .topK(options.getTopK())
+                    .seed(seed)
+                    .stop(options.getStopSequences())
                     .timeout(timeout)
                     .think(think)
                     .returnThinking(think)
@@ -77,6 +82,10 @@ public class OllamaProvider implements AiModelProvider {
                     .modelName(config.modelName())
                     .temperature(options.getTemperature())
                     .numPredict(options.getMaxTokens())
+                    .topP(options.getTopP())
+                    .topK(options.getTopK())
+                    .seed(seed)
+                    .stop(options.getStopSequences())
                     .timeout(timeout)
                     .think(think)
                     .returnThinking(think)

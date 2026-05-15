@@ -125,6 +125,21 @@ final class AnthropicRequestMapper {
             body.put("thinking", thinking);
         }
 
+        // ─── Sampling params ───────────────────────────────────────
+        // top_p / top_k / stop_sequences. Anthropic ignores the wire
+        // fields when absent; we only emit when the recipe set them.
+        // seed / frequencyPenalty / presencePenalty are silently
+        // dropped — Anthropic's Messages API has no equivalent.
+        if (options.getTopP() != null) {
+            body.put("top_p", options.getTopP());
+        }
+        if (options.getTopK() != null) {
+            body.put("top_k", options.getTopK());
+        }
+        if (options.getStopSequences() != null && !options.getStopSequences().isEmpty()) {
+            body.put("stop_sequences", List.copyOf(options.getStopSequences()));
+        }
+
         // ─── Messages ──────────────────────────────────────────────
         body.put("messages", buildMessages(request, boundary, ttl));
         return body;

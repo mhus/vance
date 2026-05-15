@@ -97,6 +97,7 @@ public class OpenAiProvider implements AiModelProvider {
         }
         Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
         Map<String, Object> cacheParams = buildCacheParameters(config, options, cacheEnabled);
+        Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         try {
             OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
                     .baseUrl(baseUrl)
@@ -104,6 +105,11 @@ public class OpenAiProvider implements AiModelProvider {
                     .modelName(config.modelName())
                     .temperature(options.getTemperature())
                     .maxTokens(options.getMaxTokens())
+                    .topP(options.getTopP())
+                    .frequencyPenalty(options.getFrequencyPenalty())
+                    .presencePenalty(options.getPresencePenalty())
+                    .seed(seed)
+                    .stop(options.getStopSequences())
                     .timeout(timeout)
                     .logRequests(options.getLogRequests())
                     .logResponses(options.getLogRequests());
@@ -114,6 +120,11 @@ public class OpenAiProvider implements AiModelProvider {
                             .modelName(config.modelName())
                             .temperature(options.getTemperature())
                             .maxTokens(options.getMaxTokens())
+                            .topP(options.getTopP())
+                            .frequencyPenalty(options.getFrequencyPenalty())
+                            .presencePenalty(options.getPresencePenalty())
+                            .seed(seed)
+                            .stop(options.getStopSequences())
                             .timeout(timeout)
                             .logRequests(options.getLogRequests())
                             .logResponses(options.getLogRequests());

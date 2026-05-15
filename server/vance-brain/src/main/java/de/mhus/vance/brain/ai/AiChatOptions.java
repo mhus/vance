@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import java.util.List;
 import java.util.function.Consumer;
 import lombok.Builder;
 import lombok.Data;
@@ -23,6 +24,57 @@ public class AiChatOptions {
 
     /** Hard cap on generated tokens. {@code null} means provider default. */
     private @Nullable Integer maxTokens;
+
+    /**
+     * Nucleus-sampling cutoff (0..1). {@code null} → provider default.
+     * Honored by every provider that exposes a sampling control
+     * (OpenAI, Anthropic, Gemini, Ollama, LM Studio). Recipes set this
+     * via {@code params.topP}.
+     */
+    private @Nullable Double topP;
+
+    /**
+     * Top-K sampling cutoff. {@code null} → provider default. Supported
+     * by Anthropic, Gemini, and Ollama. OpenAI / LM Studio ignore it
+     * silently because the Chat-Completions wire protocol has no
+     * matching field. Recipes set this via {@code params.topK}.
+     */
+    private @Nullable Integer topK;
+
+    /**
+     * Sequences that stop generation as soon as the model emits them.
+     * Empty / {@code null} → no client-side stop conditions. Honored
+     * across providers (OpenAI {@code stop}, Anthropic
+     * {@code stop_sequences}, Gemini {@code stopSequences}, Ollama
+     * {@code stop}). Recipes set this via {@code params.stopSequences}.
+     */
+    private @Nullable List<String> stopSequences;
+
+    /**
+     * Deterministic-sampling seed. {@code null} → provider default
+     * (non-deterministic). Honored by OpenAI, Gemini, and Ollama for
+     * replay / QA reproducibility. Anthropic ignores it silently — its
+     * API has no equivalent today. Recipes set this via
+     * {@code params.seed}.
+     */
+    private @Nullable Long seed;
+
+    /**
+     * Penalty applied to tokens by how often they have appeared
+     * (OpenAI's {@code frequency_penalty}, also maps to Ollama's
+     * {@code repeat_penalty}). {@code null} → provider default.
+     * Anthropic / Gemini ignore it silently. Recipes set this via
+     * {@code params.frequencyPenalty}.
+     */
+    private @Nullable Double frequencyPenalty;
+
+    /**
+     * Penalty applied to tokens that already appeared at least once
+     * (OpenAI's {@code presence_penalty}). {@code null} → provider
+     * default. Providers without an equivalent field ignore it
+     * silently. Recipes set this via {@code params.presencePenalty}.
+     */
+    private @Nullable Double presencePenalty;
 
     /** Per-call timeout in seconds. */
     @Builder.Default

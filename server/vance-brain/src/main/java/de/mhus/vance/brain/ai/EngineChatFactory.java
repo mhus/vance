@@ -5,7 +5,9 @@ import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -148,7 +150,154 @@ public class EngineChatFactory {
                 base.setThinkingLevel(level);
             }
         }
+        applySamplingParams(base, process);
         return base;
+    }
+
+    /**
+     * Thread the sampling-control recipe params
+     * (temperature, maxTokens, topP, topK, stopSequences, seed,
+     * frequencyPenalty, presencePenalty) from {@code engineParams} into
+     * the options. Type-tolerant — recipes load from YAML so numeric
+     * values arrive as Integer/Long/Double/String depending on the parser
+     * path.
+     *
+     * <p>Override semantics are deliberately asymmetric:
+     * <ul>
+     *   <li>Fields whose default is {@code null} (everything except
+     *       temperature) only get written when the recipe explicitly
+     *       provides a value and the caller hasn't pre-set the field.
+     *       That preserves the "caller wins" rule for non-default
+     *       AiChatOptions.</li>
+     *   <li>{@code temperature} has a non-null default (0.7), so the
+     *       caller's pre-set value is indistinguishable from the
+     *       default. Here the recipe wins when set — the engine's spawn
+     *       defaults already go through this path and recipes are the
+     *       source of truth for engine behaviour.</li>
+     * </ul>
+     */
+    static void applySamplingParams(AiChatOptions base, ThinkProcessDocument process) {
+        Map<String, Object> params = process.getEngineParams();
+        if (params == null || params.isEmpty()) {
+            return;
+        }
+        Double temperature = readDouble(params, "temperature");
+        if (temperature != null) {
+            base.setTemperature(temperature);
+        }
+        if (base.getMaxTokens() == null) {
+            Integer maxTokens = readInteger(params, "maxTokens");
+            if (maxTokens != null) {
+                base.setMaxTokens(maxTokens);
+            }
+        }
+        if (base.getTopP() == null) {
+            base.setTopP(readDouble(params, "topP"));
+        }
+        if (base.getTopK() == null) {
+            base.setTopK(readInteger(params, "topK"));
+        }
+        if (base.getStopSequences() == null) {
+            List<String> stops = readStringList(params, "stopSequences");
+            if (stops != null) {
+                base.setStopSequences(stops);
+            }
+        }
+        if (base.getSeed() == null) {
+            base.setSeed(readLong(params, "seed"));
+        }
+        if (base.getFrequencyPenalty() == null) {
+            base.setFrequencyPenalty(readDouble(params, "frequencyPenalty"));
+        }
+        if (base.getPresencePenalty() == null) {
+            base.setPresencePenalty(readDouble(params, "presencePenalty"));
+        }
+    }
+
+    private static @Nullable Double readDouble(Map<String, Object> params, String key) {
+        Object v = params.get(key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.doubleValue();
+        }
+        if (v instanceof String s && !s.isBlank()) {
+            try {
+                return Double.parseDouble(s.trim());
+            } catch (NumberFormatException e) {
+                log.warn("Recipe param '{}' is not a number: '{}' — ignoring", key, s);
+            }
+        } else if (!(v instanceof String)) {
+            log.warn("Recipe param '{}' has unexpected type {} — ignoring",
+                    key, v.getClass().getSimpleName());
+        }
+        return null;
+    }
+
+    private static @Nullable Integer readInteger(Map<String, Object> params, String key) {
+        Object v = params.get(key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.intValue();
+        }
+        if (v instanceof String s && !s.isBlank()) {
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                log.warn("Recipe param '{}' is not an integer: '{}' — ignoring", key, s);
+            }
+        } else if (!(v instanceof String)) {
+            log.warn("Recipe param '{}' has unexpected type {} — ignoring",
+                    key, v.getClass().getSimpleName());
+        }
+        return null;
+    }
+
+    private static @Nullable Long readLong(Map<String, Object> params, String key) {
+        Object v = params.get(key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.longValue();
+        }
+        if (v instanceof String s && !s.isBlank()) {
+            try {
+                return Long.parseLong(s.trim());
+            } catch (NumberFormatException e) {
+                log.warn("Recipe param '{}' is not a long: '{}' — ignoring", key, s);
+            }
+        } else if (!(v instanceof String)) {
+            log.warn("Recipe param '{}' has unexpected type {} — ignoring",
+                    key, v.getClass().getSimpleName());
+        }
+        return null;
+    }
+
+    private static @Nullable List<String> readStringList(
+            Map<String, Object> params, String key) {
+        Object v = params.get(key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof List<?> list) {
+            List<String> out = new ArrayList<>(list.size());
+            for (Object o : list) {
+                if (o instanceof String s && !s.isEmpty()) {
+                    out.add(s);
+                }
+            }
+            return out.isEmpty() ? null : List.copyOf(out);
+        }
+        if (v instanceof String s && !s.isEmpty()) {
+            return List.of(s);
+        }
+        log.warn("Recipe param '{}' has unexpected type {} — ignoring",
+                key, v.getClass().getSimpleName());
+        return null;
     }
 
     /**

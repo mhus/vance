@@ -67,6 +67,7 @@ public class GeminiProvider implements AiModelProvider {
         }
         Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
         @Nullable GeminiThinkingConfig thinking = mapThinking(options.getThinkingLevel());
+        Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         try {
             GoogleAiGeminiChatModel.GoogleAiGeminiChatModelBuilder syncBuilder =
                     GoogleAiGeminiChatModel.builder()
@@ -74,6 +75,12 @@ public class GeminiProvider implements AiModelProvider {
                             .modelName(config.modelName())
                             .temperature(options.getTemperature())
                             .maxOutputTokens(options.getMaxTokens())
+                            .topP(options.getTopP())
+                            .topK(options.getTopK())
+                            .frequencyPenalty(options.getFrequencyPenalty())
+                            .presencePenalty(options.getPresencePenalty())
+                            .seed(seed)
+                            .stopSequences(options.getStopSequences())
                             .timeout(timeout)
                             .logRequestsAndResponses(options.getLogRequests());
             GoogleAiGeminiStreamingChatModel.GoogleAiGeminiStreamingChatModelBuilder streamBuilder =
@@ -82,6 +89,12 @@ public class GeminiProvider implements AiModelProvider {
                             .modelName(config.modelName())
                             .temperature(options.getTemperature())
                             .maxOutputTokens(options.getMaxTokens())
+                            .topP(options.getTopP())
+                            .topK(options.getTopK())
+                            .frequencyPenalty(options.getFrequencyPenalty())
+                            .presencePenalty(options.getPresencePenalty())
+                            .seed(seed)
+                            .stopSequences(options.getStopSequences())
                             .timeout(timeout)
                             .logRequestsAndResponses(options.getLogRequests());
             if (thinking != null) {

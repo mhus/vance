@@ -314,6 +314,44 @@ class AnthropicRequestMapperTest {
         assertThat(blocks.get(0)).doesNotContainKey("cache_control");
     }
 
+    @Test
+    void samplingParams_emitWhenSet() {
+        ChatRequest request = buildRequest(List.of(UserMessage.from("hi")));
+        AiChatOptions options = AiChatOptions.builder()
+                .topP(0.9)
+                .topK(40)
+                .stopSequences(List.of("STOP", "</answer>"))
+                .build();
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+
+        assertThat(body).containsEntry("top_p", 0.9);
+        assertThat(body).containsEntry("top_k", 40);
+        assertThat(body).containsEntry("stop_sequences", List.of("STOP", "</answer>"));
+    }
+
+    @Test
+    void samplingParams_absentWhenNull() {
+        ChatRequest request = buildRequest(List.of(UserMessage.from("hi")));
+        AiChatOptions options = AiChatOptions.builder().build();
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+
+        assertThat(body).doesNotContainKeys("top_p", "top_k", "stop_sequences");
+    }
+
+    @Test
+    void samplingParams_emptyStopSequences_omitted() {
+        ChatRequest request = buildRequest(List.of(UserMessage.from("hi")));
+        AiChatOptions options = AiChatOptions.builder()
+                .stopSequences(List.of())
+                .build();
+
+        Map<String, Object> body = AnthropicRequestMapper.buildBody(request, options);
+
+        assertThat(body).doesNotContainKey("stop_sequences");
+    }
+
     // ──────────────────── helpers ────────────────────
 
     private static ChatRequest buildRequest(List<ChatMessage> messages) {

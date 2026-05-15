@@ -13,6 +13,16 @@ params:
   model: default:analyze
   validation: true
   maxIterations: 6
+  # Auto-inject the project's default RAG into Arthur's turns —
+  # project documents (specs, notes, prior research) get chunked by
+  # the auto-indexer and surface as context in every turn that
+  # mentions them. Cascade-overridable per tenant/project via the
+  # rag.autoInject.enabled setting; tune minScore / topK if
+  # irrelevant chunks bleed in or turns get too long.
+  rag:
+    autoInject: true
+    minScore: 0.65
+    topK: 5
   # If the primary alias hits a demand spike or 5xx and exhausts its
   # retry budget, the resilient layer falls through these in order.
   # Aliases that the tenant hasn't configured are silently dropped.

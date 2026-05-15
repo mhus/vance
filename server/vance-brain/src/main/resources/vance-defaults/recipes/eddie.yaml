@@ -15,6 +15,17 @@ params:
   model: default:analyze
   validation: true
   maxIterations: 6
+  # Auto-inject the project's default RAG into Eddie's turns. Cheap
+  # for the user-hub project where the auto-indexer chunks
+  # documents/ as they're created — Eddie answers from her own
+  # notes / lists / scratchpad without an explicit rag_query call.
+  # Tune minScore up if irrelevant chunks bleed in; topK down if
+  # turns get too long. Cascade-overridable per tenant/project via
+  # the rag.autoInject.enabled setting.
+  rag:
+    autoInject: true
+    minScore: 0.65
+    topK: 5
   # If the primary alias hits a demand spike or 5xx and exhausts its
   # retry budget, the resilient layer falls through these in order.
   fallbackModels:

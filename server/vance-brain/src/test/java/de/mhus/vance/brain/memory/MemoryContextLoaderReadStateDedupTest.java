@@ -48,9 +48,32 @@ class MemoryContextLoaderReadStateDedupTest {
         documentService = mock(DocumentService.class);
         languageResolver = mock(LanguageResolver.class);
         readStateService = mock(ReadStateService.class);
+        // RAG auto-inject isn't relevant for these read-state dedup
+        // tests — pass an empty ObjectProvider so the getIfAvailable()
+        // call inside composeBlock returns null.
+        org.springframework.beans.factory.ObjectProvider<
+                de.mhus.vance.brain.rag.RagAutoInjectService> noRag =
+                new org.springframework.beans.factory.ObjectProvider<>() {
+                    @Override
+                    public de.mhus.vance.brain.rag.RagAutoInjectService getObject() {
+                        throw new UnsupportedOperationException();
+                    }
+                    @Override
+                    public de.mhus.vance.brain.rag.RagAutoInjectService getObject(Object... args) {
+                        throw new UnsupportedOperationException();
+                    }
+                    @Override
+                    public de.mhus.vance.brain.rag.RagAutoInjectService getIfAvailable() {
+                        return null;
+                    }
+                    @Override
+                    public de.mhus.vance.brain.rag.RagAutoInjectService getIfUnique() {
+                        return null;
+                    }
+                };
         loader = new MemoryContextLoader(
                 settingService, sessionService, documentService,
-                languageResolver, readStateService);
+                languageResolver, readStateService, noRag);
 
         // Empty defaults — only the bits each test sets are populated.
         when(settingService.findByPrefixCascade(any(), any(), any(), any()))

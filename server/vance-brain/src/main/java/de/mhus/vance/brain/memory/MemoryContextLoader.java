@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.memory;
 
 import de.mhus.vance.brain.context.ReadStateService;
+import de.mhus.vance.brain.rag.RagAutoInjectService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -9,9 +10,9 @@ import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -35,7 +36,6 @@ import org.springframework.stereotype.Service;
  * skip the append in that case.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class MemoryContextLoader {
 
@@ -78,13 +78,47 @@ public class MemoryContextLoader {
     private final DocumentService documentService;
     private final LanguageResolver languageResolver;
     private final ReadStateService readStateService;
+    private final ObjectProvider<RagAutoInjectService> ragAutoInjectProvider;
+
+    public MemoryContextLoader(
+            SettingService settingService,
+            SessionService sessionService,
+            DocumentService documentService,
+            LanguageResolver languageResolver,
+            ReadStateService readStateService,
+            ObjectProvider<RagAutoInjectService> ragAutoInjectProvider) {
+        this.settingService = settingService;
+        this.sessionService = sessionService;
+        this.documentService = documentService;
+        this.languageResolver = languageResolver;
+        this.readStateService = readStateService;
+        this.ragAutoInjectProvider = ragAutoInjectProvider;
+    }
+
+    /**
+     * Backward-compatible overload — no user-query, so the RAG
+     * auto-inject layer is a no-op. Callers without an inbox query
+     * (background triggers, system-only turns) keep using this; engines
+     * that have a fresh user query should call
+     * {@link #composeBlock(ThinkProcessDocument, String)}.
+     */
+    public @Nullable String composeBlock(ThinkProcessDocument process) {
+        return composeBlock(process, null);
+    }
 
     /**
      * Returns the Markdown block to append to the system prompt, or
-     * {@code null} when neither {@code memory.*} settings nor the agent
-     * document yield any content.
+     * {@code null} when no layer (memory settings, agent document,
+     * project RAG) yielded any content for this turn.
+     *
+     * <p>{@code userQuery} is the text the engine wants the RAG layer
+     * to embed for similarity search — typically the latest user-chat
+     * input of this turn. When it's {@code null} or blank the RAG
+     * layer skips. RAG auto-inject is opt-in per recipe param
+     * {@code rag.autoInject}; see {@link RagAutoInjectService}.
      */
-    public @Nullable String composeBlock(ThinkProcessDocument process) {
+    public @Nullable String composeBlock(
+            ThinkProcessDocument process, @Nullable String userQuery) {
         if (process == null || process.getTenantId() == null
                 || process.getTenantId().isBlank()) {
             return null;
@@ -96,8 +130,30 @@ public class MemoryContextLoader {
         appendMemorySettings(sb, process, projectId);
         appendAgentDocument(sb, process, projectId);
         appendClientAgentDoc(sb, process);
+        appendRagAutoInject(sb, process, userQuery);
 
         return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /**
+     * Splices the project-RAG auto-inject block in at the end of the
+     * memory context. Engine-agnostic: every engine that hands a
+     * {@code userQuery} to {@link #composeBlock(ThinkProcessDocument, String)}
+     * gets the same treatment, no per-engine wiring. Off by default;
+     * opted in via recipe-param {@code rag.autoInject} (cascade-
+     * override {@code rag.autoInject.enabled}).
+     */
+    private void appendRagAutoInject(
+            StringBuilder sb,
+            ThinkProcessDocument process,
+            @Nullable String userQuery) {
+        if (userQuery == null || userQuery.isBlank()) return;
+        RagAutoInjectService rag = ragAutoInjectProvider.getIfAvailable();
+        if (rag == null) return;
+        String block = rag.composeBlock(process, userQuery);
+        if (block == null || block.isBlank()) return;
+        if (sb.length() > 0) sb.append('\n');
+        sb.append(block);
     }
 
     /**

@@ -3,7 +3,6 @@ package de.mhus.vance.brain.eddie;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
-import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
@@ -18,7 +17,6 @@ import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.memory.MemoryContextLoader;
 import de.mhus.vance.brain.progress.LlmCallTracker;
-import de.mhus.vance.brain.thinkengine.EngineBundledConfig;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -132,8 +130,12 @@ public class EddieEngine extends StructuredActionEngine {
      * is generous for the typical hub-turn (most are 1-2 iterations
      * total) and rescues the longer self-work flows.
      */
+    /**
+     * Fallback for {@code maxIterations} when the recipe doesn't pin
+     * it — mirrors {@code eddie.yaml}'s default. Recipe is the source
+     * of truth; this is just the last resort.
+     */
     private static final int DEFAULT_MAX_ITERATIONS = 6;
-    private static final String DEFAULT_MODEL_ALIAS = "default:analyze";
 
     /**
      * Document path inside the per-user hub project for the
@@ -167,7 +169,6 @@ public class EddieEngine extends StructuredActionEngine {
      */
     private static final int DELEGATED_WORKERS_MAX_RENDER = 10;
 
-    private volatile @Nullable EngineBundledConfig cachedConfig;
 
     // ──────────────────── Dependencies ────────────────────
 
@@ -261,35 +262,31 @@ public class EddieEngine extends StructuredActionEngine {
         return true;
     }
 
-    @Override
-    public Optional<EngineBundledConfig> bundledConfig() {
-        EngineBundledConfig cached = cachedConfig;
-        if (cached == null) {
-            cached = buildBundledConfig(loadResource(PROMPT_RESOURCE));
-            cachedConfig = cached;
-        }
-        return Optional.of(cached);
-    }
+    // Eddie deliberately does NOT override bundledConfig() — chat
+    // spawn falls through to RecipeResolver.applyDefaulting("eddie",
+    // …) which loads eddie.yaml from the cascade
+    // (project → _vance → classpath:vance-defaults/recipes/). That
+    // lets a user override their personal Eddie's params (model,
+    // RAG injection, manual paths, …) by dropping their own
+    // recipes/eddie.yaml into their user project — same mechanism
+    // that already works for Arthur. The default ThinkEngine impl
+    // returns Optional.empty() which is what we want.
+    //
+    // The Eddie system prompt is resolved lazily at turn time via
+    // engineDefaultPrompt(process) below; same cascade
+    // (project → _vance → classpath:prompts/eddie-prompt.md).
 
-    @Override
-    public Optional<EngineBundledConfig> bundledConfig(
-            String tenantId, @Nullable String projectId) {
-        String promptFallback = loadResource(PROMPT_RESOURCE);
-        String prompt = enginePromptResolver.resolveForTenant(
-                tenantId, projectId, PROMPT_PATH, promptFallback);
-        return Optional.of(buildBundledConfig(prompt));
-    }
-
-    private EngineBundledConfig buildBundledConfig(String prompt) {
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put("model", DEFAULT_MODEL_ALIAS);
-        params.put("validation", true);
-        params.put("maxIterations", DEFAULT_MAX_ITERATIONS);
-        params.put("manualPaths", List.of("eddie/manuals/", "manuals/"));
-        return new EngineBundledConfig(
-                params, prompt, PromptMode.OVERWRITE,
-                /*dataRelayCorrection*/ null,
-                /*allowedTools*/ null);
+    /**
+     * Resolves Eddie's system prompt through the document cascade so
+     * a user can drop {@code prompts/eddie-prompt.md} into their own
+     * project to customise their hub assistant. Falls back to the
+     * bundled classpath resource — never returns blank.
+     */
+    private String engineDefaultPrompt(ThinkProcessDocument process) {
+        String basePath = paramString(process, "promptDocument", PROMPT_PATH);
+        return enginePromptResolver.resolveForTenant(
+                process.getTenantId(), process.getProjectId(),
+                basePath, loadResource(PROMPT_RESOURCE));
     }
 
     private static String loadResource(String path) {
@@ -1462,9 +1459,15 @@ public class EddieEngine extends StructuredActionEngine {
                 .withRootDirTypes(workspaceService.getRootDirTypes(
                         process.getTenantId(), process.getProjectId()))
                 .build();
+        // Fall back to the engine's cascade-resolved default prompt
+        // (project → _vance → classpath) rather than the short
+        // GREETING when the recipe didn't pin a promptOverride. The
+        // recipe normally has no promptPrefix — the prompt belongs
+        // in the .md cascade, not the YAML — so this path is the
+        // common case for Eddie chat-process spawns.
         String base = SystemPrompts.compose(process,
                 process.getPromptOverride() == null
-                        ? GREETING
+                        ? engineDefaultPrompt(process)
                         : process.getPromptOverride(),
                 promptTemplateRenderer, promptCtx);
         messages.add(SystemMessage.from(base));
@@ -1486,7 +1489,11 @@ public class EddieEngine extends StructuredActionEngine {
         if (factsBlock != null && !factsBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(factsBlock));
         }
-        String memoryBlock = memoryContextLoader.composeBlock(process);
+        // RAG auto-inject (when enabled in recipe) rides inside the
+        // memory block — MemoryContextLoader splices it in for any
+        // engine that hands it a userQuery. Engine-agnostic on purpose.
+        String memoryBlock = memoryContextLoader.composeBlock(
+                process, latestUserInputText(inbox));
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(memoryBlock));
         }
@@ -1837,5 +1844,25 @@ public class EddieEngine extends StructuredActionEngine {
             catch (NumberFormatException e) { return fallback; }
         }
         return fallback;
+    }
+
+    /**
+     * Concatenates the {@code content} of every {@link SteerMessage.UserChatInput}
+     * in this turn's inbox — the text the {@code MemoryContextLoader}
+     * embeds against the project RAG for auto-inject. Returns
+     * {@code null} when the inbox has no user text (wakeup-only turn,
+     * cross-process notification arriving without a user message).
+     */
+    private static @Nullable String latestUserInputText(List<SteerMessage> inbox) {
+        StringBuilder sb = new StringBuilder();
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci
+                    && uci.content() != null
+                    && !uci.content().isBlank()) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(uci.content());
+            }
+        }
+        return sb.length() == 0 ? null : sb.toString();
     }
 }

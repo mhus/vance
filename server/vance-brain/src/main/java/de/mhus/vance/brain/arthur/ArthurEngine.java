@@ -205,13 +205,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
-    /**
-     * Lazy provider for the RAG auto-inject service. RAG is optional — a
-     * deployment without embedding settings shouldn't fail Arthur boot.
-     * The provider returns {@code null} when the bean isn't on the path.
-     */
-    private final org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.brain.rag.RagAutoInjectService> ragAutoInjectProvider;
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -230,9 +223,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
             de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
-            de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
-            org.springframework.beans.factory.ObjectProvider<
-                    de.mhus.vance.brain.rag.RagAutoInjectService> ragAutoInjectProvider) {
+            de.mhus.vance.shared.workspace.WorkspaceService workspaceService) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -248,7 +239,6 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.attachmentResolver = attachmentResolver;
         this.promptTemplateRenderer = promptTemplateRenderer;
         this.workspaceService = workspaceService;
-        this.ragAutoInjectProvider = ragAutoInjectProvider;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1288,24 +1278,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
         // Project-memory block (memory.* settings cascade) — pinned
         // language / tone / persona hints. Mutates on Settings changes.
-        String memoryBlock = memoryContextLoader.composeBlock(process);
+        // RAG auto-inject (opt-in via recipe-param rag.autoInject)
+        // rides inside this block — MemoryContextLoader splices the
+        // top-K hits in for any engine that hands it a userQuery.
+        // Silent no-op when off / no RAG / empty user text. See
+        // specification/rag.md §5.
+        String memoryBlock = memoryContextLoader.composeBlock(
+                process, latestUserInputText(inbox));
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(memoryBlock));
-        }
-        // Project-RAG auto-inject block — Variante C (Pre-Turn-Hybrid).
-        // Opt-in via recipe-param rag.autoInject (or cascade-setting
-        // rag.autoInject.enabled override). Embeds this turn's user
-        // text against the _documents RAG and injects top-K hits
-        // above rag.minScore. Silent no-op when off / no RAG /
-        // empty inbox. See specification/rag.md §5.
-        de.mhus.vance.brain.rag.RagAutoInjectService ragAutoInject =
-                ragAutoInjectProvider.getIfAvailable();
-        if (ragAutoInject != null) {
-            String userQuery = latestUserInputText(inbox);
-            String ragBlock = ragAutoInject.composeBlock(process, userQuery);
-            if (ragBlock != null && !ragBlock.isBlank()) {
-                messages.add(VanceSystemMessage.dynamic(ragBlock));
-            }
         }
         // Plan-Mode TodoList block — surfaces the live task list so the
         // LLM in EXECUTING / PLANNING knows which step is current

@@ -205,6 +205,13 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
+    /**
+     * Lazy provider for the RAG auto-inject service. RAG is optional — a
+     * deployment without embedding settings shouldn't fail Arthur boot.
+     * The provider returns {@code null} when the bean isn't on the path.
+     */
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.brain.rag.RagAutoInjectService> ragAutoInjectProvider;
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -223,7 +230,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
             de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
-            de.mhus.vance.shared.workspace.WorkspaceService workspaceService) {
+            de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
+            org.springframework.beans.factory.ObjectProvider<
+                    de.mhus.vance.brain.rag.RagAutoInjectService> ragAutoInjectProvider) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -239,6 +248,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.attachmentResolver = attachmentResolver;
         this.promptTemplateRenderer = promptTemplateRenderer;
         this.workspaceService = workspaceService;
+        this.ragAutoInjectProvider = ragAutoInjectProvider;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1282,6 +1292,21 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(memoryBlock));
         }
+        // Project-RAG auto-inject block — Variante C (Pre-Turn-Hybrid).
+        // Opt-in via recipe-param rag.autoInject (or cascade-setting
+        // rag.autoInject.enabled override). Embeds this turn's user
+        // text against the _documents RAG and injects top-K hits
+        // above rag.minScore. Silent no-op when off / no RAG /
+        // empty inbox. See specification/rag.md §5.
+        de.mhus.vance.brain.rag.RagAutoInjectService ragAutoInject =
+                ragAutoInjectProvider.getIfAvailable();
+        if (ragAutoInject != null) {
+            String userQuery = latestUserInputText(inbox);
+            String ragBlock = ragAutoInject.composeBlock(process, userQuery);
+            if (ragBlock != null && !ragBlock.isBlank()) {
+                messages.add(VanceSystemMessage.dynamic(ragBlock));
+            }
+        }
         // Plan-Mode TodoList block — surfaces the live task list so the
         // LLM in EXECUTING / PLANNING knows which step is current
         // (IN_PROGRESS marker) and which are still PENDING. Without
@@ -1573,6 +1598,26 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * foot-side rendering: {@code [ ]} pending, {@code [~]} active,
      * {@code [✓]} done.
      */
+    /**
+     * Concatenates the text of every {@link SteerMessage.UserChatInput}
+     * in the current turn's inbox — that's the query the RAG auto-inject
+     * embeds against. Returns {@code null} when the inbox carries no
+     * user text (e.g. wakeup-only turn).
+     */
+    private static @org.jspecify.annotations.Nullable String latestUserInputText(
+            java.util.List<SteerMessage> inbox) {
+        StringBuilder sb = new StringBuilder();
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci
+                    && uci.content() != null
+                    && !uci.content().isBlank()) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(uci.content());
+            }
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
     private String buildTodoListBlock(ThinkProcessDocument process) {
         java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
         if (todos == null || todos.isEmpty()) {

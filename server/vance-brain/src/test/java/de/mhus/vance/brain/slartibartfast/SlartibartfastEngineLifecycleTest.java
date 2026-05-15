@@ -150,6 +150,8 @@ class SlartibartfastEngineLifecycleTest {
         engine = new SlartibartfastEngine(
                 thinkProcessService, eventEmitter, laneScheduler,
                 objectMapper, inboxItemService,
+                /*recipeResolver*/ null,
+                /*thinkEngineServiceProvider*/ null,
                 framingPhase, confirmingPhase,
                 gatheringPhase, classifyingPhase,
                 decomposingPhase, bindingPhase,

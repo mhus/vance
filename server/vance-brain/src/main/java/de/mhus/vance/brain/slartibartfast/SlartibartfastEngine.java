@@ -21,6 +21,8 @@ import de.mhus.vance.api.inbox.InboxItemType;
 import de.mhus.vance.api.slartibartfast.Criterion;
 import de.mhus.vance.api.slartibartfast.CriterionOrigin;
 import de.mhus.vance.api.slartibartfast.PendingInboxKind;
+import de.mhus.vance.brain.recipe.AppliedRecipe;
+import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.slartibartfast.phases.BindingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ClassifyingPhase;
@@ -35,6 +37,8 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.shared.inbox.InboxItemDocument;
 import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -46,6 +50,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -103,11 +108,21 @@ public class SlartibartfastEngine implements ThinkEngine {
      *  value. Default {@code FAIL}. */
     public static final String ESCALATION_MODE_KEY = "escalationMode";
 
+    /** {@code engineParams[EXECUTE_ON_DONE_KEY]} — when truthy
+     *  ({@code true} / {@code "true"} / {@code "1"}), Slart
+     *  spawns a child process from the persisted recipe after
+     *  PERSISTING and parks in
+     *  {@link ArchitectStatus#EXECUTING} until the child closes.
+     *  Default {@code false}. */
+    public static final String EXECUTE_ON_DONE_KEY = "executeOnDone";
+
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
     private final InboxItemService inboxItemService;
+    private final RecipeResolver recipeResolver;
+    private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final FramingPhase framingPhase;
     private final ConfirmingPhase confirmingPhase;
     private final GatheringPhase gatheringPhase;
@@ -224,6 +239,8 @@ public class SlartibartfastEngine implements ThinkEngine {
             for (SteerMessage msg : ctx.drainPending()) {
                 if (msg instanceof SteerMessage.InboxAnswer ia) {
                     handleInboxAnswer(state, ia, process);
+                } else if (msg instanceof SteerMessage.ProcessEvent pe) {
+                    handleChildEvent(state, pe, process);
                 }
             }
 
@@ -242,6 +259,18 @@ public class SlartibartfastEngine implements ThinkEngine {
                 log.info("Slartibartfast id='{}' parking on inbox '{}' (kind={})",
                         process.getId(), state.getPendingInboxItemId(),
                         state.getPendingInboxKind());
+                thinkProcessService.updateStatus(
+                        process.getId(), ThinkProcessStatus.BLOCKED);
+                return;
+            }
+
+            // Park on EXECUTING when a child is in flight — the
+            // child's ProcessEvent will arrive via drainPending
+            // and handleChildEvent flips status to DONE/FAILED.
+            if (state.getStatus() == ArchitectStatus.EXECUTING
+                    && state.getChildExecutionProcessId() != null) {
+                log.info("Slartibartfast id='{}' parking on child '{}'",
+                        process.getId(), state.getChildExecutionProcessId());
                 thinkProcessService.updateStatus(
                         process.getId(), ThinkProcessStatus.BLOCKED);
                 return;
@@ -273,6 +302,119 @@ public class SlartibartfastEngine implements ThinkEngine {
                     process.getId(), e.toString(), e);
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             throw e;
+        }
+    }
+
+    /**
+     * Spawn the child execution process from the persisted recipe
+     * iff none has been spawned yet for this run. Idempotent: a
+     * second call after the child already exists is a no-op (the
+     * engine simply parks until the child's ProcessEvent arrives).
+     * Falls back to FAILED with {@code failureReason} on any
+     * resolver / spawn error.
+     */
+    private void executeChildIfNeeded(
+            ThinkProcessDocument process, ArchitectState state) {
+        if (state.getChildExecutionProcessId() != null) {
+            return;
+        }
+        String recipePath = state.getPersistedRecipePath();
+        if (recipePath == null) {
+            state.setFailureReason(
+                    "executeOnDone requested but persistedRecipePath is null");
+            state.setStatus(ArchitectStatus.FAILED);
+            return;
+        }
+        String recipeName = recipePath.startsWith("recipes/")
+                && recipePath.endsWith(".yaml")
+                ? recipePath.substring("recipes/".length(),
+                        recipePath.length() - ".yaml".length())
+                : null;
+        if (recipeName == null) {
+            state.setFailureReason(
+                    "persistedRecipePath has unexpected shape: " + recipePath);
+            state.setStatus(ArchitectStatus.FAILED);
+            return;
+        }
+        try {
+            AppliedRecipe applied = recipeResolver.apply(
+                    process.getTenantId(), process.getProjectId(),
+                    recipeName, process.getConnectionProfile(), null);
+            ThinkEngineService engines = thinkEngineServiceProvider.getObject();
+            var targetEngine = engines.resolve(applied.engine())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Recipe '" + applied.name()
+                                    + "' references unknown engine '"
+                                    + applied.engine() + "'"));
+            String childName = "slart-exec-" + state.getRunId();
+            ThinkProcessDocument child = thinkProcessService.create(
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    process.getSessionId(),
+                    childName,
+                    targetEngine.name(), targetEngine.version(),
+                    "Slart-spawned execution of " + applied.name(),
+                    state.getUserDescription(),
+                    process.getId(),
+                    applied.params(), applied.name(),
+                    applied.promptOverride(),
+                    applied.promptOverrideAppend(),
+                    applied.promptMode(), applied.dataRelayCorrection(),
+                    applied.effectiveAllowedTools(),
+                    applied.connectionProfile(),
+                    applied.defaultActiveSkills(),
+                    applied.allowedSkills() == null
+                            ? null : Set.copyOf(applied.allowedSkills()));
+            state.setChildExecutionProcessId(child.getId());
+            persistState(process, state);
+            engines.start(child);
+            log.info("Slartibartfast id='{}' EXECUTING — spawned child='{}' "
+                            + "engine='{}' recipe='{}'",
+                    process.getId(), child.getId(),
+                    targetEngine.name(), applied.name());
+        } catch (RuntimeException e) {
+            log.warn("Slartibartfast id='{}' EXECUTING spawn failed: {}",
+                    process.getId(), e.toString(), e);
+            state.setFailureReason("Failed to spawn execution child: "
+                    + e.getMessage());
+            state.setStatus(ArchitectStatus.FAILED);
+        }
+    }
+
+    /**
+     * Handle the child execution process's terminal
+     * {@link SteerMessage.ProcessEvent}. Only events from the
+     * tracked {@link ArchitectState#getChildExecutionProcessId()}
+     * and with a terminal {@link ProcessEventType} count; others
+     * are ignored.
+     */
+    private void handleChildEvent(
+            ArchitectState state, SteerMessage.ProcessEvent pe,
+            ThinkProcessDocument process) {
+        String childId = state.getChildExecutionProcessId();
+        if (childId == null || !childId.equals(pe.sourceProcessId())) {
+            return;
+        }
+        ProcessEventType type = pe.type();
+        boolean terminal = type == ProcessEventType.DONE
+                || type == ProcessEventType.FAILED
+                || type == ProcessEventType.STOPPED;
+        if (!terminal) {
+            return;
+        }
+        state.setChildExecutionOutcome(type.name());
+        state.setChildExecutionSummary(pe.humanSummary());
+        if (type == ProcessEventType.DONE) {
+            log.info("Slartibartfast id='{}' child '{}' DONE — flipping to DONE",
+                    process.getId(), childId);
+            state.setStatus(ArchitectStatus.DONE);
+        } else {
+            log.warn("Slartibartfast id='{}' child '{}' terminated {}: {}",
+                    process.getId(), childId, type, pe.humanSummary());
+            state.setFailureReason("Execution child closed " + type
+                    + (pe.humanSummary() == null
+                            ? "" : ": " + pe.humanSummary()));
+            state.setStatus(ArchitectStatus.FAILED);
         }
     }
 
@@ -562,9 +704,18 @@ public class SlartibartfastEngine implements ThinkEngine {
                 persistingPhase.execute(state, process, ctx);
                 if (state.getFailureReason() != null) {
                     state.setStatus(ArchitectStatus.FAILED);
+                } else if (state.isExecuteOnDone()) {
+                    state.setStatus(ArchitectStatus.EXECUTING);
                 } else {
                     state.setStatus(ArchitectStatus.DONE);
                 }
+            }
+            case EXECUTING -> {
+                executeChildIfNeeded(process, state);
+                // No status change here when the child is still
+                // running — the park-check below blocks the
+                // process until a ProcessEvent arrives via
+                // drainPending and handleChildEvent flips status.
             }
             case ESCALATING -> {
                 // Parked waiting for the escalation inbox answer
@@ -605,14 +756,27 @@ public class SlartibartfastEngine implements ThinkEngine {
                 parseConfirmationMode(stringParam(p, CONFIRMATION_MODE_KEY));
         de.mhus.vance.api.slartibartfast.EscalationMode escalationMode =
                 parseEscalationMode(stringParam(p, ESCALATION_MODE_KEY));
+        boolean executeOnDone = parseBooleanParam(p, EXECUTE_ON_DONE_KEY);
         return ArchitectState.builder()
                 .runId(generateRunId())
                 .userDescription(userDescription)
                 .outputSchemaType(schemaType)
                 .confirmationMode(confirmationMode)
                 .escalationMode(escalationMode)
+                .executeOnDone(executeOnDone)
                 .status(ArchitectStatus.READY)
                 .build();
+    }
+
+    private static boolean parseBooleanParam(Map<String, Object> params, String key) {
+        if (params == null) return false;
+        Object v = params.get(key);
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) {
+            return "true".equalsIgnoreCase(s.trim()) || "1".equals(s.trim());
+        }
+        if (v instanceof Number n) return n.intValue() != 0;
+        return false;
     }
 
     private static de.mhus.vance.api.slartibartfast.ConfirmationMode parseConfirmationMode(

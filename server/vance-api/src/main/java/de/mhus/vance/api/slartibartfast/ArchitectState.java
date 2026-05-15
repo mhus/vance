@@ -226,4 +226,33 @@ public class ArchitectState {
      *  {@link #pendingInboxItemId}. */
     @Deprecated
     private @Nullable String escalationInboxItemId;
+
+    /** When {@code true}, after PERSISTING the engine transitions
+     *  to {@link ArchitectStatus#EXECUTING} instead of {@link
+     *  ArchitectStatus#DONE}, spawning a child process from the
+     *  freshly persisted recipe and parking until the child
+     *  reaches a terminal status. Default {@code false} preserves
+     *  the planner-only contract. Set via
+     *  {@code engineParams.executeOnDone}. */
+    @Builder.Default
+    private boolean executeOnDone = false;
+
+    /** Set when EXECUTING spawned the child process. Lets the
+     *  engine recognise the matching {@code ProcessEvent} on
+     *  {@code drainPending} and survive a restart with the child
+     *  reference intact. */
+    private @Nullable String childExecutionProcessId;
+
+    /** Records the child's terminal close-reason name (e.g.
+     *  {@code "DONE"}, {@code "STALE"}, {@code "STOPPED"}) after
+     *  EXECUTING saw the matching {@code ProcessEvent}. {@code
+     *  null} until then. */
+    private @Nullable String childExecutionOutcome;
+
+    /** Human-readable summary of the child's terminal event —
+     *  comes from {@code ProcessEvent.humanSummary()}. Surfaces
+     *  on Slart's own DONE/FAILED payload so callers can see
+     *  what happened without resolving the child process
+     *  document. */
+    private @Nullable String childExecutionSummary;
 }

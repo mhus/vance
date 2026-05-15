@@ -75,6 +75,18 @@ public enum ArchitectStatus {
      *  recipe draft; user decides revise vs. discard. */
     ESCALATED,
 
+    /** Opt-in convenience phase: after PERSISTING, when
+     *  {@code engineParams.executeOnDone=true}, Slart spawns a
+     *  child process from the freshly persisted recipe and parks
+     *  here until the child reaches a terminal status. The
+     *  child's {@code ProcessEvent} arrives via
+     *  {@code drainPending}; the engine then transitions to
+     *  {@link #DONE} (child DONE) or {@link #FAILED} (child
+     *  STALE / STOPPED / FAILED). When {@code executeOnDone} is
+     *  false (default) the engine skips this phase and goes
+     *  PERSISTING → DONE directly. */
+    EXECUTING,
+
     /** Recipe persisted, DONE event emitted with the recipe path
      *  and run ID. */
     DONE,

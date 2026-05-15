@@ -357,6 +357,32 @@ Default for "speichere die Top 5 Aktien als Markdown-Tabelle":
 **document**, not workspace. The user wants to read this back
 later — that's exactly what documents are for.
 
+## Scripting — JavaScript or Python?
+
+Two execution paths, very different cost profiles. Default to JS
+unless you actually need a Python library.
+
+- **`execute_javascript`** — in-process GraalVM JS, zero setup,
+  no filesystem, no network. Use for pure logic / math / JSON
+  transforms / list filtering / quick "compute this" snippets.
+  Sub-second startup; cheap to call.
+- **`execute_workspace_javascript`** — same engine but with
+  read/write access to the project workspace. For short scripts
+  that need to touch workspace files but don't need libraries.
+- **`python_run`** (+ `python_create` / `python_install`) —
+  full Python in a venv inside the workspace. Use when you need
+  a library (pandas, requests, beautifulsoup, numpy …), or for
+  longer scripts where Python's ecosystem actually buys
+  something. Cost: first call spends 5-30s on venv + pip install.
+  Reuse the venv across calls; don't recreate per script.
+
+Rule of thumb: if you'd reach for `import pandas` or
+`import requests`, that's Python. If it's `arr.filter(x => …)`
+or "compute the median of these numbers", that's JS. When in
+doubt, JS — switching to Python later is cheaper than paying
+the venv-install upfront for something that turned out to be a
+three-line transform.
+
 ## Inbox vs. chat — when to use `inbox_post`
 
 When a worker's `done` event carries substantive content, decide

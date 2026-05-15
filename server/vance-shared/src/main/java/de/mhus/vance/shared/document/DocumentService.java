@@ -144,20 +144,30 @@ public class DocumentService {
         }
         String trimmedKind = (kind == null || kind.isBlank()) ? null : kind.trim();
 
-        if (trimmedKind != null && trimmedPrefix != null) {
-            return repository.findByTenantIdAndProjectIdAndStatusAndKindAndPathStartsWith(
-                    tenantId, projectId, DocumentStatus.ACTIVE, trimmedKind, trimmedPrefix, pageable);
-        }
+        // Hide the trash folder by default — soft-deleted documents
+        // live under {@value #TRASH_FOLDER_PREFIX} and would otherwise
+        // pollute every default listing. Callers that want to inspect
+        // the trash pass {@code pathPrefix="_bin/"} explicitly, which
+        // skips this filter (the prefix narrows the query to exactly
+        // the trash subtree).
+        Query query = new Query()
+                .addCriteria(Criteria.where("tenantId").is(tenantId))
+                .addCriteria(Criteria.where("projectId").is(projectId))
+                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE))
+                .with(pageable);
         if (trimmedKind != null) {
-            return repository.findByTenantIdAndProjectIdAndStatusAndKind(
-                    tenantId, projectId, DocumentStatus.ACTIVE, trimmedKind, pageable);
+            query.addCriteria(Criteria.where("kind").is(trimmedKind));
         }
         if (trimmedPrefix != null) {
-            return repository.findByTenantIdAndProjectIdAndStatusAndPathStartsWith(
-                    tenantId, projectId, DocumentStatus.ACTIVE, trimmedPrefix, pageable);
+            query.addCriteria(Criteria.where("path").regex("^" + java.util.regex.Pattern.quote(trimmedPrefix)));
+        } else {
+            query.addCriteria(Criteria.where("path")
+                    .not()
+                    .regex("^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)));
         }
-        return repository.findByTenantIdAndProjectIdAndStatus(
-                tenantId, projectId, DocumentStatus.ACTIVE, pageable);
+        long total = mongoTemplate.count(Query.of(query).limit(-1).skip(-1), DocumentDocument.class);
+        List<DocumentDocument> content = mongoTemplate.find(query, DocumentDocument.class);
+        return new org.springframework.data.domain.PageImpl<>(content, pageable, total);
     }
 
     /** All {@link DocumentStatus#ACTIVE} documents in the project that declared {@code kind: <kind>}. */

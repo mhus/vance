@@ -4,7 +4,7 @@
 */
 
 export enum LockMode {
-  FULL,
-  PROTECTED,
-  HIDDEN
+  FULL = 'FULL',
+  PROTECTED = 'PROTECTED',
+  HIDDEN = 'HIDDEN'
 }

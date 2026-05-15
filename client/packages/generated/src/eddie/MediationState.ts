@@ -4,6 +4,6 @@
 */
 
 export enum MediationState {
-  ACTIVE,
-  RETURNING
+  ACTIVE = 'ACTIVE',
+  RETURNING = 'RETURNING'
 }

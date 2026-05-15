@@ -4,9 +4,9 @@
 */
 
 export enum HactarRunStatus {
-  RUNNING,
-  DONE,
-  FAILED,
-  TERMINATED,
-  PAUSED
+  RUNNING = 'RUNNING',
+  DONE = 'DONE',
+  FAILED = 'FAILED',
+  TERMINATED = 'TERMINATED',
+  PAUSED = 'PAUSED'
 }

@@ -591,7 +591,9 @@ export default {
         help:
           'Fires the event as an admin (JWT-authenticated). The event’s bearer token is not required here. Optional JSON payload is forwarded to the workflow under params.payload.',
         payloadLabel: 'Payload (JSON, optional)',
-        payloadPlaceholder: '{\n  "ref": "main"\n}',
+        // Curly braces are escaped via vue-i18n's literal syntax — bare
+        // {…} would be parsed as a placeholder and crash the compiler.
+        payloadPlaceholder: "{'{'}\n  \"ref\": \"main\"\n{'}'}",
         button: 'Trigger event',
         spawnedPrefix: 'Spawned workflow:',
         runIdLabel: 'workflowRunId:',

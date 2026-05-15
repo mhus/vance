@@ -4,6 +4,6 @@
 */
 
 export enum PromptMode {
-  APPEND,
-  OVERWRITE
+  APPEND = 'APPEND',
+  OVERWRITE = 'OVERWRITE'
 }

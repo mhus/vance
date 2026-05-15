@@ -4,6 +4,6 @@
 */
 
 export enum HookSource {
-  PROJECT,
-  VANCE
+  PROJECT = 'PROJECT',
+  VANCE = 'VANCE'
 }

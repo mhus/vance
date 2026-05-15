@@ -4,6 +4,6 @@
 */
 
 export enum HactarWorkflowSource {
-  PROJECT,
-  TENANT
+  PROJECT = 'PROJECT',
+  TENANT = 'TENANT'
 }

@@ -4,7 +4,7 @@
 */
 
 export enum ToolCallStatus {
-  SUCCESS,
-  ERROR,
-  TIMEOUT
+  SUCCESS = 'SUCCESS',
+  ERROR = 'ERROR',
+  TIMEOUT = 'TIMEOUT'
 }

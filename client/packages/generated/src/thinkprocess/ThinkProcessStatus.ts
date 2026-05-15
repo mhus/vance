@@ -4,11 +4,11 @@
 */
 
 export enum ThinkProcessStatus {
-  INIT,
-  RUNNING,
-  IDLE,
-  BLOCKED,
-  PAUSED,
-  SUSPENDED,
-  CLOSED
+  INIT = 'INIT',
+  RUNNING = 'RUNNING',
+  IDLE = 'IDLE',
+  BLOCKED = 'BLOCKED',
+  PAUSED = 'PAUSED',
+  SUSPENDED = 'SUSPENDED',
+  CLOSED = 'CLOSED'
 }

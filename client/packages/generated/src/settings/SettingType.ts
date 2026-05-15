@@ -4,10 +4,10 @@
 */
 
 export enum SettingType {
-  STRING,
-  INT,
-  LONG,
-  DOUBLE,
-  BOOLEAN,
-  PASSWORD
+  STRING = 'STRING',
+  INT = 'INT',
+  LONG = 'LONG',
+  DOUBLE = 'DOUBLE',
+  BOOLEAN = 'BOOLEAN',
+  PASSWORD = 'PASSWORD'
 }

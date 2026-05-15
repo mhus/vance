@@ -2,7 +2,6 @@ package de.mhus.vance.api.hactar;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
-import jakarta.validation.constraints.NotBlank;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,6 +24,11 @@ public class HactarStartRequest {
     /** Caller-supplied parameters, validated against {@code parameters:} block in the workflow YAML. */
     private @Nullable Map<String, Object> params;
 
-    /** Audit hint — user id, scheduler key, or hook origin. Logged in {@code StartRecord}. */
-    private @Nullable @NotBlank String startedBy;
+    /**
+     * Audit hint — user id, scheduler key, or hook origin. Logged in
+     * {@code StartRecord}. Optional: the REST controller defaults this
+     * to the authenticated JWT user when blank, so UI clients don't
+     * need to thread the username through every request.
+     */
+    private @Nullable String startedBy;
 }

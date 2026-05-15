@@ -4,6 +4,6 @@
 */
 
 export enum HookType {
-  JS,
-  LLM
+  JS = 'JS',
+  LLM = 'LLM'
 }

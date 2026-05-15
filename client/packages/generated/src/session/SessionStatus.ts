@@ -4,10 +4,10 @@
 */
 
 export enum SessionStatus {
-  INIT,
-  RUNNING,
-  IDLE,
-  SUSPENDED,
-  ARCHIVED,
-  CLOSED
+  INIT = 'INIT',
+  RUNNING = 'RUNNING',
+  IDLE = 'IDLE',
+  SUSPENDED = 'SUSPENDED',
+  ARCHIVED = 'ARCHIVED',
+  CLOSED = 'CLOSED'
 }

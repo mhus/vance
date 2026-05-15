@@ -4,8 +4,8 @@
 */
 
 export enum ProcessMode {
-  NORMAL,
-  EXPLORING,
-  PLANNING,
-  EXECUTING
+  NORMAL = 'NORMAL',
+  EXPLORING = 'EXPLORING',
+  PLANNING = 'PLANNING',
+  EXECUTING = 'EXECUTING'
 }

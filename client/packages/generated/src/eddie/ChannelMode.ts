@@ -4,8 +4,8 @@
 */
 
 export enum ChannelMode {
-  VERBATIM,
-  MILESTONES,
-  SUMMARY,
-  INBOX
+  VERBATIM = 'VERBATIM',
+  MILESTONES = 'MILESTONES',
+  SUMMARY = 'SUMMARY',
+  INBOX = 'INBOX'
 }

@@ -4,6 +4,6 @@
 */
 
 export enum SkillTriggerType {
-  PATTERN,
-  KEYWORDS
+  PATTERN = 'PATTERN',
+  KEYWORDS = 'KEYWORDS'
 }

@@ -4,8 +4,8 @@
 */
 
 export enum ProcessSkillCommand {
-  ACTIVATE,
-  CLEAR,
-  CLEAR_ALL,
-  LIST
+  ACTIVATE = 'ACTIVATE',
+  CLEAR = 'CLEAR',
+  CLEAR_ALL = 'CLEAR_ALL',
+  LIST = 'LIST'
 }

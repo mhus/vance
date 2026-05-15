@@ -4,6 +4,6 @@
 */
 
 export enum IdlePolicy {
-  SUSPEND,
-  NONE
+  SUSPEND = 'SUSPEND',
+  NONE = 'NONE'
 }

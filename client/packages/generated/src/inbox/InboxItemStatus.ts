@@ -4,8 +4,8 @@
 */
 
 export enum InboxItemStatus {
-  PENDING,
-  ANSWERED,
-  DISMISSED,
-  ARCHIVED
+  PENDING = 'PENDING',
+  ANSWERED = 'ANSWERED',
+  DISMISSED = 'DISMISSED',
+  ARCHIVED = 'ARCHIVED'
 }

@@ -4,7 +4,7 @@
 */
 
 export enum SuspendCause {
-  IDLE,
-  DISCONNECT,
-  FORCED
+  IDLE = 'IDLE',
+  DISCONNECT = 'DISCONNECT',
+  FORCED = 'FORCED'
 }

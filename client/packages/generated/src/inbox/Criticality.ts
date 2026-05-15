@@ -4,7 +4,7 @@
 */
 
 export enum Criticality {
-  LOW,
-  NORMAL,
-  CRITICAL
+  LOW = 'LOW',
+  NORMAL = 'NORMAL',
+  CRITICAL = 'CRITICAL'
 }

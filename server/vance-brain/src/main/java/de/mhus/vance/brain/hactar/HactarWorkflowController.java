@@ -8,6 +8,7 @@ import de.mhus.vance.api.hactar.HactarStartRequest;
 import de.mhus.vance.api.hactar.HactarWorkflowDto;
 import de.mhus.vance.api.hactar.HactarWorkflowSummary;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.hactar.HactarJournalEntry;
 import de.mhus.vance.shared.hactar.HactarJournalService;
 import de.mhus.vance.shared.hactar.HactarParameterSpec;
@@ -120,12 +121,25 @@ public class HactarWorkflowController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
 
+        // startedBy is an audit hint that lands in StartRecord. UI
+        // clients (web-face, foot) rarely care about it — fall back to
+        // the JWT-authenticated username so callers don't have to thread
+        // it through every request, and the audit trail still names a
+        // real principal.
+        String startedBy = body == null ? null : body.getStartedBy();
+        if (startedBy == null || startedBy.isBlank()) {
+            Object u = request.getAttribute(AccessFilterBase.ATTR_USERNAME);
+            if (u instanceof String s && !s.isBlank()) {
+                startedBy = s;
+            }
+        }
+
         String runId;
         try {
             runId = workflowService.start(
                     tenant, project, name,
                     body == null ? null : body.getParams(),
-                    body == null ? null : body.getStartedBy());
+                    startedBy);
         } catch (HactarWorkflowService.HactarWorkflowException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage(), ex);
         } catch (HactarWorkflowParseException ex) {

@@ -4,16 +4,16 @@
 */
 
 export enum SessionColor {
-  SLATE,
-  RED,
-  ORANGE,
-  AMBER,
-  GREEN,
-  TEAL,
-  CYAN,
-  BLUE,
-  INDIGO,
-  PURPLE,
-  PINK,
-  ROSE
+  SLATE = 'SLATE',
+  RED = 'RED',
+  ORANGE = 'ORANGE',
+  AMBER = 'AMBER',
+  GREEN = 'GREEN',
+  TEAL = 'TEAL',
+  CYAN = 'CYAN',
+  BLUE = 'BLUE',
+  INDIGO = 'INDIGO',
+  PURPLE = 'PURPLE',
+  PINK = 'PINK',
+  ROSE = 'ROSE'
 }

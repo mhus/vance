@@ -4,6 +4,6 @@
 */
 
 export enum SuspendPolicy {
-  KEEP,
-  CLOSE
+  KEEP = 'KEEP',
+  CLOSE = 'CLOSE'
 }

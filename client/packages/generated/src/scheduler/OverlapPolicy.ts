@@ -4,7 +4,7 @@
 */
 
 export enum OverlapPolicy {
-  SKIP,
-  QUEUE,
-  CANCEL_PREVIOUS
+  SKIP = 'SKIP',
+  QUEUE = 'QUEUE',
+  CANCEL_PREVIOUS = 'CANCEL_PREVIOUS'
 }

@@ -4,6 +4,6 @@
 */
 
 export enum SchedulerSource {
-  PROJECT,
-  TENANT
+  PROJECT = 'PROJECT',
+  TENANT = 'TENANT'
 }

@@ -4,6 +4,6 @@
 */
 
 export enum EventSource {
-  PROJECT,
-  TENANT
+  PROJECT = 'PROJECT',
+  TENANT = 'TENANT'
 }

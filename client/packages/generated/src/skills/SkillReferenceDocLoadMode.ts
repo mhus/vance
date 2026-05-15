@@ -4,6 +4,6 @@
 */
 
 export enum SkillReferenceDocLoadMode {
-  INLINE,
-  ON_DEMAND
+  INLINE = 'INLINE',
+  ON_DEMAND = 'ON_DEMAND'
 }

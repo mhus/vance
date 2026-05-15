@@ -4,7 +4,7 @@
 */
 
 export enum ProgressKind {
-  METRICS,
-  PLAN,
-  STATUS
+  METRICS = 'METRICS',
+  PLAN = 'PLAN',
+  STATUS = 'STATUS'
 }

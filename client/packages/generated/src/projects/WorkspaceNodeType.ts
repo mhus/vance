@@ -4,6 +4,6 @@
 */
 
 export enum WorkspaceNodeType {
-  FILE,
-  DIR
+  FILE = 'FILE',
+  DIR = 'DIR'
 }

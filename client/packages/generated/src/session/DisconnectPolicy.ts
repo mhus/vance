@@ -4,7 +4,7 @@
 */
 
 export enum DisconnectPolicy {
-  SUSPEND,
-  KEEP_OPEN,
-  CLOSE
+  SUSPEND = 'SUSPEND',
+  KEEP_OPEN = 'KEEP_OPEN',
+  CLOSE = 'CLOSE'
 }

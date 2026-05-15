@@ -4,7 +4,7 @@
 */
 
 export enum KitImportMode {
-  INSTALL,
-  UPDATE,
-  APPLY
+  INSTALL = 'INSTALL',
+  UPDATE = 'UPDATE',
+  APPLY = 'APPLY'
 }

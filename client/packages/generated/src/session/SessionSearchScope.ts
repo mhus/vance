@@ -4,7 +4,7 @@
 */
 
 export enum SessionSearchScope {
-  METADATA,
-  CONTENT,
-  BOTH
+  METADATA = 'METADATA',
+  CONTENT = 'CONTENT',
+  BOTH = 'BOTH'
 }

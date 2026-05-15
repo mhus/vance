@@ -120,9 +120,7 @@ public class TypeScriptModelWriter {
         w.write("export enum " + type.getName() + " {\n");
         for (int i = 0; i < type.getEnumValues().size(); i++) {
             String v = type.getEnumValues().get(i);
-            w.write("  " + v);
-            if (i < type.getEnumValues().size() - 1) w.write(",");
-            w.write("\n");
+            writeEnumMember(w, v, i == type.getEnumValues().size() - 1);
         }
         w.write("}\n");
     }
@@ -131,11 +129,22 @@ public class TypeScriptModelWriter {
         w.write("export enum " + ne.getName() + " {\n");
         for (int i = 0; i < ne.getValues().size(); i++) {
             String v = ne.getValues().get(i);
-            w.write("  " + v);
-            if (i < ne.getValues().size() - 1) w.write(",");
-            w.write("\n");
+            writeEnumMember(w, v, i == ne.getValues().size() - 1);
         }
         w.write("}\n");
+    }
+
+    /**
+     * Emit a string-valued enum member: {@code A = 'A',}. Jackson's
+     * default Java-enum serialisation is the constant name, so making
+     * the TS enum string-valued lets runtime JSON values ("BLUE") match
+     * {@code SessionColor.BLUE} and computed-property lookups like
+     * {@code Record<SessionColor, …>} work as written.
+     */
+    private void writeEnumMember(Writer w, String name, boolean last) throws IOException {
+        w.write("  " + name + " = '" + name + "'");
+        if (!last) w.write(",");
+        w.write("\n");
     }
 
     private void writeConstants(List<TypeScriptConstant> constants, Writer w) throws IOException {

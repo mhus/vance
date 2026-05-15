@@ -4,8 +4,8 @@
 */
 
 export enum SkillScope {
-  USER,
-  PROJECT,
-  VANCE,
-  RESOURCE
+  USER = 'USER',
+  PROJECT = 'PROJECT',
+  VANCE = 'VANCE',
+  RESOURCE = 'RESOURCE'
 }

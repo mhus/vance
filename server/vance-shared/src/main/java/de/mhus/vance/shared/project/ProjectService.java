@@ -292,6 +292,21 @@ public class ProjectService {
     }
 
     /**
+     * Lists podless projects (system + per-user) that are not in a
+     * terminal state. Podless projects never reach {@code RUNNING}
+     * because {@code bringPodless()} leaves the status untouched — so
+     * pod-scoped sweepers (auto-summary, indexers) cannot rely on the
+     * regular {@link #findRunningByPod} filter to see them. They live
+     * on whichever pod the user's WS lands on; any pod may sweep their
+     * documents because per-doc work is gated by an atomic claim.
+     */
+    public List<ProjectDocument> findPodlessActive() {
+        Query query = new Query(Criteria.where(F_NAME).regex("^" + SYSTEM_NAME_PREFIX)
+                .and(F_STATUS).ne(ProjectStatus.CLOSED));
+        return mongoTemplate.find(query, ProjectDocument.class);
+    }
+
+    /**
      * Lists every project whose {@code podIp} matches, regardless of
      * project status. Used by the cluster heartbeat to denormalise
      * "what does this pod own right now" into the brain-pod row.

@@ -75,9 +75,15 @@ public class SessionLifecycleController {
         authority.enforce(request,
                 new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
                 Action.START);
-        if (session.getStatus() != SessionStatus.ARCHIVED) {
+        if (session.getStatus() == SessionStatus.CLOSED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Session is not ARCHIVED (status=" + session.getStatus() + ")");
+                    "Session is CLOSED and cannot be reactivated");
+        }
+        if (session.getStatus() != SessionStatus.ARCHIVED) {
+            // Already in an active state — symmetric with archive(),
+            // which no-ops on already-archived sessions. Two reactivate
+            // calls in a row both succeed with 204.
+            return ResponseEntity.noContent().build();
         }
         lifecycleService.reactivateFromArchive(sessionId);
         return ResponseEntity.noContent().build();

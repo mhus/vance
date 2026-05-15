@@ -4,6 +4,15 @@ spring:
   mongodb: # since spring 7: spring.mongodb.*
     uri: mongodb://root:example@localhost:27017/vance?authSource=admin
     database: vance
+  data:
+    mongodb:
+      # Make Spring Data MongoDB honour @Indexed / @CompoundIndex /
+      # @TextIndexed annotations on entity classes. Without this flag,
+      # the annotations are dead decoration and the only index on every
+      # collection is _id — search queries against the @TextIndexed
+      # fields (session-search, etc.) fail with IndexNotFound, and
+      # hot-path lookups by tenantId+sessionId run as collection scans.
+      auto-index-creation: true
   servlet:
     multipart:
       enabled: true

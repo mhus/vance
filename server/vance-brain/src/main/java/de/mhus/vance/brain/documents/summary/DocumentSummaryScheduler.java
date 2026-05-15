@@ -7,6 +7,7 @@ import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.settings.SettingService;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -54,7 +55,15 @@ public class DocumentSummaryScheduler {
             initialDelayString = "${vance.autoSummary.initialDelayMs:60000}")
     public void tick() {
         String podId = locationService.getPodAddress();
-        List<ProjectDocument> projects = projectService.findRunningByPod(podId);
+        // Pod-owned RUNNING projects (regular projects with a Home Pod)
+        // plus podless projects (system / per-user) which never reach
+        // RUNNING but still hold documents we want to summarise. The
+        // per-document claim in {@link DocumentService#claimForSummary}
+        // is atomic, so multiple pods racing on a podless project is
+        // safe — no document is summarised twice.
+        List<ProjectDocument> projects = new ArrayList<>(
+                projectService.findRunningByPod(podId));
+        projects.addAll(projectService.findPodlessActive());
         if (projects.isEmpty()) return;
 
         Duration claimTtl = Duration.ofMinutes(claimTtlMinutes);

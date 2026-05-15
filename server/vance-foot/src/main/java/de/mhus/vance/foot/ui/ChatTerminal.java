@@ -313,6 +313,17 @@ public class ChatTerminal {
         }
     }
 
+    /**
+     * Records a fully-assembled chat line into the scrollback buffer
+     * without rendering. Used by {@link StreamingDisplay} to mirror
+     * inline-streamed assistant turns into {@code /debug/output}: the
+     * user already saw the text via {@link #streamRaw} chunks, but the
+     * debug REST surface only inspects the recorded buffer.
+     */
+    public void recordChat(String message) {
+        record(Verbosity.INFO, message);
+    }
+
     /** One captured terminal line. */
     public record Line(Instant timestamp, Verbosity level, String text) {}
 }

@@ -192,6 +192,17 @@ public class LiveRegion {
         if (!config.getUi().getStatusBar().isEnabled()) {
             return;
         }
+        // Dumb terminals (Spring-Boot run consoles, CI captures, piped
+        // stdin) can't honour ANSI cursor moves, so the live-region
+        // repaint loop just stamps the prompt over and over. Stay
+        // unattached and let ChatTerminal fall back to plain
+        // println-to-stdout for output; input is unreachable but the
+        // debug REST surface (/debug/chat, /debug/command) is the
+        // intended driver in that environment.
+        String type = t.getType();
+        if (Terminal.TYPE_DUMB.equals(type) || Terminal.TYPE_DUMB_COLOR.equals(type)) {
+            return;
+        }
         terminal = t;
         out = t.output();
         reader = t.reader();

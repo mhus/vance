@@ -10,6 +10,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * {@code /project-create <name> [title] [--group <projectGroupId>] [--kit <kitName>]}
@@ -27,17 +28,15 @@ public class ProjectCreateCommand implements SlashCommand {
     private final BrainRestClientService rest;
     private final ChatTerminal terminal;
     private final FootConfig config;
-    private final ObjectMapper json;
+    private final ObjectMapper json = JsonMapper.builder().build();
 
     public ProjectCreateCommand(
             BrainRestClientService rest,
             ChatTerminal terminal,
-            FootConfig config,
-            ObjectMapper json) {
+            FootConfig config) {
         this.rest = rest;
         this.terminal = terminal;
         this.config = config;
-        this.json = json;
     }
 
     @Override

@@ -73,6 +73,11 @@ public class StreamingDisplay {
                     state.headerEmitted = true;
                 }
                 terminal.streamRaw(chunk);
+                // Also accumulate so the assembled line can be mirrored
+                // into the scrollback buffer at commit — chunks via
+                // streamRaw bypass record(), which would otherwise leave
+                // streamed assistant turns invisible to /debug/output.
+                state.buffered.append(chunk);
             } else {
                 // Either the prompt is active (must not write raw) or
                 // this is a worker (no inline streaming). Buffer.
@@ -125,6 +130,12 @@ public class StreamingDisplay {
             if (state.headerEmitted) {
                 // Streamed inline while exclusive — close the line.
                 terminal.streamRaw("\n");
+                // Mirror the assembled line into the scrollback so
+                // /debug/output reflects what the user just saw.
+                if (state.buffered.length() > 0) {
+                    terminal.recordChat(
+                            header(state.processName, state.role) + state.buffered);
+                }
                 return true;
             }
             if (state.buffered.length() > 0) {

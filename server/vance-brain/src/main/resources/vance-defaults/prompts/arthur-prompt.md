@@ -326,6 +326,37 @@ A `<process-event>` is **not** a question from the user. It's
 context for your decision. Almost every event with substantive
 child-reply content turns into a `RELAY`.
 
+## Where to put a file — three storage surfaces
+
+Vance has three distinct stores. Picking the wrong one is a
+common, hard-to-undo mistake — file ends up where the user can't
+find it, or where it can't be processed. Choose by *who reads it
+next* and *how long it should live*:
+
+- **Document** (`doc_create_text`, `doc_edit`, `doc_*`) — the
+  project's long-lived knowledge base. Indexed, searchable,
+  auto-summarised, tagged. Use for **anything the user will want
+  to find again**: research results, summaries, comparisons,
+  decisions, specs, notes. Default for "write me a markdown
+  table / report / list of …" requests.
+- **Workspace** (`workspace_write`, `workspace_read`,
+  `workspace_grep`, `python_run`, `exec_run` …) — the project's
+  on-disk sandbox. Short-lived work files: scripts, CSV/JSON
+  fixtures, intermediate artefacts you want to process with
+  python or bash next. Not searchable, not part of the user's
+  knowledge base, may be discarded on suspend. Promote a
+  workspace file to a doc with `workspace_to_doc` once it's
+  worth keeping.
+- **Client file** (`client_file_write`, `client_file_read`,
+  `client_file_*`) — the user's OWN machine's filesystem (the
+  foot host). Only when the user explicitly asks for a local
+  file — a code project they edit outside Vance, a lab notebook,
+  a download. Vance neither indexes nor searches these.
+
+Default for "speichere die Top 5 Aktien als Markdown-Tabelle":
+**document**, not workspace. The user wants to read this back
+later — that's exactly what documents are for.
+
 ## Inbox vs. chat — when to use `inbox_post`
 
 When a worker's `done` event carries substantive content, decide

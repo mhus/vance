@@ -49,9 +49,19 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public String description() {
-        return "Create or overwrite a text file in a project workspace "
-                + "RootDir. Use relative paths; parent directories are "
-                + "created automatically.";
+        return "Create or overwrite a short-lived WORKSPACE file in "
+                + "the project's working directory on disk. Use this "
+                + "for scripts, scratch data, intermediate artifacts "
+                + "or anything you want to operate on with python_run "
+                + "/ exec_run / workspace_grep next. The workspace is "
+                + "a sandbox — files here are not searchable knowledge "
+                + "and may be discarded when the project suspends. "
+                + "NOT for: lasting knowledge the user will want to "
+                + "find/read later (use doc_create_text), or files on "
+                + "the user's own machine (use client_file_write). "
+                + "Use relative paths; parent directories are created "
+                + "automatically. Promote a workspace file to a real "
+                + "document with workspace_to_doc when it earns it.";
     }
 
     @Override

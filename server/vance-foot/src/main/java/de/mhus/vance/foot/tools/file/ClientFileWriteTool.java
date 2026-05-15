@@ -37,8 +37,20 @@ public class ClientFileWriteTool implements ClientTool {
 
     @Override
     public String description() {
-        return "Create or overwrite a UTF-8 file on the user's machine "
-                + "(foot host). Parent directories are created as needed.";
+        return "Create or overwrite a UTF-8 file on the USER'S OWN "
+                + "MACHINE (the foot host's filesystem). Use this only "
+                + "when the user explicitly asks to write to their "
+                + "local disk — e.g. a code project they're editing "
+                + "outside Vance, a lab notebook, downloads they "
+                + "want to keep. The file lands wherever the user "
+                + "browses with their own editor; Vance can read it "
+                + "back via client_file_read but does not index or "
+                + "search it. "
+                + "NOT for: research notes the user wants to find "
+                + "later inside Vance (use doc_create_text), or "
+                + "scratch / scriptable data for project-side "
+                + "processing (use workspace_write). "
+                + "Parent directories are created as needed.";
     }
 
     @Override

@@ -143,16 +143,16 @@ public class ProcessObserveTool implements Tool {
                 worker.getTenantId(), worker.getProjectId())
                 .orElseThrow(() -> new ToolException(
                         "Worker project '" + worker.getProjectId() + "' not found"));
-        String homeCluster = workerProject.getHomeCluster();
-        if (homeCluster == null || homeCluster.isBlank()) {
+        String homeNode = workerProject.getHomeNode();
+        if (homeNode == null || homeNode.isBlank()) {
             throw new ToolException(
                     "Worker project '" + workerProject.getName()
                             + "' has no claimed home pod yet — cannot observe");
         }
-        String podAddress = clusterService.resolveEndpoint(homeCluster)
+        String podAddress = clusterService.resolveEndpoint(homeNode)
                 .orElseThrow(() -> new ToolException(
                         "Worker project '" + workerProject.getName()
-                                + "' home cluster '" + homeCluster
+                                + "' home cluster '" + homeNode
                                 + "' has no live endpoint in the cluster registry"));
 
         WorkerLinkSnapshot snapshot = WorkerLinkSnapshot.builder()

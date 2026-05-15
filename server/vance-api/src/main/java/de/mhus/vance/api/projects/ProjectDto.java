@@ -44,7 +44,7 @@ public class ProjectDto {
      * demand server-side; the UI receives only the human-readable
      * cluster identifier.
      */
-    private @Nullable String homeCluster;
+    private @Nullable String homeNode;
 
     private @Nullable Instant claimedAt;
 

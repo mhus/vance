@@ -36,7 +36,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
  *
  * <p>{@code activeProjects} is denormalised "{@code <tenantId>/<projectName>}"
  * entries, refreshed on every heartbeat. The authoritative source is
- * still {@code ProjectDocument.homeCluster}; this list is for the
+ * still {@code ProjectDocument.homeNode}; this list is for the
  * cluster dashboard and quick "what runs on pod X" answers.
  */
 @Document(collection = "brain_pods")

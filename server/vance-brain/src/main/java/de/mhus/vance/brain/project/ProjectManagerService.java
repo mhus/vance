@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
  * never claim a pod themselves — they go through the manager so the
  * "which pod owns this project" decision lives in one place.
  *
- * <p>The pod-affinity field {@link ProjectDocument#getHomeCluster()}
+ * <p>The pod-affinity field {@link ProjectDocument#getHomeNode()}
  * stores a cluster node name (e.g. {@code maya-prosser}) — the brain
  * picks a fresh, dictionary-assembled node name on every boot so a
  * pod restart never inherits a stale ownership claim. Callers that
@@ -45,14 +45,14 @@ public class ProjectManagerService {
 
     /**
      * Ensures the project is owned by this pod. Refreshes
-     * {@code homeCluster} + {@code claimedAt} on the document; lifecycle
+     * {@code homeNode} + {@code claimedAt} on the document; lifecycle
      * status is left untouched (transition runs via
      * {@code ProjectLifecycleService}). Throws {@link ClaimRejectedException}
      * when another live pod holds the claim, and on CLOSED or unknown.
      *
      * <p>Podless system projects (see {@link ProjectService#isPodless})
      * are returned unchanged — they live on whichever pod the user's
-     * WS lands on and must not be pinned via {@code homeCluster}.
+     * WS lands on and must not be pinned via {@code homeNode}.
      */
     public ProjectDocument claimForLocalPod(String tenantId, String projectName) {
         if (ProjectService.isPodless(projectName)) {
@@ -66,7 +66,7 @@ public class ProjectManagerService {
         ProjectDocument doc = projectService.claim(tenantId, projectName, selfCluster, liveClusters)
                 .orElseThrow(() -> {
                     String holder = projectService.findByTenantAndName(tenantId, projectName)
-                            .map(ProjectDocument::getHomeCluster)
+                            .map(ProjectDocument::getHomeNode)
                             .orElse("<gone>");
                     return new ClaimRejectedException(
                             "Project '" + tenantId + "/" + projectName
@@ -85,17 +85,17 @@ public class ProjectManagerService {
      */
     public void requireOwnedByLocalPod(ProjectDocument project) {
         String selfCluster = clusterService.selfNodeName();
-        if (!Objects.equals(selfCluster, project.getHomeCluster())) {
+        if (!Objects.equals(selfCluster, project.getHomeNode())) {
             throw new ProjectNotOwnedException(
                     "Project '" + project.getName()
-                            + "' is owned by cluster '" + project.getHomeCluster()
+                            + "' is owned by cluster '" + project.getHomeNode()
                             + "', not this pod ('" + selfCluster + "')");
         }
     }
 
     /** All RUNNING projects this pod currently owns — for startup reclaim. */
     public List<ProjectDocument> projectsOwnedByLocalPod() {
-        return projectService.findRunningByHomeCluster(clusterService.selfNodeName());
+        return projectService.findRunningByHomeNode(clusterService.selfNodeName());
     }
 
     /**
@@ -105,7 +105,7 @@ public class ProjectManagerService {
      *
      * <p>Returns {@link Optional#empty()} if the project does not exist,
      * is podless ({@link ProjectService#isPodless}), has not yet been
-     * claimed, or its {@code homeCluster} points at a node that the
+     * claimed, or its {@code homeNode} points at a node that the
      * cluster registry no longer knows. Callers that need a present
      * endpoint should treat the empty case as "lives wherever the WS
      * lands" or "pending bootstrap" and either retry or surface a
@@ -120,7 +120,7 @@ public class ProjectManagerService {
             return Optional.empty();
         }
         return projectService.findByTenantAndName(tenantId, projectName)
-                .map(ProjectDocument::getHomeCluster)
+                .map(ProjectDocument::getHomeNode)
                 .filter(c -> c != null && !c.isBlank())
                 .flatMap(clusterService::resolveEndpoint);
     }
@@ -151,7 +151,7 @@ public class ProjectManagerService {
      *   <li>Project's home cluster is this pod: the CAS refreshes the
      *       claim and we return {@link ClaimResult.Local}.</li>
      *   <li>Project's home cluster is another live pod: the CAS rejects
-     *       (because the predicate {@code homeCluster ∉ liveClusters} is
+     *       (because the predicate {@code homeNode ∉ liveClusters} is
      *       false). We resolve the owning node's endpoint and return
      *       {@link ClaimResult.Redirect} so the caller can tunnel or
      *       reject.</li>
@@ -164,7 +164,7 @@ public class ProjectManagerService {
     public ClaimResult claimForLocalPodOrRedirect(String tenantId, String projectName) {
         if (ProjectService.isPodless(projectName)) {
             // Podless system projects (e.g. _user_<login>, _vance) live
-            // wherever the WS lands — never redirect, never pin homeCluster.
+            // wherever the WS lands — never redirect, never pin homeNode.
             return new ClaimResult.Local(claimForLocalPod(tenantId, projectName));
         }
         String selfCluster = clusterService.selfNodeName();
@@ -178,7 +178,7 @@ public class ProjectManagerService {
         ProjectDocument current = projectService.findByTenantAndName(tenantId, projectName)
                 .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
                         "Project '" + projectName + "' vanished between claim and redirect"));
-        String holder = current.getHomeCluster();
+        String holder = current.getHomeNode();
         if (holder == null || holder.isBlank()) {
             // Shouldn't happen — null was an accepting CAS branch. Be defensive.
             throw new ClaimRejectedException(

@@ -61,7 +61,7 @@ public class ProjectDocument {
     @Builder.Default
     private ProjectKind kind = ProjectKind.NORMAL;
 
-    /** Lifecycle status — {@link ProjectStatus}. Pod-affinity is tracked separately via {@link #homeCluster}. */
+    /** Lifecycle status — {@link ProjectStatus}. Pod-affinity is tracked separately via {@link #homeNode}. */
     @Builder.Default
     private ProjectStatus status = ProjectStatus.INIT;
 
@@ -69,10 +69,10 @@ public class ProjectDocument {
      * Cluster node name of the pod currently owning the project, or
      * {@code null} when unclaimed. References
      * {@code BrainPodDocument.nodeName} — IP+port is looked up on demand
-     * via {@code ClusterService.resolveEndpoint(homeCluster)} so that pod
+     * via {@code ClusterService.resolveEndpoint(homeNode)} so that pod
      * restarts (which mint a fresh node name) never inherit stale claims.
      */
-    private @Nullable String homeCluster;
+    private @Nullable String homeNode;
 
     /** When the current pod last refreshed its claim — used for stale-detection later. */
     private @Nullable Instant claimedAt;

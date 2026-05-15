@@ -82,7 +82,7 @@ public class BrainPodService {
      * Returns the {@code nodeName}s of every pod in {@code clusterId} that
      * is not {@link PodStatus#STOPPED} and whose last heartbeat is within
      * {@code staleAfter}. Used by the project-claim CAS predicate and the
-     * startup-cleanup sweep to decide which {@code ProjectDocument.homeCluster}
+     * startup-cleanup sweep to decide which {@code ProjectDocument.homeNode}
      * values are still backed by a live pod.
      *
      * <p>Pods without a heartbeat yet (just registered, still in their

@@ -32,7 +32,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
  * so a later cleanup job can time out idle sessions.
  *
  * <p>Pod-affinity has moved to the project level — see
- * {@link de.mhus.vance.shared.project.ProjectDocument#getHomeCluster()}. A
+ * {@link de.mhus.vance.shared.project.ProjectDocument#getHomeNode()}. A
  * session implicitly inherits the affinity of its project, so the
  * session itself only tracks the connection that owns it, not the pod.
  *

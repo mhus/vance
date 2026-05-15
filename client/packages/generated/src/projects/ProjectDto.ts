@@ -10,7 +10,7 @@ export interface ProjectDto {
   teamIds: string[];
   enabled: boolean;
   status: string;
-  homeCluster?: string;
+  homeNode?: string;
   claimedAt?: Date;
   createdAt?: Date;
 }

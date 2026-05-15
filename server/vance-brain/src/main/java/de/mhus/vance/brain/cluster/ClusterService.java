@@ -158,7 +158,7 @@ public class ClusterService {
      * Snapshot of every node-name in this cluster that is not stale and
      * not stopped — the CAS predicate in {@code ProjectService.claim()}
      * and the startup-cleanup sweep both use this to decide which
-     * {@code homeCluster} values are still backed by a live pod.
+     * {@code homeNode} values are still backed by a live pod.
      *
      * <p>Always includes {@link #selfNodeName()} once registration
      * completed — a fresh pod must not race itself out of its own claim.
@@ -223,13 +223,13 @@ public class ClusterService {
     /**
      * Builds the denormalised {@code "<tenantId>/<projectName>"} list
      * for {@code activeProjects}. Read directly off
-     * {@code ProjectService.findByHomeCluster} (any status) so a
+     * {@code ProjectService.findByHomeNode} (any status) so a
      * heartbeat always reflects the truth at tick time.
      */
     private List<String> snapshotActiveProjects() {
         String node = resolveNodeName();
         if (node.isBlank()) return List.of();
-        List<ProjectDocument> mine = projectService.findByHomeCluster(node);
+        List<ProjectDocument> mine = projectService.findByHomeNode(node);
         return mine.stream()
                 .map(p -> p.getTenantId() + "/" + p.getName())
                 .sorted()

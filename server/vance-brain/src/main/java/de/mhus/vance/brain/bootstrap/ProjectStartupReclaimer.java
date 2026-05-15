@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
  * <p>Two concerns, both idempotent and safe under concurrent multi-pod
  * boots:
  * <ol>
- *   <li>Wipe stale {@code homeCluster} values on every project whose
+ *   <li>Wipe stale {@code homeNode} values on every project whose
  *       owning cluster node is no longer in the live registry. Every
  *       fresh pod boot picks a new node name (see
  *       {@code ClusterNodeNameGenerator}), so the previous incarnation's
@@ -39,7 +39,7 @@ import org.springframework.stereotype.Service;
  * "not live" and wipe a claim we just took.
  *
  * <p>Project status is left alone. The first session-bind / wakeup-tick
- * after startup refreshes {@code homeCluster} + {@code claimedAt}
+ * after startup refreshes {@code homeNode} + {@code claimedAt}
  * through {@link ProjectManagerService#claimForLocalPod} via the
  * regular lifecycle path.
  */
@@ -66,7 +66,7 @@ public class ProjectStartupReclaimer {
      * converge on the same final state: the {@code updateMulti} filter
      * matches the same set of stale documents (whatever pods are live
      * is observed from the same Mongo), and the update body is
-     * identical. {@code homeCluster=null} is the unowned state.
+     * identical. {@code homeNode=null} is the unowned state.
      */
     private void clearStaleClusterClaims() {
         Set<String> liveClusters = new HashSet<>(clusterService.liveClusterNodeNames());
@@ -76,7 +76,7 @@ public class ProjectStartupReclaimer {
         if (selfCluster != null && !selfCluster.isBlank()) {
             liveClusters.add(selfCluster);
         }
-        long cleared = projectService.clearStaleHomeClusters(liveClusters);
+        long cleared = projectService.clearStaleHomeNodes(liveClusters);
         if (cleared > 0) {
             log.info("ProjectStartupReclaimer: cleared {} stale home-cluster claim(s); live={}",
                     cleared, liveClusters);
@@ -88,7 +88,7 @@ public class ProjectStartupReclaimer {
 
     /**
      * Sessions under projects this pod currently owns (i.e. RUNNING +
-     * {@code homeCluster == self}) may still carry {@code boundConnectionId}
+     * {@code homeNode == self}) may still carry {@code boundConnectionId}
      * values from the previous incarnation — wipe those so the next
      * client connect can resume cleanly. Other pods' sessions are not
      * touched.

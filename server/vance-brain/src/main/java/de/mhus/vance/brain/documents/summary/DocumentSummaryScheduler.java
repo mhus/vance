@@ -67,7 +67,7 @@ public class DocumentSummaryScheduler {
         // summarised twice.
         List<ProjectDocument> projects = selfCluster.isBlank()
                 ? new ArrayList<>()
-                : new ArrayList<>(projectService.findRunningByHomeCluster(selfCluster));
+                : new ArrayList<>(projectService.findRunningByHomeNode(selfCluster));
         projects.addAll(projectService.findPodlessActive());
         if (projects.isEmpty()) return;
 

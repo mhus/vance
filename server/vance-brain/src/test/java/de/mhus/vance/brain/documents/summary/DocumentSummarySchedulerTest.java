@@ -61,7 +61,7 @@ class DocumentSummarySchedulerTest {
 
     @Test
     void tick_noProjects_doesNothing() {
-        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of());
+        when(projectService.findRunningByHomeNode(NODE)).thenReturn(List.of());
 
         scheduler.tick();
 
@@ -73,7 +73,7 @@ class DocumentSummarySchedulerTest {
     @Test
     void tick_settingDisabled_skipsProject() {
         ProjectDocument project = project("t1", "p1");
-        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeNode(NODE)).thenReturn(List.of(project));
         when(settingService.getBooleanValueCascade(
                 eq("t1"), eq("p1"), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(false);
@@ -88,7 +88,7 @@ class DocumentSummarySchedulerTest {
     @Test
     void tick_settingEnabledNoDirtyDocs_noDriverCall() {
         ProjectDocument project = project("t1", "p1");
-        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeNode(NODE)).thenReturn(List.of(project));
         when(settingService.getBooleanValueCascade(
                 eq("t1"), eq("p1"), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(true);
@@ -106,7 +106,7 @@ class DocumentSummarySchedulerTest {
         ProjectDocument project = project("t1", "p1");
         DocumentDocument d1 = doc("doc-1");
         DocumentDocument d2 = doc("doc-2");
-        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeNode(NODE)).thenReturn(List.of(project));
         when(settingService.getBooleanValueCascade(
                 eq("t1"), eq("p1"), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(true);
@@ -126,7 +126,7 @@ class DocumentSummarySchedulerTest {
         ProjectDocument project = project("t1", "p1");
         DocumentDocument d1 = doc("doc-1");
         DocumentDocument d2 = doc("doc-2");
-        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeNode(NODE)).thenReturn(List.of(project));
         when(settingService.getBooleanValueCascade(
                 eq("t1"), eq("p1"), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(true);
@@ -146,7 +146,7 @@ class DocumentSummarySchedulerTest {
     void tick_claimQueryFails_movesOnToNextProject() {
         ProjectDocument p1 = project("t1", "p1");
         ProjectDocument p2 = project("t1", "p2");
-        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(p1, p2));
+        when(projectService.findRunningByHomeNode(NODE)).thenReturn(List.of(p1, p2));
         when(settingService.getBooleanValueCascade(
                 any(), any(), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(true);
@@ -165,7 +165,7 @@ class DocumentSummarySchedulerTest {
     @Test
     void tick_defaultBooleanIsTrue() {
         ProjectDocument project = project("t1", "p1");
-        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeNode(NODE)).thenReturn(List.of(project));
         // Settings cascade has nothing → cascade returns default. We
         // assert the scheduler passes `true` as the default, i.e.
         // feature opt-out semantics.

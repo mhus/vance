@@ -43,7 +43,7 @@ public class WorkspaceRoutingCache {
     /**
      * Resolve the owner pod endpoint for a project. Returns empty when
      * the project does not exist, has not been claimed yet, or its
-     * {@code homeCluster} points at a cluster node the registry no
+     * {@code homeNode} points at a cluster node the registry no
      * longer knows. Does not validate reachability — callers handle
      * that and call {@link #invalidate} on connect failure.
      */
@@ -83,16 +83,16 @@ public class WorkspaceRoutingCache {
         if (doc.isEmpty()) {
             return Optional.empty();
         }
-        String homeCluster = doc.get().getHomeCluster();
-        if (homeCluster == null || homeCluster.isBlank()) {
-            log.debug("Project {}/{} exists but has no homeCluster — not yet claimed by any pod",
+        String homeNode = doc.get().getHomeNode();
+        if (homeNode == null || homeNode.isBlank()) {
+            log.debug("Project {}/{} exists but has no homeNode — not yet claimed by any pod",
                     key.tenantId(), key.projectName());
             return Optional.empty();
         }
-        Optional<String> endpoint = clusterService.resolveEndpoint(homeCluster);
+        Optional<String> endpoint = clusterService.resolveEndpoint(homeNode);
         if (endpoint.isEmpty()) {
-            log.debug("Project {}/{} homeCluster='{}' — no live endpoint in the cluster registry",
-                    key.tenantId(), key.projectName(), homeCluster);
+            log.debug("Project {}/{} homeNode='{}' — no live endpoint in the cluster registry",
+                    key.tenantId(), key.projectName(), homeNode);
         }
         return endpoint;
     }

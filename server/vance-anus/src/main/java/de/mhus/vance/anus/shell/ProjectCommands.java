@@ -35,7 +35,7 @@ public class ProjectCommands {
             return "(no projects in tenant '" + tenant + "')";
         }
         return Tables.render(
-                List.of("NAME", "TITLE", "STATUS", "KIND", "ENABLED", "GROUP", "HOMECLUSTER"),
+                List.of("NAME", "TITLE", "STATUS", "KIND", "ENABLED", "GROUP", "HOMENODE"),
                 List.<Function<ProjectDocument, @Nullable Object>>of(
                         ProjectDocument::getName,
                         ProjectDocument::getTitle,
@@ -43,7 +43,7 @@ public class ProjectCommands {
                         ProjectDocument::getKind,
                         ProjectDocument::isEnabled,
                         ProjectDocument::getProjectGroupId,
-                        ProjectDocument::getHomeCluster),
+                        ProjectDocument::getHomeNode),
                 all);
     }
 
@@ -157,7 +157,7 @@ public class ProjectCommands {
                 + "  enabled   : " + p.isEnabled() + "\n"
                 + "  group     : " + (p.getProjectGroupId() == null ? "" : p.getProjectGroupId()) + "\n"
                 + "  teams     : " + p.getTeamIds() + "\n"
-                + "  homeCluster: " + (p.getHomeCluster() == null ? "" : p.getHomeCluster()) + "\n"
+                + "  homeNode: " + (p.getHomeNode() == null ? "" : p.getHomeNode()) + "\n"
                 + "  claimedAt : " + (p.getClaimedAt() == null ? "" : p.getClaimedAt()) + "\n"
                 + "  created   : " + (p.getCreatedAt() == null ? "" : p.getCreatedAt()) + "\n"
                 + "  id        : " + (p.getId() == null ? "" : p.getId());

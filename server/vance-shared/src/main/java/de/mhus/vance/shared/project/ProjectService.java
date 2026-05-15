@@ -37,7 +37,7 @@ public class ProjectService {
      * project whose name starts with {@link #SYSTEM_NAME_PREFIX}
      * ({@code _vance}, {@code _user_<login>}). These projects live
      * pod-locally on whichever brain process the user's WS lands on
-     * and are never claimed via {@code homeCluster}; lifecycle and
+     * and are never claimed via {@code homeNode}; lifecycle and
      * pod-claim paths short-circuit on this check.
      *
      * <p>Rationale and consequences are spelled out in
@@ -51,7 +51,7 @@ public class ProjectService {
     private static final String F_TENANT = "tenantId";
     private static final String F_NAME = "name";
     private static final String F_STATUS = "status";
-    private static final String F_HOME_CLUSTER = "homeCluster";
+    private static final String F_HOME_CLUSTER = "homeNode";
     private static final String F_CLAIMED_AT = "claimedAt";
     private static final String F_REQUIRES_OWNER_POD = "requiresOwnerPod";
 
@@ -137,10 +137,10 @@ public class ProjectService {
 
     /**
      * Atomically claims {@code (tenantId, name)} for {@code selfCluster}: the
-     * CAS predicate accepts the claim when {@code homeCluster} is currently
+     * CAS predicate accepts the claim when {@code homeNode} is currently
      * {@code null}, equal to {@code selfCluster}, or pointing at a cluster
      * node that is not in {@code liveClusters} (stale-takeover). Refreshes
-     * {@code homeCluster} and {@code claimedAt}; lifecycle status is left
+     * {@code homeNode} and {@code claimedAt}; lifecycle status is left
      * untouched.
      *
      * <p>Returns {@link Optional#empty()} when the claim was rejected — that
@@ -160,7 +160,7 @@ public class ProjectService {
             Set<String> liveClusters) {
         if (isPodless(name)) {
             throw new IllegalArgumentException(
-                    "Project '" + name + "' is podless — refusing to set homeCluster. "
+                    "Project '" + name + "' is podless — refusing to set homeNode. "
                             + "Use ProjectManagerService.claimForLocalPod() which "
                             + "short-circuits on isPodless().");
         }
@@ -189,12 +189,12 @@ public class ProjectService {
             // — so a null here means the CAS predicate failed. Another live
             // cluster holds the claim. Caller decides whether to redirect.
             log.debug("Project '{}/{}' claim rejected: holder='{}', selfCluster='{}'",
-                    tenantId, name, current.getHomeCluster(), selfCluster);
+                    tenantId, name, current.getHomeNode(), selfCluster);
             return Optional.empty();
         }
-        if (!Objects.equals(current.getHomeCluster(), selfCluster)) {
+        if (!Objects.equals(current.getHomeNode(), selfCluster)) {
             log.info("Project '{}' claimed by cluster '{}' (was '{}', status={})",
-                    name, selfCluster, current.getHomeCluster(), current.getStatus());
+                    name, selfCluster, current.getHomeNode(), current.getStatus());
         }
         return Optional.of(updated);
     }
@@ -305,10 +305,10 @@ public class ProjectService {
         return updated;
     }
 
-    /** Lists RUNNING projects owned by {@code homeCluster} — for startup reclaim. */
-    public List<ProjectDocument> findRunningByHomeCluster(String homeCluster) {
+    /** Lists RUNNING projects owned by {@code homeNode} — for startup reclaim. */
+    public List<ProjectDocument> findRunningByHomeNode(String homeNode) {
         Query query = new Query(Criteria.where(F_STATUS).is(ProjectStatus.RUNNING)
-                .and(F_HOME_CLUSTER).is(homeCluster));
+                .and(F_HOME_CLUSTER).is(homeNode));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
@@ -317,7 +317,7 @@ public class ProjectService {
      * terminal state. Podless projects never reach {@code RUNNING}
      * because {@code bringPodless()} leaves the status untouched — so
      * pod-scoped sweepers (auto-summary, indexers) cannot rely on the
-     * regular {@link #findRunningByHomeCluster} filter to see them.
+     * regular {@link #findRunningByHomeNode} filter to see them.
      * They live on whichever pod the user's WS lands on; any pod may
      * sweep their documents because per-doc work is gated by an atomic
      * claim.
@@ -329,17 +329,17 @@ public class ProjectService {
     }
 
     /**
-     * Lists every project owned by {@code homeCluster}, regardless of
+     * Lists every project owned by {@code homeNode}, regardless of
      * project status. Used by the cluster heartbeat to denormalise
      * "what does this cluster node own right now" into the brain-pod row.
      */
-    public List<ProjectDocument> findByHomeCluster(String homeCluster) {
-        Query query = new Query(Criteria.where(F_HOME_CLUSTER).is(homeCluster));
+    public List<ProjectDocument> findByHomeNode(String homeNode) {
+        Query query = new Query(Criteria.where(F_HOME_CLUSTER).is(homeNode));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
     /**
-     * Bulk-clears {@code homeCluster} on every project whose current
+     * Bulk-clears {@code homeNode} on every project whose current
      * owner is not in {@code liveClusters}. Idempotent — two pods running
      * the same cleanup converge on the same final state. Returns the
      * number of documents actually modified. Used by
@@ -355,9 +355,9 @@ public class ProjectService {
      * caller is supposed to always include this pod's own node name,
      * but we guard here so a misuse can't trigger a cluster-wide reset.
      */
-    public long clearStaleHomeClusters(Set<String> liveClusters) {
+    public long clearStaleHomeNodes(Set<String> liveClusters) {
         if (liveClusters == null || liveClusters.isEmpty()) {
-            log.warn("clearStaleHomeClusters called with empty liveClusters — skipping");
+            log.warn("clearStaleHomeNodes called with empty liveClusters — skipping");
             return 0;
         }
         Query query = new Query(Criteria.where(F_HOME_CLUSTER).nin(liveClusters));
@@ -368,7 +368,7 @@ public class ProjectService {
 
     /**
      * Lists RUNNING projects whose Home Pod has gone missing (the
-     * {@code homeCluster} field is {@code null}) and that carry
+     * {@code homeNode} field is {@code null}) and that carry
      * owner-pod-bound engine state ({@code requiresOwnerPod=true}).
      * These are the candidates the {@code ProjectWakeupTick} re-brings
      * after a cluster-node death.

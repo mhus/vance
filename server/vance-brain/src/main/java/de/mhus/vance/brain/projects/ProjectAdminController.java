@@ -201,7 +201,7 @@ public class ProjectAdminController {
                 .teamIds(doc.getTeamIds())
                 .enabled(doc.isEnabled())
                 .status(doc.getStatus() == null ? null : doc.getStatus().name())
-                .homeCluster(doc.getHomeCluster())
+                .homeNode(doc.getHomeNode())
                 .claimedAt(doc.getClaimedAt())
                 .createdAt(doc.getCreatedAt())
                 .build();

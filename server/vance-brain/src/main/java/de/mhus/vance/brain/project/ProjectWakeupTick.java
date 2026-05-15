@@ -14,8 +14,8 @@ import org.springframework.stereotype.Component;
  * Periodically re-brings RUNNING projects whose home cluster has died
  * and that carry owner-pod-bound engine state ({@code requiresOwnerPod=true}).
  *
- * <p>Selector: {@code status=RUNNING AND homeCluster=null AND
- * requiresOwnerPod=true}. The {@code homeCluster=null} filter is fed
+ * <p>Selector: {@code status=RUNNING AND homeNode=null AND
+ * requiresOwnerPod=true}. The {@code homeNode=null} filter is fed
  * by {@code ProjectStartupReclaimer.clearStaleClusterClaims()} on every
  * pod boot — a node that drops out of the live registry has its claims
  * wiped, and this tick then notices the orphans and re-claims them on

@@ -13,7 +13,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * Defensive guard around stale {@code homeCluster} values on legacy
+ * Defensive guard around stale {@code homeNode} values on legacy
  * podless project documents (system projects whose names start with
  * {@code _}).
  *
@@ -22,20 +22,20 @@ import org.junit.jupiter.api.Test;
  * stale value must never drive routing, otherwise engine-to-engine
  * dispatches for those projects pick the cross-pod path and fail to
  * reach the local handler. This test pins the contract by stubbing a
- * podless document with a non-blank {@code homeCluster} and asserting
+ * podless document with a non-blank {@code homeNode} and asserting
  * the lookup returns empty regardless.
  */
 class ProjectManagerServicePodlessTest {
 
     @Test
-    void findProjectEndpoint_podlessProjectWithStaleHomeCluster_returnsEmpty() {
+    void findProjectEndpoint_podlessProjectWithStaleHomeNode_returnsEmpty() {
         ProjectService projectService = mock(ProjectService.class);
         ClusterService clusterService = mock(ClusterService.class);
 
         ProjectDocument legacy = ProjectDocument.builder()
                 .tenantId("acme")
                 .name("_user_wile.coyote")
-                .homeCluster("ghost-pod")
+                .homeNode("ghost-pod")
                 .build();
         // Stub even though the fix should not consult the repository for
         // podless names — lenient() keeps the mock happy if behaviour
@@ -48,7 +48,7 @@ class ProjectManagerServicePodlessTest {
         Optional<String> endpoint = manager.findProjectEndpoint("acme", "_user_wile.coyote");
 
         assertThat(endpoint)
-                .as("podless projects must always look local, regardless of stale homeCluster")
+                .as("podless projects must always look local, regardless of stale homeNode")
                 .isEmpty();
         // Belt-and-suspenders — if someone re-introduces a Mongo lookup
         // before the isPodless short-circuit, this catches the regression.
@@ -57,14 +57,14 @@ class ProjectManagerServicePodlessTest {
     }
 
     @Test
-    void findProjectEndpoint_normalProjectWithHomeCluster_returnsResolvedEndpoint() {
+    void findProjectEndpoint_normalProjectWithHomeNode_returnsResolvedEndpoint() {
         ProjectService projectService = mock(ProjectService.class);
         ClusterService clusterService = mock(ClusterService.class);
 
         ProjectDocument doc = ProjectDocument.builder()
                 .tenantId("acme")
                 .name("ferienhaus-versicherung")
-                .homeCluster("maya-prosser")
+                .homeNode("maya-prosser")
                 .build();
         when(projectService.findByTenantAndName("acme", "ferienhaus-versicherung"))
                 .thenReturn(Optional.of(doc));

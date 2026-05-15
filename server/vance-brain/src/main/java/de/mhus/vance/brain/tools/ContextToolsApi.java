@@ -608,14 +608,21 @@ public final class ContextToolsApi implements ToolBus {
         effective.removeAll(remove);
 
         // Resolve each tool to consult its default deferred() flag.
+        // Order: explicit allowedToolsAdd wins over allowedToolsDefer
+        // — that lets a recipe say "defer @side-effect but promote
+        // kit_install" by adding the one tool name to the add list.
+        // Without this, a label-expansion in defer (which produces a
+        // concrete tool-name set) would block any narrower promotion,
+        // because there'd be no way to override a label cluster
+        // selectively in YAML.
         Set<String> primary = new LinkedHashSet<>();
         Set<String> deferred = new LinkedHashSet<>();
         for (String name : effective) {
             boolean isDeferred;
-            if (defer.contains(name)) {
-                isDeferred = true;
-            } else if (add.contains(name)) {
+            if (add.contains(name)) {
                 isDeferred = false;
+            } else if (defer.contains(name)) {
+                isDeferred = true;
             } else {
                 isDeferred = dispatcher.resolve(name, ctx)
                         .map(r -> r.tool().deferred())

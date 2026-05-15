@@ -74,6 +74,15 @@ _destructive_excludes: &destructive_excludes
 modes:
   NORMAL:
     allowedToolsRemove: *destructive_excludes
+    # User-hub privileges: kit install + update belong to Eddie's
+    # day-to-day. They carry @side-effect, so the cluster-level
+    # defer below would normally hide them — listed explicitly in
+    # allowedToolsAdd so they land primary. (The destructive
+    # variants kit_apply / kit_export are in _destructive_excludes
+    # above and stay out entirely.)
+    allowedToolsAdd:
+      - kit_install
+      - kit_update
     allowedToolsDefer:
       - "@write"
       - "@executive"

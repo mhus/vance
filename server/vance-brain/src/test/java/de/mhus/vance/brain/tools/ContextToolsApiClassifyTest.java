@@ -104,16 +104,17 @@ class ContextToolsApiClassifyTest {
     }
 
     @Test
-    void deferOverridesAdd_whenSameToolInBoth() {
+    void addOverridesDefer_whenSameToolInBoth() {
         stubResolve("foo", false);
-        // §14.2: apply order is Remove → Add → Defer; defer wins at tail.
+        // Explicit allowedToolsAdd wins so a recipe can defer a label
+        // cluster (@side-effect) but still promote one tool by name.
         RecipeResolver.ToolFilter filter = new RecipeResolver.ToolFilter(
                 List.of(), List.of("foo"), List.of("foo"));
         ContextToolsApi.Classification c = ContextToolsApi.classify(
                 dispatcher, ctx, Set.of("foo"), filter, Set.of());
 
-        assertThat(c.deferred()).containsExactly("foo");
-        assertThat(c.primary()).isEmpty();
+        assertThat(c.primary()).containsExactly("foo");
+        assertThat(c.deferred()).isEmpty();
     }
 
     @Test

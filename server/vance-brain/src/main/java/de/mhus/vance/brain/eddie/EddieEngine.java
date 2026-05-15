@@ -694,6 +694,7 @@ public class EddieEngine extends StructuredActionEngine {
                     true);
         }
         String projectTitle = action.stringParam(EddieActionSchema.PARAM_PROJECT_TITLE);
+        String kitName = action.stringParam(EddieActionSchema.PARAM_KIT_NAME);
         String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
 
         Map<String, Object> createResult;
@@ -704,9 +705,13 @@ public class EddieEngine extends StructuredActionEngine {
                 params.put("title", projectTitle);
             }
             params.put("initialPrompt", projectGoal);
+            if (kitName != null && !kitName.isBlank()) {
+                params.put("kitName", kitName);
+            }
             createResult = ctx.tools().invokeInternal("project_create", params);
-            log.info("Eddie id='{}' DELEGATE_PROJECT name='{}' reason='{}'",
+            log.info("Eddie id='{}' DELEGATE_PROJECT name='{}' kit='{}' reason='{}'",
                     process.getId(), projectName,
+                    kitName == null ? "" : kitName,
                     summariseReason(action.reason()));
         } catch (RuntimeException e) {
             log.warn("Eddie id='{}' DELEGATE_PROJECT failed: {}",
@@ -761,12 +766,17 @@ public class EddieEngine extends StructuredActionEngine {
 
         try {
             // project_chat_send's schema names the chat input
-            // "message". The action vocabulary calls the same payload
-            // "content" so it doesn't collide with the optional user-
-            // facing "message" field on STEER_PROJECT. Translate at
-            // the handler boundary.
+            // "message" and the worker project "projectId" (matching
+            // EddieContext.resolveProject, which reads the same key).
+            // The action vocabulary calls the same payload "content"
+            // so it doesn't collide with the optional user-facing
+            // "message" field on STEER_PROJECT, and "project" for the
+            // worker — translate both at the handler boundary.
+            // Passing "project" used to silently land the message in
+            // Eddie's own chat because resolveProject only checks
+            // "projectId" and falls back to the active project.
             Map<String, Object> params = new LinkedHashMap<>();
-            params.put("project", project);
+            params.put("projectId", project);
             params.put("message", content);
             ctx.tools().invokeInternal("project_chat_send", params);
             log.info("Eddie id='{}' STEER_PROJECT project='{}' reason='{}'",

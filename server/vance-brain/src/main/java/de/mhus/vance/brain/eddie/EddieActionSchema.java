@@ -131,6 +131,9 @@ public final class EddieActionSchema {
     /** Initial instruction handed to the worker project's Arthur on spawn (DELEGATE_PROJECT). */
     public static final String PARAM_PROJECT_GOAL = "projectGoal";
 
+    /** Optional kit name from the tenant project-kits catalog, installed at spawn (DELEGATE_PROJECT). */
+    public static final String PARAM_KIT_NAME = "kitName";
+
     /** Existing project to steer (STEER_PROJECT) — name or id. */
     public static final String PARAM_PROJECT      = "project";
 
@@ -235,6 +238,18 @@ public final class EddieActionSchema {
                 "Initial instruction handed to the worker project's Arthur "
                         + "on spawn — self-contained, the worker doesn't see "
                         + "your chat history. Required for DELEGATE_PROJECT.");
+
+        Map<String, Object> kitNameProp = new LinkedHashMap<>();
+        kitNameProp.put("type", "string");
+        kitNameProp.put("description",
+                "Optional kit to install into the freshly created project "
+                        + "(DELEGATE_PROJECT only). Must be a name from the "
+                        + "tenant project-kits catalog — call kit_list first "
+                        + "to see what's available. The kit installs in the "
+                        + "same request as the project create, so the "
+                        + "worker's Arthur starts with the kit's documents, "
+                        + "settings and tools already mounted. Omit for a "
+                        + "bare project.");
 
         Map<String, Object> projectProp = new LinkedHashMap<>();
         projectProp.put("type", "string");
@@ -381,6 +396,7 @@ public final class EddieActionSchema {
         properties.put(PARAM_PROJECT_NAME, projectNameProp);
         properties.put(PARAM_PROJECT_TITLE, projectTitleProp);
         properties.put(PARAM_PROJECT_GOAL, projectGoalProp);
+        properties.put(PARAM_KIT_NAME, kitNameProp);
         properties.put(PARAM_PROJECT, projectProp);
         properties.put(PARAM_CONTENT, contentProp);
         properties.put(PARAM_SOURCE, sourceProp);

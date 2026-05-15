@@ -304,6 +304,12 @@ public class DocumentController {
         authority.enforce(httpRequest,
                 new Resource.Document(tenant, existing.getProjectId(), existing.getPath()), Action.WRITE);
 
+        // RAG tri-state is applied as a separate atomic update so we can
+        // distinguish "set to null" (auto) from "leave untouched" — the
+        // overloaded update(...) method only carries a nullable Boolean
+        // which collapses those two cases.
+        applyRagEnabledOverride(id, request.getRagEnabled());
+
         DocumentDocument updated;
         try {
             updated = documentService.update(
@@ -394,7 +400,29 @@ public class DocumentController {
                 .summaryDirty(doc.isSummaryDirty())
                 .summary(doc.getSummary())
                 .summarizedAtMs(toEpochMillis(doc.getSummarizedAt()))
+                .ragEnabled(doc.getRagEnabled())
                 .build();
+    }
+
+    /**
+     * Apply the tri-state {@code ragEnabled} override from the request.
+     * Translates {@code "auto"} / {@code "on"} / {@code "off"} into the
+     * persisted {@code null} / {@code true} / {@code false}. Absent or
+     * blank input is a no-op. Anything else throws {@code 400}.
+     */
+    private void applyRagEnabledOverride(String docId, @Nullable String raw) {
+        if (raw == null) return;
+        String value = raw.trim().toLowerCase();
+        if (value.isEmpty()) return;
+        Boolean target;
+        switch (value) {
+            case "auto" -> target = null;
+            case "on", "true" -> target = Boolean.TRUE;
+            case "off", "false" -> target = Boolean.FALSE;
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "ragEnabled must be one of: auto, on, off");
+        }
+        documentService.setRagEnabledOverride(docId, target);
     }
 
     private static @Nullable Long toEpochMillis(@Nullable Instant instant) {

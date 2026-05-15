@@ -33,6 +33,7 @@ import ExecutionsTab from './ExecutionsTab.vue';
 import ClusterTab from './ClusterTab.vue';
 import EventsTab from './EventsTab.vue';
 import WorkflowsTab from './WorkflowsTab.vue';
+import RagTab from './RagTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -59,7 +60,7 @@ const filterStatus = ref<string | null>(null);
 // Sessions = the existing session-walker (default). Recipes / Tools
 // show project-scope read-only views fed from the same project filter
 // as the sidebar.
-type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'cluster';
+type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'rag' | 'cluster';
 const topTab = ref<TopTab>('sessions');
 
 const projectFilterOptions = computed(() => [
@@ -464,6 +465,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
         >Events</button>
         <button
           class="tab"
+          :class="{ 'tab--active': topTab === 'rag' }"
+          @click="topTab = 'rag'"
+        >RAG</button>
+        <button
+          class="tab"
           :class="{ 'tab--active': topTab === 'cluster' }"
           @click="topTab = 'cluster'"
         >Cluster</button>
@@ -487,6 +493,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <ExecutionsTab v-else-if="topTab === 'executions'" :project-id="effectiveProjectId" />
       <WorkflowsTab v-else-if="topTab === 'workflows'" :project-id="effectiveProjectId" />
       <EventsTab v-else-if="topTab === 'events'" :project-id="effectiveProjectId" />
+      <RagTab v-else-if="topTab === 'rag'" :project-id="effectiveProjectId" />
       <ClusterTab v-else-if="topTab === 'cluster'" />
 
       <template v-else-if="topTab === 'sessions'">

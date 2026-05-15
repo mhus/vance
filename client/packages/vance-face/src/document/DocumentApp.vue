@@ -85,6 +85,12 @@ const editPath = ref('');
 const editInlineText = ref('');
 const editAutoSummary = ref(false);
 const editSummaryDirty = ref(false);
+/**
+ * Tri-state for the project-RAG inclusion override. {@code 'auto'} (default
+ * — null in the DTO) follows the project rule "documents/** + textual mime";
+ * {@code 'on'} forces inclusion, {@code 'off'} excludes the document.
+ */
+const editRagEnabled = ref<'auto' | 'on' | 'off'>('auto');
 const editError = ref<string | null>(null);
 const saving = ref(false);
 
@@ -346,6 +352,7 @@ function fillEditor(): void {
   editInlineText.value = sel?.inlineText ?? '';
   editAutoSummary.value = sel?.autoSummary ?? false;
   editSummaryDirty.value = sel?.summaryDirty ?? false;
+  editRagEnabled.value = sel?.ragEnabled == null ? 'auto' : (sel.ragEnabled ? 'on' : 'off');
   editError.value = null;
   // Switching documents resets the editor mode to the kind-aware
   // default — `sheet`, `graph`, `records`, `mindmap`, `list`,
@@ -921,6 +928,17 @@ async function apply(): Promise<boolean> {
     if (editSummaryDirty.value !== (sel.summaryDirty ?? false)) {
       body.summaryDirty = editSummaryDirty.value;
     }
+    // RAG tri-state — server takes "auto" / "on" / "off"; the document
+    // exposes ragEnabled as boolean|null, mapping is identical to the
+    // editor's radio value, so we just need to detect whether the user
+    // actually changed it before sending.
+    const currentRag: 'auto' | 'on' | 'off' =
+        sel.ragEnabled == null ? 'auto'
+      : sel.ragEnabled ? 'on'
+      : 'off';
+    if (editRagEnabled.value !== currentRag) {
+      body.ragEnabled = editRagEnabled.value;
+    }
     await docsState.update(sel.id, body);
     if (docsState.error.value) {
       editError.value = docsState.error.value;
@@ -1196,6 +1214,43 @@ const formatBytes = (n: number): string => {
                 :help="$t('documents.detail.summary.summaryDirtyHelp')"
                 :disabled="saving"
               />
+              <div class="flex flex-col gap-1">
+                <label class="text-xs opacity-70">Project RAG</label>
+                <div class="flex gap-4 text-sm">
+                  <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      v-model="editRagEnabled"
+                      value="auto"
+                      :disabled="saving"
+                    />
+                    <span>Auto</span>
+                  </label>
+                  <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      v-model="editRagEnabled"
+                      value="on"
+                      :disabled="saving"
+                    />
+                    <span>Always index</span>
+                  </label>
+                  <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      v-model="editRagEnabled"
+                      value="off"
+                      :disabled="saving"
+                    />
+                    <span>Never index</span>
+                  </label>
+                </div>
+                <p class="text-xs opacity-60">
+                  Auto = include if the document lives under
+                  <code>documents/</code> and has a textual mime-type.
+                  Changes take effect on the next RAG indexer tick.
+                </p>
+              </div>
             </div>
           </div>
 

@@ -107,6 +107,11 @@ public class DocumentSummaryDriver {
 
         Result parsed = readResult(project.getTenantId(), session.getSessionId(), child.getId());
         documentService.writeSummary(doc.getId(), parsed.summary(), parsed.tags());
+        // Re-mark dirty for the project-RAG indexer so the new summary
+        // lands as a kind=summary chunk in the _documents RAG on the
+        // next tick. No-op if the document is RAG-ineligible — the
+        // indexer's filter re-check skips it cleanly.
+        documentService.markRagDirty(doc.getId());
         log.info("Auto-summary written tenant='{}' project='{}' doc='{}' tags={}",
                 project.getTenantId(), project.getName(), doc.getId(), parsed.tags().size());
     }

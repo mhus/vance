@@ -19,6 +19,25 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class RagCatalogService {
 
+    /**
+     * Reserved RAG name for the project-default RAG that the indexer
+     * fills with all documents under {@code documents/**}. Owned by
+     * {@code ProjectRagService} — user tools (rag_create, rag_delete)
+     * refuse to touch RAGs whose name starts with this prefix.
+     * See {@code specification/rag.md}.
+     */
+    public static final String DEFAULT_RAG_NAME = "_documents";
+
+    /**
+     * Returns {@code true} when {@code name} refers to a system-owned
+     * RAG that user-facing tools must not create or delete. Today only
+     * {@link #DEFAULT_RAG_NAME} qualifies; future system RAGs would
+     * share the {@code "_"} prefix convention used elsewhere in Vance.
+     */
+    public static boolean isReservedRagName(String name) {
+        return name != null && name.startsWith("_");
+    }
+
     private final RagRepository repository;
     private final RagBackend backend;
 

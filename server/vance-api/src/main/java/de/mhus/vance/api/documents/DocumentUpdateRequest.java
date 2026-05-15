@@ -54,4 +54,20 @@ public class DocumentUpdateRequest {
      * marker. {@code null} leaves the current value untouched.
      */
     private @Nullable Boolean summaryDirty;
+
+    /**
+     * Project-RAG inclusion override — sent as a string so the wire can
+     * carry three states (the JSON-Boolean alternative cannot say
+     * "explicitly null" with {@code JsonInclude.NON_NULL}). Accepts:
+     * <ul>
+     *   <li>{@code "auto"} — clear the override, document falls back to
+     *       the path/mime-based default (include if under
+     *       {@code documents/} and mime is textual).</li>
+     *   <li>{@code "on"} — always include the document in the project RAG.</li>
+     *   <li>{@code "off"} — never include the document.</li>
+     *   <li>{@code null} (field absent) — leave the current setting untouched.</li>
+     * </ul>
+     * See {@code specification/rag.md}.
+     */
+    private @Nullable String ragEnabled;
 }

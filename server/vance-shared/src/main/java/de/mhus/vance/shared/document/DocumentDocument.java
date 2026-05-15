@@ -37,7 +37,10 @@ import org.springframework.data.mongodb.core.mapping.Document;
                 def = "{ 'tenantId': 1, 'projectId': 1, 'status': 1 }"),
         @CompoundIndex(
                 name = "tenant_project_summary_claim_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'summaryDirty': 1, 'autoSummary': 1, 'claimedBy': 1 }")
+                def = "{ 'tenantId': 1, 'projectId': 1, 'summaryDirty': 1, 'autoSummary': 1, 'claimedBy': 1 }"),
+        @CompoundIndex(
+                name = "tenant_project_rag_claim_idx",
+                def = "{ 'tenantId': 1, 'projectId': 1, 'ragDirty': 1, 'ragClaimedBy': 1 }")
 })
 @Data
 @Builder
@@ -133,4 +136,26 @@ public class DocumentDocument {
 
     /** When the summary claim was acquired — used for stale-claim recovery. */
     private @Nullable Instant claimedAt;
+
+    /**
+     * User-override for project-RAG indexing. {@code null} (default) means
+     * "auto" — the indexer applies the rule "path starts with documents/ AND
+     * mime-type is textual". {@code true} forces indexing, {@code false}
+     * excludes the document. See {@code specification/rag.md}.
+     */
+    private @Nullable Boolean ragEnabled;
+
+    /**
+     * Dirty flag for the project-RAG indexer — set by
+     * {@link DocumentService#create}/{@link DocumentService#update} when the
+     * document is eligible and content changed; cleared by
+     * {@link DocumentService#markRagClean} after the indexer wrote chunks.
+     */
+    private boolean ragDirty;
+
+    /** Pod that currently holds the RAG-index claim ({@code null} = unclaimed). */
+    private @Nullable String ragClaimedBy;
+
+    /** When the RAG-index claim was acquired — used for stale-claim recovery. */
+    private @Nullable Instant ragClaimedAt;
 }

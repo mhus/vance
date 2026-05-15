@@ -10,4 +10,5 @@ export interface DocumentUpdateRequest {
   newPath?: string;
   autoSummary?: boolean;
   summaryDirty?: boolean;
+  ragEnabled?: string;
 }

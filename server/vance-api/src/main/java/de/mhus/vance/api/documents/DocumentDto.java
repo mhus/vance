@@ -81,4 +81,12 @@ public class DocumentDto {
 
     /** Wall-clock at which the current {@link #summary} was produced. */
     private @Nullable Long summarizedAtMs;
+
+    /**
+     * Project-RAG inclusion override. {@code null} = auto (default —
+     * include if path starts with {@code documents/} and mime is textual).
+     * {@code true} = always include. {@code false} = never include.
+     * See {@code specification/rag.md}.
+     */
+    private @Nullable Boolean ragEnabled;
 }

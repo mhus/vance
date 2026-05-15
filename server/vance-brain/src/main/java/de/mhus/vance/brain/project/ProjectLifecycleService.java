@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.project;
 
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
+import de.mhus.vance.brain.rag.ProjectRagService;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
@@ -54,6 +55,14 @@ public class ProjectLifecycleService {
     private final WorkspaceService workspaceService;
     private final SessionService sessionService;
     private final ApplicationEventPublisher eventPublisher;
+    /**
+     * Lazy provider for the project-RAG service — keeps the lifecycle
+     * decoupled from RAG bean wiring (embedding-provider settings might
+     * not be configured for every deployment) and lets bring/close
+     * tolerate a missing or misconfigured RAG without breaking project
+     * activation.
+     */
+    private final ObjectProvider<ProjectRagService> projectRagProvider;
     /**
      * {@link ObjectProvider} so we don't close the bean cycle:
      * {@code SessionChatBootstrapper} → {@code SessionCreateHandler} →
@@ -220,6 +229,7 @@ public class ProjectLifecycleService {
                     tenantId, projectName, e.toString());
             throw e;
         }
+        ensureProjectRag(tenantId, projectName);
         eventPublisher.publishEvent(new ProjectEnginesStartRequested(tenantId, projectName));
         doc = projectService.transitionStatus(
                 tenantId, projectName, ProjectStatus.RECOVERING, ProjectStatus.RUNNING);
@@ -313,8 +323,38 @@ public class ProjectLifecycleService {
                     "Project '" + projectName + "' is a podless system project — cannot close");
         }
         workspaceService.dispose(tenantId, projectName);
+        disposeProjectRag(tenantId, projectName);
         ProjectDocument doc = projectService.close(tenantId, projectName, closedGroupId);
         log.info("Project '{}/{}' closed → group '{}'", tenantId, projectName, closedGroupId);
         return doc;
+    }
+
+    /**
+     * Best-effort {@code ensureDefaultRag} during bring. A misconfigured
+     * embedding provider (no API key, unknown model) must not block the
+     * project from reaching RUNNING — the user can fix the setting and
+     * trigger reindex from the UI. Logs at warn, never throws.
+     */
+    private void ensureProjectRag(String tenantId, String projectName) {
+        ProjectRagService rag = projectRagProvider.getIfAvailable();
+        if (rag == null) return;
+        try {
+            rag.ensureDefaultRag(tenantId, projectName);
+        } catch (RuntimeException e) {
+            log.warn("Project-RAG ensureDefaultRag failed for '{}/{}' — continuing: {}",
+                    tenantId, projectName, e.toString());
+        }
+    }
+
+    /** Best-effort dispose during close — same tolerance reasoning. */
+    private void disposeProjectRag(String tenantId, String projectName) {
+        ProjectRagService rag = projectRagProvider.getIfAvailable();
+        if (rag == null) return;
+        try {
+            rag.disposeDefaultRag(tenantId, projectName);
+        } catch (RuntimeException e) {
+            log.warn("Project-RAG disposeDefaultRag failed for '{}/{}': {}",
+                    tenantId, projectName, e.toString());
+        }
     }
 }

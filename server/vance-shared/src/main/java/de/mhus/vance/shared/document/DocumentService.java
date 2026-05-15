@@ -293,6 +293,9 @@ public class DocumentService {
                 .autoSummary(isAutoSummaryEligible(mimeType))
                 .build();
         applyHeader(doc);
+        // Mark for RAG indexing if the document is eligible — the
+        // project-RAG indexer picks dirty docs on its next tick.
+        doc.setRagDirty(isRagEligible(doc));
 
         DocumentDocument saved = repository.save(doc);
         log.info("Created document tenantId='{}' projectId='{}' path='{}' id='{}' inline={} size={}",
@@ -567,6 +570,25 @@ public class DocumentService {
             @Nullable String newPath,
             @Nullable Boolean newAutoSummary,
             @Nullable Boolean newSummaryDirty) {
+        return update(id, newTitle, newTags, newInlineText, newPath,
+                newAutoSummary, newSummaryDirty, null);
+    }
+
+    /**
+     * Overload that also accepts the {@code ragEnabled} tri-state override.
+     * {@code null} means "leave untouched" (or "auto" if never set);
+     * {@code true} forces RAG inclusion, {@code false} excludes the document
+     * from the project RAG.
+     */
+    public DocumentDocument update(
+            String id,
+            @Nullable String newTitle,
+            @Nullable List<String> newTags,
+            @Nullable String newInlineText,
+            @Nullable String newPath,
+            @Nullable Boolean newAutoSummary,
+            @Nullable Boolean newSummaryDirty,
+            @Nullable Boolean newRagEnabled) {
 
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
@@ -575,6 +597,7 @@ public class DocumentService {
         if (newTags != null) doc.setTags(new ArrayList<>(newTags));
         if (newAutoSummary != null) doc.setAutoSummary(newAutoSummary);
         if (newSummaryDirty != null) doc.setSummaryDirty(newSummaryDirty);
+        if (newRagEnabled != null) doc.setRagEnabled(newRagEnabled);
 
         if (newInlineText != null) {
             if (doc.getInlineText() == null) {
@@ -611,6 +634,14 @@ public class DocumentService {
                 doc.setPath(normalized);
                 doc.setName(extractName(normalized));
             }
+        }
+
+        // Mark dirty for the project-RAG indexer whenever the body, the path,
+        // or the ragEnabled flag changes — the indexer applies the §4.2 filter
+        // and decides include vs. purge per tick. Re-marking an already-dirty
+        // doc is a no-op.
+        if (newInlineText != null || newPath != null || newRagEnabled != null) {
+            doc.setRagDirty(true);
         }
 
         DocumentDocument saved = repository.save(doc);
@@ -722,6 +753,143 @@ public class DocumentService {
                 Query.query(Criteria.where("_id").is(id)),
                 new Update().unset("claimedBy").unset("claimedAt"),
                 DocumentDocument.class);
+    }
+
+    // ──────────────────── Project RAG indexing ────────────────────
+
+    /**
+     * Returns {@code true} when the document should land in the
+     * project-default RAG ({@code _documents}) under the rule:
+     * <ul>
+     *   <li>{@code ragEnabled == true} → always include</li>
+     *   <li>{@code ragEnabled == false} → always exclude</li>
+     *   <li>{@code ragEnabled == null} → default = path under
+     *       {@link #DOCUMENTS_FOLDER_PREFIX} AND textual mime-type</li>
+     * </ul>
+     * See {@code planning/project-rag.md} §4.2.
+     */
+    public boolean isRagEligible(DocumentDocument doc) {
+        Boolean override = doc.getRagEnabled();
+        if (override != null) return override;
+        if (doc.getPath() == null) return false;
+        if (!doc.getPath().startsWith(DOCUMENTS_FOLDER_PREFIX)) return false;
+        return isTextual(doc.getMimeType());
+    }
+
+    /**
+     * Claim up to {@code batchSize} dirty documents in
+     * {@code (tenantId, projectId)} for the project-RAG indexer.
+     * Atomic {@code findAndModify} per document so concurrent pods on
+     * the same project (user-project roaming) see disjoint claims.
+     *
+     * <p>Match query: {@code ragDirty=true ∧ ragClaimedBy=null}.
+     * Filter eligibility is re-checked by the indexer per document
+     * (race-safe against ragEnabled toggle between dirty-set and claim).
+     *
+     * <p>Stale claims older than {@code claimTtl} are released first
+     * — self-healing for pod crashes between claim and write.
+     */
+    public List<DocumentDocument> claimForRagIndex(
+            String tenantId, String projectId,
+            String podId, int batchSize, Duration claimTtl) {
+
+        Query stale = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("projectId").is(projectId)
+                .and("ragClaimedBy").ne(null)
+                .and("ragClaimedAt").lt(Instant.now().minus(claimTtl)));
+        mongoTemplate.updateMulti(stale,
+                new Update().unset("ragClaimedBy").unset("ragClaimedAt"),
+                DocumentDocument.class);
+
+        List<DocumentDocument> claimed = new ArrayList<>(batchSize);
+        for (int i = 0; i < batchSize; i++) {
+            Query q = new Query(Criteria.where("tenantId").is(tenantId)
+                    .and("projectId").is(projectId)
+                    .and("ragDirty").is(true)
+                    .and("ragClaimedBy").is(null));
+            Update u = new Update()
+                    .set("ragClaimedBy", podId)
+                    .set("ragClaimedAt", Instant.now());
+            DocumentDocument doc = mongoTemplate.findAndModify(
+                    q, u, FindAndModifyOptions.options().returnNew(true),
+                    DocumentDocument.class);
+            if (doc == null) break;
+            claimed.add(doc);
+        }
+        return claimed;
+    }
+
+    /**
+     * Clear {@code ragDirty} and release the claim — called by the
+     * indexer after chunks were written successfully (or after a
+     * filter-purge that legitimately empties the chunk set).
+     */
+    public void markRagClean(String id) {
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                new Update()
+                        .set("ragDirty", false)
+                        .unset("ragClaimedBy")
+                        .unset("ragClaimedAt"),
+                DocumentDocument.class);
+    }
+
+    /**
+     * Release a claim without clearing {@code ragDirty}. Indexer calls
+     * this on transient failure — claim TTL would also free it, this
+     * is the eager path.
+     */
+    public void releaseRagClaim(String id) {
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                new Update().unset("ragClaimedBy").unset("ragClaimedAt"),
+                DocumentDocument.class);
+    }
+
+    /**
+     * Atomically mark every document in {@code (tenantId, projectId)}
+     * for re-indexing. Used by {@code ProjectRagService.reindex(...)}.
+     * Released claims are not cleared — they expire via TTL.
+     */
+    public long markAllForReindex(String tenantId, String projectId) {
+        Query q = new Query(Criteria.where("tenantId").is(tenantId)
+                .and("projectId").is(projectId)
+                .and("status").is(DocumentStatus.ACTIVE));
+        Update u = new Update().set("ragDirty", true);
+        return mongoTemplate.updateMulti(q, u, DocumentDocument.class)
+                .getModifiedCount();
+    }
+
+    /**
+     * Mark the document dirty for re-indexing — used by the auto-summary
+     * driver after it writes a new summary so the indexer picks up the
+     * summary-chunk on the next tick.
+     */
+    public void markRagDirty(String id) {
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                new Update().set("ragDirty", true),
+                DocumentDocument.class);
+    }
+
+    /**
+     * Set the tri-state {@code ragEnabled} override and re-flag the
+     * document for re-indexing — the regular {@link #update(String,
+     * String, java.util.List, String, String, Boolean, Boolean)} call
+     * cannot express "set to null" (its nullable boolean parameter
+     * means "leave untouched"). Pass {@code null} to clear the override
+     * (auto mode), {@code true}/{@code false} to force include/exclude.
+     */
+    public void setRagEnabledOverride(String id, @Nullable Boolean value) {
+        Update u = new Update().set("ragDirty", true);
+        if (value == null) {
+            u.unset("ragEnabled");
+        } else {
+            u.set("ragEnabled", value);
+        }
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                u, DocumentDocument.class);
     }
 
     /**

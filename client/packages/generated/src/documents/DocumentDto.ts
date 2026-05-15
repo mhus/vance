@@ -22,4 +22,5 @@ export interface DocumentDto {
   summaryDirty: boolean;
   summary?: string;
   summarizedAtMs?: number;
+  ragEnabled?: boolean;
 }

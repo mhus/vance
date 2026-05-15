@@ -3,7 +3,9 @@ package de.mhus.vance.brain.eventtrigger;
 import de.mhus.vance.brain.hactar.HactarWorkflowService;
 import de.mhus.vance.shared.events.EventLoader;
 import de.mhus.vance.shared.events.ResolvedEvent;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -35,8 +37,15 @@ public class EventService {
     /** Reserved param key under which the request payload is exposed to the workflow. */
     public static final String PAYLOAD_PARAM_KEY = "payload";
 
+    /** Micrometer counter for trigger calls. Tags: {@code event}, {@code outcome}. */
+    private static final String METRIC_TRIGGERS = "vance.events.triggers";
+
+    /** Micrometer timer for successful trigger latency. Tag: {@code event}. */
+    private static final String METRIC_TRIGGER_DURATION = "vance.events.trigger.duration";
+
     private final EventLoader eventLoader;
     private final SettingService settingService;
+    private final MetricService metricService;
     /** Optional — Hactar is feature-flagged; when off, events return 503. */
     private final ObjectProvider<HactarWorkflowService> workflowServiceProvider;
 
@@ -62,21 +71,34 @@ public class EventService {
             String httpMethod,
             @Nullable String bearerToken,
             @Nullable Object payload) {
+        long startNanos = System.nanoTime();
 
-        ResolvedEvent event = eventLoader.load(tenantId, projectId, eventName)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Event '" + eventName + "' not found"));
+        ResolvedEvent event;
+        try {
+            event = eventLoader.load(tenantId, projectId, eventName)
+                    .orElse(null);
+        } catch (RuntimeException ex) {
+            countOutcome(eventName, "bad_payload");
+            throw ex;
+        }
+        if (event == null) {
+            countOutcome(eventName, "not_found");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Event '" + eventName + "' not found");
+        }
 
         if (!event.enabled()) {
             // Treat disabled events as 404 — don't leak that the event
             // exists. Caller can flip `enabled: true` in the YAML to re-enable.
             log.debug("Event '{}/{}/{}' disabled — returning 404",
                     tenantId, projectId, eventName);
+            countOutcome(eventName, "disabled");
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Event '" + eventName + "' not found");
         }
 
         if (!event.acceptsMethod(httpMethod)) {
+            countOutcome(eventName, "method_not_allowed");
             throw new ResponseStatusException(HttpStatus.METHOD_NOT_ALLOWED,
                     "Event '" + eventName + "' does not accept " + httpMethod);
         }
@@ -90,10 +112,12 @@ public class EventService {
                 log.warn("Event '{}/{}/{}' requires auth but token is unresolved "
                                 + "(setting '{}' empty)",
                         tenantId, projectId, eventName, event.tokenSettingKey());
+                countOutcome(eventName, "auth_misconfigured");
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                         "Event auth is misconfigured");
             }
             if (!constantTimeEquals(expected, bearerToken)) {
+                countOutcome(eventName, "unauthorized");
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                         "Invalid or missing bearer token");
             }
@@ -104,6 +128,7 @@ public class EventService {
             log.warn("Event '{}/{}/{}' wants workflow '{}' but Hactar is not active "
                             + "(vance.services.hactar=false)",
                     tenantId, projectId, eventName, event.workflow());
+            countOutcome(eventName, "hactar_unavailable");
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Hactar workflow subsystem is not active");
         }
@@ -122,10 +147,14 @@ public class EventService {
         } catch (RuntimeException ex) {
             log.warn("Event '{}/{}/{}' workflow start failed: {}",
                     tenantId, projectId, eventName, ex.toString());
+            countOutcome(eventName, "spawn_failed");
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "Workflow spawn failed: " + ex.getMessage(), ex);
         }
 
+        countOutcome(eventName, "success");
+        metricService.timer(METRIC_TRIGGER_DURATION, "event", eventName)
+                .record(Duration.ofNanos(System.nanoTime() - startNanos));
         log.info("Event '{}/{}/{}' spawned workflow '{}' runId='{}'",
                 tenantId, projectId, eventName, event.workflow(), runId);
         return new EventTriggerResult(event.workflow(), runId);
@@ -149,18 +178,25 @@ public class EventService {
             String eventName,
             @Nullable Object payload,
             @Nullable String triggeredBy) {
+        long startNanos = System.nanoTime();
 
         ResolvedEvent event = eventLoader.load(tenantId, projectId, eventName)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Event '" + eventName + "' not found"));
+                .orElse(null);
+        if (event == null) {
+            countOutcomeAdmin(eventName, "not_found");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Event '" + eventName + "' not found");
+        }
 
         if (!event.enabled()) {
+            countOutcomeAdmin(eventName, "disabled");
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Event '" + eventName + "' is disabled — flip enabled: true to trigger");
         }
 
         HactarWorkflowService workflowService = workflowServiceProvider.getIfAvailable();
         if (workflowService == null) {
+            countOutcomeAdmin(eventName, "hactar_unavailable");
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Hactar workflow subsystem is not active");
         }
@@ -182,13 +218,37 @@ public class EventService {
         } catch (RuntimeException ex) {
             log.warn("Admin event trigger '{}/{}/{}' workflow start failed: {}",
                     tenantId, projectId, eventName, ex.toString());
+            countOutcomeAdmin(eventName, "spawn_failed");
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "Workflow spawn failed: " + ex.getMessage(), ex);
         }
 
+        countOutcomeAdmin(eventName, "success");
+        metricService.timer(METRIC_TRIGGER_DURATION, "event", eventName)
+                .record(Duration.ofNanos(System.nanoTime() - startNanos));
         log.info("Admin event '{}/{}/{}' spawned workflow '{}' runId='{}' triggeredBy='{}'",
                 tenantId, projectId, eventName, event.workflow(), runId, runAs);
         return new EventTriggerResult(event.workflow(), runId);
+    }
+
+    /**
+     * Increments {@link #METRIC_TRIGGERS} with the public-trigger
+     * source tag — distinguishes external webhook calls from admin
+     * triggers in the same counter family.
+     */
+    private void countOutcome(String eventName, String outcome) {
+        metricService.counter(METRIC_TRIGGERS,
+                "event", eventName,
+                "source", "public",
+                "outcome", outcome).increment();
+    }
+
+    /** Admin-trigger variant of {@link #countOutcome}. */
+    private void countOutcomeAdmin(String eventName, String outcome) {
+        metricService.counter(METRIC_TRIGGERS,
+                "event", eventName,
+                "source", "admin",
+                "outcome", outcome).increment();
     }
 
     private @Nullable String resolveExpectedToken(

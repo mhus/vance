@@ -75,8 +75,12 @@ class HactarWorkflowServiceRetryAndBoundsTest {
     private final HactarProjectLaneManager laneManager = mock(HactarProjectLaneManager.class);
     private final HactarTaskExecutor taskExecutor = mock(HactarTaskExecutor.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
+    private final de.mhus.vance.shared.metric.MetricService metricService =
+            new de.mhus.vance.shared.metric.MetricService(
+                    new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     private final HactarWorkflowService workflowService = new HactarWorkflowService(
-            workflowLoader, journalService, taskService, laneManager, taskExecutor, eventPublisher);
+            workflowLoader, journalService, taskService, laneManager, taskExecutor,
+            eventPublisher, metricService);
 
     private final List<HactarTaskDocument> insertedTasks = new ArrayList<>();
     private final List<JournalRecord> appendedRecords = new ArrayList<>();

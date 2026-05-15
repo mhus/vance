@@ -78,6 +78,13 @@ public class SchedulerService {
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
     /** Lazy-resolved — only used when a scheduler entry sets {@code workflow:}. May be absent when Hactar is disabled. */
     private final ObjectProvider<de.mhus.vance.brain.hactar.HactarWorkflowService> workflowServiceProvider;
+    private final de.mhus.vance.shared.metric.MetricService metricService;
+
+    /** Counter for scheduler fires. Tags: {@code scheduler}, {@code outcome}. */
+    private static final String METRIC_FIRES = "vance.scheduler.fires";
+
+    /** Timer for successful spawn latency. Tag: {@code scheduler}. */
+    private static final String METRIC_SPAWN_DURATION = "vance.scheduler.spawn.duration";
 
     /** Concurrent registry, keyed by {@code tenant|project|name}. */
     private final Map<String, Registration> registry = new ConcurrentHashMap<>();
@@ -377,6 +384,7 @@ public class SchedulerService {
         eventLogService.append(reg.tenantId, reg.projectId, source,
                 EventType.TRIGGERED, correlationId,
                 /*sessionId*/ null, /*processId*/ null, runAs, /*payload*/ null);
+        countFire(cfg.name(), "triggered");
 
         synchronized (reg.lock) {
             if (reg.currentProcessId != null) {
@@ -385,8 +393,21 @@ public class SchedulerService {
                 }
                 // CANCEL_PREVIOUS — fall through after cancelling the prior run
             }
+            long spawnStartNanos = System.nanoTime();
             spawn(reg, cfg, source, correlationId, runAs);
+            // STARTED+FAILED counters fire inside spawn(); the
+            // spawn-duration timer here covers the time from the
+            // tick acknowledgement to either STARTED or FAILED.
+            metricService.timer(METRIC_SPAWN_DURATION, "scheduler", cfg.name())
+                    .record(java.time.Duration.ofNanos(System.nanoTime() - spawnStartNanos));
         }
+    }
+
+    /** Increments {@link #METRIC_FIRES} with one of the canonical outcomes. */
+    private void countFire(String schedulerName, String outcome) {
+        metricService.counter(METRIC_FIRES,
+                "scheduler", schedulerName,
+                "outcome", outcome).increment();
     }
 
     /**
@@ -408,6 +429,7 @@ public class SchedulerService {
                         EventType.SKIPPED, correlationId,
                         /*sessionId*/ null, /*processId*/ null, runAs,
                         Map.of("reason", "overlap"));
+                countFire(reg.config.name(), "skipped_overlap");
                 log.info("Scheduler '{}/{}/{}' tick skipped — prior run still active",
                         reg.tenantId, reg.projectId, reg.config.name());
                 return true;
@@ -418,12 +440,14 @@ public class SchedulerService {
                         EventType.SKIPPED, correlationId,
                         /*sessionId*/ null, /*processId*/ null, runAs,
                         Map.of("reason", "overlap", "queued", Boolean.TRUE));
+                countFire(reg.config.name(), "queued_overlap");
                 log.info("Scheduler '{}/{}/{}' tick queued — prior run still active",
                         reg.tenantId, reg.projectId, reg.config.name());
                 return true;
             }
             case CANCEL_PREVIOUS -> {
                 cancelPriorRun(reg, source, correlationId, runAs);
+                countFire(reg.config.name(), "cancelled_previous");
                 return false;
             }
         }
@@ -481,6 +505,7 @@ public class SchedulerService {
                     EventType.FAILED, correlationId,
                     session.getSessionId(), /*processId*/ null, runAs,
                     Map.of("phase", "recipe_resolution", "error", ex.getMessage()));
+            countFire(cfg.name(), "failed");
             return;
         }
         if (appliedOpt.isEmpty()) {
@@ -489,6 +514,7 @@ public class SchedulerService {
                     session.getSessionId(), null, runAs,
                     Map.of("phase", "recipe_resolution",
                             "error", "unknown recipe '" + cfg.recipe() + "'"));
+            countFire(cfg.name(), "failed");
             return;
         }
         AppliedRecipe applied = appliedOpt.get();
@@ -506,6 +532,7 @@ public class SchedulerService {
                     EventType.FAILED, correlationId,
                     session.getSessionId(), null, runAs,
                     Map.of("phase", "engine_resolution", "error", ex.getMessage()));
+            countFire(cfg.name(), "failed");
             return;
         }
 
@@ -540,6 +567,7 @@ public class SchedulerService {
                     EventType.FAILED, correlationId,
                     session.getSessionId(), null, runAs,
                     Map.of("phase", "process_create", "error", ex.getMessage()));
+            countFire(cfg.name(), "failed");
             return;
         }
 
@@ -549,6 +577,7 @@ public class SchedulerService {
         eventLogService.append(reg.tenantId, reg.projectId, source,
                 EventType.STARTED, correlationId,
                 session.getSessionId(), fresh.getId(), runAs, /*payload*/ null);
+        countFire(cfg.name(), "started");
         reg.currentProcessId = fresh.getId();
 
         // One-shots consume themselves the moment STARTED lands — move
@@ -570,6 +599,7 @@ public class SchedulerService {
                     EventType.FAILED, correlationId,
                     session.getSessionId(), fresh.getId(), runAs,
                     Map.of("phase", "engine_start", "error", ex.getMessage()));
+            countFire(cfg.name(), "failed");
             reg.currentProcessId = null;
             return;
         }
@@ -616,6 +646,7 @@ public class SchedulerService {
                     /*sessionId*/ null, /*processId*/ null, runAs,
                     Map.of("phase", "workflow_spawn",
                             "error", "Hactar workflow subsystem is not active"));
+            countFire(cfg.name(), "failed");
             return;
         }
         String runId;
@@ -630,6 +661,7 @@ public class SchedulerService {
                     EventType.FAILED, correlationId,
                     /*sessionId*/ null, /*processId*/ null, runAs,
                     Map.of("phase", "workflow_spawn", "error", ex.getMessage()));
+            countFire(cfg.name(), "failed");
             return;
         }
 
@@ -639,6 +671,7 @@ public class SchedulerService {
         eventLogService.append(reg.tenantId, reg.projectId, source,
                 EventType.STARTED, correlationId,
                 /*sessionId*/ null, /*processId*/ null, runAs, payload);
+        countFire(cfg.name(), "started");
         log.info("Scheduler '{}/{}/{}' spawned workflow '{}' runId='{}'",
                 reg.tenantId, reg.projectId, cfg.name(), cfg.workflow(), runId);
 

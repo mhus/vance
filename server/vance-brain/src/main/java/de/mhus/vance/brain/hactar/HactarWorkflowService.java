@@ -11,16 +11,20 @@ import de.mhus.vance.shared.hactar.HactarParameterSpec;
 import de.mhus.vance.shared.hactar.HactarStateSpec;
 import de.mhus.vance.shared.hactar.HactarTaskDocument;
 import de.mhus.vance.shared.hactar.HactarTaskService;
+import de.mhus.vance.shared.hactar.HactarJournalEntry;
 import de.mhus.vance.shared.hactar.HactarWorkflowLoader;
 import de.mhus.vance.shared.hactar.ResolvedHactarWorkflow;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.hactar.journal.ResultRecord;
 import de.mhus.vance.shared.hactar.journal.StartRecord;
 import de.mhus.vance.shared.hactar.journal.StateEnteredRecord;
 import de.mhus.vance.shared.hactar.journal.StatusRecord;
 import de.mhus.vance.shared.hactar.journal.TaskResultRecord;
 import de.mhus.vance.shared.hactar.journal.VarRecord;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -53,6 +57,15 @@ import tools.jackson.databind.JsonNode;
 @Slf4j
 public class HactarWorkflowService {
 
+    /** Counter for fresh workflow starts. Tag: {@code workflow}. */
+    private static final String METRIC_STARTS = "vance.hactar.workflow.starts";
+
+    /** Counter for terminal status writes. Tags: {@code workflow}, {@code status}. */
+    private static final String METRIC_TERMINATIONS = "vance.hactar.workflow.terminations";
+
+    /** Timer for run duration (StartRecord → terminal StatusRecord). Tags: {@code workflow}, {@code status}. */
+    private static final String METRIC_DURATION = "vance.hactar.workflow.duration";
+
     private final HactarWorkflowLoader workflowLoader;
     private final HactarJournalService journalService;
     private final HactarTaskService taskService;
@@ -60,6 +73,7 @@ public class HactarWorkflowService {
     /** Lazy to break the cycle: TaskExecutor → … → WorkflowService → TaskExecutor (on retry paths). */
     private final HactarTaskExecutor taskExecutor;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final MetricService metricService;
 
     public HactarWorkflowService(
             HactarWorkflowLoader workflowLoader,
@@ -67,13 +81,15 @@ public class HactarWorkflowService {
             HactarTaskService taskService,
             HactarProjectLaneManager laneManager,
             @Lazy @Autowired HactarTaskExecutor taskExecutor,
-            org.springframework.context.ApplicationEventPublisher eventPublisher) {
+            org.springframework.context.ApplicationEventPublisher eventPublisher,
+            MetricService metricService) {
         this.workflowLoader = workflowLoader;
         this.journalService = journalService;
         this.taskService = taskService;
         this.laneManager = laneManager;
         this.taskExecutor = taskExecutor;
         this.eventPublisher = eventPublisher;
+        this.metricService = metricService;
     }
 
     // ──────────── start ────────────
@@ -126,6 +142,7 @@ public class HactarWorkflowService {
                 tenantId, projectId, runId, workflow, resolvedParams, startedBy,
                 parentHactarProcessId, parentState));
 
+        metricService.counter(METRIC_STARTS, "workflow", workflow.name()).increment();
         return runId;
     }
 
@@ -289,6 +306,9 @@ public class HactarWorkflowService {
                     event.tenantId(), event.projectId(), event.workflowRunId(),
                     StatusRecord.builder().status(runStatus).reason(event.errorMessage()).build());
             markTaskTerminal(task, event.outcome());
+
+            recordTerminalMetrics(start.get().getWorkflowName(),
+                    runStatus, event.workflowRunId());
 
             // Surface to any parent that's waiting on this run as a sub-workflow.
             publishWorkflowCompleted(event, start.get(), runStatus);
@@ -454,6 +474,37 @@ public class HactarWorkflowService {
     private void writeRunFailed(TaskCompletedEvent event, String reason) {
         journalService.append(event.tenantId(), event.projectId(), event.workflowRunId(),
                 StatusRecord.builder().status(HactarRunStatus.FAILED).reason(reason).build());
+        String workflowName = journalService.readLast(event.workflowRunId(), StartRecord.class)
+                .map(StartRecord::getWorkflowName)
+                .orElse("unknown");
+        recordTerminalMetrics(workflowName, HactarRunStatus.FAILED, event.workflowRunId());
+    }
+
+    /**
+     * Counter + duration for a terminal status transition. Duration is
+     * measured from the StartRecord entry's {@code createdAt} to now —
+     * if the StartRecord can't be located (shouldn't happen on healthy
+     * paths) the timer is skipped, the counter still fires.
+     */
+    private void recordTerminalMetrics(
+            String workflowName, HactarRunStatus status, String workflowRunId) {
+        metricService.counter(METRIC_TERMINATIONS,
+                "workflow", workflowName,
+                "status", status.name()).increment();
+        Instant startedAt = findStartInstant(workflowRunId);
+        if (startedAt != null) {
+            metricService.timer(METRIC_DURATION,
+                    "workflow", workflowName,
+                    "status", status.name())
+                    .record(Duration.between(startedAt, Instant.now()));
+        }
+    }
+
+    /** Walks the journal in createdAt order; the first entry is the StartRecord. */
+    private @Nullable Instant findStartInstant(String workflowRunId) {
+        List<HactarJournalEntry> entries = journalService.read(workflowRunId);
+        if (entries.isEmpty()) return null;
+        return entries.get(0).getCreatedAt();
     }
 
     private void publishWorkflowCompleted(

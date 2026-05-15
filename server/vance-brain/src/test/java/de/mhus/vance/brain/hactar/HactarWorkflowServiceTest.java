@@ -69,8 +69,12 @@ class HactarWorkflowServiceTest {
     private final HactarTaskExecutor taskExecutor = mock(HactarTaskExecutor.class);
     private final org.springframework.context.ApplicationEventPublisher eventPublisher =
             mock(org.springframework.context.ApplicationEventPublisher.class);
+    private final de.mhus.vance.shared.metric.MetricService metricService =
+            new de.mhus.vance.shared.metric.MetricService(
+                    new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     private final HactarWorkflowService workflowService = new HactarWorkflowService(
-            workflowLoader, journalService, taskService, laneManager, taskExecutor, eventPublisher);
+            workflowLoader, journalService, taskService, laneManager, taskExecutor,
+            eventPublisher, metricService);
 
     private final List<JournalRecord> appendedRecords = new ArrayList<>();
     private final List<HactarTaskDocument> insertedTasks = new ArrayList<>();

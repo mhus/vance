@@ -14,7 +14,9 @@ import de.mhus.vance.api.events.EventSource;
 import de.mhus.vance.brain.hactar.HactarWorkflowService;
 import de.mhus.vance.shared.events.EventLoader;
 import de.mhus.vance.shared.events.ResolvedEvent;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +43,7 @@ class EventServiceTest {
 
     private EventLoader eventLoader;
     private SettingService settingService;
+    private MetricService metricService;
     private HactarWorkflowService workflowService;
     @SuppressWarnings("unchecked")
     private final ObjectProvider<HactarWorkflowService> workflowProvider = mock(ObjectProvider.class);
@@ -50,9 +53,11 @@ class EventServiceTest {
     void setUp() {
         eventLoader = mock(EventLoader.class);
         settingService = mock(SettingService.class);
+        metricService = new MetricService(new SimpleMeterRegistry());
         workflowService = mock(HactarWorkflowService.class);
         when(workflowProvider.getIfAvailable()).thenReturn(workflowService);
-        service = new EventService(eventLoader, settingService, workflowProvider);
+        service = new EventService(
+                eventLoader, settingService, metricService, workflowProvider);
     }
 
     // ─── happy path ─────────────────────────────────────────────────────

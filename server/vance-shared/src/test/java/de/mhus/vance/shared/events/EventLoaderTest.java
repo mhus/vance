@@ -80,7 +80,9 @@ class EventLoaderTest {
                 workflow: w
                 methods: [get, post]
                 """);
-        assertThat(e.methods()).containsExactly("GET", "POST");
+        // Order isn't asserted: ResolvedEvent stores methods as a Set
+        // (no order guarantee from {@code Set.copyOf}).
+        assertThat(e.methods()).containsExactlyInAnyOrder("GET", "POST");
     }
 
     @Test

@@ -98,7 +98,17 @@ public class EddieWorkerConnection implements AutoCloseable {
      * caller (the pool) decides retry / close.
      */
     public void connect() {
-        URI uri = URI.create("ws://" + link.getWorkerPodAddress() + "/ws"
+        // Brain's user-facing WS endpoint is /brain/{tenant}/ws (see
+        // VanceBrainProperties.path). The bare /ws path used to land on
+        // a 404 — every project_create silently lost its auto-observe.
+        String tenant = link.getWorkerTenantId();
+        if (tenant == null || tenant.isBlank()) {
+            throw new EddieWorkerConnectException(
+                    "Worker link is missing workerTenantId — cannot build Working-WS URL",
+                    null);
+        }
+        URI uri = URI.create("ws://" + link.getWorkerPodAddress()
+                + "/brain/" + tenant + "/ws"
                 + "?profile=" + Profiles.EDDIE
                 + "&clientVersion=" + CLIENT_VERSION
                 + "&name=" + CLIENT_NAME);

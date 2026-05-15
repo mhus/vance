@@ -60,6 +60,15 @@ public class WorkerLinkSnapshot {
     private String workerProcessName = "";
 
     /**
+     * Tenant the worker belongs to. Needed to construct the Working-WS
+     * URL ({@code /brain/{tenant}/ws}) — without it the connection
+     * lands on a 404 path. Cross-tenant observation is rejected by
+     * {@link de.mhus.vance.brain.tools.eddie.ProcessObserveTool}, so
+     * this always matches the caller's tenant.
+     */
+    private String workerTenantId = "";
+
+    /**
      * Worker {@code ProjectDocument.name} — for ID-prefix in the
      * fusion-rendered plan ({@code <engine>-<projectName>/<localId>}).
      */

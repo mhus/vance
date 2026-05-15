@@ -735,10 +735,14 @@ public class ThinkProcessService {
      * is single-threaded, so this read-modify-write is race-free per
      * process.
      *
-     * <p>The Mongo update is atomic: a {@code $pull} (matching by
-     * {@code workerProcessId}) and a {@code $push} ride in the same
-     * update document, so even concurrent upserts to <em>different</em>
-     * worker ids on the same process commute cleanly.
+     * <p>Performed as two sequential {@code updateFirst} calls — first
+     * a {@code $pull} matching by {@code workerProcessId}, then a
+     * {@code $push} of the fresh snapshot. Combining both into a
+     * single update document used to work but MongoDB 5+ rejects it
+     * with {@code ConflictingUpdateOperators} (code 40, "Updating the
+     * path 'workerLinks' would create a conflict at 'workerLinks'").
+     * The pair is not atomic against an outside writer, but Eddie's
+     * lane serialisation makes that a non-issue in practice.
      *
      * @return {@code true} if the document existed and was modified
      */
@@ -748,13 +752,16 @@ public class ThinkProcessService {
                     "WorkerLinkSnapshot.workerProcessId must be set");
         }
         Query query = new Query(Criteria.where("_id").is(processId));
-        Update update = new Update()
-                .pull("workerLinks", new org.bson.Document(
-                        "workerProcessId", snapshot.getWorkerProcessId()))
-                .push("workerLinks", snapshot);
-        UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
-        return result.getModifiedCount() > 0;
+        mongoTemplate.updateFirst(
+                query,
+                new Update().pull("workerLinks", new org.bson.Document(
+                        "workerProcessId", snapshot.getWorkerProcessId())),
+                ThinkProcessDocument.class);
+        UpdateResult pushResult = mongoTemplate.updateFirst(
+                query,
+                new Update().push("workerLinks", snapshot),
+                ThinkProcessDocument.class);
+        return pushResult.getModifiedCount() > 0;
     }
 
     /**

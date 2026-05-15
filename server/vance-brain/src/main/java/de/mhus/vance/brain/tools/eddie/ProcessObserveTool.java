@@ -151,6 +151,7 @@ public class ProcessObserveTool implements Tool {
         WorkerLinkSnapshot snapshot = WorkerLinkSnapshot.builder()
                 .workerProcessId(worker.getId())
                 .workerProcessName(worker.getName())
+                .workerTenantId(worker.getTenantId())
                 .workerProjectName(workerProject.getName())
                 .workerSessionId(worker.getSessionId())
                 .workerPodAddress(podAddress)

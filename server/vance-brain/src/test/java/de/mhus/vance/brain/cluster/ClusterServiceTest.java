@@ -28,6 +28,7 @@ class ClusterServiceTest {
 
     private static final String CLUSTER = "test-cluster";
     private static final String ENDPOINT = "10.0.0.7:8080";
+    private static final String NODE_NAME = "maya-prosser";
 
     private BrainPodService brainPodService;
     private ProjectService projectService;
@@ -50,8 +51,8 @@ class ClusterServiceTest {
         properties.setRegistrationMaxRetries(5);
 
         when(locationService.getPodAddress()).thenReturn(ENDPOINT);
-        when(projectService.findByPod(ENDPOINT)).thenReturn(List.of());
-        when(nameGenerator.generate()).thenReturn("maya-prosser");
+        when(projectService.findByHomeCluster(NODE_NAME)).thenReturn(List.of());
+        when(nameGenerator.generate()).thenReturn(NODE_NAME);
 
         service = new ClusterService(
                 brainPodService, projectService, locationService, nameGenerator, properties);
@@ -120,10 +121,10 @@ class ClusterServiceTest {
         service.onApplicationReady();
 
         ProjectDocument p1 = ProjectDocument.builder()
-                .tenantId("acme").name("instant-hole").podIp(ENDPOINT).build();
+                .tenantId("acme").name("instant-hole").homeCluster(NODE_NAME).build();
         ProjectDocument p2 = ProjectDocument.builder()
-                .tenantId("acme").name("rocket-skates").podIp(ENDPOINT).build();
-        when(projectService.findByPod(ENDPOINT)).thenReturn(List.of(p1, p2));
+                .tenantId("acme").name("rocket-skates").homeCluster(NODE_NAME).build();
+        when(projectService.findByHomeCluster(NODE_NAME)).thenReturn(List.of(p1, p2));
 
         service.heartbeat();
 

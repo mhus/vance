@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.documents.summary;
 
+import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.location.LocationService;
@@ -41,6 +42,7 @@ public class DocumentSummaryScheduler {
 
     private final ProjectService projectService;
     private final LocationService locationService;
+    private final ClusterService clusterService;
     private final SettingService settingService;
     private final DocumentService documentService;
     private final DocumentSummaryDriver driver;
@@ -55,14 +57,17 @@ public class DocumentSummaryScheduler {
             initialDelayString = "${vance.autoSummary.initialDelayMs:60000}")
     public void tick() {
         String podId = locationService.getPodAddress();
-        // Pod-owned RUNNING projects (regular projects with a Home Pod)
-        // plus podless projects (system / per-user) which never reach
-        // RUNNING but still hold documents we want to summarise. The
-        // per-document claim in {@link DocumentService#claimForSummary}
-        // is atomic, so multiple pods racing on a podless project is
-        // safe — no document is summarised twice.
-        List<ProjectDocument> projects = new ArrayList<>(
-                projectService.findRunningByPod(podId));
+        String selfCluster = clusterService.selfNodeName();
+        // Pod-owned RUNNING projects (regular projects with a Home Pod
+        // = our cluster node name) plus podless projects (system /
+        // per-user) which never reach RUNNING but still hold documents
+        // we want to summarise. The per-document claim in
+        // {@link DocumentService#claimForSummary} is atomic, so multiple
+        // pods racing on a podless project is safe — no document is
+        // summarised twice.
+        List<ProjectDocument> projects = selfCluster.isBlank()
+                ? new ArrayList<>()
+                : new ArrayList<>(projectService.findRunningByHomeCluster(selfCluster));
         projects.addAll(projectService.findPodlessActive());
         if (projects.isEmpty()) return;
 

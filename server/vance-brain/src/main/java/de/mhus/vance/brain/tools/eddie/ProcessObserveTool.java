@@ -1,6 +1,7 @@
 package de.mhus.vance.brain.tools.eddie;
 
 import de.mhus.vance.api.eddie.ChannelMode;
+import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.brain.eddie.connection.EddieFrameRouter;
 import de.mhus.vance.brain.eddie.connection.EddieWorkerConnection;
 import de.mhus.vance.brain.eddie.connection.EddieWorkerConnectionPool;
@@ -87,6 +88,7 @@ public class ProcessObserveTool implements Tool {
 
     private final ThinkProcessService thinkProcessService;
     private final ProjectService projectService;
+    private final ClusterService clusterService;
     private final EddieWorkerConnectionPool connectionPool;
     private final EddieFrameRouter frameRouter;
     private final JwtService jwtService;
@@ -141,12 +143,17 @@ public class ProcessObserveTool implements Tool {
                 worker.getTenantId(), worker.getProjectId())
                 .orElseThrow(() -> new ToolException(
                         "Worker project '" + worker.getProjectId() + "' not found"));
-        String podAddress = workerProject.getPodIp();
-        if (podAddress == null || podAddress.isBlank()) {
+        String homeCluster = workerProject.getHomeCluster();
+        if (homeCluster == null || homeCluster.isBlank()) {
             throw new ToolException(
                     "Worker project '" + workerProject.getName()
                             + "' has no claimed home pod yet — cannot observe");
         }
+        String podAddress = clusterService.resolveEndpoint(homeCluster)
+                .orElseThrow(() -> new ToolException(
+                        "Worker project '" + workerProject.getName()
+                                + "' home cluster '" + homeCluster
+                                + "' has no live endpoint in the cluster registry"));
 
         WorkerLinkSnapshot snapshot = WorkerLinkSnapshot.builder()
                 .workerProcessId(worker.getId())

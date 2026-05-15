@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -75,6 +76,27 @@ public class BrainPodService {
 
     public List<BrainPodDocument> listCluster(String clusterId) {
         return repository.findByClusterId(clusterId);
+    }
+
+    /**
+     * Returns the {@code nodeName}s of every pod in {@code clusterId} that
+     * is not {@link PodStatus#STOPPED} and whose last heartbeat is within
+     * {@code staleAfter}. Used by the project-claim CAS predicate and the
+     * startup-cleanup sweep to decide which {@code ProjectDocument.homeCluster}
+     * values are still backed by a live pod.
+     *
+     * <p>Pods without a heartbeat yet (just registered, still in their
+     * grace period) count as live — see {@link #isStale}. Stopped pods
+     * are always excluded.
+     */
+    public Set<String> listLiveClusterNodeNames(String clusterId, Duration staleAfter) {
+        Instant now = Instant.now();
+        return repository.findByClusterId(clusterId).stream()
+                .filter(doc -> doc.getStatus() != PodStatus.STOPPED)
+                .filter(doc -> !isStale(doc, now, staleAfter))
+                .map(BrainPodDocument::getNodeName)
+                .filter(name -> name != null && !name.isBlank())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     /** Every registered pod, regardless of cluster. Used by admin tooling. */

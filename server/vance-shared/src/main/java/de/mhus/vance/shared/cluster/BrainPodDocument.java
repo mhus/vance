@@ -30,13 +30,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
  *       dictionary at boot.</li>
  *   <li>{@code endpoint} is the {@code host:port} the pod advertises
  *       to peers — exactly the value {@code LocationService.getPodAddress()}
- *       returns and that ends up in {@code ProjectDocument.podIp}.</li>
+ *       returns and that callers reach via
+ *       {@code ClusterService.resolveEndpoint(nodeName)}.</li>
  * </ul>
  *
  * <p>{@code activeProjects} is denormalised "{@code <tenantId>/<projectName>}"
  * entries, refreshed on every heartbeat. The authoritative source is
- * still {@code ProjectDocument.podIp}; this list is for the cluster
- * dashboard and quick "what runs on pod X" answers.
+ * still {@code ProjectDocument.homeCluster}; this list is for the
+ * cluster dashboard and quick "what runs on pod X" answers.
  */
 @Document(collection = "brain_pods")
 @CompoundIndexes({

@@ -17,7 +17,7 @@ package de.mhus.vance.shared.project;
  * to converge.
  *
  * <p>Pod-affinity (which pod owns the project) is orthogonal to the
- * lifecycle status, tracked via {@link ProjectDocument#getPodIp()}.
+ * lifecycle status, tracked via {@link ProjectDocument#getHomeCluster()}.
  */
 public enum ProjectStatus {
 

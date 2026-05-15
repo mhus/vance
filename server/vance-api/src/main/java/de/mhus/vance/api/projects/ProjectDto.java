@@ -37,7 +37,14 @@ public class ProjectDto {
     /** {@code PENDING} / {@code ACTIVE} / {@code SUSPENDED} / {@code ARCHIVED}. */
     private String status;
 
-    private @Nullable String podIp;
+    /**
+     * Cluster node name of the pod owning the project — references
+     * the {@code BrainPodDocument.nodeName} of an entry in the
+     * cluster registry. The actual {@code host:port} is resolved on
+     * demand server-side; the UI receives only the human-readable
+     * cluster identifier.
+     */
+    private @Nullable String homeCluster;
 
     private @Nullable Instant claimedAt;
 

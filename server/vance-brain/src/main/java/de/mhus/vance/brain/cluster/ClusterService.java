@@ -10,6 +10,7 @@ import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -153,6 +154,20 @@ public class ClusterService {
         return brainPodService.resolveEndpoint(properties.getId(), nodeNameOrEndpoint);
     }
 
+    /**
+     * Snapshot of every node-name in this cluster that is not stale and
+     * not stopped — the CAS predicate in {@code ProjectService.claim()}
+     * and the startup-cleanup sweep both use this to decide which
+     * {@code homeCluster} values are still backed by a live pod.
+     *
+     * <p>Always includes {@link #selfNodeName()} once registration
+     * completed — a fresh pod must not race itself out of its own claim.
+     */
+    public Set<String> liveClusterNodeNames() {
+        return brainPodService.listLiveClusterNodeNames(
+                properties.getId(), properties.getStaleAfter());
+    }
+
     /** This pod's own row, or empty if registration hasn't happened yet. */
     public Optional<BrainPodDocument> selfPod() {
         return brainPodService.findByPodId(podId);
@@ -208,12 +223,13 @@ public class ClusterService {
     /**
      * Builds the denormalised {@code "<tenantId>/<projectName>"} list
      * for {@code activeProjects}. Read directly off
-     * {@code ProjectService.findByPod} (any status) so a heartbeat
-     * always reflects the truth at tick time.
+     * {@code ProjectService.findByHomeCluster} (any status) so a
+     * heartbeat always reflects the truth at tick time.
      */
     private List<String> snapshotActiveProjects() {
-        String endpoint = locationService.getPodAddress();
-        List<ProjectDocument> mine = projectService.findByPod(endpoint);
+        String node = resolveNodeName();
+        if (node.isBlank()) return List.of();
+        List<ProjectDocument> mine = projectService.findByHomeCluster(node);
         return mine.stream()
                 .map(p -> p.getTenantId() + "/" + p.getName())
                 .sorted()

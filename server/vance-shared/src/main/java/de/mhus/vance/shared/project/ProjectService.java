@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -36,8 +37,8 @@ public class ProjectService {
      * project whose name starts with {@link #SYSTEM_NAME_PREFIX}
      * ({@code _vance}, {@code _user_<login>}). These projects live
      * pod-locally on whichever brain process the user's WS lands on
-     * and are never claimed via {@code podIp}; lifecycle and pod-claim
-     * paths short-circuit on this check.
+     * and are never claimed via {@code homeCluster}; lifecycle and
+     * pod-claim paths short-circuit on this check.
      *
      * <p>Rationale and consequences are spelled out in
      * {@code specification/eddie-engine.md} §2.4.
@@ -50,8 +51,9 @@ public class ProjectService {
     private static final String F_TENANT = "tenantId";
     private static final String F_NAME = "name";
     private static final String F_STATUS = "status";
-    private static final String F_POD_IP = "podIp";
+    private static final String F_HOME_CLUSTER = "homeCluster";
     private static final String F_CLAIMED_AT = "claimedAt";
+    private static final String F_REQUIRES_OWNER_POD = "requiresOwnerPod";
 
     private final ProjectRepository repository;
     private final MongoTemplate mongoTemplate;
@@ -134,21 +136,31 @@ public class ProjectService {
     }
 
     /**
-     * Atomically claims {@code (tenantId, name)} for {@code podIp}: refreshes
-     * {@code podIp} and {@code claimedAt}, leaves the lifecycle status alone
-     * (lifecycle transitions go through {@link #markRecovering} /
-     * {@link #markRunning} / etc.). Idempotent on the same pod, takes-over
-     * from another pod (with a warning logged). Refuses to claim CLOSED
-     * projects.
+     * Atomically claims {@code (tenantId, name)} for {@code selfCluster}: the
+     * CAS predicate accepts the claim when {@code homeCluster} is currently
+     * {@code null}, equal to {@code selfCluster}, or pointing at a cluster
+     * node that is not in {@code liveClusters} (stale-takeover). Refreshes
+     * {@code homeCluster} and {@code claimedAt}; lifecycle status is left
+     * untouched.
      *
-     * @return the post-update document
-     * @throws ProjectNotFoundException if the project does not exist
-     * @throws ProjectClosedException   if the project is CLOSED
+     * <p>Returns {@link Optional#empty()} when the claim was rejected — that
+     * means another live pod holds the project; the caller must redirect.
+     * Throws {@link ProjectNotFoundException} when the document does not
+     * exist at all, and {@link ProjectClosedException} when it is CLOSED.
+     *
+     * <p>{@code liveClusters} is a snapshot of the {@code nodeName}s of
+     * non-stale pods in the same cluster, as seen by the caller. It must
+     * contain {@code selfCluster}; the caller (which lives in
+     * {@code vance-brain}) builds it from {@code BrainPodService}.
      */
-    public ProjectDocument claim(String tenantId, String name, String podIp) {
+    public Optional<ProjectDocument> claim(
+            String tenantId,
+            String name,
+            String selfCluster,
+            Set<String> liveClusters) {
         if (isPodless(name)) {
             throw new IllegalArgumentException(
-                    "Project '" + name + "' is podless — refusing to set podIp. "
+                    "Project '" + name + "' is podless — refusing to set homeCluster. "
                             + "Use ProjectManagerService.claimForLocalPod() which "
                             + "short-circuits on isPodless().");
         }
@@ -159,23 +171,32 @@ public class ProjectService {
             throw new ProjectClosedException(
                     "Project '" + name + "' is CLOSED — cannot claim");
         }
-        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Criteria base = Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name);
+        Criteria casPredicate = new Criteria().orOperator(
+                Criteria.where(F_HOME_CLUSTER).is(null),
+                Criteria.where(F_HOME_CLUSTER).is(selfCluster),
+                Criteria.where(F_HOME_CLUSTER).nin(liveClusters));
+        Query query = new Query(new Criteria().andOperator(base, casPredicate));
         Update update = new Update()
-                .set(F_POD_IP, podIp)
+                .set(F_HOME_CLUSTER, selfCluster)
                 .set(F_CLAIMED_AT, Instant.now());
         ProjectDocument updated = mongoTemplate.findAndModify(
                 query, update,
                 FindAndModifyOptions.options().returnNew(true),
                 ProjectDocument.class);
         if (updated == null) {
-            throw new ProjectNotFoundException(
-                    "Project '" + name + "' disappeared during claim");
+            // The base (tenantId, name) match exists (we just read it above)
+            // — so a null here means the CAS predicate failed. Another live
+            // cluster holds the claim. Caller decides whether to redirect.
+            log.debug("Project '{}/{}' claim rejected: holder='{}', selfCluster='{}'",
+                    tenantId, name, current.getHomeCluster(), selfCluster);
+            return Optional.empty();
         }
-        if (!Objects.equals(current.getPodIp(), podIp)) {
-            log.info("Project '{}' claimed by pod '{}' (was '{}', status={})",
-                    name, podIp, current.getPodIp(), current.getStatus());
+        if (!Objects.equals(current.getHomeCluster(), selfCluster)) {
+            log.info("Project '{}' claimed by cluster '{}' (was '{}', status={})",
+                    name, selfCluster, current.getHomeCluster(), current.getStatus());
         }
-        return updated;
+        return Optional.of(updated);
     }
 
     /**
@@ -284,10 +305,10 @@ public class ProjectService {
         return updated;
     }
 
-    /** Lists RUNNING projects whose {@code podIp} matches — for startup reclaim. */
-    public List<ProjectDocument> findRunningByPod(String podIp) {
+    /** Lists RUNNING projects owned by {@code homeCluster} — for startup reclaim. */
+    public List<ProjectDocument> findRunningByHomeCluster(String homeCluster) {
         Query query = new Query(Criteria.where(F_STATUS).is(ProjectStatus.RUNNING)
-                .and(F_POD_IP).is(podIp));
+                .and(F_HOME_CLUSTER).is(homeCluster));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
@@ -296,9 +317,10 @@ public class ProjectService {
      * terminal state. Podless projects never reach {@code RUNNING}
      * because {@code bringPodless()} leaves the status untouched — so
      * pod-scoped sweepers (auto-summary, indexers) cannot rely on the
-     * regular {@link #findRunningByPod} filter to see them. They live
-     * on whichever pod the user's WS lands on; any pod may sweep their
-     * documents because per-doc work is gated by an atomic claim.
+     * regular {@link #findRunningByHomeCluster} filter to see them.
+     * They live on whichever pod the user's WS lands on; any pod may
+     * sweep their documents because per-doc work is gated by an atomic
+     * claim.
      */
     public List<ProjectDocument> findPodlessActive() {
         Query query = new Query(Criteria.where(F_NAME).regex("^" + SYSTEM_NAME_PREFIX)
@@ -307,13 +329,67 @@ public class ProjectService {
     }
 
     /**
-     * Lists every project whose {@code podIp} matches, regardless of
+     * Lists every project owned by {@code homeCluster}, regardless of
      * project status. Used by the cluster heartbeat to denormalise
-     * "what does this pod own right now" into the brain-pod row.
+     * "what does this cluster node own right now" into the brain-pod row.
      */
-    public List<ProjectDocument> findByPod(String podIp) {
-        Query query = new Query(Criteria.where(F_POD_IP).is(podIp));
+    public List<ProjectDocument> findByHomeCluster(String homeCluster) {
+        Query query = new Query(Criteria.where(F_HOME_CLUSTER).is(homeCluster));
         return mongoTemplate.find(query, ProjectDocument.class);
+    }
+
+    /**
+     * Bulk-clears {@code homeCluster} on every project whose current
+     * owner is not in {@code liveClusters}. Idempotent — two pods running
+     * the same cleanup converge on the same final state. Returns the
+     * number of documents actually modified. Used by
+     * {@code ProjectStartupReclaimer} at boot.
+     *
+     * <p>{@code $nin} also matches documents where the field is missing
+     * or {@code null}; setting {@code null} on an already-{@code null}
+     * field is a no-op in MongoDB and is not counted in
+     * {@code modifiedCount}, so the operation stays accurate.
+     *
+     * <p>A defensive no-op when {@code liveClusters} is empty: that
+     * would otherwise match every document and wipe every claim. The
+     * caller is supposed to always include this pod's own node name,
+     * but we guard here so a misuse can't trigger a cluster-wide reset.
+     */
+    public long clearStaleHomeClusters(Set<String> liveClusters) {
+        if (liveClusters == null || liveClusters.isEmpty()) {
+            log.warn("clearStaleHomeClusters called with empty liveClusters — skipping");
+            return 0;
+        }
+        Query query = new Query(Criteria.where(F_HOME_CLUSTER).nin(liveClusters));
+        Update update = new Update().set(F_HOME_CLUSTER, null);
+        return mongoTemplate.updateMulti(query, update, ProjectDocument.class)
+                .getModifiedCount();
+    }
+
+    /**
+     * Lists RUNNING projects whose Home Pod has gone missing (the
+     * {@code homeCluster} field is {@code null}) and that carry
+     * owner-pod-bound engine state ({@code requiresOwnerPod=true}).
+     * These are the candidates the {@code ProjectWakeupTick} re-brings
+     * after a cluster-node death.
+     */
+    public List<ProjectDocument> findRunningOrphansRequiringOwnerPod(int limit) {
+        Query query = new Query(Criteria.where(F_STATUS).is(ProjectStatus.RUNNING)
+                .and(F_HOME_CLUSTER).is(null)
+                .and(F_REQUIRES_OWNER_POD).is(true))
+                .limit(Math.max(1, limit));
+        return mongoTemplate.find(query, ProjectDocument.class);
+    }
+
+    /**
+     * Sets {@code requiresOwnerPod} atomically. Engine-lifecycle listeners
+     * call this when their owner-pod-bound state appears or disappears for
+     * a project — {@code true} on bootstrap, {@code false} on unload.
+     */
+    public void setRequiresOwnerPod(String tenantId, String name, boolean value) {
+        Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
+        Update update = new Update().set(F_REQUIRES_OWNER_POD, value);
+        mongoTemplate.updateFirst(query, update, ProjectDocument.class);
     }
 
     public static class ProjectAlreadyExistsException extends RuntimeException {

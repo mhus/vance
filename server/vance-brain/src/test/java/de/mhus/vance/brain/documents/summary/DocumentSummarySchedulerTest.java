@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.location.LocationService;
@@ -32,8 +33,11 @@ import org.springframework.test.util.ReflectionTestUtils;
  */
 class DocumentSummarySchedulerTest {
 
+    private static final String NODE = "maya-prosser";
+
     private ProjectService projectService;
     private LocationService locationService;
+    private ClusterService clusterService;
     private SettingService settingService;
     private DocumentService documentService;
     private DocumentSummaryDriver driver;
@@ -43,19 +47,21 @@ class DocumentSummarySchedulerTest {
     void setUp() {
         projectService = mock(ProjectService.class);
         locationService = mock(LocationService.class);
+        clusterService = mock(ClusterService.class);
         settingService = mock(SettingService.class);
         documentService = mock(DocumentService.class);
         driver = mock(DocumentSummaryDriver.class);
         scheduler = new DocumentSummaryScheduler(
-                projectService, locationService, settingService, documentService, driver);
+                projectService, locationService, clusterService, settingService, documentService, driver);
         ReflectionTestUtils.setField(scheduler, "batchSize", 10);
         ReflectionTestUtils.setField(scheduler, "claimTtlMinutes", 10);
         when(locationService.getPodAddress()).thenReturn("pod-a");
+        when(clusterService.selfNodeName()).thenReturn(NODE);
     }
 
     @Test
     void tick_noProjects_doesNothing() {
-        when(projectService.findRunningByPod("pod-a")).thenReturn(List.of());
+        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of());
 
         scheduler.tick();
 
@@ -67,7 +73,7 @@ class DocumentSummarySchedulerTest {
     @Test
     void tick_settingDisabled_skipsProject() {
         ProjectDocument project = project("t1", "p1");
-        when(projectService.findRunningByPod("pod-a")).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
         when(settingService.getBooleanValueCascade(
                 eq("t1"), eq("p1"), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(false);
@@ -82,7 +88,7 @@ class DocumentSummarySchedulerTest {
     @Test
     void tick_settingEnabledNoDirtyDocs_noDriverCall() {
         ProjectDocument project = project("t1", "p1");
-        when(projectService.findRunningByPod("pod-a")).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
         when(settingService.getBooleanValueCascade(
                 eq("t1"), eq("p1"), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(true);
@@ -100,7 +106,7 @@ class DocumentSummarySchedulerTest {
         ProjectDocument project = project("t1", "p1");
         DocumentDocument d1 = doc("doc-1");
         DocumentDocument d2 = doc("doc-2");
-        when(projectService.findRunningByPod("pod-a")).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
         when(settingService.getBooleanValueCascade(
                 eq("t1"), eq("p1"), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(true);
@@ -120,7 +126,7 @@ class DocumentSummarySchedulerTest {
         ProjectDocument project = project("t1", "p1");
         DocumentDocument d1 = doc("doc-1");
         DocumentDocument d2 = doc("doc-2");
-        when(projectService.findRunningByPod("pod-a")).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
         when(settingService.getBooleanValueCascade(
                 eq("t1"), eq("p1"), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(true);
@@ -140,7 +146,7 @@ class DocumentSummarySchedulerTest {
     void tick_claimQueryFails_movesOnToNextProject() {
         ProjectDocument p1 = project("t1", "p1");
         ProjectDocument p2 = project("t1", "p2");
-        when(projectService.findRunningByPod("pod-a")).thenReturn(List.of(p1, p2));
+        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(p1, p2));
         when(settingService.getBooleanValueCascade(
                 any(), any(), eq(null), eq("autoSummary.enabled"), anyBoolean()))
                 .thenReturn(true);
@@ -159,7 +165,7 @@ class DocumentSummarySchedulerTest {
     @Test
     void tick_defaultBooleanIsTrue() {
         ProjectDocument project = project("t1", "p1");
-        when(projectService.findRunningByPod("pod-a")).thenReturn(List.of(project));
+        when(projectService.findRunningByHomeCluster(NODE)).thenReturn(List.of(project));
         // Settings cascade has nothing → cascade returns default. We
         // assert the scheduler passes `true` as the default, i.e.
         // feature opt-out semantics.

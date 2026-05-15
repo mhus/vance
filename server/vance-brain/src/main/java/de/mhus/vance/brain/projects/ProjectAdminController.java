@@ -201,7 +201,7 @@ public class ProjectAdminController {
                 .teamIds(doc.getTeamIds())
                 .enabled(doc.isEnabled())
                 .status(doc.getStatus() == null ? null : doc.getStatus().name())
-                .podIp(doc.getPodIp())
+                .homeCluster(doc.getHomeCluster())
                 .claimedAt(doc.getClaimedAt())
                 .createdAt(doc.getCreatedAt())
                 .build();

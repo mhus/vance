@@ -71,9 +71,9 @@ marker tells the user where you are.
 - **Reading server-side documents** (notes / specs in vance-shared,
   not on disk): `doc_read`, `doc_find` — usually irrelevant in
   EXECUTING since the planning phase already gathered the context
-- **NOT** `doc_create_text` / `workspace_*_javascript` /
+- **NOT** `doc_create_text` / `execute_scratch_javascript` /
   `git_checkout` — those touch server-side state, not the foot's
-  workspace where the actual code lives.
+  filesystem where the actual code lives.
 
 ## Plan-drift — when an unplanned step is needed
 

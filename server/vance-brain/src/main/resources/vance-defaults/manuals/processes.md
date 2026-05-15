@@ -54,7 +54,7 @@ Spawn a process to do something slow while you continue the user
 conversation:
 
 1. `process_create name=indexer engine=ford goal="Build a RAG over /docs"`.
-2. Steer it once: `"Walk /docs, ingest each into rag_create+add_workspace_file."`.
+2. Steer it once: `"Walk /docs, ingest each into rag_create+add_scratch_file."`.
 3. Carry on talking to the user. Later, query the resulting RAG.
 
 ## Lifecycle

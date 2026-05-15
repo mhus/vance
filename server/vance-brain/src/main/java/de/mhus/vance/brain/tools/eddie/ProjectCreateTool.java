@@ -129,7 +129,7 @@ public class ProjectCreateTool implements Tool {
 
         ProjectLifecycleService lifecycle = lifecycleServiceProvider.getObject();
 
-        // create(): ProjectService.create + bring() (claim + workspace + RUNNING)
+        // create(): ProjectService.create + bring() (claim + scratch + RUNNING)
         try {
             lifecycle.create(
                     ctx.tenantId(),

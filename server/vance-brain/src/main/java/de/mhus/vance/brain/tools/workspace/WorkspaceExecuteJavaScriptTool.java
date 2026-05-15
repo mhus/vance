@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Reads a {@code .js} file from a project workspace RootDir and
+ * Reads a {@code .js} file from a project scratch RootDir and
  * evaluates it with {@link ScriptExecutor#runFile}. Pairs with
  * {@code scratch_write} so the LLM can iteratively develop and re-run
  * scripts. When {@code dirName} is omitted, the per-process temp RootDir
@@ -60,7 +60,7 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
     @Override
     public String description() {
         return "Execute a JavaScript file previously written to a project "
-                + "workspace RootDir. The script sees the 'vance' host "
+                + "scratch RootDir. The script sees the 'vance' host "
                 + "binding (vance.tools.call, vance.context, vance.log). "
                 + "Returns the value of the last expression.";
     }

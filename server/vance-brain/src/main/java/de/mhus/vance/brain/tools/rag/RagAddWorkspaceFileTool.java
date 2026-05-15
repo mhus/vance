@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Reads a file from a project workspace RootDir and ingests its content
+ * Reads a file from a project scratch RootDir and ingests its content
  * into a RAG. Convenience composition over {@code scratch_read} +
  * {@code rag_add_text}. {@code sourceRef} defaults to the file's
  * relative path so re-ingesting the same file replaces its prior
@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class RagAddWorkspaceFileTool implements Tool {
 
-    /** Soft cap matching the workspace read default — beyond this we let the LLM page. */
+    /** Soft cap matching the scratch read default — beyond this we let the LLM page. */
     private static final int READ_CHAR_CAP = 0; // 0 = unlimited; the RAG itself caps via chunking
 
     private static final Map<String, Object> SCHEMA = Map.of(
@@ -37,7 +37,7 @@ public class RagAddWorkspaceFileTool implements Tool {
                             "description", "RAG name within the current project."),
                     "path", Map.of(
                             "type", "string",
-                            "description", "Relative path to a workspace file."),
+                            "description", "Relative path to a scratch file."),
                     "dirName", Map.of(
                             "type", "string",
                             "description",
@@ -55,7 +55,7 @@ public class RagAddWorkspaceFileTool implements Tool {
 
     @Override
     public String description() {
-        return "Read a project workspace file and ingest it into a RAG. "
+        return "Read a project scratch file and ingest it into a RAG. "
                 + "sourceRef is the relative path; re-running on the same "
                 + "file replaces its prior chunks.";
     }

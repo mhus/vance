@@ -8,7 +8,7 @@ Two execution surfaces, picked by which tool you call:
 - `execute_javascript code=…` — runs on the **brain**. Host binding:
   `vance.*`. Can call any server tool you're allowed to use.
 - `execute_scratch_javascript path=…` — same engine, but loads the
-  source from a `.js` file in the project workspace. Stack traces show
+  source from a `.js` file in the project scratch area. Stack traces show
   the file path. Pairs with `scratch_write` for iterate-and-rerun.
 - `client_javascript code=…` — runs on the **foot** (user's machine).
   Host binding: `client.*`. Sees only `client_*` tools registered
@@ -106,7 +106,7 @@ Other `error` codes: `TIMEOUT`, `RESOURCE_EXHAUSTED`, `HOST_EXCEPTION`,
 - **Timeout** — default 5s wall-clock, max 30s via `timeoutMs`.
 - **Statement budget** — ~1M statements before `RESOURCE_EXHAUSTED`.
 - **No** Java interop, no `Java.type(...)`, no `java.lang.System`.
-- **No** filesystem (use `workspace_*` / `client_file_*` tools).
+- **No** filesystem (use `scratch_*` / `client_file_*` tools).
 - **No** network (use `web_search` etc.).
 - **No** threads, no `setTimeout` long-poll — script runs straight
   through, then exits.
@@ -123,7 +123,7 @@ internals.
 
 ## Patterns
 
-### Crunch a workspace file, write a memory
+### Crunch a scratch file, write a memory
 
 ```js
 let raw = vance.tools.call("scratch_read", { path: "data.csv" }).content;
@@ -159,7 +159,7 @@ for (let f of entries) {
 out;
 ```
 
-### Iterate on a workspace script
+### Iterate on a scratch script
 
 ```text
 1. scratch_write path=compute.js content="let x = 2+2; x;"

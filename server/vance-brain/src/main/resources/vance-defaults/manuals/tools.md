@@ -9,18 +9,18 @@ Two universes of tools share the same dispatcher:
 Use `find_tools query=<keyword>` and `describe_tool name=<x>` to
 explore beyond the primary set advertised every turn.
 
-## Server-side workspace + exec
+## Server-side scratch + exec
 
 Per-project sandbox the LLM controls in the brain:
 
 - `scratch_write / read / list / delete` — UTF-8 files under
-  `data/workspaces/<projectId>/`. Survives restarts; visible to
-  every session in the same project.
+  `~/.vance/workspaces/<tenant>/<projectId>/`. Survives restarts;
+  visible to every session in the same project.
 - `execute_javascript code=…` / `execute_scratch_javascript path=…`
   — sandboxed GraalJS. Scripts can call other tools through the
   `vance.*` host binding. See `manual_read scripts`.
 - `exec_run command=… [waitMs=…]` — shell command in the project
-  workspace (CWD = workspace root). Returns a job id if it doesn't
+  scratch area (CWD = scratch root). Returns a job id if it doesn't
   finish in time. `exec_status id=…` and `exec_kill id=…` follow up.
 
 Typical flow: `scratch_write` a file → `exec_run` to act on it (`git
@@ -43,10 +43,10 @@ Use these when the user asks about *their* files, not project files.
 - `scratchpad_set / get / list / delete title=…` — named-slot persistent
   notes per think-process. Use to remember intermediate findings, plans,
   anything you need next turn that isn't natural chat.
-- `rag_create / list / query / add_text / add_workspace_file / delete`
+- `rag_create / list / query / add_text / add_scratch_file / delete`
   — per-project retrieval indexes. `rag_query name=<rag> query=<text>`
   returns the top-K most similar chunks. Compose with
-  `rag_add_scratch_file` to ingest a workspace file.
+  `rag_add_scratch_file` to ingest a scratch file.
 
 ## Web
 

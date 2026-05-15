@@ -203,11 +203,11 @@ class ListEditedResourcesToolTest {
 
     @Test
     void invoke_resourcesWithMultiColonKeys_splitOnFirstColonOnly() {
-        // RESOURCE keys like "WORKSPACE:proc-abc/notes.md" have multiple
+        // RESOURCE keys like "SCRATCH:proc-abc/notes.md" have multiple
         // ":" segments — split must use the FIRST colon as separator so
         // the full sub-key is preserved.
         when(service.distinctResourceKeys(eq("tenant-1"), any(), eq(null)))
-                .thenReturn(List.of("WORKSPACE:proc-abc/notes.md"));
+                .thenReturn(List.of("SCRATCH:proc-abc/notes.md"));
 
         @SuppressWarnings("unchecked")
         Map<String, Object> result = tool.invoke(Map.of(), ctx);
@@ -215,7 +215,7 @@ class ListEditedResourcesToolTest {
         List<Map<String, Object>> resources =
                 (List<Map<String, Object>>) result.get("resources");
         assertThat(resources.get(0))
-                .containsEntry("type", "WORKSPACE")
+                .containsEntry("type", "SCRATCH")
                 .containsEntry("key", "proc-abc/notes.md");
     }
 }

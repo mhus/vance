@@ -21,7 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Counts lines / characters / bytes for one workspace file or — when
+ * Counts lines / characters / bytes for one scratch file or — when
  * {@code path} is omitted — across every file in the RootDir matched
  * by an optional {@code pathGlob}. With a {@code pattern} parameter
  * the line-count switches to "lines that match the regex", which lets
@@ -64,7 +64,7 @@ public class WorkspaceCountTool implements Tool {
 
     @Override public String name() { return "scratch_count"; }
     @Override public String description() {
-        return "Count lines, characters, and bytes for a single workspace file or "
+        return "Count lines, characters, and bytes for a single scratch file or "
                 + "across many files matching a glob. Optional regex narrows the "
                 + "line-count to matches (wc-style line/char/byte stats).";
     }

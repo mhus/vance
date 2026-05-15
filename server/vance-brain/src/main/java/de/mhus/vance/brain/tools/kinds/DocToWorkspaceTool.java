@@ -16,8 +16,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Materialise a document's inline body as a file inside the
- * workspace — bridge between the document-pool and the
- * shell-friendly workspace world (so that subsequent tools like
+ * scratch — bridge between the document-pool and the
+ * shell-friendly scratch world (so that subsequent tools like
  * {@code workspace_execute_javascript}, {@code git_checkout} or
  * {@code client_exec_run} can act on the content).
  */
@@ -33,9 +33,9 @@ public class DocToWorkspaceTool implements Tool {
     private static Map<String, Object> buildProps() {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
         p.put("workspacePath", Map.of("type", "string",
-                "description", "Relative path inside the workspace dir, e.g. 'sources/notes.md'."));
+                "description", "Relative path inside the scratch dir, e.g. 'sources/notes.md'."));
         p.put("dirName", Map.of("type", "string",
-                "description", "Optional workspace RootDir name. Default: the process's current "
+                "description", "Optional scratch RootDir name. Default: the process's current "
                         + "working dir (same convention as `scratch_write`)."));
         return p;
     }
@@ -45,12 +45,12 @@ public class DocToWorkspaceTool implements Tool {
 
     @Override public String name() { return "doc_to_scratch"; }
     @Override public String description() {
-        return "Write a document's inline body into the workspace as a file. The document is "
-                + "untouched; only the workspace gets the copy. Pending buffered writes are "
-                + "flushed first so the workspace file matches the latest in-flight content.";
+        return "Write a document's inline body into the scratch as a file. The document is "
+                + "untouched; only the scratch gets the copy. Pending buffered writes are "
+                + "flushed first so the scratch file matches the latest in-flight content.";
     }
     @Override public boolean primary() { return false; }
-    @Override public Set<String> labels() { return Set.of("workspace-bridge", "eddie", "write", "workspace"); }
+    @Override public Set<String> labels() { return Set.of("scratch-bridge", "eddie", "write", "scratch"); }
 
     @Override public Map<String, Object> paramsSchema() { return SCHEMA; }
 
@@ -78,7 +78,7 @@ public class DocToWorkspaceTool implements Tool {
             out.put("chars", body.length());
             return out;
         } catch (RuntimeException e) {
-            throw new ToolException("Failed to write workspace file: " + e.getMessage(), e);
+            throw new ToolException("Failed to write scratch file: " + e.getMessage(), e);
         }
     }
 }

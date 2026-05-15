@@ -22,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Finds files in a workspace RootDir by glob pattern + size / mtime
+ * Finds files in a scratch RootDir by glob pattern + size / mtime
  * filters. Pure metadata read — never opens the file body. Default
  * sort: path ascending; the {@code sortBy} parameter switches to
  * {@code mtime} descending so the LLM can ask for "what changed
@@ -71,7 +71,7 @@ public class WorkspaceFindTool implements Tool {
 
     @Override public String name() { return "scratch_find"; }
     @Override public String description() {
-        return "Find files inside a workspace RootDir by path glob, size range, and "
+        return "Find files inside a scratch RootDir by path glob, size range, and "
                 + "modification-time range. Returns relative paths with size + mtime. "
                 + "Sort by path (default), mtime, or size.";
     }

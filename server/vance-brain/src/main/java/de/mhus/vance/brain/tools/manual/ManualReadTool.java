@@ -99,7 +99,7 @@ public class ManualReadTool implements Tool {
         }
 
         // Resilient name resolution: the LLM frequently echoes a
-        // manual path verbatim from a workspace listing or an error
+        // manual path verbatim from a scratch listing or an error
         // message ("manuals/essay/STYLE.md", "essay/STYLE.md", or
         // "/STYLE.md"). Strip the .md suffix and reduce the input to
         // its last path segment — that is what the per-folder lookup

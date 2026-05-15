@@ -86,7 +86,7 @@ public class PythonCreateTool implements Tool {
 
     @Override
     public String description() {
-        return "Ensure a Python workspace RootDir with a local .venv exists. "
+        return "Ensure a Python scratch RootDir with a local .venv exists. "
                 + "Idempotent on 'label' (default 'python') — if a Python "
                 + "RootDir with that label is already there, returns it "
                 + "untouched (status='exists') rather than creating a "

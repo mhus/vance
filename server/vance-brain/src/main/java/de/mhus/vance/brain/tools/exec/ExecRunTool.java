@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Runs a shell command in the session workspace. Blocks briefly so
+ * Runs a shell command in the session scratch. Blocks briefly so
  * short commands return synchronously; longer ones come back still
  * RUNNING and the LLM follows up with {@code exec_status} by id.
  */
@@ -32,7 +32,7 @@ public class ExecRunTool implements Tool {
                                     "Shell command to run (bash via /bin/sh -c on "
                                             + "Linux/macOS, cmd.exe /c on Windows). "
                                             + "Full shell syntax allowed; cwd is the "
-                                            + "named workspace RootDir."),
+                                            + "named scratch RootDir."),
                     "dirName", Map.of(
                             "type", "string",
                             "description",
@@ -71,7 +71,7 @@ public class ExecRunTool implements Tool {
 
     @Override
     public String description() {
-        return "Execute a shell command in the session workspace and wait up "
+        return "Execute a shell command in the session scratch and wait up "
                 + "to ~15s for completion. If it finishes in time you get "
                 + "status + stdout + stderr; otherwise you get the job id and "
                 + "follow up with exec_status. stdoutPath / stderrPath are the "
@@ -109,7 +109,7 @@ public class ExecRunTool implements Tool {
 
     @Override
     public String searchHint() {
-        return "Run/kill shell job on user workspace";
+        return "Run/kill shell job on user scratch";
     }
 
     @Override

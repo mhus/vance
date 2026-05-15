@@ -22,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Searches workspace RootDir files for lines matching a regex —
+ * Searches scratch RootDir files for lines matching a regex —
  * project-side equivalent of {@code grep -rn}. Files larger than
  * {@link #MAX_FILE_BYTES} or non-UTF-8 are skipped silently so the
  * tool is safe across mixed binary/text trees.
@@ -67,7 +67,7 @@ public class WorkspaceGrepTool implements Tool {
 
     @Override public String name() { return "scratch_grep"; }
     @Override public String description() {
-        return "Recursively grep regex patterns across files in a workspace RootDir. "
+        return "Recursively grep regex patterns across files in a scratch RootDir. "
                 + "Returns matching lines with file path + 1-based line number, "
                 + "optionally with context lines. Binary / oversized files are skipped.";
     }

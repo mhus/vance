@@ -13,7 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Creates or overwrites a UTF-8 text file in a project workspace
+ * Creates or overwrites a UTF-8 text file in a project scratch
  * RootDir. Use it for fresh files and complete rewrites — it always
  * replaces the whole content. When {@code dirName} is omitted, the
  * per-process temp RootDir is used.
@@ -49,18 +49,18 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public String description() {
-        return "Create or overwrite a short-lived WORKSPACE file in "
-                + "the project's working directory on disk. Use this "
+        return "Create or overwrite a short-lived SCRATCH file in "
+                + "the project's scratch directory on disk. Use this "
                 + "for scripts, scratch data, intermediate artifacts "
                 + "or anything you want to operate on with python_run "
-                + "/ exec_run / scratch_grep next. The workspace is "
+                + "/ exec_run / scratch_grep next. The scratch area is "
                 + "a sandbox — files here are not searchable knowledge "
                 + "and may be discarded when the project suspends. "
                 + "NOT for: lasting knowledge the user will want to "
                 + "find/read later (use doc_create_text), or files on "
                 + "the user's own machine (use client_file_write). "
                 + "Use relative paths; parent directories are created "
-                + "automatically. Promote a workspace file to a real "
+                + "automatically. Promote a scratch file to a real "
                 + "document with scratch_to_doc when it earns it.";
     }
 
@@ -76,10 +76,10 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        // "workspace" tells the history-tagging hook to encode the
-        // returned "path" as a WORKSPACE: resource key — see
+        // "scratch" tells the history-tagging hook to encode the
+        // returned "path" as a SCRATCH: resource key — see
         // planning/process-history-search.md §5.1.
-        return java.util.Set.of("write", "side-effect", "workspace");
+        return java.util.Set.of("write", "side-effect", "scratch");
     }
 
     @Override

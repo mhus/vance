@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Returns the first {@code head} and / or last {@code tail} lines of
- * a workspace file. Either or both may be specified; at least one is
+ * a scratch file. Either or both may be specified; at least one is
  * required so the tool always returns a bounded slice rather than the
  * full body.
  */
@@ -53,7 +53,7 @@ public class WorkspaceHeadTailTool implements Tool {
     @Override public String name() { return "scratch_head_tail"; }
     @Override public String description() {
         return "Return the first N lines (head) and / or last N lines (tail) "
-                + "of a workspace file. At least one of head / tail must be > 0. "
+                + "of a scratch file. At least one of head / tail must be > 0. "
                 + "Lines are 1-based; the response carries lineNumber so the LLM "
                 + "can address them again.";
     }

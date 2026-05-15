@@ -42,9 +42,9 @@ response. Don't end a turn with words of intent and no tool
 call.
 
 {% if has_python_rootdir %}
-A Python workspace RootDir with a local venv is available. Use
+A Python scratch RootDir with a local venv is available. Use
 `python_install` / `python_uninstall` to manage packages and
-`python_run` to execute scripts; `workspace_*` file tools also
+`python_run` to execute scripts; `scratch_*` file tools also
 resolve inside the RootDir.
 
 {% endif %}

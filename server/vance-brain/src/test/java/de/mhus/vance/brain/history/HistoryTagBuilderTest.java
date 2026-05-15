@@ -66,21 +66,21 @@ class HistoryTagBuilderTest {
     }
 
     @Test
-    void onSuccess_workspaceWrite_includesProcessIdInKey() {
-        Tool tool = stubTool(Set.of("write", "side-effect", "workspace"));
+    void onSuccess_scratchWrite_includesProcessIdInKey() {
+        Tool tool = stubTool(Set.of("write", "side-effect", "scratch"));
 
         Set<String> tags = builder.onSuccess("scratch_write",
                 tool, Map.of("path", "notes.md"),
                 Map.of("path", "notes.md"), ctx("proc-abc"));
 
         assertThat(tags).contains(
-                "RESOURCE:WORKSPACE:proc-abc/notes.md",
+                "RESOURCE:SCRATCH:proc-abc/notes.md",
                 "FILE_EDIT");
     }
 
     @Test
-    void onSuccess_workspaceWriteWithoutProcessId_skipsResource() {
-        Tool tool = stubTool(Set.of("write", "workspace"));
+    void onSuccess_scratchWriteWithoutProcessId_skipsResource() {
+        Tool tool = stubTool(Set.of("write", "scratch"));
 
         Set<String> tags = builder.onSuccess("scratch_write",
                 tool, Map.of(), Map.of("path", "notes.md"), ctx(null));

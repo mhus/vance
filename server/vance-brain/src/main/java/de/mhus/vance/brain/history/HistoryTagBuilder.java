@@ -40,7 +40,7 @@ public class HistoryTagBuilder {
     /** Resource-type label values understood by this builder. */
     public static final String LABEL_WRITE = "write";
     public static final String LABEL_CLIENT_FILE = "client-file";
-    public static final String LABEL_WORKSPACE = "workspace";
+    public static final String LABEL_SCRATCH = "scratch";
     public static final String LABEL_DOCUMENT = "document";
 
     /** Tag prefixes (constants for cross-component reuse). */
@@ -61,7 +61,7 @@ public class HistoryTagBuilder {
      * @param params the params map passed to the tool, used as a path
      *               fallback when the result lacks one.
      * @param result the tool's return map.
-     * @param ctx the invocation scope, used for the {@code WORKSPACE:}
+     * @param ctx the invocation scope, used for the {@code SCRATCH:}
      *            key (which is process-scoped).
      */
     public Set<String> onSuccess(
@@ -84,11 +84,11 @@ public class HistoryTagBuilder {
                 tags.add(TAG_RESOURCE_PREFIX + "CLIENT_FILE:" + normalisePath(path));
                 tags.add(TAG_FILE_EDIT);
             }
-        } else if (labels.contains(LABEL_WORKSPACE)) {
+        } else if (labels.contains(LABEL_SCRATCH)) {
             String path = stringFrom(result, "path");
             if (path == null) path = stringFrom(params, "path");
             if (path != null && ctx.processId() != null) {
-                tags.add(TAG_RESOURCE_PREFIX + "WORKSPACE:" + ctx.processId() + "/" + path);
+                tags.add(TAG_RESOURCE_PREFIX + "SCRATCH:" + ctx.processId() + "/" + path);
                 tags.add(TAG_FILE_EDIT);
             }
         } else if (labels.contains(LABEL_DOCUMENT)) {

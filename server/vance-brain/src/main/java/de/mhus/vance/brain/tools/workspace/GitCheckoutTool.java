@@ -16,7 +16,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 /**
- * Clones a git repository into a fresh workspace RootDir of type
+ * Clones a git repository into a fresh scratch RootDir of type
  * {@code git}. Optionally promotes the new RootDir to the current
  * working RootDir so subsequent {@code workspace_*} calls without
  * {@code dirName} resolve to it.
@@ -62,7 +62,7 @@ public class GitCheckoutTool implements Tool {
 
     @Override
     public String description() {
-        return "Clone a git repository into a workspace RootDir. Returns "
+        return "Clone a git repository into a scratch RootDir. Returns "
                 + "the dirName so other tools can read/write inside the "
                 + "checkout. Pass asWorkingDir=true to make it the default "
                 + "for subsequent workspace_* calls.";

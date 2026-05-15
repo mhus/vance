@@ -8,7 +8,7 @@ are running inside one of those engines (currently usually `ford`).
 
 Everything is anchored to a **tenant**. Inside a tenant:
 
-- A **project** owns long-lived assets (workspace files, exec jobs,
+- A **project** owns long-lived assets (scratch files, exec jobs,
   RAG indexes). Pod-affinity lives at this level — all sessions of a
   project run on the same brain pod.
 - A **session** is one conversation thread, owned by a user. Multiple
@@ -33,7 +33,7 @@ Everything is anchored to a **tenant**. Inside a tenant:
 ## What you can't do
 
 - Touch a different tenant's data.
-- Bypass the project's pod-affinity (workspace/exec are pod-local).
+- Bypass the project's pod-affinity (scratch/exec are pod-local).
 - Persist memory beyond what the engine commits — chat-log is the
   authoritative record, scratchpad and memory entries are explicit
   artefacts.

@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Deletes a file from a project workspace RootDir. Returns {@code
+ * Deletes a file from a project scratch RootDir. Returns {@code
  * deleted: false} instead of failing if the file isn't there. When
  * {@code dirName} is omitted, the per-process temp RootDir is used.
  */
@@ -42,7 +42,7 @@ public class WorkspaceDeleteTool implements Tool {
 
     @Override
     public String description() {
-        return "Delete a file from a project workspace RootDir. Safe to call "
+        return "Delete a file from a project scratch RootDir. Safe to call "
                 + "on a path that doesn't exist — returns deleted=false.";
     }
 

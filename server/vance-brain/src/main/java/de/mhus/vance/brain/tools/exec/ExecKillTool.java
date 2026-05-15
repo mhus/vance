@@ -61,7 +61,7 @@ public class ExecKillTool implements Tool {
 
     @Override
     public String searchHint() {
-        return "Run/kill shell job on user workspace";
+        return "Run/kill shell job on user scratch";
     }
 
     @Override

@@ -47,7 +47,11 @@ public class RagService {
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     private static final String DEFAULT_EMBED_PROVIDER = "gemini";
-    private static final String DEFAULT_EMBED_MODEL = "text-embedding-004";
+    // text-embedding-004 was deprecated on Google's v1beta endpoint
+    // ("models/text-embedding-004 is not found … for embedContent");
+    // gemini-embedding-001 is the GA successor. Tenants that want a
+    // different default can set ai.embedding.model in settings.
+    private static final String DEFAULT_EMBED_MODEL = "gemini-embedding-001";
 
     private final RagCatalogService catalog;
     private final RagBackend backend;

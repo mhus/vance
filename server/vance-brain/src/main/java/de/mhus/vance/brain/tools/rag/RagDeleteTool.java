@@ -78,6 +78,11 @@ public class RagDeleteTool implements Tool {
         if (!(rawName instanceof String name) || name.isBlank()) {
             throw new ToolException("'name' is required and must be a non-empty string");
         }
+        if (de.mhus.vance.shared.rag.RagCatalogService.isReservedRagName(name)) {
+            throw new ToolException("RAG '" + name + "' is reserved for the system (names "
+                    + "with '_' prefix). Use the project lifecycle (close → dispose) "
+                    + "or the admin reindex endpoint (?rebuild=true) to manage it.");
+        }
         Optional<RagDocument> found = ragService.findByName(ctx.tenantId(), projectId, name);
         if (found.isEmpty()) {
             Map<String, Object> out = new LinkedHashMap<>();

@@ -87,6 +87,10 @@ public class RagCreateTool implements Tool {
         if (!(rawName instanceof String name) || name.isBlank()) {
             throw new ToolException("'name' is required and must be a non-empty string");
         }
+        if (de.mhus.vance.shared.rag.RagCatalogService.isReservedRagName(name)) {
+            throw new ToolException("RAG name '" + name + "' is reserved for system RAGs "
+                    + "(names with '_' prefix). Pick a different name.");
+        }
         String description = params == null ? null
                 : (params.get("description") instanceof String s ? s : null);
         int chunkSize = intOr(params, "chunkSize", 1000);

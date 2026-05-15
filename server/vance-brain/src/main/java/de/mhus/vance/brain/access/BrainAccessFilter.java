@@ -63,6 +63,19 @@ public class BrainAccessFilter extends AccessFilterBase {
     private static final Pattern WS_UPGRADE_PATH =
             Pattern.compile("^/brain/[^/]+/ws/?$");
 
+    /**
+     * External event-trigger endpoint —
+     * {@code /brain/{tenant}/event/{project}/{event}}. External
+     * callers (webhooks, CI, IoT) don't hold a JWT; auth is performed
+     * inside {@link de.mhus.vance.brain.eventtrigger.EventService}
+     * against the YAML-configured bearer token. The filter bypass is
+     * scoped tightly to this exact path shape so unrelated
+     * {@code /brain/{tenant}/event/...} typos don't accidentally
+     * open up.
+     */
+    private static final Pattern EVENT_TRIGGER_PATH =
+            Pattern.compile("^/brain/[^/]+/event/[^/]+/[^/]+/?$");
+
     public BrainAccessFilter(JwtService jwtService) {
         super(jwtService);
     }
@@ -82,6 +95,12 @@ public class BrainAccessFilter extends AccessFilterBase {
             return false;
         }
         if (LOGOUT_PATH.matcher(requestUri).matches()) {
+            return false;
+        }
+        if (EVENT_TRIGGER_PATH.matcher(requestUri).matches()) {
+            // External callers don't have a JWT — the EventService
+            // performs its own bearer-token check based on the
+            // event's YAML config.
             return false;
         }
         return true;

@@ -1,10 +1,13 @@
 package de.mhus.vance.api.hactar;
 
+import de.mhus.vance.api.annotations.GenerateTypeScript;
+
 /**
  * Overall status of a workflow run ({@code HactarProcess}). Reconstructed
  * by reading the most recent {@code StatusRecord} from the journal
  * (plan §3.2, analog Nimbus' {@code WorkflowContext.getStatus()}).
  */
+@GenerateTypeScript("hactar")
 public enum HactarRunStatus {
     /** Active — tasks are queued, claimed or waiting. */
     RUNNING,

@@ -3,6 +3,9 @@
  Source: de.mhus.vance.api.hactar.HactarWorkflowDto
 */
 
+import { HactarWorkflowSource } from './HactarWorkflowSource';
+import { HactarParameterDto } from './HactarParameterDto';
+
 export interface HactarWorkflowDto {
   name: string;
   yaml: string;
@@ -10,6 +13,7 @@ export interface HactarWorkflowDto {
   description?: string;
   version?: string;
   start?: string;
+  parameters?: Record<string, HactarParameterDto>;
   allowedTools?: string[];
   tags?: string[];
 }

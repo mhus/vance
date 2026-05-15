@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.hactar.HactarProcessDto
 */
 
+import { HactarRunStatus } from './HactarRunStatus';
+
 export interface HactarProcessDto {
   workflowRunId: string;
   workflowName: string;

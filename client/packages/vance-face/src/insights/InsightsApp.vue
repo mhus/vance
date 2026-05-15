@@ -31,6 +31,8 @@ import ProjectToolsTab from './ProjectToolsTab.vue';
 import WorkspaceTab from './WorkspaceTab.vue';
 import ExecutionsTab from './ExecutionsTab.vue';
 import ClusterTab from './ClusterTab.vue';
+import EventsTab from './EventsTab.vue';
+import WorkflowsTab from './WorkflowsTab.vue';
 import {
   ChatRole,
   type MarvinNodeInsightsDto,
@@ -57,7 +59,7 @@ const filterStatus = ref<string | null>(null);
 // Sessions = the existing session-walker (default). Recipes / Tools
 // show project-scope read-only views fed from the same project filter
 // as the sidebar.
-type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'cluster';
+type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'cluster';
 const topTab = ref<TopTab>('sessions');
 
 const projectFilterOptions = computed(() => [
@@ -452,6 +454,16 @@ function clickProcessByMongoId(id: string | undefined | null): void {
         >Executions</button>
         <button
           class="tab"
+          :class="{ 'tab--active': topTab === 'workflows' }"
+          @click="topTab = 'workflows'"
+        >Workflows</button>
+        <button
+          class="tab"
+          :class="{ 'tab--active': topTab === 'events' }"
+          @click="topTab = 'events'"
+        >Events</button>
+        <button
+          class="tab"
           :class="{ 'tab--active': topTab === 'cluster' }"
           @click="topTab = 'cluster'"
         >Cluster</button>
@@ -473,6 +485,8 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <ProjectToolsTab v-else-if="topTab === 'tools'" :project-id="effectiveProjectId" />
       <WorkspaceTab v-else-if="topTab === 'workspace'" :project-id="effectiveProjectId" />
       <ExecutionsTab v-else-if="topTab === 'executions'" :project-id="effectiveProjectId" />
+      <WorkflowsTab v-else-if="topTab === 'workflows'" :project-id="effectiveProjectId" />
+      <EventsTab v-else-if="topTab === 'events'" :project-id="effectiveProjectId" />
       <ClusterTab v-else-if="topTab === 'cluster'" />
 
       <template v-else-if="topTab === 'sessions'">

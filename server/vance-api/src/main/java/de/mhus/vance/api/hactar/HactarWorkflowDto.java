@@ -3,6 +3,7 @@ package de.mhus.vance.api.hactar;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -42,6 +43,14 @@ public class HactarWorkflowDto {
 
     /** Initial state when a run is started. */
     private @Nullable String start;
+
+    /**
+     * Parameter schema for manual triggers. Keys are the parameter
+     * names from the YAML's {@code parameters:} block; values carry
+     * type / required / default-value. {@code null} when the workflow
+     * declares no parameters.
+     */
+    private @Nullable Map<String, HactarParameterDto> parameters;
 
     private @Nullable List<String> allowedTools;
     private @Nullable List<String> tags;

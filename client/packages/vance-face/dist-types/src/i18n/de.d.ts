@@ -478,6 +478,81 @@ declare const _default: {
             unavailable: string;
             empty: string;
         };
+        workflows: {
+            pickProject: string;
+            loading: string;
+            emptyHeadline: string;
+            emptyBody: string;
+            selectHeadline: string;
+            selectBody: string;
+            summaryLine: string;
+            definitionTab: string;
+            runsTab: string;
+            runsTabWithRunning: string;
+            triggerGenericError: string;
+            paramRequired: string;
+            paramNotInteger: string;
+            paramNotJson: string;
+            detail: {
+                start: string;
+                version: string;
+                source: string;
+                description: string;
+                allowedTools: string;
+                rawYaml: string;
+            };
+            trigger: {
+                title: string;
+                help: string;
+                noParams: string;
+                button: string;
+                spawnedPrefix: string;
+                runIdLabel: string;
+            };
+            runs: {
+                title: string;
+                subtitle: string;
+                refresh: string;
+                emptyHeadline: string;
+                emptyBody: string;
+                state: string;
+                startedBy: string;
+                startedAt: string;
+            };
+        };
+        events: {
+            pickProject: string;
+            loading: string;
+            emptyHeadline: string;
+            emptyBody: string;
+            selectHeadline: string;
+            selectBody: string;
+            disabledHint: string;
+            payloadJsonError: string;
+            triggerGenericError: string;
+            detail: {
+                workflow: string;
+                enabled: string;
+                methods: string;
+                auth: string;
+                runAs: string;
+                source: string;
+                description: string;
+                bearerConfigured: string;
+                bearerNone: string;
+                staticParams: string;
+                rawYaml: string;
+            };
+            trigger: {
+                title: string;
+                help: string;
+                payloadLabel: string;
+                payloadPlaceholder: string;
+                button: string;
+                spawnedPrefix: string;
+                runIdLabel: string;
+            };
+        };
         llmTrace: {
             loading: string;
             emptyHeadline: string;

@@ -123,6 +123,18 @@ export * from './scheduler/SchedulerSaveRequest';
 export * from './scheduler/SchedulerSource';
 export * from './scheduler/SchedulerSummary';
 
+export * from './events/EventDto';
+export * from './events/EventSource';
+export * from './events/EventSummary';
+export * from './events/EventTriggerResponse';
+
+export * from './hactar/HactarParameterDto';
+export * from './hactar/HactarProcessDto';
+export * from './hactar/HactarRunStatus';
+export * from './hactar/HactarWorkflowDto';
+export * from './hactar/HactarWorkflowSource';
+export * from './hactar/HactarWorkflowSummary';
+
 export * from './eventlog/EventLogEntryDto';
 export * from './eventlog/EventType';
 

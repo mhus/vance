@@ -2,22 +2,30 @@ package de.mhus.vance.brain.hactar;
 
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
+import de.mhus.vance.api.hactar.HactarParameterDto;
 import de.mhus.vance.api.hactar.HactarProcessDto;
 import de.mhus.vance.api.hactar.HactarStartRequest;
+import de.mhus.vance.api.hactar.HactarWorkflowDto;
+import de.mhus.vance.api.hactar.HactarWorkflowSummary;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.hactar.HactarJournalEntry;
 import de.mhus.vance.shared.hactar.HactarJournalService;
+import de.mhus.vance.shared.hactar.HactarParameterSpec;
 import de.mhus.vance.shared.hactar.HactarStateProjector;
+import de.mhus.vance.shared.hactar.HactarWorkflowLoader;
 import de.mhus.vance.shared.hactar.HactarWorkflowParseException;
+import de.mhus.vance.shared.hactar.ResolvedHactarWorkflow;
 import de.mhus.vance.shared.hactar.journal.StartRecord;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -66,10 +74,42 @@ public class HactarWorkflowController {
     private static final int LIST_LIMIT = 100;
 
     private final HactarWorkflowService workflowService;
+    private final HactarWorkflowLoader workflowLoader;
     private final HactarStateProjector projector;
     private final HactarJournalService journalService;
     private final MongoTemplate mongoTemplate;
     private final RequestAuthority authority;
+
+    // ─── List + detail (definitions) ──────────────────────────────────────
+
+    @GetMapping("/workflows")
+    public List<HactarWorkflowSummary> listWorkflows(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
+        List<ResolvedHactarWorkflow> entries = workflowLoader.listAll(tenant, project);
+        List<HactarWorkflowSummary> out = new ArrayList<>(entries.size());
+        for (ResolvedHactarWorkflow r : entries) {
+            out.add(toSummary(r));
+        }
+        out.sort(Comparator.comparing(HactarWorkflowSummary::getName));
+        return out;
+    }
+
+    @GetMapping("/workflows/{name}")
+    public HactarWorkflowDto getWorkflow(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @PathVariable("name") String name,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
+        String norm = name.trim().toLowerCase(Locale.ROOT);
+        ResolvedHactarWorkflow r = workflowLoader.load(tenant, project, norm)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Workflow '" + norm + "' not found in project '" + project + "'"));
+        return toDto(r);
+    }
 
     @PostMapping("/workflows/{name}/start")
     public Map<String, Object> startWorkflow(
@@ -148,5 +188,46 @@ public class HactarWorkflowController {
             if (out.size() >= LIST_LIMIT) break;
         }
         return out;
+    }
+
+    // ─── Mappers ──────────────────────────────────────────────────────────
+
+    private static HactarWorkflowSummary toSummary(ResolvedHactarWorkflow r) {
+        return HactarWorkflowSummary.builder()
+                .name(r.name())
+                .description(r.description())
+                .version(r.version())
+                .source(r.source())
+                .paramCount(r.parameters() == null ? 0 : r.parameters().size())
+                .stateCount(r.states() == null ? 0 : r.states().size())
+                .tags(r.tags() == null || r.tags().isEmpty() ? null : r.tags())
+                .build();
+    }
+
+    private static HactarWorkflowDto toDto(ResolvedHactarWorkflow r) {
+        Map<String, HactarParameterDto> params = null;
+        if (r.parameters() != null && !r.parameters().isEmpty()) {
+            params = new LinkedHashMap<>();
+            for (Map.Entry<String, HactarParameterSpec> e : r.parameters().entrySet()) {
+                HactarParameterSpec spec = e.getValue();
+                params.put(e.getKey(), HactarParameterDto.builder()
+                        .type(spec.type())
+                        .required(spec.required())
+                        .defaultValue(spec.defaultValue())
+                        .build());
+            }
+        }
+        return HactarWorkflowDto.builder()
+                .name(r.name())
+                .yaml(r.yaml())
+                .source(r.source())
+                .description(r.description())
+                .version(r.version())
+                .start(r.startState())
+                .parameters(params)
+                .allowedTools(r.allowedTools() == null || r.allowedTools().isEmpty()
+                        ? null : r.allowedTools())
+                .tags(r.tags() == null || r.tags().isEmpty() ? null : r.tags())
+                .build();
     }
 }

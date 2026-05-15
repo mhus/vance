@@ -339,13 +339,13 @@ next* and *how long it should live*:
   to find again**: research results, summaries, comparisons,
   decisions, specs, notes. Default for "write me a markdown
   table / report / list of …" requests.
-- **Workspace** (`workspace_write`, `workspace_read`,
-  `workspace_grep`, `python_run`, `exec_run` …) — the project's
+- **Workspace** (`scratch_write`, `scratch_read`,
+  `scratch_grep`, `python_run`, `exec_run` …) — the project's
   on-disk sandbox. Short-lived work files: scripts, CSV/JSON
   fixtures, intermediate artefacts you want to process with
   python or bash next. Not searchable, not part of the user's
   knowledge base, may be discarded on suspend. Promote a
-  workspace file to a doc with `workspace_to_doc` once it's
+  workspace file to a doc with `scratch_to_doc` once it's
   worth keeping.
 - **Client file** (`client_file_write`, `client_file_read`,
   `client_file_*`) — the user's OWN machine's filesystem (the
@@ -366,7 +366,7 @@ unless you actually need a Python library.
   no filesystem, no network. Use for pure logic / math / JSON
   transforms / list filtering / quick "compute this" snippets.
   Sub-second startup; cheap to call.
-- **`execute_workspace_javascript`** — same engine but with
+- **`execute_scratch_javascript`** — same engine but with
   read/write access to the project workspace. For short scripts
   that need to touch workspace files but don't need libraries.
 - **`python_run`** (+ `python_create` / `python_install`) —

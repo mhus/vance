@@ -34,7 +34,7 @@ public class WorkspaceListTool implements Tool {
 
     @Override
     public String name() {
-        return "workspace_list";
+        return "scratch_list";
     }
 
     @Override

@@ -69,7 +69,7 @@ class HistoryTagBuilderTest {
     void onSuccess_workspaceWrite_includesProcessIdInKey() {
         Tool tool = stubTool(Set.of("write", "side-effect", "workspace"));
 
-        Set<String> tags = builder.onSuccess("workspace_write",
+        Set<String> tags = builder.onSuccess("scratch_write",
                 tool, Map.of("path", "notes.md"),
                 Map.of("path", "notes.md"), ctx("proc-abc"));
 
@@ -82,11 +82,11 @@ class HistoryTagBuilderTest {
     void onSuccess_workspaceWriteWithoutProcessId_skipsResource() {
         Tool tool = stubTool(Set.of("write", "workspace"));
 
-        Set<String> tags = builder.onSuccess("workspace_write",
+        Set<String> tags = builder.onSuccess("scratch_write",
                 tool, Map.of(), Map.of("path", "notes.md"), ctx(null));
 
         // No process scope → cannot build a stable WORKSPACE key.
-        assertThat(tags).containsExactly("TOOL_CALL:workspace_write");
+        assertThat(tags).containsExactly("TOOL_CALL:scratch_write");
     }
 
     @Test

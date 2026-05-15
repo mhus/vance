@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Read a workspace file and turn it into a project document — the
- * other half of the {@code doc_to_workspace} bridge.
+ * other half of the {@code doc_to_scratch} bridge.
  *
  * <p>Two modes:
  * <ul>
@@ -59,7 +59,7 @@ public class WorkspaceToDocTool implements Tool {
     private final KindToolSupport support;
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "workspace_to_doc"; }
+    @Override public String name() { return "scratch_to_doc"; }
     @Override public String description() {
         return "Import a workspace file into the project's document pool. Creates the document "
                 + "when `documentPath` is unused, updates the existing one when it's already there. "

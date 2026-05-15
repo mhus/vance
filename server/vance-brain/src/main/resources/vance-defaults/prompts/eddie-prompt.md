@@ -462,7 +462,7 @@ darfst du:
 - **Graphen / Relationen** mit `graph_*` und `relations_*` wenn
   der User Beziehungen zwischen Dingen modellieren will.
 - **RAG erweitern** mit `rag_add_text` / `rag_add_path` /
-  `rag_add_workspace_file`. (Anlegen + Löschen von RAGs ist
+  `rag_add_scratch_file`. (Anlegen + Löschen von RAGs ist
   größerer Eingriff → eher delegieren.)
 - **Inbox-Items posten** mit `inbox_post` — wenn etwas wichtig genug
   ist, dass der User es später nochmal sehen / antworten soll.
@@ -483,13 +483,13 @@ soll's leben*:
   nochmal nachschlagen will: Recherche-Ergebnisse, Vergleiche,
   Notizen, Entscheidungen, Specs, Listen, Tabellen. "Speichere
   X als Markdown" → **Document**, nicht Workspace.
-- **Workspace** (`workspace_write`, `workspace_read`,
-  `workspace_grep`, `python_run`, `exec_run` …) — die Projekt-
+- **Workspace** (`scratch_write`, `scratch_read`,
+  `scratch_grep`, `python_run`, `exec_run` …) — die Projekt-
   Sandbox auf der Platte. Kurzlebige Arbeitsdateien: Scripts,
   CSV-/JSON-Fixtures, Zwischenergebnisse die du gleich mit Python
   oder Bash weiterverarbeitest. Nicht durchsuchbar, nicht Teil der
   Wissensbasis, kann beim Suspend wegfliegen. Mit
-  `workspace_to_doc` zu einem echten Doc promoviert sobald es
+  `scratch_to_doc` zu einem echten Doc promoviert sobald es
   Bestand verdient.
 - **Client-File** (`client_file_write`, `client_file_read`,
   `client_file_*`) — die Festplatte des **Users selbst** (der
@@ -506,7 +506,7 @@ brauchst wirklich eine Python-Lib.
   kein Filesystem, kein Netzwerk. Für reine Logik / Math / JSON-
   Transforms / Liste filtern / "rechne mir X aus". Startet sub-
   sekündlich.
-- **`execute_workspace_javascript`** — gleiche Engine mit
+- **`execute_scratch_javascript`** — gleiche Engine mit
   Workspace-Lese-/Schreibzugriff. Für kurze Skripte die Files
   brauchen aber keine Library.
 - **`python_run`** (+ `python_create` / `python_install`) —

@@ -7,9 +7,9 @@ Two execution surfaces, picked by which tool you call:
 
 - `execute_javascript code=…` — runs on the **brain**. Host binding:
   `vance.*`. Can call any server tool you're allowed to use.
-- `execute_workspace_javascript path=…` — same engine, but loads the
+- `execute_scratch_javascript path=…` — same engine, but loads the
   source from a `.js` file in the project workspace. Stack traces show
-  the file path. Pairs with `workspace_write` for iterate-and-rerun.
+  the file path. Pairs with `scratch_write` for iterate-and-rerun.
 - `client_javascript code=…` — runs on the **foot** (user's machine).
   Host binding: `client.*`. Sees only `client_*` tools registered
   locally on that foot.
@@ -126,7 +126,7 @@ internals.
 ### Crunch a workspace file, write a memory
 
 ```js
-let raw = vance.tools.call("workspace_read", { path: "data.csv" }).content;
+let raw = vance.tools.call("scratch_read", { path: "data.csv" }).content;
 let rows = raw.split("\n").slice(1)
   .filter(l => l.trim())
   .map(l => {
@@ -162,9 +162,9 @@ out;
 ### Iterate on a workspace script
 
 ```text
-1. workspace_write path=compute.js content="let x = 2+2; x;"
-2. execute_workspace_javascript path=compute.js
+1. scratch_write path=compute.js content="let x = 2+2; x;"
+2. execute_scratch_javascript path=compute.js
    → { "value": 4, "durationMs": 3, "path": "compute.js", ... }
-3. workspace_write path=compute.js content="..."   # tweak
-4. execute_workspace_javascript path=compute.js    # rerun
+3. scratch_write path=compute.js content="..."   # tweak
+4. execute_scratch_javascript path=compute.js    # rerun
 ```

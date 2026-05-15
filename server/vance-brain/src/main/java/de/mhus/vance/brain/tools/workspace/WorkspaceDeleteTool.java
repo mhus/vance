@@ -37,7 +37,7 @@ public class WorkspaceDeleteTool implements Tool {
 
     @Override
     public String name() {
-        return "workspace_delete";
+        return "scratch_delete";
     }
 
     @Override

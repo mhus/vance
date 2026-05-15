@@ -70,8 +70,8 @@ profiles:
     promptPrefixAppend: |
       ## Client context — web browser
 
-      No local filesystem on the client side. Use `workspace_read`
-      / `workspace_write` for files stored in the project. If the
+      No local filesystem on the client side. Use `scratch_read`
+      / `scratch_write` for files stored in the project. If the
       user references local files, explain that you can't reach
       them from a web client.
 

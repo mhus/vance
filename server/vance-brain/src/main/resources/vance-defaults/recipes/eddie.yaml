@@ -57,7 +57,7 @@ params:
 #   peer_notify).
 #
 # Destructive ops Eddie never invokes directly. Doc-wipes, RAG
-# create/delete, kit apply/export, workspace_delete, git_checkout —
+# create/delete, kit apply/export, scratch_delete, git_checkout —
 # these go through DELEGATE_PROJECT so the user explicitly opts
 # into them. Repeated below via a YAML anchor.
 _destructive_excludes: &destructive_excludes
@@ -68,7 +68,7 @@ _destructive_excludes: &destructive_excludes
   - rag_delete
   - kit_apply
   - kit_export
-  - workspace_delete
+  - scratch_delete
   - git_checkout
 
 modes:
@@ -170,8 +170,8 @@ profiles:
       ## Client context — web browser
 
       You are reachable from a web browser — there is no local
-      filesystem on the client side. Use `workspace_read` /
-      `workspace_write` for files stored in the project.
+      filesystem on the client side. Use `scratch_read` /
+      `scratch_write` for files stored in the project.
 
       ## Stil — Frontman, nicht Bürokrat
 

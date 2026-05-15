@@ -70,7 +70,7 @@ public class DocCreateTextTool implements Tool {
                 + "auto-summarised, and survive sessions. "
                 + "NOT for: short-lived scripts or scratch data you "
                 + "want to process with python/bash (use "
-                + "workspace_write), or files on the user's own "
+                + "scratch_write), or files on the user's own "
                 + "machine (use client_file_write). "
                 + "Path is optional — omit it to auto-place under "
                 + "'documents/' so the default search finds it back. "

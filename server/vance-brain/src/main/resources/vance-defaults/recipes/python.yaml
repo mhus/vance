@@ -31,7 +31,7 @@ promptPrefix: |
   3. `python_run <file>` — executes a Python file inside the venv,
      cwd = RootDir. Long-running scripts come back `status=RUNNING`
      with a job id — follow up with `exec_status` / `exec_kill`.
-     For one-liners, write a temp file with `workspace_write` first.
+     For one-liners, write a temp file with `scratch_write` first.
   4. Paste the actual stdout / error / file contents into your
      `respond` reply. The caller can't see tool results; only your
      reply text reaches them.

@@ -45,7 +45,7 @@ public class WorkspaceReadTool implements Tool {
 
     @Override
     public String name() {
-        return "workspace_read";
+        return "scratch_read";
     }
 
     @Override

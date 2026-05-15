@@ -25,8 +25,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for the four workspace read-only tools
- * ({@code workspace_grep}, {@code workspace_find},
- * {@code workspace_head_tail}, {@code workspace_count}).
+ * ({@code scratch_grep}, {@code scratch_find},
+ * {@code scratch_head_tail}, {@code scratch_count}).
  *
  * <p>Each tool is exercised against a real temp filesystem with the
  * {@link WorkspaceService} mocked at the {@code list}/{@code resolve}
@@ -74,7 +74,7 @@ class WorkspaceReadOnlyToolsTest {
         when(workspace.list(TENANT, PROJECT, DIR)).thenReturn(List.of(files));
     }
 
-    // ──────────────── workspace_grep ────────────────
+    // ──────────────── scratch_grep ────────────────
 
     @Test
     void grep_findsMatchesAcrossFiles_withContext() throws IOException {
@@ -139,7 +139,7 @@ class WorkspaceReadOnlyToolsTest {
         assertThat(tool.labels()).containsExactly("read-only");
     }
 
-    // ──────────────── workspace_find ────────────────
+    // ──────────────── scratch_find ────────────────
 
     @Test
     void find_filtersByGlob_andSortsByMtimeDesc() throws Exception {
@@ -201,7 +201,7 @@ class WorkspaceReadOnlyToolsTest {
                 .hasMessageContaining("ISO-8601");
     }
 
-    // ──────────────── workspace_head_tail ────────────────
+    // ──────────────── scratch_head_tail ────────────────
 
     @Test
     void headTail_returnsBothSlices() throws IOException {
@@ -246,7 +246,7 @@ class WorkspaceReadOnlyToolsTest {
                 .hasMessageContaining("Not found");
     }
 
-    // ──────────────── workspace_count ────────────────
+    // ──────────────── scratch_count ────────────────
 
     @Test
     void count_singleFile_linesAndChars() throws IOException {

@@ -36,14 +36,14 @@ public class DocToWorkspaceTool implements Tool {
                 "description", "Relative path inside the workspace dir, e.g. 'sources/notes.md'."));
         p.put("dirName", Map.of("type", "string",
                 "description", "Optional workspace RootDir name. Default: the process's current "
-                        + "working dir (same convention as `workspace_write`)."));
+                        + "working dir (same convention as `scratch_write`)."));
         return p;
     }
 
     private final KindToolSupport support;
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "doc_to_workspace"; }
+    @Override public String name() { return "doc_to_scratch"; }
     @Override public String description() {
         return "Write a document's inline body into the workspace as a file. The document is "
                 + "untouched; only the workspace gets the copy. Pending buffered writes are "

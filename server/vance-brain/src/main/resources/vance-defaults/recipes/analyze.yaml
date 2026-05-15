@@ -58,8 +58,8 @@ profiles:
     promptPrefixAppend: |
       ## Client context — web browser
 
-      No local filesystem on the client side. Use `workspace_read`
-      / `workspace_write` for project files; explain to the user
+      No local filesystem on the client side. Use `scratch_read`
+      / `scratch_write` for project files; explain to the user
       that local paths aren't reachable.
 
   # Catch-all for unknown / future / API-only profiles — defensive.

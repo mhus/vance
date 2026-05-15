@@ -44,7 +44,7 @@ public class WorkspaceWriteTool implements Tool {
 
     @Override
     public String name() {
-        return "workspace_write";
+        return "scratch_write";
     }
 
     @Override
@@ -53,7 +53,7 @@ public class WorkspaceWriteTool implements Tool {
                 + "the project's working directory on disk. Use this "
                 + "for scripts, scratch data, intermediate artifacts "
                 + "or anything you want to operate on with python_run "
-                + "/ exec_run / workspace_grep next. The workspace is "
+                + "/ exec_run / scratch_grep next. The workspace is "
                 + "a sandbox — files here are not searchable knowledge "
                 + "and may be discarded when the project suspends. "
                 + "NOT for: lasting knowledge the user will want to "
@@ -61,7 +61,7 @@ public class WorkspaceWriteTool implements Tool {
                 + "the user's own machine (use client_file_write). "
                 + "Use relative paths; parent directories are created "
                 + "automatically. Promote a workspace file to a real "
-                + "document with workspace_to_doc when it earns it.";
+                + "document with scratch_to_doc when it earns it.";
     }
 
     @Override

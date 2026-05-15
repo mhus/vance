@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 /**
  * Reads a {@code .js} file from a project workspace RootDir and
  * evaluates it with {@link ScriptExecutor#runFile}. Pairs with
- * {@code workspace_write} so the LLM can iteratively develop and re-run
+ * {@code scratch_write} so the LLM can iteratively develop and re-run
  * scripts. When {@code dirName} is omitted, the per-process temp RootDir
  * is used.
  */
@@ -54,7 +54,7 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
 
     @Override
     public String name() {
-        return "execute_workspace_javascript";
+        return "execute_scratch_javascript";
     }
 
     @Override
@@ -93,7 +93,7 @@ public class WorkspaceExecuteJavaScriptTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         throw new ToolException(
-                "execute_workspace_javascript requires the bound tools surface — "
+                "execute_scratch_javascript requires the bound tools surface — "
                         + "call via the engine's ContextToolsApi");
     }
 

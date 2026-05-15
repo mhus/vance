@@ -69,7 +69,7 @@ public class WorkspaceFindTool implements Tool {
 
     private final WorkspaceService workspace;
 
-    @Override public String name() { return "workspace_find"; }
+    @Override public String name() { return "scratch_find"; }
     @Override public String description() {
         return "Find files inside a workspace RootDir by path glob, size range, and "
                 + "modification-time range. Returns relative paths with size + mtime. "

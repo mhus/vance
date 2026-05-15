@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Reads a file from a project workspace RootDir and ingests its content
- * into a RAG. Convenience composition over {@code workspace_read} +
+ * into a RAG. Convenience composition over {@code scratch_read} +
  * {@code rag_add_text}. {@code sourceRef} defaults to the file's
  * relative path so re-ingesting the same file replaces its prior
  * chunks instead of duplicating. When {@code dirName} is omitted, the
@@ -50,7 +50,7 @@ public class RagAddWorkspaceFileTool implements Tool {
 
     @Override
     public String name() {
-        return "rag_add_workspace_file";
+        return "rag_add_scratch_file";
     }
 
     @Override
@@ -119,7 +119,7 @@ public class RagAddWorkspaceFileTool implements Tool {
             out.put("totalChars", read.totalChars());
             return out;
         } catch (RuntimeException e) {
-            throw new ToolException("rag_add_workspace_file failed: " + e.getMessage(), e);
+            throw new ToolException("rag_add_scratch_file failed: " + e.getMessage(), e);
         }
     }
 

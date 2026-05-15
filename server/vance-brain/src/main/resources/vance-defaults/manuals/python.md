@@ -15,7 +15,7 @@ recipe does):
 - `python_run` — execute a Python file in the venv
 - `python_set_interpreter` — swap interpreter binary, rebuild venv
 
-`workspace_read` / `workspace_write` / `workspace_list` and friends
+`scratch_read` / `scratch_write` / `scratch_list` and friends
 resolve files inside the RootDir without needing a `dirName` argument
 when it's set as the working RootDir.
 
@@ -94,7 +94,7 @@ python_run file="bench.py" flags="-O" args=["--quick"]
 For a one-liner without a file, write it first:
 
 ```text
-workspace_write path="check.py" content="import sys; print(sys.version_info)"
+scratch_write path="check.py" content="import sys; print(sys.version_info)"
 python_run file="check.py"
 ```
 
@@ -129,7 +129,7 @@ from the lockfile.
 
 ## What NOT to do
 
-- **Don't write into `.venv/`** with `workspace_write`. The
+- **Don't write into `.venv/`** with `scratch_write`. The
   filesystem layout is `pip`-managed; pip will not notice your edits
   and the next `python_install` may overwrite them anyway. If you
   need behaviour changes, install a package instead.
@@ -148,7 +148,7 @@ from the lockfile.
 ```text
 python_create
 python_install packages=["pandas", "numpy", "matplotlib"]
-workspace_write path="analyze.py" content="import pandas as pd; print(pd.__version__)"
+scratch_write path="analyze.py" content="import pandas as pd; print(pd.__version__)"
 python_run file="analyze.py"
 ```
 

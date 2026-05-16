@@ -594,6 +594,37 @@ public class VogonEngine implements ThinkEngine {
             String phaseKey = qualifiedPhaseKey(state, phase);
             Map<String, Object> artifact = new LinkedHashMap<>();
             if (reply != null) artifact.put("result", reply);
+
+            // Auto-persist the worker's reply as an inline draft
+            // document — defends against worker-laziness where the
+            // LLM produced text but didn't call doc_create_text /
+            // doc_edit on its own. Downstream phases can read it
+            // via ${phases.X.draftPath}; the _vogon-drafts/ prefix
+            // matches the hidden-folder convention (_vance/, _bin/).
+            if (reply != null && !reply.isBlank()) {
+                String draftPath = "_vogon-drafts/" + process.getId()
+                        + "/" + phase.getName() + ".md";
+                try {
+                    documentService.upsertText(
+                            process.getTenantId(),
+                            process.getProjectId(),
+                            draftPath,
+                            "Vogon phase draft: " + phase.getName(),
+                            java.util.List.of("vogon-draft",
+                                    "phase:" + phase.getName()),
+                            reply, /*createdBy*/ null);
+                    artifact.put("draftPath", draftPath);
+                } catch (RuntimeException e) {
+                    // Persist-failure must not break the phase —
+                    // the in-memory phaseArtifacts entry stays
+                    // authoritative for substitution.
+                    log.warn("Vogon id='{}' phase '{}' draft persist "
+                                    + "failed (continuing): {}",
+                            process.getId(), phase.getName(),
+                            e.toString());
+                }
+            }
+
             state.getPhaseArtifacts().put(phaseKey, artifact);
             state.getFlags().put(phaseFlag(phase.getName(), "completed"), true);
             persistState(process, state);

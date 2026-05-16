@@ -321,6 +321,40 @@ public class DocumentService {
     }
 
     /**
+     * Create-or-replace inline text by path. If a document at
+     * {@code path} already exists in this project, update its
+     * inline text in place (preserving id, tags, mimeType).
+     * Otherwise create a new inline text document. Idempotent —
+     * useful for callers that re-emit the same logical artifact
+     * across retries (Vogon phase drafts, Slart audit re-runs,
+     * scheduled snapshots). Storage-backed documents at the same
+     * path are refused with {@link IllegalStateException}.
+     */
+    public DocumentDocument upsertText(
+            String tenantId,
+            String projectId,
+            String path,
+            @Nullable String title,
+            @Nullable List<String> tags,
+            String text,
+            @Nullable String createdBy) {
+        Optional<DocumentDocument> existing = findByPath(tenantId, projectId, path);
+        if (existing.isPresent()) {
+            DocumentDocument doc = existing.get();
+            if (doc.getInlineText() == null) {
+                throw new IllegalStateException(
+                        "Cannot upsertText over storage-backed document"
+                                + " tenantId='" + tenantId
+                                + "' projectId='" + projectId
+                                + "' path='" + path + "'");
+            }
+            return update(doc.getId(), title, tags, text, null);
+        }
+        return createText(tenantId, projectId, path, title, tags,
+                text, createdBy);
+    }
+
+    /**
      * Opens a streaming read over the document's content. Caller closes.
      * Returns an empty stream for documents that have neither inline text nor
      * a storage blob (shouldn't happen, but defensive).

@@ -88,6 +88,13 @@ _destructive_excludes: &destructive_excludes
 modes:
   NORMAL:
     allowedToolsRemove: *destructive_excludes
+    # process_create is @executive (defer below) but Arthur needs
+    # it primary so he can spawn Slartibartfast directly when a
+    # task fits the plan-then-execute pattern. Without this Arthur
+    # falls back to spawning Marvin workers via tool-name resolution,
+    # which historically stalls on substantial creative tasks.
+    allowedToolsAdd:
+      - process_create
     allowedToolsDefer:
       - "@write"
       - "@executive"

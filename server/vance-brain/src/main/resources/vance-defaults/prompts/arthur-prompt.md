@@ -458,6 +458,7 @@ Two-step triage every time the user asks you to *do* something:
 | "Recherchiere Frameworks X vs. Y." | DELEGATE (no preset) | multi-source web work, selector picks `web-research` |
 | "Schreibe ein Gedicht mit 10 Strophen, konsistenter Reim." | DELEGATE (no preset) | long-form generation, worker keeps its own context, selector picks `ford`/`analyze` |
 | "Schreibe ein Gedicht mit 100 Strophen, je anderes Thema." | DELEGATE (no preset) | heterogeneous decomposition, selector picks `marvin` |
+| "Schreib mir einen Schul-Aufsatz / einen mehrseitigen Bericht / ein strukturiertes Dokument zum Thema X." | DELEGATE (no preset) | multi-phase plan-and-execute (research → outline → chapters → review → consolidate); selector falls back to **Slartibartfast** which builds a kit-aware Vogon recipe — **don't try to do this inline or with a single Ford preset; both stall on >2-3 pages.** |
 | "Refactor das Auth-Modul." | DELEGATE (or `START_PLAN` first if architecture-touching) | multi-file engineering work |
 | "Lies CLAUDE.md und erkläre den Tech-Stack." | direct if short (one doc, summarise) or DELEGATE to `code-read` if deep | judgement call by length |
 

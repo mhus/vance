@@ -83,15 +83,13 @@ public class SkillTriggerMatcher {
         Set<String> alreadyActive = activeSkillNames(process);
         Set<String> whitelist = process.getAllowedSkillsOverride();
         String lowered = userText.toLowerCase();
-        Set<String> tokens = tokenize(lowered);
-
         List<String> activated = new ArrayList<>();
         for (ResolvedSkill skill : all) {
             if (!skill.enabled()) continue;
             if (alreadyActive.contains(skill.name())) continue;
             if (whitelist != null && !whitelist.contains(skill.name())) continue;
             if (skill.triggers() == null || skill.triggers().isEmpty()) continue;
-            if (!anyTriggerMatches(skill, lowered, tokens)) continue;
+            if (!anyTriggerMatches(skill, lowered)) continue;
 
             try {
                 skillSteerProcessor.activate(process, skill.name(), /*oneShot*/ true);
@@ -108,7 +106,7 @@ public class SkillTriggerMatcher {
     }
 
     private boolean anyTriggerMatches(
-            ResolvedSkill skill, String loweredText, Set<String> tokens) {
+            ResolvedSkill skill, String loweredText) {
         for (ResolvedSkill.Trigger trigger : skill.triggers()) {
             if (trigger == null || trigger.type() == null) continue;
             switch (trigger.type()) {
@@ -118,7 +116,7 @@ public class SkillTriggerMatcher {
                     }
                 }
                 case KEYWORDS -> {
-                    if (matchesKeywords(trigger.keywords(), tokens)) {
+                    if (matchesKeywords(trigger.keywords(), loweredText)) {
                         return true;
                     }
                 }
@@ -143,29 +141,43 @@ public class SkillTriggerMatcher {
         return compiled.matcher(text).find();
     }
 
-    private static boolean matchesKeywords(List<String> keywords, Set<String> tokens) {
+    /**
+     * Activate when AT LEAST ONE keyword matches the user text.
+     *
+     * <p>Match rule: substring of the lowered text. This fixes
+     * three real-world cases the previous "token-set membership +
+     * 50% threshold" logic broke on:
+     *
+     * <ul>
+     *   <li>Multi-word keywords ({@code "school essay"}): tokens
+     *       split on whitespace so set-membership would never
+     *       fire. Substring match catches both word-pairs and
+     *       longer phrases.</li>
+     *   <li>Hyphenated keywords ({@code "schul-aufsatz"}): the
+     *       tokenizer normalised hyphens to whitespace, so the
+     *       hyphenated keyword could never appear as a token.
+     *       Substring on the lowered text matches.</li>
+     *   <li>Disjunctive intent: skill authors list keywords as
+     *       alternatives ("schul-aufsatz OR pro-contra OR
+     *       erörterung"), expecting ANY hit to activate. The
+     *       previous {@code hits/valid >= 0.5} required half
+     *       the list, so a 20-keyword skill needed 10 matches —
+     *       essentially never fires.</li>
+     * </ul>
+     *
+     * <p>False-positive risk for very generic single-word
+     * keywords ({@code "draft"}) is on the skill author — use
+     * specific phrases when narrow targeting matters.
+     */
+    private static boolean matchesKeywords(
+            List<String> keywords, String loweredText) {
         if (keywords == null || keywords.isEmpty()) return false;
-        int hits = 0;
+        if (loweredText == null || loweredText.isEmpty()) return false;
         for (String kw : keywords) {
             if (kw == null || kw.isBlank()) continue;
-            if (tokens.contains(kw.toLowerCase())) hits++;
+            if (loweredText.contains(kw.toLowerCase().trim())) return true;
         }
-        if (hits == 0) return false;
-        // Edge case: keywords with only blanks → treat as no-match.
-        long valid = keywords.stream().filter(k -> k != null && !k.isBlank()).count();
-        if (valid == 0) return false;
-        return ((double) hits) / valid >= KEYWORD_THRESHOLD;
-    }
-
-    /** Lowercase tokens of length ≥ 2. Punctuation collapsed to whitespace. */
-    private static Set<String> tokenize(String lowered) {
-        String cleaned = lowered.replaceAll("[^a-z0-9]+", " ").trim();
-        if (cleaned.isEmpty()) return Collections.emptySet();
-        Set<String> out = new HashSet<>();
-        for (String t : cleaned.split("\\s+")) {
-            if (t.length() >= 2) out.add(t);
-        }
-        return out;
+        return false;
     }
 
     private static Set<String> activeSkillNames(ThinkProcessDocument process) {

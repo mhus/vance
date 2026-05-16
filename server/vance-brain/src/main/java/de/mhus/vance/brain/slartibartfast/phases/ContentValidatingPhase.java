@@ -75,6 +75,27 @@ public class ContentValidatingPhase {
      *  truncated to this; smaller docs land fully. */
     private static final int PER_DOC_CAP_CHARS = 20_000;
 
+    /** Recovery-count thresholds at which the content judge
+     *  relaxes. {@code "partial"} verdicts are treated as failing
+     *  recoveries below this count; at or above it, only outright
+     *  {@code "no"} verdicts trigger recovery. The point: subjective
+     *  criteria (tone, balance) can flip yes/partial across runs
+     *  due to LLM jitter — letting them oscillate for the entire
+     *  recovery budget is wasted compute. */
+    private static final int PARTIAL_TOLERATED_AT_RECOVERY = 4;
+
+    /** Recovery count past which the content judge skips entirely
+     *  and falls back to structural validation only. Hard cap on
+     *  how long the loop will keep paying for subjective re-judges. */
+    private static final int SKIP_JUDGE_AT_RECOVERY = 7;
+
+    /** {@code engineParams[JUDGE_TEMPERATURE_KEY]} — temperature
+     *  override for the judge LLM call. Default {@code 0.0} for
+     *  deterministic verdicts (same content → same yes/no/partial
+     *  across re-runs). Independent of the recipe-level
+     *  {@code temperature} which drives the worker phases. */
+    public static final String JUDGE_TEMPERATURE_KEY = "judgeTemperature";
+
     /** Re-prompt budget for malformed-JSON corrections. */
     private static final int MAX_CORRECTIONS = 2;
 
@@ -148,6 +169,25 @@ public class ContentValidatingPhase {
             return false;
         }
 
+        // Tolerance ramp: past a threshold of recovery cycles
+        // accept whatever structural validation gave us and let
+        // Slart converge. Subjective criteria oscillate; without
+        // this ramp the recovery budget gets eaten by yes/partial
+        // jitter rather than real bugs.
+        if (state.getRecoveryCount() >= SKIP_JUDGE_AT_RECOVERY) {
+            log.info("Slartibartfast id='{}' content-validation SKIPPED — "
+                            + "recoveryCount={} >= SKIP_JUDGE_AT_RECOVERY={}, "
+                            + "passing through (only structural fails will "
+                            + "still trigger recovery)",
+                    process.getId(), state.getRecoveryCount(),
+                    SKIP_JUDGE_AT_RECOVERY);
+            appendIteration(state, userCriteria.size() + " user criteria",
+                    "tolerance-ramp: judge skipped at recovery "
+                            + state.getRecoveryCount(),
+                    PhaseIteration.IterationOutcome.PASSED);
+            return false;
+        }
+
         List<DocumentDocument> artifacts = loadOutputArtifacts(
                 process.getTenantId(), process.getProjectId());
         if (artifacts.isEmpty()) {
@@ -177,11 +217,20 @@ public class ContentValidatingPhase {
             return true;
         }
 
+        // Tolerance-ramp stage 2: at mid-cycle "partial" verdicts
+        // stop counting as fails. Subjective wobble (yes flipping
+        // to partial because the model re-reads a sentence
+        // differently) shouldn't reset the loop after we've made
+        // good progress.
+        boolean partialIsAcceptable =
+                state.getRecoveryCount() >= PARTIAL_TOLERATED_AT_RECOVERY;
         List<Verdict> unsatisfied = new ArrayList<>();
         List<Verdict> satisfied = new ArrayList<>();
         for (Verdict v : verdicts) {
-            if ("no".equalsIgnoreCase(v.satisfied)
-                    || "partial".equalsIgnoreCase(v.satisfied)) {
+            boolean fails = "no".equalsIgnoreCase(v.satisfied)
+                    || ("partial".equalsIgnoreCase(v.satisfied)
+                            && !partialIsAcceptable);
+            if (fails) {
                 unsatisfied.add(v);
             } else {
                 satisfied.add(v);
@@ -294,8 +343,20 @@ public class ContentValidatingPhase {
             ThinkEngineContext ctx,
             List<Criterion> userCriteria,
             List<DocumentDocument> artifacts) {
+        // Build judge-specific chat options: temperature default
+        // 0.0 (deterministic verdicts; same content → same yes/no
+        // verdict). lockSampling=true tells applySamplingParams not
+        // to overwrite with engineParams.temperature which drives
+        // the worker phases (where creativity may help).
+        double judgeTemperature = readJudgeTemperature(process);
+        de.mhus.vance.brain.ai.AiChatOptions judgeOptions =
+                de.mhus.vance.brain.ai.AiChatOptions.builder()
+                        .temperature(judgeTemperature)
+                        .lockSampling(true)
+                        .build();
         EngineChatFactory.EngineChatBundle bundle =
-                engineChatFactory.forProcess(process, ctx, ENGINE_NAME);
+                engineChatFactory.forProcess(process, ctx, ENGINE_NAME,
+                        judgeOptions);
         String modelAlias = bundle.primaryConfig().provider() + ":"
                 + bundle.primaryConfig().modelName();
 
@@ -618,4 +679,16 @@ public class ContentValidatingPhase {
     }
 
     private record Verdict(String id, String satisfied, String reasoning) {}
+
+    private static double readJudgeTemperature(ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams();
+        if (p == null) return 0.0;
+        Object v = p.get(JUDGE_TEMPERATURE_KEY);
+        if (v instanceof Number n) return n.doubleValue();
+        if (v instanceof String s && !s.isBlank()) {
+            try { return Double.parseDouble(s); }
+            catch (NumberFormatException ignored) { return 0.0; }
+        }
+        return 0.0;
+    }
 }

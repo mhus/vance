@@ -177,6 +177,13 @@ public class EngineChatFactory {
      * </ul>
      */
     static void applySamplingParams(AiChatOptions base, ThinkProcessDocument process) {
+        if (Boolean.TRUE.equals(base.getLockSampling())) {
+            // Caller has full ownership of sampling — leave the
+            // options alone. Used by sub-callers (judges,
+            // validators) that need a deterministic temperature
+            // without flipping the entire recipe.
+            return;
+        }
         Map<String, Object> params = process.getEngineParams();
         if (params == null || params.isEmpty()) {
             return;

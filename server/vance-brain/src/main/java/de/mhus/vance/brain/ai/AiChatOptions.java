@@ -22,6 +22,15 @@ public class AiChatOptions {
     @Builder.Default
     private Double temperature = 0.7;
 
+    /** When {@code true}, {@code EngineChatFactory.applySamplingParams}
+     *  leaves every sampling field on this options object alone —
+     *  the caller has explicitly set what they want and engineParams
+     *  should not override. Used by callers (e.g. content-validating
+     *  judge) that need a different temperature than the process-level
+     *  recipe default. */
+    @Builder.Default
+    private @Nullable Boolean lockSampling = null;
+
     /** Hard cap on generated tokens. {@code null} means provider default. */
     private @Nullable Integer maxTokens;
 

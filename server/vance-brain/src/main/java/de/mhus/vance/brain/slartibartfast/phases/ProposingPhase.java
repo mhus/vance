@@ -477,17 +477,35 @@ public class ProposingPhase {
         StringBuilder sb = new StringBuilder();
 
         // Recovery hint goes FIRST and loud — easy to miss when
-        // buried at the end of a long prompt. The LLM is more
-        // likely to act on a correction it sees before sinking
-        // into the rest of the context.
+        // buried at the end of a long prompt. Critically, we
+        // include the PREVIOUSLY REJECTED yaml verbatim and ask
+        // for a targeted revision, not a full re-generation. The
+        // LLM is much better at fixing N specific points in an
+        // existing structure than at re-imagining the whole
+        // recipe each time.
         if (recoveryHint != null && !recoveryHint.isBlank()) {
             sb.append("================================================\n");
             sb.append("⚠  CRITICAL — PREVIOUS ATTEMPT WAS REJECTED ⚠\n");
             sb.append("================================================\n\n");
-            sb.append("Your last recipe failed validation or "
-                    + "post-execution check. Do NOT emit the same "
-                    + "shape again. Address every point below before "
-                    + "re-emitting:\n\n");
+
+            // The previous rejected yaml — non-null after at least
+            // one PROPOSING pass.
+            de.mhus.vance.api.slartibartfast.RecipeDraft prev =
+                    state.getProposedRecipe();
+            if (prev != null && prev.getYaml() != null
+                    && !prev.getYaml().isBlank()) {
+                sb.append("HERE IS THE RECIPE YOU PROPOSED LAST TIME "
+                        + "(do NOT regenerate from scratch — REVISE "
+                        + "this structure to fix the errors listed "
+                        + "below, keep everything else as-is):\n\n");
+                sb.append("```yaml\n").append(prev.getYaml()).append("\n```\n\n");
+            }
+
+            sb.append("ERRORS FOUND IN THE ABOVE RECIPE — fix EVERY "
+                    + "one of them, then re-emit the COMPLETE recipe "
+                    + "(modified yaml + matching justifications +  "
+                    + "updated shapeRationale that mentions the "
+                    + "revision):\n\n");
             sb.append(recoveryHint).append("\n");
             sb.append("================================================\n\n");
         }

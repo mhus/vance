@@ -112,6 +112,27 @@ public class RecipeSelectorService {
               an essay" than the generic {@code default}.
             - "NONE" is a respectable answer. Better to escalate than
               to force a poor fit.
+
+            CRITICAL — generic orchestrators are a TRAP:
+            - Recipes tagged {@code orchestrator}, {@code deep-think},
+              or {@code marvin} are decomposition engines. They are
+              ONLY useful when the project also contains specific
+              sub-recipes the orchestrator can dispatch to (e.g. a
+              {@code chapter-writer}, {@code section-drafter},
+              {@code editorial-pass}). When the catalog has only the
+              orchestrator itself — no purpose-specific sub-recipes
+              that fit the task — DO NOT pick the orchestrator.
+              Return NONE so the caller falls back to Slartibartfast,
+              which generates a purpose-built recipe with the right
+              shape (Vogon-strategy with proper phases). A bare
+              orchestrator with no sub-recipe support stalls — the
+              sub-task spawns return empty.
+            - Same rule for generic "default" or "chat" recipes:
+              if they don't address the specific task shape, prefer
+              NONE.
+            - Heuristic: if you would have to write {@code "Marvin
+              will figure out which sub-recipes to use"} in your
+              rationale, that is the signal to pick NONE instead.
             """;
 
     private final ObjectMapper objectMapper;

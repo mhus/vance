@@ -57,7 +57,11 @@ public class LmStudioProvider implements AiModelProvider {
             throw new AiChatException(
                     "LmStudioProvider received config for provider '" + config.provider() + "'");
         }
-        Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
+        ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                options.getTenantId(), options.getProjectId(),
+                NAME, config.modelName());
+        Duration timeout = Duration.ofSeconds(
+                modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         try {
             OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
@@ -89,9 +93,6 @@ public class LmStudioProvider implements AiModelProvider {
                             .timeout(timeout)
                             .logRequests(options.getLogRequests())
                             .logResponses(options.getLogRequests());
-            ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                    options.getTenantId(), options.getProjectId(),
-                    NAME, config.modelName());
             ThinkingLevel effectiveLevel = OpenAiProvider.gateThinkingLevel(
                     options.getThinkingLevel(), modelInfo);
             String reasoningEffort = OpenAiProvider.mapReasoningEffort(effectiveLevel);

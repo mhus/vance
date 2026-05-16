@@ -18,6 +18,11 @@
 #       defaultMaxOutputTokens: <int>  # cap on a single response
 #       size: SMALL|LARGE              # capability class — drives
 #                                      # prompt-variant selection in recipes
+#       timeoutSeconds: <int>          # per-call HTTP timeout. Optional;
+#                                      # defaults to 60s when absent. Bump
+#                                      # for slow reasoning models, local
+#                                      # LLMs, or models known to throttle
+#                                      # under load.
 #       capabilities: [vision, pdf, thinking]
 #                                      # optional input/feature modalities.
 #                                      # Known values:
@@ -72,11 +77,15 @@ gemini:
     defaultMaxOutputTokens: 8192
     size: SMALL
     capabilities: [vision, pdf]
+    timeoutSeconds: 45
   gemini-2.5-pro:
     contextWindowTokens: 2097152
     defaultMaxOutputTokens: 8192
     size: LARGE
     capabilities: [vision, pdf]
+    # Pro under reasoning load + long contexts genuinely takes 60-90s
+    # per call; 60s default truncated mid-stream too often in 2026Q2.
+    timeoutSeconds: 120
   gemini-2.0-flash:
     contextWindowTokens: 1048576
     defaultMaxOutputTokens: 8192

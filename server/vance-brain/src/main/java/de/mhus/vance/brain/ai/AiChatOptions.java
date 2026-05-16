@@ -85,9 +85,15 @@ public class AiChatOptions {
      */
     private @Nullable Double presencePenalty;
 
-    /** Per-call timeout in seconds. */
-    @Builder.Default
-    private Integer timeoutSeconds = 60;
+    /**
+     * Per-call timeout in seconds. {@code null} (default) means: use
+     * the resolved {@link ModelInfo#timeoutSeconds() model-level
+     * timeout} from {@code ai-models.yaml}. An explicit value here
+     * overrides the catalog — escape hatch for code paths that
+     * intentionally need a different budget (LLM hook runner, eager
+     * health-check pings).
+     */
+    private @Nullable Integer timeoutSeconds;
 
     /** Prepended as a system message if non-null/blank. */
     private @Nullable String systemMessage;

@@ -17,7 +17,8 @@ class GeminiProviderThinkingTest {
         Set<ModelCapability> set = caps.length == 0
                 ? Set.of()
                 : EnumSet.copyOf(java.util.Arrays.asList(caps));
-        return new ModelInfo("gemini", "test-model", 1_000_000, 8192, ModelSize.LARGE, set);
+        return new ModelInfo("gemini", "test-model", 1_000_000, 8192, ModelSize.LARGE, set,
+                ModelInfo.DEFAULT_TIMEOUT_SECONDS);
     }
 
     @Test

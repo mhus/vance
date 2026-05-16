@@ -20,18 +20,31 @@ import de.mhus.vance.shared.kit.catalog.ProjectKitsCatalogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 
 class ProjectKitInstallerTest {
 
     private ProjectKitsCatalogService catalogService;
     private KitService kitService;
+    private KitNameResolverService kitNameResolver;
     private ProjectKitInstaller installer;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         catalogService = mock(ProjectKitsCatalogService.class);
         kitService = mock(KitService.class);
-        installer = new ProjectKitInstaller(catalogService, kitService);
+        kitNameResolver = mock(KitNameResolverService.class);
+        // Default: resolver returns NONE for any wish, so installFromCatalog
+        // throws the typed catalog-miss error rather than silently routing.
+        // Individual tests can override with .when(...) when they exercise
+        // the fuzzy path.
+        when(kitNameResolver.resolve(any(), any(), any()))
+                .thenReturn(KitNameResolverService.Result.none("no resolver mock"));
+        ObjectProvider<KitNameResolverService> resolverProvider =
+                (ObjectProvider<KitNameResolverService>) mock(ObjectProvider.class);
+        when(resolverProvider.getObject()).thenReturn(kitNameResolver);
+        installer = new ProjectKitInstaller(catalogService, kitService, resolverProvider);
     }
 
     @Test
@@ -49,7 +62,11 @@ class ProjectKitInstallerTest {
 
         assertThatThrownBy(() -> installer.installFromCatalog("acme", "p", "missing", "actor"))
                 .isInstanceOf(KitException.class)
-                .hasMessageContaining("not in tenant 'acme' catalog");
+                // Strict miss + resolver-NONE → message names the input
+                // and points at the kit_install URL escape hatch.
+                .hasMessageContaining("'missing'")
+                .hasMessageContaining("did not match any catalog entry")
+                .hasMessageContaining("kit_install");
 
         verify(kitService, never()).importKit(any(), any(), any());
     }

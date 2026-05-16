@@ -97,7 +97,11 @@ public class OpenAiProvider implements AiModelProvider {
             throw new AiChatException(
                     "OpenAiProvider received config for provider '" + config.provider() + "'");
         }
-        Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
+        ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                options.getTenantId(), options.getProjectId(),
+                NAME, config.modelName());
+        Duration timeout = Duration.ofSeconds(
+                modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         Map<String, Object> cacheParams = buildCacheParameters(config, options, cacheEnabled);
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         try {
@@ -134,9 +138,6 @@ public class OpenAiProvider implements AiModelProvider {
                 syncBuilder.customParameters(cacheParams);
                 streamBuilder.customParameters(cacheParams);
             }
-            ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                    options.getTenantId(), options.getProjectId(),
-                    NAME, config.modelName());
             ThinkingLevel effectiveLevel = gateThinkingLevel(
                     options.getThinkingLevel(), modelInfo);
             String reasoningEffort = mapReasoningEffort(effectiveLevel);

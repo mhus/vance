@@ -6,6 +6,7 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
@@ -58,7 +59,11 @@ public class OllamaProvider implements AiModelProvider {
             throw new AiChatException(
                     "OllamaProvider received config for provider '" + config.provider() + "'");
         }
-        Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
+        ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                options.getTenantId(), options.getProjectId(),
+                NAME, config.modelName());
+        Duration timeout = Duration.ofSeconds(
+                modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         boolean think = options.getThinkingLevel() != ThinkingLevel.OFF;
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         try {
@@ -99,9 +104,7 @@ public class OllamaProvider implements AiModelProvider {
             return new StandardAiChat(
                     config.fullName(),
                     ProviderType.OLLAMA,
-                    modelCatalog.lookupOrDefault(
-                            options.getTenantId(), options.getProjectId(),
-                            NAME, config.modelName()).capabilities(),
+                    modelInfo.capabilities(),
                     sync,
                     streaming,
                     options);

@@ -63,6 +63,20 @@ public class ArchitectState {
      *  FRAMING. */
     private String userDescription = "";
 
+    /**
+     * Optional free-text guidance the caller (recipe / kit / SKILL via
+     * Arthur) supplies for Slart's PROPOSING phase. Appended verbatim
+     * to the PROPOSING system-prompt under a clearly labelled "Kit-
+     * provided guidance" header. Use for kit-specific recipe-shape
+     * conventions that aren't encoded in the framed goal or
+     * acceptance criteria — typical example: "persist artifacts via
+     * doc_create_text" patterns from a writing-kit. Slart's generic
+     * engine prompt stays untouched; the kit owns its own additions.
+     *
+     * <p>Empty / null = no guidance, default behaviour.
+     */
+    private @Nullable String proposingHints;
+
     @Builder.Default
     private OutputSchemaType outputSchemaType = OutputSchemaType.VOGON_STRATEGY;
 

@@ -67,10 +67,11 @@ public class GeminiProvider implements AiModelProvider {
             throw new AiChatException(
                     "GeminiProvider received config for provider '" + config.provider() + "'");
         }
-        Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
         ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                 options.getTenantId(), options.getProjectId(),
                 NAME, config.modelName());
+        Duration timeout = Duration.ofSeconds(
+                modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         ThinkingLevel effectiveLevel = gateThinkingLevel(
                 options.getThinkingLevel(), modelInfo);
         @Nullable GeminiThinkingConfig thinking = mapThinking(effectiveLevel);

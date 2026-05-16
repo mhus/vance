@@ -65,7 +65,8 @@ public class ModelCatalog {
     private static final String BUNDLED_RESOURCE = "vance-defaults/" + CATALOG_PATH;
 
     private static final ModelInfo FALLBACK_TEMPLATE = new ModelInfo(
-            "?", "?", 8192, 4096, ModelSize.LARGE, Set.of());
+            "?", "?", 8192, 4096, ModelSize.LARGE, Set.of(),
+            ModelInfo.DEFAULT_TIMEOUT_SECONDS);
 
     private final DocumentService documentService;
 
@@ -228,20 +229,24 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.defaultMaxOutputTokens());
         ModelSize size = readSize(spec.get("size"), provider, modelName);
         Set<ModelCapability> caps = readCapabilities(spec.get("capabilities"), provider, modelName);
-        return new ModelInfo(provider, modelName, ctx, out, size, caps);
+        int timeout = readInt(spec.get("timeoutSeconds"),
+                FALLBACK_TEMPLATE.timeoutSeconds());
+        return new ModelInfo(provider, modelName, ctx, out, size, caps, timeout);
     }
 
     private static ModelInfo fallback(@Nullable String provider, @Nullable String modelName) {
         log.warn("ModelCatalog: no entry for '{}/{}' — falling back to {}-token context, "
-                        + "no capabilities",
-                provider, modelName, FALLBACK_TEMPLATE.contextWindowTokens());
+                        + "no capabilities, {}s timeout",
+                provider, modelName, FALLBACK_TEMPLATE.contextWindowTokens(),
+                FALLBACK_TEMPLATE.timeoutSeconds());
         return new ModelInfo(
                 provider == null ? "?" : provider,
                 modelName == null ? "?" : modelName,
                 FALLBACK_TEMPLATE.contextWindowTokens(),
                 FALLBACK_TEMPLATE.defaultMaxOutputTokens(),
                 FALLBACK_TEMPLATE.size(),
-                FALLBACK_TEMPLATE.capabilities());
+                FALLBACK_TEMPLATE.capabilities(),
+                FALLBACK_TEMPLATE.timeoutSeconds());
     }
 
     private static int readInt(@Nullable Object raw, int fallback) {

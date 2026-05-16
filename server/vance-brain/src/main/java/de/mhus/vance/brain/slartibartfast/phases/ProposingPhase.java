@@ -388,6 +388,22 @@ public class ProposingPhase {
             case MARVIN_RECIPE -> SYSTEM_PROMPT_MARVIN;
         };
 
+        // Kit-provided guidance hook — recipes (writing-kit, school-
+        // essay-kit, …) can inject recipe-shape conventions via the
+        // engineParams.proposingHints param. Slart's bundled prompt
+        // stays generic; the kit owns its task-specific additions
+        // (typical example: "persist artifacts via doc_create_text"
+        // patterns). Appended verbatim under a labelled header so
+        // the LLM can distinguish engine-defined contract from
+        // kit-supplied extension.
+        String kitHints = state.getProposingHints();
+        if (kitHints != null && !kitHints.isBlank()) {
+            systemPrompt = systemPrompt
+                    + "\n\n=== Kit-provided guidance for this PROPOSING run ===\n"
+                    + kitHints.trim()
+                    + "\n=== End kit-provided guidance ===\n";
+        }
+
         // For MARVIN_RECIPE: list the project's currently-available
         // sub-recipes so the LLM has concrete names to put into
         // allowedSubTaskRecipes. Without this list it tends to

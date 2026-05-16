@@ -79,7 +79,8 @@ public class AnthropicProvider implements AiModelProvider {
         int maxTokens = effective.getMaxTokens() != null
                 ? effective.getMaxTokens()
                 : DEFAULT_MAX_TOKENS;
-        Duration timeout = Duration.ofSeconds(effective.getTimeoutSeconds());
+        Duration timeout = Duration.ofSeconds(
+                modelInfo.effectiveTimeoutSeconds(effective.getTimeoutSeconds()));
         try {
             AnthropicClient client = AnthropicOkHttpClient.builder()
                     .apiKey(config.apiKey())

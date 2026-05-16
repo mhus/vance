@@ -99,6 +99,14 @@ public class SlartibartfastEngine implements ThinkEngine {
      *  request. Falls back to {@code ThinkProcessDocument.goal}. */
     public static final String USER_DESCRIPTION_KEY = "userDescription";
 
+    /** {@code engineParams[PROPOSING_HINTS_KEY]} — free-text
+     *  caller-supplied guidance appended to Slart's PROPOSING system
+     *  prompt. Used by kits / wrapper recipes to inject
+     *  recipe-shape conventions (e.g. persistence patterns) without
+     *  touching the bundled engine prompt. Empty / missing = default
+     *  behaviour. See {@link ArchitectState#getProposingHints()}. */
+    public static final String PROPOSING_HINTS_KEY = "proposingHints";
+
     /** {@code engineParams[CONFIRMATION_MODE_KEY]} — name of a
      *  {@link de.mhus.vance.api.slartibartfast.ConfirmationMode}
      *  value. Default {@code DROP_LOW_CONF}. */
@@ -787,9 +795,11 @@ public class SlartibartfastEngine implements ThinkEngine {
         de.mhus.vance.api.slartibartfast.EscalationMode escalationMode =
                 parseEscalationMode(stringParam(p, ESCALATION_MODE_KEY));
         boolean planOnly = parseBooleanParam(p, PLAN_ONLY_KEY);
+        String proposingHints = stringParam(p, PROPOSING_HINTS_KEY);
         return ArchitectState.builder()
                 .runId(generateRunId())
                 .userDescription(userDescription)
+                .proposingHints(proposingHints.isBlank() ? null : proposingHints)
                 .outputSchemaType(schemaType)
                 .confirmationMode(confirmationMode)
                 .escalationMode(escalationMode)

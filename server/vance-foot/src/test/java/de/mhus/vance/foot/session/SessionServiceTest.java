@@ -9,9 +9,11 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.foot.agent.ClientAgentDocService;
 import de.mhus.vance.foot.command.SuggestionCache;
+import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.tools.exec.FootExecEventDispatcher;
 import de.mhus.vance.foot.ui.StatusBar;
+import de.mhus.vance.foot.ui.WindowTitleService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
@@ -40,6 +42,7 @@ class SessionServiceTest {
     private ClientAgentDocService agentDoc;
     private SuggestionCache cache;
     private FootExecEventDispatcher execDispatcherBean;
+    private WindowTitleService windowTitle;
     private SessionService session;
 
     @BeforeEach
@@ -49,6 +52,9 @@ class SessionServiceTest {
         agentDoc = mock(ClientAgentDocService.class);
         cache = mock(SuggestionCache.class);
         execDispatcherBean = mock(FootExecEventDispatcher.class);
+        // Tests run without a controlling TTY, so the public constructor's
+        // System.console() gate makes the service a no-op for our purposes.
+        windowTitle = new WindowTitleService(new FootConfig());
         when(statusBar.getIfAvailable()).thenReturn(bar);
         when(clientToolService.getIfAvailable()).thenReturn(tools);
         when(clientAgentDocService.getIfAvailable()).thenReturn(agentDoc);
@@ -56,7 +62,7 @@ class SessionServiceTest {
         when(execDispatcher.getIfAvailable()).thenReturn(execDispatcherBean);
 
         session = new SessionService(statusBar, clientToolService, clientAgentDocService,
-                suggestionCache, execDispatcher);
+                suggestionCache, execDispatcher, windowTitle);
     }
 
     @Test

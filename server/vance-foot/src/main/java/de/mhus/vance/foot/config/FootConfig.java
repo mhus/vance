@@ -132,6 +132,18 @@ public class FootConfig {
         private int lineMaxChars = 140;
         private Colors colors = new Colors();
         private StatusBar statusBar = new StatusBar();
+        private WindowTitle windowTitle = new WindowTitle();
+    }
+
+    /**
+     * Surrounding terminal's tab/window title via OSC 0 escape. On by
+     * default; disable for terminals that render the escape verbatim
+     * instead of consuming it (rare, but configurable). Auto-suppressed
+     * when stdout is not a TTY, so daemon log files never get titles.
+     */
+    @Data
+    public static class WindowTitle {
+        private boolean enabled = true;
     }
 
     /**

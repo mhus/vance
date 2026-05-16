@@ -2,6 +2,7 @@ package de.mhus.vance.foot.ide;
 
 import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.WindowTitleService;
 import jakarta.annotation.PreDestroy;
 import java.net.URI;
 import java.nio.file.Path;
@@ -37,6 +38,7 @@ public class IdeBridgeService {
     private final FootConfig config;
     private final IdeNotificationDispatcher dispatcher;
     private final ObjectProvider<ChatTerminal> terminalProvider;
+    private final WindowTitleService windowTitle;
 
     private final AtomicReference<@Nullable IdeMcpClient> clientRef = new AtomicReference<>();
     private final AtomicReference<@Nullable IdeLockfile> activeLockfile = new AtomicReference<>();
@@ -47,10 +49,12 @@ public class IdeBridgeService {
 
     public IdeBridgeService(FootConfig config,
                             IdeNotificationDispatcher dispatcher,
-                            ObjectProvider<ChatTerminal> terminalProvider) {
+                            ObjectProvider<ChatTerminal> terminalProvider,
+                            WindowTitleService windowTitle) {
         this.config = config;
         this.dispatcher = dispatcher;
         this.terminalProvider = terminalProvider;
+        this.windowTitle = windowTitle;
     }
 
     /**
@@ -89,6 +93,7 @@ public class IdeBridgeService {
             dispatcher.notifyConnectionState(false);
         }
         activeLockfile.set(null);
+        windowTitle.setIdeAttached(false);
     }
 
     public boolean isConnected() {
@@ -120,6 +125,7 @@ public class IdeBridgeService {
             clientRef.set(null);
             activeLockfile.set(null);
             dispatcher.notifyConnectionState(false);
+            windowTitle.setIdeAttached(false);
             terminalInfo("IDE bridge: disconnected — retrying every "
                     + RECONNECT_INTERVAL_SECONDS + "s");
         }
@@ -165,6 +171,7 @@ public class IdeBridgeService {
                 + (lf.ideName() == null ? "IDE plugin" : lf.ideName())
                 + " (port " + lf.port() + ", workspace " + lf.workspaceFolders() + ")");
         dispatcher.notifyConnectionState(true);
+        windowTitle.setIdeAttached(true);
     }
 
     private void terminalInfo(String message) {

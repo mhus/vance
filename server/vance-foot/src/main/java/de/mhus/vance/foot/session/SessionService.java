@@ -5,6 +5,7 @@ import de.mhus.vance.foot.command.SuggestionCache;
 import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.tools.exec.FootExecEventDispatcher;
 import de.mhus.vance.foot.ui.StatusBar;
+import de.mhus.vance.foot.ui.WindowTitleService;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.ObjectProvider;
@@ -38,18 +39,21 @@ public class SessionService {
     private final ObjectProvider<ClientAgentDocService> clientAgentDocService;
     private final ObjectProvider<SuggestionCache> suggestionCache;
     private final ObjectProvider<FootExecEventDispatcher> execEventDispatcher;
+    private final WindowTitleService windowTitle;
 
     public SessionService(
             ObjectProvider<StatusBar> statusBar,
             ObjectProvider<ClientToolService> clientToolService,
             ObjectProvider<ClientAgentDocService> clientAgentDocService,
             ObjectProvider<SuggestionCache> suggestionCache,
-            ObjectProvider<FootExecEventDispatcher> execEventDispatcher) {
+            ObjectProvider<FootExecEventDispatcher> execEventDispatcher,
+            WindowTitleService windowTitle) {
         this.statusBar = statusBar;
         this.clientToolService = clientToolService;
         this.clientAgentDocService = clientAgentDocService;
         this.suggestionCache = suggestionCache;
         this.execEventDispatcher = execEventDispatcher;
+        this.windowTitle = windowTitle;
     }
 
     public @Nullable BoundSession current() {
@@ -59,6 +63,7 @@ public class SessionService {
     public void bind(String sessionId, String projectId) {
         current.set(new BoundSession(sessionId, projectId, null, null));
         notifyStatusBar();
+        notifyWindowTitle();
         notifyClientTools();
         uploadClientAgentDoc();
         invalidateSuggestions();
@@ -77,12 +82,14 @@ public class SessionService {
         current.set(new BoundSession(
                 existing.sessionId(), existing.projectId(), title, icon));
         notifyStatusBar();
+        notifyWindowTitle();
     }
 
     public void clear() {
         current.set(null);
         activeProcess.set(null);
         notifyStatusBar();
+        windowTitle.setSession(null);
         invalidateSuggestions();
     }
 
@@ -100,6 +107,23 @@ public class SessionService {
         if (bar != null) {
             bar.refresh();
         }
+    }
+
+    /**
+     * Pushes the session label (title when set, else projectId) into the
+     * window-title service. {@code null} when no session is bound so the
+     * service drops the session segment from the tab title.
+     */
+    private void notifyWindowTitle() {
+        BoundSession bound = current.get();
+        if (bound == null) {
+            windowTitle.setSession(null);
+            return;
+        }
+        String label = bound.title() != null && !bound.title().isBlank()
+                ? bound.title()
+                : bound.projectId();
+        windowTitle.setSession(label);
     }
 
     private void notifyClientTools() {

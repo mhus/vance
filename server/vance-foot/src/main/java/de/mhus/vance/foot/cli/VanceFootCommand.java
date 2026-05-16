@@ -10,6 +10,7 @@ import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.transfer.FootTransferService;
 import de.mhus.vance.foot.ui.ChatRepl;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.WindowTitleService;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.Callable;
@@ -175,6 +176,7 @@ public class VanceFootCommand implements Callable<Integer> {
     private final ClientToolService clientTools;
     private final FootTransferService transfers;
     private final SessionResumeFlow resumeFlow;
+    private final WindowTitleService windowTitle;
 
     public VanceFootCommand(ChatRepl repl,
                             ConnectionService connection,
@@ -184,7 +186,8 @@ public class VanceFootCommand implements Callable<Integer> {
                             ClientAgentDocService agentDoc,
                             ClientToolService clientTools,
                             FootTransferService transfers,
-                            SessionResumeFlow resumeFlow) {
+                            SessionResumeFlow resumeFlow,
+                            WindowTitleService windowTitle) {
         this.repl = repl;
         this.connection = connection;
         this.terminal = terminal;
@@ -194,6 +197,7 @@ public class VanceFootCommand implements Callable<Integer> {
         this.clientTools = clientTools;
         this.transfers = transfers;
         this.resumeFlow = resumeFlow;
+        this.windowTitle = windowTitle;
     }
 
     @Override
@@ -264,9 +268,11 @@ public class VanceFootCommand implements Callable<Integer> {
         }
 
         if (!noConnect) {
+            windowTitle.setConnection("connecting…");
             try {
                 connection.connect();
             } catch (Exception e) {
+                windowTitle.setConnection("offline");
                 terminal.error("Auto-connect failed: " + e.getMessage()
                         + (noUi ? "" : " — type /connect to retry."));
             }

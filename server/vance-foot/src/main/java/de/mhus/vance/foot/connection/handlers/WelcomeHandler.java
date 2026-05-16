@@ -9,6 +9,7 @@ import de.mhus.vance.foot.ide.IntellijMcpRegistrationService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.Verbosity;
+import de.mhus.vance.foot.ui.WindowTitleService;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -26,6 +27,7 @@ public class WelcomeHandler implements MessageHandler {
     private final ConnectionService connection;
     private final AutoBootstrapService autoBootstrap;
     private final IntellijMcpRegistrationService intellijMcpRegistration;
+    private final WindowTitleService windowTitle;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     /**
@@ -36,11 +38,13 @@ public class WelcomeHandler implements MessageHandler {
     public WelcomeHandler(ChatTerminal terminal,
                           @Lazy ConnectionService connection,
                           AutoBootstrapService autoBootstrap,
-                          IntellijMcpRegistrationService intellijMcpRegistration) {
+                          IntellijMcpRegistrationService intellijMcpRegistration,
+                          WindowTitleService windowTitle) {
         this.terminal = terminal;
         this.connection = connection;
         this.autoBootstrap = autoBootstrap;
         this.intellijMcpRegistration = intellijMcpRegistration;
+        this.windowTitle = windowTitle;
     }
 
     @Override
@@ -60,6 +64,7 @@ public class WelcomeHandler implements MessageHandler {
                 "Server capabilities: " + data.getServer().getCapabilities()
                         + " — pingInterval=" + data.getServer().getPingInterval() + "s");
         connection.startKeepAlive(data.getServer().getPingInterval());
+        windowTitle.setConnection(data.getTenantId());
         // Register IntelliJ MCP before bootstrap fires — bootstrap may
         // immediately need the IDE tools when the recipe references them.
         intellijMcpRegistration.registerIfConfigured();

@@ -15,6 +15,7 @@ import de.mhus.vance.foot.config.FootConfig;
 import de.mhus.vance.foot.session.SessionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import de.mhus.vance.foot.ui.Verbosity;
+import de.mhus.vance.foot.ui.WindowTitleService;
 import jakarta.annotation.PreDestroy;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -52,6 +53,7 @@ public class ConnectionService {
     private final MessageDispatcher dispatcher;
     private final ChatTerminal terminal;
     private final SessionService sessions;
+    private final WindowTitleService windowTitle;
 
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -68,11 +70,13 @@ public class ConnectionService {
     public ConnectionService(FootConfig config,
                              MessageDispatcher dispatcher,
                              ChatTerminal terminal,
-                             SessionService sessions) {
+                             SessionService sessions,
+                             WindowTitleService windowTitle) {
         this.config = config;
         this.dispatcher = dispatcher;
         this.terminal = terminal;
         this.sessions = sessions;
+        this.windowTitle = windowTitle;
     }
 
     public State state() {
@@ -140,6 +144,7 @@ public class ConnectionService {
         stopKeepAlive();
         sessions.clear();
         currentToken = null;
+        windowTitle.setConnection("disconnected");
         if (client != null && client.isOpen()) {
             client.close(1000, reason);
             terminal.info("Disconnected — " + reason);
@@ -325,6 +330,7 @@ public class ConnectionService {
             state.set(State.DISCONNECTED);
             stopKeepAlive();
             sessions.clear();
+            windowTitle.setConnection("disconnected");
             dispatcher.failAllPending(new IllegalStateException(
                     "Connection closed (" + statusCode + ")"));
             terminal.info("WebSocket closed: " + statusCode

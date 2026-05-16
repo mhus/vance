@@ -475,6 +475,23 @@ public class ProposingPhase {
             @Nullable String recoveryHint,
             List<ResolvedRecipe> availableRecipes) {
         StringBuilder sb = new StringBuilder();
+
+        // Recovery hint goes FIRST and loud — easy to miss when
+        // buried at the end of a long prompt. The LLM is more
+        // likely to act on a correction it sees before sinking
+        // into the rest of the context.
+        if (recoveryHint != null && !recoveryHint.isBlank()) {
+            sb.append("================================================\n");
+            sb.append("⚠  CRITICAL — PREVIOUS ATTEMPT WAS REJECTED ⚠\n");
+            sb.append("================================================\n\n");
+            sb.append("Your last recipe failed validation or "
+                    + "post-execution check. Do NOT emit the same "
+                    + "shape again. Address every point below before "
+                    + "re-emitting:\n\n");
+            sb.append(recoveryHint).append("\n");
+            sb.append("================================================\n\n");
+        }
+
         sb.append("Output schema type: ")
                 .append(state.getOutputSchemaType()).append("\n\n");
 
@@ -536,12 +553,6 @@ public class ProposingPhase {
                         + "listed above — every name must resolve to a real "
                         + "project recipe.\n\n");
             }
-        }
-
-        if (recoveryHint != null && !recoveryHint.isBlank()) {
-            sb.append("IMPORTANT — the previous proposing attempt was "
-                    + "rejected. Correction hint:\n")
-                    .append(recoveryHint).append("\n\n");
         }
 
         sb.append("Now emit a single JSON object matching the schema. "

@@ -506,15 +506,45 @@ public class ValidatingPhase {
                             + "resolve to known recipes")
                     .build();
         }
+        StringBuilder msg = new StringBuilder();
+        msg.append("Vogon strategy references unknown recipe(s) as "
+                + "worker: ").append(unknown).append(".\n\n");
+        msg.append("Common mistake: using a TOOL name (e.g. doc_edit, "
+                + "doc_create_text, web_search, scratch_write) where a "
+                + "RECIPE name is required. Tools are called inside a "
+                + "worker's turn; the worker itself must be a recipe "
+                + "with an engine bound to it.\n\n");
+        msg.append("POSSIBLE OPTIONS for the worker: field — pick one "
+                + "per phase based on the work the phase does:\n");
+        msg.append("- 'ford' — generalist single-task worker. Default "
+                + "choice for most drafting / research / analysis / "
+                + "consolidation phases. Use when one focused turn is "
+                + "enough.\n");
+        msg.append("- 'marvin-worker' — sub-task decomposer. Use for "
+                + "long-form outputs (multi-chapter drafts, broad "
+                + "reviews) where one Ford turn would be too much.\n");
+        msg.append("- 'analyze' — read-only analyst recipe. Use for "
+                + "review / critique phases that should not write.\n");
+        msg.append("- 'code-read' — read-only code-review recipe. "
+                + "Use only when the phase reads source code.\n");
+        if (!available.isEmpty()) {
+            // List the actually-installed project recipes too —
+            // tells the LLM exactly what's available right now.
+            java.util.List<String> projectLocal = new java.util.ArrayList<>();
+            for (String name : available) {
+                if (!java.util.Set.of("ford", "marvin-worker",
+                        "analyze", "code-read").contains(name)) {
+                    projectLocal.add(name);
+                }
+            }
+            if (!projectLocal.isEmpty()) {
+                msg.append("- Project-local recipes also available: ")
+                        .append(projectLocal).append("\n");
+            }
+        }
         return ValidationCheck.builder()
                 .rule(RULE_VOGON_WORKER_RECIPES_EXIST).passed(false)
-                .message("Vogon strategy references unknown recipe(s) as "
-                        + "worker: " + unknown + ". Common mistake: using "
-                        + "a tool name (e.g. doc_edit, web_search) where "
-                        + "a recipe name is required. Valid recipes "
-                        + "include 'ford' (generalist worker), "
-                        + "'marvin-worker' (sub-task decomposer) and "
-                        + "any project-local recipe.")
+                .message(msg.toString())
                 .build();
     }
 

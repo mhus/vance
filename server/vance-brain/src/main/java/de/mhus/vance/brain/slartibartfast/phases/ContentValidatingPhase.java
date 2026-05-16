@@ -459,17 +459,44 @@ public class ContentValidatingPhase {
             idToText.put(c.getId(), c.getText());
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("The previously generated recipe was executed but "
-                + "the produced artifacts do not satisfy all user-"
-                + "stated criteria. Revise the recipe so its phases "
-                + "produce output that addresses these criteria. "
-                + "Unsatisfied (verdict + judge reasoning):\n");
+        sb.append("The previously generated recipe ran to completion "
+                + "but the produced artifacts do not satisfy all "
+                + "user-stated quality criteria.\n\n");
+        sb.append("Unsatisfied criteria (verdict + judge reasoning):\n");
         for (Verdict v : unsatisfied) {
             String text = idToText.getOrDefault(v.id, "(unknown)");
             sb.append("- ").append(v.id).append(" [").append(v.satisfied)
-                    .append("] \"").append(text).append("\" — ")
-                    .append(v.reasoning).append('\n');
+                    .append("] \"").append(text).append("\"\n");
+            sb.append("  judge: ").append(v.reasoning).append("\n");
         }
+        sb.append("\nPOSSIBLE OPTIONS to fix this — choose one or "
+                + "combine:\n");
+        sb.append("- Add a dedicated review/lektorat phase AFTER the "
+                + "drafting phases that explicitly enforces the failed "
+                + "criteria — e.g. 'check every chapter against criterion "
+                + "X and rewrite if not met'. Use worker 'ford' with "
+                + "doc_edit for in-place fixes.\n");
+        sb.append("- Strengthen the workerInput of the phase that "
+                + "produces the relevant artifact: name the failed "
+                + "criterion in its workerInput verbatim, plus a "
+                + "concrete 'MUST'-instruction (e.g. 'jede Quelle "
+                + "MUSS in (vgl. ..., JJJJ)-Form zitiert sein').\n");
+        sb.append("- If a criterion is about FORMAT (citations, "
+                + "headings, length): emit a phase whose only job is "
+                + "to scan the existing chapter docs and rewrite any "
+                + "violations.\n");
+        sb.append("- If a criterion is about TONE/STYLE: add a "
+                + "proofreading phase with worker 'ford' that reads "
+                + "each chapter and rewrites style violations "
+                + "(umgangssprachlich, wertend, etc.) using doc_edit.\n");
+        sb.append("- If a criterion is about COVERAGE (e.g. 'must "
+                + "cover Pro/Contra equally'): adjust the outline phase "
+                + "to enforce symmetric chapter count per side, then "
+                + "the drafting phases inherit balance from the "
+                + "outline.\n");
+        sb.append("\nKEEP what was satisfied: criteria that already "
+                + "passed don't need new phases. Add or strengthen "
+                + "only the targets above.");
         return sb.toString();
     }
 

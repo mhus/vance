@@ -211,21 +211,42 @@ public class ExecutionValidatingPhase {
     private static String buildRecoveryHint(
             List<String> missing, List<String> tooSmall) {
         StringBuilder sb = new StringBuilder();
-        sb.append("The previously generated recipe was executed but did "
-                + "not produce all expected artifacts. ");
+        sb.append("The previously generated recipe ran to completion "
+                + "but did not produce all expected artifacts.\n\n");
         if (!missing.isEmpty()) {
-            sb.append("Missing entirely: ").append(missing).append(". ");
+            sb.append("Missing entirely (no document at path): ")
+                    .append(missing).append("\n");
         }
         if (!tooSmall.isEmpty()) {
-            sb.append("Below minimum content (").append(MIN_ARTIFACT_CHARS)
-                    .append(" chars): ").append(tooSmall).append(". ");
+            sb.append("Below minimum content (")
+                    .append(MIN_ARTIFACT_CHARS)
+                    .append(" chars): ").append(tooSmall).append("\n");
         }
-        sb.append("Revise the recipe so its phases explicitly write "
-                + "every subgoal's target file and ensure each phase's "
-                + "worker actually persists the output via doc_create_text / "
-                + "doc_edit. Pay particular attention to the assembly / "
-                + "consolidation phase that ties everything into the "
-                + "final document.");
+        sb.append("\nPOSSIBLE OPTIONS to fix this — choose one or "
+                + "combine:\n");
+        sb.append("- Add a dedicated phase that uses worker 'ford' "
+                + "with a workerInput that explicitly says "
+                + "\"doc_create_text path=<MISSING-PATH> content=...\"; "
+                + "name the phase so its purpose is obvious "
+                + "(e.g. 'write-sources', 'write-introduction').\n");
+        sb.append("- Extend an existing phase's workerInput to also "
+                + "produce the missing path — keep the phase focused "
+                + "but make the file output explicit.\n");
+        sb.append("- Split a phase that was supposed to produce multiple "
+                + "files into separate phases, one per file. "
+                + "Concentrated single-file workerInputs land more "
+                + "reliable output than catch-all instructions.\n");
+        sb.append("- For long-form content (chapters, full essays), "
+                + "use worker 'marvin-worker' instead of 'ford' — "
+                + "Marvin decomposes into sub-tasks and is more "
+                + "robust for outputs over 2000 chars.\n");
+        sb.append("- Ensure the final consolidation/assembly phase "
+                + "(if planned) actually writes essay/final-essay.md "
+                + "(or whatever the kit's OUTPUT manual specifies) "
+                + "via doc_create_text; it's the most common phase "
+                + "to silently skip.\n");
+        sb.append("\nKEEP what worked: phases that DID produce their "
+                + "artifacts. Only rewrite the broken parts.");
         return sb.toString();
     }
 

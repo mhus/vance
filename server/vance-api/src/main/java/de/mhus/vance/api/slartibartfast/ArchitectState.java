@@ -154,7 +154,7 @@ public class ArchitectState {
     /** Replaces the per-pair retry counts. Counts <em>any</em>
      *  recovery rollback regardless of source/target phase. */
     @Builder.Default
-    private int maxRecoveries = 5;
+    private int maxRecoveries = 10;
 
     /** Lower bound for {@link Criterion#getConfidence()} that
      *  bypasses CONFIRMING. Inferred criteria with confidence

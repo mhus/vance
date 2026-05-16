@@ -173,10 +173,13 @@ public class ContentValidatingPhase {
         }
 
         List<Verdict> unsatisfied = new ArrayList<>();
+        List<Verdict> satisfied = new ArrayList<>();
         for (Verdict v : verdicts) {
             if ("no".equalsIgnoreCase(v.satisfied)
                     || "partial".equalsIgnoreCase(v.satisfied)) {
                 unsatisfied.add(v);
+            } else {
+                satisfied.add(v);
             }
         }
 
@@ -202,7 +205,8 @@ public class ContentValidatingPhase {
         recordUnsatisfied(state,
                 buildCheckMessage(verdicts, unsatisfied),
                 userCriteria,
-                unsatisfied);
+                unsatisfied,
+                satisfied);
         log.info("Slartibartfast id='{}' content-validation failed — "
                         + "{} of {} user criteria unsatisfied, "
                         + "requesting PROPOSING re-run",
@@ -408,6 +412,16 @@ public class ContentValidatingPhase {
             String message,
             List<Criterion> allUserCriteria,
             List<Verdict> unsatisfied) {
+        recordUnsatisfied(state, message, allUserCriteria, unsatisfied,
+                List.of());
+    }
+
+    private void recordUnsatisfied(
+            ArchitectState state,
+            String message,
+            List<Criterion> allUserCriteria,
+            List<Verdict> unsatisfied,
+            List<Verdict> satisfied) {
         ValidationCheck check = ValidationCheck.builder()
                 .rule(RULE_USER_CRITERIA_SATISFIED)
                 .passed(false)
@@ -423,7 +437,7 @@ public class ContentValidatingPhase {
                 .fromPhase(ArchitectStatus.EXECUTION_VALIDATING)
                 .toPhase(ArchitectStatus.PROPOSING)
                 .reason(RULE_USER_CRITERIA_SATISFIED)
-                .hint(buildRecoveryHint(allUserCriteria, unsatisfied))
+                .hint(buildRecoveryHint(allUserCriteria, unsatisfied, satisfied))
                 .build());
 
         appendIteration(state, allUserCriteria.size() + " user criteria",
@@ -450,7 +464,9 @@ public class ContentValidatingPhase {
     }
 
     private String buildRecoveryHint(
-            List<Criterion> allUserCriteria, List<Verdict> unsatisfied) {
+            List<Criterion> allUserCriteria,
+            List<Verdict> unsatisfied,
+            List<Verdict> satisfied) {
         // Build an id-to-text lookup so the hint surfaces what
         // each missing criterion ACTUALLY asked for, not just
         // the cryptic id.
@@ -462,7 +478,23 @@ public class ContentValidatingPhase {
         sb.append("The previously generated recipe ran to completion "
                 + "but the produced artifacts do not satisfy all "
                 + "user-stated quality criteria.\n\n");
-        sb.append("Unsatisfied criteria (verdict + judge reasoning):\n");
+        // Show what's already OK first — the LLM must KEEP these
+        // in the revised recipe. Without this hint the model
+        // tends to whack-a-mole: fix the failing criterion and
+        // accidentally break a previously-satisfied one.
+        if (!satisfied.isEmpty()) {
+            sb.append("✓ ALREADY SATISFIED — DO NOT BREAK these "
+                    + "in the revision (the relevant recipe phases "
+                    + "should be kept as-is):\n");
+            for (Verdict v : satisfied) {
+                String text = idToText.getOrDefault(v.id, "(unknown)");
+                sb.append("- ").append(v.id).append(": \"")
+                        .append(text).append("\"\n");
+            }
+            sb.append("\n");
+        }
+        sb.append("✗ UNSATISFIED — fix ONLY these (verdict + judge "
+                + "reasoning):\n");
         for (Verdict v : unsatisfied) {
             String text = idToText.getOrDefault(v.id, "(unknown)");
             sb.append("- ").append(v.id).append(" [").append(v.satisfied)
@@ -494,9 +526,9 @@ public class ContentValidatingPhase {
                 + "to enforce symmetric chapter count per side, then "
                 + "the drafting phases inherit balance from the "
                 + "outline.\n");
-        sb.append("\nKEEP what was satisfied: criteria that already "
-                + "passed don't need new phases. Add or strengthen "
-                + "only the targets above.");
+        sb.append("\nThe ✓-list above represents working parts of "
+                + "the previous recipe — preserve the phases that "
+                + "produced them. The ✗-list is your sole target.");
         return sb.toString();
     }
 

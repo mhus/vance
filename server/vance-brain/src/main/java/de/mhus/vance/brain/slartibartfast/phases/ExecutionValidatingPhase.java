@@ -124,6 +124,7 @@ public class ExecutionValidatingPhase {
 
         List<String> missing = new ArrayList<>();
         List<String> tooSmall = new ArrayList<>();
+        List<String> present = new ArrayList<>();
         for (String path : expectedPaths) {
             Optional<DocumentDocument> doc = documentService.findByPath(
                     process.getTenantId(), process.getProjectId(), path);
@@ -135,6 +136,8 @@ public class ExecutionValidatingPhase {
             int size = text == null ? 0 : text.length();
             if (size < MIN_ARTIFACT_CHARS) {
                 tooSmall.add(path + " (" + size + " chars)");
+            } else {
+                present.add(path + " (" + size + " chars)");
             }
         }
 
@@ -170,7 +173,7 @@ public class ExecutionValidatingPhase {
             return;
         }
 
-        String hint = buildRecoveryHint(missing, tooSmall);
+        String hint = buildRecoveryHint(missing, tooSmall, present);
         state.setPendingRecovery(RecoveryRequest.builder()
                 .fromPhase(ArchitectStatus.EXECUTION_VALIDATING)
                 .toPhase(ArchitectStatus.PROPOSING)
@@ -209,16 +212,27 @@ public class ExecutionValidatingPhase {
     }
 
     private static String buildRecoveryHint(
-            List<String> missing, List<String> tooSmall) {
+            List<String> missing, List<String> tooSmall,
+            List<String> present) {
         StringBuilder sb = new StringBuilder();
         sb.append("The previously generated recipe ran to completion "
                 + "but did not produce all expected artifacts.\n\n");
+        // ✓-list first so the LLM keeps the working phases.
+        if (!present.isEmpty()) {
+            sb.append("✓ ALREADY PRODUCED — keep the recipe phases "
+                    + "that wrote these:\n");
+            for (String p : present) {
+                sb.append("- ").append(p).append("\n");
+            }
+            sb.append("\n");
+        }
+        sb.append("✗ MISSING OR TOO SMALL — fix only these:\n");
         if (!missing.isEmpty()) {
-            sb.append("Missing entirely (no document at path): ")
+            sb.append("- Missing entirely (no document at path): ")
                     .append(missing).append("\n");
         }
         if (!tooSmall.isEmpty()) {
-            sb.append("Below minimum content (")
+            sb.append("- Below minimum content (")
                     .append(MIN_ARTIFACT_CHARS)
                     .append(" chars): ").append(tooSmall).append("\n");
         }

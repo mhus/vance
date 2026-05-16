@@ -321,14 +321,14 @@ public class DocumentService {
     }
 
     /**
-     * Create-or-replace inline text by path. If a document at
+     * Create-or-replace text-content by path. If a document at
      * {@code path} already exists in this project, update its
-     * inline text in place (preserving id, tags, mimeType).
-     * Otherwise create a new inline text document. Idempotent —
-     * useful for callers that re-emit the same logical artifact
-     * across retries (Vogon phase drafts, Slart audit re-runs,
-     * scheduled snapshots). Storage-backed documents at the same
-     * path are refused with {@link IllegalStateException}.
+     * text in place — the inline/storage transition is handled
+     * transparently by {@link #update}, so growth past the
+     * inline threshold cleanly moves the doc to storage-backed
+     * (and shrinkage back to inline). Otherwise create a new
+     * document. Idempotent — useful for callers that re-emit the
+     * same logical artifact across retries.
      */
     public DocumentDocument upsertText(
             String tenantId,
@@ -340,15 +340,7 @@ public class DocumentService {
             @Nullable String createdBy) {
         Optional<DocumentDocument> existing = findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
-            DocumentDocument doc = existing.get();
-            if (doc.getInlineText() == null) {
-                throw new IllegalStateException(
-                        "Cannot upsertText over storage-backed document"
-                                + " tenantId='" + tenantId
-                                + "' projectId='" + projectId
-                                + "' path='" + path + "'");
-            }
-            return update(doc.getId(), title, tags, text, null);
+            return update(existing.get().getId(), title, tags, text, null);
         }
         return createText(tenantId, projectId, path, title, tags,
                 text, createdBy);
@@ -634,25 +626,54 @@ public class DocumentService {
         if (newRagEnabled != null) doc.setRagEnabled(newRagEnabled);
 
         if (newInlineText != null) {
-            if (doc.getInlineText() == null) {
-                throw new IllegalArgumentException(
-                        "Document id='" + id + "' is storage-backed and cannot be edited inline");
-            }
             byte[] bytes = newInlineText.getBytes(StandardCharsets.UTF_8);
-            if (bytes.length > inlineThreshold) {
-                throw new IllegalArgumentException(
-                        "New inline content exceeds the inline threshold ("
-                                + bytes.length + " > " + inlineThreshold + " bytes)");
+            boolean contentChanged = !newInlineText.equals(doc.getInlineText());
+            boolean fitsInline = isTextual(doc.getMimeType())
+                    && bytes.length <= inlineThreshold;
+            String oldStorageId = doc.getStorageId();
+
+            if (fitsInline) {
+                // Target: inline. If the previous backing was
+                // storage, write-the-inline + delete the old blob
+                // (storage→inline transition).
+                doc.setInlineText(newInlineText);
+                doc.setStorageId(null);
+                doc.setSize(bytes.length);
+                if (oldStorageId != null) {
+                    deleteStorageBlobQuietly(oldStorageId, id);
+                }
+            } else {
+                // Target: storage. Write the new blob first, then
+                // null out inline + delete old blob (handles all
+                // three transitions: inline→storage, storage→storage,
+                // inline-too-big rewrite). The "write new before
+                // delete old" order means a crash mid-update leaves
+                // both blobs — orphan reclaim handles that.
+                StorageService.StorageInfo info;
+                try (InputStream in = new ByteArrayInputStream(bytes)) {
+                    info = storageService.store(
+                            doc.getTenantId(), doc.getPath(), in);
+                } catch (IOException e) {
+                    throw new IllegalStateException(
+                            "Failed to stream updated document content to "
+                                    + "storage for id='" + id + "'", e);
+                }
+                doc.setInlineText(null);
+                doc.setStorageId(info.id());
+                doc.setSize(info.size());
+                if (oldStorageId != null
+                        && !oldStorageId.equals(info.id())) {
+                    deleteStorageBlobQuietly(oldStorageId, id);
+                }
             }
-            if (!newInlineText.equals(doc.getInlineText())) {
+
+            if (contentChanged) {
                 // Mark dirty for the auto-summary scheduler. Header /
                 // tags / title edits without content change do not
                 // touch this flag — summary follows the body, not the
                 // metadata.
                 doc.setSummaryDirty(true);
             }
-            doc.setInlineText(newInlineText);
-            doc.setSize(bytes.length);
             applyHeader(doc);
         }
 
@@ -683,6 +704,20 @@ public class DocumentService {
                 saved.getTenantId(), saved.getProjectId(), saved.getId(),
                 describeChanges(newTitle, newTags, newInlineText, newPath));
         return saved;
+    }
+
+    /** Best-effort blob delete invoked after an
+     *  inline→storage or storage→storage update has rewritten
+     *  the doc's storageId. Failure to delete leaves an orphan
+     *  blob, which orphan-reclaim handles separately. */
+    private void deleteStorageBlobQuietly(String storageId, String docId) {
+        try {
+            storageService.delete(storageId);
+        } catch (Exception e) {
+            log.warn("Failed to delete old storage blob during update — "
+                            + "leaving orphan; docId='{}' storageId='{}'",
+                    docId, storageId, e);
+        }
     }
 
     private static String describeChanges(

@@ -135,22 +135,9 @@ public class PersistingPhase {
         Optional<DocumentDocument> existing =
                 documentService.findByPath(tenantId, projectId, path);
         if (existing.isPresent()) {
-            DocumentDocument doc = existing.get();
-            if (doc.getInlineText() == null) {
-                // Previous write landed as a storage-backed blob
-                // (e.g. audit.json after several recovery loops).
-                // update() can't edit those inline — delete and
-                // recreate so recovery's new content lands fresh.
-                documentService.delete(doc.getId());
-                documentService.createText(
-                        tenantId, projectId, path,
-                        title, /*tags*/ null, content,
-                        /*createdBy*/ "slartibartfast:" + process.getId());
-            } else {
-                documentService.update(
-                        doc.getId(),
-                        title, /*tags*/ null, content, /*newPath*/ null);
-            }
+            documentService.update(
+                    existing.get().getId(),
+                    title, /*tags*/ null, content, /*newPath*/ null);
         } else {
             documentService.createText(
                     tenantId, projectId, path,

@@ -1,0 +1,27 @@
+description: |
+  System recipe — maps a free-text kit wish (typed by a user or
+  emitted by Eddie) to a canonical entry name in the tenant's
+  project-kits catalog. Single-shot Jeltz call; the caller
+  (ProjectKitInstaller) builds the `prompt` and `schema` engineParams
+  with the catalog inlined and validates the structured reply.
+
+  Tenants override this recipe to swap the matching model, tighten the
+  prompt rules ("our 'creative-essay' kit handles all Aufsatz wishes,
+  prefer it over the bundled school-essay"), or relax the JSON contract
+  when their catalog grows complex enough to need explanations.
+
+engine: jeltz
+params:
+  # Small model is enough — the task is closed-set matching against
+  # a list of ~5-30 catalog entries, not open-ended reasoning.
+  model: default:fast
+  # Jeltz retries on schema-validation miss; 2 attempts is enough for a
+  # tight closed-vocab decision contract — beyond that the model is not
+  # going to converge.
+  maxAttempts: 2
+  # Jeltz validates the JSON contract itself; the generic engine-level
+  # validation gate would only double-fire.
+  validation: false
+tags:
+  - resolver
+  - system

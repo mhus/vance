@@ -1034,15 +1034,26 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     }
 
     /**
-     * Spawn a worker via {@code process_create} (when the LLM
-     * supplies an explicit {@code preset} recipe name) or via
-     * {@code process_create_delegate} (when {@code preset} is
-     * omitted and the system should pick the best-matching recipe
-     * for the task). Either path produces a {@link ThinkProcessDocument}
-     * for the new worker. The engine derives a unique worker name
-     * — never trusts the LLM with naming. The optional
-     * {@code message} is shown to the user as a pre-announcement;
-     * absent message = silent spawn (no chat append, no filler).
+     * Spawn a worker via the unified {@code process_create} tool.
+     * Two modes feed the same tool:
+     *
+     * <ul>
+     *   <li>The LLM supplied an explicit {@code preset} recipe name →
+     *       pass it as {@code recipe} on the tool call. Strict
+     *       resolution; unknown names surface as a tool error with a
+     *       suggestion list, which Arthur reports back so the LLM
+     *       retries with a corrected name on the next turn.</li>
+     *   <li>No {@code preset} → omit {@code recipe} so the tool's
+     *       built-in selector routes from {@code goal}, with the
+     *       Slartibartfast NONE-fallback enabled (mirroring the
+     *       user-facing intent of "do this somehow, even if no
+     *       existing recipe fits").</li>
+     * </ul>
+     *
+     * <p>Either way the engine derives a unique worker name — never
+     * trusts the LLM with naming. The optional pre-announcement
+     * {@code message} is shown to the user; absent message = silent
+     * spawn (no chat append, no filler).
      */
     private ActionTurnOutcome handleDelegate(
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
@@ -1064,27 +1075,19 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         String workerName = workerNamePrefix + "-"
                 + java.util.UUID.randomUUID().toString().substring(0, 6);
         try {
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("name", workerName);
+            params.put("goal", prompt);
+            params.put("steerContent", prompt);
             if (explicitRecipe) {
-                Map<String, Object> params = new LinkedHashMap<>();
                 params.put("recipe", preset);
-                params.put("name", workerName);
-                params.put("goal", prompt);
-                params.put("steerContent", prompt);
-                ctx.tools().invokeInternal("process_create", params);
+            }
+            ctx.tools().invokeInternal("process_create", params);
+            if (explicitRecipe) {
                 log.info("Arthur id='{}' DELEGATE recipe='{}' worker='{}' reason='{}'",
                         process.getId(), preset, workerName, summariseReason(action.reason()));
             } else {
-                // No preset — let process_create_delegate's selector
-                // pick. Fallback to Slart is enabled by default,
-                // mirroring the user-facing intent of "do this
-                // somehow, even if no existing recipe fits".
-                Map<String, Object> params = new LinkedHashMap<>();
-                params.put("task", prompt);
-                params.put("name", workerName);
-                params.put("steerContent", prompt);
-                ctx.tools().invokeInternal("process_create_delegate", params);
-                log.info("Arthur id='{}' DELEGATE via selector worker='{}' "
-                                + "reason='{}'",
+                log.info("Arthur id='{}' DELEGATE via selector worker='{}' reason='{}'",
                         process.getId(), workerName, summariseReason(action.reason()));
             }
         } catch (RuntimeException e) {

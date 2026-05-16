@@ -158,7 +158,7 @@ public class MarvinEngine implements ThinkEngine {
                          NEEDS_SUBTASKS / NEEDS_USER_INPUT / BLOCKED_BY_PROBLEM);
                          specialist recipes work but won't carry that contract.
                        * Without recipe — only the goal — the engine routes
-                         through process_create_delegate's selector at
+                         through the unified process_create selector at
                          spawn-time: a one-shot LLM picks the matching project
                          recipe based on engine catalog + recipe inventory, or
                          falls back to Slartibartfast for a freshly-generated
@@ -269,7 +269,7 @@ public class MarvinEngine implements ThinkEngine {
      *  selector. PLAN-LLM may emit just a {@code goal} without
      *  picking a recipe — the selector reads project recipes at
      *  spawn-time and picks the best match. Same engine catalog +
-     *  inventory as {@code process_create_delegate}. */
+     *  inventory as {@code process_create}'s selector-routed mode. */
     private final de.mhus.vance.brain.delegate.RecipeSelectorService recipeSelector;
     /** Lazy because {@code ThinkEngineService} wires every engine
      *  bean — we'd otherwise close a cycle. */
@@ -1760,7 +1760,7 @@ public class MarvinEngine implements ThinkEngine {
         if (recipeName == null) {
             // Selector-mode: PLAN-LLM emitted the child without a
             // recipe binding — pick one based on the node's goal.
-            // Same routing as process_create_delegate's selector.
+            // Same routing as process_create's selector-routed mode.
             recipeName = pickRecipeViaSelector(process, node);
             if (recipeName == null) {
                 // Selector returned NONE — surface a node-level

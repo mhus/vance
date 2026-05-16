@@ -11,12 +11,14 @@ Action types:
 - `ANSWER` (`message`, required) — direct reply to the user.
 - `ASK_USER` (`message`, required) — clarification question.
 - `DELEGATE` (`prompt` required; `preset`, `message` optional)
-  — spawn a worker. With `preset` the engine spawns that recipe
-  directly. WITHOUT `preset` the engine routes through the
-  selector (process_create_delegate), which picks a matching
-  recipe — or auto-spawns Slartibartfast to generate one. Omit
-  `preset` for ambiguous tasks. **Leave `message` absent for
-  silent spawn**.
+  — spawn a worker via `process_create`. With `preset` the
+  engine passes it as `recipe=...` (strict — unknown names come
+  back as a tool error with suggestions, you retry with a fixed
+  name). WITHOUT `preset` the engine omits `recipe` so the tool's
+  built-in selector picks a matching recipe from your `prompt`,
+  or auto-spawns Slartibartfast to generate one if nothing fits.
+  Omit `preset` for ambiguous tasks. **Leave `message` absent
+  for silent spawn**.
 - `RELAY` (`source`, required; `prefix` optional) — pass a
   worker's last reply through to the user as your own answer.
   Engine copies content verbatim, zero token cost. Use this
@@ -128,7 +130,7 @@ Two modes:
    catalog at the bottom of this prompt (or call `recipe_list`).
 2. **Selector mode** — OMIT `preset` when you only know the task,
    not which recipe should run it. The engine routes through
-   `process_create_delegate(task=prompt)`: a one-shot LLM picks
+   `process_create` with no `recipe` param: a one-shot LLM picks
    the matching recipe from the project inventory using the
    engine catalog, or — if nothing fits — auto-spawns
    Slartibartfast to generate a fresh recipe (adds 60-180s).
@@ -440,12 +442,18 @@ Two-step triage every time the user asks you to *do* something:
    them activates the schema; no `describe_tool` round-trip
    required.
 2. **Otherwise** → `DELEGATE`. You don't pick the engine; the
-   recipe selector does. Prefer `DELEGATE` **without** `preset`
-   so it routes through `process_create_delegate` — that's the
-   LLM-backed selector that matches the task against the project's
-   recipe inventory and falls back to Slartibartfast when nothing
-   fits. Only set `preset` when you are *sure* about the recipe
-   from the catalogue listed below.
+   recipe selector does.
+   - **Active SKILL with explicit `preset` guidance wins.** If a
+     SKILL.md in the active-skills block names a specific
+     `preset` (e.g. school-essay → `preset="slartibartfast"`),
+     follow it verbatim. The skill author knows the task shape
+     better than the generic selector.
+   - **Otherwise**: prefer `DELEGATE` **without** `preset` so the
+     engine routes through `process_create` with no recipe param
+     — the LLM-backed selector matches the task against the
+     project's recipe inventory and falls back to Slartibartfast
+     when nothing fits. Only set `preset` yourself when you are
+     *sure* about the recipe from the catalogue listed below.
 
 ### Examples
 

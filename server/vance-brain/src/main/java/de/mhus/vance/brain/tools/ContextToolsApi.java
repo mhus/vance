@@ -270,9 +270,9 @@ public final class ContextToolsApi implements ToolBus {
      * </ul>
      *
      * <p>Engine action handlers that need to invoke any allow-set tool
-     * (e.g. Arthur's DELEGATE handler calling {@code process_create_delegate})
-     * use {@link #invokeInternal} which checks against the broader
-     * dispatch pool.
+     * (e.g. Arthur's DELEGATE handler calling {@code process_create}
+     * in selector-routed mode) use {@link #invokeInternal} which
+     * checks against the broader dispatch pool.
      */
     public Map<String, Object> invoke(String name, Map<String, Object> params) {
         if (isLlmVisible(name)) {
@@ -304,8 +304,8 @@ public final class ContextToolsApi implements ToolBus {
      * Engine-internal invocation — bypasses the LLM-visibility check.
      * Used by think-engine action handlers that route LLM-emitted
      * actions through fixed tool calls (e.g. Arthur's DELEGATE action
-     * dispatching to {@code process_create_delegate} regardless of
-     * whether the LLM has the tool in its manifest).
+     * dispatching to {@code process_create} in selector-routed mode
+     * regardless of whether the LLM has the tool in its manifest).
      *
      * <p>Still gated by the dispatch allow-set: a tool not in
      * {@link #allowed()} cannot be invoked even internally.

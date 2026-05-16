@@ -5,7 +5,9 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
+import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
@@ -66,7 +68,12 @@ public class GeminiProvider implements AiModelProvider {
                     "GeminiProvider received config for provider '" + config.provider() + "'");
         }
         Duration timeout = Duration.ofSeconds(options.getTimeoutSeconds());
-        @Nullable GeminiThinkingConfig thinking = mapThinking(options.getThinkingLevel());
+        ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                options.getTenantId(), options.getProjectId(),
+                NAME, config.modelName());
+        ThinkingLevel effectiveLevel = gateThinkingLevel(
+                options.getThinkingLevel(), modelInfo);
+        @Nullable GeminiThinkingConfig thinking = mapThinking(effectiveLevel);
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
         try {
             GoogleAiGeminiChatModel.GoogleAiGeminiChatModelBuilder syncBuilder =
@@ -110,9 +117,7 @@ public class GeminiProvider implements AiModelProvider {
             return new StandardAiChat(
                     config.fullName(),
                     ProviderType.GEMINI,
-                    modelCatalog.lookupOrDefault(
-                            options.getTenantId(), options.getProjectId(),
-                            NAME, config.modelName()).capabilities(),
+                    modelInfo.capabilities(),
                     sync,
                     streaming,
                     options);
@@ -120,6 +125,32 @@ public class GeminiProvider implements AiModelProvider {
             throw new AiChatException(
                     "Failed to build Gemini chat for " + config.fullName(), e);
         }
+    }
+
+    /**
+     * Drop the requested thinking level to {@link ThinkingLevel#OFF}
+     * when the resolved model does not advertise
+     * {@link ModelCapability#THINKING} in {@code ai-models.yaml}. The
+     * recipe author asks for {@code thinking: high}; whether the model
+     * can actually honour that with the current SDK/API combination is
+     * a catalog decision, not a recipe decision. Without this gate
+     * Google's API returns {@code 400 "Thinking level is not supported
+     * for this model"} as soon as we hit a Gemini build whose
+     * {@code thinkingConfig} contract diverged from langchain4j's
+     * {@code thinkingLevel} call, breaking every spawn.
+     */
+    static ThinkingLevel gateThinkingLevel(
+            @Nullable ThinkingLevel requested, ModelInfo modelInfo) {
+        if (requested == null || requested == ThinkingLevel.OFF) {
+            return ThinkingLevel.OFF;
+        }
+        if (modelInfo.supports(ModelCapability.THINKING)) {
+            return requested;
+        }
+        log.debug("Gemini model '{}/{}' lacks THINKING capability — "
+                        + "downgrading requested level {} → OFF for this call",
+                modelInfo.provider(), modelInfo.modelName(), requested);
+        return ThinkingLevel.OFF;
     }
 
     /**

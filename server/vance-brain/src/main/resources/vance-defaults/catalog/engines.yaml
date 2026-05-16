@@ -1,8 +1,9 @@
-# Engine catalog — feeds the `process_create_delegate` selector with
-# a curated description of what each think-engine does, when to use
-# it, and what NOT to use it for. Keep entries terse but
-# distinguishing — the selector LLM compares user task descriptions
-# against these on every delegate-call, so wording matters.
+# Engine catalog — feeds the `process_create` selector (used in the
+# tool's no-recipe mode) with a curated description of what each
+# think-engine does, when to use it, and what NOT to use it for. Keep
+# entries terse but distinguishing — the selector LLM compares user
+# task descriptions against these on every routing call, so wording
+# matters.
 #
 # Adding a new engine: append a top-level entry under `engines:`.
 # Format is intentionally flat so the selector can render it as a

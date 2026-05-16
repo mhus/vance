@@ -15,6 +15,15 @@ import java.util.Optional;
  *       (Anthropic's vision pipeline, Gemini's document mode,
  *       OpenAI's {@code input_file}). Models without this flag get
  *       a PDFBox text-extract fallback applied before the call.</li>
+ *   <li>{@link #THINKING} — model accepts an explicit reasoning /
+ *       extended-thinking control on the request (Anthropic's
+ *       {@code thinking={type:enabled,…}}, Gemini 2.5's
+ *       {@code thinkingConfig}, OpenAI o-series reasoning_effort).
+ *       Without this flag a recipe's {@code thinking: high} request is
+ *       silently downgraded to off by the provider — the API would
+ *       otherwise 400 the call. Recipe authors should not have to
+ *       know which model/SDK combo currently honors thinking; the
+ *       capability list is the single point of truth.</li>
  * </ul>
  *
  * <p>Models that aren't listed in {@code ai-models.yaml} fall back
@@ -26,7 +35,8 @@ import java.util.Optional;
 public enum ModelCapability {
 
     VISION,
-    PDF;
+    PDF,
+    THINKING;
 
     /** Case-insensitive lookup; {@link Optional#empty()} on unknown values. */
     public static Optional<ModelCapability> fromString(String s) {

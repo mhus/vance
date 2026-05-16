@@ -66,11 +66,23 @@ public class ProjectCreateTool implements Tool {
                                     + "a substantive goal in one round-trip."),
                     "kitName", Map.of(
                             "type", "string",
-                            "description", "Optional — name of an entry in the "
-                                    + "tenant project-kits catalog (use kit_list "
-                                    + "to discover them). When set, the kit is "
-                                    + "installed into the new project right after "
-                                    + "creation. Unknown names fail the call.")),
+                            "description", "Optional — catalog name OR a "
+                                    + "free-text kit wish (e.g. "
+                                    + "'school-essay', 'Schul-Aufsatz', "
+                                    + "'essay kit'). The server matches "
+                                    + "strict first; on miss a single-shot "
+                                    + "LLM resolver maps the wish against "
+                                    + "the tenant catalog. When matched, "
+                                    + "the kit is installed into the new "
+                                    + "project right after creation. If "
+                                    + "the resolver returns no match the "
+                                    + "call fails with the catalog listing "
+                                    + "+ rationale, so you can retry with "
+                                    + "a recognisable name. To install a "
+                                    + "kit from a raw git/file URL that "
+                                    + "isn't in the catalog, leave this "
+                                    + "empty and call kit_install "
+                                    + "afterwards.")),
             "required", List.of("name"));
 
     /**

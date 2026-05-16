@@ -1,0 +1,27 @@
+description: |
+  Plan-architect / meta-engine. Frames a free-text user goal, gathers
+  evidence from project manuals, decomposes into subgoals, and emits a
+  NEW recipe (Vogon-strategy by default) tailored to the goal. Output
+  is a recipe YAML, not a final document. Slart auto-executes the
+  generated recipe synchronously unless `planOnly=true`.
+
+  Use via `arthur_action DELEGATE preset="slartibartfast"` when a task
+  is substantial enough to deserve its own multi-phase plan (school
+  essays, multi-chapter reports, research deliverables, …) and no
+  pre-built recipe in the catalog fits. Slart reads the project's
+  kit-installed manuals as evidence, so installed skill-/genre-kits
+  steer the generated plan automatically.
+engine: slartibartfast
+params:
+  # Vogon-strategy = phased plan-and-execute (Gathering → Planning →
+  # Executing → Validating). Suits the typical "write a structured
+  # document with chapters" intent, which is what users spawn Slart
+  # for. Tenants can override to MARVIN_RECIPE when they prefer
+  # dynamic task-tree decomposition.
+  outputSchemaType: vogon-strategy
+  # Slart's per-phase LLM calls benefit from a larger context — it
+  # reads many manuals at once during GATHERING.
+  model: default:analyze
+tags:
+  - architect
+  - engine-default

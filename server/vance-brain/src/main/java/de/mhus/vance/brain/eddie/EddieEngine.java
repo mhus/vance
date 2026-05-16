@@ -169,6 +169,15 @@ public class EddieEngine extends StructuredActionEngine {
      */
     private static final int DELEGATED_WORKERS_MAX_RENDER = 10;
 
+    /**
+     * Cap on the auto-suffix loop in {@link #handleDelegateProject}. If
+     * {@code <name>}, {@code <name>-2}, …, {@code <name>-N} are all
+     * taken, give up — usually means something else is going on
+     * (Mongo write blocked, tenant pre-seeded with conflicting test
+     * fixtures, etc.) and continuing to loop won't help.
+     */
+    private static final int MAX_PROJECT_NAME_TRIES = 10;
+
 
     // ──────────────────── Dependencies ────────────────────
 
@@ -297,6 +306,28 @@ public class EddieEngine extends StructuredActionEngine {
             throw new UncheckedIOException(
                     "Failed to load Eddie prompt resource: " + path, e);
         }
+    }
+
+    /**
+     * Recognise the typed
+     * {@link de.mhus.vance.shared.project.ProjectService.ProjectAlreadyExistsException}
+     * regardless of whether {@code project_create} surfaced it directly
+     * or wrapped it in a {@link ToolException}. Used by the
+     * DELEGATE_PROJECT handler to decide between "internal-name retry"
+     * and "real failure → propagate to user". Falls back to message
+     * matching when the cause chain is empty — defensive against a
+     * future refactor that drops the wrapped cause.
+     */
+    private static boolean isProjectNameTaken(RuntimeException e) {
+        Throwable t = e;
+        while (t != null) {
+            if (t instanceof de.mhus.vance.shared.project.ProjectService.ProjectAlreadyExistsException) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        String msg = e.getMessage();
+        return msg != null && msg.contains("already exists in tenant");
     }
 
     // ──────────────────── Lifecycle ────────────────────
@@ -694,27 +725,59 @@ public class EddieEngine extends StructuredActionEngine {
         String kitName = action.stringParam(EddieActionSchema.PARAM_KIT_NAME);
         String message = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
 
-        Map<String, Object> createResult;
-        try {
-            Map<String, Object> params = new LinkedHashMap<>();
-            params.put("name", projectName);
-            if (projectTitle != null && !projectTitle.isBlank()) {
-                params.put("title", projectTitle);
+        // Eddie picks the project name from the user's task description —
+        // the user never sees or chooses it. So a name-collision against
+        // an existing tenant project is an internal naming concern, not
+        // a user-facing failure: just append a numeric suffix (-2, -3,
+        // …) until the name is free, and proceed. Cap at MAX_NAME_TRIES
+        // so a runaway loop on some other persistent failure stops fast.
+        Map<String, Object> createResult = null;
+        String resolvedName = projectName;
+        RuntimeException lastError = null;
+        for (int attempt = 1; attempt <= MAX_PROJECT_NAME_TRIES; attempt++) {
+            try {
+                Map<String, Object> params = new LinkedHashMap<>();
+                params.put("name", resolvedName);
+                if (projectTitle != null && !projectTitle.isBlank()) {
+                    params.put("title", projectTitle);
+                }
+                params.put("initialPrompt", projectGoal);
+                if (kitName != null && !kitName.isBlank()) {
+                    params.put("kitName", kitName);
+                }
+                createResult = ctx.tools().invokeInternal("project_create", params);
+                log.info("Eddie id='{}' DELEGATE_PROJECT name='{}'{} kit='{}' reason='{}'",
+                        process.getId(), resolvedName,
+                        attempt > 1 ? " (renamed from '" + projectName + "', attempt " + attempt + ")" : "",
+                        kitName == null ? "" : kitName,
+                        summariseReason(action.reason()));
+                break;
+            } catch (RuntimeException e) {
+                lastError = e;
+                if (!isProjectNameTaken(e)) {
+                    // Different failure — kit-resolver miss, permission
+                    // denied, anything else — surface immediately.
+                    log.warn("Eddie id='{}' DELEGATE_PROJECT failed: {}",
+                            process.getId(), e.toString());
+                    return new ActionTurnOutcome(
+                            "Konnte das Projekt nicht anlegen: " + e.getMessage(),
+                            true);
+                }
+                // Name collision — bump the suffix and try again. First
+                // collision goes to "<name>-2", then "-3", etc.
+                resolvedName = projectName + "-" + (attempt + 1);
+                log.info("Eddie id='{}' DELEGATE_PROJECT name '{}' taken, retrying as '{}'",
+                        process.getId(), attempt == 1 ? projectName : resolvedName, resolvedName);
             }
-            params.put("initialPrompt", projectGoal);
-            if (kitName != null && !kitName.isBlank()) {
-                params.put("kitName", kitName);
-            }
-            createResult = ctx.tools().invokeInternal("project_create", params);
-            log.info("Eddie id='{}' DELEGATE_PROJECT name='{}' kit='{}' reason='{}'",
-                    process.getId(), projectName,
-                    kitName == null ? "" : kitName,
-                    summariseReason(action.reason()));
-        } catch (RuntimeException e) {
-            log.warn("Eddie id='{}' DELEGATE_PROJECT failed: {}",
-                    process.getId(), e.toString());
+        }
+        if (createResult == null) {
+            log.warn("Eddie id='{}' DELEGATE_PROJECT gave up after {} suffix attempts on base '{}': {}",
+                    process.getId(), MAX_PROJECT_NAME_TRIES, projectName,
+                    lastError == null ? "(no error)" : lastError.toString());
             return new ActionTurnOutcome(
-                    "Konnte das Projekt nicht anlegen: " + e.getMessage(),
+                    "Konnte keinen freien Projekt-Namen finden auf Basis von '"
+                            + projectName + "' (alle bis -" + MAX_PROJECT_NAME_TRIES
+                            + " sind belegt).",
                     true);
         }
 

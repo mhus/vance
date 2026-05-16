@@ -7,7 +7,9 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
+import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
@@ -132,7 +134,12 @@ public class OpenAiProvider implements AiModelProvider {
                 syncBuilder.customParameters(cacheParams);
                 streamBuilder.customParameters(cacheParams);
             }
-            String reasoningEffort = mapReasoningEffort(options.getThinkingLevel());
+            ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                    options.getTenantId(), options.getProjectId(),
+                    NAME, config.modelName());
+            ThinkingLevel effectiveLevel = gateThinkingLevel(
+                    options.getThinkingLevel(), modelInfo);
+            String reasoningEffort = mapReasoningEffort(effectiveLevel);
             if (reasoningEffort != null) {
                 OpenAiChatRequestParameters defaults = OpenAiChatRequestParameters.builder()
                         .reasoningEffort(reasoningEffort)
@@ -149,9 +156,7 @@ public class OpenAiProvider implements AiModelProvider {
             return new StandardAiChat(
                     config.fullName(),
                     ProviderType.OPENAI,
-                    modelCatalog.lookupOrDefault(
-                            options.getTenantId(), options.getProjectId(),
-                            NAME, config.modelName()).capabilities(),
+                    modelInfo.capabilities(),
                     sync,
                     streaming,
                     options);
@@ -178,6 +183,28 @@ public class OpenAiProvider implements AiModelProvider {
             params.put("prompt_cache_retention", "24h");
         }
         return params;
+    }
+
+    /**
+     * Drop the requested thinking level to {@link ThinkingLevel#OFF}
+     * when the resolved model does not advertise
+     * {@link ModelCapability#THINKING} in {@code ai-models.yaml}. The
+     * non-reasoning OpenAI / open-weight gateway models reject
+     * {@code reasoning_effort} with an API error; the gate keeps recipe
+     * authors out of "which gpt-* model is a reasoning model" trivia.
+     */
+    public static ThinkingLevel gateThinkingLevel(
+            @org.jspecify.annotations.Nullable ThinkingLevel requested, ModelInfo modelInfo) {
+        if (requested == null || requested == ThinkingLevel.OFF) {
+            return ThinkingLevel.OFF;
+        }
+        if (modelInfo.supports(ModelCapability.THINKING)) {
+            return requested;
+        }
+        log.debug("OpenAI model '{}/{}' lacks THINKING capability — "
+                        + "downgrading requested level {} → OFF for this call",
+                modelInfo.provider(), modelInfo.modelName(), requested);
+        return ThinkingLevel.OFF;
     }
 
     /**

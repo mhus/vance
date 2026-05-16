@@ -96,7 +96,29 @@ public class ChatRepl {
         liveRegion.setQuitListener(this::requestStop);
         liveRegion.attach(t);
 
-        chatTerminal.info("Vance Foot — type /help for commands, Ctrl-D to exit.");
+        if (liveRegion.isAttached()) {
+            chatTerminal.info("Vance Foot — type /help for commands, Ctrl-D to exit.");
+        } else {
+            // Dumb terminals (IntelliJ Run window, CI, piped stdin) leave
+            // LiveRegion detached — no key reader runs, so anything the user
+            // types reaches stdin but is silently discarded. ChatTerminal
+            // still routes its output through plain stdout though, so all
+            // brain activity (chat, worker, info, streaming chunks) shows
+            // up here as a live mirror. With --rest-api enabled, /debug/chat
+            // and /debug/command let the user drive the session through a
+            // second window — REST submissions are echoed to stdout too,
+            // so this view stays faithful to a real REPL session.
+            FootConfig.Rest rest = config.getDebug().getRest();
+            if (rest.isEnabled()) {
+                chatTerminal.info("Vance Foot — dumb terminal: live activity mirror. "
+                        + "Send input via http://" + rest.getHost() + ":" + rest.getPort()
+                        + "/debug/chat (chat) or /debug/command (slash commands).");
+            } else {
+                chatTerminal.warn("Vance Foot — dumb terminal detected, REPL input disabled. "
+                        + "Restart with --rest-api to drive the session via HTTP, "
+                        + "or run inside a real PTY (IntelliJ Terminal tool window, iTerm, …).");
+            }
+        }
         if (historyFile != null) {
             chatTerminal.verbose("input history: " + historyFile);
         }

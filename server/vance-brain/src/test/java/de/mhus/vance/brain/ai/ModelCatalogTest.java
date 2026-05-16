@@ -54,7 +54,10 @@ class ModelCatalogTest {
         assertThat(info.defaultMaxOutputTokens()).isEqualTo(8192);
         assertThat(info.size()).isEqualTo(ModelSize.LARGE);
         assertThat(info.capabilities())
-                .containsExactlyInAnyOrder(ModelCapability.VISION, ModelCapability.PDF);
+                .containsExactlyInAnyOrder(
+                        ModelCapability.VISION,
+                        ModelCapability.PDF,
+                        ModelCapability.THINKING);
     }
 
     @Test
@@ -123,7 +126,10 @@ class ModelCatalogTest {
         assertThat(info.contextWindowTokens()).isEqualTo(200_000);
         assertThat(info.size()).isEqualTo(ModelSize.LARGE);
         assertThat(info.capabilities())
-                .containsExactlyInAnyOrder(ModelCapability.VISION, ModelCapability.PDF);
+                .containsExactlyInAnyOrder(
+                        ModelCapability.VISION,
+                        ModelCapability.PDF,
+                        ModelCapability.THINKING);
     }
 
     // ──── Three-layer merge (project wins, tenant wins over bundled) ───

@@ -18,9 +18,24 @@
 #       defaultMaxOutputTokens: <int>  # cap on a single response
 #       size: SMALL|LARGE              # capability class — drives
 #                                      # prompt-variant selection in recipes
-#       capabilities: [vision, pdf]    # optional input modalities; absent
-#                                      # / unknown models are treated as
-#                                      # text-only (pessimistic default)
+#       capabilities: [vision, pdf, thinking]
+#                                      # optional input/feature modalities.
+#                                      # Known values:
+#                                      #   vision   — accepts image blocks
+#                                      #   pdf      — accepts PDF blocks
+#                                      #              natively (else PDFBox
+#                                      #              text-extract fallback)
+#                                      #   thinking — accepts an explicit
+#                                      #              reasoning/extended-
+#                                      #              thinking control. When
+#                                      #              absent, the provider
+#                                      #              downgrades recipe-
+#                                      #              level thinking to off
+#                                      #              rather than letting
+#                                      #              the API 400 the call.
+#                                      # Absent / unknown models are treated
+#                                      # as text-only with no thinking
+#                                      # (pessimistic defaults).
 #
 # Adjust freely; this file is committed (no secrets here).
 
@@ -29,18 +44,28 @@ anthropic:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
     size: LARGE
-    capabilities: [vision, pdf]
+    capabilities: [vision, pdf, thinking]
   claude-opus-4:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
     size: LARGE
-    capabilities: [vision, pdf]
+    capabilities: [vision, pdf, thinking]
+  # Haiku doesn't expose extended-thinking — keep vision/pdf only so
+  # the provider's THINKING-gate downgrades recipe-level thinking to
+  # OFF for haiku rather than letting the API reject the request.
   claude-haiku-4-5:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
     size: SMALL
     capabilities: [vision, pdf]
 
+# Gemini 2.5's `thinkingConfig.thinkingLevel` (the field langchain4j
+# 1.14.1's `GoogleAiGeminiChatModel#thinkingConfig(...)` sets) is
+# currently 400-rejected by Google's API ("Thinking level is not
+# supported for this model"). Until langchain4j moves to the new
+# `thinkingBudget`-token API we deliberately do NOT advertise THINKING
+# on Gemini models — the provider's gate then drops recipe-level
+# thinking before it reaches the SDK. Re-add once empirically verified.
 gemini:
   gemini-2.5-flash:
     contextWindowTokens: 1048576
@@ -107,10 +132,13 @@ openai:
     defaultMaxOutputTokens: 8192
     size: SMALL
     capabilities: [vision]
+  # OpenAI reasoning model — honours an explicit reasoning_effort
+  # control via the responses API, mapped from ThinkingLevel.
   o3:
     contextWindowTokens: 200000
     defaultMaxOutputTokens: 8192
     size: LARGE
+    capabilities: [thinking]
 
   # ── OpenAI open-weight (gpt-oss family) ───────────────────────
   gpt-oss-20b:

@@ -19,8 +19,9 @@ import org.yaml.snakeyaml.Yaml;
  * Loads {@code vance-defaults/catalog/engines.yaml} once at boot and
  * exposes the parsed engine descriptions to the recipe selector.
  * The catalog is the curated "what does each engine do" reference
- * that the {@code process_create_delegate} prompt embeds when asking
- * the LLM to pick a recipe.
+ * that the selector prompt embeds when asking the LLM to pick a
+ * recipe (the path {@code process_create} takes when no {@code
+ * recipe} param is supplied).
  *
  * <p>Catalog entries are positional in YAML; this loader keeps
  * insertion order so the prompt presentation is stable.

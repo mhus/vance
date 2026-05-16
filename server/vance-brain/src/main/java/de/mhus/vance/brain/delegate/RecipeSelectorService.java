@@ -28,7 +28,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Picks a project recipe for a free-text task description. Single
  * synchronous LLM call — no sub-process spawn, no tool turn — so
- * {@code process_create_delegate} stays cheap.
+ * {@code process_create}'s selector-routed mode stays cheap.
  *
  * <p>The prompt embeds two reference blocks:
  *
@@ -45,9 +45,10 @@ import tools.jackson.databind.ObjectMapper;
  * fall back to Slartibartfast (generate a new recipe) or escalate
  * to the user. The selector itself takes no spawn action.
  *
- * <p>This service is the only LLM-using piece of
- * {@code process_create_delegate}; the tool wraps it with the
- * downstream {@code process_create} dispatch.
+ * <p>This service is the only LLM-using piece of the unified
+ * {@code process_create} tool's selector-routed mode (the path taken
+ * when no {@code recipe} is supplied); the tool wraps it with the
+ * downstream spawn.
  */
 @Service
 @RequiredArgsConstructor

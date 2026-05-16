@@ -8,9 +8,12 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.CacheBoundary;
+import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
+import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import java.time.Duration;
@@ -68,7 +71,11 @@ public class AnthropicProvider implements AiModelProvider {
             throw new AiChatException(
                     "AnthropicProvider received config for provider '" + config.provider() + "'");
         }
-        AiChatOptions effective = applyGlobalCacheKill(options);
+        ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                options.getTenantId(), options.getProjectId(),
+                NAME, config.modelName());
+        AiChatOptions effective = applyCapabilityGates(
+                applyGlobalCacheKill(options), modelInfo);
         int maxTokens = effective.getMaxTokens() != null
                 ? effective.getMaxTokens()
                 : DEFAULT_MAX_TOKENS;
@@ -83,15 +90,14 @@ public class AnthropicProvider implements AiModelProvider {
             StreamingChatModel streaming = new AnthropicDirectStreamingChatModel(
                     client, config.modelName(), maxTokens, effective);
             log.debug("Built Anthropic chat: model='{}', maxTokens={}, "
-                            + "cacheBoundary={}, ttl={}",
+                            + "cacheBoundary={}, ttl={}, thinking={}",
                     config.modelName(), maxTokens,
-                    effective.getCacheBoundary(), effective.getCacheTtl());
+                    effective.getCacheBoundary(), effective.getCacheTtl(),
+                    effective.getThinkingLevel());
             return new StandardAiChat(
                     config.fullName(),
                     ProviderType.ANTHROPIC,
-                    modelCatalog.lookupOrDefault(
-                            options.getTenantId(), options.getProjectId(),
-                            NAME, config.modelName()).capabilities(),
+                    modelInfo.capabilities(),
                     sync,
                     streaming,
                     effective);
@@ -99,6 +105,31 @@ public class AnthropicProvider implements AiModelProvider {
             throw new AiChatException(
                     "Failed to build Anthropic chat for " + config.fullName(), e);
         }
+    }
+
+    /**
+     * Drop {@code thinking: high} (or any non-OFF level) when the
+     * resolved model does not advertise
+     * {@link ModelCapability#THINKING} in {@code ai-models.yaml}. The
+     * call would otherwise reach Anthropic's API with a {@code thinking}
+     * block on a model that doesn't honour extended thinking — Haiku
+     * historically being the common case — and waste a round-trip on
+     * a 400. Recipe authors keep asking for the level they want; the
+     * catalog is the single point of truth for what is honourable.
+     */
+    private static AiChatOptions applyCapabilityGates(
+            AiChatOptions options, ModelInfo modelInfo) {
+        ThinkingLevel requested = options.getThinkingLevel();
+        if (requested == null || requested == ThinkingLevel.OFF) {
+            return options;
+        }
+        if (modelInfo.supports(ModelCapability.THINKING)) {
+            return options;
+        }
+        log.debug("Anthropic model '{}/{}' lacks THINKING capability — "
+                        + "downgrading requested level {} → OFF for this call",
+                modelInfo.provider(), modelInfo.modelName(), requested);
+        return options.toBuilder().thinkingLevel(ThinkingLevel.OFF).build();
     }
 
     /**

@@ -146,9 +146,14 @@ public class AiChatOptions {
      * callers opt in explicitly. Recipe param {@code params.thinking}
      * (e.g. {@code high}) is parsed by
      * {@link EngineChatFactory} and lands here. Each provider maps the
-     * level to its native parameter; providers whose models don't
-     * support reasoning surface a clean error from the API rather than
-     * silently ignoring the field.
+     * level to its native parameter and, before applying it, gates the
+     * request through {@link ModelInfo#supports(ModelCapability) the
+     * model's THINKING capability}: when the resolved model isn't
+     * advertised as thinking-capable in {@code ai-models.yaml}, the
+     * provider downgrades the level to {@link ThinkingLevel#OFF} for the
+     * call. That keeps recipe authors out of provider/SDK-version
+     * compatibility questions — they ask for {@code thinking: high} and
+     * the model catalog decides whether it can be honoured.
      */
     @Builder.Default
     private ThinkingLevel thinkingLevel = ThinkingLevel.OFF;

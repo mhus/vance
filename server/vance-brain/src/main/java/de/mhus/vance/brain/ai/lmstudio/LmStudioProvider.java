@@ -6,6 +6,7 @@ import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
@@ -88,7 +89,12 @@ public class LmStudioProvider implements AiModelProvider {
                             .timeout(timeout)
                             .logRequests(options.getLogRequests())
                             .logResponses(options.getLogRequests());
-            String reasoningEffort = OpenAiProvider.mapReasoningEffort(options.getThinkingLevel());
+            ModelInfo modelInfo = modelCatalog.lookupOrDefault(
+                    options.getTenantId(), options.getProjectId(),
+                    NAME, config.modelName());
+            ThinkingLevel effectiveLevel = OpenAiProvider.gateThinkingLevel(
+                    options.getThinkingLevel(), modelInfo);
+            String reasoningEffort = OpenAiProvider.mapReasoningEffort(effectiveLevel);
             if (reasoningEffort != null) {
                 OpenAiChatRequestParameters defaults = OpenAiChatRequestParameters.builder()
                         .reasoningEffort(reasoningEffort)
@@ -105,9 +111,7 @@ public class LmStudioProvider implements AiModelProvider {
             return new StandardAiChat(
                     config.fullName(),
                     ProviderType.LM_STUDIO,
-                    modelCatalog.lookupOrDefault(
-                            options.getTenantId(), options.getProjectId(),
-                            NAME, config.modelName()).capabilities(),
+                    modelInfo.capabilities(),
                     sync,
                     streaming,
                     options);

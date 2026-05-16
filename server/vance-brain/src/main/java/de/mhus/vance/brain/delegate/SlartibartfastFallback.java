@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
- * Owns the {@code process_create_delegate} fallback path: spawn
+ * Owns the {@code process_create} selector-NONE fallback path: spawn
  * Slartibartfast for a task description, wait synchronously for it
  * to terminate, return the persisted recipe path on success.
  *
@@ -139,7 +139,7 @@ public class SlartibartfastFallback {
                 /*name*/ "delegate-fallback-slart-" + spawnedProcessName,
                 /*engine*/ SlartibartfastEngine.NAME,
                 /*engineVersion*/ SlartibartfastEngine.VERSION,
-                /*title*/ "process_create_delegate fallback (Slart)",
+                /*title*/ "process_create selector-NONE fallback (Slart)",
                 /*goal*/ taskDescription,
                 /*parentProcessId*/ caller.getId(),
                 engineParams,

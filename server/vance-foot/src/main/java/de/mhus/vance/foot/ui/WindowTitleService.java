@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -50,6 +51,7 @@ public class WindowTitleService {
     private final AtomicReference<@Nullable String> session = new AtomicReference<>();
     private final AtomicBoolean ideAttached = new AtomicBoolean(false);
 
+    @Autowired
     public WindowTitleService(FootConfig config) {
         this(config, WindowTitleService::writeToStdout, () -> System.console() != null);
     }

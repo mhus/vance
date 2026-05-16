@@ -36,9 +36,17 @@ class ValidatingPhaseTest {
     @BeforeEach
     void setUp() {
         recipeLoader = mock(RecipeLoader.class);
+        // Default: standard worker recipes are available so Vogon
+        // strategy worker-name validation passes without per-test
+        // setup. Individual tests override the stub when they need
+        // a missing-recipe scenario.
         when(recipeLoader.listAll(org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString()))
-                .thenReturn(java.util.List.of());
+                .thenReturn(java.util.List.of(
+                        stubRecipe("ford"),
+                        stubRecipe("marvin-worker"),
+                        stubRecipe("analyze"),
+                        stubRecipe("code-read")));
         phase = new ValidatingPhase(
                 recipeLoader,
                 new de.mhus.vance.brain.prompt.PromptTemplateRenderer());

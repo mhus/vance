@@ -63,6 +63,8 @@ public class ValidatingPhase {
             "recipe-prompt-prefix-pebble-template-valid";
     public static final String RULE_MARVIN_RECIPES_EXIST =
             "marvin-recipe-allowed-recipes-exist";
+    public static final String RULE_VOGON_WORKER_RECIPES_EXIST =
+            "vogon-strategy-worker-recipes-exist";
     public static final String RULE_JUSTIFICATION_RESOLVES =
             "justification-subgoal-id-resolves";
     public static final String RULE_SCHEMA_TYPE_SUPPORTED =
@@ -190,8 +192,9 @@ public class ValidatingPhase {
                     report.add(v);
                     firstFail = v;
                 } else {
+                    de.mhus.vance.api.vogon.StrategySpec parsedStrategy = null;
                     try {
-                        StrategyResolver.parseStrategy(spyStr,
+                        parsedStrategy = StrategyResolver.parseStrategy(spyStr,
                                 "slartibartfast/" + draft.getName());
                         report.add(ValidationCheck.builder()
                                 .rule(RULE_VOGON_STRATEGY_PARSES).passed(true)
@@ -205,6 +208,13 @@ public class ValidatingPhase {
                                 .build();
                         report.add(v);
                         firstFail = v;
+                    }
+                    if (firstFail == null && parsedStrategy != null) {
+                        ValidationCheck workerCheck =
+                                validateVogonWorkerRecipes(
+                                        parsedStrategy, process);
+                        report.add(workerCheck);
+                        if (!workerCheck.isPassed()) firstFail = workerCheck;
                     }
                 }
             }
@@ -447,6 +457,83 @@ public class ValidatingPhase {
      * mis-typed an engine label is irrelevant). Also catches
      * duplicate entries.
      */
+    /**
+     * Validates every {@code worker:} reference in the generated
+     * Vogon strategy. Each must resolve to a known recipe — the
+     * common failure we want to catch is the LLM emitting a
+     * tool name (e.g. {@code doc_edit}, {@code web_search}) as
+     * worker, which would parse cleanly but fail at run-time
+     * when Vogon tries to spawn the child. Walks top-level phases
+     * AND nested loop sub-phases. Static {@code ${...}}
+     * substitutions are ignored — those are resolved at runtime
+     * via params.
+     */
+    private ValidationCheck validateVogonWorkerRecipes(
+            de.mhus.vance.api.vogon.StrategySpec strategy,
+            ThinkProcessDocument process) {
+        Set<String> workersUsed = new LinkedHashSet<>();
+        collectWorkerNames(strategy.getPhases(), workersUsed);
+
+        if (workersUsed.isEmpty()) {
+            return ValidationCheck.builder()
+                    .rule(RULE_VOGON_WORKER_RECIPES_EXIST).passed(true)
+                    .message("no worker references to validate")
+                    .build();
+        }
+
+        Set<String> available = new LinkedHashSet<>();
+        try {
+            for (ResolvedRecipe r : recipeLoader.listAll(
+                    process.getTenantId(), process.getProjectId())) {
+                if (!r.name().startsWith("_slart/")) {
+                    available.add(r.name());
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("Slartibartfast id='{}' VALIDATING failed listing "
+                            + "recipes for worker-check: {}",
+                    process.getId(), e.toString());
+        }
+
+        List<String> unknown = new ArrayList<>();
+        for (String w : workersUsed) {
+            if (!available.contains(w)) unknown.add(w);
+        }
+        if (unknown.isEmpty()) {
+            return ValidationCheck.builder()
+                    .rule(RULE_VOGON_WORKER_RECIPES_EXIST).passed(true)
+                    .message(workersUsed.size() + " worker reference(s) "
+                            + "resolve to known recipes")
+                    .build();
+        }
+        return ValidationCheck.builder()
+                .rule(RULE_VOGON_WORKER_RECIPES_EXIST).passed(false)
+                .message("Vogon strategy references unknown recipe(s) as "
+                        + "worker: " + unknown + ". Common mistake: using "
+                        + "a tool name (e.g. doc_edit, web_search) where "
+                        + "a recipe name is required. Valid recipes "
+                        + "include 'ford' (generalist worker), "
+                        + "'marvin-worker' (sub-task decomposer) and "
+                        + "any project-local recipe.")
+                .build();
+    }
+
+    private static void collectWorkerNames(
+            List<de.mhus.vance.api.vogon.PhaseSpec> phases,
+            Set<String> out) {
+        if (phases == null) return;
+        for (de.mhus.vance.api.vogon.PhaseSpec p : phases) {
+            String w = p.getWorker();
+            if (w != null && !w.isBlank() && !w.contains("${")) {
+                out.add(w.trim());
+            }
+            de.mhus.vance.api.vogon.LoopSpec loop = p.getLoop();
+            if (loop != null) {
+                collectWorkerNames(loop.getSubPhases(), out);
+            }
+        }
+    }
+
     private ValidationCheck checkAllowedSubTaskRecipes(
             Map<String, Object> params, ThinkProcessDocument process) {
         List<String> allowed = readStringList(params.get("allowedSubTaskRecipes"));

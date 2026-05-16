@@ -61,14 +61,19 @@ public class ContentValidatingPhase {
     public static final String RULE_USER_CRITERIA_SATISFIED =
             "user-stated-criteria-satisfied";
 
-    /** Top-N largest output documents to send to the judge.
-     *  Keeps prompt size bounded for projects with many docs. */
-    private static final int MAX_ARTIFACTS_IN_PROMPT = 6;
+    /** Total character budget across all artifacts in the judge
+     *  prompt. Replaces the older top-N + per-doc truncation
+     *  scheme which silently dropped substantial documents
+     *  ({@code essay/final-essay.md} cut at 4k of 11k). The
+     *  budget is filled in path-depth-then-size order so the
+     *  most likely "main deliverable" (typically shallow) lands
+     *  fully before nested intermediates. */
+    private static final int TOTAL_BUDGET_CHARS = 40_000;
 
-    /** Per-document truncation in the judge prompt — full content
-     *  bloats fast. Truncation marker preserved so the LLM knows
-     *  it didn't see everything. */
-    private static final int MAX_DOC_CHARS_IN_PROMPT = 4_000;
+    /** Per-document hard cap — even with budget to spare we don't
+     *  let one giant doc eat the entire prompt. Long docs get
+     *  truncated to this; smaller docs land fully. */
+    private static final int PER_DOC_CAP_CHARS = 20_000;
 
     /** Re-prompt budget for malformed-JSON corrections. */
     private static final int MAX_CORRECTIONS = 2;
@@ -257,12 +262,30 @@ public class ContentValidatingPhase {
                     || doc.getInlineText().isBlank()) continue;
             output.add(doc);
         }
-        output.sort(Comparator.comparingInt(
-                (DocumentDocument d) -> d.getInlineText().length()).reversed());
-        if (output.size() > MAX_ARTIFACTS_IN_PROMPT) {
-            output = output.subList(0, MAX_ARTIFACTS_IN_PROMPT);
-        }
+        // Sort by (path-depth ASC, size DESC). Shallow paths are
+        // typically the "main deliverable" (essay/final-essay.md
+        // beats essay/chapters/01-intro.md; report.md at the
+        // project root beats research/sources/foo.md). Within a
+        // depth, bigger files first — those are likely the
+        // substantive outputs vs. small index/sidecar files.
+        output.sort((a, b) -> {
+            int da = pathDepth(a.getPath());
+            int db = pathDepth(b.getPath());
+            if (da != db) return Integer.compare(da, db);
+            return Integer.compare(
+                    b.getInlineText().length(),
+                    a.getInlineText().length());
+        });
         return output;
+    }
+
+    private static int pathDepth(String path) {
+        if (path == null || path.isEmpty()) return 0;
+        int depth = 0;
+        for (int i = 0; i < path.length(); i++) {
+            if (path.charAt(i) == '/') depth++;
+        }
+        return depth;
     }
 
     private @Nullable List<Verdict> runJudge(
@@ -321,19 +344,44 @@ public class ContentValidatingPhase {
                     .append(c.getText()).append('\n');
         }
         sb.append("\nPRODUCED ARTIFACTS:\n\n");
+
+        // Fill total budget in priority order (already sorted in
+        // loadOutputArtifacts). Each doc gets full content unless
+        // that would exceed PER_DOC_CAP or push past
+        // TOTAL_BUDGET. When budget runs out, remaining docs are
+        // listed by path only so the LLM knows they exist.
+        int remainingBudget = TOTAL_BUDGET_CHARS;
+        List<DocumentDocument> deferredByName = new ArrayList<>();
         for (DocumentDocument doc : artifacts) {
-            String content = doc.getInlineText();
-            boolean truncated = content.length() > MAX_DOC_CHARS_IN_PROMPT;
-            if (truncated) {
-                content = content.substring(0, MAX_DOC_CHARS_IN_PROMPT)
+            String full = doc.getInlineText();
+            int trueLen = full.length();
+            if (remainingBudget <= 500) {
+                deferredByName.add(doc);
+                continue;
+            }
+            int cap = Math.min(PER_DOC_CAP_CHARS, remainingBudget);
+            String content;
+            if (trueLen <= cap) {
+                content = full;
+            } else {
+                content = full.substring(0, cap)
                         + "\n…[truncated, "
-                        + (doc.getInlineText().length() - MAX_DOC_CHARS_IN_PROMPT)
-                        + " chars omitted]";
+                        + (trueLen - cap) + " chars omitted]";
             }
             sb.append("=== ").append(doc.getPath()).append(" (")
-                    .append(doc.getInlineText().length())
-                    .append(" chars total)").append(" ===\n")
-                    .append(content).append("\n\n");
+                    .append(trueLen).append(" chars total)")
+                    .append(" ===\n").append(content).append("\n\n");
+            remainingBudget -= Math.min(trueLen, cap);
+        }
+        if (!deferredByName.isEmpty()) {
+            sb.append("=== Additional artifacts exist (judge by name "
+                    + "only — budget exhausted) ===\n");
+            for (DocumentDocument doc : deferredByName) {
+                sb.append("- ").append(doc.getPath()).append(" (")
+                        .append(doc.getInlineText().length())
+                        .append(" chars, content not shown)\n");
+            }
+            sb.append("\n");
         }
         sb.append("Now emit the JSON verdict.");
         return sb.toString();

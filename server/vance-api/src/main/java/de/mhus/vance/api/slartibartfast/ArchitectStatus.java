@@ -81,11 +81,23 @@ public enum ArchitectStatus {
      *  here until the child reaches a terminal status. The
      *  child's {@code ProcessEvent} arrives via
      *  {@code drainPending}; the engine then transitions to
-     *  {@link #DONE} (child DONE) or {@link #FAILED} (child
-     *  STALE / STOPPED / FAILED). When {@code executeOnDone} is
-     *  false (default) the engine skips this phase and goes
-     *  PERSISTING → DONE directly. */
+     *  {@link #EXECUTION_VALIDATING} (child DONE) or
+     *  {@link #FAILED} (child STOPPED / FAILED). When
+     *  {@code executeOnDone} is false (default) the engine skips
+     *  this phase and goes PERSISTING → DONE directly. */
     EXECUTING,
+
+    /** Post-execution structural validation: after the child
+     *  process closes DONE, check that the artifacts the
+     *  generated recipe was supposed to produce actually exist
+     *  and meet minimum content thresholds. Reads expected
+     *  paths from {@link Subgoal#getGoal()} via regex match.
+     *  Pass → transition to {@link #DONE}. Fail → set
+     *  {@link ArchitectState#getPendingRecovery()} routing back
+     *  to {@link #PROPOSING} with a hint listing missing
+     *  artifacts; recovery budget applies. Only entered when
+     *  {@code engineParams.executeOnDone=true}. */
+    EXECUTION_VALIDATING,
 
     /** Recipe persisted, DONE event emitted with the recipe path
      *  and run ID. */

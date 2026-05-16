@@ -155,7 +155,8 @@ class SlartibartfastEngineLifecycleTest {
                 framingPhase, confirmingPhase,
                 gatheringPhase, classifyingPhase,
                 decomposingPhase, bindingPhase,
-                proposingPhase, validatingPhase, persistingPhase);
+                proposingPhase, validatingPhase, persistingPhase,
+                /*executionValidatingPhase*/ null);
     }
 
     @Test

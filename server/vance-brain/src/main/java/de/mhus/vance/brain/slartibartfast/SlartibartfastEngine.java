@@ -28,6 +28,7 @@ import de.mhus.vance.brain.slartibartfast.phases.BindingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ClassifyingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ConfirmingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.DecomposingPhase;
+import de.mhus.vance.brain.slartibartfast.phases.ExecutionValidatingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.FramingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
 import de.mhus.vance.brain.slartibartfast.phases.PersistingPhase;
@@ -132,6 +133,7 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final ProposingPhase proposingPhase;
     private final ValidatingPhase validatingPhase;
     private final PersistingPhase persistingPhase;
+    private final ExecutionValidatingPhase executionValidatingPhase;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -405,9 +407,10 @@ public class SlartibartfastEngine implements ThinkEngine {
         state.setChildExecutionOutcome(type.name());
         state.setChildExecutionSummary(pe.humanSummary());
         if (type == ProcessEventType.DONE) {
-            log.info("Slartibartfast id='{}' child '{}' DONE — flipping to DONE",
+            log.info("Slartibartfast id='{}' child '{}' DONE — flipping "
+                            + "to EXECUTION_VALIDATING",
                     process.getId(), childId);
-            state.setStatus(ArchitectStatus.DONE);
+            state.setStatus(ArchitectStatus.EXECUTION_VALIDATING);
         } else {
             log.warn("Slartibartfast id='{}' child '{}' terminated {}: {}",
                     process.getId(), childId, type, pe.humanSummary());
@@ -622,6 +625,17 @@ public class SlartibartfastEngine implements ThinkEngine {
             // execute() before the engine's safety-net clear at
             // the end of this method.
             state.setStatus(consumedRecovery.getToPhase());
+
+            // Recovery from EXECUTION_VALIDATING: the next
+            // proposing→validating→persisting→executing cycle
+            // needs a fresh child. Clear the previous child's
+            // reference so executeChildIfNeeded re-spawns.
+            if (consumedRecovery.getFromPhase()
+                    == ArchitectStatus.EXECUTION_VALIDATING) {
+                state.setChildExecutionProcessId(null);
+                state.setChildExecutionOutcome(null);
+                state.setChildExecutionSummary(null);
+            }
         }
 
         switch (state.getStatus()) {
@@ -716,6 +730,18 @@ public class SlartibartfastEngine implements ThinkEngine {
                 // running — the park-check below blocks the
                 // process until a ProcessEvent arrives via
                 // drainPending and handleChildEvent flips status.
+            }
+            case EXECUTION_VALIDATING -> {
+                executionValidatingPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
+                } else if (state.getPendingRecovery() != null) {
+                    // Stay in EXECUTION_VALIDATING — next runTurn
+                    // picks up the recovery and rolls back to
+                    // PROPOSING.
+                } else {
+                    state.setStatus(ArchitectStatus.DONE);
+                }
             }
             case ESCALATING -> {
                 // Parked waiting for the escalation inbox answer

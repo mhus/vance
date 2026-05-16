@@ -48,6 +48,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -205,6 +207,35 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
+
+    /**
+     * Per-process flag tracking whether the in-flight turn was triggered
+     * by a fresh USER_CHAT_INPUT (vs. purely by an in-bound process-event
+     * like a child closing). Populated at the start of
+     * {@link #runTurnFor} and consulted by {@link #handleAction} to gate
+     * spawn-actions: an event-only turn must not emit DELEGATE / ASK_USER,
+     * because the user didn't actually ask for more work — the LLM is
+     * just reacting to an internal lifecycle signal and would spam new
+     * children otherwise (the classic infinite-respawn cascade observed
+     * when Slart children close without producing the expected artifact).
+     *
+     * <p>ConcurrentHashMap because runTurn for different processes runs
+     * on different virtual threads via the lane scheduler. Entries are
+     * cleaned up in the {@code finally} block of {@link #runTurnFor}.
+     */
+    private final ConcurrentMap<String, Boolean> currentTurnHadUserInput =
+            new ConcurrentHashMap<>();
+
+    /**
+     * Action types Arthur is forbidden from emitting on a turn that was
+     * triggered without any USER_CHAT_INPUT. RELAY / ANSWER / WAIT /
+     * REJECT stay allowed — those report state to the user without
+     * spawning anything, which is exactly what an event-triggered turn
+     * should do.
+     */
+    private static final Set<String> SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS = Set.of(
+            ArthurActionSchema.TYPE_DELEGATE,
+            ArthurActionSchema.TYPE_ASK_USER);
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -469,6 +500,19 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         }
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
+        // Per-turn flag for handleAction: was this turn triggered by a
+        // fresh user message, or purely by an in-bound process-event?
+        // Event-only turns must not emit spawn-actions (DELEGATE /
+        // ASK_USER) — see SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.
+        boolean hadUserInput = false;
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci
+                    && uci.content() != null && !uci.content().isBlank()) {
+                hadUserInput = true;
+                break;
+            }
+        }
+        currentTurnHadUserInput.put(process.getId(), hadUserInput);
         // Default IDLE on any abnormal exit — matches legacy lifecycle.
         // Reset to outcome.awaitingUserInput() inside the try.
         boolean awaitingUserInput = false;
@@ -653,6 +697,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             updateDelegationPointer(process, inbox, awaitingUserInput);
             return new TurnSignal(appendedChat, loopResult.madeProgress());
         } finally {
+            currentTurnHadUserInput.remove(process.getId());
             ThinkProcessStatus exitStatus = awaitingUserInput
                     ? ThinkProcessStatus.BLOCKED
                     : ThinkProcessStatus.IDLE;
@@ -902,6 +947,30 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 return new ActionTurnOutcome(hint, /*awaitingUserInput*/ true);
             }
         }
+        // Event-only turn gate — see currentTurnHadUserInput +
+        // SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS javadoc above. When the
+        // turn was triggered solely by a process-event (child closed,
+        // tool-result, …) the LLM must not spawn new work — that's
+        // exactly the path that drove the multi-Slartibartfast respawn
+        // cascade in the live tests today. RELAY / ANSWER / WAIT / REJECT
+        // are fine: they let Arthur tell the user "the worker terminated"
+        // or absorb the event silently.
+        if (!Boolean.TRUE.equals(currentTurnHadUserInput.get(process.getId()))
+                && SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.contains(action.type())) {
+            log.warn("Arthur id='{}' rejected spawn-action '{}' on event-only turn"
+                            + " (no fresh user-input in inbox) — reason: '{}'",
+                    process.getId(), action.type(), action.reason());
+            String hint = "Action '" + action.type() + "' is not allowed on a turn "
+                    + "triggered without fresh user-input. The current inbox carries "
+                    + "only process-events (worker closed / tool-result / similar). "
+                    + "Spawning new work without a user prompt led to the multi-"
+                    + "Slartibartfast respawn cascade we just stopped. "
+                    + "Emit RELAY (with the latest worker output as `source`), or "
+                    + "ANSWER (with a short status note), or WAIT — and let the user "
+                    + "decide whether more work is wanted.";
+            return new ActionTurnOutcome(hint, /*awaitingUserInput*/ true);
+        }
+
         // Plan-Mode actions go through the shared service first — if
         // it recognises the action it returns the outcome; otherwise
         // null and we fall through to Arthur-specific actions.

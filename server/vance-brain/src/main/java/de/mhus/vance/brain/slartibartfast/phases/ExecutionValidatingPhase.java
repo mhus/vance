@@ -105,13 +105,20 @@ public class ExecutionValidatingPhase {
         }
 
         if (expectedPaths.isEmpty()) {
-            // No parseable paths — fall through as pass. Future
-            // work: spec extension to require structured expected-
-            // path on each Subgoal so this becomes deterministic
-            // rather than regex-best-effort.
-            appendIteration(state, state.getSubgoals().size() + " subgoals",
-                    "passed (no parseable expected paths)",
-                    PhaseIteration.IterationOutcome.PASSED);
+            // No parseable paths — structural check can't say
+            // anything useful. Hand off straight to the content
+            // judge if user criteria are present; otherwise pass
+            // through. This is the *most important* case for the
+            // content judge — exactly when structural fails to
+            // give signal.
+            boolean contentRan = contentValidatingPhase
+                    .executeIfApplicable(state, process, ctx);
+            if (state.getPendingRecovery() != null) return;
+            if (!contentRan) {
+                appendIteration(state, state.getSubgoals().size() + " subgoals",
+                        "passed (no parseable expected paths, no user criteria)",
+                        PhaseIteration.IterationOutcome.PASSED);
+            }
             return;
         }
 

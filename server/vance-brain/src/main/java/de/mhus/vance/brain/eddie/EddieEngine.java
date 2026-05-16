@@ -49,6 +49,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.ClassPathResource;
@@ -178,6 +180,22 @@ public class EddieEngine extends StructuredActionEngine {
      */
     private static final int MAX_PROJECT_NAME_TRIES = 10;
 
+    /**
+     * Action types Eddie is forbidden from emitting on a turn that was
+     * triggered without any USER_CHAT_INPUT. These spawn / push new
+     * work that an event-only turn has no business doing —
+     * DELEGATE_PROJECT creates new projects + Arthur chats,
+     * STEER_PROJECT keeps prodding a child Arthur, ASK_USER expects a
+     * user already in the loop. Everything else (ANSWER, RELAY,
+     * RELAY_INBOX, LEARN, MEDIATE, WAIT, REJECT) is fine on an event
+     * turn: those report state, absorb context, or yield. Mirrors the
+     * Arthur {@code SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS} gate.
+     */
+    private static final Set<String> SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS = Set.of(
+            EddieActionSchema.TYPE_DELEGATE_PROJECT,
+            EddieActionSchema.TYPE_STEER_PROJECT,
+            EddieActionSchema.TYPE_ASK_USER);
+
 
     // ──────────────────── Dependencies ────────────────────
 
@@ -197,6 +215,17 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.shared.access.ProfileRegistry profileRegistry;
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
+
+    /**
+     * Per-process flag tracking whether the in-flight turn was
+     * triggered by fresh USER_CHAT_INPUT (vs. purely by a
+     * parent-notification / tool-result / external-command). Populated
+     * at the start of {@link #runTurnFor} and consulted by
+     * {@link #handleAction} to gate spawn-actions — same pattern as
+     * Arthur, see {@code SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS}.
+     */
+    private final ConcurrentMap<String, Boolean> currentTurnHadUserInput =
+            new ConcurrentHashMap<>();
 
     public EddieEngine(
             StreamingProperties streamingProperties,
@@ -521,6 +550,21 @@ public class EddieEngine extends StructuredActionEngine {
             List<SteerMessage> inbox) {
 
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
+        // Per-turn flag for handleAction: was this turn triggered by a
+        // fresh user message, or purely by an in-bound process-event /
+        // tool-result? Event-only turns must not emit spawn-actions
+        // (DELEGATE_PROJECT / STEER_PROJECT / ASK_USER) — the root cause
+        // of the recurring "Eddie keeps trying" cascade the user has
+        // observed across sessions.
+        boolean hadUserInput = false;
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci
+                    && uci.content() != null && !uci.content().isBlank()) {
+                hadUserInput = true;
+                break;
+            }
+        }
+        currentTurnHadUserInput.put(process.getId(), hadUserInput);
         boolean awaitingUserInput = false;
         try {
             ChatMessageService chatLog = ctx.chatMessageService();
@@ -622,6 +666,7 @@ public class EddieEngine extends StructuredActionEngine {
                         process.getId(), awaitingUserInput);
             }
         } finally {
+            currentTurnHadUserInput.remove(process.getId());
             ThinkProcessStatus exitStatus = awaitingUserInput
                     ? ThinkProcessStatus.BLOCKED
                     : ThinkProcessStatus.IDLE;
@@ -656,6 +701,30 @@ public class EddieEngine extends StructuredActionEngine {
             EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
+        // Event-only turn gate — same pattern as Arthur. Without this
+        // Eddie keeps re-spawning DELEGATE_PROJECT every time a child
+        // chat closes (parent-notification arrives in pendingMessages
+        // → lane wakes Eddie → LLM sees the event as context → emits
+        // DELEGATE_PROJECT again). The idempotency suffix saves the
+        // actual project_create but the LLM-spawn cascade still burns
+        // budget. RELAY / RELAY_INBOX / ANSWER / WAIT / REJECT / LEARN
+        // / MEDIATE stay allowed — they report state without spawning.
+        if (!Boolean.TRUE.equals(currentTurnHadUserInput.get(process.getId()))
+                && SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.contains(action.type())) {
+            log.warn("Eddie id='{}' rejected spawn-action '{}' on event-only turn"
+                            + " (no fresh user-input in inbox) — reason: '{}'",
+                    process.getId(), action.type(), action.reason());
+            String hint = "Action '" + action.type() + "' is not allowed on a turn "
+                    + "triggered without fresh user-input. The current inbox carries "
+                    + "only in-bound process events (child closed / steer reply / "
+                    + "tool-result). Spawning new projects or steering existing "
+                    + "ones without a user prompt drives the same respawn cascade "
+                    + "we just stopped. Emit RELAY (worker output → user), "
+                    + "RELAY_INBOX (notification → user), ANSWER (short status), "
+                    + "or WAIT — and let the user decide whether more work is wanted.";
+            return new ActionTurnOutcome(hint, /*awaitingUserInput*/ true);
+        }
+
         // Plan-Mode actions go through the shared service first. When
         // the service recognises the action it returns the outcome;
         // otherwise null and we fall through to Eddie-specific actions.

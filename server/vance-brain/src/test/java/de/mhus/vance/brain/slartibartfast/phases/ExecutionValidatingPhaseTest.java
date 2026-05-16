@@ -35,7 +35,12 @@ class ExecutionValidatingPhaseTest {
     @BeforeEach
     void setUp() {
         documentService = mock(DocumentService.class);
-        phase = new ExecutionValidatingPhase(documentService);
+        // ContentValidatingPhase needs LLM infrastructure we don't
+        // wire in unit tests — mock it so it always reports
+        // "skipped" (returns false), leaving the structural check
+        // as the only active gate.
+        ContentValidatingPhase contentValidating = mock(ContentValidatingPhase.class);
+        phase = new ExecutionValidatingPhase(documentService, contentValidating);
         process = new ThinkProcessDocument();
         process.setId("proc-1");
         process.setTenantId("acme");

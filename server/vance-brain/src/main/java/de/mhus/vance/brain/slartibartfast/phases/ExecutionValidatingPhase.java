@@ -65,6 +65,7 @@ public class ExecutionValidatingPhase {
             "executed-recipe-produced-expected-artifacts";
 
     private final DocumentService documentService;
+    private final ContentValidatingPhase contentValidatingPhase;
 
     public void execute(
             ArchitectState state,
@@ -72,9 +73,14 @@ public class ExecutionValidatingPhase {
             ThinkEngineContext ctx) {
 
         if (state.getSubgoals().isEmpty()) {
-            // Nothing planned, nothing to validate — pass through.
+            // Nothing planned structurally — still run the
+            // content-judge against user criteria, since a thin
+            // plan with strong user criteria is exactly where the
+            // content judge adds the most value.
+            contentValidatingPhase.executeIfApplicable(state, process, ctx);
+            if (state.getPendingRecovery() != null) return;
             appendIteration(state, "no subgoals to validate",
-                    "passed (vacuous)",
+                    "passed (vacuous structural; content not blocking)",
                     PhaseIteration.IterationOutcome.PASSED);
             return;
         }
@@ -135,13 +141,25 @@ public class ExecutionValidatingPhase {
         state.setValidationReport(report);
 
         if (check.isPassed()) {
-            appendIteration(state,
-                    expectedPaths.size() + " expected artifacts",
-                    "passed — all artifacts present and substantial",
-                    PhaseIteration.IterationOutcome.PASSED);
-            log.info("Slartibartfast id='{}' EXECUTION_VALIDATING passed — "
-                            + "{} expected artifacts found",
-                    process.getId(), expectedPaths.size());
+            // Structural artifacts present. Hand off to the
+            // content judge if the user actually provided
+            // criteria — otherwise we're done.
+            boolean contentRan = contentValidatingPhase
+                    .executeIfApplicable(state, process, ctx);
+            if (state.getPendingRecovery() != null) {
+                // Content judge flagged a gap — recovery
+                // hint already attached.
+                return;
+            }
+            if (!contentRan) {
+                appendIteration(state,
+                        expectedPaths.size() + " expected artifacts",
+                        "passed — structural ok, no user criteria for "
+                                + "content judge",
+                        PhaseIteration.IterationOutcome.PASSED);
+            }
+            log.info("Slartibartfast id='{}' EXECUTION_VALIDATING passed",
+                    process.getId());
             return;
         }
 

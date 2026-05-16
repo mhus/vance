@@ -348,7 +348,11 @@ public class SlartibartfastEngine implements ThinkEngine {
                             "Recipe '" + applied.name()
                                     + "' references unknown engine '"
                                     + applied.engine() + "'"));
-            String childName = "slart-exec-" + state.getRunId();
+            // Recovery cycles re-enter EXECUTING with the same
+            // runId; suffix with recoveryCount so child names
+            // don't collide with the previous execution's child.
+            String childName = "slart-exec-" + state.getRunId()
+                    + "-" + state.getRecoveryCount();
             ThinkProcessDocument child = thinkProcessService.create(
                     process.getTenantId(),
                     process.getProjectId(),

@@ -89,6 +89,9 @@ class PersistingPhaseTest {
         DocumentDocument existing = new DocumentDocument();
         existing.setId("docid-recipe");
         existing.setPath("recipes/_slart/3a4f7c91/essay-pipeline.yaml");
+        // Setting inlineText distinguishes the inline-update branch
+        // from the storage-backed delete-and-recreate branch.
+        existing.setInlineText("name: stale-content\nengine: vogon\n");
         when(documentService.findByPath("acme", "test-project",
                 "recipes/_slart/3a4f7c91/essay-pipeline.yaml"))
                 .thenReturn(Optional.of(existing));

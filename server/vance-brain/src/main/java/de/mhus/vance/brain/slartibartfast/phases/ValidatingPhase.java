@@ -514,34 +514,33 @@ public class ValidatingPhase {
                 + "RECIPE name is required. Tools are called inside a "
                 + "worker's turn; the worker itself must be a recipe "
                 + "with an engine bound to it.\n\n");
-        msg.append("POSSIBLE OPTIONS for the worker: field — pick one "
-                + "per phase based on the work the phase does:\n");
-        msg.append("- 'ford' — generalist single-task worker. Default "
-                + "choice for most drafting / research / analysis / "
-                + "consolidation phases. Use when one focused turn is "
-                + "enough.\n");
-        msg.append("- 'marvin-worker' — sub-task decomposer. Use for "
-                + "long-form outputs (multi-chapter drafts, broad "
-                + "reviews) where one Ford turn would be too much.\n");
-        msg.append("- 'analyze' — read-only analyst recipe. Use for "
-                + "review / critique phases that should not write.\n");
-        msg.append("- 'code-read' — read-only code-review recipe. "
-                + "Use only when the phase reads source code.\n");
-        if (!available.isEmpty()) {
-            // List the actually-installed project recipes too —
-            // tells the LLM exactly what's available right now.
-            java.util.List<String> projectLocal = new java.util.ArrayList<>();
-            for (String name : available) {
-                if (!java.util.Set.of("ford", "marvin-worker",
-                        "analyze", "code-read").contains(name)) {
-                    projectLocal.add(name);
-                }
-            }
-            if (!projectLocal.isEmpty()) {
-                msg.append("- Project-local recipes also available: ")
-                        .append(projectLocal).append("\n");
-            }
+        // Clean enumerable list — the LLM picks one value verbatim
+        // for each phase's worker: field. Order: standards first,
+        // then project-local. Quoted so the LLM copies them as-is.
+        msg.append("POSSIBLE OPTIONS ARE (pick exactly one of these "
+                + "verbatim for each phase's worker: field):\n");
+        java.util.List<String> ordered = new java.util.ArrayList<>();
+        for (String standard : java.util.List.of(
+                "ford", "marvin-worker", "analyze", "code-read")) {
+            if (available.contains(standard)) ordered.add(standard);
         }
+        for (String name : available) {
+            if (!ordered.contains(name)) ordered.add(name);
+        }
+        for (String name : ordered) {
+            msg.append("- '").append(name).append("'\n");
+        }
+        if (ordered.isEmpty()) {
+            // Defensive: should not happen since 'ford' is bundled,
+            // but if recipe listing failed earlier the list ends up
+            // empty. Still emit the two universal standards.
+            msg.append("- 'ford'\n");
+            msg.append("- 'marvin-worker'\n");
+        }
+        msg.append("\nDefault when in doubt: 'ford' (generalist "
+                + "single-task worker). Use 'marvin-worker' only for "
+                + "long-form outputs (multi-chapter drafts) where one "
+                + "Ford turn would be too much.");
         return ValidationCheck.builder()
                 .rule(RULE_VOGON_WORKER_RECIPES_EXIST).passed(false)
                 .message(msg.toString())

@@ -75,16 +75,15 @@ public enum ArchitectStatus {
      *  recipe draft; user decides revise vs. discard. */
     ESCALATED,
 
-    /** Opt-in convenience phase: after PERSISTING, when
-     *  {@code engineParams.executeOnDone=true}, Slart spawns a
-     *  child process from the freshly persisted recipe and parks
-     *  here until the child reaches a terminal status. The
-     *  child's {@code ProcessEvent} arrives via
-     *  {@code drainPending}; the engine then transitions to
+    /** After PERSISTING, Slart spawns a child process from the
+     *  freshly persisted recipe and parks here until the child
+     *  reaches a terminal status. The child's
+     *  {@code ProcessEvent} arrives via {@code drainPending};
+     *  the engine then transitions to
      *  {@link #EXECUTION_VALIDATING} (child DONE) or
-     *  {@link #FAILED} (child STOPPED / FAILED). When
-     *  {@code executeOnDone} is false (default) the engine skips
-     *  this phase and goes PERSISTING → DONE directly. */
+     *  {@link #FAILED} (child STOPPED / FAILED). Skipped when
+     *  {@code engineParams.planOnly=true} — the engine goes
+     *  PERSISTING → DONE directly. */
     EXECUTING,
 
     /** Post-execution structural validation: after the child
@@ -95,8 +94,8 @@ public enum ArchitectStatus {
      *  Pass → transition to {@link #DONE}. Fail → set
      *  {@link ArchitectState#getPendingRecovery()} routing back
      *  to {@link #PROPOSING} with a hint listing missing
-     *  artifacts; recovery budget applies. Only entered when
-     *  {@code engineParams.executeOnDone=true}. */
+     *  artifacts; recovery budget applies. Skipped when
+     *  {@code engineParams.planOnly=true}. */
     EXECUTION_VALIDATING,
 
     /** Recipe persisted, DONE event emitted with the recipe path

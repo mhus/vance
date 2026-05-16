@@ -419,6 +419,11 @@ class SlartibartfastEngineLifecycleTest {
     private static ThinkProcessDocument newProcess() {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put(SlartibartfastEngine.USER_DESCRIPTION_KEY, "write me an essay");
+        // Lifecycle tests verify the FRAMING → ... → PERSISTING
+        // chain; the auto-execute path needs recipeResolver +
+        // thinkEngineServiceProvider which the unit-test fixture
+        // stubs as null. planOnly stays on the planner contract.
+        params.put(SlartibartfastEngine.PLAN_ONLY_KEY, true);
         ThinkProcessDocument p = new ThinkProcessDocument();
         p.setId("proc-1");
         p.setTenantId("acme");

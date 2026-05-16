@@ -227,15 +227,21 @@ public class ArchitectState {
     @Deprecated
     private @Nullable String escalationInboxItemId;
 
-    /** When {@code true}, after PERSISTING the engine transitions
-     *  to {@link ArchitectStatus#EXECUTING} instead of {@link
-     *  ArchitectStatus#DONE}, spawning a child process from the
-     *  freshly persisted recipe and parking until the child
-     *  reaches a terminal status. Default {@code false} preserves
-     *  the planner-only contract. Set via
-     *  {@code engineParams.executeOnDone}. */
+    /** When {@code true}, Slart stops after PERSISTING with status
+     *  {@link ArchitectStatus#DONE} — it produced a recipe and an
+     *  audit chain, that's it. When {@code false} (default), it
+     *  also spawns a child process from the persisted recipe,
+     *  parks in {@link ArchitectStatus#EXECUTING} until the child
+     *  closes, then runs {@link ArchitectStatus#EXECUTION_VALIDATING}
+     *  before flipping to DONE.
+     *
+     *  <p>Default is execute-and-validate because that's what most
+     *  callers want from a "schreib mir X" instruction. Set
+     *  {@code engineParams.planOnly=true} for plan-only mode
+     *  (cheap, deterministic — useful for debugging, recipe
+     *  export, version-control of plans, audit). */
     @Builder.Default
-    private boolean executeOnDone = false;
+    private boolean planOnly = false;
 
     /** Set when EXECUTING spawned the child process. Lets the
      *  engine recognise the matching {@code ProcessEvent} on

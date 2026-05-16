@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * EXECUTION_VALIDATING — structural post-execution gate. Runs
- * after the executeOnDone child closed {@code DONE} and verifies
+ * after the auto-spawned execution child closed {@code DONE} and verifies
  * that the artifacts the generated recipe was supposed to produce
  * actually exist as project documents with non-trivial content.
  *

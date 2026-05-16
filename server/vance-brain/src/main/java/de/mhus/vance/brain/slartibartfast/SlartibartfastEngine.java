@@ -109,13 +109,13 @@ public class SlartibartfastEngine implements ThinkEngine {
      *  value. Default {@code FAIL}. */
     public static final String ESCALATION_MODE_KEY = "escalationMode";
 
-    /** {@code engineParams[EXECUTE_ON_DONE_KEY]} — when truthy
-     *  ({@code true} / {@code "true"} / {@code "1"}), Slart
-     *  spawns a child process from the persisted recipe after
-     *  PERSISTING and parks in
-     *  {@link ArchitectStatus#EXECUTING} until the child closes.
-     *  Default {@code false}. */
-    public static final String EXECUTE_ON_DONE_KEY = "executeOnDone";
+    /** {@code engineParams[PLAN_ONLY_KEY]} — when truthy
+     *  ({@code true} / {@code "true"} / {@code "1"}), Slart stops
+     *  after PERSISTING with status DONE and skips the EXECUTING
+     *  + EXECUTION_VALIDATING phases. Default {@code false}:
+     *  Slart plans, executes via a spawned child, and validates
+     *  the produced artifacts before reporting DONE. */
+    public static final String PLAN_ONLY_KEY = "planOnly";
 
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
@@ -323,7 +323,7 @@ public class SlartibartfastEngine implements ThinkEngine {
         String recipePath = state.getPersistedRecipePath();
         if (recipePath == null) {
             state.setFailureReason(
-                    "executeOnDone requested but persistedRecipePath is null");
+                    "EXECUTING entered but persistedRecipePath is null");
             state.setStatus(ArchitectStatus.FAILED);
             return;
         }
@@ -718,10 +718,10 @@ public class SlartibartfastEngine implements ThinkEngine {
                 persistingPhase.execute(state, process, ctx);
                 if (state.getFailureReason() != null) {
                     state.setStatus(ArchitectStatus.FAILED);
-                } else if (state.isExecuteOnDone()) {
-                    state.setStatus(ArchitectStatus.EXECUTING);
-                } else {
+                } else if (state.isPlanOnly()) {
                     state.setStatus(ArchitectStatus.DONE);
+                } else {
+                    state.setStatus(ArchitectStatus.EXECUTING);
                 }
             }
             case EXECUTING -> {
@@ -782,14 +782,14 @@ public class SlartibartfastEngine implements ThinkEngine {
                 parseConfirmationMode(stringParam(p, CONFIRMATION_MODE_KEY));
         de.mhus.vance.api.slartibartfast.EscalationMode escalationMode =
                 parseEscalationMode(stringParam(p, ESCALATION_MODE_KEY));
-        boolean executeOnDone = parseBooleanParam(p, EXECUTE_ON_DONE_KEY);
+        boolean planOnly = parseBooleanParam(p, PLAN_ONLY_KEY);
         return ArchitectState.builder()
                 .runId(generateRunId())
                 .userDescription(userDescription)
                 .outputSchemaType(schemaType)
                 .confirmationMode(confirmationMode)
                 .escalationMode(escalationMode)
-                .executeOnDone(executeOnDone)
+                .planOnly(planOnly)
                 .status(ArchitectStatus.READY)
                 .build();
     }

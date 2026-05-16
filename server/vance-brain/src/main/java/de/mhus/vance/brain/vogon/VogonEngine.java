@@ -216,6 +216,13 @@ public class VogonEngine implements ThinkEngine {
                 .strategy(strategy.getName())
                 .strategyVersion(strategy.getVersion())
                 .build();
+        // Built-in sentinel — lets entry-point phases declare
+        // `gate: {requires: [start]}` instead of an empty/omitted gate.
+        // Slartibartfast's PROPOSING LLM has a strong preference for
+        // this idiom (it reads natural and parallels the per-phase
+        // `<phase>_completed` flags), and an unset `start` flag silently
+        // dead-locks the first phase. See gateSatisfied().
+        state.getFlags().put("start", true);
         state.getCurrentPhasePath().add(strategy.getPhases().get(0).getName());
         persistState(process, state);
         log.info("Vogon.start tenant='{}' session='{}' id='{}' strategy='{}' phase='{}'",

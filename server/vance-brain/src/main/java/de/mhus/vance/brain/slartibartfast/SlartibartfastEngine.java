@@ -142,6 +142,16 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final ValidatingPhase validatingPhase;
     private final PersistingPhase persistingPhase;
     private final ExecutionValidatingPhase executionValidatingPhase;
+    /**
+     * Deterministic lift of file-path conventions from CLASSIFYING's
+     * evidence into acceptanceCriteria. Runs between CLASSIFYING and
+     * DECOMPOSING. Without this, kit-OUTPUT.md path conventions reach
+     * the LLM as evidence claims but never as testable criteria, and
+     * the generated Vogon recipe drops the persistence phase. See
+     * {@link PathCriteriaLifter} javadoc for the full failure-mode
+     * history.
+     */
+    private final PathCriteriaLifter pathCriteriaLifter;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -680,6 +690,13 @@ public class SlartibartfastEngine implements ThinkEngine {
             }
             case CLASSIFYING -> {
                 classifyingPhase.execute(state, process, ctx);
+                // Promote file-path conventions from evidence claims
+                // into synthetic acceptance criteria so PROPOSING /
+                // VALIDATING treat them as required deliverables. Pure
+                // function, no LLM. See PathCriteriaLifter javadoc.
+                if (state.getFailureReason() == null) {
+                    pathCriteriaLifter.lift(state);
+                }
                 if (state.getFailureReason() != null) {
                     state.setStatus(ArchitectStatus.FAILED);
                 } else {

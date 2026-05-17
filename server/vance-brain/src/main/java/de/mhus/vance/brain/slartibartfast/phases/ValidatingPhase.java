@@ -2,6 +2,7 @@ package de.mhus.vance.brain.slartibartfast.phases;
 
 import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.ArchitectStatus;
+import de.mhus.vance.api.slartibartfast.Criterion;
 import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.PhaseIteration;
 import de.mhus.vance.api.slartibartfast.RecipeDraft;
@@ -69,6 +70,30 @@ public class ValidatingPhase {
             "justification-subgoal-id-resolves";
     public static final String RULE_SCHEMA_TYPE_SUPPORTED =
             "outputSchemaType-supported";
+    /**
+     * Every acceptance criterion that names a file-path must be
+     * backed by at least one recipe phase whose {@code workerInput}
+     * contains both the literal string {@code doc_create_text} and
+     * the path itself. Catches Slart's failure mode where the
+     * generated Vogon recipe runs all content phases as in-chat
+     * drafts and never persists to the kit-declared OUTPUT path
+     * (the recurring symptom across yesterday's and today's runs).
+     */
+    public static final String RULE_PATH_OUTPUTS_PERSISTED =
+            "path-criteria-have-doc-create-text-phase";
+
+    /** Matches a path inside a criterion text, same shape as
+     *  {@link de.mhus.vance.brain.slartibartfast.PathCriteriaLifter#PATH_PATTERN}
+     *  but slimmer: VALIDATING only cares about extracting the path
+     *  back out of a previously-lifted criterion. The lifter's
+     *  criterion text is stable ("…persist its output at `<path>`
+     *  via doc_create_text."), so a back-tick capture is enough.
+     */
+    private static final java.util.regex.Pattern CRITERION_PATH_PATTERN =
+            java.util.regex.Pattern.compile(
+                    "`((?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)+"
+                            + "[A-Za-z0-9_][A-Za-z0-9_.-]*"
+                            + "\\.(?:md|markdown|txt|yaml|yml|json|csv|pdf))`");
 
     private final RecipeLoader recipeLoader;
     private final PromptTemplateRenderer promptTemplateRenderer;
@@ -349,6 +374,22 @@ public class ValidatingPhase {
         report.add(0, ValidationCheck.builder()
                 .rule(RULE_RECIPE_PRESENT).passed(true)
                 .message("RecipeDraft present").build());
+
+        // 7. Path-criteria → persistence-phase check. Each
+        //    acceptance criterion that names a file-path (lifted by
+        //    PathCriteriaLifter from OUTPUT.md evidence claims, or
+        //    user-stated) must be backed by at least one recipe
+        //    phase whose workerInput contains both `doc_create_text`
+        //    and the path literal. Without this, Slart's generated
+        //    recipes end with chat-only review phases and the kit-
+        //    declared OUTPUT folder stays empty.
+        ValidationCheck pathCheck = checkPathPersistence(draft, state);
+        if (pathCheck != null) {
+            report.add(pathCheck);
+            if (!pathCheck.isPassed() && firstFail == null) {
+                firstFail = pathCheck;
+            }
+        }
 
         state.setValidationReport(report);
 
@@ -681,6 +722,74 @@ public class ValidatingPhase {
 
     private static long countFailed(List<ValidationCheck> report) {
         return report.stream().filter(v -> !v.isPassed()).count();
+    }
+
+    /**
+     * For every acceptance criterion that names a file-path, check
+     * that the recipe YAML has at least one phase whose
+     * {@code workerInput} contains BOTH the literal string
+     * {@code doc_create_text} AND the path itself. Returns null
+     * when the recipe has no path-criteria at all (nothing to
+     * check); a passing {@link ValidationCheck} when every path is
+     * covered; a failing one with an offending-path message when
+     * any path is missing.
+     *
+     * <p>Substring matching on the YAML — coarse but works because
+     * Slart's emitted recipes carry the workerInput as plain text
+     * blocks and {@code doc_create_text} is a tool name that doesn't
+     * occur in normal prose. False positives are tolerable here;
+     * a false negative would silently let an unpersisted recipe
+     * through, which is exactly the failure mode we're trying to
+     * close.
+     */
+    private static @org.jspecify.annotations.Nullable ValidationCheck
+    checkPathPersistence(
+            de.mhus.vance.api.slartibartfast.RecipeDraft draft,
+            ArchitectState state) {
+        if (draft == null) return null;
+        String yaml = draft.getYaml() == null ? "" : draft.getYaml();
+        // Collect every path mentioned in acceptanceCriteria text.
+        java.util.LinkedHashSet<String> requiredPaths = new java.util.LinkedHashSet<>();
+        for (Criterion c : state.getAcceptanceCriteria()) {
+            String t = c.getText();
+            if (t == null) continue;
+            java.util.regex.Matcher m = CRITERION_PATH_PATTERN.matcher(t);
+            while (m.find()) requiredPaths.add(m.group(1));
+        }
+        if (requiredPaths.isEmpty()) {
+            return null;  // nothing to enforce, skip the check entirely
+        }
+
+        // For each required path, the YAML must contain both the
+        // tool name and the path string. Match on substring — we
+        // can't trivially parse the strategyPlanYaml here.
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        for (String path : requiredPaths) {
+            boolean hasToolCall = yaml.contains("doc_create_text");
+            boolean hasPath = yaml.contains(path);
+            if (!hasToolCall || !hasPath) {
+                missing.add(path);
+            }
+        }
+        if (missing.isEmpty()) {
+            return ValidationCheck.builder()
+                    .rule(RULE_PATH_OUTPUTS_PERSISTED).passed(true)
+                    .message(requiredPaths.size()
+                            + " path criterion(s) all have backing "
+                            + "doc_create_text phases in the recipe")
+                    .build();
+        }
+        return ValidationCheck.builder()
+                .rule(RULE_PATH_OUTPUTS_PERSISTED)
+                .passed(false)
+                .message("acceptance criteria require outputs at "
+                        + missing.size() + " path(s) that no recipe "
+                        + "phase persists: " + missing
+                        + ". Add a phase whose workerInput calls "
+                        + "doc_create_text with the literal path "
+                        + "argument. Without it the project's output "
+                        + "folder stays empty after the run.")
+                .build();
     }
 
     private static void appendIteration(

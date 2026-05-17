@@ -73,14 +73,23 @@ public class ValidatingPhase {
     /**
      * Every acceptance criterion that names a file-path must be
      * backed by at least one recipe phase whose {@code workerInput}
-     * contains both the literal string {@code doc_create_text} and
-     * the path itself. Catches Slart's failure mode where the
-     * generated Vogon recipe runs all content phases as in-chat
-     * drafts and never persists to the kit-declared OUTPUT path
-     * (the recurring symptom across yesterday's and today's runs).
+     * contains both a recognised write-tool name (currently
+     * {@code doc_create_text} or {@code doc_write_text}) and the
+     * path itself. Catches Slart's failure mode where the generated
+     * Vogon recipe runs all content phases as in-chat drafts and
+     * never persists to the kit-declared OUTPUT path (the recurring
+     * symptom across yesterday's and today's runs).
      */
     public static final String RULE_PATH_OUTPUTS_PERSISTED =
-            "path-criteria-have-doc-create-text-phase";
+            "path-criteria-have-doc-write-phase";
+
+    /** Recipe-phase workerInputs satisfying RULE_PATH_OUTPUTS_PERSISTED
+     *  may use either of these tool names — {@code doc_create_text}
+     *  for first-write-only semantics, {@code doc_write_text} for
+     *  upsert (overwrite-on-retry). Both end up calling
+     *  DocumentService underneath. */
+    private static final java.util.List<String> WRITE_TOOL_NAMES =
+            java.util.List.of("doc_write_text", "doc_create_text");
 
     /** Matches a path inside a criterion text, same shape as
      *  {@link de.mhus.vance.brain.slartibartfast.PathCriteriaLifter#PATH_PATTERN}
@@ -760,14 +769,21 @@ public class ValidatingPhase {
             return null;  // nothing to enforce, skip the check entirely
         }
 
-        // For each required path, the YAML must contain both the
-        // tool name and the path string. Match on substring — we
-        // can't trivially parse the strategyPlanYaml here.
+        // For each required path, the YAML must contain both a
+        // recognised write-tool name AND the path string. Match on
+        // substring — we can't trivially parse the strategyPlanYaml
+        // here.
+        boolean hasAnyWriteTool = false;
+        for (String t : WRITE_TOOL_NAMES) {
+            if (yaml.contains(t)) {
+                hasAnyWriteTool = true;
+                break;
+            }
+        }
         java.util.List<String> missing = new java.util.ArrayList<>();
         for (String path : requiredPaths) {
-            boolean hasToolCall = yaml.contains("doc_create_text");
             boolean hasPath = yaml.contains(path);
-            if (!hasToolCall || !hasPath) {
+            if (!hasAnyWriteTool || !hasPath) {
                 missing.add(path);
             }
         }
@@ -776,7 +792,8 @@ public class ValidatingPhase {
                     .rule(RULE_PATH_OUTPUTS_PERSISTED).passed(true)
                     .message(requiredPaths.size()
                             + " path criterion(s) all have backing "
-                            + "doc_create_text phases in the recipe")
+                            + "doc_write_text / doc_create_text phases "
+                            + "in the recipe")
                     .build();
         }
         return ValidationCheck.builder()
@@ -786,9 +803,11 @@ public class ValidatingPhase {
                         + missing.size() + " path(s) that no recipe "
                         + "phase persists: " + missing
                         + ". Add a phase whose workerInput calls "
-                        + "doc_create_text with the literal path "
-                        + "argument. Without it the project's output "
-                        + "folder stays empty after the run.")
+                        + "doc_write_text (overwrites if the file "
+                        + "exists) or doc_create_text (first-write "
+                        + "only) with the literal path argument. "
+                        + "Without it the project's output folder "
+                        + "stays empty after the run.")
                 .build();
     }
 

@@ -86,7 +86,8 @@ public class StandardAiChat implements AiChat {
         // wrappers also forward the round-trip for persistent storage.
         this.sync = sync == null
                 ? null
-                : new LoggingChatModel(name, sync, options.getLlmTraceWriter());
+                : new LoggingChatModel(
+                        name, sync, options.getLlmTraceWriter(), options.getMetricService());
         this.streaming = wrapStreaming(name, streaming, options);
         this.options = options;
     }
@@ -108,7 +109,7 @@ public class StandardAiChat implements AiChat {
             return null;
         }
         StreamingChatModel logged = new LoggingStreamingChatModel(
-                name, raw, options.getLlmTraceWriter());
+                name, raw, options.getLlmTraceWriter(), options.getMetricService());
         return new ResilientStreamingChatModel(
                 List.of(new ChainEntry(logged, name, RetryPolicy.DEFAULT)),
                 options.getUserNotifier());

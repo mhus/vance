@@ -7,6 +7,12 @@
     - File output: one fixed file at ${LOG_FILE} (resolved from the Spring
       property logging.file.name). append=false means it is truncated on
       every JVM start — we want a fresh log per run, not a growing tail.
+    - LLM usage output: dedicated file ${LLM_USAGE_FILE} for the per-call
+      stats line emitted by LlmCallStatsLogger (logger
+      de.mhus.vance.brain.ai.stats). append=true so the file accumulates
+      across runs — usage history is the point. additivity=false routes
+      the stats lines EXCLUSIVELY to this file, so vance-brain.log and
+      the console stay free of them.
 -->
 <configuration>
 
@@ -15,6 +21,9 @@
 
     <springProperty scope="context" name="LOG_FILE" source="logging.file.name"
                     defaultValue="vance-brain.log"/>
+    <springProperty scope="context" name="LLM_USAGE_FILE"
+                    source="logging.file.llm-usage"
+                    defaultValue="vance-llm-usage.log"/>
 
     <appender name="FILE" class="ch.qos.logback.core.FileAppender">
         <file>${LOG_FILE}</file>
@@ -24,6 +33,19 @@
             <charset>UTF-8</charset>
         </encoder>
     </appender>
+
+    <appender name="LLM_USAGE_FILE" class="ch.qos.logback.core.FileAppender">
+        <file>${LLM_USAGE_FILE}</file>
+        <append>true</append>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <logger name="de.mhus.vance.brain.ai.stats" level="TRACE" additivity="false">
+        <appender-ref ref="LLM_USAGE_FILE"/>
+    </logger>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>

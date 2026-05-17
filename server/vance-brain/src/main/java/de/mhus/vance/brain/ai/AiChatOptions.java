@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.shared.metric.MetricService;
 import java.util.List;
 import java.util.function.Consumer;
 import lombok.Builder;
@@ -121,6 +122,24 @@ public class AiChatOptions {
      * (log-level trace continues regardless).
      */
     private @Nullable LlmTraceWriter llmTraceWriter;
+
+    /**
+     * Optional {@link MetricService} used by
+     * {@link LoggingChatModel} / {@link LoggingStreamingChatModel} to
+     * push per-call character-length distribution summaries
+     * ({@code vance.llm.chars.input}, {@code vance.llm.chars.output},
+     * tagged by {@code model}). Independent of the
+     * {@link #llmTraceWriter} (persistence) and of the static
+     * trace log under {@code de.mhus.vance.brain.ai.stats}. {@code null}
+     * skips the metric push entirely; the stats trace line is emitted
+     * regardless when its logger is at TRACE.
+     *
+     * <p>{@link EngineChatFactory} fills this from the injected bean by
+     * default, so engine-spawned chats always emit char metrics. Direct
+     * {@code AiModelService.createChat} callers that bypass the factory
+     * (e.g. {@code RecipeSelectorService}) can pass it explicitly.
+     */
+    private @Nullable MetricService metricService;
 
     /**
      * Where to place the {@code cache_control} marker on the

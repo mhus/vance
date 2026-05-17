@@ -34,6 +34,7 @@ import de.mhus.vance.brain.slartibartfast.phases.GatheringPhase;
 import de.mhus.vance.brain.slartibartfast.phases.PersistingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ProposingPhase;
 import de.mhus.vance.brain.slartibartfast.phases.ValidatingPhase;
+import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
@@ -191,6 +192,155 @@ public class SlartibartfastEngine implements ThinkEngine {
         // Vogon. Sub-process spawns (M5: Marvin-recipe path) will go
         // through the same async-steer pattern Marvin uses.
         return true;
+    }
+
+    /**
+     * Slart's parent-facing summary. Without this, the default
+     * {@link ThinkEngine#summarizeForParent} returns only
+     * "Child process X status=done" — Arthur's LLM sees that, finds
+     * no produced content, hallucinates "delegated worker finished
+     * without providing anything" and triggers a spurious ASK_USER
+     * cascade through Eddie (observed live on 2026-05-17).
+     *
+     * <p>The summary names the recipe that was built, the outcome of
+     * the auto-executed child (Vogon strategy or Marvin tree), and
+     * the persistence paths the kit's OUTPUT.md declared — exactly
+     * the data the parent's LLM needs to decide "done, hand to user"
+     * vs. "something is missing". For FAILED/STOPPED outcomes the
+     * {@code failureReason} is propagated so Arthur can explain the
+     * problem instead of guessing.
+     *
+     * <p>{@code payload} carries the same fields structured so a
+     * downstream deterministic orchestrator (Vogon-as-parent) could
+     * branch on outcome without re-parsing the markdown.
+     */
+    @Override
+    public ParentReport summarizeForParent(
+            ThinkProcessDocument process, ProcessEventType eventType) {
+        ArchitectState state;
+        try {
+            state = loadState(process);
+        } catch (RuntimeException e) {
+            return ParentReport.of("Slartibartfast process "
+                    + process.getId() + " status="
+                    + eventType.name().toLowerCase());
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("eventType", eventType.name());
+        payload.put("processId", process.getId());
+        payload.put("runId", state.getRunId());
+        payload.put("schemaType", state.getOutputSchemaType().name());
+        if (state.getPersistedRecipePath() != null) {
+            payload.put("recipePath", state.getPersistedRecipePath());
+        }
+        if (state.getChildExecutionProcessId() != null) {
+            payload.put("childProcessId", state.getChildExecutionProcessId());
+        }
+        if (state.getChildExecutionOutcome() != null) {
+            payload.put("childOutcome", state.getChildExecutionOutcome());
+        }
+        List<String> outputPaths = extractOutputPaths(state);
+        if (!outputPaths.isEmpty()) {
+            payload.put("outputPaths", outputPaths);
+        }
+        if (state.getFailureReason() != null) {
+            payload.put("failureReason", state.getFailureReason());
+        }
+
+        StringBuilder sb = new StringBuilder();
+        RecipeDraft draft = state.getProposedRecipe();
+        String recipeName = draft == null ? null : draft.getName();
+
+        switch (eventType) {
+            case DONE -> {
+                sb.append("Slartibartfast finished")
+                        .append(recipeName == null
+                                ? "" : " — recipe '" + recipeName + "'")
+                        .append(state.isPlanOnly()
+                                ? " (plan-only; the recipe was generated and "
+                                        + "persisted but not executed)."
+                                : " and ran it to completion.");
+                if (state.getPersistedRecipePath() != null) {
+                    sb.append("\nRecipe persisted at `")
+                            .append(state.getPersistedRecipePath())
+                            .append("`.");
+                }
+                if (!outputPaths.isEmpty()) {
+                    sb.append("\nOutputs written to:");
+                    for (String p : outputPaths) {
+                        sb.append("\n- `").append(p).append("`");
+                    }
+                }
+                if (outputPaths.isEmpty() && !state.isPlanOnly()) {
+                    sb.append("\nThe recipe declared no path-output "
+                            + "criteria — the result lives in the child "
+                            + "process's chat history, not as a file.");
+                }
+            }
+            case FAILED -> {
+                sb.append("Slartibartfast failed");
+                if (recipeName != null) {
+                    sb.append(" while working on recipe '")
+                            .append(recipeName).append("'");
+                }
+                sb.append(".");
+                if (state.getFailureReason() != null) {
+                    sb.append("\nReason: ").append(state.getFailureReason());
+                }
+                if (state.getChildExecutionOutcome() != null
+                        && !"DONE".equals(state.getChildExecutionOutcome())) {
+                    sb.append("\nChild execution outcome: ")
+                            .append(state.getChildExecutionOutcome());
+                }
+            }
+            case STOPPED -> {
+                sb.append("Slartibartfast was stopped");
+                if (recipeName != null) {
+                    sb.append(" (recipe '").append(recipeName).append("')");
+                }
+                sb.append(".");
+            }
+            case BLOCKED -> {
+                sb.append("Slartibartfast is blocked at status=")
+                        .append(state.getStatus().name().toLowerCase());
+                if (state.getPendingInboxKind()
+                        != de.mhus.vance.api.slartibartfast.PendingInboxKind.NONE) {
+                    sb.append(" awaiting a ")
+                            .append(state.getPendingInboxKind().name()
+                                    .toLowerCase().replace('_', '-'))
+                            .append(" answer from the user.");
+                } else {
+                    sb.append(".");
+                }
+            }
+        }
+        return new ParentReport(sb.toString(), payload);
+    }
+
+    /**
+     * Pull lifted-path file references out of {@code acceptanceCriteria}.
+     * The {@link PathCriteriaLifter} writes criteria of the form
+     * "The recipe must persist its output at `<path>` via doc_write_text."
+     * — we extract everything inside back-ticks that matches a known
+     * file extension. Matching is intentionally lenient (substring) so
+     * user-stated criteria that mention a path verbatim are picked up
+     * too; de-duplication preserves first-seen order.
+     */
+    private static List<String> extractOutputPaths(ArchitectState state) {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        if (state.getAcceptanceCriteria() == null) return List.of();
+        java.util.regex.Pattern pat = java.util.regex.Pattern.compile(
+                "`((?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)+"
+                        + "[A-Za-z0-9_][A-Za-z0-9_.-]*"
+                        + "\\.(?:md|markdown|txt|yaml|yml|json|csv|pdf))`");
+        for (Criterion c : state.getAcceptanceCriteria()) {
+            String t = c.getText();
+            if (t == null) continue;
+            java.util.regex.Matcher m = pat.matcher(t);
+            while (m.find()) out.add(m.group(1));
+        }
+        return List.copyOf(out);
     }
 
     // ──────────────────── Lifecycle ────────────────────

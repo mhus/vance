@@ -47,7 +47,7 @@ class PathCriteriaLifterTest {
                     assertThat(c.getOrigin()).isEqualTo(CriterionOrigin.INFERRED_DOMAIN);
                     assertThat(c.getText())
                             .contains("essay/final-essay.md")
-                            .contains("doc_create_text");
+                            .contains("doc_write_text");
                 });
     }
 

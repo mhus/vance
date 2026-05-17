@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.ai;
 
+import de.mhus.vance.shared.metric.MetricService;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
@@ -10,11 +11,13 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Decorating {@link StreamingChatModel} that traces request and the
- * final aggregated response via {@link AiTraceLogger}, plus optionally
- * forwards the round-trip to a {@link LlmTraceWriter} for persistent
- * storage. Per-token partials are intentionally NOT logged at trace
- * level — they're reconstructible from the final
- * {@code aiMessage().text()} and would otherwise drown the trace log.
+ * final aggregated response via {@link AiTraceLogger}, emits a compact
+ * per-call stats line plus char-length metrics via
+ * {@link LlmCallStatsLogger}, and optionally forwards the round-trip
+ * to a {@link LlmTraceWriter} for persistent storage. Per-token
+ * partials are intentionally NOT logged at trace level — they're
+ * reconstructible from the final {@code aiMessage().text()} and would
+ * otherwise drown the trace log.
  */
 public class LoggingStreamingChatModel implements StreamingChatModel {
 
@@ -23,16 +26,26 @@ public class LoggingStreamingChatModel implements StreamingChatModel {
     private final String name;
     private final StreamingChatModel delegate;
     private final @Nullable LlmTraceWriter traceWriter;
+    private final @Nullable MetricService metricService;
 
     public LoggingStreamingChatModel(String name, StreamingChatModel delegate) {
-        this(name, delegate, null);
+        this(name, delegate, null, null);
     }
 
     public LoggingStreamingChatModel(
             String name, StreamingChatModel delegate, @Nullable LlmTraceWriter traceWriter) {
+        this(name, delegate, traceWriter, null);
+    }
+
+    public LoggingStreamingChatModel(
+            String name,
+            StreamingChatModel delegate,
+            @Nullable LlmTraceWriter traceWriter,
+            @Nullable MetricService metricService) {
         this.name = name;
         this.delegate = delegate;
         this.traceWriter = traceWriter;
+        this.metricService = metricService;
     }
 
     @Override
@@ -48,14 +61,18 @@ public class LoggingStreamingChatModel implements StreamingChatModel {
             @Override
             public void onCompleteResponse(ChatResponse complete) {
                 AiTraceLogger.logResponse(name, complete);
-                safeRecord(request, complete, System.currentTimeMillis() - started);
+                long elapsed = System.currentTimeMillis() - started;
+                LlmCallStatsLogger.record(name, request, complete, elapsed, metricService);
+                safeRecord(request, complete, elapsed);
                 handler.onCompleteResponse(complete);
             }
 
             @Override
             public void onError(Throwable error) {
                 AiTraceLogger.logStreamingError(name, error);
-                safeRecord(request, null, System.currentTimeMillis() - started);
+                long elapsed = System.currentTimeMillis() - started;
+                LlmCallStatsLogger.record(name, request, null, elapsed, metricService);
+                safeRecord(request, null, elapsed);
                 handler.onError(error);
             }
         });

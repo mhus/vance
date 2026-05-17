@@ -3,6 +3,7 @@ package de.mhus.vance.brain.ai;
 import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import java.util.ArrayList;
@@ -58,6 +59,7 @@ public class EngineChatFactory {
 
     private final AiModelResolver aiModelResolver;
     private final ProgressEmitter progressEmitter;
+    private final MetricService metricService;
 
     /**
      * Build the {@link EngineChatBundle} the engine should drive its
@@ -129,6 +131,12 @@ public class EngineChatFactory {
         if (base.getLlmTraceWriter() == null && ctx.traceLlm()) {
             base.setLlmTraceWriter((req, resp, ms) -> LlmTraceRecorder.record(
                     ctx.llmTraceService(), process, engineName, req, resp, ms));
+        }
+        // Default metric-service — always set so every engine-spawned
+        // chat pushes char-length distribution summaries to Prometheus.
+        // Caller's explicit MetricService wins (tests pass null/mock).
+        if (base.getMetricService() == null) {
+            base.setMetricService(metricService);
         }
         // Recipe-level cache kill — `params.disableCache: true` on the
         // applied recipe lands on the spawned process's engineParams.

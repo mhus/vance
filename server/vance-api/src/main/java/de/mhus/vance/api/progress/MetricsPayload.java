@@ -29,6 +29,10 @@ public class MetricsPayload {
 
     private long tokensOutTotal;
 
+    private long charsInTotal;
+
+    private long charsOutTotal;
+
     private int llmCallCount;
 
     private long elapsedMs;
@@ -38,4 +42,8 @@ public class MetricsPayload {
     private @Nullable Integer lastCallTokensIn;
 
     private @Nullable Integer lastCallTokensOut;
+
+    private @Nullable Integer lastCallCharsIn;
+
+    private @Nullable Integer lastCallCharsOut;
 }

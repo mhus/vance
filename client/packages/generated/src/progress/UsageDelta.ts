@@ -6,6 +6,8 @@
 export interface UsageDelta {
   tokensIn: number;
   tokensOut: number;
+  charsIn: number;
+  charsOut: number;
   llmCalls: number;
   elapsedMs: number;
   modelAlias?: string;

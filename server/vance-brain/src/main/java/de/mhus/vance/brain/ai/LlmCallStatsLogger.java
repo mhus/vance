@@ -106,7 +106,7 @@ public final class LlmCallStatsLogger {
 
     // ──────────────────── char counting ────────────────────
 
-    static int countRequestChars(@Nullable ChatRequest request) {
+    public static int countRequestChars(@Nullable ChatRequest request) {
         if (request == null) return 0;
         List<ChatMessage> messages = request.messages();
         if (messages == null || messages.isEmpty()) return 0;
@@ -117,7 +117,7 @@ public final class LlmCallStatsLogger {
         return clampInt(total);
     }
 
-    static int countResponseChars(@Nullable ChatResponse response) {
+    public static int countResponseChars(@Nullable ChatResponse response) {
         if (response == null) return 0;
         AiMessage ai = response.aiMessage();
         if (ai == null) return 0;

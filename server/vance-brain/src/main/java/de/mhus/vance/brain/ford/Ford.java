@@ -874,7 +874,7 @@ public class Ford implements ThinkEngine {
         try {
             ChatResponse response = done.get();
             llmCallTracker.record(
-                    process, response, System.currentTimeMillis() - startMs, modelAlias);
+                    process, request, response, System.currentTimeMillis() - startMs, modelAlias);
             AiMessage reply = response.aiMessage();
             return new StreamResult(reply, reply.text() == null ? "" : reply.text());
         } catch (ExecutionException e) {

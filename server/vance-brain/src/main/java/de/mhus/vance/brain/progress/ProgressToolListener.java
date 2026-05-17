@@ -84,6 +84,8 @@ public class ProgressToolListener {
         return UsageDelta.builder()
                 .tokensIn(clampInt(delta.tokensIn()))
                 .tokensOut(clampInt(delta.tokensOut()))
+                .charsIn(clampInt(delta.charsIn()))
+                .charsOut(clampInt(delta.charsOut()))
                 .llmCalls(Math.max(0, delta.calls()))
                 .elapsedMs(elapsedMs)
                 .build();

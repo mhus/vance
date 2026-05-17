@@ -123,7 +123,7 @@ class FramingPhaseTest {
 
         assertThat(state.getLlmCallRecords()).hasSize(1);
         verify(llmCallTracker, atLeastOnce())
-                .record(any(), any(), any(Long.class), any());
+                .record(any(), any(), any(), any(Long.class), any());
     }
 
     @Test

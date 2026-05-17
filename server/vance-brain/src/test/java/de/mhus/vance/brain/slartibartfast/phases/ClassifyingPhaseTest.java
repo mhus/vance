@@ -268,7 +268,7 @@ class ClassifyingPhaseTest {
         phase.execute(state, process, ctx);
 
         verify(llmCallTracker, atLeastOnce())
-                .record(any(), any(), any(Long.class), any());
+                .record(any(), any(), any(), any(Long.class), any());
     }
 
     // ──────────────────── helpers ────────────────────

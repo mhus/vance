@@ -6,9 +6,13 @@
 export interface MetricsPayload {
   tokensInTotal: number;
   tokensOutTotal: number;
+  charsInTotal: number;
+  charsOutTotal: number;
   llmCallCount: number;
   elapsedMs: number;
   modelAlias?: string;
   lastCallTokensIn?: number;
   lastCallTokensOut?: number;
+  lastCallCharsIn?: number;
+  lastCallCharsOut?: number;
 }

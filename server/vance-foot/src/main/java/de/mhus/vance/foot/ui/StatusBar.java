@@ -52,6 +52,7 @@ public class StatusBar {
     private final ThinkingPhrases phrases;
     private final ObjectProvider<IdeSelectionState> ideSelection;
     private final FootConfig config;
+    private final LiveUsageState liveUsage;
 
     /** Wall-clock millis when the current busy cycle started, or {@code -1} when idle. */
     private volatile long busyStartedMillis = -1;
@@ -62,12 +63,14 @@ public class StatusBar {
                      BusyIndicator busy,
                      ThinkingPhrases phrases,
                      ObjectProvider<IdeSelectionState> ideSelection,
-                     FootConfig config) {
+                     FootConfig config,
+                     LiveUsageState liveUsage) {
         this.sessions = sessions;
         this.busy = busy;
         this.phrases = phrases;
         this.ideSelection = ideSelection;
         this.config = config;
+        this.liveUsage = liveUsage;
     }
 
     /**
@@ -83,8 +86,17 @@ public class StatusBar {
             if (busyStartedMillis < 0) {
                 busyStartedMillis = System.currentTimeMillis();
                 currentPhrase = phrases.random();
+                // Fresh busy cycle — drop counters from the previous
+                // turn so the spinner doesn't start with stale numbers.
+                liveUsage.clear();
             }
         } else {
+            if (busyStartedMillis >= 0) {
+                // Edge to idle — counters belong to the (now closed)
+                // turn; clear so the next idle→busy transition starts
+                // empty rather than reflecting the last turn briefly.
+                liveUsage.clear();
+            }
             busyStartedMillis = -1;
         }
 
@@ -93,8 +105,10 @@ public class StatusBar {
                     ? FRAMES[Math.floorMod(frame, FRAMES.length)]
                     : "●";
             long elapsed = (System.currentTimeMillis() - busyStartedMillis) / 1000;
+            String usage = formatUsage();
             String line = ESC + "[33m· " + currentPhrase + "… " + marker
-                    + ESC + "[0m  " + ESC + "[2m(" + elapsed + "s)" + ESC + "[0m";
+                    + ESC + "[0m  " + ESC + "[2m(" + elapsed + "s"
+                    + usage + ")" + ESC + "[0m";
             return clamp(line, width, true);
         }
         String selection = ideSelectionText();
@@ -152,6 +166,45 @@ public class StatusBar {
     private String ideSelectionText() {
         IdeSelectionState state = ideSelection.getIfAvailable();
         return state == null ? "" : state.displayString().orElse("");
+    }
+
+    /**
+     * Live token / char counters appended to the elapsed-time block,
+     * or empty string when no LLM call has happened yet in the current
+     * busy cycle. Format: {@code " · 1.2k/340 tok · 18k/2.1k ch"} — input
+     * always first, output second; "tok" and "ch" abbreviations keep
+     * the row tight on narrow terminals.
+     */
+    private String formatUsage() {
+        LiveUsageState.Snapshot s = liveUsage.snapshot();
+        if (s == null || (s.tokensIn() == 0 && s.tokensOut() == 0
+                && s.charsIn() == 0 && s.charsOut() == 0)) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        if (s.tokensIn() > 0 || s.tokensOut() > 0) {
+            sb.append(" · ")
+                    .append(formatNum(s.tokensIn())).append('/')
+                    .append(formatNum(s.tokensOut())).append(" tok");
+        }
+        if (s.charsIn() > 0 || s.charsOut() > 0) {
+            sb.append(" · ")
+                    .append(formatNum(s.charsIn())).append('/')
+                    .append(formatNum(s.charsOut())).append(" ch");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Human-readable numeric: bare digits below 1k, then {@code 1.2k},
+     * {@code 3.4M}, {@code 5.6B}. One decimal place keeps the magnitude
+     * legible without making the spinner bar jitter on every tick.
+     */
+    static String formatNum(long n) {
+        if (n < 1_000) return Long.toString(n);
+        if (n < 1_000_000) return String.format("%.1fk", n / 1_000.0);
+        if (n < 1_000_000_000) return String.format("%.1fM", n / 1_000_000.0);
+        return String.format("%.1fB", n / 1_000_000_000.0);
     }
 
     /**

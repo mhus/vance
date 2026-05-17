@@ -15,10 +15,10 @@ import org.jspecify.annotations.Nullable;
  * to the work that happened between an operation's open and close pings —
  * not cumulative.
  *
- * <p>Token fields stay {@code 0} for operations that did not invoke an LLM
- * (pure filesystem tools, etc.); {@link #elapsedMs} is the only field
- * filled unconditionally — measured server-side as the wall-clock duration
- * of the operation as seen by the brain.
+ * <p>Token and character fields stay {@code 0} for operations that did not
+ * invoke an LLM (pure filesystem tools, etc.); {@link #elapsedMs} is the
+ * only field filled unconditionally — measured server-side as the wall-
+ * clock duration of the operation as seen by the brain.
  */
 @Data
 @Builder
@@ -31,6 +31,10 @@ public class UsageDelta {
     private int tokensIn;
 
     private int tokensOut;
+
+    private int charsIn;
+
+    private int charsOut;
 
     private int llmCalls;
 

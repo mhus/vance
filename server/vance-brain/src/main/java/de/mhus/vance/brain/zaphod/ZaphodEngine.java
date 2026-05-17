@@ -441,10 +441,10 @@ public class ZaphodEngine implements ThinkEngine {
             messages.add(UserMessage.from(body.toString()));
             String modelAlias = config.provider() + ":" + config.modelName();
             long startMs = System.currentTimeMillis();
-            ChatResponse response = ai.chatModel().chat(
-                    ChatRequest.builder().messages(messages).build());
+            ChatRequest request = ChatRequest.builder().messages(messages).build();
+            ChatResponse response = ai.chatModel().chat(request);
             llmCallTracker.record(
-                    process, response, System.currentTimeMillis() - startMs, modelAlias);
+                    process, request, response, System.currentTimeMillis() - startMs, modelAlias);
             String text = response.aiMessage() == null
                     ? null : response.aiMessage().text();
             if (text == null || text.isBlank()) {

@@ -1,8 +1,10 @@
 package de.mhus.vance.brain.progress;
 
 import de.mhus.vance.api.progress.MetricsPayload;
+import de.mhus.vance.brain.ai.LlmCallStatsLogger;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
+import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.TokenUsage;
 import java.time.Duration;
@@ -43,6 +45,7 @@ public class LlmCallTracker {
      */
     public void record(
             ThinkProcessDocument process,
+            @Nullable ChatRequest request,
             @Nullable ChatResponse response,
             long elapsedMs,
             @Nullable String modelAlias) {
@@ -52,36 +55,46 @@ public class LlmCallTracker {
         }
 
         TokenUsage usage = response == null ? null : response.tokenUsage();
-        int dIn = tokens(usage == null ? null : usage.inputTokenCount());
-        int dOut = tokens(usage == null ? null : usage.outputTokenCount());
+        int dTokensIn = tokens(usage == null ? null : usage.inputTokenCount());
+        int dTokensOut = tokens(usage == null ? null : usage.outputTokenCount());
+        int dCharsIn = LlmCallStatsLogger.countRequestChars(request);
+        int dCharsOut = LlmCallStatsLogger.countResponseChars(response);
 
         Counters next = byProcess
                 .computeIfAbsent(process.getId(), k -> new AtomicReference<>(Counters.ZERO))
-                .updateAndGet(prev -> prev.plus(dIn, dOut, elapsedMs));
+                .updateAndGet(prev -> prev.plus(
+                        dTokensIn, dTokensOut, dCharsIn, dCharsOut, elapsedMs));
 
         emitter.emitMetrics(process, MetricsPayload.builder()
                 .tokensInTotal(next.tokensIn)
                 .tokensOutTotal(next.tokensOut)
+                .charsInTotal(next.charsIn)
+                .charsOutTotal(next.charsOut)
                 .llmCallCount(next.calls)
                 .elapsedMs(next.elapsedMs)
                 .modelAlias(modelAlias)
-                .lastCallTokensIn(dIn == 0 ? null : dIn)
-                .lastCallTokensOut(dOut == 0 ? null : dOut)
+                .lastCallTokensIn(dTokensIn == 0 ? null : dTokensIn)
+                .lastCallTokensOut(dTokensOut == 0 ? null : dTokensOut)
+                .lastCallCharsIn(dCharsIn == 0 ? null : dCharsIn)
+                .lastCallCharsOut(dCharsOut == 0 ? null : dCharsOut)
                 .build());
 
         // Prometheus telemetry: per-model-alias call count + token
         // counts + latency. modelAlias is intentionally low-cardinality
         // (it's an alias like "default:fast", not the full
         // provider/version string) so it's safe to use as a tag.
+        // Char-length summaries are also published from LoggingChatModel
+        // under the model-fullname tag; the engine-driven path here is
+        // the one wired to the process-scoped progress side-channel.
         String alias = modelAlias == null || modelAlias.isBlank() ? "unknown" : modelAlias;
         metricService.counter("vance.llm.calls", "model", alias).increment();
         metricService.timer("vance.llm.call.duration", "model", alias)
                 .record(Duration.ofMillis(elapsedMs));
-        if (dIn > 0) {
-            metricService.summary("vance.llm.tokens.input", "model", alias).record(dIn);
+        if (dTokensIn > 0) {
+            metricService.summary("vance.llm.tokens.input", "model", alias).record(dTokensIn);
         }
-        if (dOut > 0) {
-            metricService.summary("vance.llm.tokens.output", "model", alias).record(dOut);
+        if (dTokensOut > 0) {
+            metricService.summary("vance.llm.tokens.output", "model", alias).record(dTokensOut);
         }
     }
 
@@ -105,7 +118,7 @@ public class LlmCallTracker {
             return Snapshot.ZERO;
         }
         Counters c = ref.get();
-        return new Snapshot(c.tokensIn, c.tokensOut, c.calls);
+        return new Snapshot(c.tokensIn, c.tokensOut, c.charsIn, c.charsOut, c.calls);
     }
 
     private static int tokens(@Nullable Integer raw) {
@@ -118,24 +131,34 @@ public class LlmCallTracker {
      * operation-level wall-clock is measured separately by the tool
      * decorator.
      */
-    public record Snapshot(long tokensIn, long tokensOut, int calls) {
-        public static final Snapshot ZERO = new Snapshot(0, 0, 0);
+    public record Snapshot(long tokensIn, long tokensOut, long charsIn, long charsOut, int calls) {
+        public static final Snapshot ZERO = new Snapshot(0, 0, 0, 0, 0);
 
         public Snapshot minus(Snapshot other) {
             return new Snapshot(
                     tokensIn - other.tokensIn,
                     tokensOut - other.tokensOut,
+                    charsIn - other.charsIn,
+                    charsOut - other.charsOut,
                     calls - other.calls);
         }
     }
 
-    private record Counters(long tokensIn, long tokensOut, int calls, long elapsedMs) {
-        static final Counters ZERO = new Counters(0, 0, 0, 0);
+    private record Counters(
+            long tokensIn,
+            long tokensOut,
+            long charsIn,
+            long charsOut,
+            int calls,
+            long elapsedMs) {
+        static final Counters ZERO = new Counters(0, 0, 0, 0, 0, 0);
 
-        Counters plus(int dIn, int dOut, long dMs) {
+        Counters plus(int dTokensIn, int dTokensOut, int dCharsIn, int dCharsOut, long dMs) {
             return new Counters(
-                    tokensIn + dIn,
-                    tokensOut + dOut,
+                    tokensIn + dTokensIn,
+                    tokensOut + dTokensOut,
+                    charsIn + dCharsIn,
+                    charsOut + dCharsOut,
                     calls + 1,
                     elapsedMs + Math.max(0, dMs));
         }

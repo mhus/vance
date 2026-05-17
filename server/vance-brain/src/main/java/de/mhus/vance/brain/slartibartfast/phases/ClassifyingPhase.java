@@ -239,10 +239,10 @@ public class ClassifyingPhase {
         String validationError = null;
         for (int attempt = 0; attempt <= MAX_OUTPUT_CORRECTIONS; attempt++) {
             long startMs = System.currentTimeMillis();
-            ChatResponse response = bundle.chat().chatModel().chat(
-                    ChatRequest.builder().messages(messages).build());
+            ChatRequest request = ChatRequest.builder().messages(messages).build();
+            ChatResponse response = bundle.chat().chatModel().chat(request);
             long durationMs = System.currentTimeMillis() - startMs;
-            llmCallTracker.record(process, response, durationMs, modelAlias);
+            llmCallTracker.record(process, request, response, durationMs, modelAlias);
 
             AiMessage reply = response.aiMessage();
             String text = reply == null ? "" : reply.text();

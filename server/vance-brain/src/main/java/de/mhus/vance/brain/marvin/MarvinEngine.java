@@ -975,10 +975,10 @@ public class MarvinEngine implements ThinkEngine {
             String validationError = null;
             for (int attempt = 0; attempt <= maxPlanCorrections; attempt++) {
                 long startMs = System.currentTimeMillis();
-                ChatResponse response = ai.chatModel().chat(
-                        ChatRequest.builder().messages(messages).build());
+                ChatRequest request = ChatRequest.builder().messages(messages).build();
+                ChatResponse response = ai.chatModel().chat(request);
                 llmCallTracker.record(
-                        process, response, System.currentTimeMillis() - startMs, modelAlias);
+                        process, request, response, System.currentTimeMillis() - startMs, modelAlias);
                 AiMessage reply = response.aiMessage();
                 text = reply == null ? "" : reply.text();
                 if (text == null) text = "";
@@ -2055,10 +2055,10 @@ public class MarvinEngine implements ThinkEngine {
             messages.add(UserMessage.from(body.toString()));
             String modelAlias = config.provider() + ":" + config.modelName();
             long startMs = System.currentTimeMillis();
-            ChatResponse response = ai.chatModel().chat(
-                    ChatRequest.builder().messages(messages).build());
+            ChatRequest request = ChatRequest.builder().messages(messages).build();
+            ChatResponse response = ai.chatModel().chat(request);
             llmCallTracker.record(
-                    process, response, System.currentTimeMillis() - startMs, modelAlias);
+                    process, request, response, System.currentTimeMillis() - startMs, modelAlias);
             String summary = response.aiMessage() == null
                     ? "" : nullSafe(response.aiMessage().text()).trim();
             if (summary.length() > maxChars) {

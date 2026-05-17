@@ -13,6 +13,7 @@ import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.MessageHandler;
 import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import de.mhus.vance.foot.ui.LiveUsageState;
 import de.mhus.vance.foot.ui.StreamingDisplay;
 import de.mhus.vance.foot.ui.Verbosity;
 import java.time.Duration;
@@ -57,6 +58,7 @@ public class ProcessProgressHandler implements MessageHandler {
     private final ChatTerminal terminal;
     private final StreamingDisplay streaming;
     private final BusyIndicator busyIndicator;
+    private final LiveUsageState liveUsageState;
     private final ObjectMapper json = JsonMapper.builder().build();
 
     /**
@@ -81,10 +83,12 @@ public class ProcessProgressHandler implements MessageHandler {
     public ProcessProgressHandler(
             ChatTerminal terminal,
             StreamingDisplay streaming,
-            BusyIndicator busyIndicator) {
+            BusyIndicator busyIndicator,
+            LiveUsageState liveUsageState) {
         this.terminal = terminal;
         this.streaming = streaming;
         this.busyIndicator = busyIndicator;
+        this.liveUsageState = liveUsageState;
     }
 
     @Override
@@ -103,6 +107,12 @@ public class ProcessProgressHandler implements MessageHandler {
         // because the engine_turn_end was filtered out.
         if (msg.getKind() == ProgressKind.STATUS && msg.getStatus() != null) {
             updateBusyState(msg);
+        }
+        // Live-usage state runs UNCONDITIONALLY too — the spinner row
+        // shows running token/char counts even when the user's verbosity
+        // filter would suppress the [hud] line itself.
+        if (msg.getKind() == ProgressKind.METRICS && msg.getMetrics() != null) {
+            liveUsageState.update(msg.getMetrics());
         }
         // Skip the visible-render pipeline (including the streaming-
         // suspend newline) when the user's verbosity threshold would
@@ -179,12 +189,16 @@ public class ProcessProgressHandler implements MessageHandler {
         if (m == null) return;
         // HUD-style one-liner. Verbosity VERBOSE so the user can mute
         // at INFO if the per-roundtrip cadence gets too chatty.
+        // Tokens come first (LLM cost driver), chars next (raw context
+        // size, useful when tokens aren't reported by the provider).
         String line = String.format(
-                "[hud] %s · %d calls · %s in / %s out · %.1fs%s",
+                "[hud] %s · %d calls · %s in / %s out tokens · %s in / %s out chars · %.1fs%s",
                 src,
                 m.getLlmCallCount(),
                 formatTokens(m.getTokensInTotal()),
                 formatTokens(m.getTokensOutTotal()),
+                formatTokens(m.getCharsInTotal()),
+                formatTokens(m.getCharsOutTotal()),
                 m.getElapsedMs() / 1000.0,
                 m.getModelAlias() == null ? "" : " · " + m.getModelAlias());
         terminal.printlnStyled(Verbosity.VERBOSE, dim(line));
@@ -265,7 +279,12 @@ public class ProcessProgressHandler implements MessageHandler {
         if (u.getLlmCalls() > 0 || u.getTokensIn() > 0 || u.getTokensOut() > 0) {
             line.append(" · ")
                     .append(formatTokens(u.getTokensIn())).append(" in / ")
-                    .append(formatTokens(u.getTokensOut())).append(" out");
+                    .append(formatTokens(u.getTokensOut())).append(" out tokens");
+            if (u.getCharsIn() > 0 || u.getCharsOut() > 0) {
+                line.append(" · ")
+                        .append(formatTokens(u.getCharsIn())).append(" in / ")
+                        .append(formatTokens(u.getCharsOut())).append(" out chars");
+            }
             if (u.getLlmCalls() > 1) {
                 line.append(" · ").append(u.getLlmCalls()).append(" calls");
             }

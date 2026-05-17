@@ -695,7 +695,7 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         try {
             ChatResponse complete = done.get();
             llmCallTracker.record(
-                    process, complete, System.currentTimeMillis() - startMs, modelAlias);
+                    process, request, complete, System.currentTimeMillis() - startMs, modelAlias);
             return complete.aiMessage();
         } catch (ExecutionException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;

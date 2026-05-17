@@ -361,7 +361,7 @@ public class MemoryCompactionService {
         long startMs = System.currentTimeMillis();
         ChatResponse response = ai.chatModel().chat(request);
         llmCallTracker.record(
-                process, response, System.currentTimeMillis() - startMs, modelAlias);
+                process, request, response, System.currentTimeMillis() - startMs, modelAlias);
         String text = response.aiMessage() == null ? null : response.aiMessage().text();
         return text == null ? "" : text.trim();
     }

@@ -174,7 +174,7 @@ public final class DebugRestServer {
             if (!line.startsWith("/")) {
                 line = "/" + line;
             }
-            terminal.info("❯ " + line);
+            terminal.echoInput(line);
             boolean matched = commandService.execute(line);
             writeJson(exchange, 200, Map.of("line", line, "matched", matched));
         }
@@ -192,7 +192,7 @@ public final class DebugRestServer {
             if (req == null) {
                 return;
             }
-            terminal.info("❯ " + req.line);
+            terminal.echoInput(req.line);
             ChatInputService.InputResult result = chatInputService.submit(req.line);
             writeJson(exchange, 200, toJson(result));
         }
@@ -210,7 +210,7 @@ public final class DebugRestServer {
             if (req == null) {
                 return;
             }
-            terminal.info("❯ " + req.line);
+            terminal.echoInput(req.line);
             ChatInputService.InputResult result =
                     chatInputService.sendChat(req.line, ChatInputService.DEFAULT_CHAT_TIMEOUT);
             writeJson(exchange, 200, toJson(result));

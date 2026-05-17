@@ -328,6 +328,37 @@ public class ProposingPhase {
                           <prompt for the worker>
                         gate: { requires: [<phase-name>_completed] }
 
+            PHASE CHAINING — automatic in Vogon:
+
+            Before each phase's worker runs, Vogon prepends a
+            discovery block to the workerInput listing every
+            completed predecessor phase with its draft-path
+            (always under `_vogon-drafts/<process>/<phase>.md`).
+            The worker accesses those via `doc_read` (full
+            content) or `doc_summary` (1-3-sentence recap).
+
+            Consequence for the workerInput strings you emit:
+
+            - DO write each workerInput as a focused
+              "what THIS phase produces" instruction.
+            - DO reference predecessors by phase name so the
+              worker can match them in the discovery block:
+              "Use doc_summary on `create-outline` and doc_read
+              on `research-sources` to ground the draft."
+            - DO NOT use `${phases.X.result}` /
+              `${phases.X.draftPath}` substitutions. They still
+              work mechanically but inline the predecessor's
+              full reply into every prompt — bloated and
+              bypasses the doc_summary shortcut. The injected
+              block + doc tools cover the use case better.
+            - DO NOT write vague prose like "use the previous
+              phase's output" without naming the phase. The
+              worker can't infer which entry you meant.
+
+            First-phase exception: the discovery block is
+            omitted when there are no predecessors. The
+            workerInput is sent verbatim.
+
             justifications map (mandatory):
             - EVERY constraint-key you set in the YAML MUST point
               here to an sg-id that exists in subgoals.

@@ -540,7 +540,8 @@ public class VogonEngine implements ThinkEngine {
             persistState(process, state);
             return null;
         }
-        String steerContent = sub.apply(phase.getWorkerInput());
+        String steerContent = renderWorkerSteerContent(
+                process, phase, state, sub.apply(phase.getWorkerInput()));
         ThinkProcessDocument child;
         try {
             AppliedRecipe applied = recipeResolver.apply(
@@ -1528,6 +1529,87 @@ public class VogonEngine implements ThinkEngine {
         if (v instanceof Boolean b) return b;
         if (v instanceof String s) return Boolean.parseBoolean(s.trim());
         return v != null;
+    }
+
+    /**
+     * Wrap the substituted workerInput with a phase-context block so
+     * downstream Ford workers can discover what their predecessors
+     * produced without the recipe author having to spell out
+     * {@code ${phases.X.draftPath}} substitutions explicitly.
+     *
+     * <p>Format:
+     * <pre>{@code
+     * <phases>
+     * Already-completed phases — read with doc_read for full content,
+     * doc_summary for a 1-3-sentence recap:
+     * - research-sources: _vogon-drafts/<process>/research-sources.md
+     * - create-outline:   _vogon-drafts/<process>/create-outline.md
+     * </phases>
+     *
+     * <current-phase>draft-chapters</current-phase>
+     *
+     * <your-instructions>
+     * <substituted workerInput>
+     * </your-instructions>
+     * }</pre>
+     *
+     * <p>When the current phase is the first to run (no entries in
+     * {@code state.phaseArtifacts} yet) the wrapper is dropped entirely
+     * and the bare workerInput is returned — no need to pollute the
+     * prompt with an empty {@code <phases>} block. The
+     * {@code <your-instructions>} marker is also omitted in that case
+     * since there's no surrounding context to demarcate.
+     *
+     * <p>Idempotent w.r.t. loops: each iteration of a looping phase
+     * overwrites the entry in {@code phaseArtifacts} (same key), so
+     * the latest result is always what subsequent phases see.
+     */
+    private static String renderWorkerSteerContent(
+            ThinkProcessDocument process,
+            PhaseSpec phase,
+            StrategyState state,
+            String substitutedWorkerInput) {
+        Map<String, Map<String, Object>> artifacts = state.getPhaseArtifacts();
+        // Filter out the current phase itself — a phase shouldn't see
+        // its own prior iteration as "completed" predecessor in the
+        // discovery block; the iteration is a retry, not a chain link.
+        Map<String, Map<String, Object>> predecessors = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Object>> e : artifacts.entrySet()) {
+            if (!e.getKey().equals(phase.getName())) {
+                predecessors.put(e.getKey(), e.getValue());
+            }
+        }
+        if (predecessors.isEmpty()) {
+            return substitutedWorkerInput == null ? "" : substitutedWorkerInput;
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("<phases>\n");
+        sb.append("Already-completed phases — read the full text with ")
+                .append("`doc_read(path=...)` or the short recap with ")
+                .append("`doc_summary(path=...)`:\n");
+        for (Map.Entry<String, Map<String, Object>> e : predecessors.entrySet()) {
+            String draftPath = stringValue(e.getValue().get("draftPath"));
+            if (draftPath == null || draftPath.isBlank()) {
+                // Fallback: synthesize the conventional path even when
+                // the artifact map didn't capture it (e.g. an empty
+                // reply skipped the persist step).
+                draftPath = "_vogon-drafts/" + process.getId() + "/" + e.getKey() + ".md";
+            }
+            sb.append("- ").append(e.getKey()).append(": ").append(draftPath).append('\n');
+        }
+        sb.append("</phases>\n\n");
+        sb.append("<current-phase>").append(phase.getName()).append("</current-phase>\n\n");
+        sb.append("<your-instructions>\n");
+        if (substitutedWorkerInput != null && !substitutedWorkerInput.isEmpty()) {
+            sb.append(substitutedWorkerInput);
+            if (!substitutedWorkerInput.endsWith("\n")) sb.append('\n');
+        }
+        sb.append("</your-instructions>");
+        return sb.toString();
+    }
+
+    private static @Nullable String stringValue(@Nullable Object v) {
+        return v == null ? null : v.toString();
     }
 
     /**

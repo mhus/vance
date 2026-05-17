@@ -148,6 +148,26 @@ public class ChatTerminal {
     }
 
     /**
+     * Echoes a line the user just submitted (REPL or REST). Multi-line input
+     * is split on {@code \n} and emitted as separate static lines, each with
+     * a {@code ❯ } prefix. Never truncated — the user wants to see exactly
+     * what was sent, in full. Renders plain (no inverse-video) so it stays
+     * readable in dumb terminals; the JLine REPL keeps its own inverse-video
+     * echo for visual consistency with the prompt.
+     */
+    public void echoInput(String line) {
+        if (line == null || line.isEmpty()) return;
+        if (!threshold.get().shows(Verbosity.INFO)) {
+            return;
+        }
+        for (String segment : line.split("\n", -1)) {
+            String prefixed = "❯ " + segment;
+            record(Verbosity.INFO, prefixed);
+            emit(prefixed);
+        }
+    }
+
+    /**
      * Renders a sub-process (worker) chat echo, truncated to
      * {@code vance.ui.lineMaxChars}.
      */

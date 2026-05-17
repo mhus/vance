@@ -82,7 +82,12 @@ public class PathCriteriaLifter {
      * sentence fragments from leaking through.
      */
     private static final Pattern PATH_PATTERN = Pattern.compile(
-            "(?:^|[\\s\\b\"'`(\\[<])"
+            // Leading boundary: line-start, whitespace, or punctuation
+            // commonly wrapping a path in prose. `\b` is NOT valid
+            // inside a character class in Java regex, so we list the
+            // exact characters instead — covers quote, backtick, paren,
+            // bracket, angle.
+            "(?:^|[\\s\"'`(\\[<])"
                     + "((?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)+"
                     + "[A-Za-z0-9_][A-Za-z0-9_.-]*"
                     + "\\.(?:md|markdown|txt|yaml|yml|json|csv|pdf))"

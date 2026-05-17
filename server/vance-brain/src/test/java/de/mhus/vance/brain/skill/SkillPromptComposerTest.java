@@ -24,7 +24,7 @@ class SkillPromptComposerTest {
         return new ResolvedSkill(
                 name, name, "desc", "1.0.0",
                 List.of(), body, List.of(), List.of(),
-                docs, List.of(), true, SkillScope.PROJECT);
+                docs, List.of(), List.of(), true, SkillScope.PROJECT);
     }
 
     @Test

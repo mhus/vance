@@ -132,15 +132,35 @@ public class SkillPromptComposer {
      * Skills can only <em>add</em> tools (never remove); the returned
      * set is meant to be unioned with the engine/recipe whitelist by
      * the spawn / lane-turn pipeline.
+     *
+     * <p>The result includes two contributions per skill:
+     * <ol>
+     *   <li>Explicit {@code tools:} list entries — names of pre-existing
+     *       tools the skill wants to whitelist (e.g. {@code manual_read}).
+     *   <li>Implicit {@code skill_<skill>__<script>} entries for every
+     *       {@code scripts:} frontmatter declaration — per
+     *       {@code specification/skills.md} §13.2 each script gets
+     *       mounted as a virtual tool when the skill is active. Without
+     *       this union, the {@code SkillScriptToolSource} would emit
+     *       the tool but the engine's allow-filter would drop it before
+     *       the LLM ever sees it.
+     * </ol>
      */
     public Set<String> mergedTools(List<ResolvedSkill> skills) {
         Set<String> out = new LinkedHashSet<>();
         if (skills == null) return out;
         for (ResolvedSkill skill : skills) {
-            if (skill.tools() == null) continue;
-            for (String tool : skill.tools()) {
-                if (tool != null && !tool.isBlank()) {
-                    out.add(tool);
+            if (skill.tools() != null) {
+                for (String tool : skill.tools()) {
+                    if (tool != null && !tool.isBlank()) {
+                        out.add(tool);
+                    }
+                }
+            }
+            if (skill.scripts() != null) {
+                for (ResolvedSkill.Script script : skill.scripts()) {
+                    if (script.name() == null || script.name().isBlank()) continue;
+                    out.add("skill_" + skill.name() + "__" + script.name());
                 }
             }
         }

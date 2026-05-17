@@ -300,10 +300,13 @@ public class SkillLoader {
         String promptExtension = fm.body.isBlank() ? null : fm.body.strip();
         List<ResolvedSkill.ReferenceDoc> refDocs =
                 parseReferenceDocs(spec.get("referenceDocs"), stem, skillFolderStem, siblings);
+        List<ResolvedSkill.Script> scripts =
+                parseScripts(spec.get("scripts"), stem, skillFolderStem, siblings);
 
         return new ResolvedSkill(
                 name, title, description, version,
-                triggers, promptExtension, tools, manualPaths, refDocs, tags, enabled, scope);
+                triggers, promptExtension, tools, manualPaths, refDocs, scripts,
+                tags, enabled, scope);
     }
 
     /**
@@ -406,6 +409,73 @@ public class SkillLoader {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * Parses the {@code scripts} frontmatter list — declarative
+     * descriptors that resolve to virtual tools in the active turn's
+     * tool-loop when the skill is active (see
+     * {@code specification/skills.md} §13). Each entry has a
+     * required {@code name} (used to compose the tool-name
+     * {@code skill_<skillname>__<scriptname>}), a {@code target}
+     * (BRAIN or FOOT), and a {@code file} relative to the skill
+     * folder. Optional {@code description} is shown in the LLM's
+     * tool-picker.
+     *
+     * <p>{@code FOOT} target is parsed but dropped with a warn-log
+     * — Phase-4 of §13 isn't wired up yet, and silently ignoring
+     * the entry would surprise authors. Their declaration is still
+     * valid YAML; we just refuse to mount the tool.
+     *
+     * <p>Same cascade-tier constraint as referenceDocs: the script
+     * file must live in the same layer as the SKILL.md (no
+     * cross-tier reads).
+     */
+    private static List<ResolvedSkill.Script> parseScripts(
+            Object raw, String stem, String skillFolderStem, SiblingReader siblings) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException(
+                    "skill '" + stem + "': 'scripts' must be a list");
+        }
+        List<ResolvedSkill.Script> out = new ArrayList<>(list.size());
+        for (int i = 0; i < list.size(); i++) {
+            Object item = list.get(i);
+            if (!(item instanceof Map<?, ?> mm)) {
+                throw new IllegalStateException(
+                        "skill '" + stem + "': scripts[" + i + "] must be a map");
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> spec = (Map<String, Object>) mm;
+            String name = requireString(spec, "name",
+                    stem + " scripts[" + i + "]");
+            String targetRaw = requireString(spec, "target",
+                    stem + " scripts[" + i + "]");
+            de.mhus.vance.api.skills.ScriptTarget target;
+            try {
+                target = de.mhus.vance.api.skills.ScriptTarget
+                        .valueOf(targetRaw.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalStateException(
+                        "skill '" + stem + "' scripts[" + i + "]: unknown target '"
+                                + targetRaw + "' (expected BRAIN or FOOT)");
+            }
+            if (target == de.mhus.vance.api.skills.ScriptTarget.FOOT) {
+                log.warn("Skill '{}' script '{}' targets FOOT — not implemented in v1, "
+                                + "dropping declaration. Phase-4 of skills.md §13 is open.",
+                        stem, name);
+                continue;
+            }
+            String relativePath = requireString(spec, "file",
+                    stem + " scripts[" + i + "]");
+            String body = siblings.read(skillFolderStem, relativePath)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "skill '" + stem + "': script file '" + relativePath
+                                    + "' not found in this layer"));
+            String description = stringOrNull(spec.get("description"));
+            out.add(new ResolvedSkill.Script(name, target, description, body));
+        }
+        return List.copyOf(out);
+    }
+
     private static List<ResolvedSkill.ReferenceDoc> parseReferenceDocs(
             Object raw, String stem, String skillFolderStem, SiblingReader siblings) {
         if (raw == null) return List.of();

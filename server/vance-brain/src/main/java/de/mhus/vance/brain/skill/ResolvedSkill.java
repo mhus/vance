@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.skill;
 
+import de.mhus.vance.api.skills.ScriptTarget;
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.api.skills.SkillTriggerType;
@@ -22,6 +23,7 @@ public record ResolvedSkill(
         List<String> tools,
         List<String> manualPaths,
         List<ReferenceDoc> referenceDocs,
+        List<Script> scripts,
         List<String> tags,
         boolean enabled,
         SkillScope source) {
@@ -37,5 +39,21 @@ public record ResolvedSkill(
             String content,
             SkillReferenceDocLoadMode loadMode,
             @Nullable String summary) {
+    }
+
+    /**
+     * A skill-bound script — declared in the SKILL.md frontmatter,
+     * with its body loaded from a sibling file on the same cascade
+     * tier as the SKILL.md itself (no cross-tier reads).
+     *
+     * <p>Per {@code specification/skills.md} §13, scripts get mounted
+     * as virtual tools named {@code skill_<skillname>__<name>} in the
+     * active turn's tool-loop when the skill is active.
+     */
+    public record Script(
+            String name,
+            ScriptTarget target,
+            @Nullable String description,
+            String body) {
     }
 }

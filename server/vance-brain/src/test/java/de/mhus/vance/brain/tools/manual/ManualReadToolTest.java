@@ -154,7 +154,7 @@ class ManualReadToolTest {
         ResolvedSkill skill = new ResolvedSkill(
                 "decision-frame", "Decision Frame", "desc", "1.0.0",
                 List.of(), null, List.of(), List.of(skillFolder),
-                List.of(), List.of(), true, SkillScope.PROJECT);
+                List.of(), List.of(), List.of(), true, SkillScope.PROJECT);
         when(skillResolver.resolve(any(SkillScopeContext.class), eq("decision-frame")))
                 .thenReturn(Optional.of(skill));
 
@@ -186,7 +186,7 @@ class ManualReadToolTest {
         ResolvedSkill skill = new ResolvedSkill(
                 "decision-frame", "Decision Frame", "desc", "1.0.0",
                 List.of(), null, List.of(), List.of(skillFolder),
-                List.of(), List.of(), true, SkillScope.PROJECT);
+                List.of(), List.of(), List.of(), true, SkillScope.PROJECT);
         when(skillResolver.resolve(any(SkillScopeContext.class), eq("decision-frame")))
                 .thenReturn(Optional.of(skill));
 

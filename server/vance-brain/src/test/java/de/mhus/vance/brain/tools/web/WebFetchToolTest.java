@@ -50,6 +50,31 @@ class WebFetchToolTest {
                 .containsExactly(WebFetchTool.FLAG_TEXT);
     }
 
+    @Test
+    void parseFlags_recognises_raw_as_opt_out_for_html_extraction() {
+        // Sister flag of 'text' but inverse semantics — confirms the
+        // post-2026-05-17 default flip (HTML→text on by default,
+        // 'raw' opts out). Without this entry in KNOWN_FLAGS the
+        // token would be silently dropped and the LLM's "give me the
+        // markup" intent ignored.
+        assertThat(WebFetchTool.parseFlags("raw"))
+                .containsExactly(WebFetchTool.FLAG_RAW);
+        assertThat(WebFetchTool.parseFlags("no-llms, raw"))
+                .containsExactlyInAnyOrder(
+                        WebFetchTool.FLAG_NO_LLMS, WebFetchTool.FLAG_RAW);
+    }
+
+    @Test
+    void parseFlags_keeps_text_token_as_no_op_for_backwards_compat() {
+        // 'text' used to flip text-extraction on; now text is the
+        // default and the flag is a documented no-op. Old callers
+        // (saved prompts, kit-shipped recipe YAMLs) must keep
+        // working — keeping the token in KNOWN_FLAGS means it is
+        // still parsed (and silently ignored at invoke-time).
+        assertThat(WebFetchTool.parseFlags("text"))
+                .containsExactly(WebFetchTool.FLAG_TEXT);
+    }
+
     // ─── htmlToText ─────────────────────────────────────────────────────
 
     @Test

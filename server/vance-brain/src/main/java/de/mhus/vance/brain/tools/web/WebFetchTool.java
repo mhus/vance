@@ -50,8 +50,24 @@ public class WebFetchTool implements Tool {
 
     /** Recognised tokens inside the {@code flags} parameter. */
     static final String FLAG_NO_LLMS = "no-llms";
+    /**
+     * Legacy alias for the default behaviour — kept so old callers
+     * that explicitly pass {@code flags="text"} keep working unchanged.
+     * As of 2026-05-17 HTML pages are returned as extracted body text
+     * by default; setting this flag is now a no-op.
+     */
     static final String FLAG_TEXT = "text";
-    private static final Set<String> KNOWN_FLAGS = Set.of(FLAG_NO_LLMS, FLAG_TEXT);
+    /**
+     * Opt-out from the HTML-to-text default: returns the raw markup
+     * verbatim, the way the server sent it. Use this for tasks that
+     * inspect tag structure, attributes, scripts, or meta tags. For
+     * normal "read the article" use cases leave this off — the
+     * default text extraction strips boilerplate and keeps prose,
+     * which the LLM (and the 32 KB tool-result-truncation threshold)
+     * both prefer.
+     */
+    static final String FLAG_RAW = "raw";
+    private static final Set<String> KNOWN_FLAGS = Set.of(FLAG_NO_LLMS, FLAG_TEXT, FLAG_RAW);
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
@@ -66,10 +82,14 @@ public class WebFetchTool implements Tool {
                     "flags", Map.of(
                             "type", "string",
                             "description", "Optional comma- or space-separated tokens. "
-                                    + "Recognised: 'no-llms' skips the per-origin "
-                                    + "llms.txt overview probe; 'text' parses HTML and "
-                                    + "returns extracted text instead of raw markup. "
-                                    + "Unknown tokens are ignored.")),
+                                    + "Recognised: 'raw' returns the original markup "
+                                    + "verbatim instead of the default extracted body "
+                                    + "text (use only when you need tag structure, "
+                                    + "scripts, or meta-data); 'no-llms' skips the "
+                                    + "per-origin llms.txt overview probe; 'text' is "
+                                    + "a legacy no-op (text extraction is now the "
+                                    + "default for HTML pages). Unknown tokens are "
+                                    + "ignored.")),
             "required", List.of("url"));
 
     private final HttpClient http = HttpClient.newBuilder()
@@ -91,19 +111,20 @@ public class WebFetchTool implements Tool {
     @Override
     public String description() {
         return "Fetch the content of a specific http(s) URL and return "
-                + "the body as text. Use this when you have a concrete "
-                + "URL (often from web_search results) and need the page "
-                + "content. Body is truncated past " + MAX_BODY_CHARS
+                + "the body. HTML pages are parsed and returned as "
+                + "extracted visible text by default (script/style content "
+                + "stripped, entities decoded, whitespace normalised) — "
+                + "the usual case when you want the article's prose. JSON, "
+                + "plain-text and other non-HTML content passes through "
+                + "unchanged. Body is truncated past " + MAX_BODY_CHARS
                 + " characters — contentLength reports the original size. "
                 + "When the origin publishes an llms.txt overview, the "
                 + "response also carries an 'originOverview' field with "
                 + "a curated index of the site (cached per origin). "
                 + "Optional 'flags' parameter — comma- or space-separated "
-                + "tokens — controls behaviour: 'no-llms' skips the "
-                + "originOverview probe entirely; 'text' parses HTML and "
-                + "returns the extracted visible text (script/style "
-                + "content stripped, entities decoded, whitespace "
-                + "normalised) — useful when you only care about prose.";
+                + "tokens — controls behaviour: 'raw' opts out of HTML "
+                + "text extraction and returns the original markup; "
+                + "'no-llms' skips the originOverview probe entirely.";
     }
 
     @Override
@@ -164,13 +185,15 @@ public class WebFetchTool implements Tool {
             String contentType = response.headers()
                     .firstValue("content-type").orElse("");
 
-            // 'text' flag: parse HTML before truncation so unbalanced markup
-            // doesn't trip Jsoup. Heuristic — apply when the flag is set and
-            // the content type is HTML-ish, or is missing (some servers omit
-            // it but still serve HTML).
+            // HTML pages are parsed to extracted body text by default —
+            // raw markup costs an order of magnitude more tokens and
+            // is rarely what the caller actually wants (boilerplate
+            // <head>, scripts, preload links). Callers that genuinely
+            // need the markup set flags="raw" to opt out. Non-HTML
+            // content (JSON, plain text) is never transformed.
             boolean transformedFromHtml = false;
             String effectiveBody = body;
-            if (flags.contains(FLAG_TEXT) && looksLikeHtml(contentType, body)) {
+            if (!flags.contains(FLAG_RAW) && looksLikeHtml(contentType, body)) {
                 effectiveBody = htmlToText(body);
                 transformedFromHtml = true;
             }

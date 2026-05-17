@@ -82,18 +82,93 @@ class ToolResultStorageTest {
         Map<String, Object> stub = p.result();
         assertThat(stub).containsKey(ToolResultStorage.STUB_TRUNCATED_KEY)
                         .containsKey(ToolResultStorage.STUB_ORIGINAL_SIZE_KEY)
-                        .containsKey(ToolResultStorage.STUB_STORAGE_PATH_KEY)
+                        .containsKey(ToolResultStorage.STUB_RESULT_ID_KEY)
                         .containsKey(ToolResultStorage.STUB_PREVIEW_KEY)
                         .containsKey(ToolResultStorage.STUB_MESSAGE_KEY);
         assertThat(stub.get(ToolResultStorage.STUB_TRUNCATED_KEY)).isEqualTo(true);
-        assertThat(stub.get(ToolResultStorage.STUB_STORAGE_PATH_KEY))
-                .isEqualTo(p.storagePath());
+        // The stub never leaks the absolute disk path — only the
+        // bare resultId — but the on-disk filename derives from it.
+        String resultId = (String) stub.get(ToolResultStorage.STUB_RESULT_ID_KEY);
+        assertThat(resultId).isNotNull().doesNotContain("/").doesNotContain(".txt");
+        assertThat(p.storagePath()).endsWith(resultId + ".txt");
+        // The _message must tell the LLM about tool_result_read so it
+        // doesn't fall back to guessing (the historical 'scratch_read'
+        // failure mode) — pin the wording so regressions fail loudly.
+        assertThat(stub.get(ToolResultStorage.STUB_MESSAGE_KEY).toString())
+                .contains("tool_result_read")
+                .contains(resultId);
 
         // Disk contents must be the original serialized JSON.
         Path written = Path.of(p.storagePath());
         assertThat(Files.exists(written)).isTrue();
         String disk = Files.readString(written, StandardCharsets.UTF_8);
         assertThat(disk).contains("xxxxxx").contains("stdout");
+    }
+
+    @Test
+    void read_roundTripsPersistedJson() throws IOException {
+        // Write a result via the truncation path, then pull it back
+        // through the new read() entry point — the two must be
+        // bytewise identical (the LLM gets exactly what the inline
+        // form would have shown if it had fit).
+        Map<String, Object> big = Map.of("stdout", "x".repeat(4096));
+        ToolResultPayload p = storage.truncateIfLarge(big, ctx());
+        String resultId = (String) p.result().get(ToolResultStorage.STUB_RESULT_ID_KEY);
+
+        String content = storage.read(resultId, ctx());
+
+        assertThat(content).contains("xxxxxx").contains("stdout");
+        // The persisted on-disk file is the source of truth.
+        Path written = Path.of(p.storagePath());
+        assertThat(content).isEqualTo(Files.readString(written, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void read_rejectsBlankAndNullIds() {
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> storage.read("", ctx()))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("required");
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> storage.read(null, ctx()))
+                .isInstanceOf(IOException.class);
+    }
+
+    @Test
+    void read_rejectsPathTraversalAttempts() {
+        // Even though sanitise() collapses '..' segments, the read
+        // path explicitly compares the post-sanitised id with the
+        // input. A '../' attempt mutates under sanitisation and is
+        // rejected up front rather than silently rewriting.
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> storage.read("../etc/passwd", ctx()))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("illegal");
+    }
+
+    @Test
+    void read_returns_ioException_when_idDoesNotExist() {
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> storage.read(
+                        java.util.UUID.randomUUID().toString(), ctx()))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("not found");
+    }
+
+    @Test
+    void read_isScopedToCallerSession() throws IOException {
+        // Persist a result under session-A, then try to read it
+        // through a context that names session-B. The id is valid,
+        // but the resolved path lives outside session-B's
+        // tool-results dir → IOException.
+        Map<String, Object> big = Map.of("stdout", "x".repeat(4096));
+        ToolResultPayload p = storage.truncateIfLarge(big, ctx("acme", "sess-A"));
+        String resultId = (String) p.result().get(ToolResultStorage.STUB_RESULT_ID_KEY);
+
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> storage.read(resultId, ctx("acme", "sess-B")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("not found");
     }
 
     @Test

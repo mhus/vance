@@ -52,9 +52,23 @@ public class ToolResultStorage {
      *  don't collide with caller-defined fields. */
     public static final String STUB_TRUNCATED_KEY = "_truncated";
     public static final String STUB_ORIGINAL_SIZE_KEY = "_originalSize";
-    public static final String STUB_STORAGE_PATH_KEY = "_storagePath";
+    /**
+     * Opaque handle the LLM uses to retrieve the full content via
+     * {@code tool_result_read}. A bare UUID (matches the on-disk
+     * filename without the {@code .txt} suffix); the LLM never
+     * sees an absolute disk path. Earlier versions exposed
+     * {@code _storagePath} — that lured Ford into calling
+     * {@code scratch_read} on a path outside the scratch RootDir,
+     * which burned the per-turn tool-iteration budget and aborted
+     * the worker.
+     */
+    public static final String STUB_RESULT_ID_KEY = "_resultId";
     public static final String STUB_PREVIEW_KEY = "_preview";
     public static final String STUB_MESSAGE_KEY = "_message";
+
+    /** Filename suffix used on disk and stripped to derive
+     *  {@code _resultId} from the {@link Path}. */
+    public static final String STORAGE_SUFFIX = ".txt";
 
     private final ObjectMapper objectMapper;
     private final Path baseDir;
@@ -119,16 +133,64 @@ public class ToolResultStorage {
 
         String preview = serialized.substring(0,
                 Math.min(serialized.length(), PREVIEW_BYTES));
+        String resultId = stripSuffix(target.getFileName().toString());
         Map<String, Object> stub = new LinkedHashMap<>();
         stub.put(STUB_TRUNCATED_KEY, true);
         stub.put(STUB_ORIGINAL_SIZE_KEY, size);
-        stub.put(STUB_STORAGE_PATH_KEY, target.toAbsolutePath().toString());
+        stub.put(STUB_RESULT_ID_KEY, resultId);
         stub.put(STUB_PREVIEW_KEY, preview);
         stub.put(STUB_MESSAGE_KEY,
                 "Tool result was " + size + " bytes — too large to inline. "
-                        + "First " + PREVIEW_BYTES + " bytes in '_preview'; full "
-                        + "content on disk at the path in '_storagePath'.");
+                        + "First " + PREVIEW_BYTES + " bytes in '_preview'; "
+                        + "call tool_result_read(id=\"" + resultId + "\") to "
+                        + "fetch the full content.");
         return new ToolResultPayload(stub, true, size, target.toAbsolutePath().toString());
+    }
+
+    /**
+     * Load a previously-persisted tool result by its
+     * {@link #STUB_RESULT_ID_KEY} handle. Resolves against the
+     * caller's session — a process can only ever read its own
+     * session's tool results, no cross-session peek. Returns the
+     * raw JSON-serialised form exactly as written (the same string
+     * the LLM would have seen inline if the result had fit under
+     * the threshold).
+     *
+     * @throws IOException if the file is missing, unreadable, or
+     *         lives outside the session's tool-results directory
+     *         (defensive against id-injection — sanitise rejects
+     *         path-separator characters, but we also verify the
+     *         resolved path stays under the session root).
+     */
+    public String read(String resultId, ToolInvocationContext ctx) throws IOException {
+        if (resultId == null || resultId.isBlank()) {
+            throw new IOException("resultId is required");
+        }
+        String safeId = sanitise(resultId);
+        if (!safeId.equals(resultId)) {
+            throw new IOException("resultId contains illegal characters: '"
+                    + resultId + "'");
+        }
+        String tenant = sanitise(ctx.tenantId());
+        String session = sanitise(ctx.sessionId() == null ? "_no_session" : ctx.sessionId());
+        Path dir = baseDir
+                .resolve(tenant)
+                .resolve(session)
+                .resolve("tool-results");
+        Path target = dir.resolve(safeId + STORAGE_SUFFIX).normalize();
+        if (!target.startsWith(dir.normalize())) {
+            throw new IOException("resultId resolves outside session: '" + resultId + "'");
+        }
+        if (!Files.exists(target)) {
+            throw new IOException("tool result not found: '" + resultId + "'");
+        }
+        return Files.readString(target, StandardCharsets.UTF_8);
+    }
+
+    private static String stripSuffix(String filename) {
+        return filename.endsWith(STORAGE_SUFFIX)
+                ? filename.substring(0, filename.length() - STORAGE_SUFFIX.length())
+                : filename;
     }
 
     /**
@@ -147,7 +209,7 @@ public class ToolResultStorage {
                 .resolve(session)
                 .resolve("tool-results");
         Files.createDirectories(dir);
-        Path target = dir.resolve(UUID.randomUUID().toString() + ".txt");
+        Path target = dir.resolve(UUID.randomUUID().toString() + STORAGE_SUFFIX);
         Files.writeString(target, json, StandardCharsets.UTF_8);
         log.debug("ToolResultStorage: persisted {} bytes to {} (at={})",
                 json.length(), target, Instant.now());

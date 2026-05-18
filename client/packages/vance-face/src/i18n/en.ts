@@ -33,6 +33,14 @@ export default {
     menu: {
       languageHeader: 'Language',
     },
+    help: {
+      toggle: 'Toggle help',
+      title: 'Help',
+      close: 'Close help',
+      loading: 'Loading help …',
+      unavailable: 'Help unavailable: {error}',
+      empty: 'No help available for this page yet.',
+    },
   },
 
   login: {

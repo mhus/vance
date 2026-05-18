@@ -42,6 +42,7 @@ class VanceWebSocketHandlerPermissionTest {
     private ClientToolRegistry clientToolRegistry;
     private SessionConnectionRegistry connectionRegistry;
     private ExecutionRegistryService executionRegistry;
+    private de.mhus.vance.brain.script.cortex.ScriptExecutionWsRegistry scriptExecutionWsRegistry;
     private ObjectMapper objectMapper;
 
     private WebSocketSession wsSession;
@@ -56,6 +57,7 @@ class VanceWebSocketHandlerPermissionTest {
         clientToolRegistry = mock(ClientToolRegistry.class);
         connectionRegistry = mock(SessionConnectionRegistry.class);
         executionRegistry = new ExecutionRegistryService();
+        scriptExecutionWsRegistry = mock(de.mhus.vance.brain.script.cortex.ScriptExecutionWsRegistry.class);
         objectMapper = new ObjectMapper();
 
         wsSession = mock(WebSocketSession.class);
@@ -82,6 +84,7 @@ class VanceWebSocketHandlerPermissionTest {
         VanceWebSocketHandler dispatcher = new VanceWebSocketHandler(
                 sessionService, sessionLifecycle, properties, objectMapper,
                 sender, clientToolRegistry, connectionRegistry, executionRegistry,
+                scriptExecutionWsRegistry,
                 List.of(denyingHandler));
 
         TextMessage frame = envelopeOf("denied.message");
@@ -106,6 +109,7 @@ class VanceWebSocketHandlerPermissionTest {
         VanceWebSocketHandler dispatcher = new VanceWebSocketHandler(
                 sessionService, sessionLifecycle, properties, objectMapper,
                 sender, clientToolRegistry, connectionRegistry, executionRegistry,
+                scriptExecutionWsRegistry,
                 List.of(boomHandler));
 
         dispatcher.handleTextMessage(wsSession, envelopeOf("boom.message"));

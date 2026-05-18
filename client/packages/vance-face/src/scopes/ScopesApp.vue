@@ -740,7 +740,7 @@ const combinedError = computed<string | null>(() =>
             <dt class="opacity-60">{{ $t('scopes.project.statusLabel') }}</dt>
             <dd>{{ selectedProject.status }}</dd>
             <dt class="opacity-60">{{ $t('scopes.project.podLabel') }}</dt>
-            <dd>{{ selectedProject.podIp ?? $t('scopes.common.none') }}</dd>
+            <dd>{{ selectedProject.homeNode ?? $t('scopes.common.none') }}</dd>
             <dt class="opacity-60">{{ $t('scopes.project.claimedLabel') }}</dt>
             <dd>{{ selectedProject.claimedAt ?? $t('scopes.common.none') }}</dd>
             <dt class="opacity-60">{{ $t('scopes.project.createdLabel') }}</dt>

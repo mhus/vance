@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { getTenantId, getUsername } from '@vance/shared';
 import {
@@ -11,6 +11,8 @@ import {
   setActiveLanguage,
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
+import { useHelp } from '@/composables/useHelp';
+import MarkdownView from './MarkdownView.vue';
 
 /**
  * A breadcrumb segment. Either a plain string label (immutable, no
@@ -51,13 +53,56 @@ interface Props {
    * editors — opt into this so the page itself never scrolls.
    */
   fullHeight?: boolean;
+  /**
+   * Help resource path under {@code /brain/{tenant}/help/{lang}/}. When
+   * set, EditorShell renders a "?" toggle in the topbar; clicking it
+   * loads the markdown via {@link useHelp} and slides a help drawer
+   * over the right-panel area. The drawer is closed by default so
+   * editors that already render their own help in {@code #right-panel}
+   * keep working unchanged — they just don't pass {@code helpPath}.
+   *
+   * <p>The drawer reclaims the right-panel space rather than adding a
+   * fourth column: on smaller windows the cost of always-on help is
+   * higher than the cost of one toggle click.
+   */
+  helpPath?: string;
+  /**
+   * Initial open-state for the help drawer when {@link helpPath} is
+   * set. Default {@code false} — user opts in via the topbar toggle.
+   * Editors that want the drawer pre-opened (e.g. the first time the
+   * user visits) can flip this and persist the preference themselves.
+   */
+  helpOpen?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   breadcrumbs: () => [],
   wideRightPanel: false,
   fullHeight: false,
+  helpOpen: false,
 });
+
+const showHelp = ref<boolean>(false);
+const help = useHelp();
+
+watch(
+  () => props.helpPath,
+  (path) => {
+    showHelp.value = props.helpOpen && !!path;
+    if (path && showHelp.value && help.content.value == null) {
+      void help.load(path);
+    }
+  },
+  { immediate: true },
+);
+
+function toggleHelp(): void {
+  if (!props.helpPath) return;
+  showHelp.value = !showHelp.value;
+  if (showHelp.value && help.content.value == null && !help.loading.value) {
+    void help.load(props.helpPath);
+  }
+}
 
 function crumbText(c: Crumb): string {
   return typeof c === 'string' ? c : c.text;
@@ -206,6 +251,19 @@ onBeforeUnmount(() => {
           :title="connectionTooltip ?? defaultConnectionTooltip"
         />
 
+        <!-- Help-drawer toggle. Only rendered when the editor supplied
+             a helpPath; closed by default, reclaims the right-panel
+             space when opened. -->
+        <button
+          v-if="helpPath"
+          type="button"
+          class="btn btn-ghost btn-sm btn-circle"
+          :class="showHelp ? 'btn-active' : ''"
+          :title="$t('header.help.toggle')"
+          :aria-pressed="showHelp"
+          @click="toggleHelp"
+        >?</button>
+
         <div class="dropdown dropdown-end">
           <div tabindex="0" role="button" class="btn btn-ghost btn-sm">
             <span class="font-mono text-xs opacity-70">{{ tenantId }}</span>
@@ -249,13 +307,40 @@ onBeforeUnmount(() => {
       </main>
 
       <aside
-        v-if="$slots['right-panel']"
+        v-if="showHelp || $slots['right-panel']"
         :class="[
           'shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto',
           wideRightPanel ? 'w-[40rem]' : 'w-80',
         ]"
       >
-        <slot name="right-panel" />
+        <!-- Help drawer reclaims the right-panel space; the editor's
+             own right-panel content is hidden while help is shown. -->
+        <div v-if="showHelp" class="p-4 flex flex-col gap-3 h-full">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs uppercase opacity-60">
+              {{ $t('header.help.title') }}
+            </h3>
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs btn-circle"
+              :title="$t('header.help.close')"
+              @click="toggleHelp"
+            >✕</button>
+          </div>
+          <div v-if="help.loading.value" class="text-xs opacity-60">
+            {{ $t('header.help.loading') }}
+          </div>
+          <div v-else-if="help.error.value" class="text-xs opacity-60">
+            {{ $t('header.help.unavailable', { error: help.error.value }) }}
+          </div>
+          <div v-else-if="!help.content.value" class="text-xs opacity-60">
+            {{ $t('header.help.empty') }}
+          </div>
+          <div v-else class="overflow-y-auto pr-2">
+            <MarkdownView :source="help.content.value" />
+          </div>
+        </div>
+        <slot v-else name="right-panel" />
       </aside>
     </div>
   </div>

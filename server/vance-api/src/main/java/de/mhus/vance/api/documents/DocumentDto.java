@@ -89,4 +89,15 @@ public class DocumentDto {
      * See {@code specification/rag.md}.
      */
     private @Nullable Boolean ragEnabled;
+
+    // ─── Script Cortex deep-validate cache ───
+
+    /** SHA-256 hex of the inline content the cached LLM review was based on. */
+    private @Nullable String lastDeepReviewedHash;
+
+    /** Cached LLM review warnings — JSON array, parsed client-side. */
+    private @Nullable String lastDeepReviewWarningsJson;
+
+    /** Epoch ms of the cached review. */
+    private @Nullable Long lastDeepReviewedAtMs;
 }

@@ -317,6 +317,15 @@ function readNextParam(): string | null {
               {{ $t('index.open') }}
             </VButton>
           </li>
+          <li v-if="showExpertTiles" class="flex items-center justify-between gap-4">
+            <div>
+              <div class="font-semibold">Script Cortex</div>
+              <div class="text-sm opacity-70">JavaScript-Scripte schreiben, validieren, ausführen.</div>
+            </div>
+            <VButton variant="primary" size="sm" href="/scripts.html">
+              {{ $t('index.open') }}
+            </VButton>
+          </li>
 
           <!-- Admin tier — tenant-management surfaces. The brain still
                denies non-admins at the REST layer; this is just a

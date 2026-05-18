@@ -1,0 +1,255 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue';
+import {
+  CodeEditor,
+  EditorShell,
+  VAlert,
+  VButton,
+  VEmptyState,
+  VInput,
+  VModal,
+  VSelect,
+} from '@/components';
+import { useTenantProjects } from '@/composables/useTenantProjects';
+import { useScriptStore } from './stores/scriptStore';
+import FileTreeSidebar from './components/FileTreeSidebar.vue';
+import EditorTabs from './components/EditorTabs.vue';
+import ValidatePanel from './components/ValidatePanel.vue';
+import ExecutionDialog from './components/ExecutionDialog.vue';
+import DeepThoughtPanel from './components/DeepThoughtPanel.vue';
+
+const projectsState = useTenantProjects();
+const store = useScriptStore();
+
+const selectedProjectId = ref<string | null>(null);
+const showCreate = ref(false);
+const createPath = ref('');
+const createError = ref<string | null>(null);
+const creating = ref(false);
+const saving = ref(false);
+const saveError = ref<string | null>(null);
+
+const showExecuteDialog = ref(false);
+const showDeepThought = ref(false);
+
+onMounted(async () => {
+  await projectsState.reload();
+  const params = new URLSearchParams(window.location.search);
+  const fromUrl = params.get('projectId');
+  if (fromUrl) {
+    selectedProjectId.value = fromUrl;
+  } else if (projectsState.projects.value.length === 1) {
+    selectedProjectId.value = projectsState.projects.value[0].name;
+  }
+});
+
+watch(selectedProjectId, async (pid) => {
+  if (!pid) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('projectId', pid);
+  window.history.replaceState(null, '', url.toString());
+  await store.loadList(pid);
+});
+
+const activeTab = computed(() => store.activeTab);
+
+const editorMime = computed<string>(() => {
+  const t = activeTab.value;
+  if (!t) return 'text/javascript';
+  if (t.mimeType) return t.mimeType;
+  // Derive from path if missing.
+  const lower = t.path.toLowerCase();
+  if (lower.endsWith('.js') || lower.endsWith('.mjs')) return 'text/javascript';
+  if (lower.endsWith('.json')) return 'application/json';
+  if (lower.endsWith('.md')) return 'text/markdown';
+  if (lower.endsWith('.yml') || lower.endsWith('.yaml')) return 'application/yaml';
+  return 'text/plain';
+});
+
+const isExecutable = computed<boolean>(() => {
+  const t = activeTab.value;
+  if (!t) return false;
+  const lower = t.path.toLowerCase();
+  return lower.endsWith('.js') || lower.endsWith('.mjs');
+});
+
+async function onSave(): Promise<void> {
+  saving.value = true;
+  saveError.value = null;
+  try {
+    await store.saveActive();
+  } catch (e) {
+    saveError.value = e instanceof Error ? e.message : 'Save failed';
+  } finally {
+    saving.value = false;
+  }
+}
+
+function onNew(parentPath: string): void {
+  // Default to scripts/ when the user clicks "+ new" at the root —
+  // the most common case, but they're free to delete it and write
+  // any other project-relative path (e.g. skills/myskill/foo.js,
+  // documents/, etc.).
+  createPath.value = parentPath ? `${parentPath}/` : 'scripts/';
+  createError.value = null;
+  showCreate.value = true;
+}
+
+async function confirmCreate(): Promise<void> {
+  if (!createPath.value.trim()) {
+    createError.value = 'Path required';
+    return;
+  }
+  creating.value = true;
+  createError.value = null;
+  try {
+    await store.createFile({
+      path: createPath.value.trim(),
+      inlineText: '',
+    });
+    showCreate.value = false;
+  } catch (e) {
+    createError.value = e instanceof Error ? e.message : 'Create failed';
+  } finally {
+    creating.value = false;
+  }
+}
+
+async function onDelete(id: string): Promise<void> {
+  if (!confirm('Delete this file?')) return;
+  await store.deleteFile(id);
+}
+
+function onExecute(): void {
+  if (!activeTab.value) return;
+  showExecuteDialog.value = true;
+}
+
+function onOpenDeepThought(): void {
+  showDeepThought.value = true;
+}
+
+function onDeepThoughtApplied(code: string): void {
+  if (!activeTab.value) return;
+  store.updateActiveContent(code);
+  showDeepThought.value = false;
+}
+
+const projectOptions = computed(() =>
+  projectsState.projects.value.map((p) => ({ value: p.name, label: p.title ?? p.name })));
+</script>
+
+<template>
+  <EditorShell title="Script Cortex" full-height help-path="script-cortex.md">
+    <template #topbar-extra>
+      <VSelect
+        v-if="projectOptions.length > 0"
+        v-model="selectedProjectId"
+        :options="projectOptions"
+        placeholder="Select project…"
+      />
+    </template>
+
+    <template #sidebar>
+      <FileTreeSidebar
+        v-if="selectedProjectId"
+        :root="store.fileTree"
+        :active-file-id="store.activeTabId"
+        @open-file="store.openFile"
+        @new-file="onNew"
+        @delete-file="onDelete"
+      />
+      <div v-else class="p-3 text-sm opacity-60">
+        Pick a project first.
+      </div>
+    </template>
+
+    <div class="flex flex-col h-full min-h-0">
+      <EditorTabs
+        :tabs="store.openTabs"
+        :active-tab-id="store.activeTabId"
+        @select="store.setActiveTab"
+        @close="store.closeTab"
+      />
+
+      <div
+        v-if="!activeTab"
+        class="flex-1 flex items-center justify-center"
+      >
+        <VEmptyState
+          headline="No file open"
+          body="Pick a file from the left, or create a new one."
+        />
+      </div>
+
+      <div v-else class="flex-1 flex flex-col min-h-0">
+        <div class="flex items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-100 text-sm">
+          <span class="font-mono opacity-80 truncate">{{ activeTab.path }}</span>
+          <span v-if="activeTab.dirty" class="opacity-60">●</span>
+          <span class="flex-1" />
+          <VButton size="sm" :loading="saving" :disabled="!activeTab.dirty" @click="onSave">Save</VButton>
+          <VButton
+            v-if="isExecutable"
+            size="sm"
+            variant="primary"
+            @click="onExecute"
+          >Execute</VButton>
+          <VButton
+            size="sm"
+            variant="ghost"
+            @click="onOpenDeepThought"
+          >🧠 DeepThought</VButton>
+        </div>
+
+        <VAlert v-if="saveError" variant="error" class="m-2">{{ saveError }}</VAlert>
+
+        <div class="flex-1 min-h-0 overflow-hidden">
+          <CodeEditor
+            :model-value="activeTab.inlineText"
+            :mime-type="editorMime"
+            @update:model-value="store.updateActiveContent"
+          />
+        </div>
+      </div>
+    </div>
+
+    <template #right-panel>
+      <div v-if="activeTab" class="h-full overflow-y-auto">
+        <ValidatePanel :file="activeTab" />
+      </div>
+      <div v-else class="p-3 text-sm opacity-60">
+        Open a file to see validation tools.
+      </div>
+    </template>
+  </EditorShell>
+
+  <VModal v-model="showCreate" title="New file">
+    <div class="space-y-2 p-2">
+      <VInput
+        v-model="createPath"
+        label="Path"
+        placeholder="utils/sum.js"
+      />
+      <VAlert v-if="createError" variant="error">{{ createError }}</VAlert>
+      <div class="flex justify-end gap-2 pt-2">
+        <VButton variant="ghost" @click="showCreate = false">Cancel</VButton>
+        <VButton variant="primary" :loading="creating" @click="confirmCreate">Create</VButton>
+      </div>
+    </div>
+  </VModal>
+
+  <ExecutionDialog
+    v-if="showExecuteDialog && activeTab && selectedProjectId"
+    :file="activeTab"
+    :project-id="selectedProjectId"
+    @close="showExecuteDialog = false"
+  />
+
+  <DeepThoughtPanel
+    v-if="showDeepThought && selectedProjectId"
+    :file="activeTab"
+    :project-id="selectedProjectId"
+    @close="showDeepThought = false"
+    @apply="onDeepThoughtApplied"
+  />
+</template>

@@ -23,4 +23,7 @@ export interface DocumentDto {
   summary?: string;
   summarizedAtMs?: number;
   ragEnabled?: boolean;
+  lastDeepReviewedHash?: string;
+  lastDeepReviewWarningsJson?: string;
+  lastDeepReviewedAtMs?: number;
 }

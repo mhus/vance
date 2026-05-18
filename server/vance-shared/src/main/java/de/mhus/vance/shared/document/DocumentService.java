@@ -962,6 +962,41 @@ public class DocumentService {
     }
 
     /**
+     * Atomic update of the Script-Cortex deep-validate cache. Called
+     * after an LLM review so subsequent UI loads can show a "still
+     * reviewed" badge when the content hash matches.
+     *
+     * @param id            document id
+     * @param contentHash   sha-256 hex of the {@code inlineText} that
+     *                      was reviewed
+     * @param warningsJson  serialized JSON array of warnings ({@code "[]"}
+     *                      when the review found nothing)
+     */
+    public void setDeepReviewCache(String id, String contentHash, String warningsJson) {
+        Update u = new Update()
+                .set("lastDeepReviewedHash", contentHash)
+                .set("lastDeepReviewWarningsJson", warningsJson)
+                .set("lastDeepReviewedAt", Instant.now());
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                u, DocumentDocument.class);
+    }
+
+    /**
+     * Stamp a document's {@code kind} field. Used by the Script Cortex
+     * controller to mark inline-text documents as {@code "script"} —
+     * without this, {@link #applyHeader} (markdown-front-matter only)
+     * leaves the field {@code null} for {@code .js}/{@code .json}
+     * documents and the list-filter cannot find them.
+     */
+    public void setKind(String id, String kind) {
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                new Update().set("kind", kind),
+                DocumentDocument.class);
+    }
+
+    /**
      * Removes the document and its storage blob (soft-delete on storage).
      * No-op if the id is unknown.
      *

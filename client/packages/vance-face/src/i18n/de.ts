@@ -27,6 +27,14 @@ export default {
     menu: {
       languageHeader: 'Sprache',
     },
+    help: {
+      toggle: 'Hilfe ein-/ausblenden',
+      title: 'Hilfe',
+      close: 'Hilfe schließen',
+      loading: 'Hilfe wird geladen …',
+      unavailable: 'Hilfe nicht verfügbar: {error}',
+      empty: 'Für diese Seite gibt es noch keine Hilfe.',
+    },
   },
 
   login: {

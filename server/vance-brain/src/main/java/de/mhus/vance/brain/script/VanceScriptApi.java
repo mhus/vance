@@ -4,6 +4,7 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import org.graalvm.polyglot.HostAccess;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -22,6 +23,35 @@ import org.slf4j.LoggerFactory;
 public final class VanceScriptApi {
 
     private static final Logger LOG = LoggerFactory.getLogger("vance.script");
+
+    /**
+     * Out-of-band hook that lets callers tap every {@code vance.log.*}
+     * call from inside the script context. Used by Script Cortex to
+     * surface server-side log lines in the Execute dialog's Output
+     * pane alongside {@code console.*} output — without it, users
+     * who reach for {@code vance.log.info(...)} see nothing.
+     *
+     * <p>The hook is {@link InheritableThreadLocal} on purpose: the
+     * GraalJS watchdog runs the eval on a child thread of the caller,
+     * and ThreadLocal isn't inherited automatically. Inheritable copy
+     * propagates the active tee into the watchdog thread on creation.
+     *
+     * <p>Caller contract: set right before the script runs, clear in
+     * a finally block. {@link ScriptLog} reads the value on every
+     * log call and pushes a {@code (stream, formattedLine)} tuple
+     * when present. The SLF4J log is unaffected.
+     */
+    private static final InheritableThreadLocal<BiConsumer<String, String>>
+            ACTIVE_LOG_TEE = new InheritableThreadLocal<>();
+
+    public static void setActiveLogTee(@Nullable BiConsumer<String, String> tee) {
+        if (tee == null) ACTIVE_LOG_TEE.remove();
+        else ACTIVE_LOG_TEE.set(tee);
+    }
+
+    public static void clearActiveLogTee() {
+        ACTIVE_LOG_TEE.remove();
+    }
 
     @HostAccess.Export
     public final ScriptToolsApi tools;
@@ -118,6 +148,7 @@ public final class VanceScriptApi {
             LOG.info("[script] tenant={} project={} process={} {} {}",
                     scope.tenantId(), scope.projectId(), scope.processId(),
                     message, fields == null ? Map.of() : fields);
+            tee("info", message, fields);
         }
 
         @HostAccess.Export
@@ -125,6 +156,7 @@ public final class VanceScriptApi {
             LOG.warn("[script] tenant={} project={} process={} {} {}",
                     scope.tenantId(), scope.projectId(), scope.processId(),
                     message, fields == null ? Map.of() : fields);
+            tee("warn", message, fields);
         }
 
         @HostAccess.Export
@@ -132,6 +164,20 @@ public final class VanceScriptApi {
             LOG.error("[script] tenant={} project={} process={} {} {}",
                     scope.tenantId(), scope.projectId(), scope.processId(),
                     message, fields == null ? Map.of() : fields);
+            tee("error", message, fields);
+        }
+
+        private static void tee(String stream, String message,
+                                @Nullable Map<String, Object> fields) {
+            BiConsumer<String, String> hook = ACTIVE_LOG_TEE.get();
+            if (hook == null) return;
+            String line = (fields == null || fields.isEmpty())
+                    ? message : message + " " + fields;
+            try {
+                hook.accept(stream, line);
+            } catch (RuntimeException ignored) {
+                // Hook failures must never leak back into the script.
+            }
         }
     }
 

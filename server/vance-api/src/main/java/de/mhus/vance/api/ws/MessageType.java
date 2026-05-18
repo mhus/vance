@@ -286,6 +286,26 @@ public final class MessageType {
      */
     public static final String WORKFLOW_START = "workflow-start";
 
+    /**
+     * Script Cortex execution lifecycle — pushed to the WebSocket-session
+     * that subscribed to a given {@code executionId} via
+     * {@link #SCRIPT_EXECUTION_SUBSCRIBE}. See
+     * {@code planning/script-cortex.md} §"WS-Messages".
+     */
+    public static final String SCRIPT_EXECUTION_STARTED = "script-execution-started";
+    public static final String SCRIPT_EXECUTION_LOG = "script-execution-log";
+    public static final String SCRIPT_EXECUTION_FINISHED = "script-execution-finished";
+    public static final String SCRIPT_EXECUTION_FAILED = "script-execution-failed";
+    public static final String SCRIPT_EXECUTION_CANCELLED = "script-execution-cancelled";
+
+    /**
+     * Client-initiated subscription to a Script Cortex execution.
+     * Payload: {@code { executionId: string }}. After subscribing the
+     * client receives all {@code script-execution-*} notifications for
+     * that id. Unsubscribed on WebSocket close.
+     */
+    public static final String SCRIPT_EXECUTION_SUBSCRIBE = "script-execution-subscribe";
+
     private MessageType() {
     }
 }

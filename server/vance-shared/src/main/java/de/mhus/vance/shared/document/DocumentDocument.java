@@ -158,4 +158,19 @@ public class DocumentDocument {
 
     /** When the RAG-index claim was acquired — used for stale-claim recovery. */
     private @Nullable Instant ragClaimedAt;
+
+    // ─── Script Cortex deep-validate cache (see planning/script-cortex.md) ───
+
+    /**
+     * SHA-256 hex of the {@link #inlineText} that was deep-validated by an
+     * LLM review. Used by the Script Cortex UI to mark the document as
+     * "still reviewed" when the current content hashes to the same value.
+     */
+    private @Nullable String lastDeepReviewedHash;
+
+    /** Serialized JSON array of {@code ScriptDeepWarning}s from the last review. */
+    private @Nullable String lastDeepReviewWarningsJson;
+
+    /** When the LLM produced the cached deep-review. */
+    private @Nullable Instant lastDeepReviewedAt;
 }

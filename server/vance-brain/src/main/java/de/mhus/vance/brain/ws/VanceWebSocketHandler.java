@@ -51,6 +51,8 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     private final ClientToolRegistry clientToolRegistry;
     private final SessionConnectionRegistry connectionRegistry;
     private final ExecutionRegistryService executionRegistry;
+    private final de.mhus.vance.brain.script.cortex.ScriptExecutionWsRegistry
+            scriptExecutionWsRegistry;
     private final Map<String, WsHandler> handlers;
 
     public VanceWebSocketHandler(
@@ -62,6 +64,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             ClientToolRegistry clientToolRegistry,
             SessionConnectionRegistry connectionRegistry,
             ExecutionRegistryService executionRegistry,
+            de.mhus.vance.brain.script.cortex.ScriptExecutionWsRegistry scriptExecutionWsRegistry,
             List<WsHandler> handlers) {
         this.sessionService = sessionService;
         this.sessionLifecycle = sessionLifecycle;
@@ -71,6 +74,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         this.clientToolRegistry = clientToolRegistry;
         this.connectionRegistry = connectionRegistry;
         this.executionRegistry = executionRegistry;
+        this.scriptExecutionWsRegistry = scriptExecutionWsRegistry;
         this.handlers = indexHandlers(handlers);
     }
 
@@ -158,6 +162,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_CONNECTION);
         if (!(attr instanceof ConnectionContext ctx)) return;
         executionRegistry.removeByFootClient(ctx.getConnectionId());
+        scriptExecutionWsRegistry.unregisterAllFor(wsSession);
         if (ctx.hasSession()) {
             String sessionId = ctx.getSessionId();
             clientToolRegistry.unregister(sessionId);

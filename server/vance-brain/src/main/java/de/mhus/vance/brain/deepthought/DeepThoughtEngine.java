@@ -11,17 +11,23 @@ import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.brain.script.JsValidationService;
+import de.mhus.vance.brain.script.ScriptExecutionException;
+import de.mhus.vance.brain.script.ScriptExecutor;
+import de.mhus.vance.brain.script.ScriptRequest;
+import de.mhus.vance.brain.script.ScriptResult;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
+import java.time.Duration;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -93,6 +99,20 @@ public class DeepThoughtEngine implements ThinkEngine {
     /** {@code engineParams[MAX_RECOVERIES_KEY]} — int; default 5. */
     public static final String MAX_RECOVERIES_KEY = "maxRecoveries";
 
+    /** {@code engineParams[SCRIPT_ARGS_KEY]} — map handed to the
+     *  generated script as the top-level {@code args} binding when
+     *  EXECUTING runs. Lets the caller pass typed inputs in (the
+     *  same shape skill-scripts expect). {@code null} or missing →
+     *  empty map. Ignored unless {@code executeOnDone=true}. */
+    public static final String SCRIPT_ARGS_KEY = "scriptArgs";
+
+    /** {@code engineParams[EXECUTION_TIMEOUT_KEY]} — fallback timeout
+     *  for EXECUTING when the script body has no {@code @timeout}
+     *  header. Accepted as a number-of-seconds (int/long) or a
+     *  parseable duration string ({@code "30s"}, {@code "2m"}). {@code null}
+     *  → ScriptEngine defaults from application.yaml apply. */
+    public static final String EXECUTION_TIMEOUT_KEY = "executionTimeoutSeconds";
+
     /** {@code engineParams[SCRIPT_ALLOWED_TOOLS_KEY]} — list of tool
      *  names the <em>generated script</em> will be permitted to call
      *  via {@code vance.tools.call(name, args)}. Used at DRAFTING time
@@ -132,6 +152,7 @@ public class DeepThoughtEngine implements ThinkEngine {
     private final LlmCallTracker llmCallTracker;
     private final JsValidationService jsValidationService;
     private final ToolDispatcher toolDispatcher;
+    private final ScriptExecutor scriptExecutor;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -419,15 +440,76 @@ public class DeepThoughtEngine implements ThinkEngine {
         return DeepThoughtStatus.DRAFTING;
     }
 
+    /**
+     * EXECUTING — actually runs the validated script via
+     * {@link ScriptExecutor}. Builds a {@link ContextToolsApi} narrowed
+     * to {@code scriptAllowedTools} so the script can only call tools
+     * the caller explicitly approved (same allow-filter the LLM tool
+     * loop uses). Input bindings come from
+     * {@code engineParams.scriptArgs}.
+     *
+     * <p>On success the return value (mapped to a JSON-friendly Java
+     * object — primitives stay primitives, JS objects become Maps, JS
+     * arrays become Lists) and the wall-clock duration are stored on
+     * state, then DONE. On {@link ScriptExecutionException} the
+     * error message + class are recorded and the engine transitions
+     * to FAILED — runtime errors are <em>not</em> fed back into the
+     * recovery loop (DRAFTING corrects syntax, not runtime semantics,
+     * and a loop on runtime errors burns LLM tokens for an unknowable
+     * outcome).
+     */
     DeepThoughtStatus runExecuting(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             DeepThoughtState state) {
-        log.debug("DeepThought.runExecuting STUB id='{}' codeLen={}",
+        String code = state.getGeneratedCode();
+        if (code == null || code.isBlank()) {
+            state.setFailureReason(
+                    "EXECUTING entered with empty generatedCode — "
+                            + "DRAFTING/VALIDATING must run first");
+            return DeepThoughtStatus.FAILED;
+        }
+
+        ToolInvocationContext scope = new ToolInvocationContext(
+                process.getTenantId(),
+                process.getProjectId(),
+                process.getSessionId(),
                 process.getId(),
-                state.getGeneratedCode() == null ? 0 : state.getGeneratedCode().length());
-        // v1 has no Script Cortex runner — go straight to DONE.
-        return DeepThoughtStatus.DONE;
+                /*userId*/ null);
+        Set<String> scriptTools = new java.util.LinkedHashSet<>(
+                scriptAllowedTools(process));
+        ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope, scriptTools);
+
+        Map<String, @Nullable Object> bindings = scriptArgsBindings(process);
+        Duration timeout = executionTimeout(process);
+
+        try {
+            ScriptResult result = scriptExecutor.run(
+                    new ScriptRequest(
+                            "js", code, "deepthought:" + process.getId(),
+                            tools, timeout, bindings));
+            state.setExecutionResult(result.value());
+            state.setExecutionDurationMs(result.duration().toMillis());
+            state.setExecutionError(null);
+            state.setExecutionErrorClass(null);
+            log.info("DeepThought.runExecuting id='{}' OK — duration={}ms, "
+                            + "valueClass={}",
+                    process.getId(), result.duration().toMillis(),
+                    result.value() == null ? "null"
+                            : result.value().getClass().getSimpleName());
+            return DeepThoughtStatus.DONE;
+        } catch (ScriptExecutionException e) {
+            state.setExecutionError(e.getMessage());
+            state.setExecutionErrorClass(e.errorClass().name());
+            state.setExecutionResult(null);
+            // Use the failureReason field too so terminal-state
+            // summarizeForParent picks it up uniformly.
+            state.setFailureReason("Script execution failed ("
+                    + e.errorClass().name() + "): " + e.getMessage());
+            log.warn("DeepThought.runExecuting id='{}' FAIL class={} msg={}",
+                    process.getId(), e.errorClass(), e.getMessage());
+            return DeepThoughtStatus.FAILED;
+        }
     }
 
     // ──────────────────── Phase helpers ────────────────────
@@ -535,6 +617,60 @@ public class DeepThoughtEngine implements ThinkEngine {
         return sb.toString();
     }
 
+    /**
+     * Builds the {@code args} top-level binding for the executed
+     * script. Reads the caller-supplied
+     * {@code engineParams.scriptArgs} map; non-map / missing values
+     * yield an empty binding (the script sees {@code args = {}}).
+     * The {@code "vance"} key is reserved by the host API and is
+     * stripped if present.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, @Nullable Object> scriptArgsBindings(
+            ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams();
+        Object raw = p == null ? null : p.get(SCRIPT_ARGS_KEY);
+        if (!(raw instanceof Map<?, ?> map)) {
+            return Map.of("args", new LinkedHashMap<String, Object>());
+        }
+        Map<String, Object> args = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            if (e.getKey() instanceof String key && !"vance".equals(key)) {
+                args.put(key, e.getValue());
+            }
+        }
+        return Map.of("args", args);
+    }
+
+    /**
+     * Resolves the EXECUTING-phase timeout. Order:
+     * {@code engineParams.executionTimeoutSeconds} (number-of-seconds
+     * or duration string) → 5 minutes as last-resort default. The
+     * per-script JSDoc {@code @timeout} header takes precedence over
+     * this when the script is parsed by the executor — this is just
+     * the wall-clock cap when the script omits its own.
+     */
+    private static Duration executionTimeout(ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams();
+        Object raw = p == null ? null : p.get(EXECUTION_TIMEOUT_KEY);
+        if (raw instanceof Number n && n.longValue() > 0) {
+            return Duration.ofSeconds(n.longValue());
+        }
+        if (raw instanceof String s && !s.isBlank()) {
+            try {
+                // Allow "30s", "2m", "1h" as well as plain seconds.
+                if (s.matches("\\d+")) {
+                    return Duration.ofSeconds(Long.parseLong(s.trim()));
+                }
+                return Duration.parse("PT" + s.trim().toUpperCase());
+            } catch (RuntimeException e) {
+                // Fall through to default — bad input shouldn't kill
+                // the run.
+            }
+        }
+        return Duration.ofMinutes(5);
+    }
+
     private static List<String> scriptAllowedTools(ThinkProcessDocument process) {
         Map<String, Object> p = process.getEngineParams();
         Object raw = p == null ? null : p.get(SCRIPT_ALLOWED_TOOLS_KEY);
@@ -584,6 +720,24 @@ public class DeepThoughtEngine implements ThinkEngine {
         return sb.toString();
     }
 
+    /**
+     * Renders the script's return value for the parent's chat
+     * surface. Strings come back as-is (most natural readout for a
+     * "give me the answer" script); structured values get a fenced
+     * JSON block so the parent's LLM can pick them apart. Used by
+     * {@link #summarizeForParent} on the execute-on-done success path.
+     */
+    private String renderExecutionValue(@Nullable Object value) {
+        if (value == null) return "(no return value)";
+        if (value instanceof String s) return s;
+        try {
+            String json = objectMapper.writeValueAsString(value);
+            return "```json\n" + json + "\n```";
+        } catch (RuntimeException e) {
+            return String.valueOf(value);
+        }
+    }
+
     private static String oneLine(@Nullable String raw) {
         if (raw == null) return "";
         String s = raw.replaceAll("\\s+", " ").trim();
@@ -610,13 +764,31 @@ public class DeepThoughtEngine implements ThinkEngine {
                 ? 0 : state.getGeneratedCode().length());
         payload.put("recoveryCount", state.getRecoveryCount());
         payload.put("validationErrors", state.getValidationErrors().size());
+        if (state.isExecuteOnDone()) {
+            payload.put("executionDurationMs", state.getExecutionDurationMs());
+            if (state.getExecutionErrorClass() != null) {
+                payload.put("executionErrorClass", state.getExecutionErrorClass());
+            }
+        }
 
         if (state.getStatus() == DeepThoughtStatus.DONE
                 && state.getGeneratedCode() != null) {
-            // Parent gets the script verbatim in a fenced block — its
-            // own LLM (chat, Vogon, …) can quote it, run it through a
-            // tool, or hand it on. The generatedCode also still sits
-            // in engineParams for direct Mongo inspection.
+            // Two flavours of DONE: execute-on-done returns the
+            // script's value as the headline (the parent typically
+            // cares about the result, not the code); plain DONE
+            // returns the code itself so the parent can pipe it
+            // wherever. generatedCode is in engineParams either way
+            // for direct Mongo inspection.
+            if (state.isExecuteOnDone()) {
+                payload.put("executionResult", state.getExecutionResult());
+                String valueRendered = renderExecutionValue(state.getExecutionResult());
+                return new ParentReport(
+                        "Deep Thought executed the generated script ("
+                                + state.getGeneratedCode().length() + " chars, "
+                                + state.getExecutionDurationMs() + "ms). Return value:\n\n"
+                                + valueRendered,
+                        payload);
+            }
             return new ParentReport(
                     "Deep Thought drafted a script (" + state.getGeneratedCode().length()
                             + " chars, " + state.getRecoveryCount()

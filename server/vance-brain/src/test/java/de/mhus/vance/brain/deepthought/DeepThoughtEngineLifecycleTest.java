@@ -24,6 +24,10 @@ import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.brain.script.JsValidationService;
+import de.mhus.vance.brain.script.ScriptExecutionException;
+import de.mhus.vance.brain.script.ScriptExecutor;
+import de.mhus.vance.brain.script.ScriptRequest;
+import de.mhus.vance.brain.script.ScriptResult;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -85,6 +89,7 @@ class DeepThoughtEngineLifecycleTest {
     private PromptTemplateRenderer promptTemplateRenderer;
     private LlmCallTracker llmCallTracker;
     private ToolDispatcher toolDispatcher;
+    private ScriptExecutor scriptExecutor;
     private ScriptedChatModel chatModel;
     private ThinkEngineContext ctx;
 
@@ -103,6 +108,13 @@ class DeepThoughtEngineLifecycleTest {
         // returns "" so the prompt simply omits the section.
         when(toolDispatcher.resolve(anyString(), any()))
                 .thenReturn(java.util.Optional.empty());
+        scriptExecutor = mock(ScriptExecutor.class);
+        // Default: EXECUTING returns a string value, used by both
+        // execute-on-done tests and any others that accidentally
+        // enter EXECUTING.
+        when(scriptExecutor.run(any(ScriptRequest.class)))
+                .thenReturn(new ScriptResult("default-result",
+                        java.time.Duration.ofMillis(5)));
 
         // Real renderer — Pebble has no I/O, cheap to construct, and
         // exercises the exact rendering path the production code uses.
@@ -138,7 +150,8 @@ class DeepThoughtEngineLifecycleTest {
                 promptTemplateRenderer,
                 llmCallTracker,
                 jsValidationService,
-                toolDispatcher);
+                toolDispatcher,
+                scriptExecutor);
     }
 
     // ──────────────────── Happy path ────────────────────
@@ -246,17 +259,88 @@ class DeepThoughtEngineLifecycleTest {
 
     @Test
     void runTurns_withExecuteOnDone_passesThroughExecutingPhase() {
+        when(scriptExecutor.run(any(ScriptRequest.class)))
+                .thenReturn(new ScriptResult("hello, world",
+                        java.time.Duration.ofMillis(42)));
+
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
         engine.start(process, ctx);
-        chatModel.script("```javascript\n(function () { return 1; })();\n```");
+        chatModel.script("```javascript\n(function () { return 'hello, world'; })();\n```");
 
         int turns = drainTurns(process, 10);
 
         DeepThoughtState finalState = readState(process);
         assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getExecutionResult()).isEqualTo("hello, world");
+        assertThat(finalState.getExecutionDurationMs()).isEqualTo(42L);
+        assertThat(finalState.getExecutionError()).isNull();
         // READY → DRAFTING → VALIDATING → EXECUTING → DONE = 4.
         assertThat(turns).isEqualTo(4);
+    }
+
+    @Test
+    void runTurns_scriptExecutionFails_endsInFailed_noRecoveryLoop() {
+        // Runtime errors from the executor go straight to FAILED —
+        // they're not fed back into DRAFTING (DRAFTING corrects
+        // syntax, not runtime semantics; a runtime-error loop would
+        // burn LLM tokens for an unknowable outcome).
+        when(scriptExecutor.run(any(ScriptRequest.class)))
+                .thenThrow(new ScriptExecutionException(
+                        ScriptExecutionException.ErrorClass.TIMEOUT,
+                        "Script exceeded its @timeout"));
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { while (true) {} })();\n```");
+
+        drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        assertThat(finalState.getExecutionError())
+                .contains("Script exceeded its @timeout");
+        assertThat(finalState.getExecutionErrorClass()).isEqualTo("TIMEOUT");
+        assertThat(finalState.getFailureReason())
+                .contains("Script execution failed (TIMEOUT)");
+        // No DRAFTING recovery — only one drafting attempt.
+        assertThat(finalState.getRecoveryCount()).isZero();
+    }
+
+    @Test
+    void runTurns_scriptArgsAndToolsHandedToExecutor() {
+        // Capture the ScriptRequest the engine builds — verify the
+        // scriptArgs map lands as the `args` binding and the tool
+        // surface is narrowed to scriptAllowedTools.
+        org.mockito.ArgumentCaptor<ScriptRequest> requestCaptor =
+                org.mockito.ArgumentCaptor.forClass(ScriptRequest.class);
+        when(scriptExecutor.run(requestCaptor.capture()))
+                .thenReturn(new ScriptResult(7, java.time.Duration.ofMillis(3)));
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+        process.getEngineParams().put(
+                DeepThoughtEngine.SCRIPT_ARGS_KEY,
+                Map.of("a", 3, "b", 4));
+        process.getEngineParams().put(
+                DeepThoughtEngine.SCRIPT_ALLOWED_TOOLS_KEY,
+                List.of("doc_write_text"));
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return args.a + args.b; })();\n```");
+
+        drainTurns(process, 10);
+
+        ScriptRequest req = requestCaptor.getValue();
+        assertThat(req.language()).isEqualTo("js");
+        assertThat(req.bindings()).containsKey("args");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> args = (Map<String, Object>) req.bindings().get("args");
+        assertThat(args).containsEntry("a", 3).containsEntry("b", 4);
+        // ContextToolsApi's allowed-set is locked-down to what the
+        // caller declared — exercises the narrow-tool-surface
+        // contract.
+        assertThat(req.tools().allowed()).containsExactly("doc_write_text");
     }
 
     // ──────────────────── Tool inventory ────────────────────
@@ -407,6 +491,32 @@ class DeepThoughtEngineLifecycleTest {
     }
 
     // ──────────────────── summarizeForParent ────────────────────
+
+    @Test
+    void summarizeForParent_onDone_withExecuteOnDone_returnsValue() {
+        when(scriptExecutor.run(any(ScriptRequest.class)))
+                .thenReturn(new ScriptResult(Map.of("ok", true, "sum", 7),
+                        java.time.Duration.ofMillis(11)));
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return {ok:true,sum:7}; })();\n```");
+        drainTurns(process, 10);
+
+        ParentReport report = engine.summarizeForParent(process, ProcessEventType.DONE);
+
+        // Value-flavour summary: not the code, but the returned data
+        // rendered as a fenced JSON block. Code length still in payload.
+        assertThat(report.humanSummary())
+                .contains("executed the generated script")
+                .contains("```json")
+                .contains("\"sum\":7");
+        assertThat(report.payload())
+                .containsEntry("status", "DONE")
+                .containsEntry("executionDurationMs", 11L)
+                .containsKey("executionResult");
+    }
 
     @Test
     void summarizeForParent_onDone_returnsCodeBlock() {

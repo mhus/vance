@@ -47,9 +47,32 @@ public class DeepThoughtState {
     private List<ValidationError> validationErrors = new ArrayList<>();
 
     /** If true, transition to EXECUTING after VALIDATING; otherwise
-     *  jump straight to DONE. v1 leaves this at {@code false} —
-     *  EXECUTING phase is stubbed pending Script Cortex. */
+     *  jump straight to DONE. */
     private boolean executeOnDone;
+
+    /** Script return value (only set on a successful EXECUTING pass).
+     *  JSON-friendly Java object — primitives stay primitives, JS
+     *  objects become {@link java.util.Map}, JS arrays become
+     *  {@link java.util.List}. {@code null} when the script returned
+     *  nothing or when EXECUTING wasn't reached. */
+    private @Nullable Object executionResult;
+
+    /** Stack-trace-style error from a failed EXECUTING pass — captured
+     *  from {@code ScriptExecutionException.getMessage()}. {@code null}
+     *  on success or before EXECUTING. */
+    private @Nullable String executionError;
+
+    /** Classification of an EXECUTING failure — one of
+     *  {@code INVALID_HEADER}, {@code MISSING_CAPABILITY},
+     *  {@code TIMEOUT}, {@code STATEMENT_LIMIT_EXCEEDED},
+     *  {@code RUNTIME_ERROR}, ... — see
+     *  {@code ScriptExecutionException.ErrorClass}. {@code null}
+     *  when EXECUTING succeeded or wasn't run. */
+    private @Nullable String executionErrorClass;
+
+    /** Wall-clock duration of the EXECUTING pass in milliseconds.
+     *  {@code 0} when EXECUTING wasn't run. */
+    private long executionDurationMs;
 
     /** Number of completed DRAFTING→VALIDATING recovery cycles. Hits
      *  {@link #maxRecoveries} → FAILED. */

@@ -23,11 +23,15 @@ import de.mhus.vance.brain.ai.ChatBehavior;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
+import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.brain.script.JsValidationService;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
 import de.mhus.vance.brain.script.ScriptResult;
+import de.mhus.vance.brain.skill.ResolvedSkill;
+import de.mhus.vance.brain.skill.SkillResolver;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -36,6 +40,8 @@ import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
@@ -93,6 +99,8 @@ class DeepThoughtEngineLifecycleTest {
     private ToolDispatcher toolDispatcher;
     private ScriptExecutor scriptExecutor;
     private DocumentService documentService;
+    private SkillResolver skillResolver;
+    private SessionService sessionService;
     private ScriptedChatModel chatModel;
     private ThinkEngineContext ctx;
 
@@ -123,6 +131,15 @@ class DeepThoughtEngineLifecycleTest {
         // the prompt template's manual section is omitted.
         when(documentService.listByPrefixCascade(anyString(), any(), anyString()))
                 .thenReturn(java.util.Map.of());
+        skillResolver = mock(SkillResolver.class);
+        sessionService = mock(SessionService.class);
+        // Default: no session backing the process — scopeFor returns
+        // (tenant, null, null), and no skills resolve. Engine flows
+        // through without skill-side rendering.
+        when(sessionService.findBySessionId(anyString()))
+                .thenReturn(java.util.Optional.empty());
+        when(skillResolver.resolve(any(), anyString()))
+                .thenReturn(java.util.Optional.empty());
 
         // Real renderer — Pebble has no I/O, cheap to construct, and
         // exercises the exact rendering path the production code uses.
@@ -160,7 +177,9 @@ class DeepThoughtEngineLifecycleTest {
                 jsValidationService,
                 toolDispatcher,
                 scriptExecutor,
-                documentService);
+                documentService,
+                skillResolver,
+                sessionService);
     }
 
     // ──────────────────── Happy path ────────────────────
@@ -486,6 +505,116 @@ class DeepThoughtEngineLifecycleTest {
         String systemText = ((dev.langchain4j.data.message.SystemMessage)
                 chatModel.calls().get(0).messages().get(0)).text();
         assertThat(systemText).contains("**x**");
+    }
+
+    // ──────────────────── Skill guidance ────────────────────
+
+    @Test
+    void drafting_includesSkillGuidance_whenScriptArchitectSkillActive() {
+        // One script-architect-tagged skill: contributes promptExtension
+        // + an INLINE reference doc + a manualPaths entry. All three
+        // must surface in the rendered system prompt.
+        ResolvedSkill skill = new ResolvedSkill(
+                "essay-script-architect",
+                "Essay-Script Skill",
+                "Conventions for essay-orchestrator scripts",
+                "1.0",
+                List.of(),
+                "Always use process_run for chapter-loops; never enumerate by hand.",
+                List.of("process_run", "doc_write_text"),
+                List.of("skill-manuals/"),
+                List.of(new ResolvedSkill.ReferenceDoc(
+                        "chapter-loop pattern",
+                        "Spawn one Ford sub-worker per chapter via process_run.",
+                        SkillReferenceDocLoadMode.INLINE,
+                        null)),
+                List.of(),
+                List.of("script-architect", "essay"),
+                true,
+                SkillScope.PROJECT);
+        when(skillResolver.resolve(any(), eq("essay-script-architect")))
+                .thenReturn(java.util.Optional.of(skill));
+
+        // Skill manualPaths fold into the manual inventory — the
+        // engine queries the cascade for that folder too.
+        when(documentService.listByPrefixCascade(
+                anyString(), any(), eq("skill-manuals/")))
+                .thenReturn(java.util.Map.of(
+                        "skill-manuals/pattern.md",
+                        new LookupResult("skill-manuals/pattern.md", "...",
+                                LookupResult.Source.PROJECT, null)));
+
+        when(enginePromptResolver.resolve(any(), anyString(), anyString()))
+                .thenReturn(
+                        "{% if manualInventory %}MANUALS:\n{{ manualInventory }}{% endif %}"
+                        + "{% if skillGuidance %}\nGUIDANCE:\n{{ skillGuidance }}{% endif %}");
+
+        ThinkProcessDocument process = newProcess();
+        process.setActiveSkills(List.of(
+                ActiveSkillRefEmbedded.builder()
+                        .name("essay-script-architect")
+                        .fromRecipe(true)
+                        .build()));
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 1; })();\n```");
+
+        drainTurns(process, 10);
+
+        String systemText = ((dev.langchain4j.data.message.SystemMessage)
+                chatModel.calls().get(0).messages().get(0)).text();
+        // promptExtension surfaces.
+        assertThat(systemText).contains("Always use process_run for chapter-loops");
+        // INLINE reference doc surfaces with its title.
+        assertThat(systemText)
+                .contains("chapter-loop pattern")
+                .contains("Spawn one Ford sub-worker per chapter");
+        // Skill-supplied manualPaths fold into the manual inventory.
+        assertThat(systemText).contains("**pattern**");
+    }
+
+    @Test
+    void drafting_skipsSkill_withoutScriptArchitectTag() {
+        // Skill is active but lacks the script-architect tag — must
+        // be ignored even though it has a promptExtension. Prevents
+        // generic project-skills (essay-writer, etc.) from bleeding
+        // into the DRAFTING prompt.
+        ResolvedSkill irrelevantSkill = new ResolvedSkill(
+                "essay-writer",
+                "Essay Writer",
+                "User-facing essay writing skill — not for DT",
+                "1.0",
+                List.of(),
+                "Always cite sources in (vgl. ..., JJJJ) format.",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of("essay"),
+                true,
+                SkillScope.PROJECT);
+        when(skillResolver.resolve(any(), eq("essay-writer")))
+                .thenReturn(java.util.Optional.of(irrelevantSkill));
+
+        when(enginePromptResolver.resolve(any(), anyString(), anyString()))
+                .thenReturn("{% if skillGuidance %}GUIDANCE:\n{{ skillGuidance }}"
+                        + "{% else %}NO-GUIDANCE{% endif %}");
+
+        ThinkProcessDocument process = newProcess();
+        process.setActiveSkills(List.of(
+                ActiveSkillRefEmbedded.builder()
+                        .name("essay-writer")
+                        .fromRecipe(false)
+                        .build()));
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 1; })();\n```");
+
+        drainTurns(process, 10);
+
+        String systemText = ((dev.langchain4j.data.message.SystemMessage)
+                chatModel.calls().get(0).messages().get(0)).text();
+        assertThat(systemText).contains("NO-GUIDANCE");
+        // The skill's promptExtension must not leak.
+        assertThat(systemText).doesNotContain("Always cite sources");
     }
 
     @Test

@@ -52,6 +52,16 @@ alone are catalogue.
 {{ manualInventory }}
 {% endif %}
 
+{% if skillGuidance %}
+## Skill guidance
+
+Project-supplied script-architect skills are active. Honour their
+conventions over the generic guidance above when they conflict —
+the project owner installed them deliberately.
+
+{{ skillGuidance }}
+{% endif %}
+
 ## JSDoc header
 
 The script MUST start with a JSDoc header declaring resource limits

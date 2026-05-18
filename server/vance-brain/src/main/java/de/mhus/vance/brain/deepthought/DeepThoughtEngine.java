@@ -10,11 +10,16 @@ import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.brain.script.JsValidationService;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
 import de.mhus.vance.brain.script.ScriptResult;
+import de.mhus.vance.brain.skill.ResolvedSkill;
+import de.mhus.vance.brain.skill.SkillResolver;
+import de.mhus.vance.brain.skill.SkillScopeContext;
+import de.mhus.vance.brain.skill.UnknownSkillException;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
@@ -25,6 +30,9 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
+import de.mhus.vance.shared.session.SessionDocument;
+import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
@@ -147,6 +155,12 @@ public class DeepThoughtEngine implements ThinkEngine {
                     + "Reply with EXACTLY one ```javascript fenced block "
                     + "containing an IIFE that fulfils the goal: {{ goal }}";
 
+    /** Tag a skill must carry to participate in DRAFTING. Skills
+     *  without this tag are ignored even when active on the process —
+     *  prevents Arthur/Ford-side skills (essay-writer, etc.) from
+     *  bleeding into the script-architect prompt. */
+    public static final String SCRIPT_ARCHITECT_TAG = "script-architect";
+
     /** Matches the first ```javascript / ```js / ``` fenced block
      *  in the LLM reply. DOTALL so {@code .} spans line breaks. */
     private static final Pattern JS_FENCE = Pattern.compile(
@@ -164,6 +178,8 @@ public class DeepThoughtEngine implements ThinkEngine {
     private final ToolDispatcher toolDispatcher;
     private final ScriptExecutor scriptExecutor;
     private final DocumentService documentService;
+    private final SkillResolver skillResolver;
+    private final SessionService sessionService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -350,9 +366,15 @@ public class DeepThoughtEngine implements ThinkEngine {
                 PromptContextBuilder.forProcess(process, null)
                         .engine(NAME)
                         .build());
+        // Resolve script-architect-tagged skills ONCE per turn; both
+        // the manual-inventory and the skill-guidance sections key off
+        // the same list so a second resolve call would be wasted.
+        List<ResolvedSkill> architectSkills = resolveScriptArchitectSkills(process);
+
         ctxMap.put("goal", state.getGoal() == null ? "" : state.getGoal());
         ctxMap.put("toolInventory", renderToolInventory(process, ctx));
-        ctxMap.put("manualInventory", renderManualInventory(process));
+        ctxMap.put("manualInventory", renderManualInventory(process, architectSkills));
+        ctxMap.put("skillGuidance", renderSkillGuidance(architectSkills));
         String renderedSystem = promptTemplateRenderer.render(systemTpl, ctxMap);
 
         // User message: recovery hint first when applicable, then the
@@ -699,12 +721,24 @@ public class DeepThoughtEngine implements ThinkEngine {
      * manuals exist under them. The Pebble template gates the section
      * with {@code {% if manualInventory %}…{% endif %}}.
      *
-     * <p>Skill-supplied paths are NOT picked up here (yet) — see
-     * {@code planning/deepthought-engine.md} §"Prompt context
-     * enrichment" for the {@code script-architect}-label design.
+     * <p>Skill-supplied paths join in via the {@code architectSkills}
+     * list (resolved once per turn upstream). Recipe paths take
+     * precedence — same first-wins rule as
+     * {@link de.mhus.vance.brain.tools.manual.ManualListTool}.
      */
-    private String renderManualInventory(ThinkProcessDocument process) {
-        List<String> folders = manualPaths(process);
+    private String renderManualInventory(
+            ThinkProcessDocument process, List<ResolvedSkill> architectSkills) {
+        java.util.LinkedHashSet<String> folders =
+                new java.util.LinkedHashSet<>(manualPaths(process));
+        for (ResolvedSkill skill : architectSkills) {
+            if (skill.manualPaths() == null) continue;
+            for (String p : skill.manualPaths()) {
+                if (p == null || p.isBlank()) continue;
+                String norm = p.trim();
+                if (!norm.endsWith("/")) norm = norm + "/";
+                folders.add(norm);
+            }
+        }
         if (folders.isEmpty()) return "";
         if (process.getTenantId() == null || process.getTenantId().isBlank()) {
             return "";
@@ -750,6 +784,104 @@ public class DeepThoughtEngine implements ThinkEngine {
             out.add(norm);
         }
         return out;
+    }
+
+    /**
+     * Resolves the process's active skills, filtered to those carrying
+     * the {@link #SCRIPT_ARCHITECT_TAG} tag. Engine-driven push: no
+     * trigger matching (DRAFTING has no user-input string to match
+     * against), only skills that landed on the process via recipe
+     * binding ({@code fromRecipe=true}) or out-of-band activation
+     * ({@code ProcessSkillHandler}) reach this list.
+     *
+     * <p>Unknown skill references (skill renamed / removed since
+     * activation) are logged + skipped — matches Ford's "warn rather
+     * than fail the turn" behaviour.
+     */
+    private List<ResolvedSkill> resolveScriptArchitectSkills(
+            ThinkProcessDocument process) {
+        List<ActiveSkillRefEmbedded> active = process.getActiveSkills();
+        if (active == null || active.isEmpty()) return List.of();
+        SkillScopeContext scope = scopeFor(process);
+        List<ResolvedSkill> out = new ArrayList<>();
+        for (ActiveSkillRefEmbedded ref : active) {
+            if (ref == null || ref.getName() == null) continue;
+            try {
+                java.util.Optional<ResolvedSkill> resolved =
+                        skillResolver.resolve(scope, ref.getName());
+                if (resolved.isEmpty()) {
+                    log.warn("DeepThought id='{}' active skill '{}' no longer "
+                                    + "resolves — skipping",
+                            process.getId(), ref.getName());
+                    continue;
+                }
+                ResolvedSkill skill = resolved.get();
+                if (skill.tags() != null
+                        && skill.tags().contains(SCRIPT_ARCHITECT_TAG)) {
+                    out.add(skill);
+                }
+            } catch (UnknownSkillException e) {
+                log.warn("DeepThought id='{}' active skill '{}' unknown — skipping",
+                        process.getId(), ref.getName());
+            }
+        }
+        return out;
+    }
+
+    private SkillScopeContext scopeFor(ThinkProcessDocument process) {
+        SessionDocument session = process.getSessionId() == null
+                ? null
+                : sessionService.findBySessionId(process.getSessionId()).orElse(null);
+        String userId = session != null && session.getUserId() != null
+                && !session.getUserId().isBlank() ? session.getUserId() : null;
+        String projectId = session != null && session.getProjectId() != null
+                && !session.getProjectId().isBlank() ? session.getProjectId() : null;
+        return SkillScopeContext.of(process.getTenantId(), userId, projectId);
+    }
+
+    /**
+     * Builds the Markdown body for the prompt's
+     * {@code {{ skillGuidance }}} variable. Concatenates each matching
+     * skill's {@code promptExtension} plus its INLINE
+     * {@code referenceDocs} under a header naming the skill. Same
+     * "INLINE only, ON_DEMAND treated as INLINE" rule
+     * {@link de.mhus.vance.brain.skill.SkillPromptComposer} uses in
+     * v1, so Deep Thought-side and Ford-side rendering stay aligned.
+     *
+     * <p>Returns an empty string when no skills match; the Pebble
+     * template gates the section with {@code {% if skillGuidance %}…{% endif %}}.
+     */
+    private String renderSkillGuidance(List<ResolvedSkill> architectSkills) {
+        if (architectSkills.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (ResolvedSkill skill : architectSkills) {
+            String prompt = skill.promptExtension();
+            boolean hasPrompt = prompt != null && !prompt.isBlank();
+            boolean hasDocs = skill.referenceDocs() != null
+                    && !skill.referenceDocs().isEmpty();
+            if (!hasPrompt && !hasDocs) continue;
+            sb.append("### ").append(skill.title() == null
+                    ? skill.name() : skill.title()).append('\n');
+            if (hasPrompt) {
+                sb.append(prompt.trim()).append('\n');
+            }
+            if (hasDocs) {
+                for (ResolvedSkill.ReferenceDoc doc : skill.referenceDocs()) {
+                    // ON_DEMAND treated as INLINE in v1, same as
+                    // SkillPromptComposer (planning/deepthought-engine.md
+                    // §"Prompt context enrichment").
+                    if (doc.loadMode() == SkillReferenceDocLoadMode.INLINE
+                            || doc.loadMode() == SkillReferenceDocLoadMode.ON_DEMAND) {
+                        sb.append("\n#### ").append(doc.title()).append('\n');
+                        if (doc.content() != null && !doc.content().isBlank()) {
+                            sb.append(doc.content().trim()).append('\n');
+                        }
+                    }
+                }
+            }
+            sb.append('\n');
+        }
+        return sb.toString().stripTrailing();
     }
 
     private static List<String> scriptAllowedTools(ThinkProcessDocument process) {

@@ -1,6 +1,11 @@
 package de.mhus.vance.brain.script;
 
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.shared.workspace.NodeHandler;
+import de.mhus.vance.shared.workspace.RootDirHandle;
+import de.mhus.vance.shared.workspace.WorkspaceService;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,6 +29,7 @@ import org.graalvm.polyglot.PolyglotException;
 import org.graalvm.polyglot.ResourceLimits;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
+import org.graalvm.polyglot.io.FileSystem;
 import org.graalvm.polyglot.io.IOAccess;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,11 +56,16 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     private final Engine engine;
     private final HostAccess hostAccess;
     private final ScriptEngineProperties props;
+    private final @Nullable WorkspaceService workspaceService;
 
     @Autowired
-    public GraaljsScriptExecutor(Engine engine, ScriptEngineProperties props) {
+    public GraaljsScriptExecutor(
+            Engine engine,
+            ScriptEngineProperties props,
+            @Autowired(required = false) @Nullable WorkspaceService workspaceService) {
         this.engine = engine;
         this.props = props;
+        this.workspaceService = workspaceService;
         this.hostAccess = HostAccess.newBuilder()
                 .allowAccessAnnotatedBy(HostAccess.Export.class)
                 .allowImplementationsAnnotatedBy(HostAccess.Implementable.class)
@@ -66,13 +77,19 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 .build();
     }
 
+    /** Two-arg constructor for tests that don't need the require
+     *  pathway (workspaceService=null). */
+    public GraaljsScriptExecutor(Engine engine, ScriptEngineProperties props) {
+        this(engine, props, null);
+    }
+
     /** Legacy constructor for unit tests that build the executor
      *  directly (e.g. {@code GraaljsScriptExecutorBindingsTest},
      *  {@code ScriptHarness}). Uses framework defaults — equivalent
      *  to the JVM-wide config a Spring-managed instance would
      *  receive when no {@code vance.script.*} properties are set. */
     public GraaljsScriptExecutor(Engine engine) {
-        this(engine, new ScriptEngineProperties());
+        this(engine, new ScriptEngineProperties(), null);
     }
 
     @Override
@@ -116,19 +133,42 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 .statementLimit(effectiveStatements, null)
                 .build();
 
-        Context ctx = Context.newBuilder("js")
+        // ── Phase 5: optional CommonJS-require pathway. When the
+        // script declares @workspaceRoot AND vance.script.require.enabled
+        // is true, resolve the Node RootDir, pre-check @requires
+        // packages, and configure the Context with a sandboxed
+        // FileSystem that only allows reads under <root>/node_modules/.
+        // Else: legacy IOAccess.NONE — require() is undefined.
+        @Nullable Path requireRoot = resolveRequireRoot(
+                request, header, sourceName);
+        if (requireRoot != null) {
+            enforceRequires(requireRoot, header.requires(), sourceName);
+        }
+
+        Context.Builder ctxBuilder = Context.newBuilder("js")
                 .engine(engine)
                 .allowHostAccess(hostAccess)
                 .allowAllAccess(false)
-                .allowIO(IOAccess.NONE)
                 .allowCreateThread(false)
                 .allowNativeAccess(false)
                 .allowHostClassLoading(false)
                 .allowHostClassLookup(name -> false)
-                .allowExperimentalOptions(false)
                 .allowEnvironmentAccess(EnvironmentAccess.NONE)
-                .resourceLimits(limits)
-                .build();
+                .resourceLimits(limits);
+
+        if (requireRoot == null) {
+            ctxBuilder
+                    .allowIO(IOAccess.NONE)
+                    .allowExperimentalOptions(false);
+        } else {
+            ctxBuilder
+                    .allowIO(buildSandboxedIo(requireRoot))
+                    .allowExperimentalOptions(true)
+                    .option("js.commonjs-require", "true")
+                    .option("js.commonjs-require-cwd", requireRoot.toString());
+        }
+
+        Context ctx = ctxBuilder.build();
 
         ExecutorService watchdog = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "vance-script-eval");
@@ -265,6 +305,153 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             return caller;
         }
         return caller.narrowTo(headerAllow);
+    }
+
+    /**
+     * Resolves the absolute Node workspace path the script's
+     * {@code require()} calls will be rooted at, or {@code null} when
+     * the require pathway is not active. Three conditions must hold:
+     *
+     * <ol>
+     *   <li>{@code vance.script.require.enabled=true}</li>
+     *   <li>The script has a {@code @workspaceRoot} header tag (or
+     *       the script declared {@code @requires} — implicit
+     *       binding to the default label)</li>
+     *   <li>A {@link WorkspaceService} bean is wired in</li>
+     * </ol>
+     *
+     * <p>Failure modes raise {@link ScriptExecutionException} with
+     * {@code MISSING_CAPABILITY} so the caller fails-fast before
+     * the Context is even built.
+     */
+    private @Nullable Path resolveRequireRoot(
+            ScriptRequest request, ScriptHeader header, String sourceName) {
+        boolean needsRequire = header.workspaceRoot() != null
+                || !header.requires().isEmpty();
+        if (!needsRequire) return null;
+
+        if (!props.getRequire().isEnabled()) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
+                    "[" + sourceName + "] script uses @workspaceRoot/@requires "
+                            + "but vance.script.require.enabled=false on this brain");
+        }
+        if (workspaceService == null) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
+                    "[" + sourceName + "] script uses @workspaceRoot/@requires "
+                            + "but WorkspaceService is not available in this "
+                            + "executor (test fixture using the 1-arg constructor?)");
+        }
+
+        String tenantId = request.tools().scope().tenantId();
+        String projectId = request.tools().scope().projectId();
+        if (tenantId == null || tenantId.isBlank()
+                || projectId == null || projectId.isBlank()) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
+                    "[" + sourceName + "] @workspaceRoot/@requires require a "
+                            + "tenant- and project-scoped invocation context");
+        }
+
+        String label = header.workspaceRoot();
+        if (label == null) label = props.getRequire().getDefaultLabel();
+
+        RootDirHandle handle = findNodeRootDirByLabel(tenantId, projectId, label);
+        if (handle == null) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
+                    "[" + sourceName + "] @workspaceRoot '" + label
+                            + "' does not resolve to a Node RootDir in project "
+                            + projectId + " — run node_create first");
+        }
+        return handle.getPath().toAbsolutePath().normalize();
+    }
+
+    private @Nullable RootDirHandle findNodeRootDirByLabel(
+            String tenantId, String projectId, String label) {
+        if (workspaceService == null) return null;
+        for (RootDirHandle h : workspaceService.listRootDirs(tenantId, projectId)) {
+            if (!NodeHandler.TYPE.equals(h.getType())) continue;
+            String existingLabel = h.getDescriptor() == null
+                    ? null : h.getDescriptor().getLabel();
+            if (label.equals(existingLabel)) return h;
+        }
+        return null;
+    }
+
+    /**
+     * Pre-eval capability check for {@code @requires}. Every declared
+     * package must have a {@code <root>/node_modules/<pkg>/package.json}
+     * entry; otherwise we fail-fast with MISSING_CAPABILITY so the
+     * caller doesn't waste an LLM/eval cycle on a script that's
+     * destined to throw {@code ReferenceError: require is not defined}
+     * or {@code MODULE_NOT_FOUND} at runtime.
+     */
+    private static void enforceRequires(
+            Path root, Set<String> requires, String sourceName) {
+        if (requires == null || requires.isEmpty()) return;
+        Path nodeModules = root.resolve(NodeHandler.NODE_MODULES_DIR);
+        if (!Files.isDirectory(nodeModules)) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
+                    "[" + sourceName + "] @requires declared but "
+                            + nodeModules + " does not exist — "
+                            + "run node_install first");
+        }
+        for (String pkg : requires) {
+            Path pkgJson = nodeModules.resolve(pkg).resolve("package.json");
+            if (!Files.isRegularFile(pkgJson)) {
+                throw new ScriptExecutionException(
+                        ScriptExecutionException.ErrorClass.MISSING_CAPABILITY,
+                        "[" + sourceName + "] @requires '" + pkg
+                                + "' not installed (looked for " + pkgJson + ")");
+            }
+        }
+    }
+
+    /**
+     * Builds an {@link IOAccess} that only permits reads under
+     * {@code workspaceRoot}. Everything else is hard-denied through
+     * {@link FileSystem#newDenyIOFileSystem()}. The read-only
+     * delegate is a default filesystem wrapped via
+     * {@link FileSystem#newReadOnlyFileSystem(FileSystem)} so write
+     * opens raise SecurityException even if Graal's require
+     * implementation tried to open a file for write.
+     */
+    private static IOAccess buildSandboxedIo(Path workspaceRoot) {
+        FileSystem readOnly = FileSystem.newReadOnlyFileSystem(
+                FileSystem.newDefaultFileSystem());
+        FileSystem deny = FileSystem.newDenyIOFileSystem();
+        Path absRoot = workspaceRoot.toAbsolutePath().normalize();
+        FileSystem composite = FileSystem.newCompositeFileSystem(
+                deny,
+                FileSystem.Selector.of(readOnly, path -> isUnderRoot(path, absRoot)));
+        return IOAccess.newBuilder().fileSystem(composite).build();
+    }
+
+    /**
+     * Whether {@code path} lives under {@code root}. {@link Path#startsWith}
+     * alone is insufficient on macOS, where {@code /var/folders} is a
+     * symlink to {@code /private/var/folders} — GraalJS's resolver hands
+     * us the canonical (private-prefixed) variant while the root we
+     * computed from the workspace handle has the un-prefixed one. We
+     * strip {@code /private} from either side before the suffix match
+     * so the same workspace tree resolves identically regardless of
+     * which form Graal walked in.
+     */
+    static boolean isUnderRoot(@Nullable Path path, Path absRoot) {
+        if (path == null) return false;
+        Path normalized = path.toAbsolutePath().normalize();
+        if (normalized.startsWith(absRoot)) return true;
+        String pathStr = stripPrivatePrefix(normalized.toString());
+        String rootStr = stripPrivatePrefix(absRoot.toString());
+        return pathStr.equals(rootStr)
+                || pathStr.startsWith(rootStr + java.io.File.separator);
+    }
+
+    private static String stripPrivatePrefix(String s) {
+        return s.startsWith("/private/") ? s.substring("/private".length()) : s;
     }
 
     private static ScriptExecutionException mapEvalFailure(Throwable cause) {

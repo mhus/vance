@@ -19,6 +19,7 @@ public class ScriptEngineProperties {
     private TimeoutLimits timeout = new TimeoutLimits();
     private StatementLimits statements = new StatementLimits();
     private Capabilities capabilities = new Capabilities();
+    private Require require = new Require();
 
     public TimeoutLimits getTimeout() { return timeout; }
     public void setTimeout(TimeoutLimits timeout) { this.timeout = timeout; }
@@ -32,6 +33,9 @@ public class ScriptEngineProperties {
     public void setCapabilities(Capabilities capabilities) {
         this.capabilities = capabilities;
     }
+
+    public Require getRequire() { return require; }
+    public void setRequire(Require require) { this.require = require; }
 
     public static class TimeoutLimits {
         /** Default wall-clock for a script run when neither header
@@ -62,6 +66,35 @@ public class ScriptEngineProperties {
         public void setMin(long v) { this.min = v; }
         public long getMax() { return max; }
         public void setMax(long v) { this.max = v; }
+    }
+
+    /**
+     * Toggles the GraalJS CommonJS-require pathway. Disabled by
+     * default — scripts run with {@code IOAccess.NONE} and
+     * {@code require()} is undefined, identical to legacy v0
+     * behaviour. When enabled, a script with a {@code @workspaceRoot}
+     * header tag can {@code require()} packages from the corresponding
+     * Node RootDir's {@code node_modules} folder, via a sandboxed
+     * read-only FileSystem that denies access to anything else.
+     *
+     * <p>Even with {@code enabled=true}, a script without
+     * {@code @workspaceRoot} uses the legacy IOAccess.NONE pathway —
+     * there is no implicit workspace binding.
+     */
+    public static class Require {
+        /** Master switch. Default false — feature is opt-in. */
+        private boolean enabled = false;
+
+        /** Default workspace label that resolves to a Node RootDir
+         *  when a script omits {@code @workspaceRoot} but the require
+         *  pathway is otherwise active. Default {@code "_jsengine"}
+         *  matches {@link de.mhus.vance.shared.workspace.NodeHandler#DEFAULT_LABEL}. */
+        private String defaultLabel = "_jsengine";
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean v) { this.enabled = v; }
+        public String getDefaultLabel() { return defaultLabel; }
+        public void setDefaultLabel(String v) { this.defaultLabel = v; }
     }
 
     public static class Capabilities {

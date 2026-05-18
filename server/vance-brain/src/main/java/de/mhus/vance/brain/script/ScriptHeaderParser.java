@@ -44,7 +44,9 @@ public final class ScriptHeaderParser {
      *  added here. */
     private static final Set<String> KNOWN_TAGS = Set.of(
             "timeout", "statements", "allowTools", "requiresTools",
-            "description", "version");
+            "description", "version",
+            // CommonJS require pathway (vance.script.require.enabled):
+            "requires", "workspaceRoot", "nodeBuiltins");
 
     private ScriptHeaderParser() {}
 
@@ -73,6 +75,9 @@ public final class ScriptHeaderParser {
         Set<String> requiresTools = new LinkedHashSet<>();
         String description = null;
         String version = null;
+        Set<String> requires = new LinkedHashSet<>();
+        String workspaceRoot = null;
+        Set<String> nodeBuiltins = new LinkedHashSet<>();
         boolean anyTag = false;
         // Track which tags we've seen so we can warn on duplicates.
         Set<String> seen = new LinkedHashSet<>();
@@ -107,6 +112,15 @@ public final class ScriptHeaderParser {
                 }
                 case "description" -> description = value;
                 case "version" -> version = value;
+                case "requires" -> {
+                    requires.clear();
+                    requires.addAll(parseList(value));
+                }
+                case "workspaceRoot" -> workspaceRoot = value;
+                case "nodeBuiltins" -> {
+                    nodeBuiltins.clear();
+                    nodeBuiltins.addAll(parseList(value));
+                }
                 default -> { /* unreachable due to KNOWN_TAGS check */ }
             }
             anyTag = true;
@@ -115,7 +129,8 @@ public final class ScriptHeaderParser {
             return ScriptHeader.empty();
         }
         return new ScriptHeader(timeout, statementLimit,
-                allowTools, requiresTools, description, version);
+                allowTools, requiresTools, description, version,
+                requires, workspaceRoot, nodeBuiltins);
     }
 
     // ──────────────────── value parsers ────────────────────

@@ -24,17 +24,25 @@ public record ScriptHeader(
         Set<String> allowTools,
         Set<String> requiresTools,
         @Nullable String description,
-        @Nullable String version) {
+        @Nullable String version,
+        Set<String> requires,
+        @Nullable String workspaceRoot,
+        Set<String> nodeBuiltins) {
 
     public ScriptHeader {
         allowTools = allowTools == null
                 ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(allowTools));
         requiresTools = requiresTools == null
                 ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(requiresTools));
+        requires = requires == null
+                ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(requires));
+        nodeBuiltins = nodeBuiltins == null
+                ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(nodeBuiltins));
     }
 
     private static final ScriptHeader EMPTY = new ScriptHeader(
-            null, null, Set.of(), Set.of(), null, null);
+            null, null, Set.of(), Set.of(), null, null,
+            Set.of(), null, Set.of());
 
     /** No header present — every field defaults; executor uses
      *  the full Caller / Setting / Code-default fallback chain. */
@@ -51,6 +59,9 @@ public record ScriptHeader(
                 || !allowTools.isEmpty()
                 || !requiresTools.isEmpty()
                 || description != null
-                || version != null;
+                || version != null
+                || !requires.isEmpty()
+                || workspaceRoot != null
+                || !nodeBuiltins.isEmpty();
     }
 }

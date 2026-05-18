@@ -173,6 +173,36 @@ class ScriptHeaderParserTest {
     }
 
     @Test
+    void parse_requires_listsPackages() {
+        ScriptHeader h = ScriptHeaderParser.parse("""
+                /**
+                 * @requires lodash, dayjs
+                 */
+                """, "test");
+        assertThat(h.requires()).containsExactly("lodash", "dayjs");
+    }
+
+    @Test
+    void parse_workspaceRoot_setsField() {
+        ScriptHeader h = ScriptHeaderParser.parse("""
+                /**
+                 * @workspaceRoot _jsengine
+                 */
+                """, "test");
+        assertThat(h.workspaceRoot()).isEqualTo("_jsengine");
+    }
+
+    @Test
+    void parse_nodeBuiltins_listsAllowedModules() {
+        ScriptHeader h = ScriptHeaderParser.parse("""
+                /**
+                 * @nodeBuiltins path, url, util
+                 */
+                """, "test");
+        assertThat(h.nodeBuiltins()).containsExactly("path", "url", "util");
+    }
+
+    @Test
     void parse_block_after_first_executable_statement_is_ignored() {
         // Header must precede the first statement. A doc-block that
         // sits between code lines is regular doc, not a header.

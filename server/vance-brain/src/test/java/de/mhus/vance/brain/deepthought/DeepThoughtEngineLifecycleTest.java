@@ -187,24 +187,44 @@ class DeepThoughtEngineLifecycleTest {
         doAnswer(inv -> null).when(thinkProcessService)
                 .replaceEngineParams(anyString(), any());
 
+        // Build real phase components — exercises the dispatch path
+        // end-to-end. Slart's lifecycle test mocks the phases; for DT
+        // the phase logic is the bulk of what the lifecycle tests are
+        // meant to validate, so we wire the production components and
+        // mock only the leaf dependencies (LLM, scripts, IO).
+        de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer
+                contextRenderer =
+                new de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer(
+                        toolDispatcher, documentService,
+                        skillResolver, sessionService);
+        de.mhus.vance.brain.deepthought.phases.FramingPhase framingPhase =
+                new de.mhus.vance.brain.deepthought.phases.FramingPhase(
+                        engineChatFactory, enginePromptResolver,
+                        promptTemplateRenderer, llmCallTracker, contextRenderer);
+        de.mhus.vance.brain.deepthought.phases.ReviewingPhase reviewingPhase =
+                new de.mhus.vance.brain.deepthought.phases.ReviewingPhase(
+                        thinkProcessService, recipeResolver, laneScheduler,
+                        chatMessageService, thinkEngineServiceProvider);
+        de.mhus.vance.brain.deepthought.phases.DraftingPhase draftingPhase =
+                new de.mhus.vance.brain.deepthought.phases.DraftingPhase(
+                        engineChatFactory, enginePromptResolver,
+                        promptTemplateRenderer, llmCallTracker, contextRenderer);
+        de.mhus.vance.brain.deepthought.phases.ValidatingPhase validatingPhase =
+                new de.mhus.vance.brain.deepthought.phases.ValidatingPhase(
+                        jsValidationService);
+        de.mhus.vance.brain.deepthought.phases.ExecutingPhase executingPhase =
+                new de.mhus.vance.brain.deepthought.phases.ExecutingPhase(
+                        scriptExecutor, toolDispatcher);
+
         engine = new DeepThoughtEngine(
                 thinkProcessService,
                 eventEmitter,
                 objectMapper,
-                engineChatFactory,
-                enginePromptResolver,
-                promptTemplateRenderer,
-                llmCallTracker,
-                jsValidationService,
-                toolDispatcher,
-                scriptExecutor,
-                documentService,
-                skillResolver,
-                sessionService,
-                recipeResolver,
-                laneScheduler,
-                chatMessageService,
-                thinkEngineServiceProvider);
+                framingPhase,
+                reviewingPhase,
+                draftingPhase,
+                validatingPhase,
+                executingPhase);
     }
 
     // ──────────────────── Happy path ────────────────────

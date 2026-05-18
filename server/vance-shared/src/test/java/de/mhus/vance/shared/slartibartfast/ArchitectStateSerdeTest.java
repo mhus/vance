@@ -58,7 +58,7 @@ class ArchitectStateSerdeTest {
         assertThat(back.getOutputSchemaType()).isEqualTo(OutputSchemaType.VOGON_STRATEGY);
         assertThat(back.getMaxSpeculativeRatio()).isEqualTo(0.30);
         assertThat(back.getConfirmationThreshold()).isEqualTo(0.85);
-        assertThat(back.getMaxRecoveries()).isEqualTo(5);
+        assertThat(back.getMaxRecoveries()).isEqualTo(10);
         assertThat(back.isAuditLlmCalls()).isTrue();
         assertThat(back.getRationales()).isEmpty();
         assertThat(back.getIterations()).isEmpty();

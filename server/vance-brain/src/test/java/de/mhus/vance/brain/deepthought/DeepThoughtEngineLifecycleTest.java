@@ -34,6 +34,8 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
@@ -90,6 +92,7 @@ class DeepThoughtEngineLifecycleTest {
     private LlmCallTracker llmCallTracker;
     private ToolDispatcher toolDispatcher;
     private ScriptExecutor scriptExecutor;
+    private DocumentService documentService;
     private ScriptedChatModel chatModel;
     private ThinkEngineContext ctx;
 
@@ -115,6 +118,11 @@ class DeepThoughtEngineLifecycleTest {
         when(scriptExecutor.run(any(ScriptRequest.class)))
                 .thenReturn(new ScriptResult("default-result",
                         java.time.Duration.ofMillis(5)));
+        documentService = mock(DocumentService.class);
+        // Default: no manuals — renderManualInventory returns "" and
+        // the prompt template's manual section is omitted.
+        when(documentService.listByPrefixCascade(anyString(), any(), anyString()))
+                .thenReturn(java.util.Map.of());
 
         // Real renderer — Pebble has no I/O, cheap to construct, and
         // exercises the exact rendering path the production code uses.
@@ -151,7 +159,8 @@ class DeepThoughtEngineLifecycleTest {
                 llmCallTracker,
                 jsValidationService,
                 toolDispatcher,
-                scriptExecutor);
+                scriptExecutor,
+                documentService);
     }
 
     // ──────────────────── Happy path ────────────────────
@@ -411,6 +420,72 @@ class DeepThoughtEngineLifecycleTest {
                 .contains("Required: path, content")
                 .contains("**process_run**")
                 .contains("Required: name, goal, recipe");
+    }
+
+    @Test
+    void drafting_rendersManualInventory_whenManualPathsSet() {
+        // Stub the document cascade — two manuals under one folder,
+        // sourced from project and bundled defaults respectively. The
+        // engine must list them by stem + folder + source.
+        DocumentService.class.toString(); // keep import alive
+        when(documentService.listByPrefixCascade(
+                eq("acme"), eq("test-project"), eq("manuals/")))
+                .thenReturn(new java.util.LinkedHashMap<>(java.util.Map.of(
+                        "manuals/tool-conventions.md",
+                        new LookupResult("manuals/tool-conventions.md",
+                                "...", LookupResult.Source.PROJECT, null),
+                        "manuals/data-export.md",
+                        new LookupResult("manuals/data-export.md",
+                                "...", LookupResult.Source.RESOURCE, null))));
+
+        when(enginePromptResolver.resolve(any(), anyString(), anyString()))
+                .thenReturn("{% if manualInventory %}MANUALS:\n{{ manualInventory }}"
+                        + "{% else %}NO MANUALS{% endif %}");
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(
+                DeepThoughtEngine.MANUAL_PATHS_KEY,
+                List.of("manuals/"));
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 1; })();\n```");
+
+        drainTurns(process, 10);
+
+        ChatRequest request = chatModel.calls().get(0);
+        String systemText = ((dev.langchain4j.data.message.SystemMessage)
+                request.messages().get(0)).text();
+        assertThat(systemText)
+                .contains("MANUALS:")
+                .contains("**data-export**")
+                .contains("(folder: manuals/, source: resource)")
+                .contains("**tool-conventions**")
+                .contains("(folder: manuals/, source: project)");
+    }
+
+    @Test
+    void drafting_normalizesManualPaths_appendsTrailingSlash() {
+        // Pass "manuals" (no trailing slash) — engine must normalise.
+        when(documentService.listByPrefixCascade(
+                anyString(), any(), eq("manuals/")))
+                .thenReturn(java.util.Map.of(
+                        "manuals/x.md",
+                        new LookupResult("manuals/x.md", "...",
+                                LookupResult.Source.PROJECT, null)));
+        when(enginePromptResolver.resolve(any(), anyString(), anyString()))
+                .thenReturn("{% if manualInventory %}{{ manualInventory }}{% endif %}");
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(
+                DeepThoughtEngine.MANUAL_PATHS_KEY,
+                List.of("manuals"));
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 1; })();\n```");
+
+        drainTurns(process, 10);
+
+        String systemText = ((dev.langchain4j.data.message.SystemMessage)
+                chatModel.calls().get(0).messages().get(0)).text();
+        assertThat(systemText).contains("**x**");
     }
 
     @Test

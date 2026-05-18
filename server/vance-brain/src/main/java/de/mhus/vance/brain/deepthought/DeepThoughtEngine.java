@@ -23,6 +23,8 @@ import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
@@ -99,6 +101,14 @@ public class DeepThoughtEngine implements ThinkEngine {
     /** {@code engineParams[MAX_RECOVERIES_KEY]} — int; default 5. */
     public static final String MAX_RECOVERIES_KEY = "maxRecoveries";
 
+    /** {@code engineParams[MANUAL_PATHS_KEY]} — list of project folder
+     *  paths whose Markdown documents are enumerated at DRAFTING and
+     *  surfaced as {@code manualInventory} in the system prompt.
+     *  Mirrors the same key {@code ManualPaths} uses for the running-
+     *  LLM {@code manual_list}/{@code manual_read} tools, so the same
+     *  config drives both. Missing/empty → no manuals block rendered. */
+    public static final String MANUAL_PATHS_KEY = "manualPaths";
+
     /** {@code engineParams[SCRIPT_ARGS_KEY]} — map handed to the
      *  generated script as the top-level {@code args} binding when
      *  EXECUTING runs. Lets the caller pass typed inputs in (the
@@ -153,6 +163,7 @@ public class DeepThoughtEngine implements ThinkEngine {
     private final JsValidationService jsValidationService;
     private final ToolDispatcher toolDispatcher;
     private final ScriptExecutor scriptExecutor;
+    private final DocumentService documentService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -341,6 +352,7 @@ public class DeepThoughtEngine implements ThinkEngine {
                         .build());
         ctxMap.put("goal", state.getGoal() == null ? "" : state.getGoal());
         ctxMap.put("toolInventory", renderToolInventory(process, ctx));
+        ctxMap.put("manualInventory", renderManualInventory(process));
         String renderedSystem = promptTemplateRenderer.render(systemTpl, ctxMap);
 
         // User message: recovery hint first when applicable, then the
@@ -669,6 +681,75 @@ public class DeepThoughtEngine implements ThinkEngine {
             }
         }
         return Duration.ofMinutes(5);
+    }
+
+    /**
+     * Renders the configured manual folders as a Markdown listing the
+     * DRAFTING prompt embeds. Each {@code manualPaths} folder is
+     * resolved through the document cascade (project → {@code _vance} →
+     * classpath:vance-defaults); resulting {@code .md} documents are
+     * listed by name + folder + source.
+     *
+     * <p>Content is <em>not</em> inlined — manuals can run to tens of
+     * KB and the LLM picks what it needs from the names. Names are
+     * stable identifiers like {@code "data-export"} or {@code "tool-conventions"};
+     * the goal text can reference them and the LLM has the catalogue.
+     *
+     * <p>Returns an empty string when no folders are configured or no
+     * manuals exist under them. The Pebble template gates the section
+     * with {@code {% if manualInventory %}…{% endif %}}.
+     *
+     * <p>Skill-supplied paths are NOT picked up here (yet) — see
+     * {@code planning/deepthought-engine.md} §"Prompt context
+     * enrichment" for the {@code script-architect}-label design.
+     */
+    private String renderManualInventory(ThinkProcessDocument process) {
+        List<String> folders = manualPaths(process);
+        if (folders.isEmpty()) return "";
+        if (process.getTenantId() == null || process.getTenantId().isBlank()) {
+            return "";
+        }
+
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        StringBuilder sb = new StringBuilder();
+        for (String folder : folders) {
+            Map<String, LookupResult> hits = documentService.listByPrefixCascade(
+                    process.getTenantId(), process.getProjectId(), folder);
+            // Sort within a folder so output is deterministic across
+            // backends — listByPrefixCascade returns a Map, order
+            // depends on impl.
+            List<String> paths = new ArrayList<>(hits.keySet());
+            paths.sort(String::compareTo);
+            for (String path : paths) {
+                if (!path.endsWith(".md")) continue;
+                String filename = path.substring(folder.length());
+                String stem = filename.substring(
+                        0, filename.length() - ".md".length());
+                if (stem.isBlank()) continue;
+                if (!seen.add(stem)) continue;
+                LookupResult result = hits.get(path);
+                sb.append("- **").append(stem).append("** ")
+                        .append("(folder: ").append(folder)
+                        .append(", source: ")
+                        .append(result.source().name().toLowerCase())
+                        .append(")\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static List<String> manualPaths(ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams();
+        Object raw = p == null ? null : p.get(MANUAL_PATHS_KEY);
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object entry : list) {
+            if (!(entry instanceof String s) || s.isBlank()) continue;
+            String norm = s.trim();
+            if (!norm.endsWith("/")) norm = norm + "/";
+            out.add(norm);
+        }
+        return out;
     }
 
     private static List<String> scriptAllowedTools(ThinkProcessDocument process) {

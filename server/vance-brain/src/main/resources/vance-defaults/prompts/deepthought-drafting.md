@@ -40,6 +40,18 @@ No tools are available to your script. Solve the goal with pure
 JavaScript — no `vance.tools.call(...)` invocations.
 {% endif %}
 
+{% if manualInventory %}
+## Project manuals (read-only reference catalogue)
+
+These Markdown documents describe project-specific conventions,
+data shapes, and tool usage patterns. Reference them by name when
+your script needs to honour a project rule (e.g. "follow the
+`tool-conventions` manual"). Content is not included here — names
+alone are catalogue.
+
+{{ manualInventory }}
+{% endif %}
+
 ## JSDoc header
 
 The script MUST start with a JSDoc header declaring resource limits

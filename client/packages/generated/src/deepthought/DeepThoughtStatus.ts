@@ -5,6 +5,7 @@
 
 export enum DeepThoughtStatus {
   READY = 'READY',
+  LOADING = 'LOADING',
   FRAMING = 'FRAMING',
   REVIEWING = 'REVIEWING',
   DRAFTING = 'DRAFTING',

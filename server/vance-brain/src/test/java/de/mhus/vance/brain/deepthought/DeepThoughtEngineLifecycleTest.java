@@ -215,11 +215,15 @@ class DeepThoughtEngineLifecycleTest {
         de.mhus.vance.brain.deepthought.phases.ExecutingPhase executingPhase =
                 new de.mhus.vance.brain.deepthought.phases.ExecutingPhase(
                         scriptExecutor, toolDispatcher);
+        de.mhus.vance.brain.deepthought.phases.LoadingPhase loadingPhase =
+                new de.mhus.vance.brain.deepthought.phases.LoadingPhase(
+                        documentService);
 
         engine = new DeepThoughtEngine(
                 thinkProcessService,
                 eventEmitter,
                 objectMapper,
+                loadingPhase,
                 framingPhase,
                 reviewingPhase,
                 draftingPhase,
@@ -683,6 +687,142 @@ class DeepThoughtEngineLifecycleTest {
         assertThat(systemText).doesNotContain("TOOLS:");
     }
 
+    // ──────────────────── Load-mode (scriptPath) ────────────────────
+
+    @Test
+    void loadMode_skipsGeneration_validatesLoadedScript() {
+        // Set scriptPath; document cascade returns a valid IIFE.
+        // Engine must skip FRAMING/DRAFTING entirely: LOADING →
+        // VALIDATING → DONE. No LLM calls.
+        String loaded = "(function () { return 42; })();";
+        when(documentService.lookupCascade(
+                eq("acme"), eq("test-project"), eq("scripts/hello.js")))
+                .thenReturn(java.util.Optional.of(new LookupResult(
+                        "scripts/hello.js", loaded,
+                        LookupResult.Source.PROJECT, null)));
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(
+                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/hello.js");
+        engine.start(process, ctx);
+
+        int turns = drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getScriptPath()).isEqualTo("scripts/hello.js");
+        assertThat(finalState.getGeneratedCode()).isEqualTo(loaded);
+        // No drafting attempts.
+        assertThat(finalState.getRecoveryCount()).isZero();
+        // READY → LOADING → VALIDATING → DONE = 3 advancing turns.
+        assertThat(turns).isEqualTo(3);
+        // Crucially: ZERO LLM calls in load-mode.
+        assertThat(chatModel.calls()).isEmpty();
+    }
+
+    @Test
+    void loadMode_goalIsOptional() {
+        // No goal anywhere — scriptPath is enough.
+        when(documentService.lookupCascade(
+                anyString(), any(), eq("scripts/x.js")))
+                .thenReturn(java.util.Optional.of(new LookupResult(
+                        "scripts/x.js", "(function () { return 1; })();",
+                        LookupResult.Source.PROJECT, null)));
+
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setId("proc-deep-load");
+        process.setTenantId("acme");
+        process.setProjectId("test-project");
+        process.setSessionId("sess-1");
+        process.setEngineParams(new LinkedHashMap<>());
+        process.getEngineParams().put(
+                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/x.js");
+        // process.goal stays null; engineParams.goal absent.
+
+        engine.start(process, ctx);
+        drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getGeneratedCode()).contains("return 1");
+    }
+
+    @Test
+    void loadMode_invalidJs_failsWithoutDraftingRecovery() {
+        // Loaded script has a syntax error. Load-mode forces
+        // maxRecoveries=0, so VALIDATING goes straight to FAILED
+        // instead of looping into DRAFTING (we didn't draft).
+        when(documentService.lookupCascade(
+                anyString(), any(), eq("scripts/broken.js")))
+                .thenReturn(java.util.Optional.of(new LookupResult(
+                        "scripts/broken.js", "function broken(",
+                        LookupResult.Source.PROJECT, null)));
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(
+                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/broken.js");
+        engine.start(process, ctx);
+
+        drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        assertThat(finalState.getValidationErrors()).isNotEmpty();
+        assertThat(finalState.getFailureReason())
+                .contains("Exceeded maxRecoveries");
+        // Definitely no LLM-side recovery — chatModel was never called.
+        assertThat(chatModel.calls()).isEmpty();
+    }
+
+    @Test
+    void loadMode_documentNotFound_endsInFailed() {
+        // lookupCascade returns empty — clear error message, no retry.
+        when(documentService.lookupCascade(
+                anyString(), any(), eq("scripts/missing.js")))
+                .thenReturn(java.util.Optional.empty());
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(
+                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/missing.js");
+        engine.start(process, ctx);
+
+        drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        assertThat(finalState.getFailureReason())
+                .contains("Script document not found")
+                .contains("scripts/missing.js");
+        assertThat(chatModel.calls()).isEmpty();
+    }
+
+    @Test
+    void loadMode_withExecuteOnDone_runsLoadedScript() {
+        // Load + execute pipeline — Cortex "Run this file" button.
+        when(documentService.lookupCascade(
+                anyString(), any(), eq("scripts/run-me.js")))
+                .thenReturn(java.util.Optional.of(new LookupResult(
+                        "scripts/run-me.js", "(function () { return 'done'; })();",
+                        LookupResult.Source.PROJECT, null)));
+        when(scriptExecutor.run(any(ScriptRequest.class)))
+                .thenReturn(new ScriptResult("done",
+                        java.time.Duration.ofMillis(7)));
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(
+                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/run-me.js");
+        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+        engine.start(process, ctx);
+
+        int turns = drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getExecutionResult()).isEqualTo("done");
+        // READY → LOADING → VALIDATING → EXECUTING → DONE = 4.
+        assertThat(turns).isEqualTo(4);
+    }
+
     // ──────────────────── FRAMING + REVIEWING ────────────────────
 
     @Test
@@ -1000,7 +1140,7 @@ class DeepThoughtEngineLifecycleTest {
 
         assertThatThrownBy(() -> engine.start(process, ctx))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("requires a goal");
+                .hasMessageContaining("requires either a goal or a scriptPath");
     }
 
     // ──────────────────── summarizeForParent ────────────────────

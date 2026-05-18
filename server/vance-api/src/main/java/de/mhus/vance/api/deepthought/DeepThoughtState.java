@@ -31,8 +31,15 @@ public class DeepThoughtState {
 
     /** What the user/parent asked for, copy of the process goal at
      *  start time so prompt-building stays deterministic across
-     *  steers that might mutate the live goal field. */
+     *  steers that might mutate the live goal field. Optional when
+     *  {@link #scriptPath} is set (load-mode bypasses generation). */
     private @Nullable String goal;
+
+    /** Project document path the script will be loaded from instead
+     *  of being generated. When set, the engine takes the LOADING →
+     *  VALIDATING → (EXECUTING) → DONE pathway and ignores
+     *  FRAMING/DRAFTING. {@code null} → normal generation pathway. */
+    private @Nullable String scriptPath;
 
     /** Raw LLM output of the most recent DRAFTING pass — fences
      *  stripped, ready to feed into VALIDATING. Surfaces verbatim in

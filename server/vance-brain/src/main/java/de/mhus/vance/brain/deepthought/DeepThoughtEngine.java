@@ -8,6 +8,7 @@ import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.deepthought.phases.DraftingPhase;
 import de.mhus.vance.brain.deepthought.phases.ExecutingPhase;
 import de.mhus.vance.brain.deepthought.phases.FramingPhase;
+import de.mhus.vance.brain.deepthought.phases.LoadingPhase;
 import de.mhus.vance.brain.deepthought.phases.ReviewingPhase;
 import de.mhus.vance.brain.deepthought.phases.ValidatingPhase;
 import de.mhus.vance.brain.thinkengine.ParentReport;
@@ -84,6 +85,14 @@ public class DeepThoughtEngine implements ThinkEngine {
     /** Soft-cap on FRAMING→REVIEWING retry cycles. Default 3. */
     public static final String MAX_FRAMING_RECOVERIES_KEY = "maxFramingRecoveries";
 
+    /** {@code engineParams[SCRIPT_PATH_KEY]} — project document path
+     *  to load instead of generating a script. When set, the engine
+     *  takes the LOADING → VALIDATING → (EXECUTING) → DONE pathway,
+     *  ignoring goal-based generation entirely. Goal becomes
+     *  optional. Validation failures are final (no DRAFTING recovery
+     *  loop — we didn't draft the script). */
+    public static final String SCRIPT_PATH_KEY = "scriptPath";
+
     // Phase params shared via the phase classes' own constants —
     // re-exported here so external callers (Eddie, recipe authors)
     // discover them through the engine class:
@@ -103,6 +112,7 @@ public class DeepThoughtEngine implements ThinkEngine {
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
     private final ObjectMapper objectMapper;
+    private final LoadingPhase loadingPhase;
     private final FramingPhase framingPhase;
     private final ReviewingPhase reviewingPhase;
     private final DraftingPhase draftingPhase;
@@ -154,8 +164,9 @@ public class DeepThoughtEngine implements ThinkEngine {
         DeepThoughtState state = buildInitialState(process);
         persistState(process, state);
         log.info("DeepThought.start tenant='{}' session='{}' id='{}' "
-                        + "framingEnabled={} executeOnDone={} maxRecoveries={}",
+                        + "mode={} framingEnabled={} executeOnDone={} maxRecoveries={}",
                 process.getTenantId(), process.getSessionId(), process.getId(),
+                state.getScriptPath() != null ? "load:" + state.getScriptPath() : "generate",
                 state.isFramingEnabled(), state.isExecuteOnDone(),
                 state.getMaxRecoveries());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
@@ -243,9 +254,8 @@ public class DeepThoughtEngine implements ThinkEngine {
             ThinkEngineContext ctx,
             DeepThoughtState state) {
         return switch (state.getStatus()) {
-            case READY -> state.isFramingEnabled()
-                    ? DeepThoughtStatus.FRAMING
-                    : DeepThoughtStatus.DRAFTING;
+            case READY -> resolveInitialStatus(state);
+            case LOADING -> loadingPhase.execute(state, process, ctx);
             case FRAMING -> framingPhase.execute(state, process, ctx);
             case REVIEWING -> reviewingPhase.execute(state, process, ctx);
             case DRAFTING -> draftingPhase.execute(state, process, ctx);
@@ -255,6 +265,21 @@ public class DeepThoughtEngine implements ThinkEngine {
             case DONE -> DeepThoughtStatus.DONE;
             case FAILED -> DeepThoughtStatus.FAILED;
         };
+    }
+
+    /**
+     * Three modes branch off READY: load-mode (scriptPath set →
+     * LOADING), plan-mode (framingEnabled → FRAMING), or direct
+     * one-shot (DRAFTING). Load-mode wins when both scriptPath and
+     * framingEnabled are set — the explicit script is what the caller
+     * wants exercised, not a freshly generated one.
+     */
+    private static DeepThoughtStatus resolveInitialStatus(DeepThoughtState state) {
+        if (state.getScriptPath() != null && !state.getScriptPath().isBlank()) {
+            return DeepThoughtStatus.LOADING;
+        }
+        if (state.isFramingEnabled()) return DeepThoughtStatus.FRAMING;
+        return DeepThoughtStatus.DRAFTING;
     }
 
     // ──────────────────── summarizeForParent ────────────────────
@@ -338,22 +363,31 @@ public class DeepThoughtEngine implements ThinkEngine {
         if (goal == null) {
             goal = process.getGoal();
         }
-        if (goal == null || goal.isBlank()) {
+        String scriptPath = stringParam(p.get(SCRIPT_PATH_KEY));
+        boolean loadMode = scriptPath != null;
+        if (!loadMode && (goal == null || goal.isBlank())) {
             throw new IllegalStateException(
-                    "DeepThought.start requires a goal — neither "
-                            + "engineParams.goal nor process.goal is set "
-                            + "(id='" + process.getId() + "')");
+                    "DeepThought.start requires either a goal or a "
+                            + "scriptPath — neither is set on engineParams "
+                            + "and process.goal is empty (id='"
+                            + process.getId() + "')");
         }
 
         boolean executeOnDone = parseBoolean(p.get(EXECUTE_ON_DONE_KEY), false);
         int maxRecoveries = parseInt(p.get(MAX_RECOVERIES_KEY), 5);
         if (maxRecoveries < 0) maxRecoveries = 0;
+        // Load-mode: validation failure is final — we can't recover
+        // into DRAFTING because we never drafted the script. Force
+        // the budget to 0 so the first VALIDATING failure naturally
+        // flows into FAILED via the existing exhaustion path.
+        if (loadMode) maxRecoveries = 0;
         boolean framingEnabled = parseBoolean(p.get(FRAMING_ENABLED_KEY), false);
         int maxFramingRecoveries = parseInt(p.get(MAX_FRAMING_RECOVERIES_KEY), 3);
         if (maxFramingRecoveries < 0) maxFramingRecoveries = 0;
 
         return DeepThoughtState.builder()
                 .goal(goal)
+                .scriptPath(scriptPath)
                 .executeOnDone(executeOnDone)
                 .maxRecoveries(maxRecoveries)
                 .framingEnabled(framingEnabled)

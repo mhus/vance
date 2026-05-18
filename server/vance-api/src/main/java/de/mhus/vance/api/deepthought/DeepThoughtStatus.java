@@ -16,9 +16,15 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  */
 @GenerateTypeScript("deepthought")
 public enum DeepThoughtStatus {
-    /** Just created — runTurn transitions to FRAMING (when
-     *  {@code framingEnabled}) or directly to DRAFTING. */
+    /** Just created — runTurn transitions to LOADING (when
+     *  {@code scriptPath} is set), FRAMING (when {@code framingEnabled}),
+     *  or directly to DRAFTING. */
     READY,
+    /** Load-mode: fetch the script from the document path given in
+     *  {@code engineParams.scriptPath} and feed it straight into
+     *  VALIDATING. Bypasses generation entirely. Used by Script
+     *  Cortex's "validate this file" / "run this file" pathways. */
+    LOADING,
     /** Plan-mode: LLM produces a structured sketch of the script's
      *  approach (sub-steps, tools to call, edge cases) before any
      *  code is drafted. Only entered when {@code framingEnabled=true}. */

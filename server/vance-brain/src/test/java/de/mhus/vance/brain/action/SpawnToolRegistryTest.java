@@ -16,11 +16,12 @@ import org.junit.jupiter.api.Test;
 class SpawnToolRegistryTest {
 
     @Test
-    void registry_collects_only_annotated_tools() {
-        SpawnToolRegistry reg = new SpawnToolRegistry(List.of(
+    void registry_collects_only_annotated_tools_after_rescan() {
+        SpawnToolRegistry reg = new SpawnToolRegistry(providerOf(List.of(
                 stubTool("plain", FakePlainTool.class),
                 stubTool("spawn_a", FakeSpawnToolA.class),
-                stubTool("spawn_b", FakeSpawnToolB.class)));
+                stubTool("spawn_b", FakeSpawnToolB.class))));
+        reg.rescan();
 
         assertThat(reg.spawnToolNames()).containsExactlyInAnyOrder("spawn_a", "spawn_b");
         assertThat(reg.isSpawnTool("plain")).isFalse();
@@ -29,19 +30,39 @@ class SpawnToolRegistryTest {
     }
 
     @Test
+    void registry_is_empty_until_rescan() {
+        SpawnToolRegistry reg = new SpawnToolRegistry(providerOf(List.of(
+                stubTool("spawn_a", FakeSpawnToolA.class))));
+
+        assertThat(reg.spawnToolNames()).isEmpty();
+        reg.rescan();
+        assertThat(reg.spawnToolNames()).containsExactly("spawn_a");
+    }
+
+    @Test
     void empty_tool_list_yields_empty_registry() {
-        SpawnToolRegistry reg = new SpawnToolRegistry(List.of());
+        SpawnToolRegistry reg = new SpawnToolRegistry(providerOf(List.of()));
+        reg.rescan();
         assertThat(reg.spawnToolNames()).isEmpty();
     }
 
     @Test
     void spawnToolNames_returned_set_is_immutable() {
-        SpawnToolRegistry reg = new SpawnToolRegistry(List.of(
-                stubTool("a", FakeSpawnToolA.class)));
+        SpawnToolRegistry reg = new SpawnToolRegistry(providerOf(List.of(
+                stubTool("a", FakeSpawnToolA.class))));
+        reg.rescan();
         Set<String> names = reg.spawnToolNames();
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> names.add("x"))
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static org.springframework.beans.factory.ObjectProvider<List<Tool>> providerOf(List<Tool> tools) {
+        org.springframework.beans.factory.ObjectProvider<List<Tool>> p =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(p.getIfAvailable()).thenReturn(tools);
+        return p;
     }
 
     // ──────────────────── Helpers ────────────────────

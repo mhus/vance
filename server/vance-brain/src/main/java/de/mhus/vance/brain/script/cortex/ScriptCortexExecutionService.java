@@ -66,6 +66,7 @@ public class ScriptCortexExecutionService {
 
     private final Map<String, Execution> executions = new ConcurrentHashMap<>();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ScriptCortexExecutionService(
             de.mhus.vance.brain.script.GraaljsScriptExecutor executor,
             ScriptExecutionWsRegistry wsRegistry,

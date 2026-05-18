@@ -58,6 +58,7 @@ public final class ScriptActionExecutor implements ActionExecutor<TriggerAction.
     private final ToolDispatcher toolDispatcher;
     private final @Nullable WorkspaceService workspaceService;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ScriptActionExecutor(ScriptExecutor scriptExecutor,
                                 DocumentService documentService,
                                 ToolDispatcher toolDispatcher,
@@ -69,7 +70,7 @@ public final class ScriptActionExecutor implements ActionExecutor<TriggerAction.
         this.workspaceService = workspaceService;
     }
 
-    /** Backwards-compat ctor — workspace source unavailable. */
+    /** Backwards-compat ctor used by tests — workspace source unavailable. */
     public ScriptActionExecutor(ScriptExecutor scriptExecutor,
                                 DocumentService documentService,
                                 ToolDispatcher toolDispatcher) {

@@ -18,6 +18,15 @@ public class ScriptExecutionException extends RuntimeException {
         TIMEOUT,
         /** Cancellation requested externally (e.g. interrupt). */
         CANCELLED,
+        /** Script-header parser rejected a malformed tag value
+         *  (e.g. {@code @timeout abc}, {@code @statements -1}).
+         *  See {@code specification/script-engine.md} §3.5.8. */
+        INVALID_HEADER,
+        /** Script header declared {@code @requiresTools} entries that
+         *  are not in the effective allow set of the executing
+         *  context. Raised before evaluation so unrunnable scripts
+         *  don't burn LLM tokens. */
+        MISSING_CAPABILITY,
     }
 
     private final ErrorClass errorClass;
@@ -25,6 +34,12 @@ public class ScriptExecutionException extends RuntimeException {
     public ScriptExecutionException(ErrorClass errorClass, String message, Throwable cause) {
         super(message, cause);
         this.errorClass = errorClass;
+    }
+
+    /** Convenience for fail-fast paths that have no underlying cause
+     *  (e.g. pre-eval validation, malformed header). */
+    public ScriptExecutionException(ErrorClass errorClass, String message) {
+        this(errorClass, message, null);
     }
 
     public ErrorClass errorClass() {

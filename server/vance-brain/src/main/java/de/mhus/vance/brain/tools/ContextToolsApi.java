@@ -464,6 +464,57 @@ public final class ContextToolsApi implements ToolBus {
                 deferred, activatedDeferred, listener);
     }
 
+    /**
+     * Mirror of {@link #withAdditional} for the intersection direction:
+     * returns a new surface whose allow-set is {@code allowed ∩ keep}.
+     * Used by the script engine when a {@code @allowTools} header
+     * tightens the caller's scope — a header can only restrict, never
+     * widen. If this surface is unrestricted (empty allow-set), the
+     * intersection becomes {@code keep} itself: the header turns an
+     * unrestricted scope into a restricted one.
+     *
+     * <p>{@code keep == null} or empty is treated as "no narrowing"
+     * and returns {@code this}.
+     */
+    public ContextToolsApi narrowTo(Set<String> keep) {
+        if (keep == null || keep.isEmpty()) {
+            return this;
+        }
+        Set<String> narrowedAllowed;
+        if (allowed.isEmpty()) {
+            // Unrestricted parent: header alone defines the bounds.
+            narrowedAllowed = new LinkedHashSet<>(keep);
+        } else {
+            narrowedAllowed = new LinkedHashSet<>(allowed);
+            narrowedAllowed.retainAll(keep);
+            if (narrowedAllowed.equals(allowed)) {
+                // Header was a superset of the existing allow-list —
+                // nothing actually changed.
+                return this;
+            }
+        }
+        Set<String> narrowedPrimary = new LinkedHashSet<>(primary);
+        narrowedPrimary.retainAll(narrowedAllowed);
+        Set<String> narrowedDeferred = new LinkedHashSet<>(deferred);
+        narrowedDeferred.retainAll(narrowedAllowed);
+        Set<String> narrowedActivated = new LinkedHashSet<>(activatedDeferred);
+        narrowedActivated.retainAll(narrowedAllowed);
+        return new ContextToolsApi(
+                dispatcher, ctx, narrowedAllowed, narrowedPrimary,
+                narrowedDeferred, narrowedActivated, listener);
+    }
+
+    /**
+     * Public view of the allow-set membership check used by
+     * {@link #invoke}. Returns {@code true} for unrestricted scopes
+     * ({@link #allowed} empty), or when {@code toolName} is in the
+     * allow-set. Used by the script engine to validate
+     * {@code @requiresTools} declarations pre-eval.
+     */
+    public boolean isAllowed(String toolName) {
+        return isInDispatch(toolName);
+    }
+
     private boolean isInDispatch(String toolName) {
         return allowed.isEmpty() || allowed.contains(toolName);
     }

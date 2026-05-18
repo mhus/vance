@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.deepthought;
 
+import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.deepthought.DeepThoughtState;
 import de.mhus.vance.api.deepthought.DeepThoughtState.ValidationError;
 import de.mhus.vance.api.deepthought.DeepThoughtStatus;
@@ -8,6 +9,9 @@ import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.recipe.AppliedRecipe;
+import de.mhus.vance.brain.recipe.RecipeResolver;
+import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
@@ -26,8 +30,11 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.shared.chat.ChatMessageDocument;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -38,6 +45,8 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.ExecutionException;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -53,6 +62,7 @@ import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -109,6 +119,25 @@ public class DeepThoughtEngine implements ThinkEngine {
     /** {@code engineParams[MAX_RECOVERIES_KEY]} — int; default 5. */
     public static final String MAX_RECOVERIES_KEY = "maxRecoveries";
 
+    /** {@code engineParams[FRAMING_ENABLED_KEY]} — plan-mode opt-in.
+     *  Default false: READY goes straight to DRAFTING (existing
+     *  one-shot behaviour). When true: READY → FRAMING → REVIEWING
+     *  → DRAFTING, with a recovery loop on REJECTED. */
+    public static final String FRAMING_ENABLED_KEY = "framingEnabled";
+
+    /** {@code engineParams[REVIEWER_RECIPE_KEY]} — explicit sub-recipe
+     *  name for the REVIEWING phase. When unset, the engine falls
+     *  back to {@code <recipeName>-reviewer} derived from the
+     *  spawning recipe; when neither resolves, REVIEWING is skipped
+     *  and FRAMING transitions straight to DRAFTING. */
+    public static final String REVIEWER_RECIPE_KEY = "reviewerRecipe";
+
+    /** {@code engineParams[MAX_FRAMING_RECOVERIES_KEY]} — soft-cap on
+     *  FRAMING→REVIEWING retry cycles. Default 3 (shorter than
+     *  DRAFTING's recovery budget because each cycle costs two LLM
+     *  calls: drafter + reviewer). */
+    public static final String MAX_FRAMING_RECOVERIES_KEY = "maxFramingRecoveries";
+
     /** {@code engineParams[MANUAL_PATHS_KEY]} — list of project folder
      *  paths whose Markdown documents are enumerated at DRAFTING and
      *  surfaced as {@code manualInventory} in the system prompt.
@@ -140,6 +169,19 @@ public class DeepThoughtEngine implements ThinkEngine {
      *  empty → no tool block rendered; the LLM is told the script must
      *  not call any tools. */
     public static final String SCRIPT_ALLOWED_TOOLS_KEY = "scriptAllowedTools";
+
+    /** Cascade path for the FRAMING system prompt. Same Pebble
+     *  variables as DRAFTING (goal, toolInventory, manualInventory,
+     *  skillGuidance) plus {@code recoveryHint} when re-framing. */
+    private static final String FRAMING_PROMPT_PATH = "prompts/deepthought-framing.md";
+
+    /** Last-resort Java fallback if the bundled FRAMING resource is
+     *  missing (e.g. dev hot-reload without test resources). */
+    private static final String FRAMING_FALLBACK_PROMPT =
+            "You are the FRAMING node of Deep Thought. Write a "
+                    + "structured plan sketch for a JavaScript orchestrator "
+                    + "script that fulfils the goal: {{ goal }}. Do not "
+                    + "write code yet — just the plan.";
 
     /** Cascade path for the Deep Thought DRAFTING system prompt.
      *  Loaded via {@link EnginePromptResolver} — project / _vance /
@@ -180,6 +222,10 @@ public class DeepThoughtEngine implements ThinkEngine {
     private final DocumentService documentService;
     private final SkillResolver skillResolver;
     private final SessionService sessionService;
+    private final RecipeResolver recipeResolver;
+    private final LaneScheduler laneScheduler;
+    private final ChatMessageService chatMessageService;
+    private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -318,7 +364,11 @@ public class DeepThoughtEngine implements ThinkEngine {
             ThinkEngineContext ctx,
             DeepThoughtState state) {
         return switch (state.getStatus()) {
-            case READY -> DeepThoughtStatus.DRAFTING;
+            case READY -> state.isFramingEnabled()
+                    ? DeepThoughtStatus.FRAMING
+                    : DeepThoughtStatus.DRAFTING;
+            case FRAMING -> runFraming(process, ctx, state);
+            case REVIEWING -> runReviewing(process, ctx, state);
             case DRAFTING -> runDrafting(process, ctx, state);
             case VALIDATING -> runValidating(process, ctx, state);
             case EXECUTING -> runExecuting(process, ctx, state);
@@ -329,6 +379,308 @@ public class DeepThoughtEngine implements ThinkEngine {
     }
 
     // ──────────────────── Phases ────────────────────
+
+    /**
+     * FRAMING — single LLM call that produces a Markdown plan sketch
+     * (Goal recap / Approach / Steps / Tools called / Edge cases /
+     * Return value). No code in this phase. Same prompt enrichment as
+     * DRAFTING (toolInventory, manualInventory, skillGuidance) plus a
+     * {@code recoveryHint} when re-framing after a REJECTED review.
+     *
+     * <p>Always transitions to REVIEWING. The REVIEWING phase then
+     * decides whether to advance to DRAFTING (APPROVED / no reviewer
+     * configured) or loop back here (REJECTED).
+     */
+    DeepThoughtStatus runFraming(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            DeepThoughtState state) {
+        EngineChatFactory.EngineChatBundle bundle =
+                engineChatFactory.forProcess(process, ctx, NAME);
+        String modelAlias = bundle.primaryConfig().provider()
+                + ":" + bundle.primaryConfig().modelName();
+
+        String basePath = paramString(process, "framingPromptDocument", FRAMING_PROMPT_PATH);
+        String systemTpl = enginePromptResolver.resolve(
+                process, basePath, FRAMING_FALLBACK_PROMPT);
+        List<ResolvedSkill> architectSkills = resolveScriptArchitectSkills(process);
+        Map<String, Object> ctxMap = new LinkedHashMap<>(
+                PromptContextBuilder.forProcess(process, null)
+                        .engine(NAME)
+                        .build());
+        ctxMap.put("goal", state.getGoal() == null ? "" : state.getGoal());
+        ctxMap.put("toolInventory", renderToolInventory(process, ctx));
+        ctxMap.put("manualInventory", renderManualInventory(process, architectSkills));
+        ctxMap.put("skillGuidance", renderSkillGuidance(architectSkills));
+        ctxMap.put("recoveryHint",
+                state.getFramingRecoveryCount() > 0 && state.getReviewerNotes() != null
+                        ? state.getReviewerNotes() : "");
+        String renderedSystem = promptTemplateRenderer.render(systemTpl, ctxMap);
+
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(SystemMessage.from(renderedSystem == null ? "" : renderedSystem));
+        messages.add(UserMessage.from(
+                "Goal:\n" + (state.getGoal() == null ? "" : state.getGoal())
+                        + "\n\nProduce the plan sketch now. Follow the "
+                        + "section structure exactly."));
+
+        long startMs = System.currentTimeMillis();
+        ChatRequest request = ChatRequest.builder().messages(messages).build();
+        ChatResponse response = bundle.chat().chatModel().chat(request);
+        llmCallTracker.record(process, request, response,
+                System.currentTimeMillis() - startMs, modelAlias);
+
+        String reply = response.aiMessage() == null
+                ? null : response.aiMessage().text();
+        if (reply == null || reply.isBlank()) {
+            state.setFailureReason(
+                    "FRAMING returned an empty reply from the LLM");
+            return DeepThoughtStatus.FAILED;
+        }
+        state.setPlanSketch(reply.trim());
+        // Clear the previous reviewer fields — REVIEWING repopulates.
+        state.setReviewerVerdict(null);
+        state.setReviewerNotes(null);
+        log.info("DeepThought.runFraming id='{}' attempt {} produced {} chars",
+                process.getId(), state.getFramingRecoveryCount() + 1,
+                reply.length());
+        return DeepThoughtStatus.REVIEWING;
+    }
+
+    /**
+     * REVIEWING — spawns the configured reviewer sub-recipe as a child
+     * process, hands it the plan sketch as steer content, awaits the
+     * reply synchronously (same Zaphod-style drive pattern as multi-
+     * head council), and parses a VERDICT line.
+     *
+     * <p>Verdict-parsing is lenient: the first line containing
+     * {@code APPROVED} or {@code REJECTED} (case-insensitive) wins.
+     * Everything else is captured into {@code reviewerNotes}.
+     *
+     * <p>If no reviewer recipe is configured AND no
+     * {@code <parentRecipe>-reviewer} resolves: REVIEWING is skipped
+     * (verdict left {@code null}) and the engine transitions to
+     * DRAFTING with the unreviewed plan sketch as context. Plan-mode
+     * still adds value (LLM thinks twice) — external critique just
+     * isn't available.
+     */
+    DeepThoughtStatus runReviewing(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            DeepThoughtState state) {
+        String reviewerRecipe = resolveReviewerRecipe(process);
+        if (reviewerRecipe == null) {
+            log.info("DeepThought.runReviewing id='{}' no reviewer recipe "
+                            + "configured/resolvable — skipping review",
+                    process.getId());
+            state.setReviewerVerdict("SKIPPED");
+            state.setReviewerNotes("No reviewer recipe configured.");
+            return DeepThoughtStatus.DRAFTING;
+        }
+
+        AppliedRecipe applied;
+        try {
+            applied = recipeResolver.apply(
+                    process.getTenantId(), ctx.projectId(), reviewerRecipe,
+                    process.getConnectionProfile(), null);
+        } catch (RecipeResolver.UnknownRecipeException ure) {
+            log.warn("DeepThought.runReviewing id='{}' reviewer recipe '{}' "
+                            + "unknown — skipping review",
+                    process.getId(), reviewerRecipe);
+            state.setReviewerVerdict("SKIPPED");
+            state.setReviewerNotes(
+                    "Reviewer recipe '" + reviewerRecipe + "' not found.");
+            return DeepThoughtStatus.DRAFTING;
+        }
+
+        ThinkEngineService engineService = thinkEngineServiceProvider.getObject();
+        ThinkEngine targetEngine = engineService.resolve(applied.engine())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Reviewer recipe '" + applied.name()
+                                + "' references unknown engine '"
+                                + applied.engine() + "'"));
+
+        String childName = "deepthought-reviewer-" + process.getId()
+                + "-" + (state.getFramingRecoveryCount() + 1);
+        ThinkProcessDocument child;
+        try {
+            child = thinkProcessService.create(
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    process.getSessionId(),
+                    childName,
+                    targetEngine.name(),
+                    targetEngine.version(),
+                    "Deep Thought plan reviewer for " + process.getId(),
+                    process.getGoal(),
+                    process.getId(),
+                    applied.params(),
+                    applied.name(),
+                    applied.promptOverride(),
+                    applied.promptOverrideAppend(),
+                    applied.promptMode(),
+                    applied.dataRelayCorrection(),
+                    applied.effectiveAllowedTools(),
+                    applied.connectionProfile(),
+                    applied.defaultActiveSkills(),
+                    applied.allowedSkills() == null
+                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
+            engineService.start(child);
+        } catch (RuntimeException e) {
+            log.warn("DeepThought.runReviewing id='{}' spawn failed: {} — "
+                            + "treating as SKIPPED, advancing to DRAFTING",
+                    process.getId(), e.toString());
+            state.setReviewerVerdict("SKIPPED");
+            state.setReviewerNotes("Reviewer spawn failed: " + e.getMessage());
+            return DeepThoughtStatus.DRAFTING;
+        }
+
+        String reply;
+        try {
+            driveReviewerTurn(child, process.getId(), buildReviewerSteerContent(state));
+            reply = readLastAssistantText(
+                    process.getTenantId(), process.getSessionId(), child.getId());
+        } catch (RuntimeException e) {
+            log.warn("DeepThought.runReviewing id='{}' drive failed: {} — "
+                            + "treating as SKIPPED",
+                    process.getId(), e.toString());
+            state.setReviewerVerdict("SKIPPED");
+            state.setReviewerNotes("Reviewer drive failed: " + e.getMessage());
+            cleanupReviewerChild(child);
+            return DeepThoughtStatus.DRAFTING;
+        }
+        cleanupReviewerChild(child);
+
+        if (reply == null || reply.isBlank()) {
+            log.warn("DeepThought.runReviewing id='{}' reviewer produced no "
+                            + "reply — treating as SKIPPED",
+                    process.getId());
+            state.setReviewerVerdict("SKIPPED");
+            state.setReviewerNotes("Reviewer produced no reply.");
+            return DeepThoughtStatus.DRAFTING;
+        }
+
+        // Lenient verdict parsing: first line containing APPROVED or
+        // REJECTED (case-insensitive). Default to REJECTED when neither
+        // appears — better to loop once with the unparseable reply as
+        // critique than silently accept a malformed verdict.
+        ReviewerVerdict parsed = parseVerdict(reply);
+        state.setReviewerVerdict(parsed.verdict());
+        state.setReviewerNotes(reply.trim());
+        log.info("DeepThought.runReviewing id='{}' verdict={} reply chars={}",
+                process.getId(), parsed.verdict(), reply.length());
+
+        if ("APPROVED".equals(parsed.verdict())) {
+            return DeepThoughtStatus.DRAFTING;
+        }
+
+        // REJECTED — bump counter and either loop back to FRAMING or
+        // bail into FAILED.
+        state.setFramingRecoveryCount(state.getFramingRecoveryCount() + 1);
+        if (state.getFramingRecoveryCount() >= state.getMaxFramingRecoveries()) {
+            state.setFailureReason(
+                    "Exceeded maxFramingRecoveries ("
+                            + state.getMaxFramingRecoveries()
+                            + ") — last reviewer critique: "
+                            + abbreviateForReason(reply));
+            return DeepThoughtStatus.FAILED;
+        }
+        return DeepThoughtStatus.FRAMING;
+    }
+
+    private String buildReviewerSteerContent(DeepThoughtState state) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## Original goal\n")
+                .append(state.getGoal() == null ? "" : state.getGoal())
+                .append("\n\n## Plan sketch to review\n")
+                .append(state.getPlanSketch() == null
+                        ? "(empty)" : state.getPlanSketch())
+                .append("\n\n## Your task\n")
+                .append("Judge whether this plan is sound. Begin your reply "
+                        + "with one of:\n")
+                .append("    VERDICT: APPROVED\n")
+                .append("    VERDICT: REJECTED\n")
+                .append("After the verdict, list concrete concerns or "
+                        + "improvements (numbered).\n");
+        return sb.toString();
+    }
+
+    private void driveReviewerTurn(
+            ThinkProcessDocument child, String parentId, String content) {
+        SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
+                Instant.now(),
+                /*idempotencyKey*/ null,
+                "deepthought:" + parentId,
+                content);
+        try {
+            laneScheduler.submit(child.getId(),
+                    () -> thinkEngineServiceProvider.getObject().steer(child, message))
+                    .get();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(
+                    "Reviewer interrupted child='" + child.getId() + "'", ie);
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
+            throw new RuntimeException(
+                    "Reviewer turn failed child='" + child.getId() + "': "
+                            + cause.getMessage(), cause);
+        }
+    }
+
+    private @Nullable String readLastAssistantText(
+            String tenantId, String sessionId, String workerProcessId) {
+        List<ChatMessageDocument> history = chatMessageService.history(
+                tenantId, sessionId, workerProcessId);
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessageDocument m = history.get(i);
+            if (m.getRole() == ChatRole.ASSISTANT && m.getContent() != null
+                    && !m.getContent().isBlank()) {
+                return m.getContent();
+            }
+        }
+        return null;
+    }
+
+    private void cleanupReviewerChild(ThinkProcessDocument child) {
+        try {
+            thinkEngineServiceProvider.getObject().stop(child);
+        } catch (RuntimeException e) {
+            log.warn("Reviewer cleanup failed child='{}': {}",
+                    child.getId(), e.toString());
+        }
+    }
+
+    /**
+     * Resolves the reviewer recipe name. Explicit param wins; otherwise
+     * falls back to the {@code <parentRecipe>-reviewer} convention. The
+     * actual cascade-lookup happens in {@code recipeResolver.apply}
+     * inside REVIEWING — this method just produces the candidate name
+     * (or {@code null} when neither source supplies one).
+     */
+    private static @Nullable String resolveReviewerRecipe(ThinkProcessDocument process) {
+        String explicit = paramString(process, REVIEWER_RECIPE_KEY, null);
+        if (explicit != null && !explicit.isBlank()) return explicit;
+        String parent = process.getRecipeName();
+        if (parent == null || parent.isBlank()) return null;
+        return parent + "-reviewer";
+    }
+
+    private record ReviewerVerdict(String verdict) {}
+
+    private static ReviewerVerdict parseVerdict(String reply) {
+        for (String line : reply.split("\\R", 6)) {
+            String lower = line.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains("approved")) return new ReviewerVerdict("APPROVED");
+            if (lower.contains("rejected")) return new ReviewerVerdict("REJECTED");
+        }
+        return new ReviewerVerdict("REJECTED");
+    }
+
+    private static String abbreviateForReason(String s) {
+        String trimmed = s.trim();
+        return trimmed.length() > 200 ? trimmed.substring(0, 197) + "..." : trimmed;
+    }
 
     /**
      * DRAFTING — one LLM call that produces a {@code ```javascript}
@@ -550,6 +902,22 @@ public class DeepThoughtEngine implements ThinkEngine {
 
     private static String buildDraftingUserMessage(DeepThoughtState state) {
         StringBuilder sb = new StringBuilder();
+        // Approved plan sketch (when FRAMING ran) comes first — gives
+        // the DRAFTING LLM the structural anchor. On a DRAFTING
+        // recovery the previous-draft block sits below this so the
+        // plan stays the dominant context.
+        if (state.getPlanSketch() != null && !state.getPlanSketch().isBlank()) {
+            sb.append("## Approved plan sketch\n\n")
+                    .append(state.getPlanSketch())
+                    .append("\n\n");
+            if (state.getReviewerNotes() != null
+                    && !state.getReviewerNotes().isBlank()
+                    && "APPROVED".equals(state.getReviewerVerdict())) {
+                sb.append("## Reviewer notes (incorporate these)\n\n")
+                        .append(state.getReviewerNotes())
+                        .append("\n\n");
+            }
+        }
         if (state.getRecoveryCount() > 0 && !state.getValidationErrors().isEmpty()) {
             sb.append("================================================\n");
             sb.append("⚠  PREVIOUS DRAFT FAILED VALIDATION ⚠\n");
@@ -1044,11 +1412,16 @@ public class DeepThoughtEngine implements ThinkEngine {
         boolean executeOnDone = parseBoolean(p.get(EXECUTE_ON_DONE_KEY), false);
         int maxRecoveries = parseInt(p.get(MAX_RECOVERIES_KEY), 5);
         if (maxRecoveries < 0) maxRecoveries = 0;
+        boolean framingEnabled = parseBoolean(p.get(FRAMING_ENABLED_KEY), false);
+        int maxFramingRecoveries = parseInt(p.get(MAX_FRAMING_RECOVERIES_KEY), 3);
+        if (maxFramingRecoveries < 0) maxFramingRecoveries = 0;
 
         return DeepThoughtState.builder()
                 .goal(goal)
                 .executeOnDone(executeOnDone)
                 .maxRecoveries(maxRecoveries)
+                .framingEnabled(framingEnabled)
+                .maxFramingRecoveries(maxFramingRecoveries)
                 .status(DeepThoughtStatus.READY)
                 .build();
     }

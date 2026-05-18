@@ -37,7 +37,12 @@ import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.recipe.RecipeResolver;
+import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.thinkengine.ThinkEngine;
+import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.brain.tools.ToolDispatcher;
+import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
 import de.mhus.vance.shared.session.SessionService;
@@ -101,6 +106,12 @@ class DeepThoughtEngineLifecycleTest {
     private DocumentService documentService;
     private SkillResolver skillResolver;
     private SessionService sessionService;
+    private RecipeResolver recipeResolver;
+    private LaneScheduler laneScheduler;
+    private ChatMessageService chatMessageService;
+    private ThinkEngineService thinkEngineService;
+    private org.springframework.beans.factory.ObjectProvider<ThinkEngineService>
+            thinkEngineServiceProvider;
     private ScriptedChatModel chatModel;
     private ThinkEngineContext ctx;
 
@@ -141,6 +152,16 @@ class DeepThoughtEngineLifecycleTest {
         when(skillResolver.resolve(any(), anyString()))
                 .thenReturn(java.util.Optional.empty());
 
+        recipeResolver = mock(RecipeResolver.class);
+        laneScheduler = mock(LaneScheduler.class);
+        chatMessageService = mock(ChatMessageService.class);
+        thinkEngineService = mock(ThinkEngineService.class);
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<ThinkEngineService> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getObject()).thenReturn(thinkEngineService);
+        thinkEngineServiceProvider = provider;
+
         // Real renderer — Pebble has no I/O, cheap to construct, and
         // exercises the exact rendering path the production code uses.
         promptTemplateRenderer = new PromptTemplateRenderer();
@@ -179,7 +200,11 @@ class DeepThoughtEngineLifecycleTest {
                 scriptExecutor,
                 documentService,
                 skillResolver,
-                sessionService);
+                sessionService,
+                recipeResolver,
+                laneScheduler,
+                chatMessageService,
+                thinkEngineServiceProvider);
     }
 
     // ──────────────────── Happy path ────────────────────
@@ -636,6 +661,270 @@ class DeepThoughtEngineLifecycleTest {
                 request.messages().get(0)).text();
         assertThat(systemText).contains("NO TOOLS");
         assertThat(systemText).doesNotContain("TOOLS:");
+    }
+
+    // ──────────────────── FRAMING + REVIEWING ────────────────────
+
+    @Test
+    void framingEnabled_noReviewerConfigured_drawsPlanThenDrafts() {
+        // framingEnabled=true but no reviewerRecipe and no parent
+        // recipeName → reviewer resolves to null → REVIEWING is
+        // skipped and the engine flows straight into DRAFTING with
+        // the plan sketch in the prompt.
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        engine.start(process, ctx);
+        // Two scripted LLM replies: framing sketch + drafting body.
+        chatModel.script(
+                "## Goal recap\nWrite a hello-world script.\n\n## Approach\nReturn a string.",
+                "```javascript\n(function () { return 'hello'; })();\n```");
+
+        int turns = drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getPlanSketch())
+                .contains("Goal recap")
+                .contains("Write a hello-world script");
+        assertThat(finalState.getReviewerVerdict()).isEqualTo("SKIPPED");
+        assertThat(finalState.getFramingRecoveryCount()).isZero();
+
+        // READY → FRAMING → REVIEWING → DRAFTING → VALIDATING → DONE
+        // = 5 advancing turns.
+        assertThat(turns).isEqualTo(5);
+        // Both LLM replies were consumed.
+        assertThat(chatModel.remaining()).isZero();
+    }
+
+    @Test
+    void framingEnabled_reviewerApproves_goesStraightToDrafting() {
+        // Reviewer recipe configured + APPROVED on first try.
+        configureApprovingReviewer("script-developer-reviewer");
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        process.getEngineParams().put(
+                DeepThoughtEngine.REVIEWER_RECIPE_KEY,
+                "script-developer-reviewer");
+        engine.start(process, ctx);
+        // Only ONE LLM reply is consumed by the engine here (FRAMING).
+        // DRAFTING is the second. The reviewer's reply is mocked via
+        // chatMessageService.history, not via chatModel.
+        chatModel.script(
+                "## Goal recap\nReturn 42.\n\n## Approach\nIIFE returning 42.",
+                "```javascript\n(function () { return 42; })();\n```");
+
+        drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getReviewerVerdict()).isEqualTo("APPROVED");
+        assertThat(finalState.getFramingRecoveryCount()).isZero();
+        // The DRAFTING user message must have included the plan sketch.
+        ChatRequest draftRequest = chatModel.calls().get(1);
+        String userMsg = ((dev.langchain4j.data.message.UserMessage)
+                draftRequest.messages().get(1)).singleText();
+        assertThat(userMsg)
+                .contains("Approved plan sketch")
+                .contains("IIFE returning 42");
+    }
+
+    @Test
+    void framingEnabled_reviewerRejectsOnce_thenApprovesViaRecovery() {
+        // First REVIEWING returns REJECTED, second APPROVED. The
+        // recovery loop must re-run FRAMING with the critique as hint
+        // before advancing.
+        java.util.concurrent.atomic.AtomicInteger reviewerCalls =
+                new java.util.concurrent.atomic.AtomicInteger();
+        configureReviewer("script-developer-reviewer", history -> {
+            int n = reviewerCalls.incrementAndGet();
+            return n == 1
+                    ? "VERDICT: REJECTED\nThe plan misses error handling."
+                    : "VERDICT: APPROVED\nLooks good.";
+        });
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        process.getEngineParams().put(
+                DeepThoughtEngine.REVIEWER_RECIPE_KEY,
+                "script-developer-reviewer");
+        engine.start(process, ctx);
+        // Three LLM replies needed: FRAMING #1, FRAMING #2 (recovery),
+        // DRAFTING. (Reviewer responses come from chatMessageService,
+        // not from chatModel.)
+        chatModel.script(
+                "## Goal recap\nReturn 42.\n\n## Approach\nIIFE.",
+                "## Goal recap\nReturn 42.\n\n## Approach\nIIFE with try/catch.",
+                "```javascript\n(function () { try { return 42; } catch(e) { return -1; } })();\n```");
+
+        drainTurns(process, 20);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getReviewerVerdict()).isEqualTo("APPROVED");
+        assertThat(finalState.getFramingRecoveryCount()).isEqualTo(1);
+        assertThat(reviewerCalls.get()).isEqualTo(2);
+    }
+
+    @Test
+    void framingEnabled_reviewerKeepsRejecting_endsInFailed() {
+        // Every reviewer reply rejects — engine bails into FAILED
+        // once framingRecoveryCount hits maxFramingRecoveries.
+        configureReviewer("script-developer-reviewer", history ->
+                "VERDICT: REJECTED\nStill broken.");
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        process.getEngineParams().put(
+                DeepThoughtEngine.REVIEWER_RECIPE_KEY,
+                "script-developer-reviewer");
+        process.getEngineParams().put(
+                DeepThoughtEngine.MAX_FRAMING_RECOVERIES_KEY, 2);
+        engine.start(process, ctx);
+        // Two FRAMING attempts before the budget is exhausted; we
+        // queue three plan-sketches in case the loop overshoots.
+        chatModel.script(
+                "## Plan v1",
+                "## Plan v2",
+                "## Plan v3");
+
+        drainTurns(process, 20);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        assertThat(finalState.getFramingRecoveryCount()).isEqualTo(2);
+        assertThat(finalState.getFailureReason())
+                .contains("Exceeded maxFramingRecoveries")
+                .contains("Still broken");
+    }
+
+    @Test
+    void framingEnabled_reviewerSpawnFails_skipsReviewAndContinues() {
+        // The reviewer recipe doesn't resolve — engine logs, sets
+        // verdict=SKIPPED, and advances to DRAFTING with the
+        // unreviewed plan sketch. Plan-mode still produced value.
+        when(recipeResolver.apply(anyString(), any(), eq("missing-reviewer"),
+                any(), any()))
+                .thenThrow(new RecipeResolver.UnknownRecipeException(
+                        "missing-reviewer"));
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        process.getEngineParams().put(
+                DeepThoughtEngine.REVIEWER_RECIPE_KEY, "missing-reviewer");
+        engine.start(process, ctx);
+        chatModel.script(
+                "## Goal recap\nReturn 1.",
+                "```javascript\n(function () { return 1; })();\n```");
+
+        drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getReviewerVerdict()).isEqualTo("SKIPPED");
+        assertThat(finalState.getReviewerNotes())
+                .contains("missing-reviewer")
+                .contains("not found");
+    }
+
+    @Test
+    void framingDisabled_defaultBehaviour_unchanged() {
+        // No framingEnabled param set — engine takes the legacy fast
+        // path READY → DRAFTING. The new statuses are never visited.
+        ThinkProcessDocument process = newProcess();
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 1; })();\n```");
+
+        drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getPlanSketch()).isNull();
+        assertThat(finalState.getReviewerVerdict()).isNull();
+        assertThat(finalState.getFramingRecoveryCount()).isZero();
+        // Only ONE LLM call (DRAFTING) — no FRAMING.
+        assertThat(chatModel.calls()).hasSize(1);
+    }
+
+    /**
+     * Configures the reviewer recipe to resolve to a Ford-like child,
+     * with the spawn + drive pipeline mocked so the child writes one
+     * APPROVED-line assistant message into chatMessageService's history.
+     */
+    private void configureApprovingReviewer(String recipeName) {
+        configureReviewer(recipeName, history ->
+                "VERDICT: APPROVED\nPlan is sound.");
+    }
+
+    /**
+     * Configures the reviewer chain end-to-end. The supplied function
+     * decides what the reviewer "says" on each invocation (called when
+     * the engine reads the child's history). Mocks
+     * RecipeResolver.apply / ThinkEngineService.start / LaneScheduler.submit
+     * / chatMessageService.history / ThinkEngineService.stop so the
+     * engine sees a complete round-trip.
+     */
+    private void configureReviewer(
+            String recipeName,
+            java.util.function.Function<Void, String> replyForCall) {
+        // The applied recipe (minimal — only what the engine reads).
+        de.mhus.vance.brain.recipe.AppliedRecipe applied =
+                mock(de.mhus.vance.brain.recipe.AppliedRecipe.class);
+        when(applied.name()).thenReturn(recipeName);
+        when(applied.engine()).thenReturn("ford");
+        when(applied.params()).thenReturn(java.util.Map.of());
+        when(applied.effectiveAllowedTools()).thenReturn(java.util.Set.<String>of());
+        when(applied.connectionProfile()).thenReturn(null);
+        when(applied.defaultActiveSkills()).thenReturn(java.util.List.<String>of());
+        when(applied.allowedSkills()).thenReturn(null);
+        when(applied.promptOverride()).thenReturn(null);
+        when(applied.promptOverrideAppend()).thenReturn(null);
+        when(applied.promptMode()).thenReturn(null);
+        when(applied.dataRelayCorrection()).thenReturn(null);
+        when(recipeResolver.apply(anyString(), any(), eq(recipeName), any(), any()))
+                .thenReturn(applied);
+
+        // Resolve "ford" engine; spec only needs name() + version().
+        ThinkEngine fordStub = mock(ThinkEngine.class);
+        when(fordStub.name()).thenReturn("ford");
+        when(fordStub.version()).thenReturn("1.0");
+        when(thinkEngineService.resolve(eq("ford")))
+                .thenReturn(java.util.Optional.of(fordStub));
+
+        // create() returns a stand-in child process.
+        ThinkProcessDocument child = new ThinkProcessDocument();
+        child.setId("reviewer-child-1");
+        child.setTenantId("acme");
+        child.setProjectId("test-project");
+        child.setSessionId("sess-1");
+        when(thinkProcessService.create(
+                anyString(), any(), any(), anyString(),
+                anyString(), anyString(),
+                anyString(), any(), any(),
+                any(), anyString(),
+                any(), any(), any(), any(),
+                any(), any(), any(), any()))
+                .thenReturn(child);
+
+        // The lane scheduler "executes" the steer immediately, then
+        // returns a completed Future so .get() unblocks.
+        when(laneScheduler.submit(anyString(), any(Runnable.class)))
+                .thenAnswer(inv -> {
+                    Runnable r = inv.getArgument(1);
+                    r.run();
+                    return java.util.concurrent.CompletableFuture.completedFuture(null);
+                });
+
+        // chatMessageService returns a single-element history with the
+        // reviewer's verdict line — engine reads getLastAssistantText.
+        when(chatMessageService.history(anyString(), anyString(), eq("reviewer-child-1")))
+                .thenAnswer(inv -> {
+                    de.mhus.vance.shared.chat.ChatMessageDocument m =
+                            new de.mhus.vance.shared.chat.ChatMessageDocument();
+                    m.setRole(de.mhus.vance.api.chat.ChatRole.ASSISTANT);
+                    m.setContent(replyForCall.apply(null));
+                    return List.of(m);
+                });
     }
 
     // ──────────────────── Idempotency ────────────────────

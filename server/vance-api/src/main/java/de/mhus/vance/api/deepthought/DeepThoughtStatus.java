@@ -16,10 +16,22 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  */
 @GenerateTypeScript("deepthought")
 public enum DeepThoughtStatus {
-    /** Just created — runTurn will transition to DRAFTING. */
+    /** Just created — runTurn transitions to FRAMING (when
+     *  {@code framingEnabled}) or directly to DRAFTING. */
     READY,
+    /** Plan-mode: LLM produces a structured sketch of the script's
+     *  approach (sub-steps, tools to call, edge cases) before any
+     *  code is drafted. Only entered when {@code framingEnabled=true}. */
+    FRAMING,
+    /** Plan-review: a sub-recipe worker judges the plan sketch with
+     *  a VERDICT line (APPROVED / REJECTED). On REJECTED, the engine
+     *  loops back to FRAMING with the reviewer's critique as hint,
+     *  up to {@code maxFramingRecoveries}. Skipped when no reviewer
+     *  recipe is configured or resolvable. */
+    REVIEWING,
     /** LLM-call to generate the JavaScript body from the goal +
-     *  any recovery hint from a prior VALIDATING failure. */
+     *  (when present) the approved plan sketch + any recovery hint
+     *  from a prior VALIDATING failure. */
     DRAFTING,
     /** Parse-only check via {@code JsValidationService}. On
      *  syntax error → recovery back to DRAFTING with the error

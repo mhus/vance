@@ -46,6 +46,42 @@ public class DeepThoughtState {
     @Builder.Default
     private List<ValidationError> validationErrors = new ArrayList<>();
 
+    /** Plan-mode opt-in. When true, READY transitions to FRAMING
+     *  (LLM sketch) → REVIEWING (sub-recipe worker) → DRAFTING. When
+     *  false (default), READY goes straight to DRAFTING — existing
+     *  one-shot behaviour. Copied from {@code engineParams.framingEnabled}
+     *  at start time so a steer can't change pipeline shape mid-run. */
+    private boolean framingEnabled;
+
+    /** Plan sketch the FRAMING phase produced — Markdown describing
+     *  the script's approach, sub-steps, tools to call, edge cases.
+     *  Fed verbatim into the DRAFTING user message as additional
+     *  context. {@code null} when FRAMING wasn't run or wasn't yet
+     *  reached. */
+    private @Nullable String planSketch;
+
+    /** Reviewer's verdict line from the last REVIEWING pass —
+     *  {@code "APPROVED"} or {@code "REJECTED"}. {@code null} when
+     *  REVIEWING wasn't run (no reviewer configured, or framing
+     *  disabled). */
+    private @Nullable String reviewerVerdict;
+
+    /** Free-text notes / critique from the last REVIEWING pass.
+     *  Carries the reviewer's reasoning verbatim — on REJECTED this
+     *  becomes the hint fed back into the next FRAMING attempt. */
+    private @Nullable String reviewerNotes;
+
+    /** Number of completed FRAMING→REVIEWING recovery cycles.
+     *  Independent of {@link #recoveryCount} (DRAFTING↔VALIDATING).
+     *  Reaching {@link #maxFramingRecoveries} → FAILED. */
+    private int framingRecoveryCount;
+
+    /** Soft-cap on FRAMING recovery attempts. Default 3 — shorter
+     *  than DRAFTING's recovery budget because each FRAMING cycle
+     *  costs two LLM calls (drafter + reviewer), not one. */
+    @Builder.Default
+    private int maxFramingRecoveries = 3;
+
     /** If true, transition to EXECUTING after VALIDATING; otherwise
      *  jump straight to DONE. */
     private boolean executeOnDone;

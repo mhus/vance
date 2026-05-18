@@ -102,8 +102,12 @@ public class ThinkProcessDocument {
 
     /**
      * Recipe name this process was spawned from, or {@code null} for
-     * direct {@code engine}-spawns. Audit only — engines do not act
-     * on this field.
+     * direct {@code engine}-spawns. Primarily for audit + UI
+     * attribution; most engines do not branch on it. Deep Thought
+     * reads it as a fallback to derive a reviewer sub-recipe name
+     * ({@code <recipeName>-reviewer}) when {@code reviewerRecipe} is
+     * not explicitly set in params — see
+     * {@code planning/deepthought-engine.md}.
      */
     private @Nullable String recipeName;
 

@@ -17,7 +17,8 @@ Your reply MUST follow this exact structure:
 does step by step, how data flows, where the tools come in>
 
 ## Steps
-1. <first concrete step>
+1. <first concrete step — phrased as a verb that maps to a helper
+   function, e.g. "readSources", "renderChapter", "aggregate">
 2. <second concrete step>
 3. <...>
 

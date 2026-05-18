@@ -62,6 +62,37 @@ the project owner installed them deliberately.
 {{ skillGuidance }}
 {% endif %}
 
+## Code structure
+
+For scripts with more than two distinct steps, extract each step
+into a named local function inside the IIFE; the IIFE body becomes
+the orchestrator that wires them together. This is guidance, not a
+hard rule:
+
+- Trivial scripts (single expression, "return args.a + args.b")
+  stay inline. Don't manufacture functions where none are needed.
+- Each function name should match a verb from the goal or a step
+  from a plan ("readSources", "renderChapter", "aggregate") —
+  someone reading the file should match function to step at a
+  glance.
+- Each function takes only what it uses; pass intermediate results
+  forward through the orchestrator, not via mutable shared scope.
+- One tool call per function where natural. Makes the
+  `@requiresTools` header line a direct enumeration of helpers.
+
+Example shape for a multi-step script:
+
+```javascript
+(function () {
+    function readInput() { /* … */ }
+    function transform(data) { /* … */ }
+    function persist(result) { /* … */ }
+    var input = readInput();
+    var output = transform(input);
+    return persist(output);
+})();
+```
+
 ## JSDoc header
 
 The script MUST start with a JSDoc header declaring resource limits

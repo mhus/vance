@@ -1,10 +1,17 @@
 package de.mhus.vance.brain.deepthought;
 
 import de.mhus.vance.api.deepthought.DeepThoughtState;
+import de.mhus.vance.api.deepthought.DeepThoughtState.ValidationError;
 import de.mhus.vance.api.deepthought.DeepThoughtStatus;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.brain.ai.EngineChatFactory;
+import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.prompt.PromptContextBuilder;
+import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.brain.script.JsValidationService;
+import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -12,9 +19,18 @@ import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -24,9 +40,14 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Deep Thought — script-architect engine. Reads a goal, drafts a
  * JavaScript body, validates it parse-only, recovers on syntax errors
- * up to {@link DeepThoughtState#getMaxRecoveries()} times, persists
- * the accepted body and (optionally) hands off to a Script Cortex
- * runner.
+ * up to {@link DeepThoughtState#getMaxRecoveries()} times, and (optionally)
+ * hands off to a Script Cortex runner.
+ *
+ * <p>The accepted script lives in {@code DeepThoughtState.generatedCode}
+ * — there is no separate persistence to a project document. Debug
+ * inspection happens through the {@code engineParams.deepThoughtState}
+ * blob itself (Mongo find / Insights view); parents read the final
+ * code through {@code summarizeForParent}.
  *
  * <p>State persists on
  * {@code ThinkProcessDocument.engineParams.deepThoughtState}; each
@@ -35,16 +56,16 @@ import tools.jackson.databind.ObjectMapper;
  * Vogon. The state machine:
  *
  * <pre>
- *   READY → DRAFTING → VALIDATING → PERSISTING → DONE
+ *   READY → DRAFTING → VALIDATING → DONE
  *                  ↑       │
  *                  └───────┘  (recovery loop: syntax error → re-draft
  *                             with error hint, up to maxRecoveries)
- *                                       │
- *                                       └→ EXECUTING (if executeOnDone)
+ *                                  │
+ *                                  └→ EXECUTING → DONE (if executeOnDone)
  * </pre>
  *
- * <p>Phase 0 implementation: all phase methods are stubbed so the
- * lifecycle round-trips; real DRAFTING/VALIDATING/PERSISTING logic
+ * <p>Phase 0 implementation: phase methods are stubbed so the
+ * lifecycle round-trips; real DRAFTING/VALIDATING logic
  * lands in the follow-up task (see {@code planning/deepthought-engine.md}).
  */
 @Component
@@ -63,21 +84,40 @@ public class DeepThoughtEngine implements ThinkEngine {
      *  to {@code process.getGoal()}. */
     public static final String GOAL_KEY = "goal";
 
-    /** {@code engineParams[TARGET_NAME_KEY]} — desired filename for
-     *  the persisted script (without {@code scripts/} prefix). */
-    public static final String TARGET_NAME_KEY = "targetName";
-
     /** {@code engineParams[EXECUTE_ON_DONE_KEY]} — boolean; default false. */
     public static final String EXECUTE_ON_DONE_KEY = "executeOnDone";
 
     /** {@code engineParams[MAX_RECOVERIES_KEY]} — int; default 5. */
     public static final String MAX_RECOVERIES_KEY = "maxRecoveries";
 
-    private static final String DEFAULT_TARGET_NAME = "generated.js";
+    /** Cascade path for the Deep Thought DRAFTING system prompt.
+     *  Loaded via {@link EnginePromptResolver} — project / _vance /
+     *  bundled — and rendered as a Pebble template with {@code goal}
+     *  injected as a variable. */
+    private static final String DRAFTING_PROMPT_PATH = "prompts/deepthought-drafting.md";
+
+    /** Last-resort Java fallback if the bundled prompt resource is
+     *  missing (e.g. dev hot-reload without test resources). Real
+     *  source-of-truth is {@link #DRAFTING_PROMPT_PATH}. */
+    private static final String DRAFTING_FALLBACK_PROMPT =
+            "You are the DRAFTING node of the Deep Thought engine. "
+                    + "Reply with EXACTLY one ```javascript fenced block "
+                    + "containing an IIFE that fulfils the goal: {{ goal }}";
+
+    /** Matches the first ```javascript / ```js / ``` fenced block
+     *  in the LLM reply. DOTALL so {@code .} spans line breaks. */
+    private static final Pattern JS_FENCE = Pattern.compile(
+            "```(?:javascript|js)?\\s*\\R([\\s\\S]*?)\\R```",
+            Pattern.MULTILINE);
 
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
     private final ObjectMapper objectMapper;
+    private final EngineChatFactory engineChatFactory;
+    private final EnginePromptResolver enginePromptResolver;
+    private final PromptTemplateRenderer promptTemplateRenderer;
+    private final LlmCallTracker llmCallTracker;
+    private final JsValidationService jsValidationService;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -105,10 +145,11 @@ public class DeepThoughtEngine implements ThinkEngine {
 
     @Override
     public Set<String> allowedTools() {
-        // v1: only doc_write_text — drafting uses direct LLM call,
-        // validating is in-process. EXECUTING phase will widen this
-        // once Script Cortex lands.
-        return Set.of("doc_write_text");
+        // v1: none. DRAFTING uses a direct LLM call (no tool_use),
+        // VALIDATING is in-process via JsValidationService, and no
+        // document is written. EXECUTING (v1.1) will widen this to
+        // process_run / execute_javascript when Script Cortex lands.
+        return Set.of();
     }
 
     @Override
@@ -123,9 +164,9 @@ public class DeepThoughtEngine implements ThinkEngine {
         DeepThoughtState state = buildInitialState(process);
         persistState(process, state);
         log.info("DeepThought.start tenant='{}' session='{}' id='{}' "
-                        + "targetName='{}' maxRecoveries={}",
+                        + "executeOnDone={} maxRecoveries={}",
                 process.getTenantId(), process.getSessionId(), process.getId(),
-                state.getTargetName(), state.getMaxRecoveries());
+                state.isExecuteOnDone(), state.getMaxRecoveries());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
@@ -218,7 +259,6 @@ public class DeepThoughtEngine implements ThinkEngine {
             case READY -> DeepThoughtStatus.DRAFTING;
             case DRAFTING -> runDrafting(process, ctx, state);
             case VALIDATING -> runValidating(process, ctx, state);
-            case PERSISTING -> runPersisting(process, ctx, state);
             case EXECUTING -> runExecuting(process, ctx, state);
             // DONE/FAILED handled before dispatch; defensive fall-through.
             case DONE -> DeepThoughtStatus.DONE;
@@ -226,56 +266,205 @@ public class DeepThoughtEngine implements ThinkEngine {
         };
     }
 
-    // ──────────────────── Phase stubs ────────────────────
-    //
-    // Real implementations land in task #45. Until then, each phase
-    // is a deterministic no-op that advances to the next status so
-    // the lifecycle round-trips and can be exercised by tests.
+    // ──────────────────── Phases ────────────────────
 
+    /**
+     * DRAFTING — one LLM call that produces a {@code ```javascript}
+     * fenced body. The system prompt comes from the cascade path
+     * {@link #DRAFTING_PROMPT_PATH} (Pebble-rendered with the goal);
+     * the user message carries the goal verbatim plus, on a recovery
+     * attempt, the previous draft and the validation errors that
+     * killed it.
+     *
+     * <p>Always transitions to VALIDATING. A reply without a parseable
+     * fence is stored verbatim as {@code generatedCode} and recorded as
+     * a synthetic validation error — the regular recovery loop then
+     * kicks in (so a malformed reply costs one recovery slot, same as
+     * a syntax error).
+     */
     DeepThoughtStatus runDrafting(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             DeepThoughtState state) {
-        log.debug("DeepThought.runDrafting STUB id='{}' goal='{}'",
-                process.getId(), state.getGoal());
-        // Phase-stub: pretend we drafted an empty body.
-        state.setGeneratedCode("// drafted body (stub)\n");
+        EngineChatFactory.EngineChatBundle bundle =
+                engineChatFactory.forProcess(process, ctx, NAME);
+        String modelAlias = bundle.primaryConfig().provider()
+                + ":" + bundle.primaryConfig().modelName();
+
+        // System prompt: cascade-resolved + Pebble-rendered with goal.
+        String basePath = paramString(process, "promptDocument", DRAFTING_PROMPT_PATH);
+        String systemTpl = enginePromptResolver.resolve(
+                process, basePath, DRAFTING_FALLBACK_PROMPT);
+        Map<String, Object> ctxMap = new LinkedHashMap<>(
+                PromptContextBuilder.forProcess(process, null)
+                        .engine(NAME)
+                        .build());
+        ctxMap.put("goal", state.getGoal() == null ? "" : state.getGoal());
+        String renderedSystem = promptTemplateRenderer.render(systemTpl, ctxMap);
+
+        // User message: recovery hint first when applicable, then the
+        // draft-now instruction. The header banner is large on purpose
+        // — easy for the LLM to miss subtle "fix this" text buried mid-
+        // prompt, especially after a long system message.
+        String userMessage = buildDraftingUserMessage(state);
+
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(SystemMessage.from(renderedSystem == null ? "" : renderedSystem));
+        messages.add(UserMessage.from(userMessage));
+
+        long startMs = System.currentTimeMillis();
+        ChatRequest request = ChatRequest.builder().messages(messages).build();
+        ChatResponse response = bundle.chat().chatModel().chat(request);
+        llmCallTracker.record(process, request, response,
+                System.currentTimeMillis() - startMs, modelAlias);
+
+        String reply = response.aiMessage() == null
+                ? null : response.aiMessage().text();
+        String body = extractJsBody(reply == null ? "" : reply);
+        if (body == null || body.isBlank()) {
+            // No fence — keep the raw reply for inspection and queue a
+            // synthetic validation error so VALIDATING accounts the
+            // attempt against the recovery budget.
+            log.warn("DeepThought.runDrafting id='{}' reply had no parseable "
+                            + "```javascript fence (reply chars={})",
+                    process.getId(), reply == null ? 0 : reply.length());
+            state.setGeneratedCode(reply == null ? "" : reply);
+            List<ValidationError> errs = new ArrayList<>();
+            errs.add(ValidationError.builder()
+                    .sourceName("draft.js")
+                    .line(0).column(0)
+                    .message("LLM reply contained no ```javascript fenced "
+                            + "block — re-emit with proper fences.")
+                    .build());
+            state.setValidationErrors(errs);
+            return DeepThoughtStatus.VALIDATING;
+        }
+
+        state.setGeneratedCode(body);
+        state.getValidationErrors().clear();
+        log.info("DeepThought.runDrafting id='{}' attempt {} drafted {} chars",
+                process.getId(), state.getRecoveryCount() + 1, body.length());
         return DeepThoughtStatus.VALIDATING;
     }
 
+    /**
+     * VALIDATING — parse-only check via {@link JsValidationService}.
+     * On success → DONE (or EXECUTING when {@code executeOnDone}). On
+     * failure → increment {@code recoveryCount}; back to DRAFTING with
+     * the errors copied into the state, or FAILED once
+     * {@code recoveryCount >= maxRecoveries}.
+     */
     DeepThoughtStatus runValidating(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             DeepThoughtState state) {
-        log.debug("DeepThought.runValidating STUB id='{}' codeLen={}",
-                process.getId(),
-                state.getGeneratedCode() == null ? 0 : state.getGeneratedCode().length());
-        // Phase-stub: always accept.
-        state.getValidationErrors().clear();
-        return DeepThoughtStatus.PERSISTING;
-    }
+        String code = state.getGeneratedCode();
+        JsValidationService.JsValidationResult result =
+                jsValidationService.validate(code, "draft.js");
+        if (result.ok()) {
+            state.getValidationErrors().clear();
+            log.info("DeepThought.runValidating id='{}' OK after {} recovery attempt(s)",
+                    process.getId(), state.getRecoveryCount());
+            return state.isExecuteOnDone()
+                    ? DeepThoughtStatus.EXECUTING
+                    : DeepThoughtStatus.DONE;
+        }
 
-    DeepThoughtStatus runPersisting(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            DeepThoughtState state) {
-        log.debug("DeepThought.runPersisting STUB id='{}' target='{}'",
-                process.getId(), state.getTargetName());
-        // Phase-stub: pretend we wrote the file.
-        state.setPersistedPath("scripts/" + state.getTargetName());
-        return state.isExecuteOnDone()
-                ? DeepThoughtStatus.EXECUTING
-                : DeepThoughtStatus.DONE;
+        // Translate JsValidationError → API ValidationError so the
+        // state can serialize over the wire.
+        List<ValidationError> errors = new ArrayList<>();
+        for (JsValidationService.JsValidationError e : result.errors()) {
+            errors.add(ValidationError.builder()
+                    .sourceName(e.sourceName())
+                    .line(e.line())
+                    .column(e.column())
+                    .message(e.message())
+                    .build());
+        }
+        state.setValidationErrors(errors);
+        state.setRecoveryCount(state.getRecoveryCount() + 1);
+        log.info("DeepThought.runValidating id='{}' FAIL — attempt {}/{}, "
+                        + "errors: {}",
+                process.getId(), state.getRecoveryCount(),
+                state.getMaxRecoveries(),
+                errors.isEmpty() ? "?" : errors.get(0).getMessage());
+
+        if (state.getRecoveryCount() >= state.getMaxRecoveries()) {
+            state.setFailureReason("Exceeded maxRecoveries ("
+                    + state.getMaxRecoveries()
+                    + ") — last error: "
+                    + (errors.isEmpty() ? "(none)" : errors.get(0).getMessage()));
+            return DeepThoughtStatus.FAILED;
+        }
+        return DeepThoughtStatus.DRAFTING;
     }
 
     DeepThoughtStatus runExecuting(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             DeepThoughtState state) {
-        log.debug("DeepThought.runExecuting STUB id='{}' path='{}'",
-                process.getId(), state.getPersistedPath());
+        log.debug("DeepThought.runExecuting STUB id='{}' codeLen={}",
+                process.getId(),
+                state.getGeneratedCode() == null ? 0 : state.getGeneratedCode().length());
         // v1 has no Script Cortex runner — go straight to DONE.
         return DeepThoughtStatus.DONE;
+    }
+
+    // ──────────────────── Phase helpers ────────────────────
+
+    private static String buildDraftingUserMessage(DeepThoughtState state) {
+        StringBuilder sb = new StringBuilder();
+        if (state.getRecoveryCount() > 0 && !state.getValidationErrors().isEmpty()) {
+            sb.append("================================================\n");
+            sb.append("⚠  PREVIOUS DRAFT FAILED VALIDATION ⚠\n");
+            sb.append("================================================\n\n");
+            if (state.getGeneratedCode() != null && !state.getGeneratedCode().isBlank()) {
+                sb.append("Previous draft:\n```javascript\n")
+                        .append(state.getGeneratedCode())
+                        .append("\n```\n\n");
+            }
+            sb.append("Errors that must be fixed:\n");
+            for (ValidationError e : state.getValidationErrors()) {
+                sb.append("  - ");
+                if (e.getLine() > 0 || e.getColumn() > 0) {
+                    sb.append("line ").append(e.getLine())
+                            .append(", col ").append(e.getColumn())
+                            .append(": ");
+                }
+                sb.append(e.getMessage() == null ? "(no message)" : e.getMessage())
+                        .append('\n');
+            }
+            sb.append("\nRe-emit the COMPLETE corrected script. Keep the "
+                    + "structure of the previous draft; only fix the listed "
+                    + "errors.\n");
+            sb.append("================================================\n\n");
+        }
+        sb.append("Goal:\n").append(state.getGoal() == null ? "" : state.getGoal());
+        sb.append("\n\nReply ONLY with a single ```javascript fenced block. "
+                + "No prose before or after.");
+        return sb.toString();
+    }
+
+    /**
+     * Pulls the first fenced JavaScript body out of an LLM reply.
+     * Accepts ```javascript, ```js, or unmarked ``` fences (the prompt
+     * asks for ```javascript but production LLMs sometimes pick the
+     * shorter alias). Returns {@code null} when no fence is found —
+     * caller treats that as a validation error.
+     */
+    static @Nullable String extractJsBody(@Nullable String reply) {
+        if (reply == null || reply.isBlank()) return null;
+        Matcher m = JS_FENCE.matcher(reply);
+        if (!m.find()) return null;
+        String body = m.group(1);
+        return body == null || body.isBlank() ? null : body;
+    }
+
+    private static @Nullable String paramString(
+            ThinkProcessDocument process, String key, @Nullable String fallback) {
+        Map<String, Object> p = process.getEngineParams();
+        Object v = p == null ? null : p.get(key);
+        return v instanceof String s && !s.isBlank() ? s : fallback;
     }
 
     // ──────────────────── summarizeForParent ────────────────────
@@ -294,16 +483,23 @@ public class DeepThoughtEngine implements ThinkEngine {
         payload.put("eventType", eventType.name());
         payload.put("status", state.getStatus() == null
                 ? null : state.getStatus().name());
-        payload.put("persistedPath", state.getPersistedPath());
+        payload.put("codeLength", state.getGeneratedCode() == null
+                ? 0 : state.getGeneratedCode().length());
         payload.put("recoveryCount", state.getRecoveryCount());
         payload.put("validationErrors", state.getValidationErrors().size());
 
         if (state.getStatus() == DeepThoughtStatus.DONE
-                && state.getPersistedPath() != null) {
+                && state.getGeneratedCode() != null) {
+            // Parent gets the script verbatim in a fenced block — its
+            // own LLM (chat, Vogon, …) can quote it, run it through a
+            // tool, or hand it on. The generatedCode also still sits
+            // in engineParams for direct Mongo inspection.
             return new ParentReport(
-                    "Deep Thought wrote script to `" + state.getPersistedPath()
-                            + "` after " + state.getRecoveryCount()
-                            + " recovery attempt(s).",
+                    "Deep Thought drafted a script (" + state.getGeneratedCode().length()
+                            + " chars, " + state.getRecoveryCount()
+                            + " recovery attempt(s)):\n\n```javascript\n"
+                            + state.getGeneratedCode()
+                            + "\n```\n",
                     payload);
         }
         if (state.getStatus() == DeepThoughtStatus.FAILED) {
@@ -337,17 +533,12 @@ public class DeepThoughtEngine implements ThinkEngine {
                             + "(id='" + process.getId() + "')");
         }
 
-        String targetName = optString(p.get(TARGET_NAME_KEY));
-        if (targetName == null) targetName = DEFAULT_TARGET_NAME;
-        if (!targetName.endsWith(".js")) targetName = targetName + ".js";
-
         boolean executeOnDone = parseBoolean(p.get(EXECUTE_ON_DONE_KEY), false);
         int maxRecoveries = parseInt(p.get(MAX_RECOVERIES_KEY), 5);
         if (maxRecoveries < 0) maxRecoveries = 0;
 
         return DeepThoughtState.builder()
                 .goal(goal)
-                .targetName(targetName)
                 .executeOnDone(executeOnDone)
                 .maxRecoveries(maxRecoveries)
                 .status(DeepThoughtStatus.READY)

@@ -4,9 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
@@ -17,35 +17,72 @@ import de.mhus.vance.api.deepthought.DeepThoughtState;
 import de.mhus.vance.api.deepthought.DeepThoughtStatus;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
+import de.mhus.vance.brain.ai.AiChat;
+import de.mhus.vance.brain.ai.AiChatConfig;
+import de.mhus.vance.brain.ai.ChatBehavior;
+import de.mhus.vance.brain.ai.EngineChatFactory;
+import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.brain.script.JsValidationService;
+import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.graalvm.polyglot.Engine;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Phase-0 lifecycle test — drives the {@link DeepThoughtEngine} state
- * machine through the four-phase stub pipeline
- * (READY → DRAFTING → VALIDATING → PERSISTING → DONE) and pins the
- * idempotency contract for terminal states.
- *
- * <p>No LLM, no document I/O — phase methods are still stubs at this
- * point. Real DRAFTING/VALIDATING/PERSISTING tests land in task #47
- * once the phases are implemented.
+ * Lifecycle test — drives the {@link DeepThoughtEngine} through the
+ * full state machine (READY → DRAFTING → VALIDATING → DONE; optional
+ * EXECUTING when {@code executeOnDone=true}) plus the recovery loop
+ * (syntax-error → re-draft, up to {@code maxRecoveries}). Uses a
+ * {@link ScriptedChatModel} for deterministic LLM replies and a real
+ * {@link JsValidationService} so the parse-only check exercises the
+ * same GraalJS parser as production.
  */
 class DeepThoughtEngineLifecycleTest {
+
+    private static Engine graalEngine;
+    private static JsValidationService jsValidationService;
+
+    @BeforeAll
+    static void buildGraalEngine() {
+        graalEngine = Engine.newBuilder("js")
+                .option("engine.WarnInterpreterOnly", "false")
+                .build();
+        jsValidationService = new JsValidationService(graalEngine);
+    }
+
+    @AfterAll
+    static void closeGraalEngine() {
+        graalEngine.close();
+    }
 
     private ThinkProcessService thinkProcessService;
     private ProcessEventEmitter eventEmitter;
     private ObjectMapper objectMapper;
+    private EngineChatFactory engineChatFactory;
+    private EnginePromptResolver enginePromptResolver;
+    private PromptTemplateRenderer promptTemplateRenderer;
+    private LlmCallTracker llmCallTracker;
+    private ScriptedChatModel chatModel;
     private ThinkEngineContext ctx;
 
     private DeepThoughtEngine engine;
@@ -55,13 +92,44 @@ class DeepThoughtEngineLifecycleTest {
         thinkProcessService = mock(ThinkProcessService.class);
         eventEmitter = mock(ProcessEventEmitter.class);
         objectMapper = JsonMapper.builder().build();
+        engineChatFactory = mock(EngineChatFactory.class);
+        enginePromptResolver = mock(EnginePromptResolver.class);
+        llmCallTracker = mock(LlmCallTracker.class);
+
+        // Real renderer — Pebble has no I/O, cheap to construct, and
+        // exercises the exact rendering path the production code uses.
+        promptTemplateRenderer = new PromptTemplateRenderer();
+
+        chatModel = new ScriptedChatModel();
+        AiChat aiChat = mock(AiChat.class);
+        when(aiChat.chatModel()).thenReturn(chatModel);
+        AiChatConfig cfg = new AiChatConfig("test", "scripted", "stub-key");
+        ChatBehavior behavior = ChatBehavior.single(cfg);
+        EngineChatFactory.EngineChatBundle bundle =
+                new EngineChatFactory.EngineChatBundle(aiChat, behavior);
+        when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(bundle);
+
+        // Prompt resolver returns the bundled-default text — the
+        // renderer treats it as a Pebble template, and the {{ goal }}
+        // placeholder gets filled from the engine's ctxMap.
+        when(enginePromptResolver.resolve(any(), anyString(), anyString()))
+                .thenAnswer(inv -> "System: draft a script. Goal = {{ goal }}.");
+
         ctx = mock(ThinkEngineContext.class);
         when(ctx.drainPending()).thenReturn(List.<SteerMessage>of());
 
         doAnswer(inv -> null).when(thinkProcessService)
                 .replaceEngineParams(anyString(), any());
 
-        engine = new DeepThoughtEngine(thinkProcessService, eventEmitter, objectMapper);
+        engine = new DeepThoughtEngine(
+                thinkProcessService,
+                eventEmitter,
+                objectMapper,
+                engineChatFactory,
+                enginePromptResolver,
+                promptTemplateRenderer,
+                llmCallTracker,
+                jsValidationService);
     }
 
     // ──────────────────── Happy path ────────────────────
@@ -75,47 +143,111 @@ class DeepThoughtEngineLifecycleTest {
         DeepThoughtState state = readState(process);
         assertThat(state.getStatus()).isEqualTo(DeepThoughtStatus.READY);
         assertThat(state.getGoal()).isEqualTo("write me a hello-script");
-        assertThat(state.getTargetName()).isEqualTo("greet.js");
         assertThat(state.getMaxRecoveries()).isEqualTo(5);
         assertThat(state.isExecuteOnDone()).isFalse();
         verify(eventEmitter).scheduleTurn(process.getId());
     }
 
     @Test
-    void runTurns_advanceReadyToDoneThroughAllStubPhases() {
+    void runTurns_validDraftOnFirstTry_reachesDone() {
         ThinkProcessDocument process = newProcess();
         engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 42; })();\n```");
 
         int turns = drainTurns(process, 10);
 
         DeepThoughtState finalState = readState(process);
         assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
-        assertThat(finalState.getGeneratedCode()).isNotNull();
-        assertThat(finalState.getPersistedPath()).isEqualTo("scripts/greet.js");
+        assertThat(finalState.getGeneratedCode())
+                .isEqualTo("(function () { return 42; })();");
         assertThat(finalState.getValidationErrors()).isEmpty();
+        assertThat(finalState.getRecoveryCount()).isZero();
 
-        // READY→DRAFTING→VALIDATING→PERSISTING→DONE = 4 advancing
-        // turns, plus the terminal turn that observes DONE and closes
-        // the process.
-        assertThat(turns).isEqualTo(4);
-
+        // READY → DRAFTING → VALIDATING → DONE = 3 advancing turns,
+        // plus the terminal turn that observes DONE and closes.
+        assertThat(turns).isEqualTo(3);
         verify(thinkProcessService, atLeastOnce())
                 .closeProcess(eq(process.getId()), eq(CloseReason.DONE));
     }
 
     @Test
-    void runTurns_withExecuteOnDone_passThroughExecutingPhase() {
+    void runTurns_recoversOnSyntaxError_reachesDone() {
         ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
         engine.start(process, ctx);
+        // First draft has a missing closing brace; second draft is
+        // valid. Recovery loop must catch the parser error, re-prompt,
+        // and accept the corrected body.
+        chatModel.script(
+                "```javascript\n(function () { return 1 + ;\n```",
+                "```javascript\n(function () { return 1 + 2; })();\n```");
 
-        drainTurns(process, 10);
+        drainTurns(process, 20);
 
         DeepThoughtState finalState = readState(process);
         assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
-        // EXECUTING was visited as an intermediate stub-phase that
-        // jumps straight to DONE; persistedPath is still set.
-        assertThat(finalState.getPersistedPath()).isEqualTo("scripts/greet.js");
+        assertThat(finalState.getRecoveryCount()).isEqualTo(1);
+        assertThat(finalState.getGeneratedCode())
+                .isEqualTo("(function () { return 1 + 2; })();");
+        assertThat(finalState.getValidationErrors()).isEmpty();
+        // Both scripted replies consumed.
+        assertThat(chatModel.remaining()).isZero();
+    }
+
+    @Test
+    void runTurns_recoveryExhausted_endsInFailed() {
+        ThinkProcessDocument process = newProcess();
+        // Tighten the budget so the test stays small.
+        process.getEngineParams().put(DeepThoughtEngine.MAX_RECOVERIES_KEY, 2);
+        engine.start(process, ctx);
+        // Every draft is broken — recoveryCount climbs 0→1→2 and the
+        // engine bails into FAILED.
+        chatModel.script(
+                "```javascript\nfunction broken(\n```",
+                "```javascript\nfunction still_broken(\n```",
+                "```javascript\nfunction always_broken(\n```");
+
+        drainTurns(process, 30);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        assertThat(finalState.getRecoveryCount()).isEqualTo(2);
+        assertThat(finalState.getFailureReason())
+                .contains("Exceeded maxRecoveries");
+        verify(thinkProcessService, atLeastOnce())
+                .closeProcess(eq(process.getId()), eq(CloseReason.STALE));
+    }
+
+    @Test
+    void runTurns_replyWithoutFence_countsAsRecovery() {
+        ThinkProcessDocument process = newProcess();
+        engine.start(process, ctx);
+        // First reply is bare prose (no fence) — the engine must treat
+        // that as a validation failure and re-prompt. Second reply is
+        // properly fenced.
+        chatModel.script(
+                "Here is the script: function foo() { return 1; }",
+                "```javascript\n(function () { return 1; })();\n```");
+
+        drainTurns(process, 20);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(finalState.getRecoveryCount()).isEqualTo(1);
+    }
+
+    @Test
+    void runTurns_withExecuteOnDone_passesThroughExecutingPhase() {
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 1; })();\n```");
+
+        int turns = drainTurns(process, 10);
+
+        DeepThoughtState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        // READY → DRAFTING → VALIDATING → EXECUTING → DONE = 4.
+        assertThat(turns).isEqualTo(4);
     }
 
     // ──────────────────── Idempotency ────────────────────
@@ -124,6 +256,7 @@ class DeepThoughtEngineLifecycleTest {
     void terminalDoneStateIsIdempotentAcrossExtraTurns() {
         ThinkProcessDocument process = newProcess();
         engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 1; })();\n```");
         drainTurns(process, 10);
 
         DeepThoughtState before = readState(process);
@@ -132,23 +265,19 @@ class DeepThoughtEngineLifecycleTest {
         DeepThoughtState after = readState(process);
 
         assertThat(after.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
-        assertThat(after.getPersistedPath()).isEqualTo(before.getPersistedPath());
-        // generatedCode must not be re-drafted in the terminal state.
         assertThat(after.getGeneratedCode()).isEqualTo(before.getGeneratedCode());
+        // No extra LLM calls after DONE — chatModel queue stays at 0.
+        assertThat(chatModel.remaining()).isZero();
     }
 
     @Test
     void terminalFailedStateIsIdempotent() {
         ThinkProcessDocument process = newProcess();
         engine.start(process, ctx);
-        // Hand-craft a FAILED state in storage.
         DeepThoughtState s = readState(process);
         s.setStatus(DeepThoughtStatus.FAILED);
         s.setFailureReason("test-induced");
         engine.persistState(process, s);
-        // Reset the emitter mock so we can pin "no NEW schedule
-        // calls happen during the FAILED short-circuit" — start()
-        // already scheduled one turn which is expected.
         reset(eventEmitter);
 
         engine.runTurn(process, ctx);
@@ -158,7 +287,6 @@ class DeepThoughtEngineLifecycleTest {
         assertThat(after.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
         verify(thinkProcessService, atLeastOnce())
                 .closeProcess(eq(process.getId()), eq(CloseReason.STALE));
-        // FAILED short-circuit must not schedule another turn.
         verify(eventEmitter, times(0)).scheduleTurn(anyString());
     }
 
@@ -172,49 +300,29 @@ class DeepThoughtEngineLifecycleTest {
         process.setProjectId("p");
         process.setSessionId("s");
         process.setEngineParams(new LinkedHashMap<>());
-        // process.goal stays null — engineParams.goal too.
 
         assertThatThrownBy(() -> engine.start(process, ctx))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("requires a goal");
     }
 
-    @Test
-    void start_normalizesTargetName_appendsJsSuffix() {
-        ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.TARGET_NAME_KEY, "compute");
-
-        engine.start(process, ctx);
-
-        DeepThoughtState state = readState(process);
-        assertThat(state.getTargetName()).isEqualTo("compute.js");
-    }
-
-    @Test
-    void start_defaultsTargetName_whenAbsent() {
-        ThinkProcessDocument process = newProcess();
-        process.getEngineParams().remove(DeepThoughtEngine.TARGET_NAME_KEY);
-
-        engine.start(process, ctx);
-
-        DeepThoughtState state = readState(process);
-        assertThat(state.getTargetName()).isEqualTo("generated.js");
-    }
-
     // ──────────────────── summarizeForParent ────────────────────
 
     @Test
-    void summarizeForParent_onDone_carriesPersistedPath() {
+    void summarizeForParent_onDone_returnsCodeBlock() {
         ThinkProcessDocument process = newProcess();
         engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 42; })();\n```");
         drainTurns(process, 10);
 
         ParentReport report = engine.summarizeForParent(process, ProcessEventType.DONE);
 
-        assertThat(report.humanSummary()).contains("scripts/greet.js");
+        assertThat(report.humanSummary())
+                .contains("```javascript")
+                .contains("return 42");
         assertThat(report.payload())
                 .containsEntry("status", "DONE")
-                .containsEntry("persistedPath", "scripts/greet.js");
+                .containsKey("codeLength");
     }
 
     @Test
@@ -238,8 +346,6 @@ class DeepThoughtEngineLifecycleTest {
         for (int i = 0; i < cap; i++) {
             DeepThoughtState before = readState(process);
             if (isTerminal(before.getStatus())) {
-                // The turn that observes terminal state is what closes
-                // the process — invoke once and stop counting.
                 engine.runTurn(process, ctx);
                 return i;
             }
@@ -261,7 +367,6 @@ class DeepThoughtEngineLifecycleTest {
 
     private static ThinkProcessDocument newProcess() {
         Map<String, Object> params = new LinkedHashMap<>();
-        params.put(DeepThoughtEngine.TARGET_NAME_KEY, "greet.js");
         ThinkProcessDocument p = new ThinkProcessDocument();
         p.setId("proc-deep-1");
         p.setTenantId("acme");
@@ -270,5 +375,35 @@ class DeepThoughtEngineLifecycleTest {
         p.setGoal("write me a hello-script");
         p.setEngineParams(params);
         return p;
+    }
+
+    /**
+     * Deterministic {@link ChatModel} stand-in — replays a fixed
+     * sequence of reply strings. Tests drive the engine and pin
+     * exactly what the LLM "would have said" at each call.
+     */
+    private static final class ScriptedChatModel implements ChatModel {
+        private final Deque<String> responses = new ArrayDeque<>();
+
+        void script(String... entries) {
+            responses.clear();
+            for (String s : entries) responses.add(s);
+        }
+
+        int remaining() {
+            return responses.size();
+        }
+
+        @Override
+        public ChatResponse chat(ChatRequest request) {
+            if (responses.isEmpty()) {
+                throw new IllegalStateException(
+                        "ScriptedChatModel: no more scripted responses");
+            }
+            String text = responses.pop();
+            return ChatResponse.builder()
+                    .aiMessage(AiMessage.from(text))
+                    .build();
+        }
     }
 }

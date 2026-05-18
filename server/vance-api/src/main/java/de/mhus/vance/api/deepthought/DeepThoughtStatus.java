@@ -7,6 +7,12 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
  * v1 set — see {@code planning/deepthought-engine.md} for the full
  * lifecycle (FRAMING/GATHERING/DECOMPOSING/REVIEWING) that will land
  * in v1.1.
+ *
+ * <p>The accepted script lives in {@code DeepThoughtState.generatedCode}
+ * (and thus in {@code engineParams.deepThoughtState} on the
+ * process document) — no separate persistence phase. Parents read
+ * it back from {@code summarizeForParent} as a code block; Script
+ * Cortex (v1.1) will read it directly from the engine state.
  */
 @GenerateTypeScript("deepthought")
 public enum DeepThoughtStatus {
@@ -19,12 +25,9 @@ public enum DeepThoughtStatus {
      *  syntax error → recovery back to DRAFTING with the error
      *  line/col as the prompt-hint. */
     VALIDATING,
-    /** Write the accepted script to {@code scripts/<name>.js} via
-     *  doc_write_text. */
-    PERSISTING,
     /** Optional — only entered when {@code executeOnDone=true}.
      *  Calls {@code process_run} / {@code execute_javascript} on the
-     *  persisted script. */
+     *  validated script (Script Cortex integration, lands in v1.1). */
     EXECUTING,
     /** Final-state happy path. */
     DONE,

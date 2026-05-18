@@ -14,9 +14,12 @@ import org.jspecify.annotations.Nullable;
  * verbatim on resume so a Brain restart picks up at the current phase
  * without losing prior LLM-drafts or validation errors.
  *
- * <p>v1 carries only the fields needed for the four-phase pipeline
- * (DRAFTING → VALIDATING → PERSISTING → DONE). Multi-script-suite,
- * gathering, decomposing land in v1.1 as additional fields.
+ * <p>v1 carries only the fields needed for the three-phase pipeline
+ * (DRAFTING → VALIDATING → DONE, with optional EXECUTING). The
+ * accepted script lives in {@link #generatedCode} — there is no
+ * separate persistence to a project document, the engineParams blob
+ * itself is the audit trail. Multi-script-suite, gathering,
+ * decomposing land in v1.1 as additional fields.
  *
  * <p>See {@code planning/deepthought-engine.md}.
  */
@@ -31,15 +34,10 @@ public class DeepThoughtState {
      *  steers that might mutate the live goal field. */
     private @Nullable String goal;
 
-    /** Target filename (without the {@code scripts/} prefix) the
-     *  generated body will be persisted to. Resolved from
-     *  {@code engineParams.targetName} at start; falls back to
-     *  {@code "generated.js"} if absent. */
-    private @Nullable String targetName;
-
-    /** Raw LLM output of the most recent DRAFTING pass. Carries the
-     *  full message — VALIDATING strips fences and updates this with
-     *  the cleaned body before persisting. */
+    /** Raw LLM output of the most recent DRAFTING pass — fences
+     *  stripped, ready to feed into VALIDATING. Surfaces verbatim in
+     *  {@code summarizeForParent} so the parent sees the final
+     *  script. */
     private @Nullable String generatedCode;
 
     /** Errors from the most recent VALIDATING pass. Populated even on
@@ -48,12 +46,7 @@ public class DeepThoughtState {
     @Builder.Default
     private List<ValidationError> validationErrors = new ArrayList<>();
 
-    /** Document path written by PERSISTING — null until persist
-     *  succeeds. v1 always writes through doc_write_text relative to
-     *  the project root. */
-    private @Nullable String persistedPath;
-
-    /** If true, transition to EXECUTING after PERSISTING; otherwise
+    /** If true, transition to EXECUTING after VALIDATING; otherwise
      *  jump straight to DONE. v1 leaves this at {@code false} —
      *  EXECUTING phase is stubbed pending Script Cortex. */
     private boolean executeOnDone;

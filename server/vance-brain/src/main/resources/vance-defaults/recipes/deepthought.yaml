@@ -1,0 +1,22 @@
+description: |
+  Deep Thought engine default — script-architect. Takes a high-level
+  goal, drafts a JavaScript orchestrator script (one IIFE), validates
+  it parse-only, recovers on syntax errors up to maxRecoveries (5),
+  and returns the accepted script as a fenced code block in
+  summarizeForParent. No persistence to documents — the generated
+  code lives in engineParams.deepThoughtState.
+
+  Optional params:
+    executeOnDone: bool   — if true, transition to EXECUTING (stub
+                            until Script Cortex lands)
+    maxRecoveries: int    — default 5
+    promptDocument: path  — override for the DRAFTING system prompt
+                            (default: prompts/deepthought-drafting.md)
+engine: deepthought
+params:
+  manualPaths:
+    - manuals/
+tags:
+  - default
+  - script-architect
+  - engine-default

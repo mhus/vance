@@ -53,6 +53,22 @@ engines:
     not_for: "Tasks where a suitable recipe already exists — call
       that recipe directly. Quick interactive Q&A (Arthur)."
 
+  deepthought:
+    purpose: "Script-architect engine. Takes a high-level goal,
+      drafts a single self-contained JavaScript orchestrator script
+      (an IIFE), validates it parse-only via GraalJS, and recovers
+      on syntax errors. Output is the accepted JS body as a fenced
+      code block — sibling of Slartibartfast but for code, not
+      recipes."
+    when_to_use: "User wants procedural orchestration captured as
+      a script: 'write a script that does X', 'generate JS to
+      compute Y from these inputs'. The deliverable is the code
+      itself (or its single-shot execution result), not a recipe
+      and not a turn-by-turn dialogue."
+    not_for: "Tasks that don't need code as artefact (Arthur for
+      chat, Ford for one-shot LLM, Vogon/Marvin for built-in
+      pipelines). Generating a new recipe for re-use → Slart."
+
   ford:
     purpose: "Single-LLM-call worker. Runs one chat round (or a
       few tool-call rounds), returns text, terminates. The

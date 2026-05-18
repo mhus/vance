@@ -36,8 +36,12 @@ public final class VanceScriptApi {
     public final ScriptProcessApi process;
 
     public VanceScriptApi(ContextToolsApi toolsApi) {
+        this(toolsApi, null);
+    }
+
+    public VanceScriptApi(ContextToolsApi toolsApi, @Nullable String recipeName) {
         this.tools = new ScriptToolsApi(toolsApi);
-        this.context = new ScriptContextView(toolsApi.scope());
+        this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
         this.process = new ScriptProcessApi(this);
     }
@@ -82,12 +86,21 @@ public final class VanceScriptApi {
         @HostAccess.Export
         public final @Nullable String userId;
 
-        ScriptContextView(ToolInvocationContext scope) {
+        /** Recipe name that spawned the running process — exposed so
+         *  scripts (e.g. Deep Thought-generated orchestrators) can
+         *  branch on their invocation context. {@code null} when the
+         *  caller didn't supply a recipe (direct engine spawns,
+         *  legacy 5-/6-arg {@code ScriptRequest} constructors). */
+        @HostAccess.Export
+        public final @Nullable String recipe;
+
+        ScriptContextView(ToolInvocationContext scope, @Nullable String recipeName) {
             this.tenantId = scope.tenantId();
             this.projectId = scope.projectId();
             this.sessionId = scope.sessionId();
             this.processId = scope.processId();
             this.userId = scope.userId();
+            this.recipe = recipeName;
         }
     }
 

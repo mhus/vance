@@ -28,7 +28,8 @@ public record ScriptRequest(
         @Nullable String sourceName,
         ContextToolsApi tools,
         Duration timeout,
-        Map<String, @Nullable Object> bindings) {
+        Map<String, @Nullable Object> bindings,
+        @Nullable String recipeName) {
 
     public ScriptRequest {
         if (!"js".equals(language)) {
@@ -55,8 +56,7 @@ public record ScriptRequest(
 
     /**
      * Convenience constructor for the historical 5-argument shape — no
-     * bindings beyond the {@code vance} host object. Existing call
-     * sites continue to compile unchanged.
+     * bindings beyond the {@code vance} host object, no recipe name.
      */
     public ScriptRequest(
             String language,
@@ -64,6 +64,23 @@ public record ScriptRequest(
             @Nullable String sourceName,
             ContextToolsApi tools,
             Duration timeout) {
-        this(language, code, sourceName, tools, timeout, Map.of());
+        this(language, code, sourceName, tools, timeout, Map.of(), null);
+    }
+
+    /**
+     * Convenience constructor for the historical 6-argument shape —
+     * bindings supplied, no recipe name. Old callers (JavaScriptTool,
+     * SkillScriptTool) keep compiling; only callers that know their
+     * recipe (Deep Thought's ExecutingPhase) opt into the full
+     * 7-argument form.
+     */
+    public ScriptRequest(
+            String language,
+            String code,
+            @Nullable String sourceName,
+            ContextToolsApi tools,
+            Duration timeout,
+            Map<String, @Nullable Object> bindings) {
+        this(language, code, sourceName, tools, timeout, bindings, null);
     }
 }

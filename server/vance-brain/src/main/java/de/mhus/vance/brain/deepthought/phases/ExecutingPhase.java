@@ -74,10 +74,13 @@ public class ExecutingPhase {
         Duration timeout = executionTimeout(process);
 
         try {
+            // 7-arg ScriptRequest: pass the recipe name so the script
+            // sees it on vance.context.recipe alongside the existing
+            // tenant/project/session/process/user fields.
             ScriptResult result = scriptExecutor.run(
                     new ScriptRequest(
                             "js", code, "deepthought:" + process.getId(),
-                            tools, timeout, bindings));
+                            tools, timeout, bindings, process.getRecipeName()));
             state.setExecutionResult(result.value());
             state.setExecutionDurationMs(result.duration().toMillis());
             state.setExecutionError(null);

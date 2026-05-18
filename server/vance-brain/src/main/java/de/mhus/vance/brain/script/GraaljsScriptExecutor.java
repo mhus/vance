@@ -111,7 +111,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         ContextToolsApi effectiveTools = narrowAllowedTools(
                 request.tools(), header.allowTools());
 
-        VanceScriptApi api = new VanceScriptApi(effectiveTools);
+        VanceScriptApi api = new VanceScriptApi(effectiveTools, request.recipeName());
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();

@@ -396,6 +396,7 @@ class DeepThoughtEngineLifecycleTest {
                 .thenReturn(new ScriptResult(7, java.time.Duration.ofMillis(3)));
 
         ThinkProcessDocument process = newProcess();
+        process.setRecipeName("script-developer");
         process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
         process.getEngineParams().put(
                 DeepThoughtEngine.SCRIPT_ARGS_KEY,
@@ -418,6 +419,8 @@ class DeepThoughtEngineLifecycleTest {
         // caller declared — exercises the narrow-tool-surface
         // contract.
         assertThat(req.tools().allowed()).containsExactly("doc_write_text");
+        // Recipe name flows through to the script's vance.context.recipe.
+        assertThat(req.recipeName()).isEqualTo("script-developer");
     }
 
     // ──────────────────── Tool inventory ────────────────────

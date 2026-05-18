@@ -138,6 +138,55 @@ class GraaljsScriptExecutorBindingsTest {
                 "js", "21 * 2", "test", tools(), Duration.ofSeconds(5));
 
         assertThat(req.bindings()).isEmpty();
+        assertThat(req.recipeName()).isNull();
         assertThat(executor.run(req).value()).isEqualTo(42L);
+    }
+
+    @Test
+    void run_recipeName_visibleAsVanceContextRecipe() {
+        // 7-arg form: recipe name propagates through to the script
+        // as vance.context.recipe.
+        ScriptRequest req = new ScriptRequest(
+                "js", "vance.context.recipe", "test",
+                tools(), Duration.ofSeconds(5), Map.of(),
+                "script-developer");
+
+        assertThat(executor.run(req).value()).isEqualTo("script-developer");
+    }
+
+    @Test
+    void run_recipeName_omitted_returnsNull() {
+        // 6-arg legacy form (no recipe) — script sees null.
+        ScriptRequest req = new ScriptRequest(
+                "js", "vance.context.recipe", "test",
+                tools(), Duration.ofSeconds(5), Map.of());
+
+        assertThat(executor.run(req).value()).isNull();
+    }
+
+    @Test
+    void run_vanceContextFields_allAccessible() {
+        // Quick smoke check the full ScriptContextView is reachable:
+        // tenantId/projectId/sessionId/processId/userId/recipe.
+        String code = "JSON.stringify({"
+                + " tenantId: vance.context.tenantId,"
+                + " projectId: vance.context.projectId,"
+                + " sessionId: vance.context.sessionId,"
+                + " processId: vance.context.processId,"
+                + " userId: vance.context.userId,"
+                + " recipe: vance.context.recipe"
+                + "})";
+        ScriptRequest req = new ScriptRequest(
+                "js", code, "test",
+                tools(), Duration.ofSeconds(5), Map.of(), "my-recipe");
+
+        Object value = executor.run(req).value();
+        assertThat(value).asString()
+                .contains("\"tenantId\":\"acme\"")
+                .contains("\"projectId\":\"proj-1\"")
+                .contains("\"sessionId\":\"sess-1\"")
+                .contains("\"processId\":\"proc-1\"")
+                .contains("\"userId\":\"alice\"")
+                .contains("\"recipe\":\"my-recipe\"");
     }
 }

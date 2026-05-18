@@ -29,8 +29,10 @@ import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.Tool;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -82,6 +84,7 @@ class DeepThoughtEngineLifecycleTest {
     private EnginePromptResolver enginePromptResolver;
     private PromptTemplateRenderer promptTemplateRenderer;
     private LlmCallTracker llmCallTracker;
+    private ToolDispatcher toolDispatcher;
     private ScriptedChatModel chatModel;
     private ThinkEngineContext ctx;
 
@@ -95,6 +98,11 @@ class DeepThoughtEngineLifecycleTest {
         engineChatFactory = mock(EngineChatFactory.class);
         enginePromptResolver = mock(EnginePromptResolver.class);
         llmCallTracker = mock(LlmCallTracker.class);
+        toolDispatcher = mock(ToolDispatcher.class);
+        // No tools registered by default — Tool inventory rendering
+        // returns "" so the prompt simply omits the section.
+        when(toolDispatcher.resolve(anyString(), any()))
+                .thenReturn(java.util.Optional.empty());
 
         // Real renderer — Pebble has no I/O, cheap to construct, and
         // exercises the exact rendering path the production code uses.
@@ -129,7 +137,8 @@ class DeepThoughtEngineLifecycleTest {
                 enginePromptResolver,
                 promptTemplateRenderer,
                 llmCallTracker,
-                jsValidationService);
+                jsValidationService,
+                toolDispatcher);
     }
 
     // ──────────────────── Happy path ────────────────────
@@ -248,6 +257,97 @@ class DeepThoughtEngineLifecycleTest {
         assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
         // READY → DRAFTING → VALIDATING → EXECUTING → DONE = 4.
         assertThat(turns).isEqualTo(4);
+    }
+
+    // ──────────────────── Tool inventory ────────────────────
+
+    @Test
+    void drafting_rendersToolInventory_whenScriptAllowedToolsSet() {
+        // Stub two tools in the dispatcher. The engine must render
+        // them into the system prompt so the LLM picks the right
+        // names (the #1 quality lever for generated scripts).
+        Tool docWrite = mock(Tool.class);
+        when(docWrite.name()).thenReturn("doc_write_text");
+        when(docWrite.description()).thenReturn("Write a text document.");
+        when(docWrite.paramsSchema()).thenReturn(Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "path", Map.of("type", "string"),
+                        "content", Map.of("type", "string"),
+                        "title", Map.of("type", "string")),
+                "required", List.of("path", "content")));
+
+        Tool procRun = mock(Tool.class);
+        when(procRun.name()).thenReturn("process_run");
+        when(procRun.description()).thenReturn("Synchronously spawn a sub-worker.");
+        when(procRun.paramsSchema()).thenReturn(Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "name", Map.of("type", "string"),
+                        "goal", Map.of("type", "string"),
+                        "recipe", Map.of("type", "string"),
+                        "steerContent", Map.of("type", "string")),
+                "required", List.of("name", "goal", "recipe")));
+
+        when(toolDispatcher.resolve(eq("doc_write_text"), any()))
+                .thenReturn(java.util.Optional.of(
+                        new ToolDispatcher.Resolved(
+                                docWrite,
+                                mock(de.mhus.vance.brain.tools.ToolSource.class))));
+        when(toolDispatcher.resolve(eq("process_run"), any()))
+                .thenReturn(java.util.Optional.of(
+                        new ToolDispatcher.Resolved(
+                                procRun,
+                                mock(de.mhus.vance.brain.tools.ToolSource.class))));
+
+        // Override the prompt resolver to return a minimal template
+        // that just emits the toolInventory variable — so this test
+        // verifies the engine's rendering, not the bundled prompt.
+        when(enginePromptResolver.resolve(any(), anyString(), anyString()))
+                .thenReturn("{% if toolInventory %}TOOLS:\n{{ toolInventory }}{% endif %}");
+
+        ThinkProcessDocument process = newProcess();
+        process.getEngineParams().put(
+                DeepThoughtEngine.SCRIPT_ALLOWED_TOOLS_KEY,
+                List.of("doc_write_text", "process_run"));
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 1; })();\n```");
+
+        drainTurns(process, 10);
+
+        // The first (and only) LLM call's system message must include
+        // both tool names + their required-args lines.
+        assertThat(chatModel.calls()).hasSize(1);
+        ChatRequest request = chatModel.calls().get(0);
+        String systemText = ((dev.langchain4j.data.message.SystemMessage)
+                request.messages().get(0)).text();
+        assertThat(systemText)
+                .contains("**doc_write_text**")
+                .contains("Write a text document.")
+                .contains("Required: path, content")
+                .contains("**process_run**")
+                .contains("Required: name, goal, recipe");
+    }
+
+    @Test
+    void drafting_omitsInventory_whenScriptAllowedToolsEmpty() {
+        // No scriptAllowedTools set — Pebble template's else-branch
+        // kicks in. The engine still renders cleanly.
+        when(enginePromptResolver.resolve(any(), anyString(), anyString()))
+                .thenReturn("{% if toolInventory %}TOOLS:\n{{ toolInventory }}"
+                        + "{% else %}NO TOOLS{% endif %}");
+
+        ThinkProcessDocument process = newProcess();
+        engine.start(process, ctx);
+        chatModel.script("```javascript\n(function () { return 1; })();\n```");
+
+        drainTurns(process, 10);
+
+        ChatRequest request = chatModel.calls().get(0);
+        String systemText = ((dev.langchain4j.data.message.SystemMessage)
+                request.messages().get(0)).text();
+        assertThat(systemText).contains("NO TOOLS");
+        assertThat(systemText).doesNotContain("TOOLS:");
     }
 
     // ──────────────────── Idempotency ────────────────────
@@ -384,6 +484,7 @@ class DeepThoughtEngineLifecycleTest {
      */
     private static final class ScriptedChatModel implements ChatModel {
         private final Deque<String> responses = new ArrayDeque<>();
+        private final java.util.List<ChatRequest> calls = new java.util.ArrayList<>();
 
         void script(String... entries) {
             responses.clear();
@@ -394,8 +495,13 @@ class DeepThoughtEngineLifecycleTest {
             return responses.size();
         }
 
+        java.util.List<ChatRequest> calls() {
+            return calls;
+        }
+
         @Override
         public ChatResponse chat(ChatRequest request) {
+            calls.add(request);
             if (responses.isEmpty()) {
                 throw new IllegalStateException(
                         "ScriptedChatModel: no more scripted responses");

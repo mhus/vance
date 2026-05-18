@@ -22,6 +22,24 @@ Standard ECMAScript built-ins are available (`Array`, `Object`,
 destructuring). No `require`, no module system — single-file scripts
 only.
 
+{% if toolInventory %}
+## Tools available to your script
+
+These are the EXACT tool names you may pass to
+`vance.tools.call(name, args)`. Do not invent other names —
+unregistered names cause a hard runtime error.
+
+{{ toolInventory }}
+
+If your script calls a tool, list its name in `@requiresTools`
+(comma-separated).
+{% else %}
+## Tools
+
+No tools are available to your script. Solve the goal with pure
+JavaScript — no `vance.tools.call(...)` invocations.
+{% endif %}
+
 ## JSDoc header
 
 The script MUST start with a JSDoc header declaring resource limits

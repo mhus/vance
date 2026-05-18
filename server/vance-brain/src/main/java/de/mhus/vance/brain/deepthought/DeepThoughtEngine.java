@@ -17,8 +17,11 @@ import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.tools.ToolDispatcher;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -90,6 +93,16 @@ public class DeepThoughtEngine implements ThinkEngine {
     /** {@code engineParams[MAX_RECOVERIES_KEY]} — int; default 5. */
     public static final String MAX_RECOVERIES_KEY = "maxRecoveries";
 
+    /** {@code engineParams[SCRIPT_ALLOWED_TOOLS_KEY]} — list of tool
+     *  names the <em>generated script</em> will be permitted to call
+     *  via {@code vance.tools.call(name, args)}. Used at DRAFTING time
+     *  to render a concrete tool inventory (name + description +
+     *  declared params) into the system prompt so the LLM can pick
+     *  real tool names rather than hallucinate them. {@code null} or
+     *  empty → no tool block rendered; the LLM is told the script must
+     *  not call any tools. */
+    public static final String SCRIPT_ALLOWED_TOOLS_KEY = "scriptAllowedTools";
+
     /** Cascade path for the Deep Thought DRAFTING system prompt.
      *  Loaded via {@link EnginePromptResolver} — project / _vance /
      *  bundled — and rendered as a Pebble template with {@code goal}
@@ -118,6 +131,7 @@ public class DeepThoughtEngine implements ThinkEngine {
     private final PromptTemplateRenderer promptTemplateRenderer;
     private final LlmCallTracker llmCallTracker;
     private final JsValidationService jsValidationService;
+    private final ToolDispatcher toolDispatcher;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -291,7 +305,12 @@ public class DeepThoughtEngine implements ThinkEngine {
         String modelAlias = bundle.primaryConfig().provider()
                 + ":" + bundle.primaryConfig().modelName();
 
-        // System prompt: cascade-resolved + Pebble-rendered with goal.
+        // System prompt: cascade-resolved + Pebble-rendered with goal
+        // and an optional tool inventory. The inventory is the highest
+        // quality lever on generated scripts — without it the LLM
+        // routinely hallucinates tool names ("file_write" instead of
+        // "doc_write_text"); the validator can't catch that because
+        // such errors only surface at run time.
         String basePath = paramString(process, "promptDocument", DRAFTING_PROMPT_PATH);
         String systemTpl = enginePromptResolver.resolve(
                 process, basePath, DRAFTING_FALLBACK_PROMPT);
@@ -300,6 +319,7 @@ public class DeepThoughtEngine implements ThinkEngine {
                         .engine(NAME)
                         .build());
         ctxMap.put("goal", state.getGoal() == null ? "" : state.getGoal());
+        ctxMap.put("toolInventory", renderToolInventory(process, ctx));
         String renderedSystem = promptTemplateRenderer.render(systemTpl, ctxMap);
 
         // User message: recovery hint first when applicable, then the
@@ -465,6 +485,109 @@ public class DeepThoughtEngine implements ThinkEngine {
         Map<String, Object> p = process.getEngineParams();
         Object v = p == null ? null : p.get(key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
+    }
+
+    /**
+     * Renders the {@code scriptAllowedTools} list as a Markdown
+     * inventory the DRAFTING prompt embeds. Returns an empty string
+     * when no tools are configured — the Pebble template uses
+     * {@code {% if toolInventory %}…{% endif %}} so the section is
+     * silently omitted in that case.
+     *
+     * <p>Format per entry: {@code - **name** — description.
+     * Args: {required}, {optional}}. The full JSON-schema would be
+     * too verbose for a single prompt; the LLM gets enough to pick
+     * the right tool, then can re-check params at validate-time.
+     */
+    private String renderToolInventory(
+            ThinkProcessDocument process, ThinkEngineContext ctx) {
+        List<String> wanted = scriptAllowedTools(process);
+        if (wanted.isEmpty()) return "";
+
+        ToolInvocationContext scope = new ToolInvocationContext(
+                process.getTenantId(),
+                process.getProjectId(),
+                process.getSessionId(),
+                process.getId(),
+                /*userId*/ null);
+
+        StringBuilder sb = new StringBuilder();
+        for (String name : wanted) {
+            ToolDispatcher.Resolved resolved =
+                    toolDispatcher.resolve(name, scope).orElse(null);
+            if (resolved == null) {
+                // Unknown tool name in scriptAllowedTools — render a
+                // placeholder so the LLM at least sees the name; the
+                // recovery loop can't help here (runtime issue), so we
+                // leave detection to the caller's pre-check.
+                sb.append("- **").append(name).append("** — ")
+                        .append("(tool not registered in this scope)\n");
+                continue;
+            }
+            Tool tool = resolved.tool();
+            sb.append("- **").append(tool.name()).append("** — ")
+                    .append(oneLine(tool.description())).append("\n");
+            String args = describeParams(tool.paramsSchema());
+            if (!args.isEmpty()) {
+                sb.append("  ").append(args).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static List<String> scriptAllowedTools(ThinkProcessDocument process) {
+        Map<String, Object> p = process.getEngineParams();
+        Object raw = p == null ? null : p.get(SCRIPT_ALLOWED_TOOLS_KEY);
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object entry : list) {
+            if (entry instanceof String s && !s.isBlank()) out.add(s.trim());
+        }
+        return out;
+    }
+
+    /**
+     * Compact "Args: ..." line built from the JSON-Schema-like
+     * {@code paramsSchema}. We separate required and optional so the
+     * LLM picks up the mandatory bits at a glance. Schema-less tools
+     * (raw map without {@code properties}) yield an empty string —
+     * the description alone must carry the contract.
+     */
+    @SuppressWarnings("unchecked")
+    private static String describeParams(@Nullable Map<String, Object> schema) {
+        if (schema == null) return "";
+        Object propsRaw = schema.get("properties");
+        if (!(propsRaw instanceof Map<?, ?> props) || props.isEmpty()) return "";
+        Object reqRaw = schema.get("required");
+        List<String> required = reqRaw instanceof List<?> rl
+                ? rl.stream().filter(o -> o instanceof String)
+                    .map(o -> (String) o).toList()
+                : List.of();
+        // Preserve the schema-declared order for required: that's the
+        // author's intent and how docs typically read. Optional then
+        // gets whatever's left in props order.
+        List<String> requiredOut = new ArrayList<>(required);
+        List<String> optionalOut = new ArrayList<>();
+        for (Map.Entry<?, ?> e : props.entrySet()) {
+            if (!(e.getKey() instanceof String key)) continue;
+            if (required.contains(key)) continue;
+            optionalOut.add(key);
+        }
+        StringBuilder sb = new StringBuilder();
+        if (!requiredOut.isEmpty()) {
+            sb.append("Required: ").append(String.join(", ", requiredOut)).append(".");
+        }
+        if (!optionalOut.isEmpty()) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append("Optional: ").append(String.join(", ", optionalOut)).append(".");
+        }
+        return sb.toString();
+    }
+
+    private static String oneLine(@Nullable String raw) {
+        if (raw == null) return "";
+        String s = raw.replaceAll("\\s+", " ").trim();
+        return s.length() > 200 ? s.substring(0, 197) + "..." : s;
     }
 
     // ──────────────────── summarizeForParent ────────────────────

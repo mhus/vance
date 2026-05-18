@@ -36,10 +36,15 @@ public final class SkillScriptTool implements Tool {
     public static final String NAME_SEPARATOR = "__";
     public static final String NAME_PREFIX = "skill_";
 
-    /** Default per-call timeout. Skill-script authors haven't asked
-     *  for an override yet — re-evaluate once Phase 3 quota work
-     *  (§13.4) lands. */
-    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
+    /** Default per-call timeout. Generous because an orchestrator
+     *  script can fan out to N sub-workers via {@code process_run};
+     *  each sub-worker LLM turn can take 30-60 s, so a 5-chapter
+     *  loop is well within budget at 10 minutes. Authors who need
+     *  more should add an explicit timeout-override field to the
+     *  scripts:-frontmatter (Phase 3 §13.4). Pure-compute scripts
+     *  (no sub-spawn, no web_fetch) finish in milliseconds — the
+     *  high default doesn't slow the fast cases. */
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofMinutes(10);
 
     private final String skillName;
     private final ResolvedSkill.Script script;

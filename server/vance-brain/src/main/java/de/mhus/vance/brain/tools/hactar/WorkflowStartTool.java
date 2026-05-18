@@ -32,6 +32,7 @@ import org.springframework.stereotype.Component;
         matchIfMissing = false)
 @RequiredArgsConstructor
 @Slf4j
+@de.mhus.vance.toolpack.SpawnTool
 public class WorkflowStartTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;

@@ -104,7 +104,7 @@ class HactarReclaimScannerTest {
                 .id(id)
                 .tenantId("acme").projectId("proj").workflowRunId("r1")
                 .workflowName("demo").stateName("plan")
-                .taskType(HactarTaskType.SCRIPT_TASK)
+                .taskType(HactarTaskType.SHELL_TASK)
                 .status(HactarTaskStatus.CLAIMED)
                 .claimedBy("dead-pod")
                 .claimedAt(Instant.now().minusSeconds(600))

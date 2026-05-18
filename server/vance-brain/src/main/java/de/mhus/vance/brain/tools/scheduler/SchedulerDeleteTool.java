@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@de.mhus.vance.toolpack.SpawnTool
 public class SchedulerDeleteTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;

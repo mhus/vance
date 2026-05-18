@@ -69,6 +69,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
+@de.mhus.vance.toolpack.SpawnTool
 public class ProcessCreateTool implements Tool {
 
     /**

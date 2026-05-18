@@ -1,49 +1,54 @@
 package de.mhus.vance.brain.hactar;
 
+import de.mhus.vance.api.action.ScriptSource;
+import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.hactar.HactarErrorKind;
 import de.mhus.vance.api.hactar.HactarTaskType;
-import de.mhus.vance.brain.tools.exec.ExecManager;
+import de.mhus.vance.brain.action.ActionInvocation;
+import de.mhus.vance.brain.action.ActionOutcome;
+import de.mhus.vance.brain.action.ActionResult;
+import de.mhus.vance.brain.action.ScriptActionExecutor;
+import de.mhus.vance.brain.action.TriggerContext;
+import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.shared.hactar.HactarStateSpec;
-import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Shell-task executor (plan §4.2). Delegates to the existing
- * {@link ExecManager} via {@code submitTrackedAndRender} so workflow
- * shell commands flow through the same registry, log-files and
- * watchdog the agent {@code exec_run} tool uses — no parallel exec
- * surface.
- *
- * <p>Synchronous from the executor's point of view: it waits up to
- * {@code timeoutSeconds} (or 30s default) for the job to terminate and
- * maps the result map to a {@link TaskOutcome}.
+ * JavaScript task executor — runs a {@code script:} block from the
+ * unified {@link TriggerAction.Script} surface inside a Hactar workflow
+ * step. Replaces the legacy shell-only {@code script_task} (now
+ * {@code shell_task}, see
+ * {@link de.mhus.vance.brain.hactar.ShellTaskExecutor}).
  *
  * <h3>YAML</h3>
  * <pre>
- * run_checks:
+ * classify:
  *   type: script_task
- *   run: "npm test && npm run lint"
- *   dirName: build              # workspace RootDir name
- *   timeoutSeconds: 1800
- *   on: { success: review }
- *   catch: { business_error: debug }
+ *   source: document       # document | workspace
+ *   path: scripts/classify.js
+ *   dirName: scratch       # required when source=workspace
+ *   timeoutSeconds: 30
+ *   on: { success: route }
+ *   catch: { business_error: human_review }
  * </pre>
  *
  * <h3>Outcome mapping</h3>
- * <table>
- *   <tr><th>ExecJob status</th><th>exitCode</th><th>workflow outcome</th></tr>
- *   <tr><td>COMPLETED</td><td>0</td><td>{@code success}</td></tr>
- *   <tr><td>COMPLETED</td><td>!= 0</td><td>{@code business_error}</td></tr>
- *   <tr><td>KILLED</td><td>—</td><td>{@code timeout}</td></tr>
- *   <tr><td>FAILED / ORPHANED</td><td>—</td><td>{@code technical_error}</td></tr>
- *   <tr><td>RUNNING (waitMs exhausted)</td><td>—</td><td>{@code timeout}</td></tr>
- * </table>
+ * <p>Delegates outright to {@link ScriptActionExecutor}, which applies
+ * the §5.3 permissive-structured mapping ({@link ScriptOutcomeMapper}).
+ * The Hactar outcome name is derived from
+ * {@link ActionOutcome} by lower-casing the enum constant.
+ *
+ * <p>Workflow-scoped ⇒ {@link TriggerKind#WORKFLOW_TASK}: the
+ * {@code VanceScriptApi} runs PROCESS_SCOPED with the full spawn-tool
+ * surface. {@code planning/trigger-actions.md} §8.
  */
 @Component
 @ConditionalOnProperty(
@@ -54,11 +59,12 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 public class ScriptTaskExecutor implements HactarTypeExecutor {
 
-    private static final long DEFAULT_TIMEOUT_MS = 30_000L;
-    private static final String SPEC_RUN     = "run";
+    private static final String SPEC_SOURCE = "source";
+    private static final String SPEC_PATH = "path";
     private static final String SPEC_DIRNAME = "dirName";
+    private static final String SPEC_PARAMS = "params";
 
-    private final ExecManager execManager;
+    private final ScriptActionExecutor scriptActionExecutor;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -69,104 +75,105 @@ public class ScriptTaskExecutor implements HactarTypeExecutor {
     @Override
     public Optional<TaskOutcome> execute(HactarTaskContext context) {
         HactarStateSpec state = context.state();
-        String command = state.specString(SPEC_RUN);
-        if (command == null) {
-            return Optional.of(TaskOutcome.failure(
-                    "script_task '" + state.name() + "' is missing required 'run:' field"));
-        }
-        String dirName = state.specString(SPEC_DIRNAME);
-        long waitMs = state.timeoutSeconds() == null
-                ? DEFAULT_TIMEOUT_MS
-                : state.timeoutSeconds() * 1000L;
-
-        Map<String, Object> result;
+        TriggerAction.Script action;
         try {
-            result = execManager.submitTrackedAndRender(
-                    context.tenantId(),
-                    context.projectId(),
-                    /* sessionId */ null,
-                    /* processId */ null,
-                    dirName,
-                    command,
-                    waitMs);
-        } catch (RuntimeException ex) {
-            // ExecException is package-private; the wider RuntimeException
-            // catch covers it plus any infrastructure failure (e.g. workspace
-            // dir missing). All map to technical_error.
-            log.warn("Hactar script_task '{}' failed to submit: {}", state.name(), ex.getMessage());
-            return Optional.of(new TaskOutcome(
-                    errorKindName(HactarErrorKind.TECHNICAL_ERROR),
-                    null,
-                    ex.getMessage(),
-                    null));
+            action = buildAction(state);
+        } catch (IllegalStateException ex) {
+            return Optional.of(TaskOutcome.failure(
+                    "script_task '" + state.name() + "': " + ex.getMessage()));
         }
-
+        TriggerContext triggerContext = new TriggerContext(
+                context.tenantId(),
+                context.projectId(),
+                context.startedBy(),
+                context.workflowRunId(),
+                "workflow:" + context.workflowRunId() + ":" + state.name(),
+                /*parentSessionId*/ null,
+                /*parentProcessId*/ null);
+        ActionResult result = scriptActionExecutor.execute(new ActionInvocation<>(
+                action, triggerContext, TriggerKind.WORKFLOW_TASK));
         return Optional.of(mapOutcome(state, result));
     }
 
-    private TaskOutcome mapOutcome(HactarStateSpec state, Map<String, Object> result) {
-        String status = String.valueOf(result.get("status"));
-        Integer exitCode = result.get("exitCode") instanceof Number n ? n.intValue() : null;
-        String stderr = String.valueOf(result.getOrDefault("stderr", ""));
-
-        // Build a compact output payload — the workflow's storeAs reads
-        // from this, the LLM consumes it elsewhere. We keep stdout +
-        // stderr + exitCode + durationMs.
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("status",   status);
-        if (exitCode != null) payload.put("exitCode", exitCode);
-        payload.put("stdout",   result.getOrDefault("stdout", ""));
-        payload.put("stderr",   result.getOrDefault("stderr", ""));
-        payload.put("durationMs", result.getOrDefault("durationMs", 0));
-        payload.put("execJobId",  result.get("id"));
-
-        switch (status) {
-            case "COMPLETED":
-                if (exitCode != null && exitCode == 0) {
-                    return TaskOutcome.successWith(objectMapper.valueToTree(payload));
-                }
-                return new TaskOutcome(
-                        errorKindName(HactarErrorKind.BUSINESS_ERROR),
-                        objectMapper.valueToTree(payload),
-                        "exit " + exitCode + (stderr.isBlank() ? "" : ": " + truncate(stderr, 240)),
-                        null);
-            case "KILLED":
-                return new TaskOutcome(
-                        errorKindName(HactarErrorKind.TIMEOUT),
-                        objectMapper.valueToTree(payload),
-                        "script_task killed by watchdog",
-                        null);
-            case "FAILED":
-            case "ORPHANED":
-                return new TaskOutcome(
-                        errorKindName(HactarErrorKind.TECHNICAL_ERROR),
-                        objectMapper.valueToTree(payload),
-                        "script_task exec failed (" + status + ")",
-                        null);
-            case "RUNNING":
-                // submitTrackedAndRender returned before the job
-                // terminated — the workflow's task-level timeout
-                // applies, treat as timeout outcome.
-                return new TaskOutcome(
-                        errorKindName(HactarErrorKind.TIMEOUT),
-                        objectMapper.valueToTree(payload),
-                        "script_task wait exhausted (" + state.timeoutSeconds() + "s)",
-                        null);
-            default:
-                return new TaskOutcome(
-                        errorKindName(HactarErrorKind.TECHNICAL_ERROR),
-                        objectMapper.valueToTree(payload),
-                        "Unknown ExecJob status: " + status,
-                        null);
+    private TriggerAction.Script buildAction(HactarStateSpec state) {
+        String sourceRaw = state.specString(SPEC_SOURCE);
+        if (sourceRaw == null) {
+            throw new IllegalStateException("missing 'source' (document | workspace)");
         }
+        ScriptSource source;
+        try {
+            source = ScriptSource.valueOf(sourceRaw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalStateException(
+                    "unknown 'source' '" + sourceRaw + "' (expected: document | workspace)");
+        }
+        String path = state.specString(SPEC_PATH);
+        if (path == null) {
+            throw new IllegalStateException("missing 'path'");
+        }
+        String dirName = state.specString(SPEC_DIRNAME);
+        if (source == ScriptSource.WORKSPACE && dirName == null) {
+            throw new IllegalStateException(
+                    "'dirName' is required when source=workspace");
+        }
+        if (source == ScriptSource.DOCUMENT && dirName != null) {
+            throw new IllegalStateException(
+                    "'dirName' must be omitted when source=document");
+        }
+        Integer timeoutSeconds = state.timeoutSeconds();
+        Object rawParams = state.specField(SPEC_PARAMS);
+        Map<String, Object> params = null;
+        if (rawParams instanceof Map<?, ?> pm) {
+            java.util.LinkedHashMap<String, Object> p = new java.util.LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : pm.entrySet()) {
+                p.put(String.valueOf(e.getKey()), e.getValue());
+            }
+            params = p;
+        }
+        return new TriggerAction.Script(
+                source, dirName, path, timeoutSeconds, params, null);
+    }
+
+    private TaskOutcome mapOutcome(HactarStateSpec state, ActionResult result) {
+        Map<String, Object> output = result.output();
+        tools.jackson.databind.JsonNode outputJson =
+                output == null ? null : objectMapper.valueToTree(output);
+
+        return switch (result.outcome()) {
+            case SUCCESS -> TaskOutcome.successWith(outputJson);
+            case BUSINESS_ERROR -> new TaskOutcome(
+                    errorKindName(HactarErrorKind.BUSINESS_ERROR),
+                    outputJson,
+                    result.errorMessage(),
+                    null);
+            case TIMEOUT -> new TaskOutcome(
+                    errorKindName(HactarErrorKind.TIMEOUT),
+                    outputJson,
+                    result.errorMessage() == null
+                            ? "script_task '" + state.name() + "' timed out"
+                            : result.errorMessage(),
+                    null);
+            case PERMISSION_ERROR -> new TaskOutcome(
+                    errorKindName(HactarErrorKind.PERMISSION_ERROR),
+                    outputJson,
+                    result.errorMessage(),
+                    null);
+            case CANCELLED -> new TaskOutcome(
+                    errorKindName(HactarErrorKind.TECHNICAL_ERROR),
+                    outputJson,
+                    result.errorMessage() == null ? "cancelled" : result.errorMessage(),
+                    null);
+            case TECHNICAL_ERROR, SCHEDULED -> new TaskOutcome(
+                    errorKindName(HactarErrorKind.TECHNICAL_ERROR),
+                    outputJson,
+                    result.errorMessage() == null
+                            ? "script_task '" + state.name() + "' failed"
+                            : result.errorMessage(),
+                    null);
+        };
     }
 
     private static String errorKindName(HactarErrorKind kind) {
-        return kind.name().toLowerCase(java.util.Locale.ROOT);
-    }
-
-    private static String truncate(String s, int max) {
-        if (s == null || s.length() <= max) return s;
-        return s.substring(0, max) + "…";
+        return kind.name().toLowerCase(Locale.ROOT);
     }
 }

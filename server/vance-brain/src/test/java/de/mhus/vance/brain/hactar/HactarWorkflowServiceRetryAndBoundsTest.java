@@ -41,7 +41,7 @@ class HactarWorkflowServiceRetryAndBoundsTest {
             start: flaky
             states:
               flaky:
-                type: script_task
+                type: shell_task
                 retry:
                   maxAttempts: 3
                   on: [technical_error]
@@ -136,7 +136,7 @@ class HactarWorkflowServiceRetryAndBoundsTest {
 
         TaskCompletedEvent event = new TaskCompletedEvent(
                 "acme", "proj", runId, firstTask.getId(), "flaky",
-                HactarTaskType.SCRIPT_TASK, "technical_error",
+                HactarTaskType.SHELL_TASK, "technical_error",
                 null, "exec failed", 5L, null);
 
         workflowService.handleCompletion(event);
@@ -161,7 +161,7 @@ class HactarWorkflowServiceRetryAndBoundsTest {
 
         TaskCompletedEvent event = new TaskCompletedEvent(
                 "acme", "proj", runId, firstTask.getId(), "flaky",
-                HactarTaskType.SCRIPT_TASK, "technical_error",
+                HactarTaskType.SHELL_TASK, "technical_error",
                 null, "exec failed", 5L, null);
 
         workflowService.handleCompletion(event);
@@ -184,7 +184,7 @@ class HactarWorkflowServiceRetryAndBoundsTest {
 
         TaskCompletedEvent event = new TaskCompletedEvent(
                 "acme", "proj", runId, firstTask.getId(), "flaky",
-                HactarTaskType.SCRIPT_TASK, "business_error",
+                HactarTaskType.SHELL_TASK, "business_error",
                 null, "exit 1", 5L, null);
 
         workflowService.handleCompletion(event);
@@ -208,7 +208,7 @@ class HactarWorkflowServiceRetryAndBoundsTest {
 
         TaskCompletedEvent event = new TaskCompletedEvent(
                 "acme", "proj", runId, firstTask.getId(), "flaky",
-                HactarTaskType.SCRIPT_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
+                HactarTaskType.SHELL_TASK, TaskCompletedEvent.OUTCOME_SUCCESS,
                 null, null, 5L, null);
 
         workflowService.handleCompletion(event);

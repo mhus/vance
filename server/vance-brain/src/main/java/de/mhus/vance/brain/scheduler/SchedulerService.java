@@ -1,21 +1,23 @@
 package de.mhus.vance.brain.scheduler;
 
+import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.eventlog.EventType;
 import de.mhus.vance.api.scheduler.OverlapPolicy;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
+import de.mhus.vance.brain.action.ActionExecutorRegistry;
+import de.mhus.vance.brain.action.ActionOutcome;
+import de.mhus.vance.brain.action.ActionResult;
+import de.mhus.vance.brain.action.TriggerContext;
+import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
-import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
-import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.eventlog.EventLogService;
 import de.mhus.vance.shared.scheduler.ResolvedScheduler;
 import de.mhus.vance.shared.scheduler.SchedulerLoader;
 import de.mhus.vance.shared.session.SessionDocument;
-import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
-import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -70,6 +72,7 @@ public class SchedulerService {
     private final LaneScheduler laneScheduler;
     private final EventLogService eventLogService;
     private final DocumentService documentService;
+    private final ActionExecutorRegistry actionExecutorRegistry;
     /**
      * Lazy so the bean graph doesn't loop: {@code ThinkEngineService} →
      * tool registry → us. Mirror the trick used in {@code ProcessCreateTool}.
@@ -484,198 +487,107 @@ public class SchedulerService {
     private void spawn(
             Registration reg, ResolvedScheduler cfg,
             String source, String correlationId, String runAs) {
-        if (cfg.isWorkflowTrigger()) {
-            spawnWorkflow(reg, cfg, source, correlationId, runAs);
-            return;
-        }
-        SessionDocument session = systemSessionResolver.resolve(
-                reg.tenantId, reg.projectId, cfg.name(), runAs);
-
-        Optional<AppliedRecipe> appliedOpt;
+        TriggerAction action;
         try {
-            appliedOpt = recipeResolver.applyDefaulting(
-                    reg.tenantId, reg.projectId,
-                    cfg.recipe(), /*engineName*/ null,
-                    /*connectionProfile*/ "scheduler",
-                    cfg.params());
+            action = cfg.toTriggerAction();
         } catch (RuntimeException ex) {
-            log.warn("Scheduler '{}/{}/{}' recipe resolution failed: {}",
+            log.warn("Scheduler '{}/{}/{}' action build failed: {}",
                     reg.tenantId, reg.projectId, cfg.name(), ex.toString());
             eventLogService.append(reg.tenantId, reg.projectId, source,
                     EventType.FAILED, correlationId,
-                    session.getSessionId(), /*processId*/ null, runAs,
-                    Map.of("phase", "recipe_resolution", "error", ex.getMessage()));
+                    /*sessionId*/ null, /*processId*/ null, runAs,
+                    Map.of("phase", "action_build", "error", ex.getMessage()));
             countFire(cfg.name(), "failed");
             return;
         }
-        if (appliedOpt.isEmpty()) {
-            eventLogService.append(reg.tenantId, reg.projectId, source,
-                    EventType.FAILED, correlationId,
-                    session.getSessionId(), null, runAs,
-                    Map.of("phase", "recipe_resolution",
-                            "error", "unknown recipe '" + cfg.recipe() + "'"));
-            countFire(cfg.name(), "failed");
-            return;
-        }
-        AppliedRecipe applied = appliedOpt.get();
 
-        ThinkEngine engine;
+        // Recipe triggers need a system session up front; the executor
+        // is session-agnostic and the caller is expected to supply
+        // {@code parentSessionId} via TriggerContext.
+        String parentSessionId = null;
+        if (action instanceof TriggerAction.Recipe) {
+            SessionDocument session = systemSessionResolver.resolve(
+                    reg.tenantId, reg.projectId, cfg.name(), runAs);
+            parentSessionId = session.getSessionId();
+        }
+        TriggerContext context = new TriggerContext(
+                reg.tenantId, reg.projectId, runAs, correlationId, source,
+                parentSessionId, /*parentProcessId*/ null);
+
+        ActionResult result;
         try {
-            engine = thinkEngineServiceProvider.getObject().resolve(applied.engine())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Recipe '" + applied.name() + "' references unknown engine '"
-                                    + applied.engine() + "'"));
+            result = actionExecutorRegistry.execute(action, context, TriggerKind.SCHEDULER);
         } catch (RuntimeException ex) {
-            log.warn("Scheduler '{}/{}/{}' engine resolution failed: {}",
+            log.warn("Scheduler '{}/{}/{}' executor dispatch failed: {}",
                     reg.tenantId, reg.projectId, cfg.name(), ex.toString());
             eventLogService.append(reg.tenantId, reg.projectId, source,
                     EventType.FAILED, correlationId,
-                    session.getSessionId(), null, runAs,
-                    Map.of("phase", "engine_resolution", "error", ex.getMessage()));
+                    parentSessionId, /*processId*/ null, runAs,
+                    Map.of("phase", "dispatch", "error", ex.getMessage()));
             countFire(cfg.name(), "failed");
             return;
         }
 
-        String processName = "run_" + Instant.now().toEpochMilli();
-        ThinkProcessDocument fresh;
-        try {
-            fresh = thinkProcessService.create(
-                    reg.tenantId,
-                    reg.projectId,
-                    session.getSessionId(),
-                    processName,
-                    engine.name(),
-                    engine.version(),
-                    /*title*/ "Scheduler: " + cfg.name(),
-                    /*goal*/ cfg.description(),
-                    /*parentProcessId*/ null,
-                    applied.params(),
-                    applied.name(),
-                    applied.promptOverride(),
-                    applied.promptOverrideAppend(),
-                    applied.promptMode(),
-                    applied.dataRelayCorrection(),
-                    applied.effectiveAllowedTools(),
-                    applied.connectionProfile(),
-                    applied.defaultActiveSkills(),
-                    applied.allowedSkills() == null
-                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
-        } catch (RuntimeException ex) {
-            log.error("Scheduler '{}/{}/{}' process create failed: {}",
-                    reg.tenantId, reg.projectId, cfg.name(), ex.toString());
+        if (result.outcome().isFailure()) {
+            Map<String, Object> failPayload = new LinkedHashMap<>();
+            failPayload.put("phase", "execute");
+            failPayload.put("outcome", result.outcome().name());
+            if (result.errorMessage() != null) {
+                failPayload.put("error", result.errorMessage());
+            }
             eventLogService.append(reg.tenantId, reg.projectId, source,
                     EventType.FAILED, correlationId,
-                    session.getSessionId(), null, runAs,
-                    Map.of("phase", "process_create", "error", ex.getMessage()));
+                    parentSessionId, /*processId*/ null, runAs, failPayload);
             countFire(cfg.name(), "failed");
             return;
         }
 
-        // STARTED must hit the log BEFORE engine.start, so the
-        // termination listener can already lookup the run by processId
-        // if the engine completes within the same instant.
-        eventLogService.append(reg.tenantId, reg.projectId, source,
-                EventType.STARTED, correlationId,
-                session.getSessionId(), fresh.getId(), runAs, /*payload*/ null);
-        countFire(cfg.name(), "started");
-        reg.currentProcessId = fresh.getId();
-
-        // One-shots consume themselves the moment STARTED lands — move
-        // the underlying YAML to the project trash so subsequent
-        // refreshes / brain restarts don't see the entry anymore.
-        // Crash-safety lives in registerOneShot: it queries the event
-        // log for STARTED, not the doc's presence, so a missed trash
-        // still won't double-fire and the bootstrap can re-trash.
-        if (cfg.isOneShot()) {
-            trashAfterFire(reg);
-        }
-
-        try {
-            thinkEngineServiceProvider.getObject().start(fresh);
-        } catch (RuntimeException ex) {
-            log.error("Scheduler '{}/{}/{}' engine.start failed: {}",
-                    reg.tenantId, reg.projectId, cfg.name(), ex.toString());
-            eventLogService.append(reg.tenantId, reg.projectId, source,
-                    EventType.FAILED, correlationId,
-                    session.getSessionId(), fresh.getId(), runAs,
-                    Map.of("phase", "engine_start", "error", ex.getMessage()));
-            countFire(cfg.name(), "failed");
-            reg.currentProcessId = null;
-            return;
-        }
-
-        // Optional first user message — equivalent to a process_steer
-        // right after spawn (see ProcessCreateTool).
-        if (cfg.initialMessage() != null && !cfg.initialMessage().isBlank()) {
-            PendingMessageDocument msg = PendingMessageDocument.builder()
-                    .type(PendingMessageType.USER_CHAT_INPUT)
-                    .at(Instant.now())
-                    .fromUser("scheduler:" + cfg.name())
-                    .content(cfg.initialMessage())
-                    .build();
-            boolean delivered = messageRouterProvider.getObject()
-                    .dispatch(/*sourceProcessId*/ null, fresh.getId(), msg);
-            if (!delivered) {
-                log.warn("Scheduler '{}/{}/{}' initialMessage dispatch failed",
-                        reg.tenantId, reg.projectId, cfg.name());
+        // STARTED. For recipe-triggers the processId travels in the
+        // dedicated event-log column so the termination listener can find
+        // the run; workflow / script keep their identifiers in the
+        // payload.
+        Map<String, Object> startedPayload = new LinkedHashMap<>();
+        String spawnedProcessId = null;
+        if (action instanceof TriggerAction.Workflow w) {
+            startedPayload.put("workflowName", w.workflow());
+            if (result.spawnedId() != null) {
+                startedPayload.put("workflowRunId", result.spawnedId());
+            }
+        } else if (action instanceof TriggerAction.Recipe) {
+            spawnedProcessId = result.spawnedId();
+            reg.currentProcessId = spawnedProcessId;
+        } else if (action instanceof TriggerAction.Script s) {
+            startedPayload.put("scriptSource", s.source().name());
+            startedPayload.put("scriptPath", s.path());
+            if (s.dirName() != null) {
+                startedPayload.put("scriptDirName", s.dirName());
             }
         }
-    }
-
-    /**
-     * Workflow-trigger variant of {@link #spawn} — for scheduler docs
-     * that set {@code workflow:} instead of {@code recipe:}. Calls
-     * {@code HactarWorkflowService.start} and logs STARTED into the
-     * event log with the {@code workflowRunId} as a payload field.
-     *
-     * <p>No system session is created for workflow runs — workflows
-     * don't ride on a session. {@code agent_task}s inside the
-     * workflow create their own {@code _hactar_<runId>} session lazily.
-     */
-    private void spawnWorkflow(
-            Registration reg, ResolvedScheduler cfg,
-            String source, String correlationId, String runAs) {
-        de.mhus.vance.brain.hactar.HactarWorkflowService workflowService =
-                workflowServiceProvider.getIfAvailable();
-        if (workflowService == null) {
-            log.warn("Scheduler '{}/{}/{}' wants workflow '{}' but Hactar is not active "
-                            + "(vance.services.hactar=false)",
-                    reg.tenantId, reg.projectId, cfg.name(), cfg.workflow());
-            eventLogService.append(reg.tenantId, reg.projectId, source,
-                    EventType.FAILED, correlationId,
-                    /*sessionId*/ null, /*processId*/ null, runAs,
-                    Map.of("phase", "workflow_spawn",
-                            "error", "Hactar workflow subsystem is not active"));
-            countFire(cfg.name(), "failed");
-            return;
-        }
-        String runId;
-        try {
-            runId = workflowService.start(
-                    reg.tenantId, reg.projectId,
-                    cfg.workflow(), cfg.params(), runAs);
-        } catch (RuntimeException ex) {
-            log.warn("Scheduler '{}/{}/{}' workflow start failed: {}",
-                    reg.tenantId, reg.projectId, cfg.name(), ex.toString());
-            eventLogService.append(reg.tenantId, reg.projectId, source,
-                    EventType.FAILED, correlationId,
-                    /*sessionId*/ null, /*processId*/ null, runAs,
-                    Map.of("phase", "workflow_spawn", "error", ex.getMessage()));
-            countFire(cfg.name(), "failed");
-            return;
-        }
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("workflowName", cfg.workflow());
-        payload.put("workflowRunId", runId);
         eventLogService.append(reg.tenantId, reg.projectId, source,
                 EventType.STARTED, correlationId,
-                /*sessionId*/ null, /*processId*/ null, runAs, payload);
+                parentSessionId, spawnedProcessId, runAs,
+                startedPayload.isEmpty() ? null : startedPayload);
         countFire(cfg.name(), "started");
-        log.info("Scheduler '{}/{}/{}' spawned workflow '{}' runId='{}'",
-                reg.tenantId, reg.projectId, cfg.name(), cfg.workflow(), runId);
+        log.info("Scheduler '{}/{}/{}' fired {} outcome='{}' spawnedId='{}'",
+                reg.tenantId, reg.projectId, cfg.name(),
+                action.getClass().getSimpleName(),
+                result.outcome(), result.spawnedId());
 
-        // One-shot consumption — same trash-after-fire path as recipe spawn.
+        // Script runs synchronously — emit a matching COMPLETED row so
+        // operators see the lifecycle end without waiting for an
+        // external listener (there is none for scripts).
+        if (action instanceof TriggerAction.Script && result.outcome() == ActionOutcome.SUCCESS) {
+            Map<String, Object> donePayload = new LinkedHashMap<>();
+            if (result.output() != null) {
+                donePayload.put("scriptOutput", result.output());
+            }
+            eventLogService.append(reg.tenantId, reg.projectId, source,
+                    EventType.COMPLETED, correlationId,
+                    parentSessionId, /*processId*/ null, runAs,
+                    donePayload.isEmpty() ? null : donePayload);
+            countFire(cfg.name(), "completed");
+        }
+
         if (cfg.isOneShot()) {
             trashAfterFire(reg);
         }

@@ -51,7 +51,7 @@ class HactarWorkflowLoaderTest {
                       success: run_checks
                       failure: escalate
                   run_checks:
-                    type: script_task
+                    type: shell_task
                     run: npm test
                     retry:
                       maxAttempts: 2
@@ -119,7 +119,7 @@ class HactarWorkflowLoaderTest {
         assertThat(plan.retry().maxAttempts()).isEqualTo(1);
 
         HactarStateSpec checks = wf.states().get("run_checks");
-        assertThat(checks.type()).isEqualTo(HactarTaskType.SCRIPT_TASK);
+        assertThat(checks.type()).isEqualTo(HactarTaskType.SHELL_TASK);
         assertThat(checks.retry().maxAttempts()).isEqualTo(2);
         assertThat(checks.retry().onErrorKinds()).containsExactlyInAnyOrder(
                 HactarErrorKind.TECHNICAL_ERROR, HactarErrorKind.TIMEOUT);
@@ -235,7 +235,7 @@ class HactarWorkflowLoaderTest {
                 start: a
                 states:
                   a:
-                    type: script_task
+                    type: shell_task
                     run: noop
                     catch:
                       mystery_error: a

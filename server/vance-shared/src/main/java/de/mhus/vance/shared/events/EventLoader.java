@@ -149,7 +149,22 @@ public class EventLoader {
         }
         Map<String, Object> spec = (Map<String, Object>) rawMap;
 
-        String workflow = stringOrThrow(spec.get("workflow"), "workflow");
+        String recipe = stringOrNull(spec.get("recipe"));
+        String workflow = stringOrNull(spec.get("workflow"));
+        de.mhus.vance.shared.scheduler.ResolvedScheduler.ScriptSpec script =
+                parseScriptSpec(spec.get("script"));
+        int targetCount = (recipe != null ? 1 : 0)
+                + (workflow != null ? 1 : 0)
+                + (script != null ? 1 : 0);
+        if (targetCount > 1) {
+            throw new IllegalStateException(
+                    "'recipe', 'workflow', 'script' are mutually exclusive — set exactly one");
+        }
+        if (targetCount == 0) {
+            throw new IllegalStateException(
+                    "missing trigger target — set 'recipe', 'workflow' or 'script'");
+        }
+        String initialMessage = stringOrNull(spec.get("initialMessage"));
         String description = stringOrNull(spec.get("description"));
         boolean enabled = !(spec.get("enabled") instanceof Boolean b) || b;
 
@@ -193,7 +208,10 @@ public class EventLoader {
                 doc == null ? null : doc.getId(),
                 doc == null ? null : doc.getCreatedBy(),
                 description,
+                recipe,
                 workflow,
+                script,
+                initialMessage,
                 enabled,
                 Set.copyOf(methods),
                 tokenLiteral,
@@ -201,6 +219,64 @@ public class EventLoader {
                 Map.copyOf(params),
                 runAs,
                 tags);
+    }
+
+    /** Parses the {@code script:} block when present; returns {@code null} when absent. */
+    private static de.mhus.vance.shared.scheduler.ResolvedScheduler.@Nullable ScriptSpec parseScriptSpec(@Nullable Object raw) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> sm)) {
+            throw new IllegalStateException(
+                    "'script' must be a map with 'source', 'path' [, 'dirName', 'timeoutSeconds']");
+        }
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : sm.entrySet()) {
+            map.put(String.valueOf(e.getKey()), e.getValue());
+        }
+        String sourceRaw = stringOrNull(map.get("source"));
+        if (sourceRaw == null) {
+            throw new IllegalStateException("'script.source' is required (document | workspace)");
+        }
+        de.mhus.vance.api.action.ScriptSource source;
+        try {
+            source = de.mhus.vance.api.action.ScriptSource.valueOf(
+                    sourceRaw.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "unknown 'script.source' '" + sourceRaw + "' (expected: document | workspace)");
+        }
+        String path = stringOrNull(map.get("path"));
+        if (path == null || path.isBlank()) {
+            throw new IllegalStateException("'script.path' must be non-blank");
+        }
+        String dirName = stringOrNull(map.get("dirName"));
+        if (source == de.mhus.vance.api.action.ScriptSource.WORKSPACE
+                && (dirName == null || dirName.isBlank())) {
+            throw new IllegalStateException(
+                    "'script.dirName' is required when source=workspace");
+        }
+        if (source == de.mhus.vance.api.action.ScriptSource.DOCUMENT
+                && dirName != null && !dirName.isBlank()) {
+            throw new IllegalStateException(
+                    "'script.dirName' must be omitted when source=document");
+        }
+        Integer timeoutSeconds = null;
+        Object rawTimeout = map.get("timeoutSeconds");
+        if (rawTimeout instanceof Number n) {
+            timeoutSeconds = n.intValue();
+        } else if (rawTimeout instanceof String s) {
+            try {
+                timeoutSeconds = Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalStateException(
+                        "'script.timeoutSeconds' must be an integer, got '" + s + "'");
+            }
+        }
+        if (timeoutSeconds != null && timeoutSeconds <= 0) {
+            throw new IllegalStateException(
+                    "'script.timeoutSeconds' must be > 0, got " + timeoutSeconds);
+        }
+        return new de.mhus.vance.shared.scheduler.ResolvedScheduler.ScriptSpec(
+                source, dirName, path, timeoutSeconds);
     }
 
     @SuppressWarnings("unchecked")

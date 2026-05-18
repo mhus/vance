@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@de.mhus.vance.toolpack.SpawnTool
 public class HookCreateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;

@@ -47,6 +47,8 @@ class EventServiceTest {
     private HactarWorkflowService workflowService;
     @SuppressWarnings("unchecked")
     private final ObjectProvider<HactarWorkflowService> workflowProvider = mock(ObjectProvider.class);
+    private de.mhus.vance.brain.action.ActionExecutorRegistry actionExecutorRegistry;
+    private de.mhus.vance.brain.scheduler.SystemSessionResolver systemSessionResolver;
     private EventService service;
 
     @BeforeEach
@@ -56,8 +58,28 @@ class EventServiceTest {
         metricService = new MetricService(new SimpleMeterRegistry());
         workflowService = mock(HactarWorkflowService.class);
         when(workflowProvider.getIfAvailable()).thenReturn(workflowService);
+        // Stub registry that pretends to route workflow actions directly
+        // through the legacy HactarWorkflowService — keeps the existing
+        // tests close to the old assertion shape.
+        actionExecutorRegistry = mock(de.mhus.vance.brain.action.ActionExecutorRegistry.class);
+        when(actionExecutorRegistry.execute(any(), any(), any())).thenAnswer(inv -> {
+            de.mhus.vance.api.action.TriggerAction action = inv.getArgument(0);
+            if (action instanceof de.mhus.vance.api.action.TriggerAction.Workflow w) {
+                String runId = workflowService.start(TENANT, PROJECT, w.workflow(), w.params(), w.runAs());
+                return de.mhus.vance.brain.action.ActionResult.scheduled(runId);
+            }
+            if (action instanceof de.mhus.vance.api.action.TriggerAction.Recipe r) {
+                return de.mhus.vance.brain.action.ActionResult.scheduled("proc-" + r.recipe());
+            }
+            return de.mhus.vance.brain.action.ActionResult.success(java.util.Map.of());
+        });
+        systemSessionResolver = mock(de.mhus.vance.brain.scheduler.SystemSessionResolver.class);
+        de.mhus.vance.shared.session.SessionDocument session = new de.mhus.vance.shared.session.SessionDocument();
+        session.setSessionId("sess-event");
+        when(systemSessionResolver.resolve(any(), any(), any(), any())).thenReturn(session);
         service = new EventService(
-                eventLoader, settingService, metricService, workflowProvider);
+                eventLoader, settingService, metricService, workflowProvider,
+                actionExecutorRegistry, systemSessionResolver);
     }
 
     // ─── happy path ─────────────────────────────────────────────────────
@@ -270,7 +292,9 @@ class EventServiceTest {
 
         ResolvedEvent build() {
             return new ResolvedEvent(name, yaml, source, documentId, createdBy,
-                    description, workflow, enabled, methods,
+                    description,
+                    /*recipe*/ null, workflow, /*script*/ null, /*initialMessage*/ null,
+                    enabled, methods,
                     tokenLiteral, tokenSettingKey, params, runAs, tags);
         }
     }

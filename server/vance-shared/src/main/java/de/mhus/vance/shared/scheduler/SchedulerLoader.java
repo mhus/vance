@@ -167,15 +167,20 @@ public class SchedulerLoader {
         String description = stringOrThrow(spec.get("description"), "description");
         String recipe = stringOrNull(spec.get("recipe"));
         String workflow = stringOrNull(spec.get("workflow"));
-        // Exactly one of recipe / workflow must be set.
-        if (recipe != null && workflow != null) {
+        ResolvedScheduler.ScriptSpec script = parseScript(spec.get("script"));
+        // Exactly one of recipe / workflow / script must be set.
+        int targetCount = (recipe != null ? 1 : 0)
+                + (workflow != null ? 1 : 0)
+                + (script != null ? 1 : 0);
+        if (targetCount > 1) {
             throw new IllegalStateException(
-                    "'recipe' and 'workflow' are mutually exclusive — set exactly one");
+                    "'recipe', 'workflow', 'script' are mutually exclusive — set exactly one");
         }
-        if (recipe == null && workflow == null) {
+        if (targetCount == 0) {
             throw new IllegalStateException(
-                    "missing trigger target — set either 'recipe' (spawns a ThinkProcess) "
-                            + "or 'workflow' (spawns a Hactar workflow run)");
+                    "missing trigger target — set 'recipe' (spawns a ThinkProcess), "
+                            + "'workflow' (spawns a Hactar workflow run), "
+                            + "or 'script' (runs a JS script)");
         }
         String timezone = stringOrNull(spec.get("timezone"));
 
@@ -219,8 +224,65 @@ public class SchedulerLoader {
                 doc == null ? null : doc.getId(),
                 doc == null ? null : doc.getCreatedBy(),
                 description, cron, at, timezone, enabled,
-                recipe, workflow, Map.copyOf(params),
+                recipe, workflow, script, Map.copyOf(params),
                 initialMessage, runAs, overlap, lockMode, tags);
+    }
+
+    /** Parses the {@code script:} block when present; returns {@code null} when absent. */
+    private static ResolvedScheduler.@Nullable ScriptSpec parseScript(@Nullable Object raw) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> sm)) {
+            throw new IllegalStateException(
+                    "'script' must be a map with 'source', 'path' [, 'dirName', 'timeoutSeconds']");
+        }
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : sm.entrySet()) {
+            map.put(String.valueOf(e.getKey()), e.getValue());
+        }
+        String sourceRaw = stringOrNull(map.get("source"));
+        if (sourceRaw == null) {
+            throw new IllegalStateException("'script.source' is required (document | workspace)");
+        }
+        de.mhus.vance.api.action.ScriptSource source;
+        try {
+            source = de.mhus.vance.api.action.ScriptSource.valueOf(
+                    sourceRaw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException(
+                    "unknown 'script.source' '" + sourceRaw + "' (expected: document | workspace)");
+        }
+        String path = stringOrNull(map.get("path"));
+        if (path == null || path.isBlank()) {
+            throw new IllegalStateException("'script.path' must be non-blank");
+        }
+        String dirName = stringOrNull(map.get("dirName"));
+        if (source == de.mhus.vance.api.action.ScriptSource.WORKSPACE
+                && (dirName == null || dirName.isBlank())) {
+            throw new IllegalStateException(
+                    "'script.dirName' is required when source=workspace");
+        }
+        if (source == de.mhus.vance.api.action.ScriptSource.DOCUMENT
+                && dirName != null && !dirName.isBlank()) {
+            throw new IllegalStateException(
+                    "'script.dirName' must be omitted when source=document");
+        }
+        Integer timeoutSeconds = null;
+        Object rawTimeout = map.get("timeoutSeconds");
+        if (rawTimeout instanceof Number n) {
+            timeoutSeconds = n.intValue();
+        } else if (rawTimeout instanceof String s) {
+            try {
+                timeoutSeconds = Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                throw new IllegalStateException(
+                        "'script.timeoutSeconds' must be an integer, got '" + s + "'");
+            }
+        }
+        if (timeoutSeconds != null && timeoutSeconds <= 0) {
+            throw new IllegalStateException(
+                    "'script.timeoutSeconds' must be > 0, got " + timeoutSeconds);
+        }
+        return new ResolvedScheduler.ScriptSpec(source, dirName, path, timeoutSeconds);
     }
 
     private static LockMode parseLockMode(@Nullable Object raw) {

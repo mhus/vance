@@ -57,6 +57,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@de.mhus.vance.toolpack.SpawnTool
 public class ProcessRunTool implements Tool {
 
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(300);

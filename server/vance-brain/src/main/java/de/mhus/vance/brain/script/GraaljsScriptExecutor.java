@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.script;
 
+import de.mhus.vance.brain.action.ScopeLevel;
+import de.mhus.vance.brain.action.SpawnToolRegistry;
 import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.workspace.NodeHandler;
 import de.mhus.vance.shared.workspace.RootDirHandle;
@@ -57,31 +59,45 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     private final HostAccess hostAccess;
     private final ScriptEngineProperties props;
     private final @Nullable WorkspaceService workspaceService;
+    private final @Nullable SpawnToolRegistry spawnToolRegistry;
 
     @Autowired
     public GraaljsScriptExecutor(
             Engine engine,
             HostAccess hostAccess,
             ScriptEngineProperties props,
-            @Autowired(required = false) @Nullable WorkspaceService workspaceService) {
+            @Autowired(required = false) @Nullable WorkspaceService workspaceService,
+            @Autowired(required = false) @Nullable SpawnToolRegistry spawnToolRegistry) {
         this.engine = engine;
         this.hostAccess = hostAccess;
         this.props = props;
         this.workspaceService = workspaceService;
+        this.spawnToolRegistry = spawnToolRegistry;
+    }
+
+    /** Four-arg backwards-compat constructor — pre-spawn-registry. Used by
+     *  tests that pre-date the {@link SpawnToolRegistry} introduction;
+     *  trigger-scoped sandbox falls back to an empty deny-set. */
+    public GraaljsScriptExecutor(
+            Engine engine,
+            HostAccess hostAccess,
+            ScriptEngineProperties props,
+            @Nullable WorkspaceService workspaceService) {
+        this(engine, hostAccess, props, workspaceService, null);
     }
 
     /** Three-arg constructor for tests that don't need the require
      *  pathway (workspaceService=null). */
     public GraaljsScriptExecutor(
             Engine engine, HostAccess hostAccess, ScriptEngineProperties props) {
-        this(engine, hostAccess, props, null);
+        this(engine, hostAccess, props, null, null);
     }
 
     /** Two-arg backwards-compat constructor — auto-builds a HostAccess
      *  matching the production one. Used by tests that pre-date the
      *  HostAccess-injection refactor. */
     public GraaljsScriptExecutor(Engine engine, ScriptEngineProperties props) {
-        this(engine, defaultHostAccess(), props, null);
+        this(engine, defaultHostAccess(), props, null, null);
     }
 
     /** Three-arg backwards-compat constructor matching the old
@@ -93,7 +109,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             Engine engine,
             ScriptEngineProperties props,
             @Nullable WorkspaceService workspaceService) {
-        this(engine, defaultHostAccess(), props, workspaceService);
+        this(engine, defaultHostAccess(), props, workspaceService, null);
     }
 
     /** Legacy single-arg ctor — matches the original public contract.
@@ -101,7 +117,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
      *  {@code ScriptHarness}, and any harness that builds its own
      *  Engine and doesn't need to share HostAccess across services. */
     public GraaljsScriptExecutor(Engine engine) {
-        this(engine, defaultHostAccess(), new ScriptEngineProperties(), null);
+        this(engine, defaultHostAccess(), new ScriptEngineProperties(), null, null);
     }
 
     private static HostAccess defaultHostAccess() {
@@ -152,7 +168,12 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         ContextToolsApi effectiveTools = narrowAllowedTools(
                 request.tools(), header.allowTools());
 
-        VanceScriptApi api = new VanceScriptApi(effectiveTools, request.recipeName());
+        Set<String> deniedToolNames =
+                request.scopeLevel() == ScopeLevel.TRIGGER_SCOPED && spawnToolRegistry != null
+                        ? spawnToolRegistry.spawnToolNames()
+                        : Set.of();
+        VanceScriptApi api = new VanceScriptApi(
+                effectiveTools, request.recipeName(), deniedToolNames);
         ResourceLimits limits = ResourceLimits.newBuilder()
                 .statementLimit(effectiveStatements, null)
                 .build();

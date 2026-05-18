@@ -4,6 +4,7 @@ import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import org.graalvm.polyglot.HostAccess;
 import org.jspecify.annotations.Nullable;
@@ -66,11 +67,24 @@ public final class VanceScriptApi {
     public final ScriptProcessApi process;
 
     public VanceScriptApi(ContextToolsApi toolsApi) {
-        this(toolsApi, null);
+        this(toolsApi, null, Set.of());
     }
 
     public VanceScriptApi(ContextToolsApi toolsApi, @Nullable String recipeName) {
-        this.tools = new ScriptToolsApi(toolsApi);
+        this(toolsApi, recipeName, Set.of());
+    }
+
+    /**
+     * Full constructor. {@code deniedToolNames} is the set of tools
+     * that {@link ScriptToolsApi#call} refuses outright — typically the
+     * spawn-tool set in trigger-scoped runs (see
+     * {@link de.mhus.vance.brain.action.SpawnToolRegistry} and
+     * {@code planning/trigger-actions.md} §8).
+     */
+    public VanceScriptApi(ContextToolsApi toolsApi,
+                          @Nullable String recipeName,
+                          Set<String> deniedToolNames) {
+        this.tools = new ScriptToolsApi(toolsApi, deniedToolNames);
         this.context = new ScriptContextView(toolsApi.scope(), recipeName);
         this.log = new ScriptLog(toolsApi.scope());
         this.process = new ScriptProcessApi(this);
@@ -80,13 +94,21 @@ public final class VanceScriptApi {
     public static final class ScriptToolsApi {
 
         private final ContextToolsApi delegate;
+        private final Set<String> deniedToolNames;
 
-        ScriptToolsApi(ContextToolsApi delegate) {
+        ScriptToolsApi(ContextToolsApi delegate, Set<String> deniedToolNames) {
             this.delegate = delegate;
+            this.deniedToolNames = deniedToolNames == null ? Set.of() : Set.copyOf(deniedToolNames);
         }
 
         @HostAccess.Export
         public Map<String, Object> call(String name, @Nullable Map<String, Object> params) {
+            if (deniedToolNames.contains(name)) {
+                throw new ScriptHostException(
+                        "Tool '" + name + "' not allowed in trigger-scoped script — "
+                                + "wrap in a workflow if you need it",
+                        null);
+            }
             try {
                 return delegate.invoke(name, params == null ? Map.of() : params);
             } catch (ToolException e) {

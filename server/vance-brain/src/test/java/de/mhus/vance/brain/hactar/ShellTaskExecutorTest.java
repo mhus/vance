@@ -21,15 +21,15 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Outcome-mapping tests for {@link ScriptTaskExecutor}. {@link ExecManager}
+ * Outcome-mapping tests for {@link ShellTaskExecutor}. {@link ExecManager}
  * is mocked — we drive the executor with the same response shapes
  * {@code submitTrackedAndRender} produces in production.
  */
-class ScriptTaskExecutorTest {
+class ShellTaskExecutorTest {
 
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
     private final ExecManager execManager = mock(ExecManager.class);
-    private final ScriptTaskExecutor executor = new ScriptTaskExecutor(execManager, objectMapper);
+    private final ShellTaskExecutor executor = new ShellTaskExecutor(execManager, objectMapper);
 
     @Test
     void completed_exit_zero_yields_success() {
@@ -154,7 +154,7 @@ class ScriptTaskExecutorTest {
         if (dirName != null) spec.put("dirName", dirName);
         return new HactarStateSpec(
                 "run_checks",
-                HactarTaskType.SCRIPT_TASK,
+                HactarTaskType.SHELL_TASK,
                 null,
                 timeoutSeconds,
                 null,

@@ -8,7 +8,17 @@ package de.mhus.vance.api.hactar;
 public enum HactarTaskType {
     /** Engine-spawn (Jeltz/Ford/Vogon/Marvin). §4.1 */
     AGENT_TASK,
-    /** Shell command via the {@code script-engine}. §4.2 */
+    /**
+     * Shell command via the {@code ExecManager}. Renamed from
+     * {@code SCRIPT_TASK} as part of {@code planning/trigger-actions.md}
+     * Stufe 4 — JS scripts now live in the new {@link #SCRIPT_TASK}. §4.2
+     */
+    SHELL_TASK,
+    /**
+     * JS script via the unified {@code ScriptActionExecutor}
+     * (document / workspace source). {@code planning/trigger-actions.md}
+     * §4.4.
+     */
     SCRIPT_TASK,
     /** Direct tool invocation via {@code ContextToolsApi}. §4.3 */
     TOOL_TASK,

@@ -133,11 +133,26 @@ When *"Include current script as context"* is checked, the existing
 file is appended to the prompt — useful for "make this faster" or
 "add error-handling here" refactors.
 
+## Tool calls
+
+Script Cortex has access to the **full project tool set** — the same
+surface engines like Arthur or Eddie see. Call them with:
+
+```js
+var docs = vance.tools.call('documents_list', { projectId: vance.context.projectId });
+console.log('docs:', docs);
+```
+
+The DeepThought generate-button receives the same tool list in its
+drafting-prompt, so the LLM knows what tool names + signatures it can
+reach for. Per-tool permissions are still enforced at runtime inside
+the tool handler (no tenant escalation possible).
+
+If you don't want tool calls (pure computation snippet), just don't
+call any — the surface is there, not forced.
+
 ## What v1 does not do
 
-- **No tool dispatch.** `vance.tools.call(...)` is intentionally
-  disabled in Script Cortex — the editor is a sandbox, not an agent
-  runtime. A future iteration can plumb a scoped tool surface.
 - **No cross-script `require`.** Loading another script-cortex file
   from JavaScript will land in a follow-up.
 - **No multi-user edit locking.** Last write wins — keep the same

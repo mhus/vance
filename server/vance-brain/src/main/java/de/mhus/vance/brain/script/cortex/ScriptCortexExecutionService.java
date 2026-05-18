@@ -56,6 +56,7 @@ public class ScriptCortexExecutionService {
     private final de.mhus.vance.brain.script.GraaljsScriptExecutor executor;
     private final ScriptExecutionWsRegistry wsRegistry;
     private final ToolDispatcher toolDispatcher;
+    private final @Nullable ScriptCortexToolPolicy toolPolicy;
 
     private final ExecutorService pool = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "cortex-script-" + UUID.randomUUID().toString().substring(0, 8));
@@ -68,10 +69,22 @@ public class ScriptCortexExecutionService {
     public ScriptCortexExecutionService(
             de.mhus.vance.brain.script.GraaljsScriptExecutor executor,
             ScriptExecutionWsRegistry wsRegistry,
-            ToolDispatcher toolDispatcher) {
+            ToolDispatcher toolDispatcher,
+            ScriptCortexToolPolicy toolPolicy) {
         this.executor = executor;
         this.wsRegistry = wsRegistry;
         this.toolDispatcher = toolDispatcher;
+        this.toolPolicy = toolPolicy;
+    }
+
+    /** Backwards-compat ctor for unit tests built before the policy was
+     *  introduced. Falls back to an unrestricted dispatcher pool when
+     *  no policy is wired. */
+    public ScriptCortexExecutionService(
+            de.mhus.vance.brain.script.GraaljsScriptExecutor executor,
+            ScriptExecutionWsRegistry wsRegistry,
+            ToolDispatcher toolDispatcher) {
+        this(executor, wsRegistry, toolDispatcher, null);
     }
 
     /**
@@ -112,17 +125,21 @@ public class ScriptCortexExecutionService {
         bindings.put("console", console);
         bindings.put("args", req.args == null ? Map.of() : req.args);
 
-        // No-tools surface: the dispatcher is real, but the allow-set is
-        // empty → ContextToolsApi.invoke rejects every name. The script
-        // can still inspect `vance.context` and `vance.log` (parents in
-        // VanceScriptApi), it just cannot dispatch tools.
+        // Tool surface: every tool the dispatcher resolves for this
+        // scope. Symmetric with DeepThought-generate, which receives the
+        // same list via engineParams.scriptAllowedTools so the LLM's
+        // prompt-inventory matches what the runtime will actually accept.
+        // Per-tool permission checks still apply at invoke-time.
         ToolInvocationContext scope = new ToolInvocationContext(
                 req.tenantId,
                 req.projectId,
                 /*sessionId*/ null,
                 /*processId*/ null,
                 req.userId);
-        ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope, java.util.Set.of());
+        java.util.Set<String> allowed = toolPolicy == null
+                ? java.util.Set.of()
+                : new java.util.LinkedHashSet<>(toolPolicy.availableTools(scope));
+        ContextToolsApi tools = new ContextToolsApi(toolDispatcher, scope, allowed);
 
         Duration timeout = req.timeoutMs == null
                 ? Duration.ofSeconds(30)

@@ -133,12 +133,27 @@ Wenn *"Include current script as context"* angehakt ist, wird die
 existierende Datei an den Prompt angehängt — nützlich für „mach das
 schneller" oder „füge hier Error-Handling ein"-Refactors.
 
+## Tool-Aufrufe
+
+Script Cortex hat Zugang zum **vollen Tool-Set** des Projekts —
+dasselbe, das auch Engines wie Arthur oder Eddie sehen. Aufruf:
+
+```js
+var docs = vance.tools.call('documents_list', { projectId: vance.context.projectId });
+console.log('docs:', docs);
+```
+
+Die DeepThought-Generierung bekommt dieselbe Tool-Liste in den
+Drafting-Prompt eingespeist — das LLM weiß also welche Tool-Namen es
+mit korrekten Signaturen aufrufen darf. Per-Tool-Permissions werden
+zur Laufzeit im Tool-Handler durchgesetzt (kein Tenant-Escalation
+möglich).
+
+Wenn du **keine** Tool-Aufrufe willst (reines Rechen-Snippet), ruf
+einfach keine — der Surface ist da, aber nicht erzwungen.
+
 ## Was v1 nicht macht
 
-- **Kein Tool-Dispatch.** `vance.tools.call(...)` ist in Script Cortex
-  absichtlich deaktiviert — der Editor ist eine Sandbox, kein
-  Agent-Runtime. Eine spätere Iteration kann ein scoped Tool-Surface
-  durchreichen.
 - **Kein Cross-Script-`require`.** Laden anderer Script-Cortex-Dateien
   aus JS kommt in einem Follow-up.
 - **Kein Multi-User-Edit-Locking.** Last write wins — dieselbe Datei

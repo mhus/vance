@@ -89,6 +89,7 @@ public class ScriptCortexController {
     private final JsValidationService jsValidationService;
     private final ScriptCortexDeepValidateService deepValidateService;
     private final ScriptCortexExecutionService executionService;
+    private final ScriptCortexToolPolicy toolPolicy;
     private final ThinkProcessService thinkProcessService;
     private final ThinkEngineService thinkEngineService;
     private final RequestAuthority authority;
@@ -337,10 +338,21 @@ public class ScriptCortexController {
         String goal = buildGoal(tenant, request);
         String processName = "script-gen-" + UUID.randomUUID().toString().substring(0, 8);
 
+        // Symmetric tool surface — DT's drafting/framing prompt renders
+        // toolInventory from scriptAllowedTools, and ScriptCortexExecutionService
+        // applies the same list as the runtime allow-set. Without this
+        // the LLM would either be told "no tools — pure JS only" (and
+        // never reach for vance.tools.call) or, worse, be promised
+        // tools the executor rejects at runtime.
+        List<String> allowedTools = toolPolicy.availableTools(
+                tenant, projectId, sessionId,
+                (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME));
+
         Map<String, Object> engineParams = new LinkedHashMap<>();
         engineParams.put(DeepThoughtEngine.GOAL_KEY, goal);
         engineParams.put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, Boolean.FALSE);
         engineParams.put(DeepThoughtEngine.MAX_RECOVERIES_KEY, 5);
+        engineParams.put(DeepThoughtEngine.SCRIPT_ALLOWED_TOOLS_KEY, allowedTools);
 
         ThinkProcessDocument process = thinkProcessService.create(
                 tenant,

@@ -3,11 +3,12 @@ package de.mhus.vance.brain.script;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Engine;
+import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.PolyglotException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.SourceSection;
 import org.graalvm.polyglot.io.IOAccess;
@@ -38,11 +39,31 @@ import org.springframework.stereotype.Service;
  * the DRAFTING-recovery loop.
  */
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class JsValidationService {
 
     private final Engine engine;
+    private final HostAccess hostAccess;
+
+    /** Spring-injection ctor — picks up the shared {@link HostAccess}
+     *  bean so this validator's parse-only Contexts use the same
+     *  host-access config as the eval Contexts in
+     *  {@code GraaljsScriptExecutor}. Mismatched configs on a shared
+     *  Engine raise a hard GraalVM error at Context construction. */
+    @Autowired
+    public JsValidationService(Engine engine, HostAccess hostAccess) {
+        this.engine = engine;
+        this.hostAccess = hostAccess;
+    }
+
+    /** Legacy single-arg ctor for unit tests that construct the
+     *  service directly (e.g. {@code JsValidationServiceTest},
+     *  {@code DeepThoughtEngineLifecycleTest}). Uses a permissive
+     *  {@link HostAccess#ALL} — parse-only never invokes a host call
+     *  so the actual permission set is irrelevant. */
+    public JsValidationService(Engine engine) {
+        this(engine, HostAccess.ALL);
+    }
 
     /**
      * Parse {@code code} as JavaScript and report errors with
@@ -72,6 +93,7 @@ public class JsValidationService {
         }
         try (Context ctx = Context.newBuilder("js")
                 .engine(engine)
+                .allowHostAccess(hostAccess)
                 .allowAllAccess(false)
                 .allowIO(IOAccess.NONE)
                 .allowCreateThread(false)

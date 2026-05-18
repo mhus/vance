@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
  * the errors copied into the state, or FAILED once
  * {@code recoveryCount >= maxRecoveries}.
  */
-@Component
+@Component("deepThoughtValidatingPhase")
 @RequiredArgsConstructor
 @Slf4j
 public class ValidatingPhase {

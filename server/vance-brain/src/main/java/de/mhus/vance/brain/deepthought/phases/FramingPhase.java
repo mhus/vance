@@ -36,7 +36,7 @@ import org.springframework.stereotype.Component;
  * decides whether to advance to DRAFTING (APPROVED / no reviewer
  * configured) or loop back here (REJECTED).
  */
-@Component
+@Component("deepThoughtFramingPhase")
 @RequiredArgsConstructor
 @Slf4j
 public class FramingPhase {

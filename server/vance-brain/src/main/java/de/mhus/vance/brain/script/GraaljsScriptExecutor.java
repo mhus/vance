@@ -61,12 +61,51 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     @Autowired
     public GraaljsScriptExecutor(
             Engine engine,
+            HostAccess hostAccess,
             ScriptEngineProperties props,
             @Autowired(required = false) @Nullable WorkspaceService workspaceService) {
         this.engine = engine;
+        this.hostAccess = hostAccess;
         this.props = props;
         this.workspaceService = workspaceService;
-        this.hostAccess = HostAccess.newBuilder()
+    }
+
+    /** Three-arg constructor for tests that don't need the require
+     *  pathway (workspaceService=null). */
+    public GraaljsScriptExecutor(
+            Engine engine, HostAccess hostAccess, ScriptEngineProperties props) {
+        this(engine, hostAccess, props, null);
+    }
+
+    /** Two-arg backwards-compat constructor — auto-builds a HostAccess
+     *  matching the production one. Used by tests that pre-date the
+     *  HostAccess-injection refactor. */
+    public GraaljsScriptExecutor(Engine engine, ScriptEngineProperties props) {
+        this(engine, defaultHostAccess(), props, null);
+    }
+
+    /** Three-arg backwards-compat constructor matching the old
+     *  pre-HostAccess-injection signature {@code (Engine, Props, WS)} —
+     *  kept so existing tests like
+     *  {@code GraaljsScriptExecutorRequireTest} don't need to change.
+     *  Auto-builds a HostAccess. */
+    public GraaljsScriptExecutor(
+            Engine engine,
+            ScriptEngineProperties props,
+            @Nullable WorkspaceService workspaceService) {
+        this(engine, defaultHostAccess(), props, workspaceService);
+    }
+
+    /** Legacy single-arg ctor — matches the original public contract.
+     *  Used by {@code GraaljsScriptExecutorBindingsTest},
+     *  {@code ScriptHarness}, and any harness that builds its own
+     *  Engine and doesn't need to share HostAccess across services. */
+    public GraaljsScriptExecutor(Engine engine) {
+        this(engine, defaultHostAccess(), new ScriptEngineProperties(), null);
+    }
+
+    private static HostAccess defaultHostAccess() {
+        return HostAccess.newBuilder()
                 .allowAccessAnnotatedBy(HostAccess.Export.class)
                 .allowImplementationsAnnotatedBy(HostAccess.Implementable.class)
                 .allowMapAccess(true)
@@ -75,21 +114,6 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                 .allowIterableAccess(true)
                 .allowIteratorAccess(true)
                 .build();
-    }
-
-    /** Two-arg constructor for tests that don't need the require
-     *  pathway (workspaceService=null). */
-    public GraaljsScriptExecutor(Engine engine, ScriptEngineProperties props) {
-        this(engine, props, null);
-    }
-
-    /** Legacy constructor for unit tests that build the executor
-     *  directly (e.g. {@code GraaljsScriptExecutorBindingsTest},
-     *  {@code ScriptHarness}). Uses framework defaults — equivalent
-     *  to the JVM-wide config a Spring-managed instance would
-     *  receive when no {@code vance.script.*} properties are set. */
-    public GraaljsScriptExecutor(Engine engine) {
-        this(engine, new ScriptEngineProperties(), null);
     }
 
     @Override

@@ -4,6 +4,7 @@ import de.mhus.vance.brain.tools.types.ToolFactory;
 import de.mhus.vance.brain.tools.types.ToolFactoryRegistry;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
@@ -111,7 +112,13 @@ public class ServerToolRegistry {
         ProjectScope scope = scopes.get(scopeKey(tenantId, projectId));
         // If the scope isn't loaded, the refresh is irrelevant — the
         // project will load fresh on next bootstrap.
-        if (scope == null) return false;
+        if (scope == null) {
+            // Even when the originating scope isn't loaded, a change to a
+            // CASCADE-PARENT (i.e. _tenant) must invalidate every loaded
+            // child so their cached snapshot of the parent stays correct.
+            invalidateCascadeChildrenIfParent(tenantId, projectId, name);
+            return false;
+        }
         String norm = ServerToolLoader.normalizedName(name);
         ResolvedTool prior = scope.entries.get(norm);
         Optional<ServerToolConfig> reloaded;
@@ -122,15 +129,49 @@ public class ServerToolRegistry {
                     tenantId, projectId, norm, ex.getMessage());
             scope.entries.remove(norm);
             if (prior != null) invalidateFactory(prior.config);
+            invalidateCascadeChildrenIfParent(tenantId, projectId, name);
             return false;
         }
         if (prior != null) invalidateFactory(prior.config);
         if (reloaded.isEmpty()) {
             scope.entries.remove(norm);
+            invalidateCascadeChildrenIfParent(tenantId, projectId, name);
             return false;
         }
         scope.entries.put(norm, new ResolvedTool(reloaded.get(), tenantId, projectId));
+        invalidateCascadeChildrenIfParent(tenantId, projectId, name);
         return true;
+    }
+
+    /**
+     * When the changed tool lives in the tenant-default project
+     * ({@code _tenant}), every other loaded scope for this tenant has a
+     * stale cascade-view and must reload. We drop the cached entries —
+     * the next access bootstraps them again. Tools in a regular project
+     * don't cascade upwards, so no peer scope is affected.
+     *
+     * <p>This is the side of the refresh that {@link ServerToolService}
+     * cannot do alone: it only knows about the doc's own project, not
+     * who's reading it.
+     */
+    private void invalidateCascadeChildrenIfParent(
+            String tenantId, String projectId, String name) {
+        if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) return;
+        String tenantKey = tenantId + "|";
+        List<String> stale = new ArrayList<>();
+        for (String key : scopes.keySet()) {
+            if (!key.startsWith(tenantKey)) continue;
+            if (key.equals(scopeKey(tenantId, projectId))) continue; // skip self
+            stale.add(key);
+        }
+        for (String key : stale) {
+            ProjectScope removed = scopes.remove(key);
+            if (removed != null) releaseAll(removed);
+        }
+        if (!stale.isEmpty()) {
+            log.info("ServerToolRegistry: invalidated {} child scope(s) after _tenant '{}' change",
+                    stale.size(), name);
+        }
     }
 
     // ──────────────────── Read API ────────────────────

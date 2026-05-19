@@ -1,0 +1,12 @@
+type: doc_lookup
+description: >
+  How to wire an `imap_mailbox` server-tool — read-only IMAP access
+  with auth in project- or user-settings. Covers credential scope
+  (per-project vs per-user), STARTTLS vs implicit-TLS choice, the
+  three sub-tools the factory emits (list_folders, list_messages,
+  get_message), and the recipe for scheduler-driven polling.
+parameters:
+  path: manuals/imap-tools.md
+enabled: true
+primary: false
+labels: [docs, mail, imap, tools]

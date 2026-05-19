@@ -1,0 +1,12 @@
+type: doc_lookup
+description: >
+  How to wire an `smtp_sender` server-tool — outbound transactional
+  mail with auth in project-settings. Covers port + TLS choice (587
+  STARTTLS vs 465 implicit-TLS), why `primary: false` is the default,
+  app-password use for 2FA accounts, and the recipe for notification
+  workers that need to promote the pack to primary for the turn.
+parameters:
+  path: manuals/smtp-tools.md
+enabled: true
+primary: false
+labels: [docs, mail, smtp, tools]

@@ -57,6 +57,8 @@
              tier/mode/profile-aware prompt rendering — see
              planning/prompt-template-migration.md. -->
         <pebble.version>3.2.2</pebble.version>
+        <angus.mail.version>2.0.3</angus.mail.version>
+        <greenmail.version>2.1.4</greenmail.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
@@ -108,6 +110,23 @@
                 <groupId>org.jspecify</groupId>
                 <artifactId>jspecify</artifactId>
                 <version>${jspecify.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Eclipse Angus Mail — the reference impl of Jakarta Mail.
+                     IMAP + SMTP clients used by imap_mailbox / smtp_sender
+                     server-tool factories. Spring Boot 4 doesn't pull this
+                     in by default since spring-boot-starter-mail is opt-in. -->
+                <groupId>org.eclipse.angus</groupId>
+                <artifactId>angus-mail</artifactId>
+                <version>${angus.mail.version}</version>
+            </dependency>
+            <dependency>
+                <!-- Test-only: in-process IMAP + SMTP server for the
+                     imap/smtp factory integration tests. -->
+                <groupId>com.icegreen</groupId>
+                <artifactId>greenmail-junit5</artifactId>
+                <version>${greenmail.version}</version>
+                <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>de.mhus</groupId>

@@ -25,6 +25,14 @@ export default {
         menu: {
             languageHeader: 'Sprache',
         },
+        help: {
+            toggle: 'Hilfe ein-/ausblenden',
+            title: 'Hilfe',
+            close: 'Hilfe schließen',
+            loading: 'Hilfe wird geladen …',
+            unavailable: 'Hilfe nicht verfügbar: {error}',
+            empty: 'Für diese Seite gibt es noch keine Hilfe.',
+        },
     },
     login: {
         autoLoginNotice: 'Sie wurden eingeloggt',
@@ -551,7 +559,9 @@ export default {
                 title: 'Auslösen',
                 help: 'Löst das Event als Admin (JWT-authentifiziert) aus. Der Bearer-Token des Events wird hier nicht benötigt. Optionales JSON-Payload wird unter params.payload an den Workflow weitergereicht.',
                 payloadLabel: 'Payload (JSON, optional)',
-                payloadPlaceholder: '{\n  "ref": "main"\n}',
+                // Curly braces are escaped via vue-i18n's literal syntax — bare
+                // {…} would be parsed as a placeholder and crash the compiler.
+                payloadPlaceholder: "{'{'}\n  \"ref\": \"main\"\n{'}'}",
                 button: 'Event auslösen',
                 spawnedPrefix: 'Workflow gestartet:',
                 runIdLabel: 'workflowRunId:',
@@ -694,6 +704,78 @@ export default {
             stubInfo: 'In {project} wird ein Stub angelegt. Beschreibung, Parameter und Labels werden danach gefüllt.',
             cancel: 'Abbrechen',
             create: 'Anlegen',
+        },
+    },
+    connectedAccounts: {
+        pageTitle: 'Verbundene Konten',
+        loading: 'Laden…',
+        intro: 'Verbinde deine Konten bei externen Anbietern (Slack, Google, Atlassian, …). '
+            + 'Tools, die mit diesen Anbietern reden, benutzen deinen Token automatisch.',
+        statusConnected: 'verbunden',
+        statusUnconnected: 'nicht verbunden',
+        connect: 'Verbinden',
+        reconnect: 'Neu verbinden',
+        disconnect: 'Trennen',
+        confirmDisconnect: '{provider} trennen? Gespeicherte Tokens werden serverseitig gelöscht. Beim Anbieter selbst bleiben sie bis du sie dort widerrufst.',
+        empty: {
+            headline: 'Keine Anbieter konfiguriert',
+            body: 'Bitte deine Tenant-Administration, OAuth-Anbieter für diesen Workspace einzurichten.',
+        },
+        banner: {
+            justConnected: 'Mit {provider} verbunden.',
+        },
+    },
+    oauthProviders: {
+        pageTitle: 'OAuth-Anbieter',
+        loading: 'Laden…',
+        breadcrumbRoot: 'OAuth-Anbieter',
+        confirmDelete: 'OAuth-Anbieter "{id}" löschen? Verbundene User verlieren den Zugriff, bis sie sich neu verbinden.',
+        confirmRemoveSecret: 'Gespeicherten Client-Secret entfernen? Neue Verbindungen funktionieren erst wieder, wenn ein neuer Secret gesetzt wird.',
+        sidebar: {
+            providersLabel: 'Anbieter',
+            addNew: '+ Neu',
+            noProvidersHeadline: 'Keine OAuth-Anbieter',
+            noProvidersBody: 'Mit + Neu einen anlegen.',
+            secretSet: 'Secret gesetzt',
+            secretMissing: 'Secret fehlt',
+        },
+        detail: {
+            clientIdLabel: 'clientId:',
+            save: 'Speichern',
+            delete: 'Löschen',
+        },
+        cards: {
+            yamlTitle: 'Konfiguration (YAML)',
+            yamlHelp: 'Der YAML-Inhalt landet als Document oauth/<providerId>.yaml im _tenant-Projekt. '
+                + 'clientSecret darf hier NICHT stehen — wird über das Secret-Feld unten gesetzt.',
+            secretTitle: 'Client-Secret',
+            secretIsSet: 'Ein Client-Secret ist als Tenant-PASSWORD-Setting gespeichert.',
+            secretIsMissing: 'Noch kein Client-Secret gespeichert — Connect-Versuche scheitern.',
+            newSecretLabel: 'Neuer Client-Secret',
+            newSecretHelp: 'Neuen Wert eintippen zum Setzen oder Rotieren. Leer lassen, um den bestehenden zu behalten.',
+            removeSecret: 'Gespeicherten Secret entfernen',
+        },
+        empty: {
+            headline: 'Anbieter auswählen',
+            body: 'In der Sidebar einen Anbieter wählen oder mit + Neu einen anlegen.',
+        },
+        banner: {
+            saved: 'Gespeichert.',
+            deleted: 'Gelöscht.',
+            secretRemoved: 'Client-Secret entfernt.',
+            created: 'Anbieter "{id}" angelegt. Jetzt clientId, Scopes und Client-Secret eintragen.',
+        },
+        newModal: {
+            title: 'Neuer OAuth-Anbieter',
+            idLabel: 'Anbieter-ID',
+            idHelp: "Kleinbuchstaben/Ziffern, '-' oder '_'. Wird Pfad-Stem und Setting-Key-Prefix (z.B. slack, keycloak-acme).",
+            idRequired: 'Anbieter-ID ist Pflicht.',
+            idPattern: "Anbieter-ID muss mit Buchstabe/Ziffer beginnen, nur Kleinbuchstaben, Ziffern, '-' und '_' erlaubt.",
+            idAlreadyExists: 'Anbieter "{id}" existiert bereits.',
+            stubInfo: 'Eine YAML-Vorlage wird angelegt. Type (oidc / generic-oauth2 / slack / atlassian / google), Endpoints und Scopes ergänzen, dann Client-Secret setzen.',
+            cancel: 'Abbrechen',
+            create: 'Anlegen',
+            createFailed: 'Anbieter konnte nicht angelegt werden.',
         },
     },
     users: {

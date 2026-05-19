@@ -763,6 +763,89 @@ export default {
     },
   },
 
+  connectedAccounts: {
+    pageTitle: 'Connected Accounts',
+    loading: 'Loading…',
+    intro:
+      'Connect your accounts at external providers (Slack, Google, Atlassian, …). '
+      + 'Tools that talk to these providers will use your token automatically.',
+    statusConnected: 'connected',
+    statusUnconnected: 'not connected',
+    connect: 'Connect',
+    reconnect: 'Reconnect',
+    disconnect: 'Disconnect',
+    confirmDisconnect:
+      'Disconnect {provider}? Stored tokens will be deleted from the server. Tokens at the provider stay until you revoke them there.',
+    empty: {
+      headline: 'No providers configured',
+      body: 'Ask your tenant administrator to set up OAuth providers for this workspace.',
+    },
+    banner: {
+      justConnected: 'Connected to {provider}.',
+    },
+  },
+
+  oauthProviders: {
+    pageTitle: 'OAuth Providers',
+    loading: 'Loading…',
+    breadcrumbRoot: 'OAuth Providers',
+    confirmDelete:
+      'Delete OAuth provider "{id}"? Users connected to it lose access until reconnected.',
+    confirmRemoveSecret:
+      'Remove the stored client secret? No new connections will work until you set a new one.',
+    sidebar: {
+      providersLabel: 'Providers',
+      addNew: '+ New',
+      noProvidersHeadline: 'No OAuth providers',
+      noProvidersBody: 'Click + New to add one.',
+      secretSet: 'secret set',
+      secretMissing: 'secret missing',
+    },
+    detail: {
+      clientIdLabel: 'clientId:',
+      save: 'Save',
+      delete: 'Delete',
+    },
+    cards: {
+      yamlTitle: 'Configuration (YAML)',
+      yamlHelp:
+        'The YAML body lands as document oauth/<providerId>.yaml in the _tenant project. '
+        + 'clientSecret must NOT appear here — manage it via the secret field below.',
+      secretTitle: 'Client secret',
+      secretIsSet: 'A client secret is stored as a tenant PASSWORD setting.',
+      secretIsMissing: 'No client secret stored yet — connect attempts will fail.',
+      newSecretLabel: 'New client secret',
+      newSecretHelp:
+        'Type a new value to set or rotate. Leave blank to keep the current one untouched.',
+      removeSecret: 'Remove stored secret',
+    },
+    empty: {
+      headline: 'Pick a provider',
+      body: 'Select a provider from the sidebar to edit it, or create a new one with + New.',
+    },
+    banner: {
+      saved: 'Saved.',
+      deleted: 'Deleted.',
+      secretRemoved: 'Client secret removed.',
+      created: 'Created provider "{id}". Fill in clientId, scopes and add the client secret.',
+    },
+    newModal: {
+      title: 'New OAuth provider',
+      idLabel: 'Provider id',
+      idHelp:
+        "Lower-case alphanumerics, '-' or '_'. Becomes the path stem and the settings-key prefix (e.g. slack, keycloak-acme).",
+      idRequired: 'Provider id is required.',
+      idPattern:
+        "Provider id must start with a letter/digit and contain only lower-case letters, digits, '-' and '_'.",
+      idAlreadyExists: 'Provider "{id}" already exists.',
+      stubInfo:
+        'A stub YAML will be created. Edit it to set the type (oidc / generic-oauth2 / slack / atlassian / google), endpoints and scopes, then set the client secret.',
+      cancel: 'Cancel',
+      create: 'Create',
+      createFailed: 'Failed to create the provider.',
+    },
+  },
+
   users: {
     pageTitle: 'Users & Teams',
     loading: 'Loading…',

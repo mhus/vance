@@ -66,3 +66,18 @@ Use these when the user asks about *their* files, not project files.
 - `process_create name=… engine=ford [goal=…]` — spawn a sub-process.
 - `process_steer name=… content=…` — drive another process. See
   `processes` doc.
+
+## OAuth-backed tools (Slack, Jira, Google, GitHub, …)
+
+When a server tool's auth field references
+`{{secret:user:oauth.<providerId>.access_token}}`, the brain fetches
+the current user's access token for that provider and refreshes it
+transparently before expiry. The user has to have connected the
+provider once via Web-UI → Connected Accounts; if they haven't, tool
+calls fail with a clear "user must connect provider X" message.
+
+See `doc_oauth_tools` (auto-discoverable via `find_tools`) for the
+full recipe — including the `{{secret:user:oauth.…}}` syntax, what to
+do when the connect / refresh path fails, and how to label the
+resulting tools so recipes can include/exclude external providers
+cleanly.

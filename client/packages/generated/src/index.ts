@@ -35,6 +35,10 @@ export * from './documents/DocumentListResponse';
 export * from './documents/DocumentSummary';
 export * from './documents/DocumentUpdateRequest';
 
+export * from './oauth/OAuthProviderAdminDto';
+export * from './oauth/OAuthProviderListEntry';
+export * from './oauth/OAuthProviderWriteRequest';
+
 export * from './chat/ChatMessageAppendedData';
 export * from './chat/ChatMessageChunkData';
 export * from './chat/ChatMessageDto';

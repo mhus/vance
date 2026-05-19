@@ -21,6 +21,14 @@ declare const _default: {
         menu: {
             languageHeader: string;
         };
+        help: {
+            toggle: string;
+            title: string;
+            close: string;
+            loading: string;
+            unavailable: string;
+            empty: string;
+        };
     };
     login: {
         autoLoginNotice: string;
@@ -690,6 +698,76 @@ declare const _default: {
             stubInfo: string;
             cancel: string;
             create: string;
+        };
+    };
+    connectedAccounts: {
+        pageTitle: string;
+        loading: string;
+        intro: string;
+        statusConnected: string;
+        statusUnconnected: string;
+        connect: string;
+        reconnect: string;
+        disconnect: string;
+        confirmDisconnect: string;
+        empty: {
+            headline: string;
+            body: string;
+        };
+        banner: {
+            justConnected: string;
+        };
+    };
+    oauthProviders: {
+        pageTitle: string;
+        loading: string;
+        breadcrumbRoot: string;
+        confirmDelete: string;
+        confirmRemoveSecret: string;
+        sidebar: {
+            providersLabel: string;
+            addNew: string;
+            noProvidersHeadline: string;
+            noProvidersBody: string;
+            secretSet: string;
+            secretMissing: string;
+        };
+        detail: {
+            clientIdLabel: string;
+            save: string;
+            delete: string;
+        };
+        cards: {
+            yamlTitle: string;
+            yamlHelp: string;
+            secretTitle: string;
+            secretIsSet: string;
+            secretIsMissing: string;
+            newSecretLabel: string;
+            newSecretHelp: string;
+            removeSecret: string;
+        };
+        empty: {
+            headline: string;
+            body: string;
+        };
+        banner: {
+            saved: string;
+            deleted: string;
+            secretRemoved: string;
+            created: string;
+        };
+        newModal: {
+            title: string;
+            idLabel: string;
+            idHelp: string;
+            idRequired: string;
+            idPattern: string;
+            idAlreadyExists: string;
+            stubInfo: string;
+            cancel: string;
+            create: string;
+            createFailed: string;
         };
     };
     users: {

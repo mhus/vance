@@ -1,0 +1,12 @@
+type: doc_lookup
+description: >
+  How to wire a server tool that talks to Slack / Jira / Google / GitHub
+  / any OAuth-protected API. Resolver syntax for OAuth tokens, the
+  recipe for MCP-and-REST tools that ride on user tokens, what to do
+  when the user hasn't connected yet. Read this before creating a tool
+  whose auth field references `{{secret:user:oauth.…}}`.
+parameters:
+  path: manuals/oauth-tools.md
+enabled: true
+primary: false
+labels: [docs, oauth, tools]

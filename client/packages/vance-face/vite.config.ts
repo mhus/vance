@@ -16,6 +16,8 @@ const editorEntries = {
   profile: resolve(__dirname, 'profile.html'),
   scheduler: resolve(__dirname, 'scheduler.html'),
   scripts: resolve(__dirname, 'scripts.html'),
+  'connected-accounts': resolve(__dirname, 'connected-accounts.html'),
+  'oauth-providers': resolve(__dirname, 'oauth-providers.html'),
 };
 
 export default defineConfig({

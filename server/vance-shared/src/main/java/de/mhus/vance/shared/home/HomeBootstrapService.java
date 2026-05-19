@@ -57,19 +57,20 @@ public class HomeBootstrapService {
     public static final String HUB_PROJECT_NAME_PREFIX = "_user_";
 
     /**
-     * Reserved name of the tenant-wide "Vance" system project — sibling
-     * to the per-user {@code _user_<login>} projects, but tenant-scoped
-     * (one per tenant, no user suffix). Reserved as the override layer
-     * for system-wide defaults: documents under {@code _vance/agent.md},
-     * {@code _vance/documents/…}, {@code _vance/prompts/…} etc. shadow
-     * the bundled JAR resources at tenant level. Lookup logic comes
-     * with later iterations; this iteration just provisions the
-     * project.
+     * Reserved name of the tenant-wide system project — sibling to the
+     * per-user {@code _user_<login>} projects, but tenant-scoped (one
+     * per tenant, no user suffix). Holds the override layer for
+     * system-wide defaults: configuration documents (recipes, skills,
+     * server-tools, scheduler, …) live here unless a user project
+     * shadows them by path. The document-path prefix {@code _vance/}
+     * remains as a historical namespace for system-managed documents;
+     * the project itself is named {@code _tenant} to avoid the
+     * name collision with that prefix.
      */
-    public static final String VANCE_PROJECT_NAME = "_vance";
+    public static final String TENANT_PROJECT_NAME = "_tenant";
 
-    /** Display title of the {@code _vance} project on first creation. */
-    public static final String VANCE_PROJECT_TITLE = "Vance";
+    /** Display title of the {@link #TENANT_PROJECT_NAME} project on first creation. */
+    public static final String TENANT_PROJECT_TITLE = "Tenant Defaults";
 
     private final ProjectGroupService projectGroupService;
     private final ProjectService projectService;
@@ -118,29 +119,29 @@ public class HomeBootstrapService {
     }
 
     /**
-     * Ensures the tenant-wide {@value #VANCE_PROJECT_NAME} system project
+     * Ensures the tenant-wide {@value #TENANT_PROJECT_NAME} system project
      * exists in {@code tenantId}, creating it inside the {@value #HOME_GROUP_NAME}
      * project group on first call. Idempotent: repeated calls return the
      * existing row.
      *
      * <p>Intended use: a holding project for tenant-level overrides of
      * system defaults (documents, prompts, agent memos). The lookup
-     * paths that consult it ({@code _vance/agent.md}, etc.) are added
-     * by the resource-loader in a follow-up step — this method only
-     * provisions the slot.
+     * paths that consult it (documents under {@code _vance/…}, recipes,
+     * skills, server-tools, …) are added by the resource-loader on top
+     * of this layer — this method only provisions the slot.
      */
-    public ProjectDocument ensureVance(String tenantId) {
+    public ProjectDocument ensureTenantProject(String tenantId) {
         ProjectGroupDocument group = ensureHomeGroup(tenantId);
-        ProjectDocument project = projectService.findByTenantAndName(tenantId, VANCE_PROJECT_NAME)
+        ProjectDocument project = projectService.findByTenantAndName(tenantId, TENANT_PROJECT_NAME)
                 .orElseGet(() -> {
                     ProjectDocument created = projectService.create(
                             tenantId,
-                            VANCE_PROJECT_NAME,
-                            VANCE_PROJECT_TITLE,
+                            TENANT_PROJECT_NAME,
+                            TENANT_PROJECT_TITLE,
                             group.getName(),
                             null,
                             ProjectKind.SYSTEM);
-                    log.info("Bootstrapped tenant-wide Vance project tenantId='{}' project='{}'",
+                    log.info("Bootstrapped tenant-wide system project tenantId='{}' project='{}'",
                             tenantId, created.getName());
                     return created;
                 });

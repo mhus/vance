@@ -48,7 +48,7 @@ public class ProjectKitsCatalogService {
      */
     public ProjectKitsCatalogDto load(String tenantId) {
         Optional<DocumentDocument> doc = documentService.findByPath(
-                tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, CATALOG_PATH);
+                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
         if (doc.isEmpty()) {
             return ProjectKitsCatalogDto.builder()
                     .version(CURRENT_VERSION)
@@ -89,7 +89,7 @@ public class ProjectKitsCatalogService {
         validate(catalog);
         String yamlText = serialize(catalog);
         Optional<DocumentDocument> existing = documentService.findByPath(
-                tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, CATALOG_PATH);
+                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, CATALOG_PATH);
         if (existing.isPresent()) {
             documentService.update(
                     existing.get().getId(), null, null, yamlText, null);
@@ -98,7 +98,7 @@ public class ProjectKitsCatalogService {
         } else {
             documentService.createText(
                     tenantId,
-                    HomeBootstrapService.VANCE_PROJECT_NAME,
+                    HomeBootstrapService.TENANT_PROJECT_NAME,
                     CATALOG_PATH,
                     "Project Kits",
                     null,
@@ -128,14 +128,14 @@ public class ProjectKitsCatalogService {
         }
         Optional<DocumentDocument> sourceDoc = documentService.findByPath(
                 TenantService.SYSTEM_TENANT,
-                HomeBootstrapService.VANCE_PROJECT_NAME,
+                HomeBootstrapService.TENANT_PROJECT_NAME,
                 CATALOG_PATH);
         if (sourceDoc.isEmpty()) {
             return;
         }
         Optional<DocumentDocument> targetDoc = documentService.findByPath(
                 targetTenantId,
-                HomeBootstrapService.VANCE_PROJECT_NAME,
+                HomeBootstrapService.TENANT_PROJECT_NAME,
                 CATALOG_PATH);
         if (targetDoc.isPresent()) {
             return;
@@ -147,7 +147,7 @@ public class ProjectKitsCatalogService {
         try {
             documentService.createText(
                     targetTenantId,
-                    HomeBootstrapService.VANCE_PROJECT_NAME,
+                    HomeBootstrapService.TENANT_PROJECT_NAME,
                     CATALOG_PATH,
                     "Project Kits",
                     null,
@@ -210,7 +210,7 @@ public class ProjectKitsCatalogService {
         }
         if (!(loaded instanceof Map<?, ?> map)) {
             throw new IllegalStateException(
-                    "Catalog at " + tenantId + "/" + HomeBootstrapService.VANCE_PROJECT_NAME
+                    "Catalog at " + tenantId + "/" + HomeBootstrapService.TENANT_PROJECT_NAME
                             + "/" + CATALOG_PATH + " is not a YAML map");
         }
         int version = readInt(map, "version", CURRENT_VERSION);

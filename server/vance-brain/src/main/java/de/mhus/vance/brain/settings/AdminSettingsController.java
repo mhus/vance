@@ -168,7 +168,7 @@ public class AdminSettingsController {
         return switch (wireType) {
             case SettingService.SCOPE_TENANT ->
                     new StorageRef(SettingService.SCOPE_PROJECT,
-                            HomeBootstrapService.VANCE_PROJECT_NAME);
+                            HomeBootstrapService.TENANT_PROJECT_NAME);
             case SettingService.SCOPE_USER -> {
                 if (wireId == null || wireId.isBlank()) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -192,7 +192,7 @@ public class AdminSettingsController {
      */
     private static StorageRef storageToWire(String storedType, String storedId) {
         if (SettingService.SCOPE_PROJECT.equals(storedType)) {
-            if (HomeBootstrapService.VANCE_PROJECT_NAME.equals(storedId)) {
+            if (HomeBootstrapService.TENANT_PROJECT_NAME.equals(storedId)) {
                 return new StorageRef(SettingService.SCOPE_TENANT, storedId);
             }
             if (storedId != null

@@ -86,18 +86,18 @@ class HomeBootstrapServiceTest {
     }
 
     @Test
-    void ensureVance_createsTenantWideProject_underHomeGroup() {
+    void ensureTenantProject_createsTenantWideProject_underHomeGroup() {
         when(projectGroupService.findByTenantAndName("acme", "_home"))
                 .thenReturn(Optional.of(group("_home")));
-        when(projectService.findByTenantAndName("acme", "_vance"))
+        when(projectService.findByTenantAndName("acme", "_tenant"))
                 .thenReturn(Optional.empty());
-        when(projectService.create(eq("acme"), eq("_vance"),
-                eq("Vance"), eq("_home"), eq(null), eq(ProjectKind.SYSTEM)))
-                .thenReturn(project("_vance"));
+        when(projectService.create(eq("acme"), eq("_tenant"),
+                eq("Tenant Defaults"), eq("_home"), eq(null), eq(ProjectKind.SYSTEM)))
+                .thenReturn(project("_tenant"));
 
-        ProjectDocument result = bootstrap.ensureVance("acme");
+        ProjectDocument result = bootstrap.ensureTenantProject("acme");
 
-        assertThat(result.getName()).isEqualTo("_vance");
+        assertThat(result.getName()).isEqualTo("_tenant");
         // Project-kits catalog seeding is triggered on every call so
         // tenants created before the catalog landed in _vance auto-heal
         // on the next login (idempotent via the service itself).

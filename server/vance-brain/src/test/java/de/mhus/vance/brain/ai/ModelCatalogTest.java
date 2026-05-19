@@ -31,7 +31,7 @@ class ModelCatalogTest {
 
     private static final String TENANT = "acme";
     private static final String PROJECT = "demo";
-    private static final String VANCE = HomeBootstrapService.VANCE_PROJECT_NAME;
+    private static final String VANCE = HomeBootstrapService.TENANT_PROJECT_NAME;
 
     private DocumentService documentService;
     private ModelCatalog catalog;

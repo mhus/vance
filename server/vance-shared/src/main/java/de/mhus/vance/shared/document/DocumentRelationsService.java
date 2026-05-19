@@ -74,8 +74,8 @@ public class DocumentRelationsService {
         // _vance first so we read tenant defaults even when the caller is
         // editing a project; skip when projectId == _vance to avoid reading
         // the same documents twice.
-        appendRelationsFrom(result, tenantId, HomeBootstrapService.VANCE_PROJECT_NAME);
-        if (!HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+        appendRelationsFrom(result, tenantId, HomeBootstrapService.TENANT_PROJECT_NAME);
+        if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             appendRelationsFrom(result, tenantId, projectId);
         }
         return result;

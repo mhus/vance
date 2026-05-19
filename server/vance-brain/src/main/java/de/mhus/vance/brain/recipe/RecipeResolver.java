@@ -465,7 +465,7 @@ public class RecipeResolver {
 
     private static String effectiveProjectId(@Nullable String projectId) {
         return (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.VANCE_PROJECT_NAME : projectId;
+                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
     public static class UnknownRecipeException extends RuntimeException {

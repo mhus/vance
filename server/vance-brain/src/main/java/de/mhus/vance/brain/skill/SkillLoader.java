@@ -93,7 +93,7 @@ public class SkillLoader {
 
         // 2. PROJECT → VANCE → RESOURCE via DocumentService cascade.
         String effectiveProjectId = (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.VANCE_PROJECT_NAME : projectId;
+                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
         Optional<LookupResult> hit = documentService.lookupCascade(
                 tenantId, effectiveProjectId, entryPath);
         if (hit.isEmpty()) return Optional.empty();
@@ -103,7 +103,7 @@ public class SkillLoader {
         SiblingReader siblingReader = switch (result.source()) {
             case PROJECT -> new ProjectSiblingReader(tenantId, effectiveProjectId);
             case VANCE -> new ProjectSiblingReader(
-                    tenantId, HomeBootstrapService.VANCE_PROJECT_NAME);
+                    tenantId, HomeBootstrapService.TENANT_PROJECT_NAME);
             case RESOURCE -> new ResourceSiblingReader();
         };
         return Optional.of(parse(stem, result, scope, siblingReader));
@@ -126,9 +126,9 @@ public class SkillLoader {
         for (ResolvedSkill r : listResources()) {
             if (r.enabled()) byName.put(r.name(), r);
         }
-        addProjectLayer(byName, tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, SkillScope.VANCE);
+        addProjectLayer(byName, tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, SkillScope.VANCE);
         if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             addProjectLayer(byName, tenantId, projectId, SkillScope.PROJECT);
         }
         if (userId != null && !userId.isBlank()) {

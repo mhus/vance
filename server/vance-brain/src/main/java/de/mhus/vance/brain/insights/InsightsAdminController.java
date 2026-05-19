@@ -546,10 +546,10 @@ public class InsightsAdminController {
         }
 
         // Layer 2 — tenant-wide _vance project
-        applyToolLayer(acc, tenant, HomeBootstrapService.VANCE_PROJECT_NAME, "VANCE");
+        applyToolLayer(acc, tenant, HomeBootstrapService.TENANT_PROJECT_NAME, "VANCE");
 
         // Layer 3 — caller's project (skip if it IS _vance)
-        if (!HomeBootstrapService.VANCE_PROJECT_NAME.equals(project)) {
+        if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(project)) {
             applyToolLayer(acc, tenant, project, "PROJECT");
         }
 

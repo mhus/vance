@@ -84,7 +84,7 @@ public class ServerToolLoader {
             String name = nameFromPath(path);
             if (name == null) continue;
             LookupResult.Source source =
-                    HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)
+                    HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)
                             ? LookupResult.Source.VANCE
                             : LookupResult.Source.PROJECT;
             LookupResult hit = new LookupResult(path, documentService.readContent(doc), source, doc);
@@ -156,7 +156,7 @@ public class ServerToolLoader {
 
     private static String effectiveProjectId(@Nullable String projectId) {
         return (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.VANCE_PROJECT_NAME : projectId;
+                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
     private static @Nullable String nameFromPath(String path) {

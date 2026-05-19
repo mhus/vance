@@ -125,13 +125,13 @@ public class ModelCatalog {
         Map<String, Map<String, Object>> merged = new LinkedHashMap<>();
         applyLayer(merged, readBundled(), "bundled");
         if (tenantId != null && !tenantId.isBlank()) {
-            applyLayer(merged, readDocument(tenantId, HomeBootstrapService.VANCE_PROJECT_NAME),
+            applyLayer(merged, readDocument(tenantId, HomeBootstrapService.TENANT_PROJECT_NAME),
                     "tenant(_vance)");
             // Project layer is skipped when projectId IS _vance — that's
             // the tenant layer; reading the same document twice would
             // duplicate work without changing the result.
             if (projectId != null && !projectId.isBlank()
-                    && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+                    && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
                 applyLayer(merged, readDocument(tenantId, projectId), "project");
             }
         }

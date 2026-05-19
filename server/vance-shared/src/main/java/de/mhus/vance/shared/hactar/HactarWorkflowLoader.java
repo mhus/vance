@@ -141,7 +141,7 @@ public class HactarWorkflowLoader {
 
     private static String effectiveProjectId(@Nullable String projectId) {
         return (projectId == null || projectId.isBlank())
-                ? HomeBootstrapService.VANCE_PROJECT_NAME : projectId;
+                ? HomeBootstrapService.TENANT_PROJECT_NAME : projectId;
     }
 
     private static @Nullable String nameFromPath(String path) {

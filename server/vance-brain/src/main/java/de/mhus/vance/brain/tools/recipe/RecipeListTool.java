@@ -65,7 +65,7 @@ public class RecipeListTool implements Tool {
             throw new ToolException("recipe_list requires a tenant scope");
         }
         String projectId = ctx.projectId() == null || ctx.projectId().isBlank()
-                ? HomeBootstrapService.VANCE_PROJECT_NAME
+                ? HomeBootstrapService.TENANT_PROJECT_NAME
                 : ctx.projectId();
         List<Map<String, Object>> rows = new ArrayList<>();
         for (ResolvedRecipe r : loader.listAll(ctx.tenantId(), projectId)) {

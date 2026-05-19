@@ -360,7 +360,7 @@ public class DocumentService {
      * inline documents are both materialized to a UTF-8 string, so the
      * caller never has to differentiate.
      *
-     * <p>Calling with {@code projectId == "_vance"} just collapses the
+     * <p>Calling with {@code projectId == "_tenant"} just collapses the
      * first two layers — the project lookup and the {@code _vance}
      * lookup are the same row and we don't read it twice.
      *
@@ -372,7 +372,7 @@ public class DocumentService {
         String norm = normalizePath(path);
 
         // 1. Project (if not the _vance project itself).
-        if (!HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+        if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             Optional<LookupResult> hit = tryProjectLookup(
                     tenantId, projectId, norm, LookupResult.Source.PROJECT);
             if (hit.isPresent()) return hit;
@@ -380,7 +380,7 @@ public class DocumentService {
 
         // 2. _vance project.
         Optional<LookupResult> vance = tryProjectLookup(
-                tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, norm,
+                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, norm,
                 LookupResult.Source.VANCE);
         if (vance.isPresent()) return vance;
 
@@ -420,9 +420,9 @@ public class DocumentService {
         // honours "innermost wins" without tracking seen-keys manually.
         applyResourceLayer(merged, prefix);
         applyProjectLayer(merged,
-                tenantId, HomeBootstrapService.VANCE_PROJECT_NAME, prefix,
+                tenantId, HomeBootstrapService.TENANT_PROJECT_NAME, prefix,
                 LookupResult.Source.VANCE);
-        if (!HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+        if (!HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             applyProjectLayer(merged,
                     tenantId, projectId, prefix,
                     LookupResult.Source.PROJECT);

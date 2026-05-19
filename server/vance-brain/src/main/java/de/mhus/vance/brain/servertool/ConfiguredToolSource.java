@@ -50,7 +50,7 @@ public class ConfiguredToolSource implements ToolSource {
     private static String effectiveProjectId(ToolInvocationContext ctx) {
         String pid = ctx.projectId();
         return (pid == null || pid.isBlank())
-                ? de.mhus.vance.shared.home.HomeBootstrapService.VANCE_PROJECT_NAME
+                ? de.mhus.vance.shared.home.HomeBootstrapService.TENANT_PROJECT_NAME
                 : pid;
     }
 }

@@ -82,7 +82,7 @@ public class IntellijMcpRegisterHandler implements WsHandler {
         }
 
         String tenantId = ctx.getTenantId();
-        String projectId = HomeBootstrapService.VANCE_PROJECT_NAME;
+        String projectId = HomeBootstrapService.TENANT_PROJECT_NAME;
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("transport", "http");
         parameters.put("url", url);

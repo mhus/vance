@@ -271,12 +271,12 @@ public class SettingService {
             if (v != null) return v;
         }
         if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             String v = getStringValue(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
         return getStringValue(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.VANCE_PROJECT_NAME, key);
+                HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     /**
@@ -319,12 +319,12 @@ public class SettingService {
             if (v != null) return v;
         }
         if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             String v = getDecryptedPassword(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
         return getDecryptedPassword(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.VANCE_PROJECT_NAME, key);
+                HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     /**
@@ -343,9 +343,9 @@ public class SettingService {
             String keyPrefix) {
         Map<String, String> merged = new LinkedHashMap<>();
         applyPrefixScope(merged, tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.VANCE_PROJECT_NAME, keyPrefix);
+                HomeBootstrapService.TENANT_PROJECT_NAME, keyPrefix);
         if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             applyPrefixScope(merged, tenantId, SCOPE_PROJECT, projectId, keyPrefix);
         }
         if (thinkProcessId != null && !thinkProcessId.isBlank()) {
@@ -383,12 +383,12 @@ public class SettingService {
             if (v != null) return v;
         }
         if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             String v = getStringValue(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
         return getStringValue(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.VANCE_PROJECT_NAME, key);
+                HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     /**
@@ -411,12 +411,12 @@ public class SettingService {
             if (v != null) return v;
         }
         if (projectId != null && !projectId.isBlank()
-                && !HomeBootstrapService.VANCE_PROJECT_NAME.equals(projectId)) {
+                && !HomeBootstrapService.TENANT_PROJECT_NAME.equals(projectId)) {
             String v = getDecryptedPassword(tenantId, SCOPE_PROJECT, projectId, key);
             if (v != null) return v;
         }
         return getDecryptedPassword(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.VANCE_PROJECT_NAME, key);
+                HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     // ──────────────────── User-only settings ────────────────────
@@ -450,7 +450,7 @@ public class SettingService {
         String v = getUserStringValue(tenantId, userId, key);
         if (v != null) return v;
         return getStringValue(tenantId, SCOPE_PROJECT,
-                HomeBootstrapService.VANCE_PROJECT_NAME, key);
+                HomeBootstrapService.TENANT_PROJECT_NAME, key);
     }
 
     /**

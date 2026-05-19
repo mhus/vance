@@ -55,7 +55,7 @@ public class InitSettingsLoader {
      * {@link #loadIfPresent()}.
      */
     private static final String SETTINGS_REF_TYPE = SettingService.SCOPE_PROJECT;
-    private static final String SETTINGS_REF_ID = HomeBootstrapService.VANCE_PROJECT_NAME;
+    private static final String SETTINGS_REF_ID = HomeBootstrapService.TENANT_PROJECT_NAME;
 
     private final InitSettingsProperties properties;
     private final SettingService settingService;

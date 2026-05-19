@@ -39,7 +39,7 @@ class ProjectKitsCatalogServiceTest {
     @Test
     void load_missingDoc_returnsEmptyCatalog() {
         when(documentService.findByPath(
-                "acme", HomeBootstrapService.VANCE_PROJECT_NAME, ProjectKitsCatalogService.CATALOG_PATH))
+                "acme", HomeBootstrapService.TENANT_PROJECT_NAME, ProjectKitsCatalogService.CATALOG_PATH))
                 .thenReturn(Optional.empty());
 
         ProjectKitsCatalogDto loaded = catalog.load("acme");
@@ -60,7 +60,7 @@ class ProjectKitsCatalogServiceTest {
         ArgumentCaptor<String> yamlText = ArgumentCaptor.forClass(String.class);
         verify(documentService).createText(
                 eq("acme"),
-                eq(HomeBootstrapService.VANCE_PROJECT_NAME),
+                eq(HomeBootstrapService.TENANT_PROJECT_NAME),
                 eq(ProjectKitsCatalogService.CATALOG_PATH),
                 eq("Project Kits"),
                 isNull(),
@@ -71,7 +71,7 @@ class ProjectKitsCatalogServiceTest {
         DocumentDocument doc = new DocumentDocument();
         doc.setInlineText(yamlText.getValue());
         when(documentService.findByPath(
-                "acme", HomeBootstrapService.VANCE_PROJECT_NAME, ProjectKitsCatalogService.CATALOG_PATH))
+                "acme", HomeBootstrapService.TENANT_PROJECT_NAME, ProjectKitsCatalogService.CATALOG_PATH))
                 .thenReturn(Optional.of(doc));
         when(documentService.readContent(doc)).thenReturn(yamlText.getValue());
 
@@ -219,7 +219,7 @@ class ProjectKitsCatalogServiceTest {
 
         verify(documentService).createText(
                 eq("acme"),
-                eq(HomeBootstrapService.VANCE_PROJECT_NAME),
+                eq(HomeBootstrapService.TENANT_PROJECT_NAME),
                 eq(ProjectKitsCatalogService.CATALOG_PATH),
                 eq("Project Kits"),
                 isNull(),

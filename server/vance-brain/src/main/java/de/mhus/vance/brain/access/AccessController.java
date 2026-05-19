@@ -199,7 +199,7 @@ public class AccessController {
         // Tenant-wide _vance system project — holds the override layer
         // for tenant-level documents/prompts/memory (resource lookup
         // logic lands in a follow-up). Idempotent and cheap.
-        homeBootstrapService.ensureVance(tenant);
+        homeBootstrapService.ensureTenantProject(tenant);
         // Bundled server-tool defaults are served by DocumentService's
         // classpath resource layer (vance-defaults/server-tools/*.yaml);
         // no explicit seeding step is needed.

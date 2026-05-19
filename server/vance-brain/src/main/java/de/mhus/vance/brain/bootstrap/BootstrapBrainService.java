@@ -54,6 +54,13 @@ public class BootstrapBrainService {
     private final HomeBootstrapService homeBootstrapService;
     private final InitSettingsLoader initSettingsLoader;
     private final BootstrapProperties properties;
+    // Inject the migration so its @PostConstruct fires before this service's
+    // @PostConstruct does. Without this dependency, the bootstrap would create
+    // a fresh _tenant project alongside the legacy _vance project on a
+    // pre-migration dev Mongo, and the migration would crash on the unique
+    // (tenantId, name) index when trying to rename.
+    @SuppressWarnings("unused")
+    private final VanceToTenantProjectMigration tenantProjectMigration;
 
     @PostConstruct
     void init() {
@@ -92,7 +99,7 @@ public class BootstrapBrainService {
         // server-tool defaults. Provision it eagerly so that
         // InitSettingsLoader has somewhere to write — other tenants
         // get _vance lazily on first login (AccessController).
-        homeBootstrapService.ensureVance(ACME_TENANT);
+        homeBootstrapService.ensureTenantProject(ACME_TENANT);
 
         // LLM keys, provider/model defaults, etc. — loaded from a
         // gitignored YAML so a Mongo wipe doesn't lose them. The

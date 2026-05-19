@@ -147,21 +147,33 @@ public class InitSettingsLoader {
 
     /**
      * Locates the settings file. Tries the configured path first; if
-     * not found and the configured path matches the default convention,
-     * walks up parent directories looking for
-     * {@code confidential/init-settings.yaml}.
+     * the configured path is relative and not found at the cwd, walks
+     * up parent directories trying that same relative path — so a
+     * command run from {@code qa/ai-test/} with
+     * {@code vance.init.settings-file=confidential/init-settings-ollama.yaml}
+     * still finds the file at the workbench root. As a last resort,
+     * also tries the hard-coded {@link #CONVENTIONAL_PATH} so an
+     * unconfigured boot still finds the default.
      */
     private Optional<Path> locateFile() {
-        Path configured = Paths.get(properties.getSettingsFile()).toAbsolutePath().normalize();
-        if (Files.isRegularFile(configured)) {
-            return Optional.of(configured);
+        String configuredStr = properties.getSettingsFile();
+        Path configuredAbs = Paths.get(configuredStr).toAbsolutePath().normalize();
+        if (Files.isRegularFile(configuredAbs)) {
+            return Optional.of(configuredAbs);
         }
-        // Walk up from the working directory looking for the convention.
+        Path configuredRel = Paths.get(configuredStr);
+        boolean configuredIsRelative = !configuredRel.isAbsolute();
         Path cwd = Paths.get("").toAbsolutePath().normalize();
         while (cwd != null) {
-            Path candidate = cwd.resolve(CONVENTIONAL_PATH);
-            if (Files.isRegularFile(candidate)) {
-                return Optional.of(candidate);
+            if (configuredIsRelative) {
+                Path candidate = cwd.resolve(configuredRel);
+                if (Files.isRegularFile(candidate)) {
+                    return Optional.of(candidate);
+                }
+            }
+            Path conventional = cwd.resolve(CONVENTIONAL_PATH);
+            if (Files.isRegularFile(conventional)) {
+                return Optional.of(conventional);
             }
             cwd = cwd.getParent();
         }

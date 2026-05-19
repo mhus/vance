@@ -66,11 +66,17 @@ public class OllamaProvider implements AiModelProvider {
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         boolean think = options.getThinkingLevel() != ThinkingLevel.OFF;
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
+        // Ollama defaults num_ctx=4096 unless overridden — that's far
+        // below the ai-test session sizes (~50K tokens). Pass the
+        // catalog's contextWindowTokens so the model is loaded with
+        // its real window; YAML overrides cap RAM cost.
+        int numCtx = modelInfo.contextWindowTokens();
         try {
             OllamaChatModel sync = OllamaChatModel.builder()
                     .baseUrl(baseUrl)
                     .modelName(config.modelName())
                     .temperature(options.getTemperature())
+                    .numCtx(numCtx)
                     .numPredict(options.getMaxTokens())
                     .topP(options.getTopP())
                     .topK(options.getTopK())
@@ -86,6 +92,7 @@ public class OllamaProvider implements AiModelProvider {
                     .baseUrl(baseUrl)
                     .modelName(config.modelName())
                     .temperature(options.getTemperature())
+                    .numCtx(numCtx)
                     .numPredict(options.getMaxTokens())
                     .topP(options.getTopP())
                     .topK(options.getTopK())
@@ -97,9 +104,9 @@ public class OllamaProvider implements AiModelProvider {
                     .logRequests(options.getLogRequests())
                     .logResponses(options.getLogRequests())
                     .build();
-            log.debug("Built Ollama chat pair: model='{}', baseUrl='{}', numPredict={}, "
-                            + "temperature={}, think={}",
-                    config.modelName(), baseUrl, options.getMaxTokens(),
+            log.debug("Built Ollama chat pair: model='{}', baseUrl='{}', numCtx={}, "
+                            + "numPredict={}, temperature={}, think={}",
+                    config.modelName(), baseUrl, numCtx, options.getMaxTokens(),
                     options.getTemperature(), think);
             return new StandardAiChat(
                     config.fullName(),

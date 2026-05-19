@@ -300,3 +300,58 @@ openai:
     contextWindowTokens: 128000
     defaultMaxOutputTokens: 8192
     size: LARGE
+
+# Local Ollama (http://localhost:11434). Context windows match the
+# model's native window as advertised on ollama.com/library; Ollama
+# itself defaults to num_ctx=4096 unless OllamaProvider passes
+# numCtx explicitly, so the catalog values here drive that override.
+# Timeouts are bumped — local inference on 20-30B models takes
+# noticeably longer than cloud APIs, especially on first token.
+ollama:
+  # ── Small / fast tier ─────────────────────────────────────────
+  "llama3.1:8b":
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 4096
+    size: SMALL
+    timeoutSeconds: 180
+  "qwen3:8b":
+    # qwen3:8b advertises 40K native context on ollama.com; some
+    # Vance turns blow past that — keep low to avoid silent truncation.
+    contextWindowTokens: 40960
+    defaultMaxOutputTokens: 4096
+    size: SMALL
+    timeoutSeconds: 180
+
+  # ── Medium reasoning tier ─────────────────────────────────────
+  "gpt-oss:20b":
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 4096
+    size: SMALL
+    timeoutSeconds: 240
+  "mistral-small3.2:24b":
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 4096
+    size: SMALL
+    capabilities: [vision]
+    timeoutSeconds: 240
+
+  # ── Large MoE ─────────────────────────────────────────────────
+  # qwen3:30b is a 30B-param MoE with ~3B active — treat as the
+  # "analyze" workhorse, full tool-use + thinking. Native window
+  # is 256K but the KV-cache cost at full window is steep; cap at
+  # 131K which still dwarfs any ai-test session we've measured.
+  "qwen3:30b":
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 4096
+    size: LARGE
+    timeoutSeconds: 300
+
+  # qwen3.6:35b is the next-gen MoE (35B params, 3B active) with
+  # full 256K native context, tools + thinking + vision. ~24 GB
+  # on-disk. Same KV-cache caveat as qwen3:30b — cap at 131K.
+  "qwen3.6:35b":
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 4096
+    size: LARGE
+    capabilities: [vision]
+    timeoutSeconds: 300

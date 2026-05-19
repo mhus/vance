@@ -56,4 +56,17 @@ public interface ToolFactory {
      * cascade-lookup will surface the failure on read.
      */
     Collection<Tool> create(ServerToolDocument document);
+
+    /**
+     * Hook invoked when the document behind {@code documentId} is being
+     * removed or replaced — lets the factory release pool resources
+     * (e.g. {@code McpToolPackFactory} closes the live MCP connection
+     * for that doc). Default is a no-op; only factories that hold
+     * doc-keyed external state need to override.
+     *
+     * @param documentId owning {@code DocumentDocument} id; {@code null}-safe
+     */
+    default void invalidate(@org.jspecify.annotations.Nullable String documentId) {
+        // No-op for factories without doc-keyed resources.
+    }
 }

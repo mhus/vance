@@ -299,23 +299,6 @@ public final class KitYamlMapper {
         return dump(root);
     }
 
-    // ──────────────────── tools/<name>.tool.yaml ────────────────────
-
-    /**
-     * Returns the raw map view of a tool YAML — the {@code KitInstaller}
-     * lifts the well-known fields ({@code name}, {@code type}, ...) onto
-     * a {@code ServerToolDocument} and treats the rest as
-     * {@code parameters}.
-     */
-    public static Map<String, Object> parseToolMap(String yamlText, String filename) {
-        return loadMap(yamlText, filename);
-    }
-
-    @SuppressWarnings("unchecked")
-    public static String writeToolMap(Map<String, Object> map) {
-        return dump(new LinkedHashMap<>(map));
-    }
-
     // ──────────────────── helpers ────────────────────
 
     @SuppressWarnings("unchecked")

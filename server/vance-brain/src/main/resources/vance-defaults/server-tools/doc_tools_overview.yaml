@@ -1,0 +1,9 @@
+type: doc_lookup
+description: >
+  Catalogue and conventions for the available tools — when to use
+  `find_tools` vs. primary tools, error handling, scoping.
+parameters:
+  path: manuals/tools.md
+enabled: true
+primary: false
+labels: [docs, tools]

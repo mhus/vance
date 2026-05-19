@@ -1,0 +1,10 @@
+type: doc_lookup
+description: >
+  Onboarding cheat sheet: what Vance is, how sessions and projects
+  relate, and how to drive the chat. Read this when the user looks
+  lost.
+parameters:
+  path: manuals/getting-started.md
+enabled: true
+primary: false
+labels: [docs, onboarding]

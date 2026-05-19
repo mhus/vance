@@ -1,60 +1,35 @@
 package de.mhus.vance.shared.servertool;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.LinkedHashSet;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.annotation.Version;
-import org.springframework.data.mongodb.core.index.CompoundIndex;
-import org.springframework.data.mongodb.core.index.CompoundIndexes;
-import org.springframework.data.mongodb.core.mapping.Document;
 
 /**
- * Persistent server-tool record. Scoped to a tenant + project; addressed
- * by {@code name} inside the project. The {@code _vance} system project
- * carries tenant-wide defaults; user projects can shadow them.
+ * Carrier shape for a server-tool's runtime configuration. No longer
+ * persisted — server-tool config lives as a {@code DocumentDocument}
+ * under {@code server-tools/<name>.yaml} and is parsed into a
+ * {@link ServerToolConfig}. The {@code Document} suffix is kept for
+ * compatibility with {@link de.mhus.vance.brain.tools.types.ToolFactory#create}
+ * callers; semantically this class is just a parameter object.
  *
- * <p>{@code type} identifies which {@code ToolFactory} bean expands the
- * document into a runnable {@code Tool}. {@code parameters} is the
- * type-specific configuration; its shape is defined by the factory's
- * {@code parametersSchema()}.
- *
- * <p>{@code primary} maps to the runtime {@code Tool#primary()} flag and
- * is <b>not</b> inherited from a shadowed cascade layer — every document
- * states it explicitly.
- *
- * <p>{@code labels} is the second selector axis next to {@code name};
- * recipes can reference tools via {@code @<label>}. Labels are
- * <b>replaced</b> on cascade overrides (no merging across layers).
+ * <p>{@code id} stores the underlying {@code DocumentDocument} id so
+ * factories with doc-keyed external state (e.g. the MCP connection
+ * pool) can use it as a stable cache key.
  */
-@Document(collection = "server_tools")
-@CompoundIndexes({
-        @CompoundIndex(
-                name = "tenant_project_name_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'name': 1 }",
-                unique = true),
-        @CompoundIndex(
-                name = "tenant_project_enabled_idx",
-                def = "{ 'tenantId': 1, 'projectId': 1, 'enabled': 1 }")
-})
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ServerToolDocument {
 
-    @Id
     private @Nullable String id;
 
     private String tenantId = "";
@@ -90,37 +65,14 @@ public class ServerToolDocument {
      * for multi-tool packs (REST API, MCP, plugin bundles). Each entry
      * matches the sub-tool's <i>local</i> name (the part after the
      * {@code <pack>__} prefix). Empty / null → all sub-tools active.
-     *
-     * <p>Used to deactivate single endpoints of a JIRA pack (or
-     * filesystem-MCP read-but-not-write) without duplicating the whole
-     * pack at the project layer. See
-     * {@code planning/server-tool-providers.md} §3.3.
      */
     @Builder.Default
     private @Nullable Set<String> disabledSubTools = new LinkedHashSet<>();
 
     /**
      * Pack-level default for {@link de.mhus.vance.toolpack.Tool#deferred()}.
-     * Pack factories with many sub-tools (e.g. a 50-endpoint REST pack)
-     * should default to {@code true} so the LLM doesn't get flooded with
-     * schemas — sub-tools surface only via the discovery block until
-     * activated by {@code describe_tool}. Per-sub-tool override is up to
-     * the factory (e.g. {@code parameters.deferredOverrides[name] = false}).
-     *
-     * <p>Singleton-pack types (doc_lookup) ignore this — they always
-     * produce one tool whose {@code Tool.deferred()} comes from the
-     * factory's classification.
      */
     private boolean defaultDeferred = false;
-
-    @Version
-    private @Nullable Long version;
-
-    @CreatedDate
-    private @Nullable Instant createdAt;
-
-    @LastModifiedDate
-    private @Nullable Instant updatedAt;
 
     /** Username of the creator ({@code UserDocument.name}); {@code null} for bootstrap-created defaults. */
     private @Nullable String createdBy;

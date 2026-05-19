@@ -187,7 +187,7 @@ public class KitResolver {
         return new LayerArtefacts(
                 scanDocuments(layerRoot.resolve(KitInstaller.DOCUMENTS_DIR)),
                 scanSettings(layerRoot.resolve(KitInstaller.SETTINGS_DIR)),
-                scanTools(layerRoot.resolve(KitInstaller.TOOLS_DIR)));
+                /*tools*/ new ArrayList<>());
     }
 
     private static List<String> scanDocuments(Path docsRoot) {
@@ -216,22 +216,6 @@ public class KitResolver {
             });
         } catch (IOException e) {
             throw new KitException("failed to list " + settingsRoot, e);
-        }
-        return out;
-    }
-
-    private static List<String> scanTools(Path toolsRoot) {
-        List<String> out = new ArrayList<>();
-        if (!Files.isDirectory(toolsRoot)) return out;
-        try (Stream<Path> stream = Files.list(toolsRoot)) {
-            stream.filter(Files::isRegularFile).forEach(file -> {
-                String filename = file.getFileName().toString();
-                if (!filename.endsWith(KitInstaller.TOOL_FILE_SUFFIX)) return;
-                out.add(filename.substring(
-                        0, filename.length() - KitInstaller.TOOL_FILE_SUFFIX.length()));
-            });
-        } catch (IOException e) {
-            throw new KitException("failed to list " + toolsRoot, e);
         }
         return out;
     }

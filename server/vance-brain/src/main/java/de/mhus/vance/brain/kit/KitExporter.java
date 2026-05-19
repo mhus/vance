@@ -5,10 +5,8 @@ import de.mhus.vance.api.kit.KitExportRequestDto;
 import de.mhus.vance.api.kit.KitManifestDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.settings.SettingType;
-import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
 import java.io.IOException;
@@ -42,7 +40,6 @@ public class KitExporter {
     private final KitWorkspace workspace;
     private final DocumentService documentService;
     private final SettingService settingService;
-    private final ServerToolService serverToolService;
 
     public KitOperationResultDto export(
             String tenantId,
@@ -83,7 +80,10 @@ public class KitExporter {
             List<String> writtenDocs = writeDocuments(tenantId, projectId, manifest, kitRoot);
             List<String> writtenSettings = writeSettings(
                     tenantId, projectId, manifest, request.getVaultPassword(), kitRoot);
-            List<String> writtenTools = writeTools(tenantId, projectId, manifest, kitRoot);
+            // Tools are no longer a kit-level concept — they live under
+            // documents/server-tools/<name>.yaml and ride the documents
+            // writer. The result still reports a tools list for API stability.
+            List<String> writtenTools = new ArrayList<>();
             writeDescriptor(manifest, kitRoot);
 
             return commitAndPush(clone, manifest, request,
@@ -175,52 +175,6 @@ public class KitExporter {
             }
         }
         return written;
-    }
-
-    private List<String> writeTools(
-            String tenantId, String projectId, KitManifestDto manifest, Path kitRoot) {
-        Path toolsRoot = kitRoot.resolve(KitInstaller.TOOLS_DIR);
-        try {
-            Files.createDirectories(toolsRoot);
-        } catch (IOException e) {
-            throw new KitException("failed to create " + toolsRoot, e);
-        }
-        List<String> written = new ArrayList<>();
-        for (String name : manifest.getTools()) {
-            Optional<ServerToolDocument> doc =
-                    serverToolService.findDocument(tenantId, projectId, name);
-            if (doc.isEmpty()) {
-                log.warn("manifest references missing tool '{}'", name);
-                continue;
-            }
-            String yaml = KitYamlMapper.writeToolMap(toolToMap(doc.get()));
-            Path file = toolsRoot.resolve(name + KitInstaller.TOOL_FILE_SUFFIX);
-            try {
-                Files.writeString(file, yaml, StandardCharsets.UTF_8);
-                written.add(name);
-            } catch (IOException e) {
-                throw new KitException("failed to write " + file, e);
-            }
-        }
-        return written;
-    }
-
-    private static Map<String, Object> toolToMap(ServerToolDocument doc) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("name", doc.getName());
-        map.put("type", doc.getType());
-        if (doc.getDescription() != null && !doc.getDescription().isEmpty()) {
-            map.put("description", doc.getDescription());
-        }
-        if (doc.getParameters() != null && !doc.getParameters().isEmpty()) {
-            map.put("parameters", new LinkedHashMap<>(doc.getParameters()));
-        }
-        if (doc.getLabels() != null && !doc.getLabels().isEmpty()) {
-            map.put("labels", new ArrayList<>(doc.getLabels()));
-        }
-        if (!doc.isEnabled()) map.put("enabled", false);
-        if (doc.isPrimary()) map.put("primary", true);
-        return map;
     }
 
     private void writeDescriptor(KitManifestDto manifest, Path kitRoot) {

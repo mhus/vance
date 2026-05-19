@@ -87,6 +87,12 @@ public class McpToolPackFactory implements ToolFactory {
         return t == null ? "?" : String.valueOf(t).toLowerCase(Locale.ROOT);
     }
 
+    @Override
+    public void invalidate(@org.jspecify.annotations.Nullable String documentId) {
+        if (documentId == null) return;
+        pool.invalidate(documentId);
+    }
+
     @PreDestroy
     void shutdown() {
         pool.close();

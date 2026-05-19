@@ -1,18 +1,14 @@
 /**
- * Server-tool persistence — configurable tool instances stored as
- * {@link de.mhus.vance.shared.servertool.ServerToolDocument}. Each
- * document binds a {@code type} (resolved by a {@code ToolFactory} bean
- * in {@code vance-brain}) to a parameter map plus per-instance flags
- * ({@code enabled}, {@code primary}, {@code labels}).
+ * Server-tool configuration types. Server tools live as YAML documents
+ * under {@code server-tools/<name>.yaml} in the
+ * {@link de.mhus.vance.shared.document.DocumentService} cascade
+ * (project → {@code _vance} → {@code vance-defaults/} resource layer).
  *
- * <p>Lookup goes through the project cascade
- * {@code project → _vance → built-in beans} — the
- * {@code _vance} system project carries tenant-wide defaults, project
- * documents shadow them by {@code name}. Cascade resolution lives in
- * {@code vance-brain}'s {@code ServerToolService}; this module owns
- * only the document and repository.
- *
- * <p>Colocated: document + package-private repository.
+ * <p>{@link de.mhus.vance.shared.servertool.ServerToolLoader} parses
+ * those documents into {@link de.mhus.vance.shared.servertool.ServerToolConfig}.
+ * The legacy {@link de.mhus.vance.shared.servertool.ServerToolDocument}
+ * is the parameter shape consumed by {@code ToolFactory#create}
+ * implementations — a plain DTO with no persistence behind it.
  */
 @NullMarked
 package de.mhus.vance.shared.servertool;

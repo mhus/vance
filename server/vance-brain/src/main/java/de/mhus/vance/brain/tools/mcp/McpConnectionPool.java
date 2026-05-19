@@ -10,17 +10,16 @@ import de.mhus.vance.toolpack.mcp.McpHttpTransport;
 import de.mhus.vance.toolpack.mcp.McpStdioTransport;
 import de.mhus.vance.toolpack.mcp.McpTransport;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
-import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Per-document {@link McpConnection} cache. Keyed by Mongo doc-id;
- * value carries the cached connection plus the {@code updatedAt}
- * snapshot it was built from. A doc-edit (new {@code updatedAt})
- * triggers reconnect — the old transport is closed cleanly, a fresh
- * one is opened on the next acquire.
+ * Per-document {@link McpConnection} cache. Keyed by the underlying
+ * document id; values are reused across cascade reads. Invalidation is
+ * explicit: {@code ServerToolRegistry} calls {@link #invalidate(String)}
+ * when a server-tool config is replaced or removed, which closes the
+ * stale transport and lets the next {@link #acquire} open a fresh one.
  *
  * <p>In-memory only; no persistent state. JVM restart drops every
  * subprocess and live HTTP session — {@link McpConnection#ensureInitialized}
@@ -31,7 +30,7 @@ public final class McpConnectionPool implements AutoCloseable {
 
     private final PackHttpClient httpClient;
     private final SecretResolver secretResolver;
-    private final ConcurrentHashMap<String, Entry> entries = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, McpConnection> entries = new ConcurrentHashMap<>();
 
     public McpConnectionPool(PackHttpClient httpClient, SecretResolver secretResolver) {
         this.httpClient = httpClient;
@@ -40,35 +39,28 @@ public final class McpConnectionPool implements AutoCloseable {
 
     /**
      * Returns a {@link McpConnection} for {@code doc}. Reuses the cached
-     * connection iff the doc hasn't been edited since it was opened.
-     * Documents without an id (in-memory tests) skip the cache —
-     * each call builds a fresh connection.
+     * connection when one exists for the document id; otherwise builds a
+     * fresh one. Documents without an id (in-memory tests) skip the
+     * cache — each call builds a fresh connection.
      */
     public synchronized McpConnection acquire(ServerToolDocument doc, ToolInvocationContext ctx) {
         if (doc.getId() == null) {
             return build(doc, ctx);
         }
-        Instant ts = doc.getUpdatedAt() == null ? Instant.EPOCH : doc.getUpdatedAt();
-        Entry hit = entries.get(doc.getId());
-        if (hit != null && hit.updatedAt.equals(ts)) {
-            return hit.connection;
-        }
+        McpConnection hit = entries.get(doc.getId());
         if (hit != null) {
-            try { hit.connection.close(); }
-            catch (RuntimeException e) {
-                log.warn("McpConnectionPool: error closing stale connection: {}", e.toString());
-            }
+            return hit;
         }
         McpConnection fresh = build(doc, ctx);
-        entries.put(doc.getId(), new Entry(ts, fresh));
+        entries.put(doc.getId(), fresh);
         return fresh;
     }
 
     /** Drops the cached connection for {@code docId}; closes its transport. */
     public synchronized void invalidate(String docId) {
-        Entry hit = entries.remove(docId);
+        McpConnection hit = entries.remove(docId);
         if (hit != null) {
-            try { hit.connection.close(); }
+            try { hit.close(); }
             catch (RuntimeException e) {
                 log.warn("McpConnectionPool: error during invalidate close: {}", e.toString());
             }
@@ -77,8 +69,8 @@ public final class McpConnectionPool implements AutoCloseable {
 
     @Override
     public synchronized void close() {
-        for (Entry e : entries.values()) {
-            try { e.connection.close(); }
+        for (McpConnection c : entries.values()) {
+            try { c.close(); }
             catch (RuntimeException ex) {
                 log.warn("McpConnectionPool: error closing connection on shutdown: {}", ex.toString());
             }
@@ -97,9 +89,7 @@ public final class McpConnectionPool implements AutoCloseable {
     }
 
     /** Visible for tests — current cache contents. */
-    Map<String, Entry> entriesSnapshot() {
+    Map<String, McpConnection> entriesSnapshot() {
         return Map.copyOf(entries);
     }
-
-    record Entry(Instant updatedAt, McpConnection connection) { }
 }

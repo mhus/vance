@@ -9,10 +9,10 @@ import de.mhus.vance.api.kit.KitMetadataDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.kit.KitOriginDto;
 import de.mhus.vance.api.settings.SettingType;
-import de.mhus.vance.brain.servertool.ServerToolService;
+import de.mhus.vance.brain.servertool.ServerToolRegistry;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.servertool.ServerToolDocument;
+import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.shared.settings.SettingService;
 import java.io.IOException;
 import java.nio.file.FileVisitOption;
@@ -60,14 +60,12 @@ public class KitInstaller {
 
     public static final String DOCUMENTS_DIR = "documents";
     public static final String SETTINGS_DIR = "settings";
-    public static final String TOOLS_DIR = "tools";
     public static final String MANIFEST_PATH = "_vance/kit-manifest.yaml";
     public static final String SETTING_FILE_SUFFIX = ".yaml";
-    public static final String TOOL_FILE_SUFFIX = ".tool.yaml";
 
     private final DocumentService documentService;
     private final SettingService settingService;
-    private final ServerToolService serverToolService;
+    private final ServerToolRegistry serverToolRegistry;
 
     public KitOperationResultDto apply(
             String tenantId,
@@ -104,8 +102,12 @@ public class KitInstaller {
         applySettings(tenantId, projectId, scan, previous, mode,
                 prune, keepPasswords, vaultPassword, top.isHasEncryptedSecrets(), result);
 
-        // ── Tools.
-        applyTools(tenantId, projectId, scan, previous, mode, prune, result);
+        // ── Tools were once a kit-level concept; they now live as documents
+        // under `documents/server-tools/<name>.yaml`. Existing kits that still
+        // ship a `tools/` directory must be migrated to that layout.
+        result.toolsAdded(new ArrayList<>())
+                .toolsUpdated(new ArrayList<>())
+                .toolsRemoved(new ArrayList<>());
 
         // ── Manifest.
         if (mode != KitImportMode.APPLY) {
@@ -119,13 +121,11 @@ public class KitInstaller {
 
     private record BuildTreeScan(
             Map<String, String> documents,           // path → content
-            Map<String, KitYamlMapper.ParsedSetting> settings, // key → parsed
-            Map<String, Map<String, Object>> tools) {}        // name → raw tool map
+            Map<String, KitYamlMapper.ParsedSetting> settings) {} // key → parsed
 
     private BuildTreeScan scanBuildTree(Path buildRoot) {
         Map<String, String> documents = new LinkedHashMap<>();
         Map<String, KitYamlMapper.ParsedSetting> settings = new LinkedHashMap<>();
-        Map<String, Map<String, Object>> tools = new LinkedHashMap<>();
 
         Path docsRoot = buildRoot.resolve(DOCUMENTS_DIR);
         if (Files.isDirectory(docsRoot)) {
@@ -165,26 +165,7 @@ public class KitInstaller {
                 throw new KitException("failed to list " + settingsRoot, e);
             }
         }
-
-        Path toolsRoot = buildRoot.resolve(TOOLS_DIR);
-        if (Files.isDirectory(toolsRoot)) {
-            try (Stream<Path> stream = Files.list(toolsRoot)) {
-                stream.filter(Files::isRegularFile).forEach(file -> {
-                    String filename = file.getFileName().toString();
-                    if (!filename.endsWith(TOOL_FILE_SUFFIX)) return;
-                    String name = filename.substring(0, filename.length() - TOOL_FILE_SUFFIX.length());
-                    try {
-                        tools.put(name,
-                                KitYamlMapper.parseToolMap(Files.readString(file), filename));
-                    } catch (IOException e) {
-                        throw new KitException("failed to read " + file, e);
-                    }
-                });
-            } catch (IOException e) {
-                throw new KitException("failed to list " + toolsRoot, e);
-            }
-        }
-        return new BuildTreeScan(documents, settings, tools);
+        return new BuildTreeScan(documents, settings);
     }
 
     // ──────────────────── documents ────────────────────
@@ -220,6 +201,37 @@ public class KitInstaller {
             }
         }
         result.documentsAdded(added).documentsUpdated(updated).documentsRemoved(removed);
+
+        refreshAffectedToolEntries(tenantId, projectId, added, updated, removed);
+    }
+
+    /**
+     * Documents land in {@code server-tools/<name>.yaml} carry tool
+     * configs. After writing, the {@code ServerToolRegistry} needs to
+     * pick the changes up — bootstrap caches per project don't notice
+     * direct document writes on their own.
+     */
+    private void refreshAffectedToolEntries(
+            String tenantId, String projectId,
+            List<String> added, List<String> updated, List<String> removed) {
+        for (String path : added) refreshOneIfTool(tenantId, projectId, path);
+        for (String path : updated) refreshOneIfTool(tenantId, projectId, path);
+        for (String path : removed) refreshOneIfTool(tenantId, projectId, path);
+    }
+
+    private void refreshOneIfTool(String tenantId, String projectId, String path) {
+        if (!path.startsWith(ServerToolLoader.SERVER_TOOL_PATH_PREFIX)) return;
+        if (!path.endsWith(ServerToolLoader.SERVER_TOOL_PATH_SUFFIX)) return;
+        String name = path.substring(
+                ServerToolLoader.SERVER_TOOL_PATH_PREFIX.length(),
+                path.length() - ServerToolLoader.SERVER_TOOL_PATH_SUFFIX.length());
+        if (name.isBlank()) return;
+        try {
+            serverToolRegistry.refreshOne(tenantId, projectId, name);
+        } catch (RuntimeException ex) {
+            log.warn("KitInstaller: failed to refresh server-tool '{}/{}/{}': {}",
+                    tenantId, projectId, name, ex.toString());
+        }
     }
 
     private boolean upsertDocument(
@@ -317,103 +329,6 @@ public class KitInstaller {
         List<String> out = new ArrayList<>(existing);
         out.add(warning);
         return out;
-    }
-
-    // ──────────────────── tools ────────────────────
-
-    private void applyTools(
-            String tenantId, String projectId, BuildTreeScan scan,
-            @Nullable KitManifestDto previous, KitImportMode mode, boolean prune,
-            KitOperationResultDto.KitOperationResultDtoBuilder result) {
-
-        Set<String> previousNames = unionAcrossLayers(previous,
-                KitManifestDto::getTools,
-                InheritArtefactsDto::getTools);
-
-        List<String> added = new ArrayList<>();
-        List<String> updated = new ArrayList<>();
-
-        for (Map.Entry<String, Map<String, Object>> entry : scan.tools().entrySet()) {
-            String name = entry.getKey();
-            Map<String, Object> spec = entry.getValue();
-            ServerToolDocument doc = toolFromSpec(name, spec);
-            Optional<ServerToolDocument> existing =
-                    serverToolService.findDocument(tenantId, projectId, name);
-            if (existing.isPresent()) {
-                serverToolService.update(tenantId, projectId, name, doc);
-                updated.add(name);
-            } else {
-                serverToolService.create(tenantId, projectId, doc);
-                added.add(name);
-            }
-        }
-
-        List<String> removed = new ArrayList<>();
-        if (mode != KitImportMode.APPLY && prune) {
-            Set<String> nowKnown = scan.tools().keySet();
-            for (String oldName : previousNames) {
-                if (nowKnown.contains(oldName)) continue;
-                serverToolService.delete(tenantId, projectId, oldName);
-                removed.add(oldName);
-            }
-        }
-        result.toolsAdded(added).toolsUpdated(updated).toolsRemoved(removed);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static ServerToolDocument toolFromSpec(String filenameStem, Map<String, Object> spec) {
-        String name = stringOr(spec.get("name"), filenameStem);
-        String type = require(spec, "type", filenameStem);
-        String description = stringOr(spec.get("description"), "");
-        Map<String, Object> parameters = new LinkedHashMap<>();
-        Object paramsRaw = spec.get("parameters");
-        if (paramsRaw instanceof Map<?, ?> m) {
-            parameters.putAll((Map<String, Object>) m);
-        }
-        List<String> labels = new ArrayList<>();
-        Object labelsRaw = spec.get("labels");
-        if (labelsRaw instanceof List<?> list) {
-            for (Object o : list) {
-                if (o == null) continue;
-                String s = o.toString().trim();
-                if (!s.isEmpty()) labels.add(s);
-            }
-        }
-        return ServerToolDocument.builder()
-                .name(name)
-                .type(type)
-                .description(description)
-                .parameters(parameters)
-                .labels(labels)
-                .enabled(boolOrTrue(spec.get("enabled")))
-                .primary(boolOrFalse(spec.get("primary")))
-                .build();
-    }
-
-    private static String stringOr(@Nullable Object v, String fallback) {
-        if (v == null) return fallback;
-        String s = v.toString().trim();
-        return s.isEmpty() ? fallback : s;
-    }
-
-    private static String require(Map<String, Object> spec, String key, String label) {
-        Object v = spec.get(key);
-        if (v == null || v.toString().isBlank()) {
-            throw new KitException("tool " + label + ": missing required field '" + key + "'");
-        }
-        return v.toString().trim();
-    }
-
-    private static boolean boolOrTrue(@Nullable Object v) {
-        if (v == null) return true;
-        if (v instanceof Boolean b) return b;
-        return Boolean.parseBoolean(v.toString().trim());
-    }
-
-    private static boolean boolOrFalse(@Nullable Object v) {
-        if (v == null) return false;
-        if (v instanceof Boolean b) return b;
-        return Boolean.parseBoolean(v.toString().trim());
     }
 
     // ──────────────────── manifest ────────────────────

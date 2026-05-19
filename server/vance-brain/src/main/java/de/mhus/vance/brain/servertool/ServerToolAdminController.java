@@ -186,9 +186,12 @@ public class ServerToolAdminController {
                         : new LinkedHashSet<>(doc.getDisabledSubTools()))
                 .defaultDeferred(doc.isDefaultDeferred())
                 .projectId(doc.getProjectId())
-                .updatedAtTimestamp(doc.getUpdatedAt() == null
-                        ? null
-                        : doc.getUpdatedAt().toEpochMilli())
+                // Timestamps now live on the underlying DocumentDocument
+                // (server-tools/<name>.yaml) and aren't carried by the
+                // transient config shape. The DTO field is preserved for
+                // API stability — admin clients that want audit timestamps
+                // can read them from the documents endpoint.
+                .updatedAtTimestamp(null)
                 .createdBy(doc.getCreatedBy())
                 .build();
     }

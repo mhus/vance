@@ -25,8 +25,8 @@ import de.mhus.vance.brain.workspace.access.ProjectPodKey;
 import de.mhus.vance.brain.workspace.access.WorkspaceAccessProperties;
 import de.mhus.vance.shared.cluster.BrainPodDocument;
 import de.mhus.vance.shared.home.HomeBootstrapService;
-import de.mhus.vance.shared.servertool.ServerToolDocument;
-import de.mhus.vance.shared.servertool.ServerToolRepository;
+import de.mhus.vance.shared.servertool.ServerToolConfig;
+import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.api.llmtrace.LlmTraceDto;
 import de.mhus.vance.api.llmtrace.LlmTraceListResponse;
 import de.mhus.vance.brain.permission.RequestAuthority;
@@ -92,7 +92,7 @@ public class InsightsAdminController {
     private final EngineMessageService engineMessageService;
     private final RecipeLoader recipeLoader;
     private final ServerToolService serverToolService;
-    private final ServerToolRepository serverToolRepository;
+    private final ServerToolLoader serverToolLoader;
     private final BuiltInToolSource builtInToolSource;
     private final ClientToolRegistry clientToolRegistry;
     private final PodForwarder podForwarder;
@@ -566,9 +566,9 @@ public class InsightsAdminController {
             String tenant,
             String project,
             String sourceLabel) {
-        for (ServerToolDocument doc : serverToolRepository.findByTenantIdAndProjectId(tenant, project)) {
-            String name = doc.getName();
-            if (!doc.isEnabled()) {
+        for (ServerToolConfig cfg : serverToolLoader.loadInProject(tenant, project)) {
+            String name = cfg.name();
+            if (!cfg.enabled()) {
                 // Disabled stop-card — surface as a diagnostic on the existing entry,
                 // or insert a placeholder when nothing was there before.
                 EffectiveToolDto.EffectiveToolDtoBuilder existing = acc.get(name);
@@ -577,28 +577,28 @@ public class InsightsAdminController {
                 } else {
                     acc.put(name, EffectiveToolDto.builder()
                             .name(name)
-                            .description(doc.getDescription())
+                            .description(cfg.description())
                             .primary(false)
                             .deferred(false)
                             .searchHint("")
                             .source(sourceLabel)
-                            .labels(doc.getLabels() == null ? List.of() : new ArrayList<>(doc.getLabels()))
-                            .type(doc.getType())
+                            .labels(new ArrayList<>(cfg.labels()))
+                            .type(cfg.type())
                             .disabledByInnerLayer(true));
                 }
                 continue;
             }
-            // Enabled doc → fully replaces lower layer
+            // Enabled config → fully replaces lower layer
             Tool materialized = serverToolService.lookup(tenant, project, name).orElse(null);
             acc.put(name, EffectiveToolDto.builder()
                     .name(name)
-                    .description(materialized != null ? materialized.description() : doc.getDescription())
+                    .description(materialized != null ? materialized.description() : cfg.description())
                     .primary(materialized != null && materialized.primary())
                     .deferred(materialized != null && materialized.deferred())
                     .searchHint(materialized != null ? materialized.searchHint() : "")
                     .source(sourceLabel)
-                    .labels(doc.getLabels() == null ? List.of() : new ArrayList<>(doc.getLabels()))
-                    .type(doc.getType())
+                    .labels(new ArrayList<>(cfg.labels()))
+                    .type(cfg.type())
                     .disabledByInnerLayer(false));
         }
     }

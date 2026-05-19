@@ -4,7 +4,6 @@ import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.api.access.RefreshTokenResponse;
 import de.mhus.vance.api.access.WebUiSessionData;
-import de.mhus.vance.brain.servertool.ServerToolBootstrapService;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.home.HomeBootstrapService;
@@ -78,7 +77,6 @@ public class AccessController {
     private final UserService userService;
     private final PasswordService passwordService;
     private final HomeBootstrapService homeBootstrapService;
-    private final ServerToolBootstrapService serverToolBootstrapService;
     private final SettingService settingService;
     private final boolean cookieSecure;
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
@@ -94,14 +92,12 @@ public class AccessController {
                             UserService userService,
                             PasswordService passwordService,
                             HomeBootstrapService homeBootstrapService,
-                            ServerToolBootstrapService serverToolBootstrapService,
                             SettingService settingService,
                             @Value("${vance.web.cookies.secure:true}") boolean cookieSecure) {
         this.jwtService = jwtService;
         this.userService = userService;
         this.passwordService = passwordService;
         this.homeBootstrapService = homeBootstrapService;
-        this.serverToolBootstrapService = serverToolBootstrapService;
         this.settingService = settingService;
         this.cookieSecure = cookieSecure;
     }
@@ -204,9 +200,9 @@ public class AccessController {
         // for tenant-level documents/prompts/memory (resource lookup
         // logic lands in a follow-up). Idempotent and cheap.
         homeBootstrapService.ensureVance(tenant);
-        // Bundled server-tool defaults inside _vance. Idempotent —
-        // existing rows are left untouched so tenant edits survive.
-        serverToolBootstrapService.ensureSystemTools(tenant);
+        // Bundled server-tool defaults are served by DocumentService's
+        // classpath resource layer (vance-defaults/server-tools/*.yaml);
+        // no explicit seeding step is needed.
 
         Instant expiresAt = Instant.now().plus(TOKEN_LIFETIME);
         String token = jwtService.createToken(tenant, username, expiresAt, TokenType.ACCESS);

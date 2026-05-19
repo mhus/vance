@@ -1,0 +1,9 @@
+type: doc_lookup
+description: >
+  Reference on think-process lifecycle, suspend/resume semantics,
+  and how processes relate to sessions.
+parameters:
+  path: manuals/processes.md
+enabled: true
+primary: false
+labels: [docs, processes]

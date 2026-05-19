@@ -8,7 +8,6 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
-import de.mhus.vance.brain.servertool.ServerToolBootstrapService;
 import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.jwt.JwtService;
@@ -53,7 +52,6 @@ class AccessControllerTest {
     private UserService userService;
     private PasswordService passwordService;
     private HomeBootstrapService homeBootstrapService;
-    private ServerToolBootstrapService serverToolBootstrapService;
     private SettingService settingService;
     private AccessController controller;
 
@@ -63,7 +61,6 @@ class AccessControllerTest {
         userService = mock(UserService.class);
         passwordService = mock(PasswordService.class);
         homeBootstrapService = mock(HomeBootstrapService.class);
-        serverToolBootstrapService = mock(ServerToolBootstrapService.class);
         settingService = mock(SettingService.class);
 
         controller = new AccessController(
@@ -71,7 +68,6 @@ class AccessControllerTest {
                 userService,
                 passwordService,
                 homeBootstrapService,
-                serverToolBootstrapService,
                 settingService,
                 /* cookieSecure */ true);
 
@@ -492,7 +488,7 @@ class AccessControllerTest {
         // path. Production must keep it true.
         AccessController insecure = new AccessController(
                 jwtService, userService, passwordService,
-                homeBootstrapService, serverToolBootstrapService, settingService,
+                homeBootstrapService, settingService,
                 /* cookieSecure */ false);
 
         AccessTokenRequest req = AccessTokenRequest.builder()

@@ -1,0 +1,15 @@
+type: doc_lookup
+description: >
+  How to wire a server tool of `type: rest_api` against any REST API
+  with an OpenAPI 3.x spec. Covers spec sourcing (URL vs inline),
+  base-URL templating for multi-tenant APIs (per-user cloudId etc.),
+  auth (bearer / basic / apiKey), include/exclude filters, per-op
+  label overrides (POST-but-read-only endpoints), and the recipe for
+  OAuth-protected APIs. Read this before authoring a tool of this
+  type — almost every REST API is already documented and exposed via
+  OpenAPI, so you rarely need to hand-write tool schemas.
+parameters:
+  path: manuals/rest-tools.md
+enabled: true
+primary: false
+labels: [docs, rest, tools]

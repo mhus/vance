@@ -1,0 +1,14 @@
+type: doc_lookup
+description: >
+  How to install Vance tool integrations (Jira, IMAP, SMTP, Slack, …)
+  from the tenant's tool-template catalog. Covers the three template
+  tools (tool_template_list / describe / apply), how to choose the
+  target project, how to handle PASSWORD inputs safely, and the
+  post-install hook flow (e.g. "now open Connected Accounts and click
+  Connect Atlassian"). Read this when the user says any of "richte mir
+  X ein", "set up X", "verbinde Vance mit X".
+parameters:
+  path: manuals/tool-installation.md
+enabled: true
+primary: false
+labels: [docs, tool-template, install]

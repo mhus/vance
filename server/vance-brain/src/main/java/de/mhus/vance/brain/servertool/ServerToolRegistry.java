@@ -5,6 +5,7 @@ import de.mhus.vance.brain.tools.types.ToolFactoryRegistry;
 import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -158,12 +159,18 @@ public class ServerToolRegistry {
      */
     public Optional<de.mhus.vance.toolpack.Tool> lookup(
             String tenantId, String projectId, String name) {
+        return lookup(tenantId, projectId, name, /*ctx*/ null);
+    }
+
+    public Optional<de.mhus.vance.toolpack.Tool> lookup(
+            String tenantId, String projectId, String name,
+            @Nullable ToolInvocationContext ctx) {
         ProjectScope scope = scopes.get(scopeKey(tenantId, projectId));
         if (scope == null) return Optional.empty();
         ResolvedTool entry = scope.entries.get(packPrefix(name));
         if (entry == null) return Optional.empty();
         if (!entry.config.enabled()) return Optional.empty();
-        return entry.pickSubTool(name, factoryRegistry);
+        return entry.pickSubTool(name, factoryRegistry, ctx);
     }
 
     /**
@@ -172,12 +179,18 @@ public class ServerToolRegistry {
      * emitted the entries — usable for stable display in admin UIs.
      */
     public List<de.mhus.vance.toolpack.Tool> listAll(String tenantId, String projectId) {
+        return listAll(tenantId, projectId, /*ctx*/ null);
+    }
+
+    public List<de.mhus.vance.toolpack.Tool> listAll(
+            String tenantId, String projectId,
+            @Nullable ToolInvocationContext ctx) {
         ProjectScope scope = scopes.get(scopeKey(tenantId, projectId));
         if (scope == null) return List.of();
         List<de.mhus.vance.toolpack.Tool> out = new ArrayList<>();
         for (ResolvedTool entry : scope.entries.values()) {
             if (!entry.config.enabled()) continue;
-            out.addAll(entry.materializeFiltered(factoryRegistry));
+            out.addAll(entry.materializeFiltered(factoryRegistry, ctx));
         }
         return out;
     }
@@ -185,7 +198,13 @@ public class ServerToolRegistry {
     /** Tools in this project's cascade carrying {@code label}. */
     public List<de.mhus.vance.toolpack.Tool> findByLabel(
             String tenantId, String projectId, String label) {
-        return listAll(tenantId, projectId).stream()
+        return findByLabel(tenantId, projectId, label, /*ctx*/ null);
+    }
+
+    public List<de.mhus.vance.toolpack.Tool> findByLabel(
+            String tenantId, String projectId, String label,
+            @Nullable ToolInvocationContext ctx) {
+        return listAll(tenantId, projectId, ctx).stream()
                 .filter(t -> t.labels().contains(label))
                 .toList();
     }
@@ -221,12 +240,19 @@ public class ServerToolRegistry {
         }
     }
 
-    /** Cascade-resolved tool entry; lazy-materialises the underlying pack. */
+    /**
+     * Cascade-resolved tool entry. Materialisation is <b>NOT</b> cached
+     * on the entry — every call re-runs {@code factory.create(doc, ctx)}
+     * so that user-scoped state (OAuth tokens, MCP session ids) reflects
+     * the current invocation context, not the first one that materialised.
+     * Heavy work (live MCP {@code tools/list}, REST OpenAPI parsing) is
+     * cached one level down — in the factory's own connection pool — so
+     * the per-request cost is a Map-keyed lookup.
+     */
     static final class ResolvedTool {
         final ServerToolConfig config;
         final String tenantId;
         final String projectId;
-        private volatile @Nullable List<de.mhus.vance.toolpack.Tool> materialized;
 
         ResolvedTool(ServerToolConfig config, String tenantId, String projectId) {
             this.config = config;
@@ -234,25 +260,36 @@ public class ServerToolRegistry {
             this.projectId = projectId;
         }
 
-        /** Materialised tools without {@code disabledSubTools} filtering. */
-        synchronized List<de.mhus.vance.toolpack.Tool> materializeRaw(
-                ToolFactoryRegistry registry) {
-            if (materialized == null) {
-                ToolFactory factory = registry.find(config.type()).orElseThrow(
-                        () -> new IllegalStateException(
-                                "Unknown tool type '" + config.type()
-                                        + "' on server-tool '" + config.name()
-                                        + "' (tenant=" + tenantId
-                                        + ", project=" + projectId + ")"));
-                ServerToolDocument transientDoc = config.toTransientDocument(tenantId, projectId);
-                materialized = List.copyOf(factory.create(transientDoc));
-            }
-            return materialized;
+        /**
+         * Materialised tools without {@code disabledSubTools} filtering.
+         * {@code ctx} threads the calling user/session down into pack
+         * factories that bootstrap user-scoped connections (MCP-server
+         * with OAuth, REST-API with per-user tokens). Re-runs every call
+         * — see class javadoc for the rationale.
+         */
+        List<de.mhus.vance.toolpack.Tool> materializeRaw(
+                ToolFactoryRegistry registry,
+                @Nullable ToolInvocationContext ctx) {
+            ToolFactory factory = registry.find(config.type()).orElseThrow(
+                    () -> new IllegalStateException(
+                            "Unknown tool type '" + config.type()
+                                    + "' on server-tool '" + config.name()
+                                    + "' (tenant=" + tenantId
+                                    + ", project=" + projectId + ")"));
+            ServerToolDocument transientDoc = config.toTransientDocument(tenantId, projectId);
+            return List.copyOf(factory.create(transientDoc, ctx));
+        }
+
+        /** Convenience overload — no caller context. Kept for admin-side paths. */
+        List<de.mhus.vance.toolpack.Tool> materializeRaw(ToolFactoryRegistry registry) {
+            return materializeRaw(registry, /*ctx*/ null);
         }
 
         /** Materialised tools with disabled sub-tools removed. */
-        List<de.mhus.vance.toolpack.Tool> materializeFiltered(ToolFactoryRegistry registry) {
-            List<de.mhus.vance.toolpack.Tool> raw = materializeRaw(registry);
+        List<de.mhus.vance.toolpack.Tool> materializeFiltered(
+                ToolFactoryRegistry registry,
+                @Nullable ToolInvocationContext ctx) {
+            List<de.mhus.vance.toolpack.Tool> raw = materializeRaw(registry, ctx);
             if (config.disabledSubTools().isEmpty()) return raw;
             String prefix = config.name() + ToolFactory.PACK_SEPARATOR;
             return raw.stream().filter(t -> {
@@ -263,9 +300,15 @@ public class ServerToolRegistry {
             }).toList();
         }
 
+        List<de.mhus.vance.toolpack.Tool> materializeFiltered(ToolFactoryRegistry registry) {
+            return materializeFiltered(registry, /*ctx*/ null);
+        }
+
         Optional<de.mhus.vance.toolpack.Tool> pickSubTool(
-                String requestedName, ToolFactoryRegistry registry) {
-            for (de.mhus.vance.toolpack.Tool t : materializeRaw(registry)) {
+                String requestedName,
+                ToolFactoryRegistry registry,
+                @Nullable ToolInvocationContext ctx) {
+            for (de.mhus.vance.toolpack.Tool t : materializeRaw(registry, ctx)) {
                 if (!t.name().equals(requestedName)) continue;
                 String prefix = config.name() + ToolFactory.PACK_SEPARATOR;
                 String local = t.name().startsWith(prefix)
@@ -277,6 +320,11 @@ public class ServerToolRegistry {
                 return Optional.of(t);
             }
             return Optional.empty();
+        }
+
+        Optional<de.mhus.vance.toolpack.Tool> pickSubTool(
+                String requestedName, ToolFactoryRegistry registry) {
+            return pickSubTool(requestedName, registry, /*ctx*/ null);
         }
     }
 }

@@ -190,7 +190,7 @@ class RecipeResolverModeFilterTest {
                         List.of())),
                 Map.of());
         when(loader.load(any(), any(), eq("arthur"))).thenReturn(Optional.of(r));
-        when(serverToolService.findByLabel(eq(TENANT), any(), eq("write")))
+        when(serverToolService.findByLabel(eq(TENANT), any(), eq("write"), any()))
                 .thenReturn(List.of(stubTool("doc_edit"), stubTool("doc_delete")));
 
         RecipeResolver.ToolFilter f = resolver.toolFilterFor(
@@ -210,7 +210,7 @@ class RecipeResolverModeFilterTest {
                         List.of())),
                 Map.of());
         when(loader.load(any(), any(), eq("arthur"))).thenReturn(Optional.of(r));
-        when(serverToolService.findByLabel(any(), any(), eq("nonsense")))
+        when(serverToolService.findByLabel(any(), any(), eq("nonsense"), any()))
                 .thenReturn(List.of());
 
         RecipeResolver.ToolFilter f = resolver.toolFilterFor(

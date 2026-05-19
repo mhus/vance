@@ -267,20 +267,28 @@ class ServerToolRegistryTest {
     // ─────── Materialisation ───────
 
     @Test
-    void materialisation_is_lazy_and_cached() {
+    void materialisation_is_lazy_per_call() {
+        // The entry-level cache was intentionally removed: user-scoped
+        // factories (MCP+OAuth) must rebuild on every access so the
+        // current invocation context flows through. Bootstrap stays
+        // lazy — factory.create() is NOT called at bootstrap time;
+        // it fires once per registry access.
         when(loader.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(
                 packConfig("jira", true, Set.of(), "create", "search")));
         registry.bootstrapProject(TENANT, PROJECT);
 
-        // Pack factory should not be invoked just because we bootstrap.
-        assertThat(packFactory.callCount.get()).isZero();
+        assertThat(packFactory.callCount.get())
+                .as("bootstrap is lazy — no factory.create yet")
+                .isZero();
 
         registry.lookup(TENANT, PROJECT, "jira__create");
         registry.lookup(TENANT, PROJECT, "jira__search");
         registry.listAll(TENANT, PROJECT);
 
-        // Three accesses, but only one factory.create() call — lazy + cached.
-        assertThat(packFactory.callCount.get()).isEqualTo(1);
+        // Three accesses → three materialisations (no entry-level cache).
+        // Inner caches in the factory itself (e.g. McpConnectionPool's
+        // per-(doc,user) connection cache) keep the actual cost low.
+        assertThat(packFactory.callCount.get()).isEqualTo(3);
     }
 
     @Test
@@ -311,6 +319,7 @@ class ServerToolRegistryTest {
                 /*primary*/ false,
                 new LinkedHashSet<>(),
                 /*defaultDeferred*/ false,
+                /*promptHint*/ "",
                 ServerToolConfig.Source.PROJECT,
                 /*documentId*/ null,
                 /*createdBy*/ null,
@@ -329,6 +338,7 @@ class ServerToolRegistryTest {
                 /*primary*/ false,
                 new LinkedHashSet<>(disabledSubs),
                 /*defaultDeferred*/ false,
+                /*promptHint*/ "",
                 ServerToolConfig.Source.PROJECT,
                 /*documentId*/ "doc-" + name,
                 /*createdBy*/ null,
@@ -344,6 +354,7 @@ class ServerToolRegistryTest {
                 base.primary(),
                 base.disabledSubTools(),
                 base.defaultDeferred(),
+                base.promptHint(),
                 base.source(),
                 base.documentId(),
                 base.createdBy(),

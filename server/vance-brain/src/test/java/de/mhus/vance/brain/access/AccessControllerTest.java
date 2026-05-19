@@ -386,11 +386,15 @@ class AccessControllerTest {
         List<String> setCookies = resp.getHeaders().get(HttpHeaders.SET_COOKIE);
         assertThat(setCookies).isNotNull();
 
-        // Access cookie: HttpOnly, Secure, SameSite=Strict, Path=/.
+        // Access cookie: HttpOnly, Secure, SameSite=Lax, Path=/.
+        // Lax (not Strict) so the OAuth callback redirect from a
+        // provider back to /brain/.../oauth/.../callback carries the
+        // cookie — a Strict cookie would be dropped on that cross-site
+        // top-level GET navigation.
         String access = findCookie(setCookies, WebUiCookies.ACCESS);
         assertThat(access).contains("HttpOnly");
         assertThat(access).contains("Secure");
-        assertThat(access).contains("SameSite=Strict");
+        assertThat(access).contains("SameSite=Lax");
         assertThat(access).contains("Path=/");
         assertThat(cookieValue(access)).isEqualTo("access-jwt");
 
@@ -401,7 +405,7 @@ class AccessControllerTest {
         String data = findCookie(setCookies, WebUiCookies.DATA);
         assertThat(data).doesNotContain("HttpOnly");
         assertThat(data).contains("Secure");
-        assertThat(data).contains("SameSite=Strict");
+        assertThat(data).contains("SameSite=Lax");
     }
 
     @Test

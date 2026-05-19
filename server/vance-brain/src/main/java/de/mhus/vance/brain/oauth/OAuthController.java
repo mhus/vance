@@ -9,7 +9,9 @@ import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.settings.SettingService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
+import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,6 +19,7 @@ import java.util.Map;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -61,23 +64,30 @@ public class OAuthController {
     static final String KEY_SCOPES = ".scopes";
     static final String KEY_EXTRA = ".extra";
 
+    /** PKCE verifier length — 32 bytes Base64URL ≈ 43 chars (RFC 7636 §4.1 minimum). */
+    private static final int PKCE_VERIFIER_BYTES = 32;
+
     private final OAuthConfigRegistry configRegistry;
     private final OAuthStateService stateService;
     private final SettingService settingService;
     private final RequestAuthority authority;
+    private final ApplicationEventPublisher events;
     private final String publicBaseUrl;
     private final ObjectMapper json = JsonMapper.builder().build();
+    private final SecureRandom secureRandom = new SecureRandom();
 
     public OAuthController(
             OAuthConfigRegistry configRegistry,
             OAuthStateService stateService,
             SettingService settingService,
             RequestAuthority authority,
+            ApplicationEventPublisher events,
             @Value("${vance.web.publicBaseUrl:http://localhost:18080}") String publicBaseUrl) {
         this.configRegistry = configRegistry;
         this.stateService = stateService;
         this.settingService = settingService;
         this.authority = authority;
+        this.events = events;
         this.publicBaseUrl = stripTrailingSlash(publicBaseUrl);
     }
 
@@ -137,9 +147,14 @@ public class OAuthController {
                             + OAuthProviderLoader.clientSecretKey(providerId) + "'");
         }
 
-        String state = stateService.start(tenant, userId, providerId, returnTo);
+        String codeVerifier = GenericOAuth2Provider.isPkceEnabled(provider.config())
+                ? mintPkceVerifier()
+                : null;
+        String state = stateService.start(
+                tenant, userId, providerId, returnTo, codeVerifier);
         String redirectUri = redirectUriFor(tenant, providerId);
-        OAuthInitContext ctx = new OAuthInitContext(tenant, userId, state, redirectUri, returnTo);
+        OAuthInitContext ctx = new OAuthInitContext(
+                tenant, userId, state, redirectUri, returnTo, codeVerifier);
 
         URI authUri;
         try {
@@ -194,7 +209,9 @@ public class OAuthController {
 
         String redirectUri = redirectUriFor(tenant, providerId);
         OAuthInitContext ctx = new OAuthInitContext(
-                tenant, userId, state, redirectUri, consumed.get().returnTo());
+                tenant, userId, state, redirectUri,
+                consumed.get().returnTo(),
+                consumed.get().codeVerifier());
 
         OAuthTokenSet tokens;
         try {
@@ -237,14 +254,23 @@ public class OAuthController {
         String userId = authority.contextOf(request).subjectId();
 
         String userRef = HomeBootstrapService.hubProjectName(userId);
-        for (String suffix : List.of(
-                KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN,
-                KEY_EXPIRES_AT, KEY_SCOPES, KEY_EXTRA)) {
-            settingService.delete(tenant, SettingService.SCOPE_PROJECT, userRef,
-                    USER_TOKEN_KEY_PREFIX + providerId + suffix);
-        }
-        log.info("OAuth disconnected: tenant='{}' user='{}' provider='{}'",
-                tenant, userId, providerId);
+        // Wipe every key under oauth.<providerId>.* — covers the well-
+        // known tokens (access/refresh/expires_at/scopes/extra) AND any
+        // flat-extra projections the connect flow may have written
+        // (cloud_id, site_url, …). Doing this by prefix means future
+        // extras don't quietly survive a disconnect.
+        String prefix = USER_TOKEN_KEY_PREFIX + providerId + ".";
+        long removed = settingService.deleteByPrefix(
+                tenant, SettingService.SCOPE_PROJECT, userRef, prefix);
+
+        // Notify cached connection pools (MCP, REST) so any open
+        // session bound to the freshly-wiped tokens drops immediately.
+        // A new tool call afterwards rebuilds the connection from a
+        // clean slate and surfaces a proper "user must reconnect" path.
+        events.publishEvent(new OAuthDisconnectedEvent(tenant, userId, providerId));
+
+        log.info("OAuth disconnected: tenant='{}' user='{}' provider='{}' settings_removed={}",
+                tenant, userId, providerId, removed);
         return ResponseEntity.noContent().build();
     }
 
@@ -302,8 +328,27 @@ public class OAuthController {
                     log.warn("OAuth: failed to serialise extra claims for '{}': {}",
                             providerId, ex.toString());
                 }
+                // Also publish each scalar extra as a flat user-setting so
+                // tool templates can reference {{secret:user:oauth.<provider>.<extraKey>}}
+                // without parsing the JSON blob (cloud_id, site_url, …).
+                // JSON-valued strings (e.g. accessible_resources) stay in
+                // the blob — skip them here to avoid bloating the cache.
+                for (Map.Entry<String, String> e : nonScope.entrySet()) {
+                    String v = e.getValue();
+                    if (v == null || v.isEmpty() || looksLikeJsonContainer(v)) continue;
+                    settingService.set(tenant, SettingService.SCOPE_PROJECT, userRef,
+                            base + "." + e.getKey(), v, SettingType.STRING, null);
+                }
             }
         }
+    }
+
+    /** Crude JSON-array/object detector — keeps blobs out of the flat-extra projection. */
+    private static boolean looksLikeJsonContainer(String s) {
+        if (s == null || s.length() < 2) return false;
+        char first = s.charAt(0);
+        char last = s.charAt(s.length() - 1);
+        return (first == '{' && last == '}') || (first == '[' && last == ']');
     }
 
     private String redirectUriFor(String tenant, String providerId) {
@@ -329,5 +374,17 @@ public class OAuthController {
     private static String stripTrailingSlash(String url) {
         if (url == null) return "";
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    /**
+     * Mint a PKCE code-verifier (RFC 7636 §4.1) — 32 bytes of
+     * {@link SecureRandom} entropy, Base64URL-encoded without padding.
+     * Result is 43 characters of {@code [A-Za-z0-9-_]}, well within the
+     * 43-128 range the spec allows.
+     */
+    private String mintPkceVerifier() {
+        byte[] bytes = new byte[PKCE_VERIFIER_BYTES];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

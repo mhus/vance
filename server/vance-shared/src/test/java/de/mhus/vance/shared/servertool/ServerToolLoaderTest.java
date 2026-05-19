@@ -183,4 +183,30 @@ class ServerToolLoaderTest {
         ServerToolConfig cfg = loader.validateYaml("hello", yaml);
         assertThat(cfg.yaml()).isEqualTo(yaml);
     }
+
+    @Test
+    void promptHint_parsed_when_present() {
+        ServerToolConfig cfg = loader.validateYaml("jira", """
+                type: mcp_server
+                description: jira
+                parameters:
+                  transport: stdio
+                  command: [noop]
+                promptHint: |
+                  cloudId is auto-injected — don't set it yourself.
+                """);
+        assertThat(cfg.promptHint())
+                .contains("cloudId is auto-injected");
+    }
+
+    @Test
+    void promptHint_defaults_to_empty_when_absent() {
+        ServerToolConfig cfg = loader.validateYaml("plain", """
+                type: doc_lookup
+                description: plain
+                parameters:
+                  path: x.md
+                """);
+        assertThat(cfg.promptHint()).isEmpty();
+    }
 }

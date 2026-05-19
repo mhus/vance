@@ -139,8 +139,17 @@ public final class RestHttpInvoker {
             String resolved = resolveValue(config.auth().value(), ctx);
             appendQueryPair(query, config.auth().queryParamName(), resolved);
         }
-        StringBuilder url = new StringBuilder(baseUrl);
-        if (!path.startsWith("/") && !baseUrl.isEmpty()) url.append('/');
+        // Resolve secret templates in baseUrl at call time so per-user
+        // tenant identifiers (Atlassian cloudId, Slack workspace id, …)
+        // can be injected via {{secret:user:...}} and follow the calling
+        // user, not the bootstrap user. Empty / unresolved → falls back
+        // to the configured static value (which is the typical case for
+        // public APIs without per-user templating).
+        String effectiveBase = resolveValue(baseUrl, ctx);
+        if (effectiveBase == null || effectiveBase.isBlank()) effectiveBase = baseUrl;
+        effectiveBase = stripTrailingSlash(effectiveBase);
+        StringBuilder url = new StringBuilder(effectiveBase);
+        if (!path.startsWith("/") && !effectiveBase.isEmpty()) url.append('/');
         url.append(path);
         if (query.length() > 0) {
             url.append(url.indexOf("?") < 0 ? '?' : '&').append(query);

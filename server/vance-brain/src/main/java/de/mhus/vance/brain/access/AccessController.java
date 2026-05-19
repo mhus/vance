@@ -243,10 +243,16 @@ public class AccessController {
      * <ul>
      *   <li>{@code HttpOnly} on access + refresh — JS cannot read them,
      *       so an XSS payload can't exfiltrate the credential.</li>
-     *   <li>{@code SameSite=Strict} — the cookies travel only on
-     *       same-origin requests, blocking CSRF and cross-site
-     *       inclusion. The web UI is same-origin with the brain, so
-     *       this is the right level.</li>
+     *   <li>{@code SameSite=Lax} — the cookies travel on same-origin
+     *       requests and on top-level cross-site GET navigations.
+     *       Strict would block the latter, which kills the OAuth
+     *       callback flow: a 302 from a provider back to
+     *       {@code /brain/.../oauth/.../callback} is a cross-site GET
+     *       navigation, and the browser would drop the access cookie.
+     *       Lax still blocks the CSRF-relevant cases (cross-site POST
+     *       form submissions, image/iframe inclusion), and the OAuth
+     *       callback is independently protected by the {@code state}
+     *       parameter (single-use, bound to tenant+user).</li>
      *   <li>{@code Secure} — toggled by {@code vance.web.cookies.secure}
      *       (default {@code true}). Production must keep it true.</li>
      *   <li>{@code Path=/} — every brain endpoint receives the cookies.
@@ -310,7 +316,7 @@ public class AccessController {
     private ResponseCookie.ResponseCookieBuilder baseCookie(String name, String value) {
         return ResponseCookie.from(name, value)
                 .secure(cookieSecure)
-                .sameSite("Strict")
+                .sameSite("Lax")
                 .path("/");
     }
 
@@ -402,7 +408,7 @@ public class AccessController {
         for (String name : new String[]{WebUiCookies.ACCESS, WebUiCookies.REFRESH, WebUiCookies.DATA}) {
             ResponseCookie expired = ResponseCookie.from(name, "")
                     .secure(cookieSecure)
-                    .sameSite("Strict")
+                    .sameSite("Lax")
                     .path("/")
                     .httpOnly(!WebUiCookies.DATA.equals(name))
                     .maxAge(0)

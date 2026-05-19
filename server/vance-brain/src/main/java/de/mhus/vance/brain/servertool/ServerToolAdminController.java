@@ -124,6 +124,8 @@ public class ServerToolAdminController {
                         .primary(request.isPrimary())
                         .disabledSubTools(disabledSubTools)
                         .defaultDeferred(request.isDefaultDeferred())
+                        .promptHint(request.getPromptHint() == null
+                                ? "" : request.getPromptHint())
                         .build();
                 saved = serverToolService.update(tenant, project, name, incoming);
                 log.info("Updated server tool tenant='{}' project='{}' name='{}'",
@@ -139,6 +141,8 @@ public class ServerToolAdminController {
                         .primary(request.isPrimary())
                         .disabledSubTools(disabledSubTools)
                         .defaultDeferred(request.isDefaultDeferred())
+                        .promptHint(request.getPromptHint() == null
+                                ? "" : request.getPromptHint())
                         .build();
                 saved = serverToolService.create(tenant, project, fresh);
                 log.info("Created server tool tenant='{}' project='{}' name='{}'",
@@ -185,6 +189,7 @@ public class ServerToolAdminController {
                         ? new LinkedHashSet<>()
                         : new LinkedHashSet<>(doc.getDisabledSubTools()))
                 .defaultDeferred(doc.isDefaultDeferred())
+                .promptHint(doc.getPromptHint() == null ? "" : doc.getPromptHint())
                 .projectId(doc.getProjectId())
                 // Timestamps now live on the underlying DocumentDocument
                 // (server-tools/<name>.yaml) and aren't carried by the

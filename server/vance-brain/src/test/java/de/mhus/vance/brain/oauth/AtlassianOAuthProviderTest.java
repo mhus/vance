@@ -72,6 +72,38 @@ class AtlassianOAuthProviderTest {
     }
 
     @Test
+    void authorize_uri_appends_audience_and_prompt_consent() {
+        // Atlassian's /authorize endpoint requires 'audience' on every
+        // request and we always force prompt=consent so scope changes
+        // propagate on reconnect.
+        AtlassianOAuthProvider provider = new AtlassianOAuthProvider(new PackHttpClient());
+
+        java.net.URI uri = provider.buildAuthorizeUri(cfg(), ctx());
+
+        assertThat(uri.toString())
+                .contains("audience=api.atlassian.com")
+                .contains("prompt=consent");
+    }
+
+    @Test
+    void authorize_uri_honours_audience_override_from_extra() {
+        Map<String, Object> extra = new LinkedHashMap<>();
+        extra.put("audience", "api-staging.atlassian.com");
+        OAuthProviderConfig stagingCfg = new OAuthProviderConfig(
+                "atlassian", "atlassian", null,
+                "https://auth.atlassian.com/authorize",
+                "https://auth.atlassian.com/oauth/token",
+                "client-id", "shh",
+                new ArrayList<>(List.of("read:jira-work")),
+                extra);
+
+        AtlassianOAuthProvider provider = new AtlassianOAuthProvider(new PackHttpClient());
+        java.net.URI uri = provider.buildAuthorizeUri(stagingCfg, ctx());
+
+        assertThat(uri.toString()).contains("audience=api-staging.atlassian.com");
+    }
+
+    @Test
     void exchange_code_attaches_cloud_id_from_accessible_resources() {
         AtlassianOAuthProvider provider = new AtlassianOAuthProvider(new PackHttpClient());
 

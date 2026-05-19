@@ -309,7 +309,7 @@ public class Ford implements ThinkEngine {
             ModelSize effectiveSize = ModelSize.parseOrAuto(
                     paramString(process, "modelSize", null), modelInfo.size());
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, modelInfo, effectiveSize, activeSkills);
+                    process, chatLog, modelInfo, effectiveSize, activeSkills, tools);
             int estimatedTokens = estimateTokens(messages);
             int triggerTokens = modelInfo.compactionTriggerTokens(
                     fordProperties.getCompactionTriggerRatio());
@@ -333,7 +333,7 @@ public class Ford implements ThinkEngine {
                         // Rebuild the prompt: the active-history shrunk and a
                         // new ARCHIVED_CHAT memory pinned the summary at top.
                         messages = buildPromptMessages(
-                                process, chatLog, modelInfo, effectiveSize, activeSkills);
+                                process, chatLog, modelInfo, effectiveSize, activeSkills, tools);
                     } else {
                         log.info("Ford.turn id='{}' compaction skipped: {}",
                                 process.getId(), result.reason());
@@ -962,7 +962,8 @@ public class Ford implements ThinkEngine {
      */
     private List<ChatMessage> buildPromptMessages(
             ThinkProcessDocument process, ChatMessageService chatLog,
-            ModelInfo modelInfo, ModelSize tier, List<ResolvedSkill> activeSkills) {
+            ModelInfo modelInfo, ModelSize tier, List<ResolvedSkill> activeSkills,
+            ContextToolsApi tools) {
         List<ChatMessage> messages = new ArrayList<>();
         java.util.Map<String, Object> ctx = de.mhus.vance.brain.prompt.PromptContextBuilder
                 .forProcess(process, modelInfo)
@@ -978,6 +979,19 @@ public class Ford implements ThinkEngine {
             base = base + "\n\n" + memoryBlock;
         }
         messages.add(SystemMessage.from(base));
+        // Pack-level tool usage notes — see ContextToolsApi.activePromptHints.
+        // Fires only when a reachable tool's ServerToolConfig.promptHint
+        // is non-empty (Jira: "cloudId is auto-injected", etc.).
+        java.util.List<String> hints = tools == null
+                ? java.util.List.of() : tools.activePromptHints();
+        if (!hints.isEmpty()) {
+            StringBuilder hb = new StringBuilder("## Tool usage notes\n\n");
+            for (int i = 0; i < hints.size(); i++) {
+                if (i > 0) hb.append("\n\n");
+                hb.append(hints.get(i));
+            }
+            messages.add(SystemMessage.from(hb.toString()));
+        }
         String skillSection = skillPromptComposer.compose(activeSkills, ctx);
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));

@@ -51,9 +51,32 @@ public class AtlassianOAuthProvider extends GenericOAuth2Provider {
         super(httpClient);
     }
 
+    /**
+     * Default {@code audience} the authorize URL must carry — Atlassian's
+     * 3LO endpoint validates this and rejects requests that miss it.
+     * Tenants can override via {@code extra.audience}.
+     */
+    public static final String DEFAULT_AUDIENCE = "api.atlassian.com";
+
     @Override
     public String typeId() {
         return TYPE_ID;
+    }
+
+    @Override
+    protected void decorateAuthorizeParams(
+            OAuthProviderConfig cfg, OAuthInitContext ctx,
+            java.util.Map<String, String> params) {
+        // Atlassian 3LO: audience is required at /authorize, otherwise
+        // the consent screen returns 'invalid_request'. Default to the
+        // canonical API audience; tenants override via extra.audience
+        // for staging environments.
+        String audience = stringOrDefault(cfg.extra().get("audience"), DEFAULT_AUDIENCE);
+        params.put("audience", audience);
+        // prompt=consent forces the consent screen and is the only way
+        // to refresh the granted scopes — without it, scope changes in
+        // the YAML never propagate on reconnect.
+        params.putIfAbsent("prompt", "consent");
     }
 
     @Override

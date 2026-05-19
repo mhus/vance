@@ -65,8 +65,34 @@ class OAuthStateServiceTest {
     }
 
     @Test
+    void start_persists_code_verifier_and_returns_it_on_consume() {
+        // PKCE round-trip — init writes verifier alongside state, callback
+        // reads it back to replay against the provider's /token endpoint.
+        when(repository.findByState("S1"))
+                .thenAnswer(inv -> Optional.of(OAuthStateDocument.builder()
+                        .state("S1")
+                        .tenantId(TENANT).userId(USER).providerId(PROVIDER)
+                        .codeVerifier("verifier-42")
+                        .createdAt(FIXED_NOW)
+                        .expiresAt(FIXED_NOW.plus(OAuthStateService.DEFAULT_TTL))
+                        .build()));
+
+        String state = service.start(TENANT, USER, PROVIDER, null, "verifier-42");
+
+        org.mockito.ArgumentCaptor<OAuthStateDocument> captor =
+                org.mockito.ArgumentCaptor.forClass(OAuthStateDocument.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getCodeVerifier()).isEqualTo("verifier-42");
+
+        Optional<OAuthStateService.Consumed> consumed =
+                service.consume("S1", TENANT, USER);
+        assertThat(consumed).isPresent();
+        assertThat(consumed.get().codeVerifier()).isEqualTo("verifier-42");
+    }
+
+    @Test
     void start_honours_custom_ttl() {
-        service.start(TENANT, USER, PROVIDER, null, Duration.ofMinutes(1));
+        service.start(TENANT, USER, PROVIDER, null, null, Duration.ofMinutes(1));
 
         org.mockito.ArgumentCaptor<OAuthStateDocument> captor =
                 org.mockito.ArgumentCaptor.forClass(OAuthStateDocument.class);

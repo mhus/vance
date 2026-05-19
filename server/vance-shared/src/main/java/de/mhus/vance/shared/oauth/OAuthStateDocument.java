@@ -52,6 +52,14 @@ public class OAuthStateDocument {
     /** Optional Web-UI path the callback should redirect to. */
     private @Nullable String returnTo;
 
+    /**
+     * PKCE code-verifier (RFC 7636) when the provider is configured
+     * with {@code usePkce: true}. Plaintext is acceptable — the document
+     * has a TTL of minutes, is never returned over the network, and the
+     * verifier is single-use (consumed and deleted with the state).
+     */
+    private @Nullable String codeVerifier;
+
     /** When the document was created — purely informational. */
     private Instant createdAt = Instant.now();
 

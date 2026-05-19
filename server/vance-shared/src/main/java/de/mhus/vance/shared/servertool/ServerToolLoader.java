@@ -205,6 +205,10 @@ public class ServerToolLoader {
         boolean primary = boolWithDefault(spec.get("primary"), false, "primary");
         boolean defaultDeferred = boolWithDefault(
                 spec.get("defaultDeferred"), false, "defaultDeferred");
+        // promptHint is optional — empty string when unset. Engines
+        // inject it into the system prompt only when this pack is
+        // reachable for the turn.
+        String promptHint = spec.get("promptHint") instanceof String s ? s : "";
 
         DocumentDocument doc = hit.document();
         return new ServerToolConfig(
@@ -217,6 +221,7 @@ public class ServerToolLoader {
                 primary,
                 disabledSubTools,
                 defaultDeferred,
+                promptHint,
                 mapSource(hit.source()),
                 doc == null ? null : doc.getId(),
                 doc == null ? null : doc.getCreatedBy(),

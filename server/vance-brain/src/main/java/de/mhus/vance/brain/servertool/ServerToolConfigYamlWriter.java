@@ -37,6 +37,9 @@ final class ServerToolConfigYamlWriter {
             out.put("disabledSubTools", cfg.disabledSubTools().stream().toList());
         }
         out.put("defaultDeferred", cfg.defaultDeferred());
+        if (cfg.promptHint() != null && !cfg.promptHint().isBlank()) {
+            out.put("promptHint", cfg.promptHint());
+        }
 
         DumperOptions opts = new DumperOptions();
         opts.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);

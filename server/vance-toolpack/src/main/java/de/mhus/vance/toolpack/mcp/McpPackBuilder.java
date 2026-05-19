@@ -34,7 +34,21 @@ public final class McpPackBuilder {
             Set<String> labels,
             boolean primary,
             boolean defaultDeferred,
+            String promptHint,
             Map<String, Object> parameters) {
+
+        public PackInput {
+            if (promptHint == null) promptHint = "";
+        }
+
+        public PackInput(
+                String name,
+                Set<String> labels,
+                boolean primary,
+                boolean defaultDeferred,
+                Map<String, Object> parameters) {
+            this(name, labels, primary, defaultDeferred, "", parameters);
+        }
     }
 
     /**
@@ -60,7 +74,7 @@ public final class McpPackBuilder {
             case STDIO -> new McpStdioTransport(cfg, rpc);
             case HTTP -> new McpHttpTransport(cfg, rpc, httpClient, secretResolver);
         };
-        McpConnection connection = new McpConnection(cfg, transport, bootstrapCtx);
+        McpConnection connection = new McpConnection(cfg, transport, bootstrapCtx, secretResolver);
 
         List<McpToolMeta> tools = connection.listTools(bootstrapCtx);
 
@@ -75,7 +89,7 @@ public final class McpPackBuilder {
                     : description.substring(0, 77) + "...";
             out.add(new McpEndpointTool(
                     fullName, meta, labels, input.defaultDeferred(),
-                    input.primary(), hint, connection));
+                    input.primary(), hint, input.promptHint(), connection));
         }
         return List.copyOf(out);
     }
@@ -101,7 +115,7 @@ public final class McpPackBuilder {
                     : description.substring(0, 77) + "...";
             out.add(new McpEndpointTool(
                     fullName, meta, labels, input.defaultDeferred(),
-                    input.primary(), hint, connection));
+                    input.primary(), hint, input.promptHint(), connection));
         }
         return List.copyOf(out);
     }

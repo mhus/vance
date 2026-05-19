@@ -171,7 +171,7 @@ public class ThinkEngineService {
                     try {
                         return resolver.toolFilterFor(
                                 process.getTenantId(), projectId,
-                                recipeName, connectionProfile, currentMode);
+                                recipeName, connectionProfile, currentMode, scope);
                     } catch (RuntimeException e) {
                         log.warn("ThinkEngineService.toolFilterFor failed for "
                                 + "process='{}' recipe='{}' profile='{}' mode={}: {}",

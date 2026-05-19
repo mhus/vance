@@ -1,9 +1,11 @@
 package de.mhus.vance.brain.tools.types;
 
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import java.util.Collection;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Expands a persisted {@link ServerToolDocument} into one or more
@@ -56,6 +58,24 @@ public interface ToolFactory {
      * cascade-lookup will surface the failure on read.
      */
     Collection<Tool> create(ServerToolDocument document);
+
+    /**
+     * Context-aware materialisation. Factories that need per-user state
+     * (user-scoped OAuth tokens, e.g. MCP servers that auth against
+     * Atlassian / Slack) override this to read {@code ctx.userId()} and
+     * pass it through to the underlying connection bootstrap. Factories
+     * that don't care fall back to the ctx-less {@link #create(ServerToolDocument)}.
+     *
+     * <p>{@code ctx} may be {@code null} for admin-time materialisation
+     * (e.g. the insights debug screen listing tool catalogs without a
+     * running process). Factories must be defensive — if the factory
+     * requires user scope and {@code ctx} is missing, throwing
+     * {@link IllegalStateException} surfaces clearly.
+     */
+    default Collection<Tool> create(
+            ServerToolDocument document, @Nullable ToolInvocationContext ctx) {
+        return create(document);
+    }
 
     /**
      * Hook invoked when the document behind {@code documentId} is being

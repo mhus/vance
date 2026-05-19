@@ -1370,6 +1370,20 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (todoBlock != null && !todoBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(todoBlock));
         }
+        // Per-pack tool usage notes. Only fires when a reachable tool
+        // carries a non-empty promptHint — Jira-MCP says "cloudId is
+        // auto-injected", a per-tenant kit-pack might explain its
+        // sub-tool naming, etc. See ServerToolConfig.promptHint and
+        // ContextToolsApi.activePromptHints.
+        java.util.List<String> hints = ctx.tools().activePromptHints();
+        if (!hints.isEmpty()) {
+            StringBuilder hb = new StringBuilder("## Tool usage notes\n\n");
+            for (int i = 0; i < hints.size(); i++) {
+                if (i > 0) hb.append("\n\n");
+                hb.append(hints.get(i));
+            }
+            messages.add(VanceSystemMessage.dynamic(hb.toString()));
+        }
 
         // Active history (ARCHIVED_CHAT compaction-aware once we wire
         // memoryService — for v1 just use full active history).

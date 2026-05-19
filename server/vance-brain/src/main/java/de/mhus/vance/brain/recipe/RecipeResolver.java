@@ -6,6 +6,7 @@ import de.mhus.vance.brain.servertool.ServerToolService;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -232,6 +233,12 @@ public class RecipeResolver {
      */
     private List<String> expandLabelSelectors(
             String tenantId, @Nullable String projectId, List<String> entries) {
+        return expandLabelSelectors(tenantId, projectId, entries, /*ctx*/ null);
+    }
+
+    private List<String> expandLabelSelectors(
+            String tenantId, @Nullable String projectId, List<String> entries,
+            @Nullable ToolInvocationContext ctx) {
         if (entries == null || entries.isEmpty()) return List.of();
         boolean hasSelector = false;
         for (String e : entries) {
@@ -249,7 +256,7 @@ public class RecipeResolver {
             if (entry.startsWith(LABEL_PREFIX) && entry.length() > 1) {
                 String label = entry.substring(LABEL_PREFIX.length());
                 for (Tool t : serverToolService.findByLabel(
-                        tenantId, effectiveProjectId, label)) {
+                        tenantId, effectiveProjectId, label, ctx)) {
                     if (seen.add(t.name())) out.add(t.name());
                 }
             } else if (seen.add(entry)) {
@@ -337,6 +344,26 @@ public class RecipeResolver {
             @Nullable String recipeName,
             @Nullable String connectionProfile,
             @Nullable ProcessMode mode) {
+        return toolFilterFor(tenantId, projectId, recipeName, connectionProfile, mode, /*ctx*/ null);
+    }
+
+    /**
+     * Context-aware overload. {@code ctx} flows through into the label-
+     * selector expansion so that user-scoped tool factories (MCP-server
+     * with OAuth, REST-API with per-user tokens) materialise with the
+     * caller's user identity. Without this, a recipe that pulls in a
+     * label like {@code @jira} during turn setup would warm up the MCP
+     * connection with {@code userId=null} and 401 against the remote
+     * server — wasted RTT plus a cached failure that lingers until
+     * next refresh.
+     */
+    public ToolFilter toolFilterFor(
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String recipeName,
+            @Nullable String connectionProfile,
+            @Nullable ProcessMode mode,
+            @Nullable ToolInvocationContext ctx) {
         String name = (recipeName != null && !recipeName.isBlank())
                 ? recipeName : "default";
         Optional<ResolvedRecipe> resolved = resolve(tenantId, projectId, name);
@@ -349,24 +376,24 @@ public class RecipeResolver {
         // Cascade lookup: first matching block wins.
         RecipeModeBlock hit = lookupModeBlock(r, connectionProfile, modeKey);
         if (hit != null && !hit.isEmpty()) {
-            return expandFilter(tenantId, projectId, hit);
+            return expandFilter(tenantId, projectId, hit, ctx);
         }
 
         // No mode-block hit. Fall through to profile-base / recipe-base.
         ProfileBlock profileBlock = resolveProfileBlock(r, connectionProfile);
         if (profileBlock.hasToolFilter()) {
             return new ToolFilter(
-                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsRemove()),
-                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsAdd()),
-                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsDefer()));
+                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsRemove(), ctx),
+                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsAdd(), ctx),
+                    expandLabelSelectors(tenantId, projectId, profileBlock.allowedToolsDefer(), ctx));
         }
         if (!r.allowedToolsAdd().isEmpty()
                 || !r.allowedToolsRemove().isEmpty()
                 || !r.allowedToolsDefer().isEmpty()) {
             return new ToolFilter(
-                    expandLabelSelectors(tenantId, projectId, r.allowedToolsRemove()),
-                    expandLabelSelectors(tenantId, projectId, r.allowedToolsAdd()),
-                    expandLabelSelectors(tenantId, projectId, r.allowedToolsDefer()));
+                    expandLabelSelectors(tenantId, projectId, r.allowedToolsRemove(), ctx),
+                    expandLabelSelectors(tenantId, projectId, r.allowedToolsAdd(), ctx),
+                    expandLabelSelectors(tenantId, projectId, r.allowedToolsDefer(), ctx));
         }
         return ToolFilter.EMPTY;
     }
@@ -410,10 +437,16 @@ public class RecipeResolver {
 
     private ToolFilter expandFilter(
             String tenantId, @Nullable String projectId, RecipeModeBlock block) {
+        return expandFilter(tenantId, projectId, block, /*ctx*/ null);
+    }
+
+    private ToolFilter expandFilter(
+            String tenantId, @Nullable String projectId, RecipeModeBlock block,
+            @Nullable ToolInvocationContext ctx) {
         return new ToolFilter(
-                expandLabelSelectors(tenantId, projectId, block.allowedToolsRemove()),
-                expandLabelSelectors(tenantId, projectId, block.allowedToolsAdd()),
-                expandLabelSelectors(tenantId, projectId, block.allowedToolsDefer()));
+                expandLabelSelectors(tenantId, projectId, block.allowedToolsRemove(), ctx),
+                expandLabelSelectors(tenantId, projectId, block.allowedToolsAdd(), ctx),
+                expandLabelSelectors(tenantId, projectId, block.allowedToolsDefer(), ctx));
     }
 
     /**

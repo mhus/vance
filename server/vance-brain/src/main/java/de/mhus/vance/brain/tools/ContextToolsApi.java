@@ -409,6 +409,29 @@ public final class ContextToolsApi implements ToolBus {
         return ctx;
     }
 
+    /**
+     * Deduplicated non-empty {@link Tool#promptHint() promptHints} for
+     * every tool currently reachable in this scope — primary or
+     * deferred. Engines join these into a single block and append them
+     * to the system message, so each pack's calling conventions surface
+     * at exactly the moment the LLM has the pack available. Empty when
+     * no reachable tool carries a hint.
+     *
+     * <p>Pack-level hints normally repeat across all sub-tools of one
+     * pack; we dedupe by hint content so the prompt carries each unique
+     * note exactly once. Order is stable across calls (insertion order),
+     * which preserves cache markers when nothing changed between turns.
+     */
+    public List<String> activePromptHints() {
+        java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+        for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
+            String hint = r.tool().promptHint();
+            if (hint == null || hint.isBlank()) continue;
+            seen.add(hint.strip());
+        }
+        return List.copyOf(seen);
+    }
+
     /** Escape hatch: underlying dispatcher for resolve-then-invoke patterns. */
     public ToolDispatcher dispatcher() {
         return dispatcher;

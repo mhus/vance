@@ -158,6 +158,15 @@ public final class McpHttpTransport implements McpTransport {
 
     private HttpResponse<InputStream> post(
             String body, Duration timeout, ToolInvocationContext ctx) {
+        if (log.isTraceEnabled()) {
+            // Permanent dev-trace of outgoing JSON-RPC bodies. Keep at
+            // TRACE — debug is too chatty for routine runs but this is
+            // exactly the line you want when an MCP server returns a
+            // generic "trouble completing this action" and you need to
+            // see what arguments actually went over the wire.
+            log.trace("MCP HTTP POST {} body={}", config.url(),
+                    body.length() > 800 ? body.substring(0, 800) + "…" : body);
+        }
         HttpRequest.Builder rb = HttpRequest.newBuilder(URI.create(config.url()))
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
@@ -239,6 +248,11 @@ public final class McpHttpTransport implements McpTransport {
         }
         // Single JSON frame.
         String body = readAllText(response.body());
+        if (log.isTraceEnabled()) {
+            log.trace("MCP HTTP {} response body={}",
+                    requestMethod,
+                    body.length() > 800 ? body.substring(0, 800) + "…" : body);
+        }
         if (body.isBlank()) return null;
         McpJsonRpc.Frame frame = McpJsonRpc.parse(body);
         if (frame instanceof McpJsonRpc.Frame.Response r) {
@@ -274,7 +288,13 @@ public final class McpHttpTransport implements McpTransport {
                 if (line.isEmpty()) {
                     // Frame boundary — process accumulated data.
                     if (dataBuf.length() > 0) {
-                        Object result = handleSseFrame(dataBuf.toString(), requestId, requestMethod);
+                        String frame = dataBuf.toString();
+                        if (log.isTraceEnabled()) {
+                            log.trace("MCP HTTP {} SSE frame body={}",
+                                    requestMethod,
+                                    frame.length() > 800 ? frame.substring(0, 800) + "…" : frame);
+                        }
+                        Object result = handleSseFrame(frame, requestId, requestMethod);
                         dataBuf.setLength(0);
                         if (result != SSE_NOT_RESPONSE) return result;
                     }

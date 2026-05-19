@@ -77,4 +77,27 @@ class McpConfigTest {
         assertThat(cfg.timeoutSeconds()).isEqualTo(McpConfig.DEFAULT_TIMEOUT_SECONDS);
         assertThat(cfg.initTimeoutSeconds()).isEqualTo(McpConfig.DEFAULT_INIT_TIMEOUT_SECONDS);
     }
+
+    @Test
+    void defaultArgs_parses_into_string_map() {
+        McpConfig cfg = McpConfig.fromParameters(Map.of(
+                "transport", "http",
+                "url", "https://mcp.example.com/mcp",
+                "defaultArgs", Map.of(
+                        "cloudId", "{{secret:user:oauth.atlassian.cloud_id}}",
+                        "audience", "api.atlassian.com")));
+
+        assertThat(cfg.defaultArgs())
+                .containsEntry("cloudId", "{{secret:user:oauth.atlassian.cloud_id}}")
+                .containsEntry("audience", "api.atlassian.com");
+    }
+
+    @Test
+    void defaultArgs_absent_yields_empty_map() {
+        McpConfig cfg = McpConfig.fromParameters(Map.of(
+                "transport", "stdio",
+                "command", List.of("noop")));
+
+        assertThat(cfg.defaultArgs()).isEmpty();
+    }
 }

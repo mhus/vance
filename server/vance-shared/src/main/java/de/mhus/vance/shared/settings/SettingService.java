@@ -64,6 +64,29 @@ public class SettingService {
                 tenantId, referenceType, referenceId);
     }
 
+    /**
+     * Deletes every setting in the scope whose key starts with
+     * {@code keyPrefix}. Returns the number of deleted documents.
+     *
+     * <p>Useful for cleaning up grouped keys whose exact suffixes aren't
+     * known up front — the OAuth disconnect path uses this to wipe
+     * {@code oauth.<providerId>.*} including any flat-extra projections
+     * the connect flow may have written (cloud_id, site_url, …).
+     */
+    public long deleteByPrefix(
+            String tenantId, String referenceType, String referenceId, String keyPrefix) {
+        if (keyPrefix == null || keyPrefix.isEmpty()) return 0;
+        long count = 0;
+        for (SettingDocument doc : findAll(tenantId, referenceType, referenceId)) {
+            String key = doc.getKey();
+            if (key == null || !key.startsWith(keyPrefix)) continue;
+            repository.deleteByTenantIdAndReferenceTypeAndReferenceIdAndKey(
+                    tenantId, referenceType, referenceId, key);
+            count++;
+        }
+        return count;
+    }
+
     // ──────────────────── Set / upsert ────────────────────
 
     /**

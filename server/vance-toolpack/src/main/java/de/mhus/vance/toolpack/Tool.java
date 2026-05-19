@@ -108,6 +108,21 @@ public interface Tool {
     }
 
     /**
+     * Pack-level prompt fragment that engines inject into the system
+     * message when this tool is reachable for the turn. Multi-tool packs
+     * (REST, MCP) share one hint across all sub-tools and the engine
+     * deduplicates — the goal is one short note per pack ("cloudId is
+     * auto-injected for the Jira pack, call {@code find_tools(query='jira')}
+     * to enumerate") rather than per sub-tool.
+     *
+     * <p>Empty string (the default) means "no extra hint" — the engine
+     * skips the hint block entirely when no active tool carries one.
+     */
+    default String promptHint() {
+        return "";
+    }
+
+    /**
      * If {@code true}, the tool is held back from the default LLM
      * tool-manifest. The discovery block in the system prompt advertises
      * it by name and {@link #searchHint()} only; the LLM activates it

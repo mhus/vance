@@ -114,6 +114,73 @@ class GenericOAuth2ProviderTest {
                 .hasMessageContaining("authorize URL");
     }
 
+    // ─────── PKCE ───────
+
+    @Test
+    void authorize_uri_carries_pkce_challenge_when_enabled() {
+        GenericOAuth2Provider provider = newProvider();
+        OAuthProviderConfig cfg = cfgWithExtra(
+                "https://provider.example/authorize",
+                "http://localhost/token",
+                List.of("openid"),
+                Map.of("usePkce", true));
+        OAuthInitContext ctx = ctxWithPkce("S", "https://v/cb", "verifier-abc");
+
+        URI uri = provider.buildAuthorizeUri(cfg, ctx);
+
+        // SHA-256("verifier-abc"), Base64URL no padding.
+        String expectedChallenge = GenericOAuth2Provider.pkceChallenge("verifier-abc");
+        assertThat(uri.toString())
+                .contains("code_challenge=" + expectedChallenge)
+                .contains("code_challenge_method=S256");
+    }
+
+    @Test
+    void authorize_uri_skips_pkce_when_flag_off_even_with_verifier() {
+        // Defense-in-depth: if a future refactor leaks a verifier into
+        // the context for a non-PKCE provider, we must NOT emit a
+        // challenge (would 4xx the authorize endpoint).
+        GenericOAuth2Provider provider = newProvider();
+        OAuthProviderConfig cfg = cfg("https://provider.example/authorize",
+                "http://localhost/token", List.of("openid"));
+        OAuthInitContext ctx = ctxWithPkce("S", "https://v/cb", "stray-verifier");
+
+        URI uri = provider.buildAuthorizeUri(cfg, ctx);
+
+        assertThat(uri.toString())
+                .doesNotContain("code_challenge")
+                .doesNotContain("code_challenge_method");
+    }
+
+    @Test
+    void exchange_code_carries_code_verifier_when_pkce_enabled() {
+        nextResponse.set(TokenResponse.ok("""
+                {"access_token":"AT"}
+                """));
+        GenericOAuth2Provider provider = newProvider();
+        OAuthProviderConfig cfg = cfgWithExtra(
+                "http://x/authorize",
+                "http://localhost:" + port + "/token",
+                List.of("openid"),
+                Map.of("usePkce", true));
+        OAuthInitContext ctx = ctxWithPkce("S", "https://v/cb", "verifier-xyz");
+
+        provider.exchangeCode(cfg, "AUTH-CODE", ctx);
+
+        assertThat(lastRequest.get().form)
+                .containsEntry("code_verifier", "verifier-xyz")
+                .containsEntry("code", "AUTH-CODE");
+    }
+
+    @Test
+    void pkce_challenge_matches_rfc7636_test_vector() {
+        // RFC 7636 Appendix B — verifier "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        // yields challenge "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM".
+        assertThat(GenericOAuth2Provider.pkceChallenge(
+                "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
+                .isEqualTo("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+    }
+
     // ─────── exchangeCode ───────
 
     @Test
@@ -267,6 +334,22 @@ class GenericOAuth2ProviderTest {
 
     private OAuthInitContext ctx(String state, String redirectUri) {
         return new OAuthInitContext("acme", "alice", state, redirectUri, null);
+    }
+
+    private OAuthInitContext ctxWithPkce(String state, String redirectUri, String verifier) {
+        return new OAuthInitContext("acme", "alice", state, redirectUri, null, verifier);
+    }
+
+    private OAuthProviderConfig cfgWithExtra(
+            String authorizeUrl, String tokenUrl,
+            List<String> scopes, Map<String, Object> extra) {
+        return new OAuthProviderConfig(
+                "test-provider", "generic-oauth2",
+                /*discoveryUrl*/ null,
+                authorizeUrl, tokenUrl,
+                "my-app", "shh-secret",
+                new ArrayList<>(scopes),
+                new LinkedHashMap<>(extra));
     }
 
     // ──────────────────── HTTP mock plumbing ────────────────────

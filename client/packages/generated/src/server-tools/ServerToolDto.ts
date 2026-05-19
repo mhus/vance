@@ -13,6 +13,7 @@ export interface ServerToolDto {
   primary: boolean;
   disabledSubTools: string[];
   defaultDeferred: boolean;
+  promptHint: string;
   projectId: string;
   updatedAtTimestamp?: number;
   createdBy?: string;

@@ -68,7 +68,7 @@ public class OAuthStateService {
             String userId,
             String providerId,
             @Nullable String returnTo) {
-        return start(tenantId, userId, providerId, returnTo, DEFAULT_TTL);
+        return start(tenantId, userId, providerId, returnTo, null, DEFAULT_TTL);
     }
 
     public String start(
@@ -76,6 +76,16 @@ public class OAuthStateService {
             String userId,
             String providerId,
             @Nullable String returnTo,
+            @Nullable String codeVerifier) {
+        return start(tenantId, userId, providerId, returnTo, codeVerifier, DEFAULT_TTL);
+    }
+
+    public String start(
+            String tenantId,
+            String userId,
+            String providerId,
+            @Nullable String returnTo,
+            @Nullable String codeVerifier,
             Duration ttl) {
         Instant now = clock.instant();
         OAuthStateDocument doc = OAuthStateDocument.builder()
@@ -84,6 +94,7 @@ public class OAuthStateService {
                 .userId(userId)
                 .providerId(providerId)
                 .returnTo(returnTo)
+                .codeVerifier(codeVerifier)
                 .createdAt(now)
                 .expiresAt(now.plus(ttl))
                 .build();
@@ -131,7 +142,8 @@ public class OAuthStateService {
         }
 
         repository.delete(doc);
-        return Optional.of(new Consumed(doc.getProviderId(), doc.getReturnTo()));
+        return Optional.of(new Consumed(
+                doc.getProviderId(), doc.getReturnTo(), doc.getCodeVerifier()));
     }
 
     private String mintState() {
@@ -142,8 +154,13 @@ public class OAuthStateService {
 
     /**
      * Returned by {@link #consume} on a successful match — the fields
-     * the callback handler needs to continue the flow.
+     * the callback handler needs to continue the flow. {@code codeVerifier}
+     * is the PKCE verifier paired with the state, replayed at token
+     * exchange; {@code null} when the flow wasn't PKCE-enabled.
      */
-    public record Consumed(String providerId, @Nullable String returnTo) {
+    public record Consumed(
+            String providerId,
+            @Nullable String returnTo,
+            @Nullable String codeVerifier) {
     }
 }

@@ -20,6 +20,7 @@ public final class McpEndpointTool implements Tool {
     private final boolean deferred;
     private final boolean primary;
     private final String searchHint;
+    private final String promptHint;
     private final McpConnection connection;
 
     public McpEndpointTool(
@@ -30,12 +31,25 @@ public final class McpEndpointTool implements Tool {
             boolean primary,
             String searchHint,
             McpConnection connection) {
+        this(fullName, meta, labels, deferred, primary, searchHint, /*promptHint*/ "", connection);
+    }
+
+    public McpEndpointTool(
+            String fullName,
+            McpToolMeta meta,
+            Set<String> labels,
+            boolean deferred,
+            boolean primary,
+            String searchHint,
+            String promptHint,
+            McpConnection connection) {
         this.fullName = fullName;
         this.meta = meta;
         this.labels = labels == null ? Set.of() : labels;
         this.deferred = deferred;
         this.primary = primary;
         this.searchHint = searchHint == null ? "" : searchHint;
+        this.promptHint = promptHint == null ? "" : promptHint;
         this.connection = connection;
     }
 
@@ -49,6 +63,7 @@ public final class McpEndpointTool implements Tool {
     @Override public boolean primary() { return primary; }
     @Override public boolean deferred() { return deferred; }
     @Override public String searchHint() { return searchHint; }
+    @Override public String promptHint() { return promptHint; }
     @Override public Set<String> labels() { return labels; }
     @Override public Map<String, Object> paramsSchema() { return meta.inputSchema(); }
 

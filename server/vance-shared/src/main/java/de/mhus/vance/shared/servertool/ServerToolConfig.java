@@ -32,10 +32,15 @@ public record ServerToolConfig(
         boolean primary,
         Set<String> disabledSubTools,
         boolean defaultDeferred,
+        String promptHint,
         Source source,
         @Nullable String documentId,
         @Nullable String createdBy,
         String yaml) {
+
+    public ServerToolConfig {
+        if (promptHint == null) promptHint = "";
+    }
 
     /** Cascade tier that produced this config. */
     public enum Source {
@@ -69,6 +74,7 @@ public record ServerToolConfig(
         doc.setPrimary(primary);
         doc.setDisabledSubTools(new LinkedHashSet<>(disabledSubTools));
         doc.setDefaultDeferred(defaultDeferred);
+        doc.setPromptHint(promptHint);
         doc.setCreatedBy(createdBy);
         return doc;
     }

@@ -595,7 +595,7 @@ public class EddieEngine extends StructuredActionEngine {
                     paramString(process, "modelSize", null), modelInfo.size());
 
             List<ChatMessage> messages = buildPromptMessages(
-                    process, chatLog, inbox, modelInfo, effectiveSize);
+                    process, chatLog, inbox, modelInfo, effectiveSize, ctx);
             int maxIters = paramInt(process, "maxIterations",
                     DEFAULT_MAX_ITERATIONS);
             log.debug("Eddie.turn id='{}' inbox={} historyMsgs={} model={} maxIters={}",
@@ -1576,7 +1576,8 @@ public class EddieEngine extends StructuredActionEngine {
             ChatMessageService chatLog,
             List<SteerMessage> inbox,
             ModelInfo modelInfo,
-            ModelSize modelSize) {
+            ModelSize modelSize,
+            ThinkEngineContext engineCtx) {
         List<ChatMessage> messages = new ArrayList<>();
 
         // ── STATIC system prefix — Anthropic cache anchors here ──
@@ -1632,6 +1633,16 @@ public class EddieEngine extends StructuredActionEngine {
         String delegatedBlock = composeDelegatedWorkersBlock(process);
         if (delegatedBlock != null && !delegatedBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(delegatedBlock));
+        }
+
+        // ── TOOL HINTS — pack-level usage notes for tools that are
+        // currently reachable for this user (OAuth-connected, MCP up).
+        // The pack-config carries the hint; engines just join them.
+        // Rides as a dynamic block: the set changes when the user
+        // (dis)connects an integration, not when the recipe changes.
+        String toolHintsBlock = composeToolHintsBlock(engineCtx);
+        if (toolHintsBlock != null && !toolHintsBlock.isBlank()) {
+            messages.add(VanceSystemMessage.dynamic(toolHintsBlock));
         }
 
         List<ChatMessageDocument> history = chatLog.activeHistory(
@@ -1996,5 +2007,24 @@ public class EddieEngine extends StructuredActionEngine {
             }
         }
         return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /**
+     * Builds the "Tool usage notes" system block from the per-pack
+     * {@code promptHint}s of all tools currently reachable. Returns
+     * {@code null} when no reachable tool carries a hint — engine
+     * skips the block entirely in that case.
+     */
+    private @org.jspecify.annotations.Nullable String composeToolHintsBlock(
+            ThinkEngineContext engineCtx) {
+        if (engineCtx == null || engineCtx.tools() == null) return null;
+        java.util.List<String> hints = engineCtx.tools().activePromptHints();
+        if (hints.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder("## Tool usage notes\n\n");
+        for (int i = 0; i < hints.size(); i++) {
+            if (i > 0) sb.append("\n\n");
+            sb.append(hints.get(i));
+        }
+        return sb.toString();
     }
 }

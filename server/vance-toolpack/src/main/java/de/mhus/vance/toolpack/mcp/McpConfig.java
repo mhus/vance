@@ -32,6 +32,14 @@ import org.jspecify.annotations.Nullable;
  *
  *     timeoutSeconds: 60
  *     initTimeoutSeconds: 5
+ *
+ *     # Arguments merged into every tools/call. LLM-supplied values for
+ *     # the same key win; absent keys are filled from here. Values may
+ *     # contain secret templates ({{secret:user:…}}) — they are
+ *     # resolved at call time, so per-user tokens / extras (cloud_id …)
+ *     # flow through transparently.
+ *     defaultArgs:
+ *       cloudId: "{{secret:user:oauth.atlassian.cloud_id}}"
  * </pre>
  */
 public record McpConfig(
@@ -48,7 +56,8 @@ public record McpConfig(
         PackHttpClient.TlsConfig tls,
         // common:
         int timeoutSeconds,
-        int initTimeoutSeconds) {
+        int initTimeoutSeconds,
+        Map<String, String> defaultArgs) {
 
     public enum Transport { STDIO, HTTP }
 
@@ -82,13 +91,24 @@ public record McpConfig(
         int timeout = intOrDefault(params.get("timeoutSeconds"), DEFAULT_TIMEOUT_SECONDS);
         int initTimeout = intOrDefault(params.get("initTimeoutSeconds"), DEFAULT_INIT_TIMEOUT_SECONDS);
 
+        Map<String, String> defaultArgs = new LinkedHashMap<>();
+        Object defaultArgsRaw = params.get("defaultArgs");
+        if (defaultArgsRaw instanceof Map<?, ?> da) {
+            for (Map.Entry<?, ?> e : da.entrySet()) {
+                if (e.getKey() != null && e.getValue() != null) {
+                    defaultArgs.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
+                }
+            }
+        }
+
         validate(t, command, url, postUrl, sseUrl);
 
         return new McpConfig(
                 t, command, cwd, Map.copyOf(env),
                 url, postUrl, sseUrl,
                 auth, tls,
-                timeout, initTimeout);
+                timeout, initTimeout,
+                Map.copyOf(defaultArgs));
     }
 
     private static void validate(

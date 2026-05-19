@@ -39,12 +39,17 @@ public class ConfiguredToolSource implements ToolSource {
 
     @Override
     public List<Tool> tools(ToolInvocationContext ctx) {
-        return service.listAll(ctx.tenantId(), effectiveProjectId(ctx));
+        // Thread the caller's invocation context all the way down: user-
+        // scoped MCP / REST factories bootstrap connections at first
+        // materialise, and they need ctx.userId() to resolve user-scoped
+        // secret templates (OAuth access tokens). Without this the
+        // remote MCP server 401s on initialize, see McpToolPackFactory.
+        return service.listAll(ctx.tenantId(), effectiveProjectId(ctx), ctx);
     }
 
     @Override
     public Optional<Tool> find(String name, ToolInvocationContext ctx) {
-        return service.lookup(ctx.tenantId(), effectiveProjectId(ctx), name);
+        return service.lookup(ctx.tenantId(), effectiveProjectId(ctx), name, ctx);
     }
 
     private static String effectiveProjectId(ToolInvocationContext ctx) {

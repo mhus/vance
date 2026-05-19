@@ -12,4 +12,5 @@ export interface ServerToolWriteRequest {
   primary: boolean;
   disabledSubTools: string[];
   defaultDeferred: boolean;
+  promptHint: string;
 }

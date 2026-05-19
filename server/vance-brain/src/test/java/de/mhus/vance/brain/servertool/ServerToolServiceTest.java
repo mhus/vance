@@ -86,7 +86,7 @@ class ServerToolServiceTest {
     void lookup_enabled_config_replaces_builtin() {
         when(registry.findConfig(eq(TENANT), eq(PROJECT), eq("builtin_alpha")))
                 .thenReturn(Optional.of(enabledConfig("builtin_alpha")));
-        when(registry.lookup(eq(TENANT), eq(PROJECT), eq("builtin_alpha")))
+        when(registry.lookup(eq(TENANT), eq(PROJECT), eq("builtin_alpha"), any()))
                 .thenReturn(Optional.of(stub("registry_replacement")));
 
         Optional<Tool> hit = service.lookup(TENANT, PROJECT, "builtin_alpha");
@@ -97,7 +97,8 @@ class ServerToolServiceTest {
     @Test
     void listAll_combines_builtins_and_registry_tools() {
         when(registry.listConfigs(eq(TENANT), eq(PROJECT))).thenReturn(List.of());
-        when(registry.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of(stub("registry_one")));
+        when(registry.listAll(eq(TENANT), eq(PROJECT), any()))
+                .thenReturn(List.of(stub("registry_one")));
 
         List<Tool> all = service.listAll(TENANT, PROJECT);
 
@@ -109,7 +110,8 @@ class ServerToolServiceTest {
     void listAll_removes_builtins_shadowed_by_disabled_config() {
         when(registry.listConfigs(eq(TENANT), eq(PROJECT)))
                 .thenReturn(List.of(disabledConfig("builtin_alpha")));
-        when(registry.listAll(eq(TENANT), eq(PROJECT))).thenReturn(List.of());
+        when(registry.listAll(eq(TENANT), eq(PROJECT), any()))
+                .thenReturn(List.of());
 
         List<Tool> all = service.listAll(TENANT, PROJECT);
 
@@ -161,7 +163,7 @@ class ServerToolServiceTest {
         ServerToolConfig bad = new ServerToolConfig(
                 "x", "no_such_type", "desc",
                 new LinkedHashMap<>(), new ArrayList<>(),
-                true, false, new LinkedHashSet<>(), false,
+                true, false, new LinkedHashSet<>(), false, "",
                 ServerToolConfig.Source.PROJECT, null, null, "");
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(factoryRegistry.find(eq("no_such_type"))).thenReturn(Optional.empty());
@@ -207,6 +209,7 @@ class ServerToolServiceTest {
                 /*primary*/ false,
                 new LinkedHashSet<>(),
                 /*defaultDeferred*/ false,
+                /*promptHint*/ "",
                 ServerToolConfig.Source.PROJECT,
                 /*documentId*/ "doc-" + name,
                 /*createdBy*/ null,
@@ -219,7 +222,7 @@ class ServerToolServiceTest {
                 base.name(), base.type(), base.description(),
                 base.parameters(), base.labels(),
                 /*enabled*/ false,
-                base.primary(), base.disabledSubTools(), base.defaultDeferred(),
+                base.primary(), base.disabledSubTools(), base.defaultDeferred(), base.promptHint(),
                 base.source(), base.documentId(), base.createdBy(), base.yaml());
     }
 

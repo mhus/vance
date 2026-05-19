@@ -199,8 +199,25 @@ public class OAuthTokenRefresher {
                     log.warn("OAuthTokenRefresher: failed to serialise extra claims for '{}': {}",
                             providerId, ex.toString());
                 }
+                // Same flat-projection as on the connect path so tool
+                // templates can keep using {{secret:user:oauth.<p>.<extra>}}
+                // after a refresh writes new metadata (rare but possible).
+                for (Map.Entry<String, String> e : nonScope.entrySet()) {
+                    String v = e.getValue();
+                    if (v == null || v.isEmpty() || looksLikeJsonContainer(v)) continue;
+                    settingService.set(tenantId, SettingService.SCOPE_PROJECT, userRef,
+                            oauthKey(providerId, e.getKey()),
+                            v, SettingType.STRING, null);
+                }
             }
         }
+    }
+
+    private static boolean looksLikeJsonContainer(String s) {
+        if (s == null || s.length() < 2) return false;
+        char first = s.charAt(0);
+        char last = s.charAt(s.length() - 1);
+        return (first == '{' && last == '}') || (first == '[' && last == ']');
     }
 
     private Object lockFor(String tenantId, String userId, String providerId) {

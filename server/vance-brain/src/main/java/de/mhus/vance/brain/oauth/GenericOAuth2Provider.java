@@ -6,9 +6,12 @@ import java.net.URLEncoder;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +45,15 @@ public class GenericOAuth2Provider implements OAuthProvider {
     /** Default HTTP timeout for outbound token requests. */
     static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
 
+    /**
+     * Extra-config key that opts a provider into PKCE (RFC 7636).
+     * When {@code true}, the init endpoint mints a {@code code_verifier},
+     * the authorize URL carries {@code code_challenge}+S256, and the
+     * token exchange replays the verifier. Mandatory for OAuth 2.1
+     * providers (Atlassian), optional but recommended for the others.
+     */
+    public static final String EXTRA_USE_PKCE = "usePkce";
+
     protected final PackHttpClient httpClient;
     protected final ObjectMapper json;
 
@@ -74,6 +86,10 @@ public class GenericOAuth2Provider implements OAuthProvider {
         if (!cfg.scopes().isEmpty()) {
             params.put("scope", String.join(" ", cfg.scopes()));
         }
+        if (isPkceEnabled(cfg) && ctx.codeVerifier() != null) {
+            params.put("code_challenge", pkceChallenge(ctx.codeVerifier()));
+            params.put("code_challenge_method", "S256");
+        }
         decorateAuthorizeParams(cfg, ctx, params);
         return URI.create(base + (base.contains("?") ? "&" : "?") + formEncode(params));
     }
@@ -87,6 +103,9 @@ public class GenericOAuth2Provider implements OAuthProvider {
         form.put("redirect_uri", ctx.redirectUri());
         form.put("client_id", cfg.clientId());
         form.put("client_secret", cfg.clientSecret());
+        if (isPkceEnabled(cfg) && ctx.codeVerifier() != null) {
+            form.put("code_verifier", ctx.codeVerifier());
+        }
         return postForm(cfg, form);
     }
 
@@ -211,6 +230,39 @@ public class GenericOAuth2Provider implements OAuthProvider {
                             + (description == null ? "(no description)" : description));
         }
         return parseTokenResponse(root, cfg.providerId());
+    }
+
+    // ──────────────────── PKCE helpers ────────────────────
+
+    /**
+     * True when the provider config opts into PKCE via
+     * {@code extra.usePkce: true}. The controller checks the same key
+     * to decide whether to mint a {@code code_verifier} on init.
+     */
+    public static boolean isPkceEnabled(OAuthProviderConfig cfg) {
+        Object v = cfg.extra().get(EXTRA_USE_PKCE);
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) return "true".equalsIgnoreCase(s.trim());
+        return false;
+    }
+
+    /**
+     * SHA-256 of the verifier, Base64URL-encoded without padding —
+     * RFC 7636 §4.2. Provider beans don't need to call this directly;
+     * it's invoked from {@link #buildAuthorizeUri} and exposed for
+     * tests that need to assert the challenge derivation.
+     */
+    public static String pkceChallenge(String codeVerifier) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                    .digest(codeVerifier.getBytes(StandardCharsets.US_ASCII));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is part of the JRE; failure here means a broken
+            // crypto provider and the rest of the app wouldn't work
+            // either — surface as a hard error rather than a downgrade.
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     // ──────────────────── Helpers ────────────────────

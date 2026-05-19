@@ -8,6 +8,7 @@ import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import de.mhus.vance.shared.servertool.ServerToolLoader;
 import de.mhus.vance.toolpack.Tool;
+import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import org.jspecify.annotations.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -68,10 +70,16 @@ public class ServerToolService {
      * carries the name.
      */
     public Optional<Tool> lookup(String tenantId, String projectId, String name) {
+        return lookup(tenantId, projectId, name, /*ctx*/ null);
+    }
+
+    public Optional<Tool> lookup(
+            String tenantId, String projectId, String name,
+            @Nullable ToolInvocationContext ctx) {
         ensureBootstrapped(tenantId, projectId);
         Optional<ServerToolConfig> cfg = registry.findConfig(tenantId, projectId, name);
         if (cfg.isPresent()) {
-            return registry.lookup(tenantId, projectId, name);
+            return registry.lookup(tenantId, projectId, name, ctx);
         }
         return builtInProvider.find(name);
     }
@@ -80,20 +88,28 @@ public class ServerToolService {
      * All tools visible to the project — built-ins shadowed by every
      * configured pack-name, then the registry's materialised tools
      * (which already filters disabled packs / sub-tools) layered on top.
+     *
+     * <p>{@code ctx} carries the calling user/session for factories that
+     * bootstrap user-scoped connections (MCP-server with OAuth). Pass
+     * {@code null} on admin paths that have no user yet.
      */
     public List<Tool> listAll(String tenantId, String projectId) {
+        return listAll(tenantId, projectId, /*ctx*/ null);
+    }
+
+    public List<Tool> listAll(
+            String tenantId, String projectId,
+            @Nullable ToolInvocationContext ctx) {
         ensureBootstrapped(tenantId, projectId);
         Map<String, Tool> acc = new LinkedHashMap<>();
         for (Tool t : builtInProvider.list()) {
             acc.put(t.name(), t);
         }
-        // Every configured pack-name (enabled or disabled) hides its
-        // built-in counterpart and any sub-tool prefix.
         for (ServerToolConfig cfg : registry.listConfigs(tenantId, projectId)) {
             String prefix = cfg.name() + ToolFactory.PACK_SEPARATOR;
             acc.keySet().removeIf(n -> n.equals(cfg.name()) || n.startsWith(prefix));
         }
-        for (Tool t : registry.listAll(tenantId, projectId)) {
+        for (Tool t : registry.listAll(tenantId, projectId, ctx)) {
             acc.put(t.name(), t);
         }
         return new ArrayList<>(acc.values());
@@ -101,7 +117,13 @@ public class ServerToolService {
 
     /** Tools tagged with {@code label}; expands {@code @<label>} recipe selectors. */
     public List<Tool> findByLabel(String tenantId, String projectId, String label) {
-        return listAll(tenantId, projectId).stream()
+        return findByLabel(tenantId, projectId, label, /*ctx*/ null);
+    }
+
+    public List<Tool> findByLabel(
+            String tenantId, String projectId, String label,
+            @Nullable ToolInvocationContext ctx) {
+        return listAll(tenantId, projectId, ctx).stream()
                 .filter(t -> t.labels().contains(label))
                 .toList();
     }
@@ -263,6 +285,7 @@ public class ServerToolService {
                         ? new java.util.LinkedHashSet<>()
                         : new java.util.LinkedHashSet<>(doc.getDisabledSubTools()),
                 doc.isDefaultDeferred(),
+                doc.getPromptHint() == null ? "" : doc.getPromptHint(),
                 ServerToolConfig.Source.PROJECT,
                 /*documentId*/ null,
                 doc.getCreatedBy(),

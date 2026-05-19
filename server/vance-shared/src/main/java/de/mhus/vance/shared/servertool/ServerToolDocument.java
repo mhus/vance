@@ -74,6 +74,22 @@ public class ServerToolDocument {
      */
     private boolean defaultDeferred = false;
 
+    /**
+     * Free-form prompt fragment that engines inject into the system
+     * message <b>only when this pack is reachable in the current turn</b>
+     * (i.e. it shows up in {@code dispatcher.resolveAll}). Use this to
+     * explain pack-specific calling conventions, sub-tool naming, or
+     * "do-not-set-this-arg" rules that are not obvious from the
+     * sub-tool descriptions — e.g. "cloudId is auto-injected, call
+     * {@code find_tools(query='jira')} to enumerate".
+     *
+     * <p>Empty (the default) means "no extra hint". Multi-line markdown
+     * is fine — the engine just concatenates active hints under a
+     * "Tool usage notes" section.
+     */
+    @Builder.Default
+    private String promptHint = "";
+
     /** Username of the creator ({@code UserDocument.name}); {@code null} for bootstrap-created defaults. */
     private @Nullable String createdBy;
 }

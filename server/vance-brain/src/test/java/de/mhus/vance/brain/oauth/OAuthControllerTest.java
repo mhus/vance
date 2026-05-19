@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -49,6 +50,7 @@ class OAuthControllerTest {
     private OAuthStateService stateService;
     private SettingService settingService;
     private RequestAuthority authority;
+    private org.springframework.context.ApplicationEventPublisher events;
     private OAuthController controller;
     private HttpServletRequest request;
 
@@ -58,10 +60,11 @@ class OAuthControllerTest {
         stateService = mock(OAuthStateService.class);
         settingService = mock(SettingService.class);
         authority = mock(RequestAuthority.class);
+        events = mock(org.springframework.context.ApplicationEventPublisher.class);
         when(authority.contextOf(any(HttpServletRequest.class)))
                 .thenReturn(new SecurityContext(SubjectType.USER, USERNAME, TENANT, List.of()));
         controller = new OAuthController(
-                configRegistry, stateService, settingService, authority, PUBLIC_BASE);
+                configRegistry, stateService, settingService, authority, events, PUBLIC_BASE);
         request = mock(HttpServletRequest.class);
     }
 
@@ -98,7 +101,8 @@ class OAuthControllerTest {
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(
                         configWithSecret(PROVIDER_ID, "slack"), provider)));
-        when(stateService.start(eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/settings")))
+        when(stateService.start(
+                eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/settings"), isNull()))
                 .thenReturn("S123");
 
         ResponseEntity<Void> resp = controller.init(TENANT, PROVIDER_ID, "/settings", request);
@@ -112,6 +116,40 @@ class OAuthControllerTest {
         assertThat(ctx.state()).isEqualTo("S123");
         assertThat(ctx.redirectUri()).isEqualTo(EXPECTED_REDIRECT_URI);
         assertThat(ctx.returnTo()).isEqualTo("/settings");
+        // Non-PKCE flow — controller passes null verifier to state and ctx.
+        assertThat(ctx.codeVerifier()).isNull();
+    }
+
+    @Test
+    void init_mints_pkce_verifier_when_provider_uses_pkce() {
+        URI authorizeUri = URI.create("https://provider.example/authorize");
+        RecordingProvider provider = new RecordingProvider(authorizeUri);
+        OAuthProviderConfig pkceConfig = new OAuthProviderConfig(
+                PROVIDER_ID, "atlassian", null,
+                "https://provider.example/authorize",
+                "https://provider.example/token",
+                "client-id", "shh",
+                new ArrayList<>(),
+                new LinkedHashMap<>(Map.of("usePkce", true)));
+        when(configRegistry.resolve(TENANT, PROVIDER_ID))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(pkceConfig, provider)));
+        when(stateService.start(
+                eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/x"), anyString()))
+                .thenReturn("S999");
+
+        controller.init(TENANT, PROVIDER_ID, "/x", request);
+
+        assertThat(provider.captured).hasSize(1);
+        String verifier = provider.captured.get(0).codeVerifier();
+        // 32 random bytes → Base64URL no padding ≈ 43 characters, in the
+        // RFC 7636 §4.1 alphabet [A-Za-z0-9-_].
+        assertThat(verifier).isNotNull()
+                .hasSize(43)
+                .matches("[A-Za-z0-9_-]+");
+        // The mint result must round-trip into stateService.start() — that's
+        // what the callback later replays as code_verifier on the token call.
+        verify(stateService).start(
+                eq(TENANT), eq(USERNAME), eq(PROVIDER_ID), eq("/x"), eq(verifier));
     }
 
     @Test
@@ -156,7 +194,7 @@ class OAuthControllerTest {
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(
                         configWithSecret(PROVIDER_ID, "slack"), provider)));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
-                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, "/settings")));
+                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, "/settings", null)));
 
         ResponseEntity<Void> resp = controller.callback(
                 TENANT, PROVIDER_ID, "auth-code", "S123", request);
@@ -187,6 +225,28 @@ class OAuthControllerTest {
     }
 
     @Test
+    void callback_passes_pkce_verifier_into_exchange_context() {
+        // The verifier that was minted at /init time and stashed on the
+        // state document must reach the provider's exchangeCode(...) so
+        // the token endpoint can match it against the earlier challenge.
+        URI authorizeUri = URI.create("https://provider.example/auth");
+        OAuthTokenSet tokens = new OAuthTokenSet("at", null, null, Map.of());
+        RecordingProvider provider = new RecordingProvider(authorizeUri, tokens);
+        when(configRegistry.resolve(TENANT, PROVIDER_ID))
+                .thenReturn(Optional.of(new ResolvedOAuthProvider(
+                        configWithSecret(PROVIDER_ID, "atlassian"), provider)));
+        when(stateService.consume(eq("S-PK"), eq(TENANT), eq(USERNAME)))
+                .thenReturn(Optional.of(new OAuthStateService.Consumed(
+                        PROVIDER_ID, null, "verifier-from-init")));
+
+        controller.callback(TENANT, PROVIDER_ID, "auth-code", "S-PK", request);
+
+        assertThat(provider.exchangeContexts).hasSize(1);
+        assertThat(provider.exchangeContexts.get(0).codeVerifier())
+                .isEqualTo("verifier-from-init");
+    }
+
+    @Test
     void callback_redirects_to_root_when_returnTo_absent() {
         when(configRegistry.resolve(TENANT, PROVIDER_ID))
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(
@@ -194,7 +254,7 @@ class OAuthControllerTest {
                         new RecordingProvider(null,
                                 new OAuthTokenSet("a", null, null, Map.of())))));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
-                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null)));
+                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
         ResponseEntity<Void> resp = controller.callback(
                 TENANT, PROVIDER_ID, "code", "S123", request);
@@ -211,7 +271,7 @@ class OAuthControllerTest {
                                 new OAuthTokenSet("a", null, null, Map.of())))));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
                 .thenReturn(Optional.of(new OAuthStateService.Consumed(
-                        PROVIDER_ID, "https://evil.com/steal")));
+                        PROVIDER_ID, "https://evil.com/steal", null)));
 
         ResponseEntity<Void> resp = controller.callback(
                 TENANT, PROVIDER_ID, "code", "S123", request);
@@ -234,7 +294,7 @@ class OAuthControllerTest {
     @Test
     void callback_400_on_provider_id_mismatch() {
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
-                .thenReturn(Optional.of(new OAuthStateService.Consumed("github", null)));
+                .thenReturn(Optional.of(new OAuthStateService.Consumed("github", null, null)));
 
         assertThatThrownBy(() -> controller.callback(TENANT, "slack", "code", "S123", request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -250,7 +310,7 @@ class OAuthControllerTest {
                         new RecordingProvider(null,
                                 new OAuthTokenSet("a", /*refresh*/ null, null, Map.of())))));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
-                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null)));
+                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
         controller.callback(TENANT, PROVIDER_ID, "code", "S123", request);
 
@@ -271,7 +331,7 @@ class OAuthControllerTest {
                 .thenReturn(Optional.of(new ResolvedOAuthProvider(
                         configWithSecret(PROVIDER_ID, "slack"), failing)));
         when(stateService.consume(eq("S123"), eq(TENANT), eq(USERNAME)))
-                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null)));
+                .thenReturn(Optional.of(new OAuthStateService.Consumed(PROVIDER_ID, null, null)));
 
         assertThatThrownBy(() -> controller.callback(TENANT, PROVIDER_ID, "code", "S123", request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -281,20 +341,20 @@ class OAuthControllerTest {
     // ─────── /disconnect ───────
 
     @Test
-    void disconnect_deletes_all_user_settings_for_provider() {
+    void disconnect_wipes_all_user_settings_and_publishes_event() {
+        // Disconnect uses prefix-delete to clear oauth.<provider>.* — that
+        // covers well-known keys (access/refresh/expires/scopes/extra)
+        // AND any flat-extra projections (cloud_id, site_url, …) the
+        // connect flow may have written, without the test needing to
+        // enumerate them.
         ResponseEntity<Void> resp = controller.disconnect(TENANT, PROVIDER_ID, request);
 
         assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
-        verify(settingService, times(1)).delete(TENANT, SettingService.SCOPE_PROJECT,
-                "_user_" + USERNAME, "oauth.slack.access_token");
-        verify(settingService, times(1)).delete(TENANT, SettingService.SCOPE_PROJECT,
-                "_user_" + USERNAME, "oauth.slack.refresh_token");
-        verify(settingService, times(1)).delete(TENANT, SettingService.SCOPE_PROJECT,
-                "_user_" + USERNAME, "oauth.slack.expires_at");
-        verify(settingService, times(1)).delete(TENANT, SettingService.SCOPE_PROJECT,
-                "_user_" + USERNAME, "oauth.slack.scopes");
-        verify(settingService, times(1)).delete(TENANT, SettingService.SCOPE_PROJECT,
-                "_user_" + USERNAME, "oauth.slack.extra");
+        verify(settingService, times(1)).deleteByPrefix(
+                TENANT, SettingService.SCOPE_PROJECT,
+                "_user_" + USERNAME, "oauth.slack.");
+        verify(events, times(1)).publishEvent(
+                new OAuthDisconnectedEvent(TENANT, USERNAME, PROVIDER_ID));
     }
 
     // ─────── Helpers ───────
@@ -321,6 +381,7 @@ class OAuthControllerTest {
         final URI authorizeUri;
         final OAuthTokenSet tokens;
         final List<OAuthInitContext> captured = new ArrayList<>();
+        final List<OAuthInitContext> exchangeContexts = new ArrayList<>();
 
         RecordingProvider(URI authorizeUri) {
             this(authorizeUri, new OAuthTokenSet("a", null, null, Map.of()));
@@ -339,6 +400,7 @@ class OAuthControllerTest {
         }
 
         @Override public OAuthTokenSet exchangeCode(OAuthProviderConfig c, String code, OAuthInitContext ctx) {
+            exchangeContexts.add(ctx);
             return tokens;
         }
 

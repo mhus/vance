@@ -59,4 +59,12 @@ public class ServerToolWriteRequest {
      * Singleton packs ignore this — the factory's classification wins.
      */
     private boolean defaultDeferred;
+
+    /**
+     * Optional pack-level prompt fragment. Engines append this to the
+     * system message when the pack's tools are reachable for the turn —
+     * use it for calling conventions or "auto-injected, don't set"
+     * hints. Empty string (the default) means "no extra hint".
+     */
+    private String promptHint = "";
 }

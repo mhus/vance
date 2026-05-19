@@ -122,7 +122,14 @@ public class SettingsSecretResolver implements SecretResolver {
             return oauthTokenRefresher.resolveAccessToken(
                     ctx.tenantId(), ctx.userId(), providerId);
         }
-        return settings.getDecryptedUserPassword(ctx.tenantId(), ctx.userId(), key);
+        String pw = settings.getDecryptedUserPassword(ctx.tenantId(), ctx.userId(), key);
+        if (pw != null) return pw;
+        // Fall back to STRING-typed user settings — non-secret OAuth
+        // metadata (cloud_id, site_url, …) is stored as STRING by the
+        // OAuth callback's flat-extra projection, and tool templates need
+        // to reach it through the same {{secret:user:…}} syntax that
+        // already handles the access token.
+        return settings.getUserStringValue(ctx.tenantId(), ctx.userId(), key);
     }
 
     private @Nullable String resolveTenant(String key, ToolInvocationContext ctx) {

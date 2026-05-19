@@ -63,6 +63,13 @@ public class ServerToolDto {
      */
     private boolean defaultDeferred;
 
+    /**
+     * Pack-level prompt fragment injected into the engine's system
+     * message when this pack is reachable for the turn. Empty string
+     * (the default) means "no extra hint".
+     */
+    private String promptHint = "";
+
     /** Owning project — {@code _vance} for system-wide tools. */
     private String projectId;
 

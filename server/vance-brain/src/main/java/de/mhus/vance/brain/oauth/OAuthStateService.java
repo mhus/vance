@@ -48,6 +48,7 @@ public class OAuthStateService {
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public OAuthStateService(OAuthStateRepository repository) {
         this(repository, Clock.systemUTC());
     }

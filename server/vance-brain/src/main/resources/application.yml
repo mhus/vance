@@ -51,6 +51,12 @@ vance:
     capabilities: []
   encryption:
     password: ${VANCE_ENCRYPTION_PASSWORD:changeit}
+  web:
+    # Browser-reachable base URL for callbacks (e.g. OAuth redirect_uri).
+    # Dev default = Vite dev server (proxies /brain/* to this Spring app).
+    # In prod, override with the reverse-proxy hostname:
+    #   VANCE_WEB_PUBLICBASEURL=https://vance.example.com
+    publicBaseUrl: ${VANCE_WEB_PUBLICBASEURL:http://localhost:9900}
   internal:
     # Shared secret used by Layer 1 to authenticate against /internal/**
     # endpoints on a peer pod. In K8s this is mounted from a Secret; the

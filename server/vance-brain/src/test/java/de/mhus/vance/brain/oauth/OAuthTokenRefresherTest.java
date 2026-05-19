@@ -261,25 +261,36 @@ class OAuthTokenRefresherTest {
 
     @Test
     void parallel_callers_only_trigger_one_refresh() throws Exception {
+        // AtomicReferences make the simulated state transition (refresh
+        // persists → next read sees fresh values) thread-safe across the
+        // 8 worker threads. Plain Mockito when().thenReturn() in a
+        // callback is publish-visible only on next-call evaluation —
+        // good enough for sequential tests, race-prone for parallel.
+        Instant freshExpiry = FIXED_NOW.plusSeconds(3600);
+        java.util.concurrent.atomic.AtomicReference<String> expiresAtRef =
+                new java.util.concurrent.atomic.AtomicReference<>(
+                        FIXED_NOW.minusSeconds(60).toString());
+        java.util.concurrent.atomic.AtomicReference<String> accessTokenRef =
+                new java.util.concurrent.atomic.AtomicReference<>(null);
+
         when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
-                .thenReturn(FIXED_NOW.minusSeconds(60).toString());
+                .thenAnswer(inv -> expiresAtRef.get());
+        when(settingService.getDecryptedUserPassword(TENANT, USER, ACCESS_KEY))
+                .thenAnswer(inv -> accessTokenRef.get());
         when(settingService.getDecryptedUserPassword(TENANT, USER, REFRESH_KEY))
                 .thenReturn("rt");
 
-        // After the FIRST persist call, subsequent reads of expires_at
-        // should reflect the freshly persisted future timestamp — the
-        // double-check inside the lock then short-circuits.
-        Instant freshExpiry = FIXED_NOW.plusSeconds(3600);
         provider.next = new OAuthTokenSet("fresh-access", "fresh-refresh",
                 freshExpiry, Map.of());
+
+        // Atomic publish: the moment persistTokens writes expires_at to
+        // the future, sibling readers see the new value AND the new
+        // access token together — no torn read possible.
         when(settingService.set(eq(TENANT), eq(SettingService.SCOPE_PROJECT),
                 eq(USER_REF), eq(EXPIRES_KEY), any(), eq(SettingType.STRING), any()))
                 .thenAnswer(inv -> {
-                    when(settingService.getUserStringValue(TENANT, USER, EXPIRES_KEY))
-                            .thenReturn(freshExpiry.toString());
-                    when(settingService.getDecryptedUserPassword(
-                                    TENANT, USER, ACCESS_KEY))
-                            .thenReturn("fresh-access");
+                    expiresAtRef.set(freshExpiry.toString());
+                    accessTokenRef.set("fresh-access");
                     return null;
                 });
 

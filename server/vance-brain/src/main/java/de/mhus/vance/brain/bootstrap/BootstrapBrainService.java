@@ -5,6 +5,7 @@ import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.password.PasswordService;
 import de.mhus.vance.shared.project.ProjectService;
 import de.mhus.vance.shared.projectgroup.ProjectGroupService;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.team.TeamService;
 import de.mhus.vance.shared.tenant.TenantService;
 import de.mhus.vance.shared.user.UserService;
@@ -51,6 +52,7 @@ public class BootstrapBrainService {
     private final ProjectService projectService;
     private final TeamService teamService;
     private final DocumentService documentService;
+    private final SettingService settingService;
     private final HomeBootstrapService homeBootstrapService;
     private final InitSettingsLoader initSettingsLoader;
     private final BootstrapProperties properties;
@@ -101,11 +103,78 @@ public class BootstrapBrainService {
         // get _vance lazily on first login (AccessController).
         homeBootstrapService.ensureTenantProject(ACME_TENANT);
 
+        // Seed the mock OAuth provider so the local-dev compose stack
+        // works out of the box: start `deployment/local` docker compose,
+        // then "Connect mock" in the Web-UI completes the OAuth dance
+        // against http://localhost:18099 without any manual setup.
+        ensureMockOAuthProvider(ACME_TENANT);
+
         // LLM keys, provider/model defaults, etc. — loaded from a
         // gitignored YAML so a Mongo wipe doesn't lose them. The
         // entries land on the tenant's _vance project (see
         // InitSettingsLoader).
         initSettingsLoader.loadIfPresent();
+    }
+
+    /**
+     * YAML body for the mock OAuth provider document
+     * ({@code oauth/mock.yaml} in the {@code _tenant} project) — points
+     * at the {@code navikt/mock-oauth2-server} instance from
+     * {@code deployment/local/docker-compose.yaml}.
+     */
+    private static final String MOCK_OAUTH_PROVIDER_YAML = """
+            # Mock OAuth provider (navikt/mock-oauth2-server) for local development.
+            # Started by deployment/local/docker-compose.yaml on port 18099. The
+            # mock validates nothing — any clientId/secret works, any username
+            # entered at the login prompt becomes the JWT subject. This is the
+            # zero-config entry-point for trying out the OAuth flow without
+            # registering a real provider.
+            type: oidc
+            clientId: vance-local
+            discoveryUrl: "http://localhost:18099/default/.well-known/openid-configuration"
+            scopes:
+              - openid
+              - profile
+              - email
+            """;
+
+    private static final String MOCK_OAUTH_PROVIDER_ID = "mock";
+
+    /**
+     * Provision a ready-to-go mock OAuth provider in the {@code _tenant}
+     * project so a fresh dev database lets the user "Connect mock" in
+     * the Web-UI immediately. The {@code client_secret} value is
+     * irrelevant — the mock doesn't validate it; the setting just has
+     * to exist so {@link OAuthAdminController}/{@link OAuthController}'s
+     * "client secret missing" guard doesn't trip.
+     *
+     * <p>Idempotent on both records — re-runs leave existing edits
+     * alone.
+     */
+    private void ensureMockOAuthProvider(String tenantId) {
+        String tenantProject = HomeBootstrapService.TENANT_PROJECT_NAME;
+        String docPath = "oauth/" + MOCK_OAUTH_PROVIDER_ID + ".yaml";
+        String secretKey = "oauth." + MOCK_OAUTH_PROVIDER_ID + ".client_secret";
+
+        if (documentService.findByPath(tenantId, tenantProject, docPath).isEmpty()) {
+            documentService.createText(
+                    tenantId, tenantProject, docPath,
+                    "Mock OAuth (local)",
+                    List.of("oauth", "dev"),
+                    MOCK_OAUTH_PROVIDER_YAML,
+                    "bootstrap");
+            log.info("Bootstrap: seeded mock OAuth provider document '{}'", docPath);
+        }
+
+        boolean hasSecret = settingService.getDecryptedPassword(
+                tenantId, SettingService.SCOPE_PROJECT, tenantProject, secretKey) != null;
+        if (!hasSecret) {
+            settingService.setEncryptedPassword(
+                    tenantId, SettingService.SCOPE_PROJECT, tenantProject,
+                    secretKey,
+                    "dummy-secret-mock-does-not-check");
+            log.info("Bootstrap: seeded mock OAuth client secret '{}'", secretKey);
+        }
     }
 
     /**

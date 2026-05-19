@@ -57,6 +57,7 @@ public class OAuthTokenRefresher {
     /** Per-{@code (tenantId|userId|providerId)} lock pool. */
     private final ConcurrentMap<String, Object> locks = new ConcurrentHashMap<>();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public OAuthTokenRefresher(
             OAuthConfigRegistry configRegistry,
             SettingService settingService) {

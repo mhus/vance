@@ -763,6 +763,22 @@ export default {
     },
   },
 
+  toolTemplates: {
+    pageTitle: 'Tool Templates',
+    intro:
+      'Curated tool packs (Jira, IMAP, SMTP, …). Pick one, fill in the inputs, and the kit is applied to your tenant — passwords are stored encrypted.',
+    loading: 'Loading…',
+    searchPlaceholder: 'Search templates…',
+    projectIdLabel: 'Project',
+    install: 'Install',
+    apply: 'Apply',
+    noInputs: 'This template has no inputs — apply to install it.',
+    empty: {
+      headline: 'No templates available',
+      body: 'Ask your tenant administrator to populate the tool-templates catalog at _tenant/config/tool-templates.yaml.',
+    },
+  },
+
   connectedAccounts: {
     pageTitle: 'Connected Accounts',
     loading: 'Loading…',

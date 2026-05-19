@@ -69,6 +69,13 @@ export * from './kit/KitOriginDto';
 export * from './kit/ProjectKitEntry';
 export * from './kit/ProjectKitsCatalogDto';
 export * from './kit/ProjectKitsScanRequestDto';
+export * from './kit/ToolTemplateApplyRequestDto';
+export * from './kit/ToolTemplateApplyResultDto';
+export * from './kit/ToolTemplateCatalogDto';
+export * from './kit/ToolTemplateCatalogEntry';
+export * from './kit/ToolTemplateDescriptorDto';
+export * from './kit/ToolTemplateInputDto';
+export * from './kit/ToolTemplatePostInstallDto';
 
 export * from './execution/ExecEvent';
 export * from './execution/ExecListSnapshot';

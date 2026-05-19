@@ -18,6 +18,7 @@ const editorEntries = {
   scripts: resolve(__dirname, 'scripts.html'),
   'connected-accounts': resolve(__dirname, 'connected-accounts.html'),
   'oauth-providers': resolve(__dirname, 'oauth-providers.html'),
+  'tool-templates': resolve(__dirname, 'tool-templates.html'),
 };
 
 export default defineConfig({

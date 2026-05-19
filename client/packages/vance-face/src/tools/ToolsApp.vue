@@ -195,6 +195,7 @@ function buildWriteRequest(): ServerToolWriteRequest | null {
     primary: form.primary,
     disabledSubTools,
     defaultDeferred: form.defaultDeferred,
+    promptHint: '',
   };
 }
 
@@ -266,6 +267,7 @@ async function submitNewTool(): Promise<void> {
     primary: false,
     disabledSubTools: [],
     defaultDeferred: false,
+    promptHint: '',
   };
   try {
     await toolsState.upsert(selectedProject.value, name, stub);

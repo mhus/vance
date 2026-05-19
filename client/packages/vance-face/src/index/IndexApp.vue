@@ -339,6 +339,15 @@ function readNextParam(): string | null {
               {{ $t('index.open') }}
             </VButton>
           </li>
+          <li v-if="showAdminTiles" class="flex items-center justify-between gap-4">
+            <div>
+              <div class="font-semibold">{{ $t('toolTemplates.pageTitle') }}</div>
+              <div class="text-sm opacity-70">{{ $t('toolTemplates.intro') }}</div>
+            </div>
+            <VButton variant="primary" size="sm" href="/tool-templates.html">
+              {{ $t('index.open') }}
+            </VButton>
+          </li>
         </ul>
       </VCard>
     </div>

@@ -33,6 +33,7 @@ public class KitService {
     private final KitExporter exporter;
     private final KitWorkspace workspace;
     private final ProjectService projectService;
+    private final TemplateApplier templateApplier;
 
     /**
      * Install / update / apply a kit. The {@code mode} on the request
@@ -122,6 +123,51 @@ public class KitService {
             String tenantId, KitImportRequestDto request, @Nullable String actor) {
         request.setMode(KitImportMode.APPLY);
         return importKit(tenantId, request, actor);
+    }
+
+    /**
+     * Apply a tool-template kit — one that ships a {@code template.yaml}
+     * sibling of {@code kit.yaml}. The supplied {@code inputs} are
+     * validated against the template's input schema, {@code {{var:X}}}
+     * placeholders in the kit's documents are substituted in place, and
+     * any input with {@code target.kind=setting} is persisted via
+     * {@link de.mhus.vance.shared.settings.SettingService} (PASSWORD
+     * inputs encrypted at rest).
+     *
+     * <p>Mode is always {@link KitImportMode#APPLY} — templates are
+     * artifact-style by design (no kit-manifest tracking, idempotent
+     * re-apply with new inputs is the supported update path).
+     *
+     * @return result wrapping the underlying installer outcome plus the
+     *         template's {@code postInstall} hook for the caller to surface
+     */
+    public TemplateApplier.ApplyResult applyTemplate(
+            String tenantId,
+            String projectId,
+            KitInheritDto source,
+            java.util.Map<String, String> inputs,
+            @Nullable String token,
+            @Nullable String actor) {
+        if (projectService.findByTenantAndName(tenantId, projectId).isEmpty()) {
+            throw new KitException("project '" + projectId
+                    + "' does not exist in tenant '" + tenantId
+                    + "' — create it before applying a template");
+        }
+        KitResolver.ResolvedKit resolved = null;
+        try {
+            resolved = resolver.resolve(source, token);
+            // Templates are by definition artifact-style; reject any
+            // attempt to track them in a manifest.
+            if (!resolved.topLayer().isArtifact()) {
+                log.warn("KitService.applyTemplate: top-layer '{}' is not marked artifact:true — "
+                        + "applying as-if-artifact (no manifest written)",
+                        resolved.topLayer().getName());
+            }
+            return templateApplier.applyTemplate(
+                    tenantId, projectId, source, resolved, inputs, actor);
+        } finally {
+            if (resolved != null) resolved.cleanup(workspace);
+        }
     }
 
     /**

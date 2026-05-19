@@ -277,6 +277,133 @@ public final class KitYamlMapper {
 
     public record ParsedSetting(SettingType type, @Nullable String value, @Nullable String description) {}
 
+    // ──────────────────── template.yaml ────────────────────
+
+    /**
+     * Parse the {@code template.yaml} sibling of a kit's {@code kit.yaml}.
+     * Tool-template kits carry this extra manifest to declare which
+     * inputs the apply step needs — see
+     * {@link TemplateDescriptor}.
+     *
+     * @param yamlText file content
+     * @return parsed descriptor; never null
+     * @throws KitException on schema violation (missing name, bad type, …)
+     */
+    @SuppressWarnings("unchecked")
+    public static TemplateDescriptor parseTemplate(String yamlText) {
+        Map<String, Object> map = loadMap(yamlText, "template.yaml");
+        String name = requireString(map, "name", "template.yaml");
+        String title = stringOrNull(map.get("title"));
+        String description = stringOrNull(map.get("description"));
+        String icon = stringOrNull(map.get("icon"));
+
+        List<TemplateInput> inputs = new ArrayList<>();
+        Object inputsRaw = map.get("inputs");
+        if (inputsRaw instanceof List<?> list) {
+            int idx = 0;
+            for (Object e : list) {
+                if (!(e instanceof Map<?, ?> m)) {
+                    throw new KitException(
+                            "template.yaml: inputs[" + idx + "] must be a map");
+                }
+                try {
+                    inputs.add(parseInput((Map<String, Object>) m));
+                } catch (IllegalArgumentException ex) {
+                    throw new KitException("template.yaml: " + ex.getMessage(), ex);
+                }
+                idx++;
+            }
+        }
+        // Reject duplicate input names — would silently win/lose in the
+        // substitution map and is always a config bug.
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (TemplateInput i : inputs) {
+            if (!seen.add(i.name())) {
+                throw new KitException(
+                        "template.yaml: duplicate input name '" + i.name() + "'");
+            }
+        }
+
+        TemplatePostInstall postInstall = null;
+        Object piRaw = map.get("postInstall");
+        if (piRaw instanceof Map<?, ?> piMap) {
+            try {
+                postInstall = parsePostInstall((Map<String, Object>) piMap);
+            } catch (IllegalArgumentException ex) {
+                throw new KitException("template.yaml: " + ex.getMessage(), ex);
+            }
+        }
+
+        return new TemplateDescriptor(name, title, description, icon,
+                List.copyOf(inputs), postInstall);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static TemplateInput parseInput(Map<String, Object> m) {
+        String inputName = stringOrNull(m.get("name"));
+        if (inputName == null) {
+            throw new IllegalArgumentException("input: 'name' is required");
+        }
+        TemplateInputType type = TemplateInputType.parse(
+                stringOrNull(m.get("type")), inputName);
+        String label = stringOrNull(m.get("label"));
+        String help = stringOrNull(m.get("help"));
+        boolean required = booleanOr(m.get("required"), true);
+        String defaultValue = stringOrNull(m.get("default"));
+        List<String> choices = stringList(m.get("choices"));
+        TemplateInputTarget target = parseTarget(m.get("target"), inputName);
+        return new TemplateInput(
+                inputName, type, label, help, required,
+                defaultValue, choices, target);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static TemplateInputTarget parseTarget(@Nullable Object raw, String inputName) {
+        if (raw == null) return TemplateInputTarget.documentInline();
+        if (!(raw instanceof Map<?, ?> m)) {
+            throw new IllegalArgumentException(
+                    "input '" + inputName + "': target must be a map");
+        }
+        Map<String, Object> tm = (Map<String, Object>) m;
+        String kindRaw = stringOrNull(tm.get("kind"));
+        if (kindRaw == null || "document-inline".equalsIgnoreCase(kindRaw)
+                || "inline".equalsIgnoreCase(kindRaw)) {
+            return TemplateInputTarget.documentInline();
+        }
+        if (!"setting".equalsIgnoreCase(kindRaw)) {
+            throw new IllegalArgumentException(
+                    "input '" + inputName + "': target.kind must be 'setting' or 'document-inline'");
+        }
+        TemplateInputTarget.Scope scope = TemplateInputTarget.Scope.parse(
+                stringOrNull(tm.get("scope")), inputName);
+        String project = stringOrNull(tm.get("project"));
+        String key = stringOrNull(tm.get("key"));
+        if (key == null) {
+            throw new IllegalArgumentException(
+                    "input '" + inputName + "': target.key is required for kind=setting");
+        }
+        if (scope == TemplateInputTarget.Scope.PROJECT && project == null) {
+            // project=null means "apply to the project the kit is being
+            // applied to" — explicit choice, validated at apply time.
+        }
+        return new TemplateInputTarget(
+                TemplateInputTarget.Kind.SETTING, scope, project, key);
+    }
+
+    private static TemplatePostInstall parsePostInstall(Map<String, Object> m) {
+        TemplatePostInstall.Kind kind = TemplatePostInstall.Kind.parse(
+                stringOrNull(m.get("kind")));
+        String provider = stringOrNull(m.get("provider"));
+        String message = stringOrNull(m.get("message"));
+        if (kind == TemplatePostInstall.Kind.OAUTH_CONNECT && provider == null) {
+            throw new IllegalArgumentException(
+                    "postInstall (oauth-connect): 'provider' is required");
+        }
+        return new TemplatePostInstall(kind, provider, message);
+    }
+
+    // ──────────────────── settings/*.yaml ────────────────────
+
     public static ParsedSetting parseSetting(String yamlText, String filename) {
         Map<String, Object> map = loadMap(yamlText, filename);
         String typeRaw = requireString(map, "type", filename);

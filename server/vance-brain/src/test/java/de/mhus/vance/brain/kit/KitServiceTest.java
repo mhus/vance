@@ -66,7 +66,8 @@ class KitServiceTest {
         // override this with a non-null manifest.
         when(installer.loadManifest(eq(TENANT), eq(PROJECT))).thenReturn(null);
 
-        service = new KitService(resolver, installer, exporter, workspace, projectService);
+        service = new KitService(resolver, installer, exporter, workspace, projectService,
+                mock(TemplateApplier.class));
     }
 
     // ── installable=false ─────────────────────────────────────────────

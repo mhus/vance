@@ -61,6 +61,51 @@ public class SlackOAuthProvider extends GenericOAuth2Provider {
         return TYPE_ID;
     }
 
+    /**
+     * Slack v2 uses two parallel scope buckets in the authorize URL:
+     * {@code scope=…} requests <em>bot</em>-scopes (installs the app and
+     * mints {@code xoxb-…}), {@code user_scope=…} requests <em>user</em>-
+     * scopes (mints {@code xoxp-…} for the consenting user).
+     *
+     * <p>Vance acts on the user's behalf, so the YAML's {@code scopes:}
+     * list belongs in {@code user_scope}. Without this override the
+     * generic implementation would send everything as bot-scopes — the
+     * resulting token response would have an empty
+     * {@code authed_user.scope} and every API call with the user-token
+     * would fail with {@code missing_scope}.
+     *
+     * <p>If a deployment also needs a bot install (parallel
+     * {@code xoxb-} token usable for unattended writes), it can add
+     * {@code extra.botScopes: [chat:write, …]} to the provider yaml;
+     * those are forwarded as the conventional {@code scope=} param and
+     * surface in {@link #parseTokenResponse} as
+     * {@code extra.bot_access_token}.
+     */
+    @Override
+    protected void decorateAuthorizeParams(
+            de.mhus.vance.brain.oauth.OAuthProviderConfig cfg,
+            de.mhus.vance.brain.oauth.OAuthInitContext ctx,
+            Map<String, String> params) {
+        // The generic builder already wrote scopes into `scope=`. Slack
+        // wants user-scopes in `user_scope=` — move them across.
+        String scopes = params.remove("scope");
+        if (scopes != null && !scopes.isBlank()) {
+            // Slack accepts both space- and comma-separated; comma is
+            // the API-doc convention for user_scope.
+            params.put("user_scope", scopes.replace(' ', ','));
+        }
+        Object botScopesRaw = cfg.extra() == null ? null : cfg.extra().get("botScopes");
+        if (botScopesRaw instanceof java.util.List<?> list && !list.isEmpty()) {
+            java.util.List<String> bots = new java.util.ArrayList<>(list.size());
+            for (Object s : list) {
+                if (s != null) bots.add(s.toString());
+            }
+            if (!bots.isEmpty()) {
+                params.put("scope", String.join(",", bots));
+            }
+        }
+    }
+
     @Override
     protected OAuthTokenSet parseTokenResponse(JsonNode root, String providerId) {
         if (root.has("ok") && root.get("ok").isBoolean() && !root.get("ok").asBoolean()) {

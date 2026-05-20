@@ -159,6 +159,52 @@ class SlackOAuthProviderTest {
     }
 
     @Test
+    void authorize_url_sends_scopes_as_user_scope() {
+        // Slack v2: scope= mints a bot token, user_scope= mints a user
+        // token. The provider extracts user tokens, so YAML-configured
+        // scopes must land in user_scope (otherwise the user-token
+        // comes back with empty scopes and every call fails with
+        // missing_scope).
+        SlackOAuthProvider provider = new SlackOAuthProvider(new PackHttpClient());
+        OAuthProviderConfig cfg = new OAuthProviderConfig(
+                "slack", "slack", null,
+                "https://slack.com/oauth/v2/authorize",
+                "https://slack.com/api/oauth.v2.access",
+                "client-id", "shh",
+                new ArrayList<>(List.of("chat:write", "channels:read")),
+                new LinkedHashMap<>());
+
+        java.net.URI uri = provider.buildAuthorizeUri(cfg, ctx());
+
+        assertThat(uri.toString())
+                .contains("user_scope=chat%3Awrite%2Cchannels%3Aread")
+                .doesNotContain("&scope=")
+                .doesNotContain("?scope=");
+    }
+
+    @Test
+    void bot_scopes_in_extra_go_to_classic_scope_param() {
+        // Optional companion: deployments that need a bot install
+        // alongside the user-token can list bot-scopes in extra.
+        SlackOAuthProvider provider = new SlackOAuthProvider(new PackHttpClient());
+        LinkedHashMap<String, Object> extra = new LinkedHashMap<>();
+        extra.put("botScopes", List.of("channels:read", "chat:write"));
+        OAuthProviderConfig cfg = new OAuthProviderConfig(
+                "slack", "slack", null,
+                "https://slack.com/oauth/v2/authorize",
+                "https://slack.com/api/oauth.v2.access",
+                "client-id", "shh",
+                new ArrayList<>(List.of("im:write")),
+                extra);
+
+        java.net.URI uri = provider.buildAuthorizeUri(cfg, ctx());
+
+        assertThat(uri.toString())
+                .contains("user_scope=im%3Awrite")
+                .contains("scope=channels%3Aread%2Cchat%3Awrite");
+    }
+
+    @Test
     void missing_authed_user_access_token_throws() {
         responseBody.set("""
                 {"ok": true, "team": {"id": "T"},

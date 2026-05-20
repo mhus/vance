@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.kit.ToolTemplateInputDto
 */
 
+import { ToolTemplateChoiceDto } from './ToolTemplateChoiceDto';
+
 export interface ToolTemplateInputDto {
   name: string;
   type: string;
@@ -10,6 +12,6 @@ export interface ToolTemplateInputDto {
   help?: string;
   required: boolean;
   defaultValue?: string;
-  choices: string[];
+  choices: ToolTemplateChoiceDto[];
   target: string;
 }

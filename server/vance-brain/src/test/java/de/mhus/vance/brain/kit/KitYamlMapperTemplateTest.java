@@ -47,7 +47,7 @@ class KitYamlMapperTemplateTest {
         assertThat(host.type()).isEqualTo(TemplateInputType.STRING);
         assertThat(host.defaultValue()).isEqualTo("imap.example.com");
         assertThat(host.required()).isTrue();
-        assertThat(t.inputs().get(3).choices()).containsExactly("dev", "prod");
+        assertThat(t.inputs().get(3).choiceValues()).containsExactly("dev", "prod");
         TemplateInput pw = t.inputs().get(4);
         assertThat(pw.target().kind()).isEqualTo(TemplateInputTarget.Kind.SETTING);
         assertThat(pw.target().scope()).isEqualTo(TemplateInputTarget.Scope.PROJECT);

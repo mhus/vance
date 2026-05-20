@@ -47,9 +47,14 @@ public class ToolTemplateInputDto {
     /** Pre-fill value when the caller doesn't pass one. */
     private @Nullable String defaultValue;
 
-    /** Allowed values for {@code type=select}. Empty for other types. */
+    /**
+     * Allowed values for {@code SELECT} and {@code MULTI_SELECT}. Empty
+     * for other types. Each entry carries {@code value}, optional
+     * {@code label}, and a {@code default} flag (used by multi-select to
+     * seed the checkbox state).
+     */
     @Builder.Default
-    private List<String> choices = new ArrayList<>();
+    private List<ToolTemplateChoiceDto> choices = new ArrayList<>();
 
     /**
      * Target persistence kind: {@code document-inline} or {@code setting}.

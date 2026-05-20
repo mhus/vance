@@ -82,8 +82,7 @@ public class ToolTemplateApplyTool implements Tool {
         Map<String, String> inputs = new LinkedHashMap<>();
         for (Map.Entry<?, ?> e : inputsMap.entrySet()) {
             if (e.getKey() == null) continue;
-            inputs.put(String.valueOf(e.getKey()),
-                    e.getValue() == null ? "" : String.valueOf(e.getValue()));
+            inputs.put(String.valueOf(e.getKey()), serialiseValue(e.getValue()));
         }
         String token = stringOrNull(params.get("token"));
 
@@ -143,4 +142,26 @@ public class ToolTemplateApplyTool implements Tool {
     private static @Nullable String stringOrNull(Object v) {
         return v instanceof String s && !s.isBlank() ? s.trim() : null;
     }
+
+    /**
+     * Coerce a JSON-typed value to the {@code Map<String,String>} shape
+     * the applier expects. Strings pass through; lists are JSON-encoded
+     * so multi-select inputs can be parsed back into a string array; all
+     * other scalars use {@link String#valueOf(Object)}.
+     */
+    private static String serialiseValue(@Nullable Object v) {
+        if (v == null) return "";
+        if (v instanceof String s) return s;
+        if (v instanceof List<?>) {
+            try {
+                return TOOL_JSON.writeValueAsString(v);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new ToolException("could not encode list-valued input: " + e.getMessage(), e);
+            }
+        }
+        return String.valueOf(v);
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper TOOL_JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 }

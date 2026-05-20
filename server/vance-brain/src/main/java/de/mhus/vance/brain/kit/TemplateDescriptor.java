@@ -45,6 +45,8 @@ public record TemplateDescriptor(
         @Nullable String description,
         @Nullable String icon,
         List<TemplateInput> inputs,
+        List<TemplateDerived> derived,
+        List<TemplateDocumentOverlay> documents,
         @Nullable TemplatePostInstall postInstall) {
 
     public TemplateDescriptor {
@@ -53,5 +55,21 @@ public record TemplateDescriptor(
         }
         if (title == null || title.isBlank()) title = name;
         inputs = inputs == null ? List.of() : List.copyOf(inputs);
+        derived = derived == null ? List.of() : List.copyOf(derived);
+        documents = documents == null ? List.of() : List.copyOf(documents);
+    }
+
+    /**
+     * Convenience six-arg constructor for legacy v1 templates (no
+     * {@code derived:}, no {@code documents:} overlay).
+     */
+    public TemplateDescriptor(
+            String name,
+            String title,
+            @Nullable String description,
+            @Nullable String icon,
+            List<TemplateInput> inputs,
+            @Nullable TemplatePostInstall postInstall) {
+        this(name, title, description, icon, inputs, List.of(), List.of(), postInstall);
     }
 }

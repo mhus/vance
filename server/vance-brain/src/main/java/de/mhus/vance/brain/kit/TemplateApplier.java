@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -112,6 +113,20 @@ public class TemplateApplier {
             }
         }
 
+        // Evaluate derived variables (e.g. oauth_scopes = union over the selected
+        // features) and feed them into the substitution map. Each derived shadows
+        // the input scope intentionally — they cannot collide with input names
+        // because parseDerived already enforces that.
+        Map<String, List<String>> derivedLists = evaluateDerived(
+                descriptor.derived(), sanitised, byName);
+        for (Map.Entry<String, List<String>> e : derivedLists.entrySet()) {
+            docVars.put(e.getKey(), renderJsonStringArray(e.getValue()));
+        }
+
+        // Apply documents-overlay before substitution: drop files whose
+        // `requires` features are not in the user's selection.
+        applyDocumentsOverlay(buildRoot, descriptor.documents(), sanitised, byName);
+
         // Substitute placeholders in every document on disk.
         substituteBuildTree(buildRoot, docVars);
 
@@ -161,7 +176,7 @@ public class TemplateApplier {
 
         for (TemplateInput in : descriptor.inputs()) {
             String v = raw.remove(in.name());
-            if (v == null || v.isEmpty()) v = in.defaultValue();
+            if (v == null || v.isEmpty()) v = computeDefault(in);
             if (v == null || v.isEmpty()) {
                 if (in.required()) {
                     throw new KitException("template '" + descriptor.name()
@@ -176,6 +191,23 @@ public class TemplateApplier {
                     descriptor.name(), raw.keySet());
         }
         return out;
+    }
+
+    /**
+     * Computes the effective default for an input when the caller didn't
+     * supply a value. For multi-select that's the JSON-encoded list of
+     * choices marked {@code default: true}; for everything else it's the
+     * scalar {@code defaultValue} on the input.
+     */
+    private static @Nullable String computeDefault(TemplateInput in) {
+        if (in.type() == TemplateInputType.MULTI_SELECT) {
+            List<String> defaults = new java.util.ArrayList<>();
+            for (TemplateChoice c : in.choices()) {
+                if (c.defaultSelected()) defaults.add(c.value());
+            }
+            return defaults.isEmpty() ? null : renderJsonStringArray(defaults);
+        }
+        return in.defaultValue();
     }
 
     private static String validateValue(TemplateInput in, String v) {
@@ -197,11 +229,179 @@ public class TemplateApplier {
                             + "': integer expected, got '" + v + "'");
                 }
             case SELECT:
-                if (in.choices().contains(v)) return v;
+                if (in.choiceValues().contains(v)) return v;
                 throw new KitException("input '" + in.name()
-                        + "': value '" + v + "' not in choices " + in.choices());
+                        + "': value '" + v + "' not in choices " + in.choiceValues());
+            case MULTI_SELECT:
+                return validateMultiSelect(in, v);
             default:
                 return v;
+        }
+    }
+
+    /**
+     * Multi-select values arrive as a JSON-array string (e.g.
+     * {@code ["jira","confluence"]}). Parsed, deduplicated, validated
+     * against the declared choices, and re-serialised in declaration
+     * order so the rendered substitution is deterministic. Empty arrays
+     * are allowed when the input is not required.
+     */
+    private static String validateMultiSelect(TemplateInput in, String v) {
+        List<String> selected = parseJsonStringArray(in.name(), v);
+        List<String> allowed = in.choiceValues();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (String sel : selected) {
+            if (!allowed.contains(sel)) {
+                throw new KitException("input '" + in.name()
+                        + "': value '" + sel + "' not in choices " + allowed);
+            }
+            seen.add(sel);
+        }
+        // Re-order in declaration order so deterministic substitution.
+        List<String> ordered = new java.util.ArrayList<>();
+        for (String a : allowed) if (seen.contains(a)) ordered.add(a);
+        if (in.required() && ordered.isEmpty()) {
+            throw new KitException("input '" + in.name()
+                    + "': at least one choice must be selected");
+        }
+        return renderJsonStringArray(ordered);
+    }
+
+    private static List<String> parseJsonStringArray(String inputName, String raw) {
+        String s = raw == null ? "" : raw.trim();
+        if (s.isEmpty()) return List.of();
+        // Tolerant of two shapes: real JSON array, or a comma-separated bare
+        // string (anus / chat-agent can hand off either).
+        if (s.startsWith("[")) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode node =
+                        JSON.readTree(s);
+                if (!node.isArray()) {
+                    throw new KitException("input '" + inputName
+                            + "': multi-select value must be a JSON array, got " + node.getNodeType());
+                }
+                List<String> out = new java.util.ArrayList<>();
+                for (com.fasterxml.jackson.databind.JsonNode el : node) {
+                    if (!el.isTextual()) {
+                        throw new KitException("input '" + inputName
+                                + "': multi-select elements must be strings, got " + el.getNodeType());
+                    }
+                    String t = el.asText();
+                    if (!t.isBlank()) out.add(t);
+                }
+                return out;
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new KitException("input '" + inputName
+                        + "': multi-select value is not valid JSON: " + e.getMessage(), e);
+            }
+        }
+        // Fallback: comma-separated.
+        List<String> out = new java.util.ArrayList<>();
+        for (String part : s.split(",")) {
+            String t = part.trim();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return out;
+    }
+
+    static String renderJsonStringArray(List<String> values) {
+        try {
+            return JSON.writeValueAsString(values);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new KitException("failed to render JSON array: " + e.getMessage(), e);
+        }
+    }
+
+    /** Shared ObjectMapper for multi-select / derived-union rendering. */
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /**
+     * Computes each derived variable as a list of values, in deterministic
+     * order: {@code base} first, then {@code perChoice[selectedValue]} for
+     * each value in the {@code from}-input's selection (in declaration
+     * order of that input's choices). Duplicates are removed.
+     */
+    static Map<String, List<String>> evaluateDerived(
+            List<TemplateDerived> derivedList,
+            Map<String, String> sanitisedInputs,
+            Map<String, TemplateInput> inputsByName) {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (TemplateDerived d : derivedList) {
+            TemplateInput driver = inputsByName.get(d.from());
+            // Parse the multi-select value back to a list (it's a JSON array string).
+            List<String> selected = List.of();
+            String raw = sanitisedInputs.get(d.from());
+            if (raw != null && !raw.isEmpty()) {
+                selected = parseJsonStringArray(d.from(), raw);
+            }
+            java.util.LinkedHashSet<String> acc = new java.util.LinkedHashSet<>(d.base());
+            // Iterate in driver's choice declaration order so the union
+            // ordering is independent of how the user clicked the boxes.
+            java.util.Set<String> selectedSet = new java.util.HashSet<>(selected);
+            for (TemplateChoice c : driver.choices()) {
+                if (!selectedSet.contains(c.value())) continue;
+                List<String> contrib = d.perChoice().get(c.value());
+                if (contrib != null) acc.addAll(contrib);
+            }
+            out.put(d.name(), new java.util.ArrayList<>(acc));
+        }
+        return out;
+    }
+
+    /**
+     * Deletes documents from the build tree whose {@code requires:} list
+     * has no overlap with the user's multi-select selection. Documents
+     * not listed in {@code overlay} are kept (the overlay is opt-in, not
+     * an exhaustive whitelist).
+     */
+    private static void applyDocumentsOverlay(
+            Path buildRoot,
+            List<TemplateDocumentOverlay> overlay,
+            Map<String, String> sanitisedInputs,
+            Map<String, TemplateInput> inputsByName) {
+        if (overlay.isEmpty()) return;
+        // Collect the union of all selections across all multi-select inputs.
+        java.util.Set<String> activeFeatures = new java.util.LinkedHashSet<>();
+        for (TemplateInput in : inputsByName.values()) {
+            if (in.type() != TemplateInputType.MULTI_SELECT) continue;
+            String raw = sanitisedInputs.get(in.name());
+            if (raw == null || raw.isEmpty()) continue;
+            activeFeatures.addAll(parseJsonStringArray(in.name(), raw));
+        }
+        Path docsRoot = buildRoot.resolve(KitInstaller.DOCUMENTS_DIR);
+        for (TemplateDocumentOverlay e : overlay) {
+            boolean keep = false;
+            for (String req : e.requires()) {
+                if (activeFeatures.contains(req)) { keep = true; break; }
+            }
+            Path file = docsRoot.resolve(e.path()).normalize();
+            // Guard against path-traversal attempts pointing outside docsRoot.
+            if (!file.startsWith(docsRoot)) {
+                throw new KitException(
+                        "documents overlay '" + e.path() + "' escapes documents/ root");
+            }
+            if (!keep) {
+                try {
+                    if (Files.isRegularFile(file)) {
+                        Files.delete(file);
+                        log.debug("TemplateApplier: filtered out document '{}' (requires={}, active={})",
+                                e.path(), e.requires(), activeFeatures);
+                    } else if (Files.exists(file)) {
+                        log.warn("TemplateApplier: documents-overlay path '{}' is not a regular file — skipped",
+                                e.path());
+                    } else {
+                        // Document referenced in overlay but missing on disk —
+                        // parse-time validation didn't catch it because the path
+                        // is resolved against the build tree, not the source. Be
+                        // strict: a stale overlay entry is always a kit bug.
+                        log.warn("TemplateApplier: documents-overlay references missing path '{}'",
+                                e.path());
+                    }
+                } catch (IOException ioe) {
+                    throw new KitException("failed to delete filtered document " + file, ioe);
+                }
+            }
         }
     }
 

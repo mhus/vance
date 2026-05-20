@@ -334,8 +334,166 @@ public final class KitYamlMapper {
             }
         }
 
+        List<TemplateDerived> derived = parseDerived(map.get("derived"), inputs);
+        List<TemplateDocumentOverlay> documents = parseDocumentsOverlay(
+                map.get("documents"), inputs);
+
         return new TemplateDescriptor(name, title, description, icon,
-                List.copyOf(inputs), postInstall);
+                List.copyOf(inputs), derived, documents, postInstall);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<TemplateDerived> parseDerived(
+            @Nullable Object raw, List<TemplateInput> inputs) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new KitException("template.yaml: 'derived' must be a list");
+        }
+        // Build a lookup of multi-select input names + their choice values
+        // so we can validate `from` and `perChoice` keys at parse time.
+        Map<String, java.util.Set<String>> multiSelectChoices = new LinkedHashMap<>();
+        for (TemplateInput in : inputs) {
+            if (in.type() == TemplateInputType.MULTI_SELECT) {
+                multiSelectChoices.put(in.name(),
+                        new java.util.LinkedHashSet<>(in.choiceValues()));
+            }
+        }
+        List<TemplateDerived> out = new ArrayList<>();
+        java.util.Set<String> seenNames = new java.util.LinkedHashSet<>();
+        int idx = 0;
+        for (Object el : list) {
+            if (!(el instanceof Map<?, ?> mm)) {
+                throw new KitException("template.yaml: derived[" + idx + "] must be a map");
+            }
+            Map<String, Object> mp = (Map<String, Object>) mm;
+            try {
+                TemplateDerived d = parseDerivedOne(mp, multiSelectChoices);
+                if (!seenNames.add(d.name())) {
+                    throw new IllegalArgumentException(
+                            "duplicate derived name '" + d.name() + "'");
+                }
+                // Also forbid name collisions with inputs (would mask the input).
+                for (TemplateInput in : inputs) {
+                    if (in.name().equals(d.name())) {
+                        throw new IllegalArgumentException(
+                                "derived '" + d.name() + "' shadows input of the same name");
+                    }
+                }
+                out.add(d);
+            } catch (IllegalArgumentException e) {
+                throw new KitException("template.yaml: derived[" + idx + "]: " + e.getMessage(), e);
+            }
+            idx++;
+        }
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static TemplateDerived parseDerivedOne(
+            Map<String, Object> mp,
+            Map<String, java.util.Set<String>> multiSelectChoices) {
+        String name = stringOrNull(mp.get("name"));
+        if (name == null) {
+            throw new IllegalArgumentException("'name' is required");
+        }
+        TemplateDerived.Kind kind = TemplateDerived.Kind.parse(
+                stringOrNull(mp.get("kind")), name);
+        String from = stringOrNull(mp.get("from"));
+        if (from == null) {
+            throw new IllegalArgumentException(
+                    "derived '" + name + "': 'from' (multi-select input name) is required");
+        }
+        java.util.Set<String> allowedChoices = multiSelectChoices.get(from);
+        if (allowedChoices == null) {
+            throw new IllegalArgumentException(
+                    "derived '" + name + "': 'from' must reference a multi-select input "
+                            + "(known multi-select inputs: " + multiSelectChoices.keySet() + ")");
+        }
+        List<String> base = stringList(mp.get("base"));
+        Map<String, List<String>> perChoice = new LinkedHashMap<>();
+        Object perChoiceRaw = mp.get("perChoice");
+        if (perChoiceRaw != null) {
+            if (!(perChoiceRaw instanceof Map<?, ?> pm)) {
+                throw new IllegalArgumentException(
+                        "derived '" + name + "': perChoice must be a map");
+            }
+            for (Map.Entry<?, ?> e : pm.entrySet()) {
+                String key = e.getKey() == null ? null : e.getKey().toString();
+                if (key == null) continue;
+                if (!allowedChoices.contains(key)) {
+                    throw new IllegalArgumentException(
+                            "derived '" + name + "': perChoice key '" + key
+                                    + "' is not a value of input '" + from
+                                    + "' (allowed: " + allowedChoices + ")");
+                }
+                perChoice.put(key, stringList(e.getValue()));
+            }
+        }
+        return new TemplateDerived(name, kind, from, base, perChoice);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<TemplateDocumentOverlay> parseDocumentsOverlay(
+            @Nullable Object raw, List<TemplateInput> inputs) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new KitException("template.yaml: 'documents' must be a list");
+        }
+        // Collect all known multi-select choice values across all multi-select
+        // inputs (we accept overlay-`requires` referring to any of them).
+        java.util.Set<String> knownChoices = new java.util.LinkedHashSet<>();
+        for (TemplateInput in : inputs) {
+            if (in.type() == TemplateInputType.MULTI_SELECT) {
+                knownChoices.addAll(in.choiceValues());
+            }
+        }
+        List<TemplateDocumentOverlay> out = new ArrayList<>();
+        java.util.Set<String> seenPaths = new java.util.LinkedHashSet<>();
+        int idx = 0;
+        for (Object el : list) {
+            if (!(el instanceof Map<?, ?> mm)) {
+                throw new KitException("template.yaml: documents[" + idx + "] must be a map");
+            }
+            Map<String, Object> mp = (Map<String, Object>) mm;
+            try {
+                String path = stringOrNull(mp.get("path"));
+                if (path == null) {
+                    throw new IllegalArgumentException("'path' is required");
+                }
+                if (!seenPaths.add(path)) {
+                    throw new IllegalArgumentException("duplicate path '" + path + "'");
+                }
+                List<String> requires = stringOrList(mp.get("requires"));
+                if (knownChoices.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "documents overlay on '" + path + "': requires a multi-select input "
+                                    + "(none declared in template.yaml)");
+                }
+                for (String r : requires) {
+                    if (!knownChoices.contains(r)) {
+                        throw new IllegalArgumentException(
+                                "documents '" + path + "': requires '" + r
+                                        + "' is not a known multi-select choice value "
+                                        + "(known: " + knownChoices + ")");
+                    }
+                }
+                out.add(new TemplateDocumentOverlay(path, requires));
+            } catch (IllegalArgumentException e) {
+                throw new KitException("template.yaml: documents[" + idx + "]: " + e.getMessage(), e);
+            }
+            idx++;
+        }
+        return out;
+    }
+
+    /**
+     * Accepts either a single string or a list of strings — used for
+     * {@code documents.requires:} which is naturally one-or-many.
+     */
+    private static List<String> stringOrList(@Nullable Object raw) {
+        if (raw == null) return List.of();
+        if (raw instanceof List<?>) return stringList(raw);
+        return List.of(raw.toString());
     }
 
     @SuppressWarnings("unchecked")
@@ -350,11 +508,55 @@ public final class KitYamlMapper {
         String help = stringOrNull(m.get("help"));
         boolean required = booleanOr(m.get("required"), true);
         String defaultValue = stringOrNull(m.get("default"));
-        List<String> choices = stringList(m.get("choices"));
+        List<TemplateChoice> choices = parseChoices(m.get("choices"), inputName);
         TemplateInputTarget target = parseTarget(m.get("target"), inputName);
         return new TemplateInput(
                 inputName, type, label, help, required,
                 defaultValue, choices, target);
+    }
+
+    /**
+     * Accepts both the v1 flat string-list shape ({@code [a, b, c]}) and
+     * the v2 richer map-list shape
+     * ({@code [{value: a, label: A, default: true}, …]}).
+     *
+     * <p>For multi-select, per-choice defaults can only be expressed via
+     * the map form — the flat form is allowed for compatibility but
+     * defaults to {@code default=false} per choice. The string form is
+     * deliberately permitted so existing v1 single-select templates keep
+     * parsing unchanged.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<TemplateChoice> parseChoices(@Nullable Object raw, String inputName) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalArgumentException(
+                    "input '" + inputName + "': choices must be a list");
+        }
+        List<TemplateChoice> out = new ArrayList<>(list.size());
+        int idx = 0;
+        for (Object el : list) {
+            if (el == null) {
+                throw new IllegalArgumentException(
+                        "input '" + inputName + "': choices[" + idx + "] is null");
+            }
+            if (el instanceof Map<?, ?> mm) {
+                Map<String, Object> mp = (Map<String, Object>) mm;
+                String value = stringOrNull(mp.get("value"));
+                if (value == null) {
+                    throw new IllegalArgumentException(
+                            "input '" + inputName + "': choices[" + idx
+                                    + "]: 'value' is required");
+                }
+                String label = stringOrNull(mp.get("label"));
+                boolean dflt = booleanOr(mp.get("default"), false);
+                out.add(new TemplateChoice(value, label, dflt));
+            } else {
+                out.add(new TemplateChoice(el.toString(), null, false));
+            }
+            idx++;
+        }
+        return out;
     }
 
     @SuppressWarnings("unchecked")

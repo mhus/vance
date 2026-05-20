@@ -64,6 +64,14 @@ public class TemplateDescribeService {
     static ToolTemplateDescriptorDto toDto(TemplateDescriptor d) {
         List<ToolTemplateInputDto> inputs = new ArrayList<>();
         for (TemplateInput in : d.inputs()) {
+            List<de.mhus.vance.api.kit.ToolTemplateChoiceDto> choiceDtos = new ArrayList<>();
+            for (TemplateChoice c : in.choices()) {
+                choiceDtos.add(de.mhus.vance.api.kit.ToolTemplateChoiceDto.builder()
+                        .value(c.value())
+                        .label(c.label())
+                        .defaultSelected(c.defaultSelected())
+                        .build());
+            }
             inputs.add(ToolTemplateInputDto.builder()
                     .name(in.name())
                     .type(in.type().name().toLowerCase())
@@ -71,7 +79,7 @@ public class TemplateDescribeService {
                     .help(in.help())
                     .required(in.required())
                     .defaultValue(in.defaultValue())
-                    .choices(new ArrayList<>(in.choices()))
+                    .choices(choiceDtos)
                     .target(in.target().kind() == TemplateInputTarget.Kind.SETTING
                             ? "setting" : "document-inline")
                     .build());

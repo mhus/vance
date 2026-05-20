@@ -211,7 +211,18 @@ public class ServerToolRegistry {
         ResolvedTool entry = scope.entries.get(packPrefix(name));
         if (entry == null) return Optional.empty();
         if (!entry.config.enabled()) return Optional.empty();
-        return entry.pickSubTool(name, factoryRegistry, ctx);
+        try {
+            return entry.pickSubTool(name, factoryRegistry, ctx);
+        } catch (RuntimeException ex) {
+            // Same isolation rule as listAll: a broken pack must return
+            // "not found" rather than propagating up into the engine and
+            // killing the turn.
+            log.warn("ServerToolRegistry: lookup '{}' in broken tool '{}' (type={}) "
+                            + "in tenant='{}' project='{}': {}",
+                    name, entry.config.name(), entry.config.type(),
+                    tenantId, projectId, ex.toString());
+            return Optional.empty();
+        }
     }
 
     /**
@@ -231,7 +242,19 @@ public class ServerToolRegistry {
         List<de.mhus.vance.toolpack.Tool> out = new ArrayList<>();
         for (ResolvedTool entry : scope.entries.values()) {
             if (!entry.config.enabled()) continue;
-            out.addAll(entry.materializeFiltered(factoryRegistry, ctx));
+            try {
+                out.addAll(entry.materializeFiltered(factoryRegistry, ctx));
+            } catch (RuntimeException ex) {
+                // Per-tool isolation: a broken pack (e.g. unreachable
+                // OpenAPI spec, missing MCP binary, malformed parameters)
+                // must NOT take down the whole project's tool list —
+                // every other tool keeps working and the engine's turn
+                // proceeds. Log loudly so the breakage is visible.
+                log.warn("ServerToolRegistry: skipping broken tool '{}' (type={}) "
+                                + "in tenant='{}' project='{}': {}",
+                        entry.config.name(), entry.config.type(),
+                        tenantId, projectId, ex.toString());
+            }
         }
         return out;
     }

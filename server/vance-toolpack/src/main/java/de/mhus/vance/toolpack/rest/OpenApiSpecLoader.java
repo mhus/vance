@@ -9,7 +9,7 @@ import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.parameters.RequestBody;
 import io.swagger.v3.oas.models.servers.Server;
-import io.swagger.v3.parser.OpenAPIV3Parser;
+import io.swagger.parser.OpenAPIParser;
 import io.swagger.v3.parser.core.models.ParseOptions;
 import io.swagger.v3.parser.core.models.SwaggerParseResult;
 import java.util.ArrayList;
@@ -57,7 +57,7 @@ public final class OpenApiSpecLoader {
         ParseOptions opt = new ParseOptions();
         opt.setResolveFully(true);
         opt.setResolve(true);
-        SwaggerParseResult result = new OpenAPIV3Parser().readLocation(url, null, opt);
+        SwaggerParseResult result = new OpenAPIParser().readLocation(url, null, opt);
         OpenAPI spec = result == null ? null : result.getOpenAPI();
         return new LoadResult(spec, extractOperations(result, "url=" + url));
     }
@@ -67,7 +67,7 @@ public final class OpenApiSpecLoader {
         ParseOptions opt = new ParseOptions();
         opt.setResolveFully(true);
         opt.setResolve(true);
-        SwaggerParseResult result = new OpenAPIV3Parser().readContents(specBody, null, opt);
+        SwaggerParseResult result = new OpenAPIParser().readContents(specBody, null, opt);
         return extractOperations(result, "inline");
     }
 
@@ -92,7 +92,7 @@ public final class OpenApiSpecLoader {
         ParseOptions opt = new ParseOptions();
         opt.setResolveFully(true);
         opt.setResolve(true);
-        SwaggerParseResult r = new OpenAPIV3Parser().readContents(body, null, opt);
+        SwaggerParseResult r = new OpenAPIParser().readContents(body, null, opt);
         return r == null ? null : r.getOpenAPI();
     }
 

@@ -25,6 +25,11 @@ import org.springframework.stereotype.Service;
  *   <li>{@code marvin.acme} / {@code toon-boss} — future tenant admin</li>
  *   <li>{@code wile.coyote} / {@code acme-rocket}</li>
  *   <li>{@code road.runner} / {@code beep-beep}</li>
+ *   <li>{@code _acme-automaton} / {@code anvils-fall-down} — service account
+ *       for headless foot daemons (see {@code planning/foot-daemon-tools.md}).
+ *       Username starts with {@code _} per the service-account convention
+ *       so any code that needs to differentiate human users from bots can
+ *       check {@code username.startsWith("_")}.</li>
  * </ul>
  *
  * <p>Everything is idempotent — {@link TenantService#ensure(String, String)}
@@ -75,6 +80,13 @@ public class BootstrapBrainService {
         ensureUser(ACME_TENANT, "marvin.acme", "Marvin Acme", "marvin.acme@mhus.de", "toon-boss");
         ensureUser(ACME_TENANT, "wile.coyote", "Wile E. Coyote", "wile.e.coyote@mhus.de", "acme-rocket");
         ensureUser(ACME_TENANT, "road.runner", "Road Runner", "beep.beep@mhus.com", "beep-beep");
+        // Service account for headless foot daemons. The leading underscore
+        // marks it as a service-account by convention — no separate
+        // schema field, just a naming rule (see service_account_naming
+        // memory). Used by deployment/local/vance-daemon to launch a
+        // foot in profile=daemon mode.
+        ensureUser(ACME_TENANT, "_acme-automaton", "Acme Automaton",
+                "automaton@acme.invalid", "anvils-fall-down");
 
         ensureProjectGroup(ACME_TENANT, "gravity-ignorance", "Department of Gravity Ignorance");
         ensureProject(ACME_TENANT, "instant-hole", "Instant Hole", "gravity-ignorance");

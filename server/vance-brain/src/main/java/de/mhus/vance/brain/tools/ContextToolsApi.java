@@ -225,22 +225,78 @@ public final class ContextToolsApi implements ToolBus {
      * Markdown rendering of {@link #listDeferredForDiscovery()} for
      * direct inclusion in the engine system prompt. Empty string when
      * no deferred tools exist (caller can skip the block entirely).
+     *
+     * <p>Tools are grouped by pack-prefix (the substring before
+     * {@code __}) so a multi-tool pack like {@code gmail_rest} renders
+     * as one section with its {@link Tool#promptHint() promptHint}
+     * preamble (the per-pack usage recipe) followed by the
+     * name+searchHint list. Without this grouping the LLM would see
+     * the recipe in {@link #activePromptHints} far away from the tool
+     * names in the discovery block and routinely fail to connect them
+     * — observed: refusing to mark a Gmail message as read despite
+     * {@code gmail_users_messages_modify} being right there in the
+     * discovery list.
+     *
+     * <p>Single-tool packs (no {@code __} in the name) skip the pack
+     * heading and render their hint inline. Tools without a promptHint
+     * just appear as plain bullets.
      */
     public String discoveryBlockMarkdown() {
-        List<ToolSpec> entries = listDeferredForDiscovery();
-        if (entries.isEmpty()) return "";
+        // Pull the deferred-bucket tools directly from the dispatcher
+        // so we have access to Tool#promptHint() — ToolSpec carries
+        // searchHint + description but not the pack-level recipe.
+        java.util.List<ToolDispatcher.Resolved> deferredResolved = new java.util.ArrayList<>();
+        for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
+            if (deferred.contains(r.tool().name())) deferredResolved.add(r);
+        }
+        if (deferredResolved.isEmpty()) return "";
+        deferredResolved.sort(java.util.Comparator.comparing(r -> r.tool().name()));
+
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n## Available deferred tools\n\n")
                 .append("These tools are listed by name + hint only (full schemas "
                         + "are kept out of the manifest to save tokens). You can "
                         + "call them directly — the engine activates them on first "
                         + "use. If you need the full parameter schema first, call "
-                        + "`describe_tool(name=\"<name>\")`.\n\n");
-        for (ToolSpec spec : entries) {
-            String hint = spec.getSearchHint() == null || spec.getSearchHint().isBlank()
-                    ? spec.getDescription()
-                    : spec.getSearchHint();
-            sb.append("- `").append(spec.getName()).append("` — ").append(hint).append('\n');
+                        + "`describe_tool(name=\"<name>\")`.\n");
+
+        // Group by pack-prefix (substring before the first "__").
+        // Insertion order = sort order = stable for prompt-cache markers.
+        java.util.LinkedHashMap<String, java.util.List<ToolDispatcher.Resolved>> byPack =
+                new java.util.LinkedHashMap<>();
+        for (ToolDispatcher.Resolved r : deferredResolved) {
+            String name = r.tool().name();
+            int sep = name.indexOf("__");
+            String packKey = sep > 0 ? name.substring(0, sep) : "";
+            byPack.computeIfAbsent(packKey, k -> new java.util.ArrayList<>()).add(r);
+        }
+
+        for (java.util.Map.Entry<String, java.util.List<ToolDispatcher.Resolved>> e : byPack.entrySet()) {
+            String packKey = e.getKey();
+            java.util.List<ToolDispatcher.Resolved> packTools = e.getValue();
+            if (!packKey.isEmpty()) {
+                sb.append("\n### ").append(packKey).append('\n');
+            } else {
+                sb.append('\n');
+            }
+            // Pack-level promptHint (dedup by content — pack sub-tools
+            // share the same hint per RestApiPackBuilder convention).
+            java.util.LinkedHashSet<String> packHints = new java.util.LinkedHashSet<>();
+            for (ToolDispatcher.Resolved r : packTools) {
+                String h = r.tool().promptHint();
+                if (h != null && !h.isBlank()) packHints.add(h.strip());
+            }
+            for (String h : packHints) {
+                sb.append('\n').append(h).append("\n");
+            }
+            sb.append('\n');
+            for (ToolDispatcher.Resolved r : packTools) {
+                ToolSpec spec = r.tool().toSpec(r.source().sourceId());
+                String hint = spec.getSearchHint() == null || spec.getSearchHint().isBlank()
+                        ? spec.getDescription()
+                        : spec.getSearchHint();
+                sb.append("- `").append(spec.getName()).append("` — ").append(hint).append('\n');
+            }
         }
         return sb.toString();
     }
@@ -411,20 +467,37 @@ public final class ContextToolsApi implements ToolBus {
 
     /**
      * Deduplicated non-empty {@link Tool#promptHint() promptHints} for
-     * every tool currently reachable in this scope — primary or
-     * deferred. Engines join these into a single block and append them
-     * to the system message, so each pack's calling conventions surface
-     * at exactly the moment the LLM has the pack available. Empty when
-     * no reachable tool carries a hint.
+     * the <em>primary</em> tools in this scope. Engines join these
+     * into a single block and append them to the system message, so
+     * each pack's calling conventions surface at exactly the moment
+     * the LLM has the pack available.
+     *
+     * <p>Deferred-tool promptHints land in {@link #discoveryBlockMarkdown}
+     * (per pack, adjacent to the tool name listing) instead — that
+     * keeps the recipe co-located with the tool names the LLM is
+     * looking at, which avoids "I see the recipe but no tool" /
+     * "I see the tool but no recipe" connection failures.
      *
      * <p>Pack-level hints normally repeat across all sub-tools of one
-     * pack; we dedupe by hint content so the prompt carries each unique
-     * note exactly once. Order is stable across calls (insertion order),
-     * which preserves cache markers when nothing changed between turns.
+     * pack; we dedupe by hint content so the prompt carries each
+     * unique note exactly once. Order is stable across calls
+     * (insertion order), which preserves cache markers when nothing
+     * changed between turns.
      */
     public List<String> activePromptHints() {
+        // Filter to primary + activated-deferred only — deferred-tool
+        // hints land in discoveryBlockMarkdown next to the tool names
+        // instead. For unrestricted engines (no classification set),
+        // fall back to per-tool primary() the same way visibleResolved
+        // does, so Ford-style configurations keep working.
+        boolean unclassified = primary.isEmpty() && deferred.isEmpty();
         java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
         for (ToolDispatcher.Resolved r : dispatcher.resolveAll(ctx)) {
+            String name = r.tool().name();
+            boolean included = unclassified
+                    ? r.tool().primary()
+                    : primary.contains(name) || activatedDeferred.contains(name);
+            if (!included) continue;
             String hint = r.tool().promptHint();
             if (hint == null || hint.isBlank()) continue;
             seen.add(hint.strip());

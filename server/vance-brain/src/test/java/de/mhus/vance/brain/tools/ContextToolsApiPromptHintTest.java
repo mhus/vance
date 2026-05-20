@@ -15,8 +15,15 @@ import org.junit.jupiter.api.Test;
 /**
  * Verifies {@link ContextToolsApi#activePromptHints} — the engine's
  * source for the "Tool usage notes" system block. Hints come from
- * {@link Tool#promptHint()}, deduplicated by content (one entry per
- * unique hint, not per sub-tool), and skipped when blank.
+ * {@link Tool#promptHint()} of <em>primary</em> tools (deferred-tool
+ * hints surface in {@link ContextToolsApi#discoveryBlockMarkdown} so
+ * they live adjacent to the deferred-tool listing rather than in a
+ * far-away usage-notes block). Stubs here use the unrestricted-engine
+ * path with {@code primary=true} so the dispatcher-resolved list is
+ * what {@code activePromptHints} reads.
+ *
+ * <p>Deduplicated by content (one entry per unique hint, not per
+ * sub-tool), and skipped when blank.
  */
 class ContextToolsApiPromptHintTest {
 
@@ -76,7 +83,10 @@ class ContextToolsApiPromptHintTest {
         return new Tool() {
             @Override public String name() { return name; }
             @Override public String description() { return "stub " + name; }
-            @Override public boolean primary() { return false; }
+            // primary=true so the unrestricted-engine fallback path
+            // in activePromptHints() includes these stubs. Hints from
+            // deferred tools are tested separately via discoveryBlockMarkdown.
+            @Override public boolean primary() { return true; }
             @Override public boolean deferred() { return false; }
             @Override public String promptHint() { return hint; }
             @Override public Map<String, Object> paramsSchema() { return Map.of(); }

@@ -4,12 +4,15 @@ import de.mhus.vance.api.kit.KitImportMode;
 import de.mhus.vance.api.kit.KitInheritDto;
 import de.mhus.vance.api.kit.KitOperationResultDto;
 import de.mhus.vance.api.settings.SettingType;
+import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingService;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,6 +24,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.Yaml;
 
 /**
  * Apply path for a "template" kit — one with a {@code template.yaml}
@@ -56,8 +61,16 @@ public class TemplateApplier {
     /** File name of the template manifest in a kit-root. */
     public static final String TEMPLATE_FILENAME = "template.yaml";
 
+    /**
+     * Document path inside the apply-target project where the post-apply
+     * audit blob lands. One file per template name; re-apply overwrites.
+     */
+    public static final String APPLIED_PATH_PREFIX = "_vance/tool-templates/";
+    public static final String APPLIED_PATH_SUFFIX = ".applied.yaml";
+
     private final KitInstaller installer;
     private final SettingService settingService;
+    private final DocumentService documentService;
 
     /**
      * Applies {@code resolved} as a template-driven kit. The build tree
@@ -146,6 +159,13 @@ public class TemplateApplier {
         for (SettingTarget st : settingWrites.values()) {
             persistSetting(tenantId, projectId, st);
         }
+
+        // Persist the post-apply audit blob — pre-fill cache for the
+        // Web-UI wizard, plus a record of what was applied. Secrets are
+        // structurally excluded (see buildAppliedState).
+        writeAppliedState(
+                tenantId, projectId, descriptor, sanitised, byName,
+                derivedLists, installerResult.getSourceCommit(), actor);
 
         log.info("TemplateApplier: applied template '{}' tenant='{}' project='{}' inputs={} settings={}",
                 descriptor.name(), tenantId, projectId,
@@ -488,4 +508,170 @@ public class TemplateApplier {
     }
 
     private record SettingTarget(TemplateInput input, String value) {}
+
+    /**
+     * Returns the project-document path under which the applied-state
+     * YAML for {@code templateName} is stored.
+     */
+    public static String appliedPathFor(String templateName) {
+        return APPLIED_PATH_PREFIX + templateName + APPLIED_PATH_SUFFIX;
+    }
+
+    /**
+     * Build the audit blob written after each successful apply. <strong>Hard
+     * invariant:</strong> inputs of {@link TemplateInputType#PASSWORD} are
+     * never included — see {@code TemplateAppliedStateTest}. Multi-select
+     * values are decoded to YAML lists, integers to integers, booleans to
+     * booleans; everything else lands as a string. Derived variables and
+     * the active feature set are mirrored for read-back convenience.
+     */
+    static Map<String, Object> buildAppliedState(
+            TemplateDescriptor descriptor,
+            Map<String, String> sanitisedInputs,
+            Map<String, TemplateInput> inputsByName,
+            Map<String, List<String>> derivedLists,
+            @Nullable String sourceCommit,
+            @Nullable String actor,
+            Instant appliedAt) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("template", descriptor.name());
+        out.put("appliedAt", appliedAt.toString());
+        if (actor != null && !actor.isBlank()) out.put("appliedBy", actor);
+        if (sourceCommit != null && !sourceCommit.isBlank()) {
+            out.put("sourceCommit", sourceCommit);
+        }
+
+        Map<String, Object> inputs = new LinkedHashMap<>();
+        List<String> features = null;
+        for (TemplateInput in : descriptor.inputs()) {
+            // STRUCTURAL EXCLUSION — see TemplateAppliedStateTest. Loosening
+            // this rule is a security-relevant change and requires a careful
+            // re-review of every template author's expectations.
+            if (in.type() == TemplateInputType.PASSWORD) continue;
+            String val = sanitisedInputs.get(in.name());
+            if (val == null) continue;
+            switch (in.type()) {
+                case MULTI_SELECT -> {
+                    List<String> list = parseJsonStringArray(in.name(), val);
+                    inputs.put(in.name(), list);
+                    if (features == null) features = list;
+                }
+                case INTEGER -> {
+                    try {
+                        inputs.put(in.name(), Long.parseLong(val.trim()));
+                    } catch (NumberFormatException nfe) {
+                        inputs.put(in.name(), val);
+                    }
+                }
+                case BOOLEAN -> inputs.put(in.name(), "true".equalsIgnoreCase(val.trim()));
+                default -> inputs.put(in.name(), val);
+            }
+        }
+        out.put("inputs", inputs);
+        if (features != null) out.put("features", features);
+        if (!derivedLists.isEmpty()) {
+            // Preserve a stable LinkedHashMap so YAML diffs read cleanly
+            // across re-applies.
+            Map<String, List<String>> derivedCopy = new LinkedHashMap<>(derivedLists);
+            out.put("derived", derivedCopy);
+        }
+        return out;
+    }
+
+    private void writeAppliedState(
+            String tenantId,
+            String projectId,
+            TemplateDescriptor descriptor,
+            Map<String, String> sanitisedInputs,
+            Map<String, TemplateInput> inputsByName,
+            Map<String, List<String>> derivedLists,
+            @Nullable String sourceCommit,
+            @Nullable String actor) {
+        Map<String, Object> state = buildAppliedState(
+                descriptor, sanitisedInputs, inputsByName, derivedLists,
+                sourceCommit, actor, Instant.now());
+        String yaml = renderYaml(state);
+        String path = appliedPathFor(descriptor.name());
+        String title = "Applied state — " + descriptor.name();
+        List<String> tags = List.of("tool-template", "applied");
+        try {
+            documentService.upsertText(tenantId, projectId, path, title, tags, yaml, actor);
+        } catch (RuntimeException e) {
+            // Best-effort: a failure here must not roll back the apply
+            // (documents + settings are already persisted). Log and move
+            // on — the wizard can still work, just without pre-fill.
+            log.warn("TemplateApplier: failed to write applied-state for '{}' in tenant='{}' project='{}': {}",
+                    descriptor.name(), tenantId, projectId, e.getMessage());
+        }
+    }
+
+    private static String renderYaml(Map<String, Object> map) {
+        DumperOptions options = new DumperOptions();
+        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        options.setIndent(2);
+        options.setPrettyFlow(true);
+        return new Yaml(options).dump(map);
+    }
+
+    /**
+     * Reads the post-apply audit blob for {@code templateName} on
+     * {@code (tenantId, projectId)}. Returns {@link java.util.Optional#empty}
+     * when the template has never been applied to this project.
+     *
+     * <p>Parses the YAML back into a strongly-typed
+     * {@link de.mhus.vance.api.kit.ToolTemplateAppliedStateDto}. Any
+     * unknown YAML fields are ignored — forward-compatible with future
+     * additions to {@link #buildAppliedState}.
+     */
+    @SuppressWarnings("unchecked")
+    public java.util.Optional<de.mhus.vance.api.kit.ToolTemplateAppliedStateDto> loadApplied(
+            String tenantId, String projectId, String templateName) {
+        String path = appliedPathFor(templateName);
+        java.util.Optional<de.mhus.vance.shared.document.DocumentDocument> doc =
+                documentService.findByPath(tenantId, projectId, path);
+        if (doc.isEmpty()) return java.util.Optional.empty();
+        String text;
+        try (java.io.InputStream stream = documentService.loadContent(doc.get())) {
+            text = new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new KitException("failed to read applied state " + path, e);
+        }
+        Object parsed = new Yaml().load(text);
+        if (!(parsed instanceof Map<?, ?> rawMap)) {
+            throw new KitException("applied state " + path + " is not a YAML map");
+        }
+        Map<String, Object> map = (Map<String, Object>) rawMap;
+        de.mhus.vance.api.kit.ToolTemplateAppliedStateDto.ToolTemplateAppliedStateDtoBuilder b =
+                de.mhus.vance.api.kit.ToolTemplateAppliedStateDto.builder();
+        b.template(strOrNull(map.get("template")));
+        b.appliedAt(strOrNull(map.get("appliedAt")));
+        b.appliedBy(strOrNull(map.get("appliedBy")));
+        b.sourceCommit(strOrNull(map.get("sourceCommit")));
+        Object inputsRaw = map.get("inputs");
+        b.inputs(inputsRaw instanceof Map<?, ?> im
+                ? new LinkedHashMap<>((Map<String, Object>) im)
+                : new LinkedHashMap<>());
+        Object featuresRaw = map.get("features");
+        b.features(featuresRaw instanceof List<?> fl ? toStringList(fl) : List.of());
+        Object derivedRaw = map.get("derived");
+        Map<String, Object> derivedMap = new LinkedHashMap<>();
+        if (derivedRaw instanceof Map<?, ?> dm) {
+            for (Map.Entry<?, ?> e : dm.entrySet()) {
+                if (e.getKey() == null || !(e.getValue() instanceof List<?> vl)) continue;
+                derivedMap.put(e.getKey().toString(), toStringList(vl));
+            }
+        }
+        b.derived(derivedMap);
+        return java.util.Optional.of(b.build());
+    }
+
+    private static @Nullable String strOrNull(@Nullable Object v) {
+        return v == null ? null : v.toString();
+    }
+
+    private static List<String> toStringList(List<?> raw) {
+        List<String> out = new ArrayList<>(raw.size());
+        for (Object o : raw) if (o != null) out.add(o.toString());
+        return out;
+    }
 }

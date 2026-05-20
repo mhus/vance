@@ -1,22 +1,28 @@
 import { ref, type Ref } from 'vue';
 import type {
+  ToolTemplateAppliedStateDto,
   ToolTemplateApplyRequestDto,
   ToolTemplateApplyResultDto,
   ToolTemplateCatalogDto,
   ToolTemplateCatalogEntry,
   ToolTemplateDescriptorDto,
 } from '@vance/generated';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, RestError } from '@vance/shared';
 
 /**
- * State + actions for the tool-templates wizard. Three calls:
+ * State + actions for the tool-templates wizard:
  *
- * - {@link loadCatalog}      — tenant-wide catalog from `_tenant/config/tool-templates.yaml`
- * - {@link describe}         — resolves one template (clones the kit + parses
- *                              `template.yaml`); call this when the user picks
- *                              a row before showing the form
- * - {@link apply}             — POST inputs, kit is applied, returns the
- *                              installer stats + postInstall hook
+ * - {@link loadCatalog}  — tenant-wide catalog from `_tenant/config/tool-templates.yaml`
+ * - {@link describe}     — resolves one template (clones the kit + parses
+ *                          `template.yaml`); call this when the user picks
+ *                          a row before showing the form
+ * - {@link loadApplied}  — last applied state for (template, projectId);
+ *                          returns `null` when the template has never been
+ *                          applied (so the wizard can fall back to the
+ *                          template's declared defaults). PASSWORD inputs
+ *                          are structurally absent from the response.
+ * - {@link apply}        — POST inputs, kit is applied, returns the
+ *                          installer stats + postInstall hook
  */
 export function useToolTemplates(): {
   catalog: Ref<ToolTemplateCatalogEntry[]>;
@@ -25,6 +31,10 @@ export function useToolTemplates(): {
   error: Ref<string | null>;
   loadCatalog: () => Promise<void>;
   describe: (name: string) => Promise<ToolTemplateDescriptorDto>;
+  loadApplied: (
+    name: string,
+    projectId: string,
+  ) => Promise<ToolTemplateAppliedStateDto | null>;
   apply: (
     name: string,
     body: ToolTemplateApplyRequestDto,
@@ -68,6 +78,24 @@ export function useToolTemplates(): {
     }
   }
 
+  async function loadApplied(
+    name: string,
+    projectId: string,
+  ): Promise<ToolTemplateAppliedStateDto | null> {
+    try {
+      return await brainFetch<ToolTemplateAppliedStateDto>(
+        'GET',
+        `admin/tool-templates/${encodeURIComponent(name)}/applied`
+          + `?projectId=${encodeURIComponent(projectId)}`,
+      );
+    } catch (e) {
+      // 404 = "template never applied here yet" — caller falls back
+      // to the template's declared defaults. Anything else is surfaced.
+      if (e instanceof RestError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
   async function apply(
     name: string,
     body: ToolTemplateApplyRequestDto,
@@ -88,5 +116,5 @@ export function useToolTemplates(): {
     }
   }
 
-  return { catalog, loading, busy, error, loadCatalog, describe, apply };
+  return { catalog, loading, busy, error, loadCatalog, describe, loadApplied, apply };
 }

@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.kit.catalog;
 
+import de.mhus.vance.api.kit.ToolTemplateAppliedStateDto;
 import de.mhus.vance.api.kit.ToolTemplateApplyRequestDto;
 import de.mhus.vance.api.kit.ToolTemplateApplyResultDto;
 import de.mhus.vance.api.kit.ToolTemplateCatalogDto;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -41,6 +43,7 @@ import org.springframework.web.server.ResponseStatusException;
  *       a fresh catalog DTO (without persisting), so anus can compose
  *       merge/overwrite/dry-run logic client-side</li>
  *   <li>{@code GET    /{name}}             — describe a template (parse template.yaml from the kit)</li>
+ *   <li>{@code GET    /{name}/applied?projectId=…} — last applied state (pre-fill for the Web-UI)</li>
  *   <li>{@code POST   /{name}/apply}       — apply with supplied inputs</li>
  * </ul>
  *
@@ -58,6 +61,7 @@ public class ToolTemplatesAdminController {
     private final TemplateDescribeService describeService;
     private final ToolTemplateCatalogScanService scanService;
     private final KitService kitService;
+    private final TemplateApplier templateApplier;
     private final RequestAuthority authority;
 
     @GetMapping("/catalog")
@@ -113,6 +117,27 @@ public class ToolTemplatesAdminController {
             log.warn("tool-template describe failed for '{}': {}", name, e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
+    }
+
+    /**
+     * Pre-fill cache for the Web-UI Wizard — returns the last applied
+     * state for (template, projectId) so the form can be opened with
+     * the values from the last apply. Returns 404 when never applied.
+     * PASSWORD inputs are structurally absent — see
+     * {@link TemplateApplier#buildAppliedState}.
+     */
+    @GetMapping("/{name}/applied")
+    public ToolTemplateAppliedStateDto applied(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("name") String name,
+            @RequestParam("projectId") String projectId,
+            HttpServletRequest request) {
+        authority.enforce(request,
+                new Resource.Project(tenant, projectId), Action.ADMIN);
+        return templateApplier.loadApplied(tenant, projectId, name)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Template '" + name + "' has not been applied to project '"
+                                + projectId + "' yet"));
     }
 
     @PostMapping("/{name}/apply")

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import type {
+  ToolTemplateAppliedStateDto,
   ToolTemplateApplyResultDto,
   ToolTemplateCatalogEntry,
   ToolTemplateDescriptorDto,
@@ -27,6 +28,7 @@ const selected = ref<ToolTemplateCatalogEntry | null>(null);
 const descriptor = ref<ToolTemplateDescriptorDto | null>(null);
 const inputs = ref<Record<string, string>>({});
 const modalOpen = ref(false);
+const applied = ref<ToolTemplateAppliedStateDto | null>(null);
 
 const applyResult = ref<ToolTemplateApplyResultDto | null>(null);
 const applyError = ref<string | null>(null);
@@ -59,19 +61,58 @@ async function openDetail(entry: ToolTemplateCatalogEntry): Promise<void> {
   selected.value = entry;
   descriptor.value = null;
   inputs.value = {};
+  applied.value = null;
   applyResult.value = null;
   applyError.value = null;
   modalOpen.value = true;
   try {
-    descriptor.value = await state.describe(entry.name);
-    const init: Record<string, string> = {};
-    for (const input of descriptor.value.inputs ?? []) {
-      if (input.defaultValue != null) init[input.name] = input.defaultValue;
-    }
-    inputs.value = init;
+    const [desc, prev] = await Promise.all([
+      state.describe(entry.name),
+      state.loadApplied(entry.name, projectId.value).catch(() => null),
+    ]);
+    descriptor.value = desc;
+    applied.value = prev;
+    inputs.value = seedInputs(desc, prev);
   } catch {
     /* state.error.value already carries the message */
   }
+}
+
+/**
+ * Seeds the form. Precedence per input:
+ *   1. Value from the previous apply (PASSWORD is structurally absent).
+ *   2. Per-choice defaults for multi-select.
+ *   3. Input-level `defaultValue` for everything else.
+ */
+function seedInputs(
+  desc: ToolTemplateDescriptorDto,
+  prev: ToolTemplateAppliedStateDto | null,
+): Record<string, string> {
+  const init: Record<string, string> = {};
+  const prevInputs = prev?.inputs ?? {};
+  for (const input of desc.inputs ?? []) {
+    const isMulti = input.type === 'multi_select' || input.type === 'multiselect';
+    const fromPrev = prevInputs[input.name];
+    if (fromPrev !== undefined && fromPrev !== null) {
+      if (isMulti) {
+        // Applied state stores multi-select as a JSON list — re-encode to
+        // the JSON-string form the apply payload expects.
+        init[input.name] = JSON.stringify(Array.isArray(fromPrev) ? fromPrev : []);
+      } else if (typeof fromPrev === 'string') {
+        init[input.name] = fromPrev;
+      } else {
+        init[input.name] = String(fromPrev);
+      }
+      continue;
+    }
+    if (isMulti) {
+      const defaults = (input.choices ?? []).filter((c) => c.defaultSelected).map((c) => c.value);
+      if (defaults.length > 0) init[input.name] = JSON.stringify(defaults);
+      continue;
+    }
+    if (input.defaultValue != null) init[input.name] = input.defaultValue;
+  }
+  return init;
 }
 
 function closeDetail(): void {
@@ -79,6 +120,7 @@ function closeDetail(): void {
   selected.value = null;
   descriptor.value = null;
   inputs.value = {};
+  applied.value = null;
   applyResult.value = null;
   applyError.value = null;
 }
@@ -172,6 +214,14 @@ async function onApply(): Promise<void> {
       </div>
 
       <div v-else-if="descriptor && !applyResult" class="flex flex-col gap-4">
+        <VAlert v-if="applied" variant="info">
+          <span>
+            {{ $t('toolTemplates.previouslyApplied', {
+              at: applied.appliedAt,
+              by: applied.appliedBy ?? 'unknown',
+            }) }}
+          </span>
+        </VAlert>
         <p v-if="descriptor.description" class="text-sm opacity-70 whitespace-pre-wrap">
           {{ descriptor.description }}
         </p>

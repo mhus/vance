@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { ToolTemplateInputDto } from '@vance/generated';
+import type { ToolTemplateChoiceDto, ToolTemplateInputDto } from '@vance/generated';
 import { VCheckbox, VInput, VSelect } from '@/components';
 
 interface Props {
@@ -27,15 +27,53 @@ function boolValue(name: string): boolean {
   return v === 'true' || v === '1' || v === 'yes';
 }
 
+// ── Single-select ──
 const selectOptionsByName = computed<Record<string, { value: string; label: string }[]>>(() => {
   const out: Record<string, { value: string; label: string }[]> = {};
   for (const i of props.inputs) {
     if (i.type === 'select') {
-      out[i.name] = (i.choices ?? []).map((c: string) => ({ value: c, label: c }));
+      out[i.name] = (i.choices ?? []).map((c: ToolTemplateChoiceDto) => ({
+        value: c.value,
+        label: c.label ?? c.value,
+      }));
     }
   }
   return out;
 });
+
+// ── Multi-select ──
+// Decode the JSON-array form stored in modelValue back to a Set for easy
+// per-checkbox toggling. Empty / malformed → empty set.
+function multiSelectedSet(name: string): Set<string> {
+  const raw = props.modelValue[name];
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return new Set(parsed.filter((v): v is string => typeof v === 'string'));
+  } catch {
+    /* fall through to empty */
+  }
+  return new Set();
+}
+
+function multiSelectIsChecked(name: string, value: string): boolean {
+  return multiSelectedSet(name).has(value);
+}
+
+function toggleMultiSelect(name: string, value: string, checked: boolean): void {
+  const set = multiSelectedSet(name);
+  if (checked) set.add(value);
+  else set.delete(value);
+  // Preserve declaration order by walking the input's choices.
+  const input = props.inputs.find((i) => i.name === name);
+  const ordered: string[] = [];
+  if (input) {
+    for (const c of input.choices ?? []) {
+      if (set.has(c.value)) ordered.push(c.value);
+    }
+  }
+  setField(name, JSON.stringify(ordered));
+}
 
 function helpFor(input: ToolTemplateInputDto): string | undefined {
   if (input.help) return input.help;
@@ -102,6 +140,21 @@ function labelFor(input: ToolTemplateInputDto): string {
         :placeholder="input.required ? undefined : '—'"
         @update:model-value="(v: string | null) => setField(input.name, v ?? '')"
       />
+
+      <div v-else-if="input.type === 'multi_select' || input.type === 'multiselect'"
+           class="flex flex-col gap-1">
+        <label class="text-sm">{{ labelFor(input) }}</label>
+        <div class="flex flex-col gap-1 pl-1">
+          <VCheckbox
+            v-for="choice in (input.choices ?? [])"
+            :key="choice.value"
+            :model-value="multiSelectIsChecked(input.name, choice.value)"
+            :label="choice.label ?? choice.value"
+            @update:model-value="(v: boolean) => toggleMultiSelect(input.name, choice.value, v)"
+          />
+        </div>
+        <span v-if="helpFor(input)" class="text-xs opacity-70">{{ helpFor(input) }}</span>
+      </div>
 
       <div v-else class="text-xs text-error">
         Unknown input type: <code class="font-mono">{{ input.type }}</code>

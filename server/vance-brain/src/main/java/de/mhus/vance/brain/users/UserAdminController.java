@@ -118,8 +118,6 @@ public class UserAdminController {
             return toDto(saved);
         } catch (UserService.UserNotFoundException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage());
-        } catch (UserService.ServiceAccountLoginException e) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         }
     }
 

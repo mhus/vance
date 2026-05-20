@@ -121,7 +121,11 @@ class UserServiceTest {
     }
 
     @Test
-    void update_cannotEnableLoginOnServiceAccount() {
+    void update_canEnableLoginOnServiceAccount() {
+        // The two flags are orthogonal: a service account starts with
+        // loginEnabled=false (createServiceAccount default), but admin
+        // may flip it to true post-creation so the account can drive a
+        // daemon process through the standard password-login endpoint.
         UserDocument svc = UserDocument.builder()
                 .tenantId(TENANT)
                 .name("_ci-bot")
@@ -130,10 +134,38 @@ class UserServiceTest {
                 .status(UserStatus.ACTIVE)
                 .build();
         when(repo.findByTenantIdAndName(TENANT, "_ci-bot")).thenReturn(Optional.of(svc));
+        when(repo.save(any(UserDocument.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
 
-        assertThatThrownBy(() -> service.update(
-                TENANT, "_ci-bot", null, null, null, /* loginEnabled */ true))
-                .isInstanceOf(UserService.ServiceAccountLoginException.class);
+        UserDocument updated = service.update(
+                TENANT, "_ci-bot", null, null, null, /* loginEnabled */ true);
+
+        assertThat(updated.isServiceAccount()).isTrue();
+        assertThat(updated.isLoginEnabled()).isTrue();
+    }
+
+    @Test
+    void setLoginEnabled_convenienceFlipsOneFlag() {
+        UserDocument svc = UserDocument.builder()
+                .tenantId(TENANT)
+                .name("_acme-automaton")
+                .serviceAccount(true)
+                .loginEnabled(false)
+                .status(UserStatus.ACTIVE)
+                .title("Acme Automaton")
+                .email("automaton@acme.invalid")
+                .build();
+        when(repo.findByTenantIdAndName(TENANT, "_acme-automaton")).thenReturn(Optional.of(svc));
+        when(repo.save(any(UserDocument.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        UserDocument updated = service.setLoginEnabled(TENANT, "_acme-automaton", true);
+
+        assertThat(updated.isLoginEnabled()).isTrue();
+        // Other fields unchanged.
+        assertThat(updated.getTitle()).isEqualTo("Acme Automaton");
+        assertThat(updated.getEmail()).isEqualTo("automaton@acme.invalid");
+        assertThat(updated.isServiceAccount()).isTrue();
     }
 
     @Test

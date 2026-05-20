@@ -80,13 +80,18 @@ public class BootstrapBrainService {
         ensureUser(ACME_TENANT, "marvin.acme", "Marvin Acme", "marvin.acme@mhus.de", "toon-boss");
         ensureUser(ACME_TENANT, "wile.coyote", "Wile E. Coyote", "wile.e.coyote@mhus.de", "acme-rocket");
         ensureUser(ACME_TENANT, "road.runner", "Road Runner", "beep.beep@mhus.com", "beep-beep");
-        // Service account for headless foot daemons. The leading underscore
-        // marks it as a service-account by convention — no separate
-        // schema field, just a naming rule (see service_account_naming
-        // memory). Used by deployment/local/vance-daemon to launch a
-        // foot in profile=daemon mode.
+        // Service account for headless foot daemons. The leading
+        // underscore routes through UserService.createServiceAccount,
+        // which marks the user as a bot (serviceAccount=true) and
+        // defaults loginEnabled to false. We then flip loginEnabled
+        // back to true for this specific account because the foot
+        // daemon launcher (`deployment/local/vance-daemon`) needs the
+        // standard password-login endpoint to mint its JWT —
+        // {serviceAccount=true, loginEnabled=true} is a valid combo
+        // since the two flags are orthogonal.
         ensureUser(ACME_TENANT, "_acme-automaton", "Acme Automaton",
                 "automaton@acme.invalid", "anvils-fall-down");
+        userService.setLoginEnabled(ACME_TENANT, "_acme-automaton", true);
 
         ensureProjectGroup(ACME_TENANT, "gravity-ignorance", "Department of Gravity Ignorance");
         ensureProject(ACME_TENANT, "instant-hole", "Instant Hole", "gravity-ignorance");

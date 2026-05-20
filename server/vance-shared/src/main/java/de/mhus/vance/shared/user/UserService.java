@@ -174,6 +174,15 @@ public class UserService {
      * immutable; password is set separately via {@link #setPasswordHash}.
      * {@code null} fields mean "leave as is".
      *
+     * <p>{@code loginEnabled} and {@code serviceAccount} are
+     * <strong>orthogonal</strong>: a service account may have login
+     * enabled (foot-daemon-style — bot, but still uses password login)
+     * or disabled (Anus-managed token-only bot). Default for service
+     * accounts created via {@link #createServiceAccount} is
+     * {@code loginEnabled=false}; an admin flips it through this
+     * method when the account needs to drive a daemon process with
+     * the standard login endpoint.
+     *
      * @throws UserNotFoundException if the user does not exist
      */
     public UserDocument update(
@@ -196,21 +205,24 @@ public class UserService {
             user.setStatus(status);
         }
         if (loginEnabled != null) {
-            if (loginEnabled && user.isServiceAccount()) {
-                // Service accounts are login-blocked by definition. If a
-                // human admin needs to flip that, they must drop the
-                // service-account flag first — and that path doesn't
-                // exist on purpose, the flag is immutable post-creation.
-                throw new ServiceAccountLoginException(
-                        "User '" + name + "' is a service account — "
-                                + "loginEnabled cannot be set to true");
-            }
             user.setLoginEnabled(loginEnabled);
         }
         UserDocument saved = repository.save(user);
-        log.info("Updated user tenantId='{}' name='{}' status={} loginEnabled={}",
-                saved.getTenantId(), saved.getName(), saved.getStatus(), saved.isLoginEnabled());
+        log.info("Updated user tenantId='{}' name='{}' status={} loginEnabled={} serviceAccount={}",
+                saved.getTenantId(), saved.getName(), saved.getStatus(),
+                saved.isLoginEnabled(), saved.isServiceAccount());
         return saved;
+    }
+
+    /**
+     * Convenience helper: flip the {@code loginEnabled} flag on an
+     * existing account without touching anything else. Same orthogonality
+     * rule as {@link #update} — service accounts may have login enabled.
+     *
+     * @throws UserNotFoundException if the user does not exist
+     */
+    public UserDocument setLoginEnabled(String tenantId, String name, boolean loginEnabled) {
+        return update(tenantId, name, null, null, null, loginEnabled);
     }
 
     /** Replaces the user's password hash. Caller hashes; service stores. */
@@ -262,10 +274,4 @@ public class UserService {
         }
     }
 
-    /** Thrown when {@link #update} would re-enable login on a service account. */
-    public static class ServiceAccountLoginException extends RuntimeException {
-        public ServiceAccountLoginException(String message) {
-            super(message);
-        }
-    }
 }

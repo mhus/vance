@@ -281,4 +281,61 @@ class ScriptExecutorTest {
             }
         };
     }
+
+    // ------------------------------------------------------------------
+    // 7.7 Promises — async-IIFE bodies and resolved values
+    //
+    // Regression: an `(async () => { … })()` wrapper around a script
+    // body used to yield a Promise object which mapValue mapped to an
+    // empty `{}`. The LLM then took that as "success", confirmed
+    // completion to the user, and the actual work hadn't been done.
+    // See settlePromise + resolveResult in GraaljsScriptExecutor.
+    // ------------------------------------------------------------------
+
+    @Test
+    void asyncIife_resolvedValueIsReturned() {
+        Object value = eval("(async () => 42)();").value();
+        assertThat(value).isEqualTo(42L);
+    }
+
+    @Test
+    void asyncIife_returnsStringFromAwait() {
+        // The pattern Eddie used: async-IIFE that awaits a synchronous
+        // tool call. vance.tools is a Java bridge, so `await` here
+        // wraps and immediately unwraps a sync value — but the IIFE's
+        // return value is still a Promise that needs resolving.
+        Tool greet = simpleTool("greet", Map.of("text", "hello world"));
+        String code = "(async () => { const r = await vance.tools.call('greet', {}); return r.text; })();";
+        Object value = eval(code, unrestrictedTools(greet)).value();
+        assertThat(value).isEqualTo("hello world");
+    }
+
+    @Test
+    void rejectedPromise_surfacesAsGuestException() {
+        assertThatThrownBy(() -> eval(
+                "(async () => { throw new Error('async-boom'); })();"))
+                .isInstanceOf(ScriptExecutionException.class)
+                .satisfies(t -> {
+                    ScriptExecutionException ex = (ScriptExecutionException) t;
+                    assertThat(ex.errorClass())
+                            .isEqualTo(ScriptExecutionException.ErrorClass.GUEST_EXCEPTION);
+                    assertThat(ex.getMessage()).contains("async-boom");
+                });
+    }
+
+    @Test
+    void nestedPromise_isFullyUnwrapped() {
+        // async function returning another async function's promise.
+        Object value = eval("(async () => (async () => 'deep')())();").value();
+        assertThat(value).isEqualTo("deep");
+    }
+
+    @Test
+    void syncCode_stillReturnsLastExpressionValue() {
+        // Make sure the promise-resolve detour doesn't change the
+        // primary contract: non-promise top-level values pass through
+        // mapValue exactly like before.
+        assertThat(eval("1 + 2;").value()).isEqualTo(3L);
+        assertThat(eval("({a: 1});").value()).isEqualTo(Map.of("a", 1L));
+    }
 }

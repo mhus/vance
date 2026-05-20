@@ -33,6 +33,7 @@ import org.graalvm.polyglot.Source;
 import org.graalvm.polyglot.Value;
 import org.graalvm.polyglot.io.FileSystem;
 import org.graalvm.polyglot.io.IOAccess;
+import org.graalvm.polyglot.proxy.ProxyExecutable;
 import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -204,7 +205,10 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
         if (requireRoot == null) {
             ctxBuilder
                     .allowIO(IOAccess.NONE)
-                    .allowExperimentalOptions(false);
+                    // top-level-await is an experimental flag in GraalJS;
+                    // the gate has to be open to enable it. We don't
+                    // turn anything else on.
+                    .allowExperimentalOptions(true);
         } else {
             ctxBuilder
                     .allowIO(buildSandboxedIo(requireRoot))
@@ -212,6 +216,14 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
                     .option("js.commonjs-require", "true")
                     .option("js.commonjs-require-cwd", requireRoot.toString());
         }
+        // Top-level-await — lets the LLM write the natural
+        //   const result = await vance.tools.call("…", …)
+        // pattern straight on the top level, instead of having to wrap
+        // it in `(async () => { … })()`. The wrap also worked once we
+        // started resolving the returned Promise (see resolveResult
+        // below), but tripping over a SyntaxError on the first attempt
+        // and recovering on the second wasted a full LLM round-trip.
+        ctxBuilder.option("js.top-level-await", "true");
 
         Context ctx = ctxBuilder.build();
 
@@ -231,7 +243,7 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
             }
             Source source = Source.newBuilder("js", request.code(), sourceName).buildLiteral();
 
-            Future<@Nullable Object> future = watchdog.submit(() -> mapValue(ctx.eval(source)));
+            Future<@Nullable Object> future = watchdog.submit(() -> resolveResult(ctx.eval(source)));
             try {
                 Object value = future.get(effectiveTimeout.toMillis(), TimeUnit.MILLISECONDS);
                 return new ScriptResult(value, Duration.between(start, Instant.now()));
@@ -500,6 +512,12 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
     }
 
     private static ScriptExecutionException mapEvalFailure(Throwable cause) {
+        // settlePromise throws a classified ScriptExecutionException itself
+        // when a Promise rejects; preserve its classification instead of
+        // re-wrapping as HOST_EXCEPTION via the generic branch below.
+        if (cause instanceof ScriptExecutionException already) {
+            return already;
+        }
         if (cause instanceof PolyglotException pe) {
             if (pe.isResourceExhausted()) {
                 return new ScriptExecutionException(
@@ -532,6 +550,88 @@ public class GraaljsScriptExecutor implements ScriptExecutor {
 
     /**
      * Maps a Polyglot {@link Value} into a JSON-friendly Java object.
+     * Resolve a top-level eval result. If it's a Promise (the LLM
+     * wrapped its body in {@code (async () => { … })()}, or top-level-
+     * await produced a Promise), block on the settled value and map
+     * <em>that</em>; otherwise route straight to {@link #mapValue}.
+     *
+     * <p>GraalJS drains its microtask queue at the host/guest boundary
+     * (i.e. inside {@code promise.invokeMember("then", …)}), so any
+     * Promise that resolves purely through synchronous code — which
+     * is everything our scripts do, since {@code vance.tools.call} is
+     * a synchronous Java bridge — fires its callbacks before the
+     * {@code invokeMember} call returns. If the promise still hasn't
+     * settled when we look (no external I/O event loop here), we
+     * surface a {@link ScriptExecutionException} so the caller doesn't
+     * silently get an unsettled-Promise stub.
+     *
+     * <p>Without this we'd map the Promise object itself: it reports
+     * {@code hasMembers()=true} but exposes no enumerable keys, so
+     * the script result quietly becomes the empty map {@code {}}. The
+     * LLM then takes that as "all good", confirms the operation to
+     * the user, and nothing actually happened — observed exactly that
+     * with Eddie's "mark all unread as read" script.
+     */
+    @Nullable
+    private static Object resolveResult(Value value) {
+        Value settled = settlePromise(value);
+        return mapValue(settled);
+    }
+
+    /**
+     * Walks promise chains down to a non-Promise {@link Value}.
+     * Heuristic for "is this a Promise?": GraalJS Promise objects
+     * accept {@code .then(onFulfilled, onRejected)} invocation. That's
+     * also true for any user-built thenable — which is fine, the
+     * contract is the same.
+     *
+     * <p>Throws {@link ScriptExecutionException#ErrorClass#GUEST_EXCEPTION}
+     * on rejection (so the LLM sees the rejection reason like any
+     * other error) and on still-pending-after-drain (which would
+     * indicate the script kicked off external async work we don't
+     * support here).
+     */
+    private static Value settlePromise(Value value) {
+        if (value == null || value.isNull() || !value.canInvokeMember("then")) {
+            return value;
+        }
+        Value[] fulfilled = { null };
+        Value[] rejected = { null };
+        boolean[] done = { false };
+        ProxyExecutable onFulfilled = args -> {
+            fulfilled[0] = args.length > 0 ? args[0] : null;
+            done[0] = true;
+            return null;
+        };
+        ProxyExecutable onRejected = args -> {
+            rejected[0] = args.length > 0 ? args[0] : null;
+            done[0] = true;
+            return null;
+        };
+        value.invokeMember("then", onFulfilled, onRejected);
+        if (!done[0]) {
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.GUEST_EXCEPTION,
+                    "Promise returned by script is still pending after the "
+                            + "microtask queue drained. Vance's JS sandbox has no "
+                            + "external event loop — only synchronous tool calls "
+                            + "are supported. Did the script start a real async "
+                            + "operation (setTimeout, fetch, …)?");
+        }
+        if (rejected[0] != null) {
+            String message = rejected[0].isString()
+                    ? rejected[0].asString()
+                    : rejected[0].toString();
+            throw new ScriptExecutionException(
+                    ScriptExecutionException.ErrorClass.GUEST_EXCEPTION,
+                    "Promise rejected: " + message);
+        }
+        // Recurse: an async function that returns another Promise
+        // chains down. mapValue would otherwise see Promise<Promise<X>>.
+        return settlePromise(fulfilled[0]);
+    }
+
+    /**
      * Primitives stay primitive, objects become {@link LinkedHashMap},
      * arrays become {@link ArrayList}.
      */

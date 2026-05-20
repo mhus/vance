@@ -12,15 +12,56 @@ function boolValue(name) {
     const v = props.modelValue[name];
     return v === 'true' || v === '1' || v === 'yes';
 }
+// ── Single-select ──
 const selectOptionsByName = computed(() => {
     const out = {};
     for (const i of props.inputs) {
         if (i.type === 'select') {
-            out[i.name] = (i.choices ?? []).map((c) => ({ value: c, label: c }));
+            out[i.name] = (i.choices ?? []).map((c) => ({
+                value: c.value,
+                label: c.label ?? c.value,
+            }));
         }
     }
     return out;
 });
+// ── Multi-select ──
+// Decode the JSON-array form stored in modelValue back to a Set for easy
+// per-checkbox toggling. Empty / malformed → empty set.
+function multiSelectedSet(name) {
+    const raw = props.modelValue[name];
+    if (!raw)
+        return new Set();
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed))
+            return new Set(parsed.filter((v) => typeof v === 'string'));
+    }
+    catch {
+        /* fall through to empty */
+    }
+    return new Set();
+}
+function multiSelectIsChecked(name, value) {
+    return multiSelectedSet(name).has(value);
+}
+function toggleMultiSelect(name, value, checked) {
+    const set = multiSelectedSet(name);
+    if (checked)
+        set.add(value);
+    else
+        set.delete(value);
+    // Preserve declaration order by walking the input's choices.
+    const input = props.inputs.find((i) => i.name === name);
+    const ordered = [];
+    if (input) {
+        for (const c of input.choices ?? []) {
+            if (set.has(c.value))
+                ordered.push(c.value);
+        }
+    }
+    setField(name, JSON.stringify(ordered));
+}
 function helpFor(input) {
     if (input.help)
         return input.help;
@@ -181,6 +222,48 @@ for (const [input] of __VLS_getVForSourceType((__VLS_ctx.inputs))) {
         };
         var __VLS_35;
     }
+    else if (input.type === 'multi_select' || input.type === 'multiselect') {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex flex-col gap-1" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
+            ...{ class: "text-sm" },
+        });
+        (__VLS_ctx.labelFor(input));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex flex-col gap-1 pl-1" },
+        });
+        for (const [choice] of __VLS_getVForSourceType(((input.choices ?? [])))) {
+            const __VLS_40 = {}.VCheckbox;
+            /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
+            // @ts-ignore
+            const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
+                ...{ 'onUpdate:modelValue': {} },
+                key: (choice.value),
+                modelValue: (__VLS_ctx.multiSelectIsChecked(input.name, choice.value)),
+                label: (choice.label ?? choice.value),
+            }));
+            const __VLS_42 = __VLS_41({
+                ...{ 'onUpdate:modelValue': {} },
+                key: (choice.value),
+                modelValue: (__VLS_ctx.multiSelectIsChecked(input.name, choice.value)),
+                label: (choice.label ?? choice.value),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_41));
+            let __VLS_44;
+            let __VLS_45;
+            let __VLS_46;
+            const __VLS_47 = {
+                'onUpdate:modelValue': ((v) => __VLS_ctx.toggleMultiSelect(input.name, choice.value, v))
+            };
+            var __VLS_43;
+        }
+        if (__VLS_ctx.helpFor(input)) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-xs opacity-70" },
+            });
+            (__VLS_ctx.helpFor(input));
+        }
+    }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs text-error" },
@@ -194,6 +277,16 @@ for (const [input] of __VLS_getVForSourceType((__VLS_ctx.inputs))) {
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['pl-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-error']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
@@ -208,6 +301,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             setBool: setBool,
             boolValue: boolValue,
             selectOptionsByName: selectOptionsByName,
+            multiSelectIsChecked: multiSelectIsChecked,
+            toggleMultiSelect: toggleMultiSelect,
             helpFor: helpFor,
             labelFor: labelFor,
         };

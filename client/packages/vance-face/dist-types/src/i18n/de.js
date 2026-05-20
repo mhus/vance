@@ -714,6 +714,7 @@ export default {
         projectIdLabel: 'Projekt',
         install: 'Installieren',
         apply: 'Anwenden',
+        previouslyApplied: 'Zuletzt angewendet am {at} durch {by}. Formular ist vorbefüllt — anpassen und erneut anwenden zum Aktualisieren. Passwort-Felder bleiben aus Sicherheitsgründen leer.',
         noInputs: 'Diese Vorlage hat keine Eingabefelder — auf "Anwenden" klicken.',
         empty: {
             headline: 'Keine Vorlagen verfügbar',

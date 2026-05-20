@@ -708,6 +708,7 @@ declare const _default: {
         projectIdLabel: string;
         install: string;
         apply: string;
+        previouslyApplied: string;
         noInputs: string;
         empty: {
             headline: string;

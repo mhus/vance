@@ -84,7 +84,13 @@ public final class RestApiPackBuilder {
         List<Tool> out = new ArrayList<>(operations.size());
         for (OpenApiOperation op : operations) {
             if (!matches(op.operationId(), includePatterns, excludePatterns)) continue;
-            String fullName = input.name() + "__" + op.operationId();
+            // LLM tool-name conventions reject dots (Anthropic, OpenAI both
+            // require ^[a-zA-Z0-9_-]+$). Google's APIs use dotted operationIds
+            // (e.g. gmail.users.messages.list); map them to underscored form
+            // for the tool name only. Labels/deferred-overrides keep matching
+            // against the raw operationId so include-globs can still use
+            // either dot or underscore form per the user's preference.
+            String fullName = input.name() + "__" + toolSafeName(op.operationId());
             Set<String> labels = mergeLabels(packLabels, config, op);
             boolean deferred = config.deferredOverrides().getOrDefault(
                     op.operationId(), input.defaultDeferred());
@@ -109,6 +115,16 @@ public final class RestApiPackBuilder {
         out.addAll(config.labelOverrides().getOrDefault(
                 op.operationId(), config.labelsForMethod(op.httpMethod())));
         return Set.copyOf(out);
+    }
+
+    /**
+     * Strip characters disallowed in LLM tool names (Anthropic / OpenAI
+     * both insist on {@code ^[a-zA-Z0-9_-]+$}). Currently just dot →
+     * underscore — broaden if a spec ever uses other oddities.
+     */
+    static String toolSafeName(String operationId) {
+        if (operationId == null || operationId.isEmpty()) return operationId;
+        return operationId.replace('.', '_');
     }
 
     private static boolean matches(

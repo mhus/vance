@@ -10,6 +10,7 @@ const selected = ref(null);
 const descriptor = ref(null);
 const inputs = ref({});
 const modalOpen = ref(false);
+const applied = ref(null);
 const applyResult = ref(null);
 const applyError = ref(null);
 onMounted(state.loadCatalog);
@@ -40,27 +41,66 @@ async function openDetail(entry) {
     selected.value = entry;
     descriptor.value = null;
     inputs.value = {};
+    applied.value = null;
     applyResult.value = null;
     applyError.value = null;
     modalOpen.value = true;
     try {
-        descriptor.value = await state.describe(entry.name);
-        const init = {};
-        for (const input of descriptor.value.inputs ?? []) {
-            if (input.defaultValue != null)
-                init[input.name] = input.defaultValue;
-        }
-        inputs.value = init;
+        const [desc, prev] = await Promise.all([
+            state.describe(entry.name),
+            state.loadApplied(entry.name, projectId.value).catch(() => null),
+        ]);
+        descriptor.value = desc;
+        applied.value = prev;
+        inputs.value = seedInputs(desc, prev);
     }
     catch {
         /* state.error.value already carries the message */
     }
+}
+/**
+ * Seeds the form. Precedence per input:
+ *   1. Value from the previous apply (PASSWORD is structurally absent).
+ *   2. Per-choice defaults for multi-select.
+ *   3. Input-level `defaultValue` for everything else.
+ */
+function seedInputs(desc, prev) {
+    const init = {};
+    const prevInputs = prev?.inputs ?? {};
+    for (const input of desc.inputs ?? []) {
+        const isMulti = input.type === 'multi_select' || input.type === 'multiselect';
+        const fromPrev = prevInputs[input.name];
+        if (fromPrev !== undefined && fromPrev !== null) {
+            if (isMulti) {
+                // Applied state stores multi-select as a JSON list — re-encode to
+                // the JSON-string form the apply payload expects.
+                init[input.name] = JSON.stringify(Array.isArray(fromPrev) ? fromPrev : []);
+            }
+            else if (typeof fromPrev === 'string') {
+                init[input.name] = fromPrev;
+            }
+            else {
+                init[input.name] = String(fromPrev);
+            }
+            continue;
+        }
+        if (isMulti) {
+            const defaults = (input.choices ?? []).filter((c) => c.defaultSelected).map((c) => c.value);
+            if (defaults.length > 0)
+                init[input.name] = JSON.stringify(defaults);
+            continue;
+        }
+        if (input.defaultValue != null)
+            init[input.name] = input.defaultValue;
+    }
+    return init;
 }
 function closeDetail() {
     modalOpen.value = false;
     selected.value = null;
     descriptor.value = null;
     inputs.value = {};
+    applied.value = null;
     applyResult.value = null;
     applyError.value = null;
 }
@@ -297,6 +337,24 @@ else if (__VLS_ctx.descriptor && !__VLS_ctx.applyResult) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex flex-col gap-4" },
     });
+    if (__VLS_ctx.applied) {
+        const __VLS_49 = {}.VAlert;
+        /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+        // @ts-ignore
+        const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
+            variant: "info",
+        }));
+        const __VLS_51 = __VLS_50({
+            variant: "info",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_50));
+        __VLS_52.slots.default;
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        (__VLS_ctx.$t('toolTemplates.previouslyApplied', {
+            at: __VLS_ctx.applied.appliedAt,
+            by: __VLS_ctx.applied.appliedBy ?? 'unknown',
+        }));
+        var __VLS_52;
+    }
     if (__VLS_ctx.descriptor.description) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
             ...{ class: "text-sm opacity-70 whitespace-pre-wrap" },
@@ -306,14 +364,14 @@ else if (__VLS_ctx.descriptor && !__VLS_ctx.applyResult) {
     if (__VLS_ctx.descriptor.inputs && __VLS_ctx.descriptor.inputs.length > 0) {
         /** @type {[typeof TemplateInputForm, ]} */ ;
         // @ts-ignore
-        const __VLS_49 = __VLS_asFunctionalComponent(TemplateInputForm, new TemplateInputForm({
+        const __VLS_53 = __VLS_asFunctionalComponent(TemplateInputForm, new TemplateInputForm({
             inputs: (__VLS_ctx.descriptor.inputs),
             modelValue: (__VLS_ctx.inputs),
         }));
-        const __VLS_50 = __VLS_49({
+        const __VLS_54 = __VLS_53({
             inputs: (__VLS_ctx.descriptor.inputs),
             modelValue: (__VLS_ctx.inputs),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_49));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_53));
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
@@ -322,84 +380,84 @@ else if (__VLS_ctx.descriptor && !__VLS_ctx.applyResult) {
         (__VLS_ctx.$t('toolTemplates.noInputs'));
     }
     if (__VLS_ctx.applyError) {
-        const __VLS_52 = {}.VAlert;
+        const __VLS_56 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
+        const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
             variant: "error",
         }));
-        const __VLS_54 = __VLS_53({
+        const __VLS_58 = __VLS_57({
             variant: "error",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_53));
-        __VLS_55.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+        __VLS_59.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
         (__VLS_ctx.applyError);
-        var __VLS_55;
+        var __VLS_59;
     }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex justify-end gap-2 pt-2" },
     });
-    const __VLS_56 = {}.VButton;
+    const __VLS_60 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
         ...{ 'onClick': {} },
         variant: "ghost",
     }));
-    const __VLS_58 = __VLS_57({
+    const __VLS_62 = __VLS_61({
         ...{ 'onClick': {} },
         variant: "ghost",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
-    let __VLS_60;
-    let __VLS_61;
-    let __VLS_62;
-    const __VLS_63 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+    let __VLS_64;
+    let __VLS_65;
+    let __VLS_66;
+    const __VLS_67 = {
         onClick: (__VLS_ctx.closeDetail)
     };
-    __VLS_59.slots.default;
+    __VLS_63.slots.default;
     (__VLS_ctx.$t('common.cancel'));
-    var __VLS_59;
-    const __VLS_64 = {}.VButton;
+    var __VLS_63;
+    const __VLS_68 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+    const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.state.busy.value),
     }));
-    const __VLS_66 = __VLS_65({
+    const __VLS_70 = __VLS_69({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.state.busy.value),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
-    let __VLS_68;
-    let __VLS_69;
-    let __VLS_70;
-    const __VLS_71 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+    let __VLS_72;
+    let __VLS_73;
+    let __VLS_74;
+    const __VLS_75 = {
         onClick: (__VLS_ctx.onApply)
     };
-    __VLS_67.slots.default;
+    __VLS_71.slots.default;
     (__VLS_ctx.$t('toolTemplates.apply'));
-    var __VLS_67;
+    var __VLS_71;
 }
 else if (__VLS_ctx.applyResult) {
     /** @type {[typeof TemplateApplyResult, ]} */ ;
     // @ts-ignore
-    const __VLS_72 = __VLS_asFunctionalComponent(TemplateApplyResult, new TemplateApplyResult({
+    const __VLS_76 = __VLS_asFunctionalComponent(TemplateApplyResult, new TemplateApplyResult({
         ...{ 'onClose': {} },
         result: (__VLS_ctx.applyResult),
     }));
-    const __VLS_73 = __VLS_72({
+    const __VLS_77 = __VLS_76({
         ...{ 'onClose': {} },
         result: (__VLS_ctx.applyResult),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_72));
-    let __VLS_75;
-    let __VLS_76;
-    let __VLS_77;
-    const __VLS_78 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_76));
+    let __VLS_79;
+    let __VLS_80;
+    let __VLS_81;
+    const __VLS_82 = {
         onClose: (__VLS_ctx.closeDetail)
     };
-    var __VLS_74;
+    var __VLS_78;
 }
 var __VLS_44;
 var __VLS_3;
@@ -483,6 +541,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             descriptor: descriptor,
             inputs: inputs,
             modalOpen: modalOpen,
+            applied: applied,
             applyResult: applyResult,
             applyError: applyError,
             grouped: grouped,

@@ -720,6 +720,7 @@ export default {
         projectIdLabel: 'Project',
         install: 'Install',
         apply: 'Apply',
+        previouslyApplied: 'Previously applied on {at} by {by}. Form pre-filled — adjust and re-apply to update. Password fields stay blank for security.',
         noInputs: 'This template has no inputs — apply to install it.',
         empty: {
             headline: 'No templates available',

@@ -30,7 +30,7 @@ the user has confirmed a direction.
 ## Canonical flow
 
 ```
-1. user: "set up Jira"
+1. user: "set up Jira"  /  "set up Atlassian"
 
 2. agent:
    find_tools(query="tool_template")
@@ -38,35 +38,96 @@ the user has confirmed a direction.
 
 3. agent:
    invoke_tool(tool_template_list, {})
-   → templates: [{name: "jira", title: "Atlassian Jira", ...}, ...]
+   → templates: [{name: "atlassian", title: "Atlassian (Jira + Confluence)", ...}, ...]
 
 4. agent:
-   invoke_tool(tool_template_describe, {name: "jira"})
-   → inputs: [{name: "clientId", required: true, ...},
-              {name: "clientSecret", type: "password", target: "setting", ...}]
+   invoke_tool(tool_template_describe, {name: "atlassian"})
+   → inputs:
+       - {name: "features", type: "multi_select", required: true,
+          choices: [{value: "jira", label: "Jira", defaultSelected: true},
+                    {value: "confluence", label: "Confluence", defaultSelected: false}]}
+       - {name: "clientId", type: "string", required: true, ...}
+       - {name: "clientSecret", type: "password", target: "setting", ...}
    → postInstall: {kind: "oauth-connect", provider: "atlassian", ...}
 
 5. agent → user (ASK_USER):
-   "Brauche zwei Werte aus deinem Atlassian-Developer-Console:
-   - Client ID
-   - Client Secret (wird verschlüsselt in den Tenant-Settings abgelegt)
-   Beide findest du unter https://developer.atlassian.com/console → deine App → Settings."
+   "Brauche drei Werte:
+   - Welche Atlassian-Produkte? (Jira / Confluence / beides)
+   - OAuth Client ID (developer.atlassian.com/console → deine App → Settings)
+   - OAuth Client Secret (wird verschlüsselt in den Tenant-Settings abgelegt)"
 
 6. user provides values
 
 7. agent:
    invoke_tool(tool_template_apply, {
-     name: "jira",
+     name: "atlassian",
      projectId: "_tenant",
-     inputs: { clientId: "...", clientSecret: "..." }
+     inputs: {
+       features: ["jira"],          // or ["jira", "confluence"]
+       clientId: "...",
+       clientSecret: "..."
+     }
    })
    → applied: true, postInstall: {kind: "oauth-connect", provider: "atlassian", ...}
 
 8. agent → user (ANSWER):
-   "Jira-Provider ist konfiguriert. Letzter Schritt: öffne Connected Accounts
-   in der Web-UI (http://localhost:9900/connected-accounts.html) und klick
-   bei 'atlassian' auf Connect. Danach steht das Jira-Tool zur Verfügung."
+   "Atlassian-Provider ist konfiguriert (Jira-Pack installiert). Letzter Schritt:
+   öffne Connected Accounts in der Web-UI (http://localhost:9900/connected-accounts.html)
+   und klick bei 'atlassian' auf Connect. Danach stehen die Jira-Tools zur Verfügung."
 ```
+
+## Multi-select inputs (v2 templates)
+
+Some templates (e.g. `atlassian`, future `google-workspace`) have an
+input of type `multi_select` — a feature-picker that decides which
+parts of the kit get installed and which OAuth scopes get requested.
+
+The describe response looks like:
+
+```
+{
+  name: "features",
+  type: "multi_select",
+  required: true,
+  choices: [
+    {value: "jira",       label: "Jira",       defaultSelected: true},
+    {value: "confluence", label: "Confluence", defaultSelected: false}
+  ]
+}
+```
+
+When apply'ing, pass the selection as a JSON array of `value`s:
+
+```
+inputs: { features: ["jira", "confluence"], ... }
+```
+
+Both `["jira"]` and `["jira", "confluence"]` are valid; the empty
+array is rejected when `required: true`. Comma-separated strings
+(`"jira,confluence"`) are also accepted as a fallback for chat-style
+inputs.
+
+**Re-apply with a different selection is the supported upgrade path.**
+"User has Jira, now wants Confluence too" → re-call `tool_template_apply`
+on the same template with `features: ["jira", "confluence"]`. The OAuth
+provider yaml is rewritten with the wider scopes, the second REST pack
+is installed; tell the user to **re-Connect** in the Web-UI so the
+provider's consent screen acknowledges the new scopes.
+
+## Re-checking previous installs (applied state)
+
+If the user says "what did I configure for Atlassian last time?", you
+can call:
+
+```
+GET /admin/tool-templates/<name>/applied?projectId=<p>
+```
+
+via the REST surface (no tool wrapper yet — use the standard REST
+helper). The response carries `template`, `appliedAt`, `appliedBy`,
+`features`, and the non-PASSWORD `inputs` from the last apply. Password
+fields are structurally absent — the user has to re-enter them only
+when they want to change them.
 
 ## Choosing the target project
 
@@ -117,6 +178,8 @@ If the user asks "what can I install?" or "welche Tools gibt's?":
 |---|---|
 | `Template 'X' is not in the tenant catalog` | Wrong name. Re-list and offer the correct ones. |
 | `apply failed: required input 'X' is missing` | Re-ask the user for that field. Don't guess. |
+| `apply failed: input 'X': value 'Y' not in choices [...]` | User picked a multi-select / select value that isn't declared. Re-ask, listing the valid choices from `describe`. |
+| `apply failed: input 'features': at least one choice must be selected` | Multi-select is `required` and was passed empty. Re-ask which products. |
 | `apply failed: project 'P' does not exist` | Wrong `projectId`. Use `project_list` to find the right one or default to `_tenant`. |
 | `kit at ... is not a tool-template — no template.yaml` | Catalog entry points at a non-template kit. Report to the user; this is a tenant-admin config issue. |
 

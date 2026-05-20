@@ -304,6 +304,11 @@ public class VanceFootCommand implements Callable<Integer> {
             profile = "daemon";
         }
         noUi = true;
+        // Daemons don't bind a session — the brain rejects DAEMON_REGISTER
+        // outside profile=daemon, and there's nothing for AutoBootstrap to
+        // do here. Setting the skip-property unconditionally for -d avoids
+        // a spurious "bootstrap failed" log on every daemon launch.
+        noBootstrap = true;
         // --log-file is parsed in VanceFootApplication.main and sets
         // logging.file.name as a system property; if the user did not
         // pass one we set the daemon default here.

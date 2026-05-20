@@ -84,7 +84,8 @@ class VanceWebSocketHandlerPermissionTest {
         VanceWebSocketHandler dispatcher = new VanceWebSocketHandler(
                 sessionService, sessionLifecycle, properties, objectMapper,
                 sender, clientToolRegistry, connectionRegistry, executionRegistry,
-                scriptExecutionWsRegistry,
+                scriptExecutionWsRegistry, new de.mhus.vance.brain.daemon.DaemonRegistry(),
+                emptyServerToolRegistryProvider(),
                 List.of(denyingHandler));
 
         TextMessage frame = envelopeOf("denied.message");
@@ -109,7 +110,8 @@ class VanceWebSocketHandlerPermissionTest {
         VanceWebSocketHandler dispatcher = new VanceWebSocketHandler(
                 sessionService, sessionLifecycle, properties, objectMapper,
                 sender, clientToolRegistry, connectionRegistry, executionRegistry,
-                scriptExecutionWsRegistry,
+                scriptExecutionWsRegistry, new de.mhus.vance.brain.daemon.DaemonRegistry(),
+                emptyServerToolRegistryProvider(),
                 List.of(boomHandler));
 
         dispatcher.handleTextMessage(wsSession, envelopeOf("boom.message"));
@@ -123,5 +125,30 @@ class VanceWebSocketHandlerPermissionTest {
     private TextMessage envelopeOf(String type) throws IOException {
         WebSocketEnvelope env = WebSocketEnvelope.request("req-1", type, null);
         return new TextMessage(objectMapper.writeValueAsString(env));
+    }
+
+    /**
+     * Empty ObjectProvider stand-in — these tests don't load any
+     * {@code foot_daemon} ServerTools, so the dispatcher's cache-refresh
+     * branch is never reached. {@code getIfAvailable()} returning null is
+     * the contract the dispatcher already handles.
+     */
+    private static org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.brain.servertool.ServerToolRegistry>
+            emptyServerToolRegistryProvider() {
+        return new org.springframework.beans.factory.ObjectProvider<>() {
+            @Override public de.mhus.vance.brain.servertool.ServerToolRegistry getObject() {
+                throw new UnsupportedOperationException();
+            }
+            @Override public de.mhus.vance.brain.servertool.ServerToolRegistry getObject(Object... args) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public de.mhus.vance.brain.servertool.ServerToolRegistry getIfAvailable() {
+                return null;
+            }
+            @Override public de.mhus.vance.brain.servertool.ServerToolRegistry getIfUnique() {
+                return null;
+            }
+        };
     }
 }

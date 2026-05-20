@@ -53,6 +53,9 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     private final ExecutionRegistryService executionRegistry;
     private final de.mhus.vance.brain.script.cortex.ScriptExecutionWsRegistry
             scriptExecutionWsRegistry;
+    private final de.mhus.vance.brain.daemon.DaemonRegistry daemonRegistry;
+    private final org.springframework.beans.factory.ObjectProvider<
+            de.mhus.vance.brain.servertool.ServerToolRegistry> serverToolRegistryProvider;
     private final Map<String, WsHandler> handlers;
 
     public VanceWebSocketHandler(
@@ -65,6 +68,9 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             SessionConnectionRegistry connectionRegistry,
             ExecutionRegistryService executionRegistry,
             de.mhus.vance.brain.script.cortex.ScriptExecutionWsRegistry scriptExecutionWsRegistry,
+            de.mhus.vance.brain.daemon.DaemonRegistry daemonRegistry,
+            org.springframework.beans.factory.ObjectProvider<
+                    de.mhus.vance.brain.servertool.ServerToolRegistry> serverToolRegistryProvider,
             List<WsHandler> handlers) {
         this.sessionService = sessionService;
         this.sessionLifecycle = sessionLifecycle;
@@ -75,6 +81,22 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         this.connectionRegistry = connectionRegistry;
         this.executionRegistry = executionRegistry;
         this.scriptExecutionWsRegistry = scriptExecutionWsRegistry;
+        this.daemonRegistry = daemonRegistry;
+        this.serverToolRegistryProvider = serverToolRegistryProvider;
+        // Wire the stale-sweep callback so dropped daemons trigger a
+        // refresh in the affected project — without this, sub-tools of
+        // a long-gone daemon would linger in listings until the next
+        // discovery cycle.
+        daemonRegistry.setOnStaleDrop(key -> {
+            de.mhus.vance.brain.servertool.ServerToolRegistry serverTools =
+                    this.serverToolRegistryProvider.getIfAvailable();
+            if (serverTools == null) return;
+            try {
+                serverTools.refreshProject(key.tenantId(), key.projectId());
+            } catch (RuntimeException e) {
+                log.warn("daemon stale-sweep: refreshProject for {} failed: {}", key, e.toString());
+            }
+        });
         this.handlers = indexHandlers(handlers);
     }
 
@@ -161,6 +183,23 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession wsSession, CloseStatus status) {
         Object attr = wsSession.getAttributes().get(VanceHandshakeInterceptor.ATTR_CONNECTION);
         if (!(attr instanceof ConnectionContext ctx)) return;
+        // Daemon registrations are keyed by ws-session, not session-id —
+        // safe to unconditionally call (no-op for non-daemon connections).
+        // When a daemon goes away, refresh the affected project's server-
+        // tool scope so the now-orphan foot_daemon sub-tools disappear
+        // from the registry without waiting for the next discovery pass.
+        daemonRegistry.unregister(wsSession).ifPresent(key -> {
+            de.mhus.vance.brain.servertool.ServerToolRegistry serverTools =
+                    serverToolRegistryProvider.getIfAvailable();
+            if (serverTools != null) {
+                try {
+                    serverTools.refreshProject(key.tenantId(), key.projectId());
+                } catch (RuntimeException e) {
+                    log.warn("daemon disconnect: refreshProject for {} failed: {}",
+                            key, e.toString());
+                }
+            }
+        });
         executionRegistry.removeByFootClient(ctx.getConnectionId());
         scriptExecutionWsRegistry.unregisterAllFor(wsSession);
         if (ctx.hasSession()) {

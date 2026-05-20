@@ -102,6 +102,16 @@ public final class MessageType {
     public static final String CLIENT_TOOL_RESULT = "client-tool-result";
 
     /**
+     * Daemon → brain: register this connection as a project-scoped foot
+     * daemon. Carries {@code projectId}, {@code daemonName} and the
+     * client-tool manifest in one envelope. Required after WELCOME for
+     * any connection that authenticated with {@code profile=daemon}.
+     * Unlike {@link #CLIENT_TOOL_REGISTER} this does NOT require a
+     * bound session — daemons live outside the session model.
+     */
+    public static final String DAEMON_REGISTER = "daemon-register";
+
+    /**
      * Client → brain: upload the local {@code agent.md} (or whatever
      * client-side agent doc) so the brain can splice it into the
      * conversation's memory block. One-shot, snapshot-at-bind. Stored

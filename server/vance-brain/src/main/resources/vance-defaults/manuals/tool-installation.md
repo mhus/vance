@@ -161,9 +161,38 @@ When `apply` returns a `postInstall` block:
 | kind | Action |
 |---|---|
 | `oauth-connect` | Tell the user to open Connected Accounts and click Connect for the named provider. Provide the direct URL: `http://localhost:9900/connected-accounts.html`. |
+| `notice` | Pure informational. Relay `postInstall.message` to the user verbatim — it explains an out-of-band step (e.g. "now start the daemon with the following command"). No UI action wired. |
 
 Without a `postInstall`, the template is fully set up — confirm to
 the user and move on.
+
+## Foot-daemon proxies
+
+The `foot-daemon` template registers a remote foot daemon's tools as
+sub-tools of this project. After apply the user must start the actual
+daemon process on the target machine:
+
+```bash
+vance-foot --profile=daemon --project=<this-project> --name=<daemonName>
+```
+
+The daemon needs a service-account user (username prefixed with `_`,
+created by tenant admin). Once it connects:
+
+- Sub-tools surface as `foot-daemon__<sub>` (e.g. `foot-daemon__client_exec_run`).
+- Offline daemons surface no sub-tools at all — wait for reconnect.
+- Stale daemons (just-disconnected, within the 60-second grace window)
+  are still listed but invokes throw `ToolException` with a clear
+  "offline / reconnect" message.
+
+When the chat user says "set up access to my prod server" / "register
+the build host" / "give me a remote shell tool":
+
+1. `tool_template_describe(name="foot-daemon")` → input schema
+2. ASK_USER for `daemonName`, short `description`, optional timeout
+3. `tool_template_apply(name="foot-daemon", projectId=<project>, inputs={...})`
+4. Relay the `postInstall.message` (kind=notice) — the user starts the
+   daemon process, you confirm the tools are visible via `find_tools`.
 
 ## Catalog discovery for the user
 

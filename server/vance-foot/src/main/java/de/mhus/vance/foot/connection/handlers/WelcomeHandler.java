@@ -5,6 +5,7 @@ import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.api.ws.WelcomeData;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.connection.MessageHandler;
+import de.mhus.vance.foot.daemon.DaemonRegistrationService;
 import de.mhus.vance.foot.ide.IntellijMcpRegistrationService;
 import de.mhus.vance.foot.session.AutoBootstrapService;
 import de.mhus.vance.foot.ui.ChatTerminal;
@@ -26,6 +27,7 @@ public class WelcomeHandler implements MessageHandler {
     private final ChatTerminal terminal;
     private final ConnectionService connection;
     private final AutoBootstrapService autoBootstrap;
+    private final DaemonRegistrationService daemonRegistration;
     private final IntellijMcpRegistrationService intellijMcpRegistration;
     private final WindowTitleService windowTitle;
     private final ObjectMapper json = JsonMapper.builder().build();
@@ -38,11 +40,13 @@ public class WelcomeHandler implements MessageHandler {
     public WelcomeHandler(ChatTerminal terminal,
                           @Lazy ConnectionService connection,
                           AutoBootstrapService autoBootstrap,
+                          DaemonRegistrationService daemonRegistration,
                           IntellijMcpRegistrationService intellijMcpRegistration,
                           WindowTitleService windowTitle) {
         this.terminal = terminal;
         this.connection = connection;
         this.autoBootstrap = autoBootstrap;
+        this.daemonRegistration = daemonRegistration;
         this.intellijMcpRegistration = intellijMcpRegistration;
         this.windowTitle = windowTitle;
     }
@@ -68,6 +72,11 @@ public class WelcomeHandler implements MessageHandler {
         // Register IntelliJ MCP before bootstrap fires — bootstrap may
         // immediately need the IDE tools when the recipe references them.
         intellijMcpRegistration.registerIfConfigured();
+        // Daemon registration runs alongside (it's a no-op when profile is
+        // not 'daemon'). When profile IS 'daemon' the auto-bootstrap call
+        // below short-circuits because daemon connections don't bind a
+        // session — the SKIP_PROPERTY is set by the -d CLI shortcut.
+        daemonRegistration.triggerAfterWelcome();
         autoBootstrap.triggerAfterWelcome();
     }
 }

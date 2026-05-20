@@ -2,7 +2,9 @@ package de.mhus.vance.brain.tools.client;
 
 import de.mhus.vance.api.tools.ClientToolInvokeResponse;
 import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
+import de.mhus.vance.brain.daemon.DaemonRegistry;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
@@ -30,10 +32,21 @@ public class ClientToolResultHandler implements WsHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final ClientToolRegistry registry;
+    private final DaemonRegistry daemonRegistry;
 
     @Override
     public String type() {
         return MessageType.CLIENT_TOOL_RESULT;
+    }
+
+    /**
+     * Accept the result envelope for both session-bound clients (foot in
+     * a chat session) and session-less daemons. The correlation id then
+     * tells us which registry owns the pending future.
+     */
+    @Override
+    public boolean canExecute(ConnectionContext ctx) {
+        return ctx.hasSession() || Profiles.DAEMON.equals(ctx.getProfile());
     }
 
     @Override
@@ -54,10 +67,21 @@ public class ClientToolResultHandler implements WsHandler {
                     "correlationId is required");
             return;
         }
+        // The correlation id was minted by either the session-keyed
+        // ClientToolRegistry (chat-session client tools) or the
+        // session-less DaemonRegistry (cross-session daemon tools). Try
+        // both; the namespaces are disjoint by prefix (ct-* vs dt-*) so
+        // at most one will match.
         boolean matched = registry.completeInvocation(
                 response.getCorrelationId(),
                 response.getResult(),
                 response.getError()).isPresent();
+        if (!matched) {
+            matched = daemonRegistry.completeInvocation(
+                    response.getCorrelationId(),
+                    response.getResult(),
+                    response.getError()).isPresent();
+        }
         if (!matched) {
             // INFO not DEBUG: a late result is exactly the "ghost reply
             // after timeout / disconnect" signal we want surfaced.

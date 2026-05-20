@@ -108,6 +108,20 @@ public class ClientToolService {
         return List.copyOf(all);
     }
 
+    /**
+     * Snapshot of the current tool manifest as {@link ToolSpec}s — beans
+     * first, then packs. Used by the daemon registration flow which has
+     * to publish the same list as {@link #registerAll} would, but to a
+     * different message type ({@code daemon-register}) outside the
+     * session model.
+     */
+    public List<ToolSpec> manifestSnapshot() {
+        List<ToolSpec> specs = new java.util.ArrayList<>(beanByName.size() + packByName.size());
+        for (ClientTool t : beanByName.values()) specs.add(t.toSpec());
+        for (Tool t : packByName.values()) specs.add(t.toSpec("client"));
+        return specs;
+    }
+
     /** Direct lookup across both scopes — pack tools win when names collide (rare). */
     public @org.jspecify.annotations.Nullable Tool find(String name) {
         Tool fromPack = packByName.get(name);

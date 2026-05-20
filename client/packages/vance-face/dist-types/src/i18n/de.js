@@ -706,6 +706,20 @@ export default {
             create: 'Anlegen',
         },
     },
+    toolTemplates: {
+        pageTitle: 'Tool-Vorlagen',
+        intro: 'Kuratierte Tool-Pakete (Jira, IMAP, SMTP, …). Vorlage wählen, Felder ausfüllen — das Kit wird in deinen Tenant installiert. Passwörter werden verschlüsselt gespeichert.',
+        loading: 'Laden…',
+        searchPlaceholder: 'Vorlagen durchsuchen…',
+        projectIdLabel: 'Projekt',
+        install: 'Installieren',
+        apply: 'Anwenden',
+        noInputs: 'Diese Vorlage hat keine Eingabefelder — auf "Anwenden" klicken.',
+        empty: {
+            headline: 'Keine Vorlagen verfügbar',
+            body: 'Bitte deine Tenant-Administration, den Tool-Templates-Katalog unter _tenant/config/tool-templates.yaml zu pflegen.',
+        },
+    },
     connectedAccounts: {
         pageTitle: 'Verbundene Konten',
         loading: 'Laden…',

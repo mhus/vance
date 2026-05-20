@@ -156,6 +156,7 @@ function buildWriteRequest() {
         primary: form.primary,
         disabledSubTools,
         defaultDeferred: form.defaultDeferred,
+        promptHint: '',
     };
 }
 function splitLines(s) {
@@ -231,6 +232,7 @@ async function submitNewTool() {
         primary: false,
         disabledSubTools: [],
         defaultDeferred: false,
+        promptHint: '',
     };
     try {
         await toolsState.upsert(selectedProject.value, name, stub);

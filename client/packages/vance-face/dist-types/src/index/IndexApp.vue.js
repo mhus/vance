@@ -524,6 +524,34 @@ else {
         (__VLS_ctx.$t('index.open'));
         var __VLS_63;
     }
+    if (__VLS_ctx.showExpertTiles) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: "flex items-center justify-between gap-4" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "font-semibold" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-sm opacity-70" },
+        });
+        const __VLS_64 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+            variant: "primary",
+            size: "sm",
+            href: "/scripts.html",
+        }));
+        const __VLS_66 = __VLS_65({
+            variant: "primary",
+            size: "sm",
+            href: "/scripts.html",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+        __VLS_67.slots.default;
+        (__VLS_ctx.$t('index.open'));
+        var __VLS_67;
+    }
     if (__VLS_ctx.showAdminTiles) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
             ...{ class: "flex items-center justify-between gap-4" },
@@ -537,22 +565,52 @@ else {
             ...{ class: "text-sm opacity-70" },
         });
         (__VLS_ctx.$t('index.users.description'));
-        const __VLS_64 = {}.VButton;
+        const __VLS_68 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+        const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
             variant: "primary",
             size: "sm",
             href: "/users.html",
         }));
-        const __VLS_66 = __VLS_65({
+        const __VLS_70 = __VLS_69({
             variant: "primary",
             size: "sm",
             href: "/users.html",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_65));
-        __VLS_67.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+        __VLS_71.slots.default;
         (__VLS_ctx.$t('index.open'));
-        var __VLS_67;
+        var __VLS_71;
+    }
+    if (__VLS_ctx.showAdminTiles) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: "flex items-center justify-between gap-4" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "font-semibold" },
+        });
+        (__VLS_ctx.$t('toolTemplates.pageTitle'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-sm opacity-70" },
+        });
+        (__VLS_ctx.$t('toolTemplates.intro'));
+        const __VLS_72 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
+            variant: "primary",
+            size: "sm",
+            href: "/tool-templates.html",
+        }));
+        const __VLS_74 = __VLS_73({
+            variant: "primary",
+            size: "sm",
+            href: "/tool-templates.html",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_73));
+        __VLS_75.slots.default;
+        (__VLS_ctx.$t('index.open'));
+        var __VLS_75;
     }
     var __VLS_39;
     var __VLS_35;
@@ -602,6 +660,20 @@ else {
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-between']} */ ;

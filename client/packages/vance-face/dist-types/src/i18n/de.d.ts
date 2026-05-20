@@ -700,6 +700,20 @@ declare const _default: {
             create: string;
         };
     };
+    toolTemplates: {
+        pageTitle: string;
+        intro: string;
+        loading: string;
+        searchPlaceholder: string;
+        projectIdLabel: string;
+        install: string;
+        apply: string;
+        noInputs: string;
+        empty: {
+            headline: string;
+            body: string;
+        };
+    };
     connectedAccounts: {
         pageTitle: string;
         loading: string;

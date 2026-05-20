@@ -76,6 +76,7 @@ export * from './kit/ToolTemplateCatalogEntry';
 export * from './kit/ToolTemplateDescriptorDto';
 export * from './kit/ToolTemplateInputDto';
 export * from './kit/ToolTemplatePostInstallDto';
+export * from './kit/ToolTemplatesScanRequestDto';
 
 export * from './execution/ExecEvent';
 export * from './execution/ExecListSnapshot';

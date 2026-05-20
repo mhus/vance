@@ -6,6 +6,7 @@ import de.mhus.vance.api.kit.ToolTemplateCatalogDto;
 import de.mhus.vance.api.kit.ToolTemplateCatalogEntry;
 import de.mhus.vance.api.kit.ToolTemplateDescriptorDto;
 import de.mhus.vance.api.kit.ToolTemplatePostInstallDto;
+import de.mhus.vance.api.kit.ToolTemplatesScanRequestDto;
 import de.mhus.vance.brain.kit.KitException;
 import de.mhus.vance.brain.kit.KitService;
 import de.mhus.vance.brain.kit.TemplateApplier;
@@ -36,6 +37,9 @@ import org.springframework.web.server.ResponseStatusException;
  * <ul>
  *   <li>{@code GET    /catalog}            — current tenant catalog</li>
  *   <li>{@code PUT    /catalog}            — replace the catalog</li>
+ *   <li>{@code POST   /scan}               — clone a git repo and return
+ *       a fresh catalog DTO (without persisting), so anus can compose
+ *       merge/overwrite/dry-run logic client-side</li>
  *   <li>{@code GET    /{name}}             — describe a template (parse template.yaml from the kit)</li>
  *   <li>{@code POST   /{name}/apply}       — apply with supplied inputs</li>
  * </ul>
@@ -52,6 +56,7 @@ public class ToolTemplatesAdminController {
 
     private final ToolTemplateCatalogService catalogService;
     private final TemplateDescribeService describeService;
+    private final ToolTemplateCatalogScanService scanService;
     private final KitService kitService;
     private final RequestAuthority authority;
 
@@ -75,6 +80,20 @@ public class ToolTemplatesAdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
         }
         return catalogService.load(tenant);
+    }
+
+    @PostMapping("/scan")
+    public ToolTemplateCatalogDto scan(
+            @PathVariable("tenant") String tenant,
+            @RequestBody ToolTemplatesScanRequestDto body,
+            HttpServletRequest request) {
+        authority.enforce(request, new Resource.Tenant(tenant), Action.ADMIN);
+        try {
+            return scanService.scan(body.getGitUrl(), body.getRef(), body.getToken());
+        } catch (KitException e) {
+            log.warn("tool-templates catalog scan failed: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+        }
     }
 
     @GetMapping("/{name}")

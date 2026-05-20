@@ -59,16 +59,11 @@ public final class RestApiPackBuilder {
 
         RestApiConfig config = RestApiConfig.fromParameters(input.parameters());
 
-        List<OpenApiOperation> operations;
-        OpenAPI spec = null;
-        if (config.specInline() != null) {
-            spec = OpenApiSpecLoader.parseSpec(config.specInline());
-            operations = OpenApiSpecLoader.parseInline(config.specInline());
-        } else {
-            OpenApiSpecLoader.LoadResult loaded = OpenApiSpecLoader.loadFromUrl(config.specUrl());
-            spec = loaded.spec();
-            operations = loaded.operations();
-        }
+        OpenApiSpecLoader.LoadResult loaded = config.specInline() != null
+                ? OpenApiSpecLoader.loadInline(config.specInline())
+                : OpenApiSpecLoader.loadFromUrl(config.specUrl());
+        OpenAPI spec = loaded.spec();
+        List<OpenApiOperation> operations = loaded.operations();
 
         String baseUrl = OpenApiSpecLoader.pickBaseUrl(config.baseUrl(), spec);
         if ((baseUrl == null || baseUrl.isEmpty()) && config.baseUrl() != null) {

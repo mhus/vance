@@ -16,7 +16,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Parses an OpenAPI 3.x or Swagger 2.x specification into a list of
@@ -40,6 +44,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class OpenApiSpecLoader {
 
+    private static final Logger log = LoggerFactory.getLogger(OpenApiSpecLoader.class);
+
     private OpenApiSpecLoader() { /* static */ }
 
     /**
@@ -49,11 +55,37 @@ public final class OpenApiSpecLoader {
     public record LoadResult(@Nullable OpenAPI spec, List<OpenApiOperation> operations) {}
 
     /**
-     * Default: HTTP(S) fetch and full ref-inlining. Returns both the
-     * raw OpenAPI (so the caller can pull {@code servers[].url} via
-     * {@link #pickBaseUrl}) and the extracted operations.
+     * Process-wide cache of parsed specs. {@link #loadFromUrl} is keyed
+     * by URL, {@link #loadInline} (and the {@link #parseInline} /
+     * {@link #parseSpec} facades that delegate to it) is keyed by the
+     * raw body text. Same URL or same body in → same {@link LoadResult}
+     * out, no re-fetch and no re-parse.
+     *
+     * <p>Lives for the JVM lifetime; OpenAPI specs are effectively
+     * immutable once published (Google freezes Discovery versions,
+     * vendor specs are tagged). When a kit edit or OAuth-disconnect
+     * needs to drop the cache, call {@link #clearCache()}.
+     *
+     * <p>Without this cache every {@code factory.create(doc, ctx)} on
+     * a REST pack re-downloads + re-parses the spec — observed at 100+
+     * rebuilds per chat-session against Google's Gmail Discovery URL.
+     */
+    private static final ConcurrentMap<String, LoadResult> URL_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<String, LoadResult> INLINE_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Default: HTTP(S) fetch and full ref-inlining. Cached by URL —
+     * second and subsequent calls for the same URL skip the network
+     * and the parser. Returns both the raw OpenAPI (so the caller can
+     * pull {@code servers[].url} via {@link #pickBaseUrl}) and the
+     * extracted operations.
      */
     public static LoadResult loadFromUrl(String url) {
+        return URL_CACHE.computeIfAbsent(url, OpenApiSpecLoader::doLoadFromUrl);
+    }
+
+    private static LoadResult doLoadFromUrl(String url) {
+        log.info("OpenApiSpecLoader: fetching + parsing spec from {}", url);
         ParseOptions opt = new ParseOptions();
         opt.setResolveFully(true);
         opt.setResolve(true);
@@ -62,13 +94,30 @@ public final class OpenApiSpecLoader {
         return new LoadResult(spec, extractOperations(result, "url=" + url));
     }
 
-    /** Inline-spec variant — same parser settings. */
-    public static List<OpenApiOperation> parseInline(String specBody) {
+    /**
+     * Inline-spec variant. Cached by body content — same string in,
+     * same {@link LoadResult} out. Heavier consumers should prefer
+     * this over {@link #parseInline} + {@link #parseSpec} (which both
+     * delegate here, but a single call avoids the rare race where the
+     * cache is cleared between the two facades).
+     */
+    public static LoadResult loadInline(String specBody) {
+        return INLINE_CACHE.computeIfAbsent(specBody, OpenApiSpecLoader::doLoadInline);
+    }
+
+    private static LoadResult doLoadInline(String specBody) {
+        log.debug("OpenApiSpecLoader: parsing inline spec ({} chars)", specBody.length());
         ParseOptions opt = new ParseOptions();
         opt.setResolveFully(true);
         opt.setResolve(true);
         SwaggerParseResult result = new OpenAPIParser().readContents(specBody, null, opt);
-        return extractOperations(result, "inline");
+        OpenAPI spec = result == null ? null : result.getOpenAPI();
+        return new LoadResult(spec, extractOperations(result, "inline"));
+    }
+
+    /** Inline-spec variant — operations only. Backed by {@link #loadInline}. */
+    public static List<OpenApiOperation> parseInline(String specBody) {
+        return loadInline(specBody).operations();
     }
 
     /**
@@ -87,13 +136,21 @@ public final class OpenApiSpecLoader {
         return stripTrailingSlash(first.getUrl().trim());
     }
 
-    /** Variant used by tests and packs that already have the spec body. */
+    /** Variant used by tests and packs that already have the spec body. Backed by {@link #loadInline}. */
     public static @Nullable OpenAPI parseSpec(String body) {
-        ParseOptions opt = new ParseOptions();
-        opt.setResolveFully(true);
-        opt.setResolve(true);
-        SwaggerParseResult r = new OpenAPIParser().readContents(body, null, opt);
-        return r == null ? null : r.getOpenAPI();
+        return loadInline(body).spec();
+    }
+
+    /**
+     * Drops every cached {@link LoadResult}. Call sites: tests (so one
+     * test's parse doesn't leak into the next), kit-edit handlers that
+     * change a {@code specUrl} or {@code specInline} body, OAuth-
+     * disconnect events that invalidate auth-conditional schemas.
+     * Cheap — just two map clears.
+     */
+    public static void clearCache() {
+        URL_CACHE.clear();
+        INLINE_CACHE.clear();
     }
 
     private static List<OpenApiOperation> extractOperations(SwaggerParseResult result, String origin) {

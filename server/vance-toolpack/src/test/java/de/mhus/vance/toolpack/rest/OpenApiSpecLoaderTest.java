@@ -4,9 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class OpenApiSpecLoaderTest {
+
+    @BeforeEach
+    void resetCache() {
+        OpenApiSpecLoader.clearCache();
+    }
 
     private static final String PETSTORE_INLINE = """
             openapi: 3.0.0
@@ -128,6 +134,29 @@ class OpenApiSpecLoaderTest {
         @SuppressWarnings("unchecked")
         var props = (java.util.Map<String, Object>) schema.get("properties");
         assertThat(props).containsKey("body");
+    }
+
+    @Test
+    void loadInline_returnsSameResultInstanceOnRepeatedCalls() {
+        // First call parses; second call must hit the cache and return
+        // the very same LoadResult — proves the cache is wired and we're
+        // not paying parse cost on every factory.create() in production.
+        OpenApiSpecLoader.LoadResult first = OpenApiSpecLoader.loadInline(PETSTORE_INLINE);
+        OpenApiSpecLoader.LoadResult second = OpenApiSpecLoader.loadInline(PETSTORE_INLINE);
+
+        assertThat(second).isSameAs(first);
+    }
+
+    @Test
+    void clearCache_forcesFreshParse() {
+        OpenApiSpecLoader.LoadResult first = OpenApiSpecLoader.loadInline(PETSTORE_INLINE);
+        OpenApiSpecLoader.clearCache();
+        OpenApiSpecLoader.LoadResult second = OpenApiSpecLoader.loadInline(PETSTORE_INLINE);
+
+        assertThat(second).isNotSameAs(first);
+        assertThat(second.operations()).extracting(OpenApiOperation::operationId)
+                .containsExactlyInAnyOrderElementsOf(
+                        first.operations().stream().map(OpenApiOperation::operationId).toList());
     }
 
     private static OpenApiOperation byId(List<OpenApiOperation> ops, String id) {

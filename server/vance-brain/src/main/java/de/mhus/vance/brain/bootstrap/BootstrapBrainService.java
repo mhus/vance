@@ -249,7 +249,16 @@ public class BootstrapBrainService {
             return;
         }
         String hash = passwordService.hash(plainPassword);
-        userService.create(tenantId, name, hash, title, email);
+        if (name.startsWith(UserService.SERVICE_ACCOUNT_PREFIX)) {
+            // Service accounts have loginEnabled=false hardcoded by
+            // createServiceAccount — tokens for them have to be minted
+            // out-of-band (Anus admin shell). The password hash is
+            // stored anyway so a future "promote to login-able" flow
+            // can flip the flag without password reset.
+            userService.createServiceAccount(tenantId, name, hash, title, email);
+        } else {
+            userService.create(tenantId, name, hash, title, email);
+        }
     }
 
     private void ensureProjectGroup(String tenantId, String name, String title) {

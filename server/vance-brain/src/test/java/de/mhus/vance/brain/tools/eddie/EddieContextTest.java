@@ -3,12 +3,11 @@ package de.mhus.vance.brain.tools.eddie;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import de.mhus.vance.shared.memory.MemoryDocument;
-import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -23,7 +22,10 @@ import org.junit.jupiter.api.Test;
 /**
  * Focuses on {@link EddieContext#resolveProject} — in particular
  * the sub-process clamp that prevents Marvin/Vogon-spawned worker
- * LLMs from drifting to a hallucinated projectId.
+ * LLMs from drifting to a hallucinated projectId — and the
+ * working-project (spot) read/write that now sits directly on
+ * {@code ThinkProcessDocument.workingProjectId} instead of the
+ * legacy scratchpad slot.
  */
 class EddieContextTest {
 
@@ -33,19 +35,15 @@ class EddieContextTest {
     private static final String INHERITED = "inherited-project";
     private static final String HALLUCINATED = "instant-hole";
 
-    private ScratchpadService scratchpad;
     private ProjectService projectService;
     private ThinkProcessService thinkProcessService;
     private EddieContext eddieContext;
 
     @BeforeEach
     void setUp() {
-        scratchpad = mock(ScratchpadService.class);
         projectService = mock(ProjectService.class);
         thinkProcessService = mock(ThinkProcessService.class);
-        eddieContext = new EddieContext(scratchpad, projectService, thinkProcessService);
-        when(scratchpad.get(TENANT, PROCESS_ID, EddieContext.ACTIVE_PROJECT_SLOT))
-                .thenReturn(Optional.empty());
+        eddieContext = new EddieContext(projectService, thinkProcessService);
     }
 
     @Nested
@@ -103,21 +101,21 @@ class EddieContextTest {
         }
 
         @Test
-        void staleActiveSlotIsIgnored_inheritedUsedInstead() {
-            // Sub-process worker called project_switch and polluted
-            // its active-slot with a hallucinated project name. Now
-            // a follow-up tool call without explicit projectId must
-            // not silently use that slot.
+        void staleWorkingProjectIsIgnored_inheritedUsedInstead() {
+            // Sub-process worker has a leaked workingProjectId on its
+            // process record (impossible in normal operation — workers
+            // never write that field — but the sub-process clamp must
+            // still ignore it so a corrupted record cannot escape the
+            // inherited project scope).
             arrangeProcess(PROCESS_ID, "parent-x");
             arrangeProject(INHERITED, ProjectKind.NORMAL);
-            MemoryDocument slot = mock(MemoryDocument.class);
-            when(slot.getContent()).thenReturn(HALLUCINATED);
-            when(scratchpad.get(TENANT, PROCESS_ID, EddieContext.ACTIVE_PROJECT_SLOT))
-                    .thenReturn(Optional.of(slot));
+
+            ToolInvocationContext withStaleSpot = new ToolInvocationContext(
+                    TENANT, INHERITED, SESSION, PROCESS_ID, null, HALLUCINATED);
 
             ProjectDocument resolved = eddieContext.resolveProject(
                     Map.of(),
-                    ctx(INHERITED, PROCESS_ID),
+                    withStaleSpot,
                     false);
 
             assertThat(resolved.getName()).isEqualTo(INHERITED);
@@ -153,6 +151,72 @@ class EddieContextTest {
                     false);
 
             assertThat(resolved.getName()).isEqualTo("admin-pick");
+        }
+    }
+
+    @Nested
+    class WorkingProjectSpot {
+
+        @Test
+        void readActiveProject_prefersCtx_overMongoLookup() {
+            // Live ctx-carried spot is the fast path — no Mongo round-trip.
+            ToolInvocationContext withSpot = new ToolInvocationContext(
+                    TENANT, INHERITED, SESSION, PROCESS_ID, null, "projA");
+
+            Optional<String> spot = eddieContext.readActiveProject(withSpot);
+
+            assertThat(spot).contains("projA");
+        }
+
+        @Test
+        void readActiveProject_fallsBackToMongo_whenCtxLacksSpot() {
+            // Legacy ToolInvocationContext built via the 5-arg constructor
+            // carries null workingProjectId; EddieContext recovers the
+            // value from the process record so existing call-sites keep
+            // working through the migration.
+            ThinkProcessDocument doc = new ThinkProcessDocument();
+            doc.setId(PROCESS_ID);
+            doc.setWorkingProjectId("projFromDb");
+            when(thinkProcessService.findById(PROCESS_ID)).thenReturn(Optional.of(doc));
+
+            Optional<String> spot = eddieContext.readActiveProject(ctx(INHERITED, PROCESS_ID));
+
+            assertThat(spot).contains("projFromDb");
+        }
+
+        @Test
+        void readActiveProject_returnsEmpty_whenNoSpotAnywhere() {
+            ThinkProcessDocument doc = new ThinkProcessDocument();
+            doc.setId(PROCESS_ID);
+            when(thinkProcessService.findById(PROCESS_ID)).thenReturn(Optional.of(doc));
+
+            assertThat(eddieContext.readActiveProject(ctx(INHERITED, PROCESS_ID))).isEmpty();
+        }
+
+        @Test
+        void readActiveProject_returnsEmpty_whenNoProcessIdAtAll() {
+            // Admin / CLI flows without a think-process scope.
+            ToolInvocationContext bare = new ToolInvocationContext(
+                    TENANT, null, null, null, null);
+
+            assertThat(eddieContext.readActiveProject(bare)).isEmpty();
+        }
+
+        @Test
+        void writeActiveProject_delegatesToServiceWithProcessId() {
+            eddieContext.writeActiveProject(ctx(INHERITED, PROCESS_ID), "projTarget");
+
+            verify(thinkProcessService).setWorkingProjectId(PROCESS_ID, "projTarget");
+        }
+
+        @Test
+        void writeActiveProject_throws_whenNoProcessScope() {
+            ToolInvocationContext bare = new ToolInvocationContext(
+                    TENANT, null, null, null, null);
+
+            assertThatThrownBy(() -> eddieContext.writeActiveProject(bare, "projTarget"))
+                    .isInstanceOf(ToolException.class)
+                    .hasMessageContaining("think-process scope");
         }
     }
 

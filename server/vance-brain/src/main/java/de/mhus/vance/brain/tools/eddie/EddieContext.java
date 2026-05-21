@@ -3,8 +3,6 @@ package de.mhus.vance.brain.tools.eddie;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.shared.home.HomeBootstrapService;
-import de.mhus.vance.shared.memory.MemoryDocument;
-import de.mhus.vance.shared.memory.ScratchpadService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectKind;
 import de.mhus.vance.shared.project.ProjectService;
@@ -18,15 +16,27 @@ import org.springframework.stereotype.Component;
 
 /**
  * Shared helper for Eddie hub-tools that operate on "the current
- * project". Eddie maintains an active project as a scratchpad slot
- * named {@value #ACTIVE_PROJECT_SLOT}; tools resolve the effective
- * project as
+ * project". Eddie maintains an active foreign project (her "spot") as
+ * the typed {@code workingProjectId} field on her own
+ * {@link de.mhus.vance.shared.thinkprocess.ThinkProcessDocument}. Tools
+ * resolve the effective project as
  *
  * <ol>
- *   <li>explicit {@code projectId} param (if provided), then</li>
- *   <li>the active project slot, then</li>
+ *   <li>{@link ToolInvocationContext#workingProjectId() ctx.workingProjectId()}
+ *       — the spot (carried into the tool context by the brain at
+ *       dispatch time), or</li>
+ *   <li>explicit {@code projectId} param when the LLM addresses
+ *       something <em>other</em> than the current spot (the rare
+ *       cross-project case — kit lookups, project_list etc.), or</li>
  *   <li>{@link ToolException} — caller forgot to pick one.</li>
  * </ol>
+ *
+ * <p>The explicit param is intentionally <em>second</em> for Eddie's
+ * home/spot model: the trust-boundary lives on the context, not on
+ * LLM-provided params. Sub-processes (Marvin/Vogon/Ford workers) ignore
+ * both inputs and always operate on the inherited
+ * {@link ToolInvocationContext#projectId()} — their LLM cannot
+ * hallucinate cross-project access.
  *
  * <p>Validation enforces that the resolved project exists and is
  * non-{@link ProjectKind#SYSTEM} when {@code allowSystem == false},
@@ -41,43 +51,46 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class EddieContext {
 
-    /**
-     * Scratchpad slot under the Eddie hub-process holding the current
-     * active project name (matches {@code ProjectDocument.name}).
-     */
-    public static final String ACTIVE_PROJECT_SLOT = "eddie.activeProject";
-
-    private final ScratchpadService scratchpad;
     private final ProjectService projectService;
     private final ThinkProcessService thinkProcessService;
 
     /**
-     * Reads the active-project slot for the calling Eddie process.
-     * Returns empty if no project is currently switched-to.
+     * Reads the active "spot" project for the calling Eddie process —
+     * the foreign project currently coordinated. Backed by
+     * {@code ThinkProcessDocument.workingProjectId}; returns empty when
+     * no spot is set or the call lacks a process scope.
+     *
+     * <p>Prefers the live {@link ToolInvocationContext#workingProjectId()}
+     * (which the dispatcher fills from the process record) and falls
+     * back to a fresh Mongo read only for legacy contexts that didn't
+     * thread the field through.
      */
     public Optional<String> readActiveProject(ToolInvocationContext ctx) {
+        String fromCtx = ctx.workingProjectId();
+        if (fromCtx != null && !fromCtx.isBlank()) {
+            return Optional.of(fromCtx);
+        }
         String processId = ctx.processId();
-        if (processId == null) {
+        if (processId == null || processId.isBlank()) {
             return Optional.empty();
         }
-        return scratchpad.get(ctx.tenantId(), processId, ACTIVE_PROJECT_SLOT)
-                .map(MemoryDocument::getContent)
+        return thinkProcessService.findById(processId)
+                .map(p -> p.getWorkingProjectId())
                 .filter(s -> s != null && !s.isBlank());
     }
 
-    /** Writes the active-project slot. */
+    /**
+     * Sets the active "spot" project. Atomic — writes
+     * {@code ThinkProcessDocument.workingProjectId} on the calling
+     * Eddie process via the typed service helper. Throws when invoked
+     * outside a think-process scope.
+     */
     public void writeActiveProject(ToolInvocationContext ctx, String projectName) {
         String processId = ctx.processId();
-        if (processId == null) {
+        if (processId == null || processId.isBlank()) {
             throw new ToolException("Active-project switching requires a think-process scope");
         }
-        scratchpad.set(
-                ctx.tenantId(),
-                ctx.projectId() == null ? "" : ctx.projectId(),
-                ctx.sessionId(),
-                processId,
-                ACTIVE_PROJECT_SLOT,
-                projectName);
+        thinkProcessService.setWorkingProjectId(processId, projectName);
     }
 
     /**

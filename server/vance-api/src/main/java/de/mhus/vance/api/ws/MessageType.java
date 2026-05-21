@@ -31,6 +31,17 @@ public final class MessageType {
     public static final String PROJECT_LIST = "project-list";
     public static final String PROJECTGROUP_LIST = "projectgroup-list";
 
+    /**
+     * Client → brain: move Eddie's spot pointer
+     * ({@code ThinkProcessDocument.workingProjectId}) on the bound
+     * session's chat process. Direct counterpart to the LLM-emitted
+     * {@code project_switch} brain-tool — exposed over WS so the foot
+     * client can use {@code /project &lt;name&gt;} without an LLM
+     * round-trip. Reply: {@link ProjectSwitchResponse} with the
+     * effective spot.
+     */
+    public static final String PROJECT_SWITCH = "project-switch";
+
     public static final String PROCESS_CREATE = "process-create";
     public static final String PROCESS_STEER = "process-steer";
     public static final String PROCESS_LIST = "process-list";

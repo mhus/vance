@@ -1411,6 +1411,23 @@ public class EddieEngine extends StructuredActionEngine {
                     true);
         }
 
+        // Side-effect: the just-created project becomes Eddie's new
+        // "spot" so subsequent STEER_PROJECT calls (and home/spot-aware
+        // tools) target it without the LLM having to re-state the
+        // project name. Idempotent — if Eddie was already coordinating
+        // a different project, this transfers the focus to the fresh
+        // one (the typical case after delegation). The home project
+        // (process.projectId) is unaffected — only the spot moves.
+        try {
+            thinkProcessService.setWorkingProjectId(process.getId(), resolvedName);
+        } catch (RuntimeException e) {
+            // Best-effort — failure here only leaves the old spot in
+            // place; the project itself is created either way and the
+            // LLM can re-target via project_switch.
+            log.debug("Eddie id='{}' failed to set workingProjectId='{}' after DELEGATE: {}",
+                    process.getId(), resolvedName, e.toString());
+        }
+
         // Auto-observe: open a Working-WS to the freshly-spawned chat-process
         // so Eddie sees its plan-frames + chat-output live, without the LLM
         // having to call process_observe explicitly. Best-effort — failure
@@ -1443,6 +1460,15 @@ public class EddieEngine extends StructuredActionEngine {
             EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
         String project = action.stringParam(EddieActionSchema.PARAM_PROJECT);
         String content = action.stringParam(EddieActionSchema.PARAM_CONTENT);
+        // Spot-fallback: when the LLM omits PARAM_PROJECT, default to
+        // Eddie's currently-coordinated foreign project
+        // (process.workingProjectId). Keeps the LLM from re-stating the
+        // project name on every steer of the same worker — the model
+        // emits STEER_PROJECT(content="…") and the engine fills in the
+        // address from typed state.
+        if (project == null || project.isBlank()) {
+            project = process.getWorkingProjectId();
+        }
         if (project == null || project.isBlank()
                 || content == null || content.isBlank()) {
             log.warn("Eddie id='{}' STEER_PROJECT missing project / content — reason='{}'",
@@ -2222,6 +2248,10 @@ public class EddieEngine extends StructuredActionEngine {
         if (delegatedBlock != null && !delegatedBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(delegatedBlock));
         }
+        String workingProjectBlock = composeWorkingProjectBlock(process);
+        if (workingProjectBlock != null && !workingProjectBlock.isBlank()) {
+            messages.add(VanceSystemMessage.dynamic(workingProjectBlock));
+        }
 
         // ── TOOL HINTS — pack-level usage notes for tools that are
         // currently reachable for this user (OAuth-connected, MCP up).
@@ -2406,6 +2436,46 @@ public class EddieEngine extends StructuredActionEngine {
                 process.getWorkerLinks(),
                 DELEGATED_WORKERS_MAX_RENDER,
                 java.time.Instant.now());
+    }
+
+    /**
+     * Renders the "## Working project" block — Eddie's "spot", the
+     * foreign project she currently coordinates. Surfaced as its own
+     * dynamic block so it sits between cache-stable engine prompt and
+     * volatile turn-history, and visibly shifts when the spot moves.
+     * When unset, an explicit "no working project yet" line keeps the
+     * LLM from guessing.
+     *
+     * <p>Format when set:
+     * <pre>
+     * ## Working project
+     *
+     * Currently coordinating: `naturkatastrophen`. STEER_PROJECT
+     * defaults here; switch with `project_switch(name=...)` when the
+     * user changes focus.
+     * </pre>
+     */
+    static @Nullable String renderWorkingProjectBlock(@Nullable String workingProjectId) {
+        StringBuilder sb = new StringBuilder("## Working project\n\n");
+        if (workingProjectId == null || workingProjectId.isBlank()) {
+            sb.append("No working project selected yet. STEER_PROJECT, "
+                    + "project_chat_send and other spot-bound tools will "
+                    + "fail until you pick one. Use `project_switch("
+                    + "name=...)` or DELEGATE_PROJECT when the user "
+                    + "names a project to focus on. Pure ANSWER / "
+                    + "persona / chit-chat turns don't need a spot.");
+            return sb.toString();
+        }
+        sb.append("Currently coordinating: `").append(workingProjectId)
+                .append("`. STEER_PROJECT and project_chat_send default ")
+                .append("here — no need to repeat the project name. Use ")
+                .append("`project_switch(name=...)` when the user shifts ")
+                .append("focus to a different project.");
+        return sb.toString();
+    }
+
+    private @Nullable String composeWorkingProjectBlock(ThinkProcessDocument process) {
+        return renderWorkingProjectBlock(process.getWorkingProjectId());
     }
 
     /**

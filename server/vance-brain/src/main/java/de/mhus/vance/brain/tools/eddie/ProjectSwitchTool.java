@@ -16,11 +16,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Sets Eddie's active project — the implicit target for subsequent
- * doc / team / inbox tool calls that don't pass a {@code projectId}
- * explicitly. Active project survives across turns of the same Eddie
- * process (persisted in the scratchpad slot
- * {@value EddieContext#ACTIVE_PROJECT_SLOT}).
+ * Sets Eddie's "spot" — the foreign project Eddie currently
+ * coordinates with. Doubles as the implicit target for subsequent
+ * doc / team / inbox tool calls that don't pass an explicit
+ * {@code projectId}. Persisted on the calling process's
+ * {@code ThinkProcessDocument.workingProjectId} so the choice
+ * survives across turns and pod reassignments. The engine's home
+ * project ({@code process.projectId}) is unaffected — only the spot
+ * pointer moves.
  */
 @Component
 @RequiredArgsConstructor

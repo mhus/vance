@@ -105,7 +105,13 @@ public class ProjectLifecycleService {
             @Nullable List<String> teamIds,
             ProjectKind kind) {
         projectService.create(tenantId, name, title, projectGroupId, teamIds, kind);
-        return bring(tenantId, name);
+        // Direct-spawn — picks local-first or master-routed depending on
+        // capacity, see specification/cluster-project-management.md §5.3.
+        // HOMELESS short-circuits to the existing podless bring.
+        projectManager.spawnNew(tenantId, name);
+        return projectService.findByTenantAndName(tenantId, name)
+                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                        "Project '" + name + "' vanished during create"));
     }
 
     /**

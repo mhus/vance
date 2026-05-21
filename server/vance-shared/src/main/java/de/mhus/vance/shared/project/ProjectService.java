@@ -53,7 +53,8 @@ public class ProjectService {
     private static final String F_STATUS = "status";
     private static final String F_HOME_CLUSTER = "homeNode";
     private static final String F_CLAIMED_AT = "claimedAt";
-    private static final String F_REQUIRES_OWNER_POD = "requiresOwnerPod";
+    private static final String F_LIFECYCLE_TYPE = "lifecycleType";
+    private static final String F_HOME_RESOURCE_SCORE = "homeResourceScore";
 
     private final ProjectRepository repository;
     private final MongoTemplate mongoTemplate;
@@ -120,6 +121,9 @@ public class ProjectService {
             throw new ProjectAlreadyExistsException(
                     "Project '" + name + "' already exists in tenant '" + tenantId + "'");
         }
+        LifecycleType lifecycleType = (kind == ProjectKind.SYSTEM)
+                ? LifecycleType.HOMELESS
+                : LifecycleType.EPHEMERAL;
         ProjectDocument project = ProjectDocument.builder()
                 .tenantId(tenantId)
                 .name(name)
@@ -128,10 +132,12 @@ public class ProjectService {
                 .teamIds(teamIds == null ? new ArrayList<>() : new ArrayList<>(teamIds))
                 .enabled(true)
                 .kind(kind)
+                .lifecycleType(lifecycleType)
                 .build();
         ProjectDocument saved = repository.save(project);
-        log.info("Created project tenantId='{}' name='{}' kind={} id='{}'",
-                saved.getTenantId(), saved.getName(), saved.getKind(), saved.getId());
+        log.info("Created project tenantId='{}' name='{}' kind={} lifecycle={} id='{}'",
+                saved.getTenantId(), saved.getName(), saved.getKind(),
+                saved.getLifecycleType(), saved.getId());
         return saved;
     }
 
@@ -367,29 +373,79 @@ public class ProjectService {
     }
 
     /**
-     * Lists RUNNING projects whose Home Pod has gone missing (the
-     * {@code homeNode} field is {@code null}) and that carry
-     * owner-pod-bound engine state ({@code requiresOwnerPod=true}).
-     * These are the candidates the {@code ProjectWakeupTick} re-brings
-     * after a cluster-node death.
+     * Lists PERMANENT projects that have no live owner pod — selector
+     * {@code lifecycleType=PERMANENT AND status non-CLOSED AND
+     * (homeNode IS NULL OR homeNode NOT IN liveClusters)}. Candidates
+     * for the Boot-Self-Pull and the Cluster-Master Distributor (see
+     * {@code specification/cluster-project-management.md} §5).
+     *
+     * <p>Pass {@code liveClusters} to filter out projects whose
+     * {@code homeNode} still points at a stale node-name — pods on boot
+     * have not yet wiped those via {@link #clearStaleHomeNodes}. The
+     * empty set is treated as "homeNode null only" (defensive).
      */
-    public List<ProjectDocument> findRunningOrphansRequiringOwnerPod(int limit) {
-        Query query = new Query(Criteria.where(F_STATUS).is(ProjectStatus.RUNNING)
-                .and(F_HOME_CLUSTER).is(null)
-                .and(F_REQUIRES_OWNER_POD).is(true))
+    public List<ProjectDocument> findPermanentOrphans(Set<String> liveClusters, int limit) {
+        Criteria typeAndStatus = Criteria.where(F_LIFECYCLE_TYPE).is(LifecycleType.PERMANENT)
+                .and(F_STATUS).ne(ProjectStatus.CLOSED);
+        Criteria orphan = (liveClusters == null || liveClusters.isEmpty())
+                ? Criteria.where(F_HOME_CLUSTER).is(null)
+                : new Criteria().orOperator(
+                        Criteria.where(F_HOME_CLUSTER).is(null),
+                        Criteria.where(F_HOME_CLUSTER).nin(liveClusters));
+        Query query = new Query(new Criteria().andOperator(typeAndStatus, orphan))
                 .limit(Math.max(1, limit));
         return mongoTemplate.find(query, ProjectDocument.class);
     }
 
     /**
-     * Sets {@code requiresOwnerPod} atomically. Engine-lifecycle listeners
-     * call this when their owner-pod-bound state appears or disappears for
-     * a project — {@code true} on bootstrap, {@code false} on unload.
+     * Sum of {@code homeResourceScore} over every non-CLOSED project
+     * currently owned by {@code homeNode}. Used by the pod heartbeat to
+     * refresh {@code BrainPodDocument.resourcesCurrentScore} and by the
+     * Distributor to project pod load while planning a distribution
+     * round.
      */
-    public void setRequiresOwnerPod(String tenantId, String name, boolean value) {
+    public int sumScoreByHomeNode(String homeNode) {
+        if (homeNode == null || homeNode.isBlank()) return 0;
+        Query query = new Query(Criteria.where(F_HOME_CLUSTER).is(homeNode)
+                .and(F_STATUS).ne(ProjectStatus.CLOSED));
+        int total = 0;
+        for (ProjectDocument p : mongoTemplate.find(query, ProjectDocument.class)) {
+            total += Math.max(1, p.getHomeResourceScore());
+        }
+        return total;
+    }
+
+    /**
+     * Atomically switches {@code lifecycleType} between
+     * {@link LifecycleType#EPHEMERAL} and {@link LifecycleType#PERMANENT}.
+     * Refuses {@link LifecycleType#HOMELESS} (immutable per SYSTEM-kind)
+     * and refuses to mutate SYSTEM projects.
+     */
+    public ProjectDocument setLifecycleType(String tenantId, String name, LifecycleType value) {
+        if (value == LifecycleType.HOMELESS) {
+            throw new IllegalArgumentException(
+                    "Cannot set lifecycleType=HOMELESS — that is reserved for SYSTEM projects");
+        }
+        ProjectDocument current = repository.findByTenantIdAndName(tenantId, name)
+                .orElseThrow(() -> new ProjectNotFoundException(
+                        "Project '" + name + "' not found in tenant '" + tenantId + "'"));
+        if (current.getKind() == ProjectKind.SYSTEM) {
+            throw new SystemProjectProtectedException(
+                    "Project '" + name + "' is SYSTEM — lifecycleType is HOMELESS and immutable");
+        }
         Query query = new Query(Criteria.where(F_TENANT).is(tenantId).and(F_NAME).is(name));
-        Update update = new Update().set(F_REQUIRES_OWNER_POD, value);
-        mongoTemplate.updateFirst(query, update, ProjectDocument.class);
+        Update update = new Update().set(F_LIFECYCLE_TYPE, value);
+        ProjectDocument updated = mongoTemplate.findAndModify(
+                query, update,
+                FindAndModifyOptions.options().returnNew(true),
+                ProjectDocument.class);
+        if (updated == null) {
+            throw new ProjectNotFoundException(
+                    "Project '" + name + "' disappeared during setLifecycleType");
+        }
+        log.info("Project '{}/{}' lifecycleType {} → {}",
+                tenantId, name, current.getLifecycleType(), value);
+        return updated;
     }
 
     public static class ProjectAlreadyExistsException extends RuntimeException {

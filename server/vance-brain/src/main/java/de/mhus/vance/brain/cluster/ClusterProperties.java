@@ -47,4 +47,67 @@ public class ClusterProperties {
      * wins; this exists for paranoia and tests.
      */
     private int registrationMaxRetries = 5;
+
+    private Resources resources = new Resources();
+    private Master master = new Master();
+    private Locator locator = new Locator();
+
+    @Data
+    public static class Resources {
+        /**
+         * How many project-score units this pod claims at boot via the
+         * Boot-Self-Pull (see
+         * {@code specification/cluster-project-management.md} §5.1).
+         * The pull picks up PERMANENT-orphans until this budget is
+         * reached (plus a buffer for the last candidate).
+         */
+        private int startupScore = 100;
+
+        /**
+         * Hard cap the Cluster-Master Distributor respects when picking
+         * a pod to receive an orphaned project. The local pod ignores
+         * the cap on direct bring — overrun is acceptable.
+         */
+        private int maxScore = 10000;
+    }
+
+    @Data
+    public static class Master {
+        /**
+         * {@code false} disables the Cluster-Master role cluster-wide on
+         * this pod. Direct spawn falls back to local-bring (with a
+         * warning) and orphans stay unplaced until something asks for
+         * them via the {@code ProjectLocator}.
+         */
+        private boolean enabled = true;
+
+        /** How long a lease is valid once granted. */
+        private Duration leaseDuration = Duration.ofMinutes(5);
+
+        /** Spacing of the election/renew tick on every pod. */
+        private Duration electionInterval = Duration.ofSeconds(30);
+
+        /** Spacing of the distributor tick on the master pod only. */
+        private Duration distributorInterval = Duration.ofSeconds(60);
+
+        /**
+         * Renew the lease this far before its expiry — gives some
+         * headroom for GC pauses or short Mongo hiccups. Should be
+         * {@code >= electionInterval} so a single missed tick still
+         * leaves time to renew.
+         */
+        private Duration renewSafetyMargin = Duration.ofMinutes(2);
+
+        /** Hard cap on permanent-orphans the distributor places per tick. */
+        private int maxPerTick = 50;
+    }
+
+    @Data
+    public static class Locator {
+        /**
+         * Max time {@code ProjectLocator.locate(..., autoStart=true)}
+         * blocks waiting for a spawn to finish before throwing.
+         */
+        private Duration autoStartTimeout = Duration.ofSeconds(30);
+    }
 }

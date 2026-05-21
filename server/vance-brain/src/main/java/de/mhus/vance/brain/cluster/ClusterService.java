@@ -91,13 +91,19 @@ public class ClusterService {
                 .bootedAt(now)
                 .lastHeartbeatAt(now)
                 .activeProjects(snapshotActiveProjects())
+                .resourcesStartupScore(properties.getResources().getStartupScore())
+                .resourcesMaxScore(properties.getResources().getMaxScore())
+                .resourcesCurrentScore(snapshotCurrentScore())
                 .version(buildVersion)
                 .build();
         try {
             registerWithRetry(doc);
             // Two-phase write: STARTING is now persisted; flip to RUNNING.
             brainPodService.heartbeat(podId, Instant.now(), PodStatus.RUNNING,
-                    snapshotActiveProjects());
+                    snapshotActiveProjects(),
+                    snapshotCurrentScore(),
+                    properties.getResources().getStartupScore(),
+                    properties.getResources().getMaxScore());
             registered = true;
             log.info("ClusterService registered: cluster='{}' nodeName='{}' podId='{}' endpoint='{}'",
                     properties.getId(), nodeName, podId, doc.getEndpoint());
@@ -116,7 +122,10 @@ public class ClusterService {
         }
         try {
             brainPodService.heartbeat(podId, Instant.now(), PodStatus.RUNNING,
-                    snapshotActiveProjects());
+                    snapshotActiveProjects(),
+                    snapshotCurrentScore(),
+                    properties.getResources().getStartupScore(),
+                    properties.getResources().getMaxScore());
         } catch (IllegalStateException e) {
             // Row vanished — admin purged us. Re-create.
             log.warn("ClusterService heartbeat: pod row missing, re-registering");
@@ -166,6 +175,29 @@ public class ClusterService {
     public Set<String> liveClusterNodeNames() {
         return brainPodService.listLiveClusterNodeNames(
                 properties.getId(), properties.getStaleAfter());
+    }
+
+    /**
+     * Live (non-stale, non-stopped) pods in this cluster, sorted by
+     * ascending load — {@code resourcesCurrentScore / resourcesMaxScore}.
+     * Used by the Cluster-Master Distributor to pick the next best target
+     * for an orphaned project.
+     */
+    public List<BrainPodDocument> liveClusterPods() {
+        Set<String> liveNames = liveClusterNodeNames();
+        return brainPodService.listCluster(properties.getId()).stream()
+                .filter(p -> p.getNodeName() != null && liveNames.contains(p.getNodeName()))
+                .sorted((a, b) -> {
+                    double aLoad = loadFraction(a);
+                    double bLoad = loadFraction(b);
+                    return Double.compare(aLoad, bLoad);
+                })
+                .toList();
+    }
+
+    private static double loadFraction(BrainPodDocument pod) {
+        int max = Math.max(1, pod.getResourcesMaxScore());
+        return ((double) pod.getResourcesCurrentScore()) / max;
     }
 
     /** This pod's own row, or empty if registration hasn't happened yet. */
@@ -234,5 +266,17 @@ public class ClusterService {
                 .map(p -> p.getTenantId() + "/" + p.getName())
                 .sorted()
                 .toList();
+    }
+
+    /**
+     * Sum of {@code homeResourceScore} over every non-CLOSED project
+     * currently owned by this pod's node-name. Derived per beat so the
+     * Distributor sees the load each pod actually carries — no separate
+     * update path on bring/suspend needed.
+     */
+    private int snapshotCurrentScore() {
+        String node = resolveNodeName();
+        if (node.isBlank()) return 0;
+        return projectService.sumScoreByHomeNode(node);
     }
 }

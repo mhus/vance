@@ -1,6 +1,9 @@
 package de.mhus.vance.brain.project;
 
+import de.mhus.vance.brain.cluster.ClusterBringClient;
+import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.brain.cluster.ClusterService;
+import de.mhus.vance.shared.project.LifecycleType;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.util.List;
@@ -9,6 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -42,6 +46,21 @@ public class ProjectManagerService {
 
     private final ProjectService projectService;
     private final ClusterService clusterService;
+    /**
+     * {@link ObjectProvider} because {@code ProjectLifecycleService} already
+     * injects this manager — direct field-injection here would close a
+     * constructor cycle Spring cannot resolve. The provider defers the
+     * lookup to the first {@link #spawnNew} call, by which time both
+     * beans are constructed.
+     */
+    private final ObjectProvider<ProjectLifecycleService> lifecycleServiceProvider;
+    private final ClusterBringClient bringClient;
+    /**
+     * Optional — only present when the Cluster-Master role is enabled
+     * cluster-wide. Used by {@link #spawnNew} to decide between local-first
+     * bring and master-routed spawn.
+     */
+    private final ObjectProvider<ClusterMasterService> masterServiceProvider;
 
     /**
      * Ensures the project is owned by this pod. Refreshes
@@ -91,6 +110,86 @@ public class ProjectManagerService {
                             + "' is owned by cluster '" + project.getHomeNode()
                             + "', not this pod ('" + selfCluster + "')");
         }
+    }
+
+    /**
+     * Place a newly-created project on a pod — local-first if this pod
+     * has room, otherwise route through the Cluster-Master. Used by
+     * {@link ProjectLifecycleService#create} and by the
+     * {@code ProjectLocator} autoStart path. See
+     * {@code specification/cluster-project-management.md} §5.3.
+     *
+     * <p>HOMELESS projects bypass placement entirely and are brought
+     * pod-locally (the existing podless code path in {@code bring}).
+     *
+     * <p>Fallbacks when the cluster is in a degraded state:
+     * <ul>
+     *   <li>Master disabled cluster-wide → local bring with capacity overrun warning</li>
+     *   <li>Master enabled but no live lease → local bring with warning (the new
+     *       master will rebalance on its next distributor tick)</li>
+     *   <li>Master responds {@code 503 cluster full} → rethrown to the caller</li>
+     * </ul>
+     */
+    public void spawnNew(String tenantId, String projectName) {
+        ProjectDocument project = projectService.findByTenantAndName(tenantId, projectName)
+                .orElseThrow(() -> new ProjectService.ProjectNotFoundException(
+                        "Project '" + projectName + "' not found in tenant '" + tenantId + "'"));
+
+        if (project.getLifecycleType() == LifecycleType.HOMELESS) {
+            lifecycleServiceProvider.getObject().bring(tenantId, projectName);
+            return;
+        }
+
+        if (haveLocalRoom(project)) {
+            lifecycleServiceProvider.getObject().bring(tenantId, projectName);
+            return;
+        }
+
+        ClusterMasterService masterService = masterServiceProvider.getIfAvailable();
+        if (masterService == null) {
+            log.warn("ProjectManagerService: master disabled, bringing '{}/{}' locally despite capacity",
+                    tenantId, projectName);
+            lifecycleServiceProvider.getObject().bring(tenantId, projectName);
+            return;
+        }
+        if (masterService.isLocalPodMaster()) {
+            // I'm master and out of local room — let the placement service
+            // pick another pod (it can dispatch remote bring on my behalf).
+            // No-master fallback below; if nobody has room, ClusterFullException.
+            placeViaMaster(project);
+            return;
+        }
+        Optional<String> masterEndpoint = masterService.resolveMasterEndpoint();
+        if (masterEndpoint.isEmpty()) {
+            log.warn("ProjectManagerService: no master endpoint, bringing '{}/{}' locally as fallback",
+                    tenantId, projectName);
+            lifecycleServiceProvider.getObject().bring(tenantId, projectName);
+            return;
+        }
+        bringClient.requestSpawn(masterEndpoint.get(), tenantId, projectName);
+    }
+
+    private void placeViaMaster(ProjectDocument project) {
+        // We are the master, so we own the placement decision. Delegate to
+        // ClusterPlacementService by going through the master's REST surface —
+        // that keeps the placement logic in one place (single source of truth
+        // for pick-pod heuristics). The REST hop to localhost is cheap.
+        ClusterMasterService masterService = masterServiceProvider.getObject();
+        Optional<String> selfEndpoint = masterService.resolveMasterEndpoint();
+        if (selfEndpoint.isEmpty()) {
+            log.warn("ProjectManagerService: master self-endpoint missing, bringing '{}/{}' locally",
+                    project.getTenantId(), project.getName());
+            lifecycleServiceProvider.getObject().bring(project.getTenantId(), project.getName());
+            return;
+        }
+        bringClient.requestSpawn(selfEndpoint.get(), project.getTenantId(), project.getName());
+    }
+
+    private boolean haveLocalRoom(ProjectDocument project) {
+        return clusterService.selfPod()
+                .map(pod -> pod.getResourcesCurrentScore() + project.getHomeResourceScore()
+                        <= pod.getResourcesMaxScore())
+                .orElse(true);
     }
 
     /** All RUNNING projects this pod currently owns — for startup reclaim. */

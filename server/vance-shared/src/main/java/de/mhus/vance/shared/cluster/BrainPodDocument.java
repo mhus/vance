@@ -89,4 +89,30 @@ public class BrainPodDocument {
 
     /** Optional build version — {@code vance.build.version}, kostet nichts. */
     private @Nullable String version;
+
+    /**
+     * How many project-score units this pod claims at startup via the
+     * Boot-Self-Pull (see {@code specification/cluster-project-management.md}
+     * §5.1). Sourced from {@code vance.cluster.resources.startupScore}.
+     */
+    @Builder.Default
+    private int resourcesStartupScore = 100;
+
+    /**
+     * Hard cap the Cluster-Master Distributor respects when picking a pod
+     * to receive an orphaned permanent project. Sourced from
+     * {@code vance.cluster.resources.maxScore}. The local pod ignores it
+     * when executing a direct bring — overrun is acceptable.
+     */
+    @Builder.Default
+    private int resourcesMaxScore = 10000;
+
+    /**
+     * Sum of {@code homeResourceScore} over every non-CLOSED project
+     * currently owned by this pod. Recomputed by the pod itself on every
+     * heartbeat off {@code ProjectService.findByHomeNode}; the Distributor
+     * reads this snapshot to decide where to place orphans.
+     */
+    @Builder.Default
+    private int resourcesCurrentScore = 0;
 }

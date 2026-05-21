@@ -1,6 +1,8 @@
 package de.mhus.vance.brain.bootstrap;
 
+import de.mhus.vance.brain.cluster.ClusterProperties;
 import de.mhus.vance.brain.cluster.ClusterService;
+import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
@@ -50,7 +52,9 @@ public class ProjectStartupReclaimer {
 
     private final ProjectService projectService;
     private final ProjectManagerService projectManager;
+    private final ProjectLifecycleService lifecycleService;
     private final ClusterService clusterService;
+    private final ClusterProperties clusterProperties;
     private final SessionService sessionService;
 
     @EventListener(ApplicationReadyEvent.class)
@@ -58,6 +62,7 @@ public class ProjectStartupReclaimer {
     void reclaim() {
         clearStaleClusterClaims();
         clearStaleSessionBindings();
+        selfPullPermanentProjects();
     }
 
     /**
@@ -103,5 +108,64 @@ public class ProjectStartupReclaimer {
         long n = sessionService.unbindAllForProjects(projectNames);
         log.info("ProjectStartupReclaimer: {} project(s) owned by this pod, {} stale binding(s) cleared",
                 projectNames.size(), n);
+    }
+
+    /**
+     * Boot-Self-Pull (see {@code specification/cluster-project-management.md}
+     * §5.1). Greedily brings PERMANENT-orphans onto this pod until the
+     * configured {@code resourcesStartupScore} is exhausted. EPHEMERAL
+     * and HOMELESS projects are skipped — those wait for an explicit
+     * locate or live without pod-affinity.
+     *
+     * <p>A buffer (50% of the startup budget) lets the last candidate
+     * tip slightly over the line so projects with above-average score
+     * don't get stuck waiting for the distributor. The Master-Distributor
+     * picks up everything we don't claim here.
+     */
+    private void selfPullPermanentProjects() {
+        int budget = clusterProperties.getResources().getStartupScore();
+        if (budget <= 0) {
+            log.info("ProjectStartupReclaimer: self-pull disabled (startupScore={})", budget);
+            return;
+        }
+        int buffer = budget / 2;
+        Set<String> liveClusters = new HashSet<>(clusterService.liveClusterNodeNames());
+        String selfNode = clusterService.selfNodeName();
+        if (selfNode != null && !selfNode.isBlank()) liveClusters.add(selfNode);
+
+        int pulled = 0;
+        int brought = 0;
+        int skipped = 0;
+        // batchSize matches the distributor's appetite — small enough to
+        // re-query liveClusters / homeNode between batches without much waste.
+        final int batchSize = 20;
+        while (pulled < budget) {
+            List<ProjectDocument> candidates =
+                    projectService.findPermanentOrphans(liveClusters, batchSize);
+            if (candidates.isEmpty()) break;
+            boolean anyBrought = false;
+            for (ProjectDocument p : candidates) {
+                if (pulled + p.getHomeResourceScore() > budget + buffer) {
+                    skipped++;
+                    continue;
+                }
+                try {
+                    lifecycleService.bring(p.getTenantId(), p.getName());
+                    pulled += p.getHomeResourceScore();
+                    brought++;
+                    anyBrought = true;
+                } catch (ProjectManagerService.ClaimRejectedException e) {
+                    // Another pod beat us to it during boot — fine.
+                    skipped++;
+                } catch (RuntimeException e) {
+                    log.warn("ProjectStartupReclaimer: self-pull bring failed for '{}/{}': {}",
+                            p.getTenantId(), p.getName(), e.toString());
+                    skipped++;
+                }
+            }
+            if (!anyBrought) break; // every candidate skipped — would loop forever
+        }
+        log.info("ProjectStartupReclaimer: self-pull brought={} skipped={} score={}/{} (buffer={})",
+                brought, skipped, pulled, budget, buffer);
     }
 }

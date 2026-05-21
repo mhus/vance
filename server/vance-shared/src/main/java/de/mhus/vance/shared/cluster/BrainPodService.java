@@ -39,21 +39,34 @@ public class BrainPodService {
     }
 
     /**
-     * Refresh the heartbeat timestamp + status + active-projects list of an
-     * existing pod row. Returns the updated document; throws when the row
-     * has been removed externally (e.g. by an admin purge).
+     * Refresh the heartbeat timestamp + status + active-projects list +
+     * resource scores of an existing pod row. Returns the updated
+     * document; throws when the row has been removed externally (e.g.
+     * by an admin purge).
+     *
+     * <p>The three score fields are written on every beat so a
+     * configuration change on the pod ({@code resourcesStartupScore},
+     * {@code resourcesMaxScore}) reaches the registry without needing a
+     * separate update path, and the derived {@code resourcesCurrentScore}
+     * reflects the pod's current owned-projects load.
      */
     public BrainPodDocument heartbeat(
             String podId,
             Instant now,
             PodStatus status,
-            List<String> activeProjects) {
+            List<String> activeProjects,
+            int currentScore,
+            int startupScore,
+            int maxScore) {
         BrainPodDocument doc = repository.findByPodId(podId)
                 .orElseThrow(() -> new IllegalStateException(
                         "Brain pod row missing for podId='" + podId + "' — was it purged?"));
         doc.setLastHeartbeatAt(now);
         doc.setStatus(status);
         doc.setActiveProjects(List.copyOf(activeProjects));
+        doc.setResourcesCurrentScore(currentScore);
+        doc.setResourcesStartupScore(startupScore);
+        doc.setResourcesMaxScore(maxScore);
         return repository.save(doc);
     }
 

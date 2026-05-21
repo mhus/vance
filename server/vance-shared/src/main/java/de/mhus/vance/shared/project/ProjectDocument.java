@@ -78,14 +78,23 @@ public class ProjectDocument {
     private @Nullable Instant claimedAt;
 
     /**
-     * {@code true} when this project carries owner-pod-bound engine state
-     * (today: an active {@code SchedulerService}; future engines may also
-     * flip this). Maintained by engine-lifecycle listeners and read by
-     * {@code ProjectWakeupTick} to decide which RUNNING-but-unclaimed
-     * projects need an active owner-pod again after a cluster-node death.
+     * Drives cluster-wide spawn behaviour — see
+     * {@code specification/cluster-project-management.md} §2. SYSTEM
+     * projects are always {@link LifecycleType#HOMELESS}; NORMAL
+     * projects default to {@link LifecycleType#EPHEMERAL} and may be
+     * switched to {@link LifecycleType#PERMANENT} by the user.
      */
     @Builder.Default
-    private boolean requiresOwnerPod = false;
+    private LifecycleType lifecycleType = LifecycleType.EPHEMERAL;
+
+    /**
+     * Score the project contributes to a pod's {@code resourcesCurrentScore}
+     * when claimed there. Default {@code 1}. Used by the Cluster-Master
+     * Distributor to decide which pod has room for an orphaned project
+     * and by the Boot-Self-Pull cap. V1 is immutable after create.
+     */
+    @Builder.Default
+    private int homeResourceScore = 1;
 
     @CreatedDate
     private @Nullable Instant createdAt;

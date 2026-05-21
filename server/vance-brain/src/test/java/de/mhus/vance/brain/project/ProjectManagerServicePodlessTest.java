@@ -6,11 +6,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.cluster.ClusterBringClient;
+import de.mhus.vance.brain.cluster.ClusterMasterService;
 import de.mhus.vance.brain.cluster.ClusterService;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.shared.project.ProjectService;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 /**
  * Defensive guard around stale {@code homeNode} values on legacy
@@ -43,7 +46,15 @@ class ProjectManagerServicePodlessTest {
         lenient().when(projectService.findByTenantAndName("acme", "_user_wile.coyote"))
                 .thenReturn(Optional.of(legacy));
 
-        ProjectManagerService manager = new ProjectManagerService(projectService, clusterService);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ClusterMasterService> masterProvider = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProjectLifecycleService> lifecycleProvider = mock(ObjectProvider.class);
+        ProjectManagerService manager = new ProjectManagerService(
+                projectService, clusterService,
+                lifecycleProvider,
+                mock(ClusterBringClient.class),
+                masterProvider);
 
         Optional<String> endpoint = manager.findProjectEndpoint("acme", "_user_wile.coyote");
 
@@ -71,7 +82,15 @@ class ProjectManagerServicePodlessTest {
         when(clusterService.resolveEndpoint("maya-prosser"))
                 .thenReturn(Optional.of("10.0.0.5:9990"));
 
-        ProjectManagerService manager = new ProjectManagerService(projectService, clusterService);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ClusterMasterService> masterProvider = mock(ObjectProvider.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProjectLifecycleService> lifecycleProvider = mock(ObjectProvider.class);
+        ProjectManagerService manager = new ProjectManagerService(
+                projectService, clusterService,
+                lifecycleProvider,
+                mock(ClusterBringClient.class),
+                masterProvider);
 
         Optional<String> endpoint = manager.findProjectEndpoint("acme", "ferienhaus-versicherung");
 

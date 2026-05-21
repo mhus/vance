@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.script.cortex;
 
-import de.mhus.vance.api.deepthought.DeepThoughtState;
-import de.mhus.vance.api.deepthought.DeepThoughtStatus;
+import de.mhus.vance.api.hactar.HactarState;
+import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentListResponse;
 import de.mhus.vance.api.documents.DocumentSummary;
@@ -17,7 +17,7 @@ import de.mhus.vance.api.scripts.ScriptGenerationResult;
 import de.mhus.vance.api.scripts.ScriptValidateRequest;
 import de.mhus.vance.api.scripts.ScriptValidateError;
 import de.mhus.vance.api.scripts.ScriptValidateResponse;
-import de.mhus.vance.brain.deepthought.DeepThoughtEngine;
+import de.mhus.vance.brain.hactar.HactarEngine;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.script.JsValidationService;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
@@ -39,7 +39,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -323,7 +322,7 @@ public class ScriptCortexController {
                         "Unknown executionId: " + executionId));
     }
 
-    // ──────────────────── DeepThought-Generation ────────────────────
+    // ──────────────────── Hactar-Generation ────────────────────
 
     @PostMapping("/brain/{tenant}/scripts/generate")
     public ScriptGenerateResponse generate(
@@ -349,23 +348,23 @@ public class ScriptCortexController {
                 (String) httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME));
 
         Map<String, Object> engineParams = new LinkedHashMap<>();
-        engineParams.put(DeepThoughtEngine.GOAL_KEY, goal);
-        engineParams.put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, Boolean.FALSE);
-        engineParams.put(DeepThoughtEngine.MAX_RECOVERIES_KEY, 5);
-        engineParams.put(DeepThoughtEngine.SCRIPT_ALLOWED_TOOLS_KEY, allowedTools);
+        engineParams.put(HactarEngine.GOAL_KEY, goal);
+        engineParams.put(HactarEngine.EXECUTE_ON_DONE_KEY, Boolean.FALSE);
+        engineParams.put(HactarEngine.MAX_RECOVERIES_KEY, 5);
+        engineParams.put(HactarEngine.SCRIPT_ALLOWED_TOOLS_KEY, allowedTools);
 
         ThinkProcessDocument process = thinkProcessService.create(
                 tenant,
                 projectId,
                 sessionId,
                 processName,
-                DeepThoughtEngine.NAME,
-                DeepThoughtEngine.VERSION,
+                HactarEngine.NAME,
+                HactarEngine.VERSION,
                 "Script Cortex generation",
                 goal,
                 /*parentProcessId*/ null,
                 engineParams,
-                "deepthought",
+                "hactar",
                 /*promptOverride*/ null,
                 /*promptMode*/ null,
                 /*allowedToolsOverride*/ null);
@@ -392,7 +391,7 @@ public class ScriptCortexController {
         if (!tenant.equals(process.getTenantId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        DeepThoughtState state = loadState(process);
+        HactarState state = loadState(process);
         return ScriptGenerationResult.builder()
                 .thinkProcessId(thinkProcessId)
                 .status(process.getStatus() == null ? null : process.getStatus().name())
@@ -444,12 +443,12 @@ public class ScriptCortexController {
         return sb.toString();
     }
 
-    private DeepThoughtState loadState(ThinkProcessDocument process) {
+    private HactarState loadState(ThinkProcessDocument process) {
         Map<String, Object> p = process.getEngineParams();
-        if (p == null) return DeepThoughtState.builder().status(DeepThoughtStatus.READY).build();
-        Object raw = p.get(DeepThoughtEngine.STATE_KEY);
-        if (raw == null) return DeepThoughtState.builder().status(DeepThoughtStatus.READY).build();
-        return objectMapper.convertValue(raw, DeepThoughtState.class);
+        if (p == null) return HactarState.builder().status(HactarStatus.READY).build();
+        Object raw = p.get(HactarEngine.STATE_KEY);
+        if (raw == null) return HactarState.builder().status(HactarStatus.READY).build();
+        return objectMapper.convertValue(raw, HactarState.class);
     }
 
     private void cacheDeepReview(

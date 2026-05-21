@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.deepthought.phases;
+package de.mhus.vance.brain.hactar.phases;
 
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.brain.skill.ResolvedSkill;
@@ -16,7 +16,6 @@ import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +27,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * Shared prompt-context renderer for Deep Thought's FRAMING and
+ * Shared prompt-context renderer for Hactar's FRAMING and
  * DRAFTING phases. Centralises:
  *
  * <ul>
@@ -52,7 +51,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class DeepThoughtContextRenderer {
+public class HactarContextRenderer {
 
     /** Engine-param key for the script's allowed tool surface. */
     public static final String SCRIPT_ALLOWED_TOOLS_KEY = "scriptAllowedTools";
@@ -235,7 +234,7 @@ public class DeepThoughtContextRenderer {
                 Optional<ResolvedSkill> resolved =
                         skillResolver.resolve(scope, ref.getName());
                 if (resolved.isEmpty()) {
-                    log.warn("DeepThought id='{}' active skill '{}' no longer "
+                    log.warn("Hactar id='{}' active skill '{}' no longer "
                                     + "resolves — skipping",
                             process.getId(), ref.getName());
                     continue;
@@ -246,7 +245,7 @@ public class DeepThoughtContextRenderer {
                     out.add(skill);
                 }
             } catch (UnknownSkillException e) {
-                log.warn("DeepThought id='{}' active skill '{}' unknown — skipping",
+                log.warn("Hactar id='{}' active skill '{}' unknown — skipping",
                         process.getId(), ref.getName());
             }
         }

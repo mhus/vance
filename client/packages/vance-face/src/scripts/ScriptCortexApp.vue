@@ -16,7 +16,7 @@ import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
 import ValidatePanel from './components/ValidatePanel.vue';
 import ExecutionDialog from './components/ExecutionDialog.vue';
-import DeepThoughtPanel from './components/DeepThoughtPanel.vue';
+import HactarPanel from './components/HactarPanel.vue';
 
 const projectsState = useTenantProjects();
 const store = useScriptStore();
@@ -30,7 +30,7 @@ const saving = ref(false);
 const saveError = ref<string | null>(null);
 
 const showExecuteDialog = ref(false);
-const showDeepThought = ref(false);
+const showHactar = ref(false);
 
 onMounted(async () => {
   await projectsState.reload();
@@ -125,14 +125,14 @@ function onExecute(): void {
   showExecuteDialog.value = true;
 }
 
-function onOpenDeepThought(): void {
-  showDeepThought.value = true;
+function onOpenHactar(): void {
+  showHactar.value = true;
 }
 
-function onDeepThoughtApplied(code: string): void {
+function onHactarApplied(code: string): void {
   if (!activeTab.value) return;
   store.updateActiveContent(code);
-  showDeepThought.value = false;
+  showHactar.value = false;
 }
 
 const projectOptions = computed(() =>
@@ -197,8 +197,8 @@ const projectOptions = computed(() =>
           <VButton
             size="sm"
             variant="ghost"
-            @click="onOpenDeepThought"
-          >🧠 DeepThought</VButton>
+            @click="onOpenHactar"
+          >🧠 Hactar</VButton>
         </div>
 
         <VAlert v-if="saveError" variant="error" class="m-2">{{ saveError }}</VAlert>
@@ -245,11 +245,11 @@ const projectOptions = computed(() =>
     @close="showExecuteDialog = false"
   />
 
-  <DeepThoughtPanel
-    v-if="showDeepThought && selectedProjectId"
+  <HactarPanel
+    v-if="showHactar && selectedProjectId"
     :file="activeTab"
     :project-id="selectedProjectId"
-    @close="showDeepThought = false"
-    @apply="onDeepThoughtApplied"
+    @close="showHactar = false"
+    @apply="onHactarApplied"
   />
 </template>

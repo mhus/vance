@@ -53,7 +53,7 @@ engines:
     not_for: "Tasks where a suitable recipe already exists — call
       that recipe directly. Quick interactive Q&A (Arthur)."
 
-  deepthought:
+  hactar:
     purpose: "Script-architect engine. Takes a high-level goal,
       drafts a single self-contained JavaScript orchestrator script
       (an IIFE), validates it parse-only via GraalJS, and recovers

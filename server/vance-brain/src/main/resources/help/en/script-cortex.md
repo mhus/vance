@@ -2,7 +2,7 @@
 
 A small workbench for JavaScript snippets that run inside the brain's
 sandboxed GraalJS engine. Useful for one-off computations, throw-away
-debugging scripts, and the orchestrator scripts that Deep Thought
+debugging scripts, and the orchestrator scripts that Hactar
 emits.
 
 ## Files
@@ -122,9 +122,9 @@ The Execute dialog asks for an `args` JSON object (default `{}`).
 - Output above 10 000 lines is ring-truncated; the oldest line falls
   off first.
 
-## Generate / Improve (Deep Thought)
+## Generate / Improve (Hactar)
 
-The **🧠 DeepThought** button opens a prompt panel. Type what the
+The **🧠 Hactar** button opens a prompt panel. Type what the
 script should do, hit **Generate**. The brain spawns a Deep-Thought
 process that drafts and validates the code; on `DONE` you can apply
 the result to the active tab.
@@ -143,7 +143,7 @@ var docs = vance.tools.call('documents_list', { projectId: vance.context.project
 console.log('docs:', docs);
 ```
 
-The DeepThought generate-button receives the same tool list in its
+The Hactar generate-button receives the same tool list in its
 drafting-prompt, so the LLM knows what tool names + signatures it can
 reach for. Per-tool permissions are still enforced at runtime inside
 the tool handler (no tenant escalation possible).

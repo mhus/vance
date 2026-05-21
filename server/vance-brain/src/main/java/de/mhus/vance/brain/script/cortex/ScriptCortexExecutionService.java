@@ -127,7 +127,7 @@ public class ScriptCortexExecutionService {
         bindings.put("args", req.args == null ? Map.of() : req.args);
 
         // Tool surface: every tool the dispatcher resolves for this
-        // scope. Symmetric with DeepThought-generate, which receives the
+        // scope. Symmetric with Hactar-generate, which receives the
         // same list via engineParams.scriptAllowedTools so the LLM's
         // prompt-inventory matches what the runtime will actually accept.
         // Per-tool permission checks still apply at invoke-time.

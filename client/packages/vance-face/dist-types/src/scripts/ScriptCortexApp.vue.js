@@ -6,7 +6,7 @@ import FileTreeSidebar from './components/FileTreeSidebar.vue';
 import EditorTabs from './components/EditorTabs.vue';
 import ValidatePanel from './components/ValidatePanel.vue';
 import ExecutionDialog from './components/ExecutionDialog.vue';
-import DeepThoughtPanel from './components/DeepThoughtPanel.vue';
+import HactarPanel from './components/HactarPanel.vue';
 const projectsState = useTenantProjects();
 const store = useScriptStore();
 const selectedProjectId = ref(null);
@@ -17,7 +17,7 @@ const creating = ref(false);
 const saving = ref(false);
 const saveError = ref(null);
 const showExecuteDialog = ref(false);
-const showDeepThought = ref(false);
+const showHactar = ref(false);
 onMounted(async () => {
     await projectsState.reload();
     const params = new URLSearchParams(window.location.search);
@@ -116,14 +116,14 @@ function onExecute() {
         return;
     showExecuteDialog.value = true;
 }
-function onOpenDeepThought() {
-    showDeepThought.value = true;
+function onOpenHactar() {
+    showHactar.value = true;
 }
-function onDeepThoughtApplied(code) {
+function onHactarApplied(code) {
     if (!activeTab.value)
         return;
     store.updateActiveContent(code);
-    showDeepThought.value = false;
+    showHactar.value = false;
 }
 const projectOptions = computed(() => projectsState.projects.value.map((p) => ({ value: p.name, label: p.title ?? p.name })));
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
@@ -326,7 +326,7 @@ else {
     let __VLS_50;
     let __VLS_51;
     const __VLS_52 = {
-        onClick: (__VLS_ctx.onOpenDeepThought)
+        onClick: (__VLS_ctx.onOpenHactar)
     };
     __VLS_48.slots.default;
     var __VLS_48;
@@ -505,10 +505,10 @@ if (__VLS_ctx.showExecuteDialog && __VLS_ctx.activeTab && __VLS_ctx.selectedProj
     };
     var __VLS_98;
 }
-if (__VLS_ctx.showDeepThought && __VLS_ctx.selectedProjectId) {
-    /** @type {[typeof DeepThoughtPanel, ]} */ ;
+if (__VLS_ctx.showHactar && __VLS_ctx.selectedProjectId) {
+    /** @type {[typeof HactarPanel, ]} */ ;
     // @ts-ignore
-    const __VLS_103 = __VLS_asFunctionalComponent(DeepThoughtPanel, new DeepThoughtPanel({
+    const __VLS_103 = __VLS_asFunctionalComponent(HactarPanel, new HactarPanel({
         ...{ 'onClose': {} },
         ...{ 'onApply': {} },
         file: (__VLS_ctx.activeTab),
@@ -525,13 +525,13 @@ if (__VLS_ctx.showDeepThought && __VLS_ctx.selectedProjectId) {
     let __VLS_108;
     const __VLS_109 = {
         onClose: (...[$event]) => {
-            if (!(__VLS_ctx.showDeepThought && __VLS_ctx.selectedProjectId))
+            if (!(__VLS_ctx.showHactar && __VLS_ctx.selectedProjectId))
                 return;
-            __VLS_ctx.showDeepThought = false;
+            __VLS_ctx.showHactar = false;
         }
     };
     const __VLS_110 = {
-        onApply: (__VLS_ctx.onDeepThoughtApplied)
+        onApply: (__VLS_ctx.onHactarApplied)
     };
     var __VLS_105;
 }
@@ -595,7 +595,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             EditorTabs: EditorTabs,
             ValidatePanel: ValidatePanel,
             ExecutionDialog: ExecutionDialog,
-            DeepThoughtPanel: DeepThoughtPanel,
+            HactarPanel: HactarPanel,
             store: store,
             selectedProjectId: selectedProjectId,
             showCreate: showCreate,
@@ -605,7 +605,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             saving: saving,
             saveError: saveError,
             showExecuteDialog: showExecuteDialog,
-            showDeepThought: showDeepThought,
+            showHactar: showHactar,
             activeTab: activeTab,
             editorMime: editorMime,
             isExecutable: isExecutable,
@@ -614,8 +614,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             confirmCreate: confirmCreate,
             onDelete: onDelete,
             onExecute: onExecute,
-            onOpenDeepThought: onOpenDeepThought,
-            onDeepThoughtApplied: onDeepThoughtApplied,
+            onOpenHactar: onOpenHactar,
+            onHactarApplied: onHactarApplied,
             projectOptions: projectOptions,
         };
     },

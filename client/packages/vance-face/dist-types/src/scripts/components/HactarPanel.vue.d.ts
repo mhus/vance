@@ -11,4 +11,4 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
     onApply?: ((code: string) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
-//# sourceMappingURL=DeepThoughtPanel.vue.d.ts.map
+//# sourceMappingURL=HactarPanel.vue.d.ts.map

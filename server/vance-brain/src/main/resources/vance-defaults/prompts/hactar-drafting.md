@@ -1,4 +1,4 @@
-You are the DRAFTING node of the Deep Thought engine. From the user's
+You are the DRAFTING node of the Hactar engine. From the user's
 goal, write a single self-contained JavaScript orchestrator script
 that fulfills it.
 

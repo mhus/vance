@@ -1,21 +1,21 @@
-package de.mhus.vance.api.deepthought;
+package de.mhus.vance.api.hactar;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 
 /**
- * Phase the Deep Thought engine is in for a given process. Minimal
- * v1 set — see {@code planning/deepthought-engine.md} for the full
+ * Phase the Hactar engine is in for a given process. Minimal
+ * v1 set — see {@code planning/hactar-engine.md} for the full
  * lifecycle (FRAMING/GATHERING/DECOMPOSING/REVIEWING) that will land
  * in v1.1.
  *
- * <p>The accepted script lives in {@code DeepThoughtState.generatedCode}
+ * <p>The accepted script lives in {@code HactarState.generatedCode}
  * (and thus in {@code engineParams.deepThoughtState} on the
  * process document) — no separate persistence phase. Parents read
  * it back from {@code summarizeForParent} as a code block; Script
  * Cortex (v1.1) will read it directly from the engine state.
  */
-@GenerateTypeScript("deepthought")
-public enum DeepThoughtStatus {
+@GenerateTypeScript("hactar")
+public enum HactarStatus {
     /** Just created — runTurn transitions to LOADING (when
      *  {@code scriptPath} is set), FRAMING (when {@code framingEnabled}),
      *  or directly to DRAFTING. */

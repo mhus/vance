@@ -6,7 +6,7 @@
  * synchronously through {@link de.mhus.vance.shared.workspace.NodeHandler}.
  *
  * <p>Sister to {@code python}. Same shape, same idempotency rules.
- * Workspaces created here power Deep Thought-generated scripts that
+ * Workspaces created here power Hactar-generated scripts that
  * use {@code require()} — see {@code GraaljsScriptExecutor}'s
  * sandboxed CommonJS pathway, gated by {@code vance.script.require.enabled}.
  *

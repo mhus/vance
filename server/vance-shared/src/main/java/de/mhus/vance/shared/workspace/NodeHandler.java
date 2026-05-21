@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  * .gitignore} written at init.
  *
  * <p>Sister to {@link PythonHandler}. Same shape, same idempotency
- * rules. Deep Thought-generated scripts that {@code require()}
+ * rules. Hactar-generated scripts that {@code require()}
  * external libraries point at one of these via the
  * {@code @workspaceRoot} script-header tag (see
  * {@code specification/script-engine.md} §3.6).

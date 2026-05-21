@@ -139,7 +139,7 @@ public final class VanceScriptApi {
         public final @Nullable String userId;
 
         /** Recipe name that spawned the running process — exposed so
-         *  scripts (e.g. Deep Thought-generated orchestrators) can
+         *  scripts (e.g. Hactar-generated orchestrators) can
          *  branch on their invocation context. {@code null} when the
          *  caller didn't supply a recipe (direct engine spawns,
          *  legacy 5-/6-arg {@code ScriptRequest} constructors). */

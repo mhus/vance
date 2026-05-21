@@ -1,4 +1,4 @@
-package de.mhus.vance.api.deepthought;
+package de.mhus.vance.api.hactar;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Mutable runtime state of a Deep Thought process. Persisted on
+ * Mutable runtime state of a Hactar process. Persisted on
  * {@code ThinkProcessDocument.engineParams.deepThoughtState}; restored
  * verbatim on resume so a Brain restart picks up at the current phase
  * without losing prior LLM-drafts or validation errors.
@@ -21,13 +21,13 @@ import org.jspecify.annotations.Nullable;
  * itself is the audit trail. Multi-script-suite, gathering,
  * decomposing land in v1.1 as additional fields.
  *
- * <p>See {@code planning/deepthought-engine.md}.
+ * <p>See {@code planning/hactar-engine.md}.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class DeepThoughtState {
+public class HactarState {
 
     /** What the user/parent asked for, copy of the process goal at
      *  start time so prompt-building stays deterministic across
@@ -128,9 +128,9 @@ public class DeepThoughtState {
     private int maxRecoveries = 5;
 
     @Builder.Default
-    private DeepThoughtStatus status = DeepThoughtStatus.READY;
+    private HactarStatus status = HactarStatus.READY;
 
-    /** Set when {@link #status} = {@link DeepThoughtStatus#FAILED}. */
+    /** Set when {@link #status} = {@link HactarStatus#FAILED}. */
     private @Nullable String failureReason;
 
     /**

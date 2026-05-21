@@ -1,8 +1,8 @@
-package de.mhus.vance.brain.deepthought.phases;
+package de.mhus.vance.brain.hactar.phases;
 
-import de.mhus.vance.api.deepthought.DeepThoughtState;
-import de.mhus.vance.api.deepthought.DeepThoughtState.ValidationError;
-import de.mhus.vance.api.deepthought.DeepThoughtStatus;
+import de.mhus.vance.api.hactar.HactarState;
+import de.mhus.vance.api.hactar.HactarState.ValidationError;
+import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.brain.script.JsValidationService;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -26,8 +26,8 @@ public class ValidatingPhase {
 
     private final JsValidationService jsValidationService;
 
-    public DeepThoughtStatus execute(
-            DeepThoughtState state,
+    public HactarStatus execute(
+            HactarState state,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
         String code = state.getGeneratedCode();
@@ -35,11 +35,11 @@ public class ValidatingPhase {
                 jsValidationService.validate(code, "draft.js");
         if (result.ok()) {
             state.getValidationErrors().clear();
-            log.info("DeepThought.runValidating id='{}' OK after {} recovery attempt(s)",
+            log.info("Hactar.runValidating id='{}' OK after {} recovery attempt(s)",
                     process.getId(), state.getRecoveryCount());
             return state.isExecuteOnDone()
-                    ? DeepThoughtStatus.EXECUTING
-                    : DeepThoughtStatus.DONE;
+                    ? HactarStatus.EXECUTING
+                    : HactarStatus.DONE;
         }
 
         List<ValidationError> errors = new ArrayList<>();
@@ -53,7 +53,7 @@ public class ValidatingPhase {
         }
         state.setValidationErrors(errors);
         state.setRecoveryCount(state.getRecoveryCount() + 1);
-        log.info("DeepThought.runValidating id='{}' FAIL — attempt {}/{}, errors: {}",
+        log.info("Hactar.runValidating id='{}' FAIL — attempt {}/{}, errors: {}",
                 process.getId(), state.getRecoveryCount(),
                 state.getMaxRecoveries(),
                 errors.isEmpty() ? "?" : errors.get(0).getMessage());
@@ -62,8 +62,8 @@ public class ValidatingPhase {
             state.setFailureReason("Exceeded maxRecoveries ("
                     + state.getMaxRecoveries() + ") — last error: "
                     + (errors.isEmpty() ? "(none)" : errors.get(0).getMessage()));
-            return DeepThoughtStatus.FAILED;
+            return HactarStatus.FAILED;
         }
-        return DeepThoughtStatus.DRAFTING;
+        return HactarStatus.DRAFTING;
     }
 }

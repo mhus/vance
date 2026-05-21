@@ -112,13 +112,13 @@ const __VLS_0 = {}.VModal;
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
     ...{ 'onUpdate:modelValue': {} },
     modelValue: (__VLS_ctx.visible),
-    title: "DeepThought · generate / improve script",
+    title: "Hactar · generate / improve script",
     closeOnBackdrop: (false),
 }));
 const __VLS_2 = __VLS_1({
     ...{ 'onUpdate:modelValue': {} },
     modelValue: (__VLS_ctx.visible),
-    title: "DeepThought · generate / improve script",
+    title: "Hactar · generate / improve script",
     closeOnBackdrop: (false),
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 let __VLS_4;
@@ -410,4 +410,4 @@ export default (await import('vue')).defineComponent({
     __typeProps: {},
 });
 ; /* PartiallyEnd: #4569/main.vue */
-//# sourceMappingURL=DeepThoughtPanel.vue.js.map
+//# sourceMappingURL=HactarPanel.vue.js.map

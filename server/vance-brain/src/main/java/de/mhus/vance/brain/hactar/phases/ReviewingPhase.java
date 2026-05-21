@@ -1,10 +1,10 @@
-package de.mhus.vance.brain.deepthought.phases;
+package de.mhus.vance.brain.hactar.phases;
 
-import static de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer.paramString;
+import static de.mhus.vance.brain.hactar.phases.HactarContextRenderer.paramString;
 
 import de.mhus.vance.api.chat.ChatRole;
-import de.mhus.vance.api.deepthought.DeepThoughtState;
-import de.mhus.vance.api.deepthought.DeepThoughtStatus;
+import de.mhus.vance.api.hactar.HactarState;
+import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
@@ -58,18 +58,18 @@ public class ReviewingPhase {
     private final ChatMessageService chatMessageService;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
 
-    public DeepThoughtStatus execute(
-            DeepThoughtState state,
+    public HactarStatus execute(
+            HactarState state,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
         String reviewerRecipe = resolveReviewerRecipe(process);
         if (reviewerRecipe == null) {
-            log.info("DeepThought.runReviewing id='{}' no reviewer recipe "
+            log.info("Hactar.runReviewing id='{}' no reviewer recipe "
                             + "configured/resolvable — skipping review",
                     process.getId());
             state.setReviewerVerdict("SKIPPED");
             state.setReviewerNotes("No reviewer recipe configured.");
-            return DeepThoughtStatus.DRAFTING;
+            return HactarStatus.DRAFTING;
         }
 
         AppliedRecipe applied;
@@ -78,13 +78,13 @@ public class ReviewingPhase {
                     process.getTenantId(), ctx.projectId(), reviewerRecipe,
                     process.getConnectionProfile(), null);
         } catch (RecipeResolver.UnknownRecipeException ure) {
-            log.warn("DeepThought.runReviewing id='{}' reviewer recipe '{}' "
+            log.warn("Hactar.runReviewing id='{}' reviewer recipe '{}' "
                             + "unknown — skipping review",
                     process.getId(), reviewerRecipe);
             state.setReviewerVerdict("SKIPPED");
             state.setReviewerNotes(
                     "Reviewer recipe '" + reviewerRecipe + "' not found.");
-            return DeepThoughtStatus.DRAFTING;
+            return HactarStatus.DRAFTING;
         }
 
         ThinkEngineService engineService = thinkEngineServiceProvider.getObject();
@@ -94,7 +94,7 @@ public class ReviewingPhase {
                                 + "' references unknown engine '"
                                 + applied.engine() + "'"));
 
-        String childName = "deepthought-reviewer-" + process.getId()
+        String childName = "hactar-reviewer-" + process.getId()
                 + "-" + (state.getFramingRecoveryCount() + 1);
         ThinkProcessDocument child;
         try {
@@ -105,7 +105,7 @@ public class ReviewingPhase {
                     childName,
                     targetEngine.name(),
                     targetEngine.version(),
-                    "Deep Thought plan reviewer for " + process.getId(),
+                    "Hactar plan reviewer for " + process.getId(),
                     process.getGoal(),
                     process.getId(),
                     applied.params(),
@@ -121,12 +121,12 @@ public class ReviewingPhase {
                             ? null : Set.copyOf(applied.allowedSkills()));
             engineService.start(child);
         } catch (RuntimeException e) {
-            log.warn("DeepThought.runReviewing id='{}' spawn failed: {} — "
+            log.warn("Hactar.runReviewing id='{}' spawn failed: {} — "
                             + "treating as SKIPPED, advancing to DRAFTING",
                     process.getId(), e.toString());
             state.setReviewerVerdict("SKIPPED");
             state.setReviewerNotes("Reviewer spawn failed: " + e.getMessage());
-            return DeepThoughtStatus.DRAFTING;
+            return HactarStatus.DRAFTING;
         }
 
         String reply;
@@ -135,33 +135,33 @@ public class ReviewingPhase {
             reply = readLastAssistantText(
                     process.getTenantId(), process.getSessionId(), child.getId());
         } catch (RuntimeException e) {
-            log.warn("DeepThought.runReviewing id='{}' drive failed: {} — "
+            log.warn("Hactar.runReviewing id='{}' drive failed: {} — "
                             + "treating as SKIPPED",
                     process.getId(), e.toString());
             state.setReviewerVerdict("SKIPPED");
             state.setReviewerNotes("Reviewer drive failed: " + e.getMessage());
             cleanupReviewerChild(child);
-            return DeepThoughtStatus.DRAFTING;
+            return HactarStatus.DRAFTING;
         }
         cleanupReviewerChild(child);
 
         if (reply == null || reply.isBlank()) {
-            log.warn("DeepThought.runReviewing id='{}' reviewer produced no "
+            log.warn("Hactar.runReviewing id='{}' reviewer produced no "
                             + "reply — treating as SKIPPED",
                     process.getId());
             state.setReviewerVerdict("SKIPPED");
             state.setReviewerNotes("Reviewer produced no reply.");
-            return DeepThoughtStatus.DRAFTING;
+            return HactarStatus.DRAFTING;
         }
 
         ReviewerVerdict parsed = parseVerdict(reply);
         state.setReviewerVerdict(parsed.verdict());
         state.setReviewerNotes(reply.trim());
-        log.info("DeepThought.runReviewing id='{}' verdict={} reply chars={}",
+        log.info("Hactar.runReviewing id='{}' verdict={} reply chars={}",
                 process.getId(), parsed.verdict(), reply.length());
 
         if ("APPROVED".equals(parsed.verdict())) {
-            return DeepThoughtStatus.DRAFTING;
+            return HactarStatus.DRAFTING;
         }
 
         state.setFramingRecoveryCount(state.getFramingRecoveryCount() + 1);
@@ -171,14 +171,14 @@ public class ReviewingPhase {
                             + state.getMaxFramingRecoveries()
                             + ") — last reviewer critique: "
                             + abbreviateForReason(reply));
-            return DeepThoughtStatus.FAILED;
+            return HactarStatus.FAILED;
         }
-        return DeepThoughtStatus.FRAMING;
+        return HactarStatus.FRAMING;
     }
 
     // ──────────────────── Helpers ────────────────────
 
-    private String buildReviewerSteerContent(DeepThoughtState state) {
+    private String buildReviewerSteerContent(HactarState state) {
         StringBuilder sb = new StringBuilder();
         sb.append("## Original goal\n")
                 .append(state.getGoal() == null ? "" : state.getGoal())
@@ -200,7 +200,7 @@ public class ReviewingPhase {
         SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
                 Instant.now(),
                 /*idempotencyKey*/ null,
-                "deepthought:" + parentId,
+                "hactar:" + parentId,
                 content);
         try {
             laneScheduler.submit(child.getId(),

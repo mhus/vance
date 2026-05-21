@@ -1,10 +1,10 @@
-package de.mhus.vance.brain.deepthought.phases;
+package de.mhus.vance.brain.hactar.phases;
 
-import static de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer.paramString;
+import static de.mhus.vance.brain.hactar.phases.HactarContextRenderer.paramString;
 
-import de.mhus.vance.api.deepthought.DeepThoughtState;
-import de.mhus.vance.api.deepthought.DeepThoughtState.ValidationError;
-import de.mhus.vance.api.deepthought.DeepThoughtStatus;
+import de.mhus.vance.api.hactar.HactarState;
+import de.mhus.vance.api.hactar.HactarState.ValidationError;
+import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
@@ -45,11 +45,11 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class DraftingPhase {
 
-    public static final String ENGINE_NAME = "deepthought";
+    public static final String ENGINE_NAME = "hactar";
 
-    private static final String DRAFTING_PROMPT_PATH = "prompts/deepthought-drafting.md";
+    private static final String DRAFTING_PROMPT_PATH = "prompts/hactar-drafting.md";
     private static final String DRAFTING_FALLBACK_PROMPT =
-            "You are the DRAFTING node of the Deep Thought engine. "
+            "You are the DRAFTING node of the Hactar engine. "
                     + "Reply with EXACTLY one ```javascript fenced block "
                     + "containing an IIFE that fulfils the goal: {{ goal }}";
 
@@ -61,10 +61,10 @@ public class DraftingPhase {
     private final EnginePromptResolver enginePromptResolver;
     private final PromptTemplateRenderer promptTemplateRenderer;
     private final LlmCallTracker llmCallTracker;
-    private final DeepThoughtContextRenderer contextRenderer;
+    private final HactarContextRenderer contextRenderer;
 
-    public DeepThoughtStatus execute(
-            DeepThoughtState state,
+    public HactarStatus execute(
+            HactarState state,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
         EngineChatFactory.EngineChatBundle bundle =
@@ -104,7 +104,7 @@ public class DraftingPhase {
                 ? null : response.aiMessage().text();
         String body = extractJsBody(reply == null ? "" : reply);
         if (body == null || body.isBlank()) {
-            log.warn("DeepThought.runDrafting id='{}' reply had no parseable "
+            log.warn("Hactar.runDrafting id='{}' reply had no parseable "
                             + "```javascript fence (reply chars={})",
                     process.getId(), reply == null ? 0 : reply.length());
             state.setGeneratedCode(reply == null ? "" : reply);
@@ -116,17 +116,17 @@ public class DraftingPhase {
                             + "block — re-emit with proper fences.")
                     .build());
             state.setValidationErrors(errs);
-            return DeepThoughtStatus.VALIDATING;
+            return HactarStatus.VALIDATING;
         }
 
         state.setGeneratedCode(body);
         state.getValidationErrors().clear();
-        log.info("DeepThought.runDrafting id='{}' attempt {} drafted {} chars",
+        log.info("Hactar.runDrafting id='{}' attempt {} drafted {} chars",
                 process.getId(), state.getRecoveryCount() + 1, body.length());
-        return DeepThoughtStatus.VALIDATING;
+        return HactarStatus.VALIDATING;
     }
 
-    private static String buildUserMessage(DeepThoughtState state) {
+    private static String buildUserMessage(HactarState state) {
         StringBuilder sb = new StringBuilder();
         // Approved plan sketch (when FRAMING ran) comes first — gives
         // the DRAFTING LLM the structural anchor. On a DRAFTING

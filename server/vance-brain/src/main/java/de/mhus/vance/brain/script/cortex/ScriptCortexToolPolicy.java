@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>the executor — as the {@code ContextToolsApi} allow-set used
  *       when a Cortex-authored script runs, and</li>
- *   <li>Deep Thought — as the {@code engineParams.scriptAllowedTools}
+ *   <li>Hactar — as the {@code engineParams.scriptAllowedTools}
  *       list whose names land in the drafting/framing prompt's
  *       {@code toolInventory} block.</li>
  * </ul>

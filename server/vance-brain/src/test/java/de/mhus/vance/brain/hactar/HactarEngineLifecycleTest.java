@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.deepthought;
+package de.mhus.vance.brain.hactar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -13,8 +13,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.api.deepthought.DeepThoughtState;
-import de.mhus.vance.api.deepthought.DeepThoughtStatus;
+import de.mhus.vance.api.hactar.HactarState;
+import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.brain.ai.AiChat;
@@ -68,7 +68,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Lifecycle test — drives the {@link DeepThoughtEngine} through the
+ * Lifecycle test — drives the {@link HactarEngine} through the
  * full state machine (READY → DRAFTING → VALIDATING → DONE; optional
  * EXECUTING when {@code executeOnDone=true}) plus the recovery loop
  * (syntax-error → re-draft, up to {@code maxRecoveries}). Uses a
@@ -76,7 +76,7 @@ import tools.jackson.databind.json.JsonMapper;
  * {@link JsValidationService} so the parse-only check exercises the
  * same GraalJS parser as production.
  */
-class DeepThoughtEngineLifecycleTest {
+class HactarEngineLifecycleTest {
 
     private static Engine graalEngine;
     private static JsValidationService jsValidationService;
@@ -115,7 +115,7 @@ class DeepThoughtEngineLifecycleTest {
     private ScriptedChatModel chatModel;
     private ThinkEngineContext ctx;
 
-    private DeepThoughtEngine engine;
+    private HactarEngine engine;
 
     @BeforeEach
     void setUp() {
@@ -192,34 +192,34 @@ class DeepThoughtEngineLifecycleTest {
         // the phase logic is the bulk of what the lifecycle tests are
         // meant to validate, so we wire the production components and
         // mock only the leaf dependencies (LLM, scripts, IO).
-        de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer
+        de.mhus.vance.brain.hactar.phases.HactarContextRenderer
                 contextRenderer =
-                new de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer(
+                new de.mhus.vance.brain.hactar.phases.HactarContextRenderer(
                         toolDispatcher, documentService,
                         skillResolver, sessionService);
-        de.mhus.vance.brain.deepthought.phases.FramingPhase framingPhase =
-                new de.mhus.vance.brain.deepthought.phases.FramingPhase(
+        de.mhus.vance.brain.hactar.phases.FramingPhase framingPhase =
+                new de.mhus.vance.brain.hactar.phases.FramingPhase(
                         engineChatFactory, enginePromptResolver,
                         promptTemplateRenderer, llmCallTracker, contextRenderer);
-        de.mhus.vance.brain.deepthought.phases.ReviewingPhase reviewingPhase =
-                new de.mhus.vance.brain.deepthought.phases.ReviewingPhase(
+        de.mhus.vance.brain.hactar.phases.ReviewingPhase reviewingPhase =
+                new de.mhus.vance.brain.hactar.phases.ReviewingPhase(
                         thinkProcessService, recipeResolver, laneScheduler,
                         chatMessageService, thinkEngineServiceProvider);
-        de.mhus.vance.brain.deepthought.phases.DraftingPhase draftingPhase =
-                new de.mhus.vance.brain.deepthought.phases.DraftingPhase(
+        de.mhus.vance.brain.hactar.phases.DraftingPhase draftingPhase =
+                new de.mhus.vance.brain.hactar.phases.DraftingPhase(
                         engineChatFactory, enginePromptResolver,
                         promptTemplateRenderer, llmCallTracker, contextRenderer);
-        de.mhus.vance.brain.deepthought.phases.ValidatingPhase validatingPhase =
-                new de.mhus.vance.brain.deepthought.phases.ValidatingPhase(
+        de.mhus.vance.brain.hactar.phases.ValidatingPhase validatingPhase =
+                new de.mhus.vance.brain.hactar.phases.ValidatingPhase(
                         jsValidationService);
-        de.mhus.vance.brain.deepthought.phases.ExecutingPhase executingPhase =
-                new de.mhus.vance.brain.deepthought.phases.ExecutingPhase(
+        de.mhus.vance.brain.hactar.phases.ExecutingPhase executingPhase =
+                new de.mhus.vance.brain.hactar.phases.ExecutingPhase(
                         scriptExecutor, toolDispatcher);
-        de.mhus.vance.brain.deepthought.phases.LoadingPhase loadingPhase =
-                new de.mhus.vance.brain.deepthought.phases.LoadingPhase(
+        de.mhus.vance.brain.hactar.phases.LoadingPhase loadingPhase =
+                new de.mhus.vance.brain.hactar.phases.LoadingPhase(
                         documentService);
 
-        engine = new DeepThoughtEngine(
+        engine = new HactarEngine(
                 thinkProcessService,
                 eventEmitter,
                 objectMapper,
@@ -239,8 +239,8 @@ class DeepThoughtEngineLifecycleTest {
 
         engine.start(process, ctx);
 
-        DeepThoughtState state = readState(process);
-        assertThat(state.getStatus()).isEqualTo(DeepThoughtStatus.READY);
+        HactarState state = readState(process);
+        assertThat(state.getStatus()).isEqualTo(HactarStatus.READY);
         assertThat(state.getGoal()).isEqualTo("write me a hello-script");
         assertThat(state.getMaxRecoveries()).isEqualTo(5);
         assertThat(state.isExecuteOnDone()).isFalse();
@@ -255,8 +255,8 @@ class DeepThoughtEngineLifecycleTest {
 
         int turns = drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getGeneratedCode())
                 .isEqualTo("(function () { return 42; })();");
         assertThat(finalState.getValidationErrors()).isEmpty();
@@ -282,8 +282,8 @@ class DeepThoughtEngineLifecycleTest {
 
         drainTurns(process, 20);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getRecoveryCount()).isEqualTo(1);
         assertThat(finalState.getGeneratedCode())
                 .isEqualTo("(function () { return 1 + 2; })();");
@@ -296,7 +296,7 @@ class DeepThoughtEngineLifecycleTest {
     void runTurns_recoveryExhausted_endsInFailed() {
         ThinkProcessDocument process = newProcess();
         // Tighten the budget so the test stays small.
-        process.getEngineParams().put(DeepThoughtEngine.MAX_RECOVERIES_KEY, 2);
+        process.getEngineParams().put(HactarEngine.MAX_RECOVERIES_KEY, 2);
         engine.start(process, ctx);
         // Every draft is broken — recoveryCount climbs 0→1→2 and the
         // engine bails into FAILED.
@@ -307,8 +307,8 @@ class DeepThoughtEngineLifecycleTest {
 
         drainTurns(process, 30);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.FAILED);
         assertThat(finalState.getRecoveryCount()).isEqualTo(2);
         assertThat(finalState.getFailureReason())
                 .contains("Exceeded maxRecoveries");
@@ -329,8 +329,8 @@ class DeepThoughtEngineLifecycleTest {
 
         drainTurns(process, 20);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getRecoveryCount()).isEqualTo(1);
     }
 
@@ -341,14 +341,14 @@ class DeepThoughtEngineLifecycleTest {
                         java.time.Duration.ofMillis(42)));
 
         ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+        process.getEngineParams().put(HactarEngine.EXECUTE_ON_DONE_KEY, true);
         engine.start(process, ctx);
         chatModel.script("```javascript\n(function () { return 'hello, world'; })();\n```");
 
         int turns = drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getExecutionResult()).isEqualTo("hello, world");
         assertThat(finalState.getExecutionDurationMs()).isEqualTo(42L);
         assertThat(finalState.getExecutionError()).isNull();
@@ -368,14 +368,14 @@ class DeepThoughtEngineLifecycleTest {
                         "Script exceeded its @timeout"));
 
         ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+        process.getEngineParams().put(HactarEngine.EXECUTE_ON_DONE_KEY, true);
         engine.start(process, ctx);
         chatModel.script("```javascript\n(function () { while (true) {} })();\n```");
 
         drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.FAILED);
         assertThat(finalState.getExecutionError())
                 .contains("Script exceeded its @timeout");
         assertThat(finalState.getExecutionErrorClass()).isEqualTo("TIMEOUT");
@@ -397,12 +397,12 @@ class DeepThoughtEngineLifecycleTest {
 
         ThinkProcessDocument process = newProcess();
         process.setRecipeName("script-developer");
-        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+        process.getEngineParams().put(HactarEngine.EXECUTE_ON_DONE_KEY, true);
         process.getEngineParams().put(
-                DeepThoughtEngine.SCRIPT_ARGS_KEY,
+                HactarEngine.SCRIPT_ARGS_KEY,
                 Map.of("a", 3, "b", 4));
         process.getEngineParams().put(
-                DeepThoughtEngine.SCRIPT_ALLOWED_TOOLS_KEY,
+                HactarEngine.SCRIPT_ALLOWED_TOOLS_KEY,
                 List.of("doc_write_text"));
         engine.start(process, ctx);
         chatModel.script("```javascript\n(function () { return args.a + args.b; })();\n```");
@@ -472,7 +472,7 @@ class DeepThoughtEngineLifecycleTest {
 
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(
-                DeepThoughtEngine.SCRIPT_ALLOWED_TOOLS_KEY,
+                HactarEngine.SCRIPT_ALLOWED_TOOLS_KEY,
                 List.of("doc_write_text", "process_run"));
         engine.start(process, ctx);
         chatModel.script("```javascript\n(function () { return 1; })();\n```");
@@ -515,7 +515,7 @@ class DeepThoughtEngineLifecycleTest {
 
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(
-                DeepThoughtEngine.MANUAL_PATHS_KEY,
+                HactarEngine.MANUAL_PATHS_KEY,
                 List.of("manuals/"));
         engine.start(process, ctx);
         chatModel.script("```javascript\n(function () { return 1; })();\n```");
@@ -547,7 +547,7 @@ class DeepThoughtEngineLifecycleTest {
 
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(
-                DeepThoughtEngine.MANUAL_PATHS_KEY,
+                HactarEngine.MANUAL_PATHS_KEY,
                 List.of("manuals"));
         engine.start(process, ctx);
         chatModel.script("```javascript\n(function () { return 1; })();\n```");
@@ -706,13 +706,13 @@ class DeepThoughtEngineLifecycleTest {
 
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(
-                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/hello.js");
+                HactarEngine.SCRIPT_PATH_KEY, "scripts/hello.js");
         engine.start(process, ctx);
 
         int turns = drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getScriptPath()).isEqualTo("scripts/hello.js");
         assertThat(finalState.getGeneratedCode()).isEqualTo(loaded);
         // No drafting attempts.
@@ -739,14 +739,14 @@ class DeepThoughtEngineLifecycleTest {
         process.setSessionId("sess-1");
         process.setEngineParams(new LinkedHashMap<>());
         process.getEngineParams().put(
-                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/x.js");
+                HactarEngine.SCRIPT_PATH_KEY, "scripts/x.js");
         // process.goal stays null; engineParams.goal absent.
 
         engine.start(process, ctx);
         drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getGeneratedCode()).contains("return 1");
     }
 
@@ -763,13 +763,13 @@ class DeepThoughtEngineLifecycleTest {
 
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(
-                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/broken.js");
+                HactarEngine.SCRIPT_PATH_KEY, "scripts/broken.js");
         engine.start(process, ctx);
 
         drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.FAILED);
         assertThat(finalState.getValidationErrors()).isNotEmpty();
         assertThat(finalState.getFailureReason())
                 .contains("Exceeded maxRecoveries");
@@ -786,13 +786,13 @@ class DeepThoughtEngineLifecycleTest {
 
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(
-                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/missing.js");
+                HactarEngine.SCRIPT_PATH_KEY, "scripts/missing.js");
         engine.start(process, ctx);
 
         drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.FAILED);
         assertThat(finalState.getFailureReason())
                 .contains("Script document not found")
                 .contains("scripts/missing.js");
@@ -813,14 +813,14 @@ class DeepThoughtEngineLifecycleTest {
 
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(
-                DeepThoughtEngine.SCRIPT_PATH_KEY, "scripts/run-me.js");
-        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+                HactarEngine.SCRIPT_PATH_KEY, "scripts/run-me.js");
+        process.getEngineParams().put(HactarEngine.EXECUTE_ON_DONE_KEY, true);
         engine.start(process, ctx);
 
         int turns = drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getExecutionResult()).isEqualTo("done");
         // READY → LOADING → VALIDATING → EXECUTING → DONE = 4.
         assertThat(turns).isEqualTo(4);
@@ -835,7 +835,7 @@ class DeepThoughtEngineLifecycleTest {
         // skipped and the engine flows straight into DRAFTING with
         // the plan sketch in the prompt.
         ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        process.getEngineParams().put(HactarEngine.FRAMING_ENABLED_KEY, true);
         engine.start(process, ctx);
         // Two scripted LLM replies: framing sketch + drafting body.
         chatModel.script(
@@ -844,8 +844,8 @@ class DeepThoughtEngineLifecycleTest {
 
         int turns = drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getPlanSketch())
                 .contains("Goal recap")
                 .contains("Write a hello-world script");
@@ -865,9 +865,9 @@ class DeepThoughtEngineLifecycleTest {
         configureApprovingReviewer("script-developer-reviewer");
 
         ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        process.getEngineParams().put(HactarEngine.FRAMING_ENABLED_KEY, true);
         process.getEngineParams().put(
-                DeepThoughtEngine.REVIEWER_RECIPE_KEY,
+                HactarEngine.REVIEWER_RECIPE_KEY,
                 "script-developer-reviewer");
         engine.start(process, ctx);
         // Only ONE LLM reply is consumed by the engine here (FRAMING).
@@ -879,8 +879,8 @@ class DeepThoughtEngineLifecycleTest {
 
         drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getReviewerVerdict()).isEqualTo("APPROVED");
         assertThat(finalState.getFramingRecoveryCount()).isZero();
         // The DRAFTING user message must have included the plan sketch.
@@ -907,9 +907,9 @@ class DeepThoughtEngineLifecycleTest {
         });
 
         ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        process.getEngineParams().put(HactarEngine.FRAMING_ENABLED_KEY, true);
         process.getEngineParams().put(
-                DeepThoughtEngine.REVIEWER_RECIPE_KEY,
+                HactarEngine.REVIEWER_RECIPE_KEY,
                 "script-developer-reviewer");
         engine.start(process, ctx);
         // Three LLM replies needed: FRAMING #1, FRAMING #2 (recovery),
@@ -922,8 +922,8 @@ class DeepThoughtEngineLifecycleTest {
 
         drainTurns(process, 20);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getReviewerVerdict()).isEqualTo("APPROVED");
         assertThat(finalState.getFramingRecoveryCount()).isEqualTo(1);
         assertThat(reviewerCalls.get()).isEqualTo(2);
@@ -937,12 +937,12 @@ class DeepThoughtEngineLifecycleTest {
                 "VERDICT: REJECTED\nStill broken.");
 
         ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        process.getEngineParams().put(HactarEngine.FRAMING_ENABLED_KEY, true);
         process.getEngineParams().put(
-                DeepThoughtEngine.REVIEWER_RECIPE_KEY,
+                HactarEngine.REVIEWER_RECIPE_KEY,
                 "script-developer-reviewer");
         process.getEngineParams().put(
-                DeepThoughtEngine.MAX_FRAMING_RECOVERIES_KEY, 2);
+                HactarEngine.MAX_FRAMING_RECOVERIES_KEY, 2);
         engine.start(process, ctx);
         // Two FRAMING attempts before the budget is exhausted; we
         // queue three plan-sketches in case the loop overshoots.
@@ -953,8 +953,8 @@ class DeepThoughtEngineLifecycleTest {
 
         drainTurns(process, 20);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.FAILED);
         assertThat(finalState.getFramingRecoveryCount()).isEqualTo(2);
         assertThat(finalState.getFailureReason())
                 .contains("Exceeded maxFramingRecoveries")
@@ -972,9 +972,9 @@ class DeepThoughtEngineLifecycleTest {
                         "missing-reviewer"));
 
         ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.FRAMING_ENABLED_KEY, true);
+        process.getEngineParams().put(HactarEngine.FRAMING_ENABLED_KEY, true);
         process.getEngineParams().put(
-                DeepThoughtEngine.REVIEWER_RECIPE_KEY, "missing-reviewer");
+                HactarEngine.REVIEWER_RECIPE_KEY, "missing-reviewer");
         engine.start(process, ctx);
         chatModel.script(
                 "## Goal recap\nReturn 1.",
@@ -982,8 +982,8 @@ class DeepThoughtEngineLifecycleTest {
 
         drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getReviewerVerdict()).isEqualTo("SKIPPED");
         assertThat(finalState.getReviewerNotes())
                 .contains("missing-reviewer")
@@ -1000,8 +1000,8 @@ class DeepThoughtEngineLifecycleTest {
 
         drainTurns(process, 10);
 
-        DeepThoughtState finalState = readState(process);
-        assertThat(finalState.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        HactarState finalState = readState(process);
+        assertThat(finalState.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(finalState.getPlanSketch()).isNull();
         assertThat(finalState.getReviewerVerdict()).isNull();
         assertThat(finalState.getFramingRecoveryCount()).isZero();
@@ -1099,12 +1099,12 @@ class DeepThoughtEngineLifecycleTest {
         chatModel.script("```javascript\n(function () { return 1; })();\n```");
         drainTurns(process, 10);
 
-        DeepThoughtState before = readState(process);
+        HactarState before = readState(process);
         engine.runTurn(process, ctx);
         engine.runTurn(process, ctx);
-        DeepThoughtState after = readState(process);
+        HactarState after = readState(process);
 
-        assertThat(after.getStatus()).isEqualTo(DeepThoughtStatus.DONE);
+        assertThat(after.getStatus()).isEqualTo(HactarStatus.DONE);
         assertThat(after.getGeneratedCode()).isEqualTo(before.getGeneratedCode());
         // No extra LLM calls after DONE — chatModel queue stays at 0.
         assertThat(chatModel.remaining()).isZero();
@@ -1114,8 +1114,8 @@ class DeepThoughtEngineLifecycleTest {
     void terminalFailedStateIsIdempotent() {
         ThinkProcessDocument process = newProcess();
         engine.start(process, ctx);
-        DeepThoughtState s = readState(process);
-        s.setStatus(DeepThoughtStatus.FAILED);
+        HactarState s = readState(process);
+        s.setStatus(HactarStatus.FAILED);
         s.setFailureReason("test-induced");
         engine.persistState(process, s);
         reset(eventEmitter);
@@ -1123,8 +1123,8 @@ class DeepThoughtEngineLifecycleTest {
         engine.runTurn(process, ctx);
         engine.runTurn(process, ctx);
 
-        DeepThoughtState after = readState(process);
-        assertThat(after.getStatus()).isEqualTo(DeepThoughtStatus.FAILED);
+        HactarState after = readState(process);
+        assertThat(after.getStatus()).isEqualTo(HactarStatus.FAILED);
         verify(thinkProcessService, atLeastOnce())
                 .closeProcess(eq(process.getId()), eq(CloseReason.STALE));
         verify(eventEmitter, times(0)).scheduleTurn(anyString());
@@ -1155,7 +1155,7 @@ class DeepThoughtEngineLifecycleTest {
                         java.time.Duration.ofMillis(11)));
 
         ThinkProcessDocument process = newProcess();
-        process.getEngineParams().put(DeepThoughtEngine.EXECUTE_ON_DONE_KEY, true);
+        process.getEngineParams().put(HactarEngine.EXECUTE_ON_DONE_KEY, true);
         engine.start(process, ctx);
         chatModel.script("```javascript\n(function () { return {ok:true,sum:7}; })();\n```");
         drainTurns(process, 10);
@@ -1195,8 +1195,8 @@ class DeepThoughtEngineLifecycleTest {
     void summarizeForParent_onFailed_carriesFailureReason() {
         ThinkProcessDocument process = newProcess();
         engine.start(process, ctx);
-        DeepThoughtState s = readState(process);
-        s.setStatus(DeepThoughtStatus.FAILED);
+        HactarState s = readState(process);
+        s.setStatus(HactarStatus.FAILED);
         s.setFailureReason("LLM returned 451");
         engine.persistState(process, s);
 
@@ -1210,7 +1210,7 @@ class DeepThoughtEngineLifecycleTest {
 
     private int drainTurns(ThinkProcessDocument process, int cap) {
         for (int i = 0; i < cap; i++) {
-            DeepThoughtState before = readState(process);
+            HactarState before = readState(process);
             if (isTerminal(before.getStatus())) {
                 engine.runTurn(process, ctx);
                 return i;
@@ -1220,15 +1220,15 @@ class DeepThoughtEngineLifecycleTest {
         throw new AssertionError("turn cap exceeded — possible infinite loop");
     }
 
-    private static boolean isTerminal(DeepThoughtStatus s) {
-        return s == DeepThoughtStatus.DONE || s == DeepThoughtStatus.FAILED;
+    private static boolean isTerminal(HactarStatus s) {
+        return s == HactarStatus.DONE || s == HactarStatus.FAILED;
     }
 
-    private DeepThoughtState readState(ThinkProcessDocument process) {
+    private HactarState readState(ThinkProcessDocument process) {
         Map<String, Object> p = process.getEngineParams();
-        Object raw = p == null ? null : p.get(DeepThoughtEngine.STATE_KEY);
-        if (raw == null) return DeepThoughtState.builder().build();
-        return objectMapper.convertValue(raw, DeepThoughtState.class);
+        Object raw = p == null ? null : p.get(HactarEngine.STATE_KEY);
+        if (raw == null) return HactarState.builder().build();
+        return objectMapper.convertValue(raw, HactarState.class);
     }
 
     private static ThinkProcessDocument newProcess() {

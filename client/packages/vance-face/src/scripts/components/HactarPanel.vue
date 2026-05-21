@@ -134,7 +134,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <VModal v-model="visible" title="DeepThought · generate / improve script" :close-on-backdrop="false" @update:model-value="(v: boolean) => !v && close()">
+  <VModal v-model="visible" title="Hactar · generate / improve script" :close-on-backdrop="false" @update:model-value="(v: boolean) => !v && close()">
     <div class="space-y-3 p-1">
       <div v-if="!result || !result.code">
         <label class="label">
@@ -157,7 +157,7 @@ onBeforeUnmount(() => {
 
         <div class="flex items-center gap-2 mt-3">
           <VButton variant="primary" :loading="busy" @click="start">Generate</VButton>
-          <span v-if="polling" class="text-sm opacity-70">Deep Thought is thinking…</span>
+          <span v-if="polling" class="text-sm opacity-70">Hactar is thinking…</span>
           <span v-if="result?.status" class="text-sm font-mono opacity-70">
             {{ result.status }}<span v-if="result.reason"> / {{ result.reason }}</span>
           </span>

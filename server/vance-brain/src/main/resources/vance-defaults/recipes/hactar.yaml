@@ -1,5 +1,5 @@
 description: |
-  Deep Thought engine default — script-architect. Takes a high-level
+  Hactar engine default — script-architect. Takes a high-level
   goal, drafts a JavaScript orchestrator script (one IIFE), validates
   it parse-only, recovers on syntax errors up to maxRecoveries (5),
   and returns the accepted script as a fenced code block in
@@ -11,8 +11,8 @@ description: |
                             until Script Cortex lands)
     maxRecoveries: int    — default 5
     promptDocument: path  — override for the DRAFTING system prompt
-                            (default: prompts/deepthought-drafting.md)
-engine: deepthought
+                            (default: prompts/hactar-drafting.md)
+engine: hactar
 params:
   manualPaths:
     - manuals/

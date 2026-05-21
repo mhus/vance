@@ -90,7 +90,7 @@ public record ScriptRequest(
 
     /**
      * Convenience constructor for callers that supply a recipe name but
-     * want the default {@link ScopeLevel#PROCESS_SCOPED}. Deep Thought's
+     * want the default {@link ScopeLevel#PROCESS_SCOPED}. Hactar's
      * ExecutingPhase is the original 7-argument client.
      */
     public ScriptRequest(

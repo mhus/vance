@@ -1,9 +1,9 @@
-package de.mhus.vance.brain.deepthought.phases;
+package de.mhus.vance.brain.hactar.phases;
 
-import static de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer.paramString;
+import static de.mhus.vance.brain.hactar.phases.HactarContextRenderer.paramString;
 
-import de.mhus.vance.api.deepthought.DeepThoughtState;
-import de.mhus.vance.api.deepthought.DeepThoughtStatus;
+import de.mhus.vance.api.hactar.HactarState;
+import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
@@ -41,11 +41,11 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class FramingPhase {
 
-    public static final String ENGINE_NAME = "deepthought";
+    public static final String ENGINE_NAME = "hactar";
 
-    private static final String FRAMING_PROMPT_PATH = "prompts/deepthought-framing.md";
+    private static final String FRAMING_PROMPT_PATH = "prompts/hactar-framing.md";
     private static final String FRAMING_FALLBACK_PROMPT =
-            "You are the FRAMING node of Deep Thought. Write a "
+            "You are the FRAMING node of Hactar. Write a "
                     + "structured plan sketch for a JavaScript orchestrator "
                     + "script that fulfils the goal: {{ goal }}. Do not "
                     + "write code yet — just the plan.";
@@ -54,10 +54,10 @@ public class FramingPhase {
     private final EnginePromptResolver enginePromptResolver;
     private final PromptTemplateRenderer promptTemplateRenderer;
     private final LlmCallTracker llmCallTracker;
-    private final DeepThoughtContextRenderer contextRenderer;
+    private final HactarContextRenderer contextRenderer;
 
-    public DeepThoughtStatus execute(
-            DeepThoughtState state,
+    public HactarStatus execute(
+            HactarState state,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
         EngineChatFactory.EngineChatBundle bundle =
@@ -102,15 +102,15 @@ public class FramingPhase {
         if (reply == null || reply.isBlank()) {
             state.setFailureReason(
                     "FRAMING returned an empty reply from the LLM");
-            return DeepThoughtStatus.FAILED;
+            return HactarStatus.FAILED;
         }
         state.setPlanSketch(reply.trim());
         // Clear the previous reviewer fields — REVIEWING repopulates.
         state.setReviewerVerdict(null);
         state.setReviewerNotes(null);
-        log.info("DeepThought.runFraming id='{}' attempt {} produced {} chars",
+        log.info("Hactar.runFraming id='{}' attempt {} produced {} chars",
                 process.getId(), state.getFramingRecoveryCount() + 1,
                 reply.length());
-        return DeepThoughtStatus.REVIEWING;
+        return HactarStatus.REVIEWING;
     }
 }

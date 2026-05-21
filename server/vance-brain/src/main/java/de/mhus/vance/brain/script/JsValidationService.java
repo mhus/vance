@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Parse-only JavaScript validator. Wraps the GraalJS parser without
- * evaluating any script body — used by Deep Thought's VALIDATING
+ * evaluating any script body — used by Hactar's VALIDATING
  * phase and by the (planned) Script Cortex "Validate" button.
  *
  * <p>The check exercises just the parser: a successful return means
@@ -35,7 +35,7 @@ import org.springframework.stereotype.Service;
  *
  * <p>See {@code specification/script-engine.md} §3.5 for the
  * surrounding header-aware validation pipeline, and
- * {@code planning/deepthought-engine.md} for how the result feeds
+ * {@code planning/hactar-engine.md} for how the result feeds
  * the DRAFTING-recovery loop.
  */
 @Service
@@ -58,7 +58,7 @@ public class JsValidationService {
 
     /** Legacy single-arg ctor for unit tests that construct the
      *  service directly (e.g. {@code JsValidationServiceTest},
-     *  {@code DeepThoughtEngineLifecycleTest}). Uses a permissive
+     *  {@code HactarEngineLifecycleTest}). Uses a permissive
      *  {@link HostAccess#ALL} — parse-only never invokes a host call
      *  so the actual permission set is irrelevant. */
     public JsValidationService(Engine engine) {

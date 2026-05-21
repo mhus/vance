@@ -2,7 +2,7 @@
 
 Werkbank für kurze JavaScript-Snippets, die in der GraalJS-Sandbox des
 Brains laufen. Geeignet für einmalige Berechnungen, Debug-Skripte zum
-Wegwerfen und die Orchestrator-Scripte aus Deep Thought.
+Wegwerfen und die Orchestrator-Scripte aus Hactar.
 
 ## Dateien
 
@@ -122,9 +122,9 @@ Der Execute-Dialog fragt nach einem `args`-JSON-Objekt (Default `{}`).
 - Output über 10 000 Zeilen wird ring-truncated; die ältesten Zeilen
   fallen zuerst raus.
 
-## Generieren / Verbessern (Deep Thought)
+## Generieren / Verbessern (Hactar)
 
-Der **🧠 DeepThought**-Button öffnet einen Prompt-Panel. Eintippen
+Der **🧠 Hactar**-Button öffnet einen Prompt-Panel. Eintippen
 was das Script machen soll, **Generate** klicken. Das Brain spawnt
 einen Deep-Thought-Prozess, der den Code draftet und validiert; bei
 `DONE` kannst du das Ergebnis in den aktiven Tab übernehmen.
@@ -143,7 +143,7 @@ var docs = vance.tools.call('documents_list', { projectId: vance.context.project
 console.log('docs:', docs);
 ```
 
-Die DeepThought-Generierung bekommt dieselbe Tool-Liste in den
+Die Hactar-Generierung bekommt dieselbe Tool-Liste in den
 Drafting-Prompt eingespeist — das LLM weiß also welche Tool-Namen es
 mit korrekten Signaturen aufrufen darf. Per-Tool-Permissions werden
 zur Laufzeit im Tool-Handler durchgesetzt (kein Tenant-Escalation

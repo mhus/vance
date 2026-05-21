@@ -1,9 +1,9 @@
-package de.mhus.vance.brain.deepthought.phases;
+package de.mhus.vance.brain.hactar.phases;
 
-import static de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer.scriptAllowedTools;
+import static de.mhus.vance.brain.hactar.phases.HactarContextRenderer.scriptAllowedTools;
 
-import de.mhus.vance.api.deepthought.DeepThoughtState;
-import de.mhus.vance.api.deepthought.DeepThoughtStatus;
+import de.mhus.vance.api.hactar.HactarState;
+import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.brain.script.ScriptExecutionException;
 import de.mhus.vance.brain.script.ScriptExecutor;
 import de.mhus.vance.brain.script.ScriptRequest;
@@ -49,8 +49,8 @@ public class ExecutingPhase {
     private final ScriptExecutor scriptExecutor;
     private final ToolDispatcher toolDispatcher;
 
-    public DeepThoughtStatus execute(
-            DeepThoughtState state,
+    public HactarStatus execute(
+            HactarState state,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
         String code = state.getGeneratedCode();
@@ -58,7 +58,7 @@ public class ExecutingPhase {
             state.setFailureReason(
                     "EXECUTING entered with empty generatedCode — "
                             + "DRAFTING/VALIDATING must run first");
-            return DeepThoughtStatus.FAILED;
+            return HactarStatus.FAILED;
         }
 
         ToolInvocationContext scope = new ToolInvocationContext(
@@ -79,26 +79,26 @@ public class ExecutingPhase {
             // tenant/project/session/process/user fields.
             ScriptResult result = scriptExecutor.run(
                     new ScriptRequest(
-                            "js", code, "deepthought:" + process.getId(),
+                            "js", code, "hactar:" + process.getId(),
                             tools, timeout, bindings, process.getRecipeName()));
             state.setExecutionResult(result.value());
             state.setExecutionDurationMs(result.duration().toMillis());
             state.setExecutionError(null);
             state.setExecutionErrorClass(null);
-            log.info("DeepThought.runExecuting id='{}' OK — duration={}ms, valueClass={}",
+            log.info("Hactar.runExecuting id='{}' OK — duration={}ms, valueClass={}",
                     process.getId(), result.duration().toMillis(),
                     result.value() == null ? "null"
                             : result.value().getClass().getSimpleName());
-            return DeepThoughtStatus.DONE;
+            return HactarStatus.DONE;
         } catch (ScriptExecutionException e) {
             state.setExecutionError(e.getMessage());
             state.setExecutionErrorClass(e.errorClass().name());
             state.setExecutionResult(null);
             state.setFailureReason("Script execution failed ("
                     + e.errorClass().name() + "): " + e.getMessage());
-            log.warn("DeepThought.runExecuting id='{}' FAIL class={} msg={}",
+            log.warn("Hactar.runExecuting id='{}' FAIL class={} msg={}",
                     process.getId(), e.errorClass(), e.getMessage());
-            return DeepThoughtStatus.FAILED;
+            return HactarStatus.FAILED;
         }
     }
 

@@ -1,16 +1,16 @@
-package de.mhus.vance.brain.deepthought;
+package de.mhus.vance.brain.hactar;
 
-import de.mhus.vance.api.deepthought.DeepThoughtState;
-import de.mhus.vance.api.deepthought.DeepThoughtStatus;
+import de.mhus.vance.api.hactar.HactarState;
+import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
-import de.mhus.vance.brain.deepthought.phases.DraftingPhase;
-import de.mhus.vance.brain.deepthought.phases.ExecutingPhase;
-import de.mhus.vance.brain.deepthought.phases.FramingPhase;
-import de.mhus.vance.brain.deepthought.phases.LoadingPhase;
-import de.mhus.vance.brain.deepthought.phases.ReviewingPhase;
-import de.mhus.vance.brain.deepthought.phases.ValidatingPhase;
+import de.mhus.vance.brain.hactar.phases.DraftingPhase;
+import de.mhus.vance.brain.hactar.phases.ExecutingPhase;
+import de.mhus.vance.brain.hactar.phases.FramingPhase;
+import de.mhus.vance.brain.hactar.phases.LoadingPhase;
+import de.mhus.vance.brain.hactar.phases.ReviewingPhase;
+import de.mhus.vance.brain.hactar.phases.ValidatingPhase;
 import de.mhus.vance.brain.thinkengine.ParentReport;
 import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
@@ -28,12 +28,12 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Deep Thought — script-architect engine. Reads a goal, drafts a
+ * Hactar — script-architect engine. Reads a goal, drafts a
  * JavaScript body, validates it parse-only, recovers on syntax errors
- * up to {@link DeepThoughtState#getMaxRecoveries()} times, and
+ * up to {@link HactarState#getMaxRecoveries()} times, and
  * (optionally) hands off to an in-engine script runner.
  *
- * <p>The accepted script lives in {@code DeepThoughtState.generatedCode}
+ * <p>The accepted script lives in {@code HactarState.generatedCode}
  * — there is no separate persistence to a project document. Parents
  * read the final code through {@code summarizeForParent}.
  *
@@ -53,20 +53,20 @@ import tools.jackson.databind.ObjectMapper;
  * </pre>
  *
  * <p>Phase implementations live as separate Spring components under
- * {@code de.mhus.vance.brain.deepthought.phases} — engine is a thin
+ * {@code de.mhus.vance.brain.hactar.phases} — engine is a thin
  * dispatcher that loads state, picks the next phase, and persists
  * the result.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class DeepThoughtEngine implements ThinkEngine {
+public class HactarEngine implements ThinkEngine {
 
-    public static final String NAME = "deepthought";
+    public static final String NAME = "hactar";
     public static final String VERSION = "0.1.0";
 
     /** Set on {@code engineParams[STATE_KEY]} as the persisted
-     *  {@link DeepThoughtState} for this process. */
+     *  {@link HactarState} for this process. */
     public static final String STATE_KEY = "deepThoughtState";
 
     /** {@code engineParams[GOAL_KEY]} — optional override; falls back
@@ -97,16 +97,16 @@ public class DeepThoughtEngine implements ThinkEngine {
     // re-exported here so external callers (Eddie, recipe authors)
     // discover them through the engine class:
     public static final String SCRIPT_ALLOWED_TOOLS_KEY =
-            de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer
+            de.mhus.vance.brain.hactar.phases.HactarContextRenderer
                     .SCRIPT_ALLOWED_TOOLS_KEY;
     public static final String MANUAL_PATHS_KEY =
-            de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer
+            de.mhus.vance.brain.hactar.phases.HactarContextRenderer
                     .MANUAL_PATHS_KEY;
     public static final String SCRIPT_ARGS_KEY = ExecutingPhase.SCRIPT_ARGS_KEY;
     public static final String EXECUTION_TIMEOUT_KEY = ExecutingPhase.EXECUTION_TIMEOUT_KEY;
     public static final String REVIEWER_RECIPE_KEY = ReviewingPhase.REVIEWER_RECIPE_KEY;
     public static final String SCRIPT_ARCHITECT_TAG =
-            de.mhus.vance.brain.deepthought.phases.DeepThoughtContextRenderer
+            de.mhus.vance.brain.hactar.phases.HactarContextRenderer
                     .SCRIPT_ARCHITECT_TAG;
 
     private final ThinkProcessService thinkProcessService;
@@ -128,7 +128,7 @@ public class DeepThoughtEngine implements ThinkEngine {
 
     @Override
     public String title() {
-        return "Deep Thought (Script Architect)";
+        return "Hactar (Script Architect)";
     }
 
     @Override
@@ -161,9 +161,9 @@ public class DeepThoughtEngine implements ThinkEngine {
 
     @Override
     public void start(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        DeepThoughtState state = buildInitialState(process);
+        HactarState state = buildInitialState(process);
         persistState(process, state);
-        log.info("DeepThought.start tenant='{}' session='{}' id='{}' "
+        log.info("Hactar.start tenant='{}' session='{}' id='{}' "
                         + "mode={} framingEnabled={} executeOnDone={} maxRecoveries={}",
                 process.getTenantId(), process.getSessionId(), process.getId(),
                 state.getScriptPath() != null ? "load:" + state.getScriptPath() : "generate",
@@ -175,7 +175,7 @@ public class DeepThoughtEngine implements ThinkEngine {
 
     @Override
     public void resume(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.debug("DeepThought.resume id='{}'", process.getId());
+        log.debug("Hactar.resume id='{}'", process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
         eventEmitter.scheduleTurn(process.getId());
     }
@@ -193,7 +193,7 @@ public class DeepThoughtEngine implements ThinkEngine {
 
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        log.info("DeepThought.stop id='{}'", process.getId());
+        log.info("Hactar.stop id='{}'", process.getId());
         thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
     }
 
@@ -201,15 +201,15 @@ public class DeepThoughtEngine implements ThinkEngine {
 
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        DeepThoughtState state = loadState(process);
+        HactarState state = loadState(process);
 
         // Terminal-status short-circuit — queued runTurns must not
         // re-fire DONE/FAILED transitions.
-        if (state.getStatus() == DeepThoughtStatus.DONE) {
+        if (state.getStatus() == HactarStatus.DONE) {
             thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
             return;
         }
-        if (state.getStatus() == DeepThoughtStatus.FAILED) {
+        if (state.getStatus() == HactarStatus.FAILED) {
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             return;
         }
@@ -221,22 +221,22 @@ public class DeepThoughtEngine implements ThinkEngine {
                 // consume the answers here.
             }
 
-            DeepThoughtStatus next = dispatch(process, ctx, state);
+            HactarStatus next = dispatch(process, ctx, state);
             state.setStatus(next);
             persistState(process, state);
 
-            if (next == DeepThoughtStatus.DONE) {
+            if (next == HactarStatus.DONE) {
                 thinkProcessService.closeProcess(process.getId(), CloseReason.DONE);
-            } else if (next == DeepThoughtStatus.FAILED) {
+            } else if (next == HactarStatus.FAILED) {
                 thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
             } else {
                 eventEmitter.scheduleTurn(process.getId());
                 thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
             }
         } catch (RuntimeException e) {
-            log.warn("DeepThought runTurn failed id='{}': {}",
+            log.warn("Hactar runTurn failed id='{}': {}",
                     process.getId(), e.toString(), e);
-            state.setStatus(DeepThoughtStatus.FAILED);
+            state.setStatus(HactarStatus.FAILED);
             state.setFailureReason("runTurn threw: " + e.getMessage());
             persistState(process, state);
             thinkProcessService.closeProcess(process.getId(), CloseReason.STALE);
@@ -249,10 +249,10 @@ public class DeepThoughtEngine implements ThinkEngine {
      * current status. Phase methods are responsible for mutating
      * {@code state}; this method returns the next status only.
      */
-    private DeepThoughtStatus dispatch(
+    private HactarStatus dispatch(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
-            DeepThoughtState state) {
+            HactarState state) {
         return switch (state.getStatus()) {
             case READY -> resolveInitialStatus(state);
             case LOADING -> loadingPhase.execute(state, process, ctx);
@@ -262,8 +262,8 @@ public class DeepThoughtEngine implements ThinkEngine {
             case VALIDATING -> validatingPhase.execute(state, process, ctx);
             case EXECUTING -> executingPhase.execute(state, process, ctx);
             // DONE/FAILED handled before dispatch; defensive fall-through.
-            case DONE -> DeepThoughtStatus.DONE;
-            case FAILED -> DeepThoughtStatus.FAILED;
+            case DONE -> HactarStatus.DONE;
+            case FAILED -> HactarStatus.FAILED;
         };
     }
 
@@ -274,12 +274,12 @@ public class DeepThoughtEngine implements ThinkEngine {
      * framingEnabled are set — the explicit script is what the caller
      * wants exercised, not a freshly generated one.
      */
-    private static DeepThoughtStatus resolveInitialStatus(DeepThoughtState state) {
+    private static HactarStatus resolveInitialStatus(HactarState state) {
         if (state.getScriptPath() != null && !state.getScriptPath().isBlank()) {
-            return DeepThoughtStatus.LOADING;
+            return HactarStatus.LOADING;
         }
-        if (state.isFramingEnabled()) return DeepThoughtStatus.FRAMING;
-        return DeepThoughtStatus.DRAFTING;
+        if (state.isFramingEnabled()) return HactarStatus.FRAMING;
+        return HactarStatus.DRAFTING;
     }
 
     // ──────────────────── summarizeForParent ────────────────────
@@ -287,11 +287,11 @@ public class DeepThoughtEngine implements ThinkEngine {
     @Override
     public ParentReport summarizeForParent(
             ThinkProcessDocument process, ProcessEventType eventType) {
-        DeepThoughtState state;
+        HactarState state;
         try {
             state = loadState(process);
         } catch (RuntimeException e) {
-            return ParentReport.of("DeepThought process " + process.getId()
+            return ParentReport.of("Hactar process " + process.getId()
                     + " status=" + eventType.name().toLowerCase());
         }
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -309,34 +309,34 @@ public class DeepThoughtEngine implements ThinkEngine {
             }
         }
 
-        if (state.getStatus() == DeepThoughtStatus.DONE
+        if (state.getStatus() == HactarStatus.DONE
                 && state.getGeneratedCode() != null) {
             if (state.isExecuteOnDone()) {
                 payload.put("executionResult", state.getExecutionResult());
                 return new ParentReport(
-                        "Deep Thought executed the generated script ("
+                        "Hactar executed the generated script ("
                                 + state.getGeneratedCode().length() + " chars, "
                                 + state.getExecutionDurationMs() + "ms). Return value:\n\n"
                                 + renderExecutionValue(state.getExecutionResult()),
                         payload);
             }
             return new ParentReport(
-                    "Deep Thought drafted a script (" + state.getGeneratedCode().length()
+                    "Hactar drafted a script (" + state.getGeneratedCode().length()
                             + " chars, " + state.getRecoveryCount()
                             + " recovery attempt(s)):\n\n```javascript\n"
                             + state.getGeneratedCode()
                             + "\n```\n",
                     payload);
         }
-        if (state.getStatus() == DeepThoughtStatus.FAILED) {
+        if (state.getStatus() == HactarStatus.FAILED) {
             return new ParentReport(
-                    "Deep Thought failed: "
+                    "Hactar failed: "
                             + (state.getFailureReason() == null
                                     ? "unknown reason" : state.getFailureReason()),
                     payload);
         }
         return new ParentReport(
-                "Deep Thought in progress — phase="
+                "Hactar in progress — phase="
                         + (state.getStatus() == null ? "?" : state.getStatus().name())
                         + ", recoveries=" + state.getRecoveryCount(),
                 payload);
@@ -355,7 +355,7 @@ public class DeepThoughtEngine implements ThinkEngine {
 
     // ──────────────────── State construction + persistence ────────────────────
 
-    DeepThoughtState buildInitialState(ThinkProcessDocument process) {
+    HactarState buildInitialState(ThinkProcessDocument process) {
         Map<String, Object> p = process.getEngineParams() == null
                 ? new LinkedHashMap<>() : process.getEngineParams();
 
@@ -367,7 +367,7 @@ public class DeepThoughtEngine implements ThinkEngine {
         boolean loadMode = scriptPath != null;
         if (!loadMode && (goal == null || goal.isBlank())) {
             throw new IllegalStateException(
-                    "DeepThought.start requires either a goal or a "
+                    "Hactar.start requires either a goal or a "
                             + "scriptPath — neither is set on engineParams "
                             + "and process.goal is empty (id='"
                             + process.getId() + "')");
@@ -385,27 +385,27 @@ public class DeepThoughtEngine implements ThinkEngine {
         int maxFramingRecoveries = parseInt(p.get(MAX_FRAMING_RECOVERIES_KEY), 3);
         if (maxFramingRecoveries < 0) maxFramingRecoveries = 0;
 
-        return DeepThoughtState.builder()
+        return HactarState.builder()
                 .goal(goal)
                 .scriptPath(scriptPath)
                 .executeOnDone(executeOnDone)
                 .maxRecoveries(maxRecoveries)
                 .framingEnabled(framingEnabled)
                 .maxFramingRecoveries(maxFramingRecoveries)
-                .status(DeepThoughtStatus.READY)
+                .status(HactarStatus.READY)
                 .build();
     }
 
-    DeepThoughtState loadState(ThinkProcessDocument process) {
+    HactarState loadState(ThinkProcessDocument process) {
         Map<String, Object> p = process.getEngineParams();
-        if (p == null) return DeepThoughtState.builder().build();
+        if (p == null) return HactarState.builder().build();
         Object raw = p.get(STATE_KEY);
-        if (raw == null) return DeepThoughtState.builder().build();
-        return objectMapper.convertValue(raw, DeepThoughtState.class);
+        if (raw == null) return HactarState.builder().build();
+        return objectMapper.convertValue(raw, HactarState.class);
     }
 
     @SuppressWarnings("unchecked")
-    void persistState(ThinkProcessDocument process, DeepThoughtState state) {
+    void persistState(ThinkProcessDocument process, HactarState state) {
         Map<String, Object> p = process.getEngineParams() == null
                 ? new LinkedHashMap<>() : process.getEngineParams();
         Map<String, Object> serialized = objectMapper.convertValue(state, Map.class);

@@ -1,7 +1,7 @@
-package de.mhus.vance.brain.deepthought.phases;
+package de.mhus.vance.brain.hactar.phases;
 
-import de.mhus.vance.api.deepthought.DeepThoughtState;
-import de.mhus.vance.api.deepthought.DeepThoughtStatus;
+import de.mhus.vance.api.hactar.HactarState;
+import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
@@ -33,8 +33,8 @@ public class LoadingPhase {
 
     private final DocumentService documentService;
 
-    public DeepThoughtStatus execute(
-            DeepThoughtState state,
+    public HactarStatus execute(
+            HactarState state,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
         String path = state.getScriptPath();
@@ -42,31 +42,31 @@ public class LoadingPhase {
             state.setFailureReason(
                     "LOADING entered without a scriptPath — "
                             + "buildInitialState should have caught this");
-            return DeepThoughtStatus.FAILED;
+            return HactarStatus.FAILED;
         }
 
         Optional<LookupResult> hit = documentService.lookupCascade(
                 process.getTenantId(), process.getProjectId(), path);
         if (hit.isEmpty()) {
             state.setFailureReason("Script document not found: " + path);
-            log.warn("DeepThought.runLoading id='{}' document not found at '{}'",
+            log.warn("Hactar.runLoading id='{}' document not found at '{}'",
                     process.getId(), path);
-            return DeepThoughtStatus.FAILED;
+            return HactarStatus.FAILED;
         }
 
         String content = hit.get().content();
         if (content == null || content.isBlank()) {
             state.setFailureReason("Script document is empty: " + path);
-            log.warn("DeepThought.runLoading id='{}' document at '{}' is empty",
+            log.warn("Hactar.runLoading id='{}' document at '{}' is empty",
                     process.getId(), path);
-            return DeepThoughtStatus.FAILED;
+            return HactarStatus.FAILED;
         }
 
         state.setGeneratedCode(content);
-        log.info("DeepThought.runLoading id='{}' loaded {} chars from '{}' "
+        log.info("Hactar.runLoading id='{}' loaded {} chars from '{}' "
                         + "(source={})",
                 process.getId(), content.length(), path,
                 hit.get().source().name().toLowerCase());
-        return DeepThoughtStatus.VALIDATING;
+        return HactarStatus.VALIDATING;
     }
 }

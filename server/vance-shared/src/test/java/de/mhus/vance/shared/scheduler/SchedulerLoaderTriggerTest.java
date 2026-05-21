@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Focused tests for the scheduler's {@code recipe:} vs {@code workflow:}
- * exclusivity — the trigger-target discriminator added when Hactar
+ * exclusivity — the trigger-target discriminator added when Magrathea
  * workflows became a scheduler-spawnable target alongside recipes.
  */
 class SchedulerLoaderTriggerTest {

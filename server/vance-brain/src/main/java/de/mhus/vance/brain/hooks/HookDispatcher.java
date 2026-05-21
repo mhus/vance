@@ -49,9 +49,9 @@ public class HookDispatcher implements DisposableBean {
     private final EventLogService eventLogService;
     private final InboxItemService inboxService;
     private final SettingService settingService;
-    /** Optional — only injected when {@code vance.services.hactar=true}. */
+    /** Optional — only injected when {@code vance.services.magrathea=true}. */
     private final org.springframework.beans.factory.ObjectProvider<
-            de.mhus.vance.brain.hactar.HactarWorkflowService> workflowServiceProvider;
+            de.mhus.vance.brain.magrathea.MagratheaWorkflowService> workflowServiceProvider;
 
     private final HttpClient httpClient;
     private final ExecutorService runnerPool;
@@ -70,7 +70,7 @@ public class HookDispatcher implements DisposableBean {
             InboxItemService inboxService,
             SettingService settingService,
             org.springframework.beans.factory.ObjectProvider<
-                    de.mhus.vance.brain.hactar.HactarWorkflowService> workflowServiceProvider) {
+                    de.mhus.vance.brain.magrathea.MagratheaWorkflowService> workflowServiceProvider) {
         this.registry = registry;
         this.jsRunner = jsRunner;
         this.llmRunner = llmRunner;

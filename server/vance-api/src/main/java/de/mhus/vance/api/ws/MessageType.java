@@ -284,11 +284,11 @@ public final class MessageType {
     public static final String EXEC_LIST_SNAPSHOT = "exec-list-snapshot";
 
     /**
-     * Client → Brain: start a Hactar workflow run in the bound
+     * Client → Brain: start a Magrathea workflow run in the bound
      * session's project. Payload:
-     * {@link de.mhus.vance.api.hactar.HactarWorkflowStartRequest}
+     * {@link de.mhus.vance.api.magrathea.MagratheaWorkflowStartRequest}
      * (workflow name + optional params). Reply:
-     * {@link de.mhus.vance.api.hactar.HactarWorkflowStartResponse}
+     * {@link de.mhus.vance.api.magrathea.MagratheaWorkflowStartResponse}
      * carrying the new {@code workflowRunId}.
      *
      * <p>Symmetric to {@code POST .../workflows/{name}/start}.

@@ -8,7 +8,7 @@
  * <p>Layered design: parsing and validation happen in
  * {@code vance-shared} (one place, all triggers); the executor layer
  * here glues the resolved action onto the existing service stack
- * ({@code ThinkProcessService}, {@code HactarRunService},
+ * ({@code ThinkProcessService}, {@code MagratheaRunService},
  * {@code ScriptExecutor}, …).
  *
  * <p>Design rationale: {@code planning/trigger-actions.md} §5.3.

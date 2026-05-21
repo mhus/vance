@@ -2,7 +2,7 @@ package de.mhus.vance.brain.action;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.mhus.vance.brain.tools.hactar.WorkflowStartTool;
+import de.mhus.vance.brain.tools.magrathea.WorkflowStartTool;
 import de.mhus.vance.brain.tools.hooks.HookCreateTool;
 import de.mhus.vance.brain.tools.hooks.HookDeleteTool;
 import de.mhus.vance.brain.tools.hooks.HookUpdateTool;

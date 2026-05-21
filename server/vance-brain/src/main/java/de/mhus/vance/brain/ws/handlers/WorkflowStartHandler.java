@@ -1,15 +1,15 @@
 package de.mhus.vance.brain.ws.handlers;
 
-import de.mhus.vance.api.hactar.HactarWorkflowStartRequest;
-import de.mhus.vance.api.hactar.HactarWorkflowStartResponse;
+import de.mhus.vance.api.magrathea.MagratheaWorkflowStartRequest;
+import de.mhus.vance.api.magrathea.MagratheaWorkflowStartResponse;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
-import de.mhus.vance.brain.hactar.HactarWorkflowService;
+import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
-import de.mhus.vance.shared.hactar.HactarWorkflowParseException;
+import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import java.io.IOException;
@@ -27,7 +27,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Component
 @ConditionalOnProperty(
-        value = "vance.services.hactar",
+        value = "vance.services.magrathea",
         havingValue = "true",
         matchIfMissing = false)
 @RequiredArgsConstructor
@@ -36,7 +36,7 @@ public class WorkflowStartHandler implements WsHandler {
 
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
-    private final HactarWorkflowService workflowService;
+    private final MagratheaWorkflowService workflowService;
     private final RequestAuthority authority;
 
     @Override
@@ -47,9 +47,9 @@ public class WorkflowStartHandler implements WsHandler {
     @Override
     public void handle(ConnectionContext ctx, WebSocketSession wsSession, WebSocketEnvelope envelope)
             throws IOException {
-        HactarWorkflowStartRequest request;
+        MagratheaWorkflowStartRequest request;
         try {
-            request = objectMapper.convertValue(envelope.getData(), HactarWorkflowStartRequest.class);
+            request = objectMapper.convertValue(envelope.getData(), MagratheaWorkflowStartRequest.class);
         } catch (IllegalArgumentException e) {
             sender.sendError(wsSession, envelope, 400,
                     "Invalid workflow-start payload: " + e.getMessage());
@@ -80,10 +80,10 @@ public class WorkflowStartHandler implements WsHandler {
                     request.getName(),
                     request.getParams(),
                     startedBy);
-        } catch (HactarWorkflowService.HactarWorkflowException e) {
+        } catch (MagratheaWorkflowService.MagratheaWorkflowException e) {
             sender.sendError(wsSession, envelope, 404, e.getMessage());
             return;
-        } catch (HactarWorkflowParseException e) {
+        } catch (MagratheaWorkflowParseException e) {
             sender.sendError(wsSession, envelope, 400,
                     "Workflow YAML invalid: " + e.getMessage());
             return;
@@ -94,7 +94,7 @@ public class WorkflowStartHandler implements WsHandler {
             return;
         }
 
-        HactarWorkflowStartResponse response = HactarWorkflowStartResponse.builder()
+        MagratheaWorkflowStartResponse response = MagratheaWorkflowStartResponse.builder()
                 .workflowRunId(runId)
                 .workflowName(request.getName())
                 .build();

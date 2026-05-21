@@ -157,12 +157,12 @@ export * from './events/EventSource';
 export * from './events/EventSummary';
 export * from './events/EventTriggerResponse';
 
-export * from './hactar/HactarParameterDto';
-export * from './hactar/HactarProcessDto';
-export * from './hactar/HactarRunStatus';
-export * from './hactar/HactarWorkflowDto';
-export * from './hactar/HactarWorkflowSource';
-export * from './hactar/HactarWorkflowSummary';
+export * from './magrathea/MagratheaParameterDto';
+export * from './magrathea/MagratheaProcessDto';
+export * from './magrathea/MagratheaRunStatus';
+export * from './magrathea/MagratheaWorkflowDto';
+export * from './magrathea/MagratheaWorkflowSource';
+export * from './magrathea/MagratheaWorkflowSummary';
 
 export * from './eventlog/EventLogEntryDto';
 export * from './eventlog/EventType';

@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Full event document for the Web-UI editor — parsed identity fields
  * plus the raw YAML body. Analog to {@code SchedulerDto} /
- * {@code HactarWorkflowDto}.
+ * {@code MagratheaWorkflowDto}.
  *
  * <p>Bearer tokens are <strong>never</strong> rendered into this DTO
  * — the {@code authConfigured} flag tells the editor whether auth is

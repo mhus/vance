@@ -1,7 +1,7 @@
 /**
  * External event-trigger subsystem — REST endpoint and runtime logic
  * for {@code /brain/{tenant}/event/{project}/{event}} which spawns
- * Hactar workflow runs from outside callers (webhooks, CI, IoT, …).
+ * Magrathea workflow runs from outside callers (webhooks, CI, IoT, …).
  *
  * <p>The package is separate from {@code brain/events/} (which handles
  * the unrelated server-to-client notification plumbing).

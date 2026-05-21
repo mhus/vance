@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.action;
 
 /**
- * Result class for {@link ActionResult}. Rich enough that Hactar can
+ * Result class for {@link ActionResult}. Rich enough that Magrathea can
  * map 1:1 onto its task-outcome vocabulary; coarse enough that callers
  * who only care about ok/not-ok (scheduler event-log, REST status) can
  * collapse {@link #isFailure()} into a single bit.

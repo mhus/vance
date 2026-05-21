@@ -1,6 +1,6 @@
 /**
  * Wire-contract DTOs for the events subsystem — external HTTP
- * triggers that spawn Hactar workflow runs.
+ * triggers that spawn Magrathea workflow runs.
  *
  * <p>See {@code specification/events.md} for the design.
  */

@@ -2,10 +2,10 @@
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
-  HactarParameterDto,
-  HactarProcessDto,
-  HactarWorkflowSource,
-  HactarWorkflowSummary,
+  MagratheaParameterDto,
+  MagratheaProcessDto,
+  MagratheaWorkflowSource,
+  MagratheaWorkflowSummary,
 } from '@vance/generated';
 import {
   VAlert,
@@ -85,11 +85,11 @@ async function selectWorkflow(name: string): Promise<void> {
   }
 }
 
-function sourceLabel(source: HactarWorkflowSource | string): string {
+function sourceLabel(source: MagratheaWorkflowSource | string): string {
   return String(source) === 'PROJECT' ? 'project' : '_vance';
 }
 
-function sourceClass(source: HactarWorkflowSource | string): string {
+function sourceClass(source: MagratheaWorkflowSource | string): string {
   return String(source) === 'PROJECT'
     ? 'badge-source badge-source--project'
     : 'badge-source badge-source--vance';
@@ -109,7 +109,7 @@ function runStatusClass(status: unknown): string {
 
 const detail = computed(() => state.current.value);
 
-const sortedWorkflows = computed<HactarWorkflowSummary[]>(() =>
+const sortedWorkflows = computed<MagratheaWorkflowSummary[]>(() =>
   [...state.workflows.value].sort((a, b) =>
     (a.name ?? '').localeCompare(b.name ?? ''),
   ),
@@ -135,7 +135,7 @@ const runsTabLabel = computed<string>(() => {
   return t('insights.workflows.runsTab', { total });
 });
 
-const paramEntries = computed<Array<[string, HactarParameterDto]>>(() => {
+const paramEntries = computed<Array<[string, MagratheaParameterDto]>>(() => {
   const params = detail.value?.parameters;
   if (!params) return [];
   return Object.entries(params);
@@ -149,7 +149,7 @@ const paramEntries = computed<Array<[string, HactarParameterDto]>>(() => {
  */
 function parseParamValue(
   key: string,
-  spec: HactarParameterDto,
+  spec: MagratheaParameterDto,
 ): unknown {
   if (spec.type === 'boolean') {
     return paramBooleans.value[key] ?? false;
@@ -222,7 +222,7 @@ function fmt(value: unknown): string {
   return String(value);
 }
 
-function paramFieldType(spec: HactarParameterDto): 'text' | 'integer' | 'boolean' | 'json' {
+function paramFieldType(spec: MagratheaParameterDto): 'text' | 'integer' | 'boolean' | 'json' {
   switch (spec.type) {
     case 'integer': return 'integer';
     case 'boolean': return 'boolean';
@@ -234,7 +234,7 @@ function paramFieldType(spec: HactarParameterDto): 'text' | 'integer' | 'boolean
   }
 }
 
-function processSelectHandler(run: HactarProcessDto): void {
+function processSelectHandler(run: MagratheaProcessDto): void {
   // No-op for now — clicking a run could open a journal modal later.
   // Keep the click handler in place so callers wire it without a re-fetch.
   void run;

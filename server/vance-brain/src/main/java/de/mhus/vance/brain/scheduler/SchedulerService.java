@@ -3,7 +3,6 @@ package de.mhus.vance.brain.scheduler;
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.eventlog.EventType;
 import de.mhus.vance.api.scheduler.OverlapPolicy;
-import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
@@ -79,8 +78,8 @@ public class SchedulerService {
      */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
-    /** Lazy-resolved — only used when a scheduler entry sets {@code workflow:}. May be absent when Hactar is disabled. */
-    private final ObjectProvider<de.mhus.vance.brain.hactar.HactarWorkflowService> workflowServiceProvider;
+    /** Lazy-resolved — only used when a scheduler entry sets {@code workflow:}. May be absent when Magrathea is disabled. */
+    private final ObjectProvider<de.mhus.vance.brain.magrathea.MagratheaWorkflowService> workflowServiceProvider;
     private final de.mhus.vance.shared.metric.MetricService metricService;
 
     /** Counter for scheduler fires. Tags: {@code scheduler}, {@code outcome}. */

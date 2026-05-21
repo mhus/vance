@@ -1,7 +1,7 @@
 package de.mhus.vance.brain.hooks;
 
-import de.mhus.vance.brain.hactar.HactarWorkflowService;
-import de.mhus.vance.shared.hactar.HactarWorkflowParseException;
+import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
+import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.graalvm.polyglot.HostAccess;
@@ -19,8 +19,8 @@ import org.slf4j.LoggerFactory;
  * spawn. The triggering hook's name appears in {@code startedBy} so
  * the workflow run's audit trail attributes back to the hook.
  *
- * <p>Only present when {@code vance.services.hactar=true}. When
- * Hactar is disabled, every call returns {@code null} and logs WARN;
+ * <p>Only present when {@code vance.services.magrathea=true}. When
+ * Magrathea is disabled, every call returns {@code null} and logs WARN;
  * the dispatcher still constructs the client so the JS surface stays
  * stable, but the channel is a no-op.
  */
@@ -28,13 +28,13 @@ public final class HookWorkflowClient {
 
     private static final Logger LOG = LoggerFactory.getLogger("vance.hooks.workflows");
 
-    private final @Nullable HactarWorkflowService workflowService;
+    private final @Nullable MagratheaWorkflowService workflowService;
     private final String tenantId;
     private final String projectId;
     private final String hookName;
 
     public HookWorkflowClient(
-            @Nullable HactarWorkflowService workflowService,
+            @Nullable MagratheaWorkflowService workflowService,
             String tenantId,
             String projectId,
             String hookName) {
@@ -45,7 +45,7 @@ public final class HookWorkflowClient {
     }
 
     /**
-     * Start a Hactar workflow run. Returns the {@code workflowRunId}
+     * Start a Magrathea workflow run. Returns the {@code workflowRunId}
      * for follow-up tracking, or {@code null} when the call failed
      * (cause is logged).
      *
@@ -54,7 +54,7 @@ public final class HookWorkflowClient {
     @HostAccess.Export
     public @Nullable String start(String name, @Nullable Map<String, Object> params) {
         if (workflowService == null) {
-            LOG.warn("Hook '{}/{}' workflows.start('{}') skipped — Hactar service is not active",
+            LOG.warn("Hook '{}/{}' workflows.start('{}') skipped — Magrathea service is not active",
                     tenantId, hookName, name);
             return null;
         }
@@ -69,11 +69,11 @@ public final class HookWorkflowClient {
             LOG.info("Hook '{}/{}' started workflow '{}' runId='{}'",
                     tenantId, hookName, name, runId);
             return runId;
-        } catch (HactarWorkflowService.HactarWorkflowException ex) {
+        } catch (MagratheaWorkflowService.MagratheaWorkflowException ex) {
             LOG.warn("Hook '{}/{}' workflows.start('{}') failed: workflow not found — {}",
                     tenantId, hookName, name, ex.getMessage());
             return null;
-        } catch (HactarWorkflowParseException ex) {
+        } catch (MagratheaWorkflowParseException ex) {
             LOG.warn("Hook '{}/{}' workflows.start('{}') failed: workflow YAML invalid — {}",
                     tenantId, hookName, name, ex.getMessage());
             return null;

@@ -11,7 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.events.EventSource;
-import de.mhus.vance.brain.hactar.HactarWorkflowService;
+import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
 import de.mhus.vance.shared.events.EventLoader;
 import de.mhus.vance.shared.events.ResolvedEvent;
 import de.mhus.vance.shared.metric.MetricService;
@@ -44,9 +44,9 @@ class EventServiceTest {
     private EventLoader eventLoader;
     private SettingService settingService;
     private MetricService metricService;
-    private HactarWorkflowService workflowService;
+    private MagratheaWorkflowService workflowService;
     @SuppressWarnings("unchecked")
-    private final ObjectProvider<HactarWorkflowService> workflowProvider = mock(ObjectProvider.class);
+    private final ObjectProvider<MagratheaWorkflowService> workflowProvider = mock(ObjectProvider.class);
     private de.mhus.vance.brain.action.ActionExecutorRegistry actionExecutorRegistry;
     private de.mhus.vance.brain.scheduler.SystemSessionResolver systemSessionResolver;
     private EventService service;
@@ -56,10 +56,10 @@ class EventServiceTest {
         eventLoader = mock(EventLoader.class);
         settingService = mock(SettingService.class);
         metricService = new MetricService(new SimpleMeterRegistry());
-        workflowService = mock(HactarWorkflowService.class);
+        workflowService = mock(MagratheaWorkflowService.class);
         when(workflowProvider.getIfAvailable()).thenReturn(workflowService);
         // Stub registry that pretends to route workflow actions directly
-        // through the legacy HactarWorkflowService — keeps the existing
+        // through the legacy MagratheaWorkflowService — keeps the existing
         // tests close to the old assertion shape.
         actionExecutorRegistry = mock(de.mhus.vance.brain.action.ActionExecutorRegistry.class);
         when(actionExecutorRegistry.execute(any(), any(), any())).thenAnswer(inv -> {
@@ -242,7 +242,7 @@ class EventServiceTest {
     // ─── feature flag ────────────────────────────────────────────────────
 
     @Test
-    void trigger_without_hactar_returns_503() {
+    void trigger_without_magrathea_returns_503() {
         when(workflowProvider.getIfAvailable()).thenReturn(null);
         when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(event(b -> {})));
 

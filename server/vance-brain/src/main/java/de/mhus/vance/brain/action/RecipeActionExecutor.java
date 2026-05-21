@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
  * the new process id. The session under which the process lives is
  * caller-supplied via {@link TriggerContext#parentSessionId()} (the
  * scheduler resolves a system session, a workflow task uses
- * {@code _hactar_<runId>}, an LLM tool reuses its caller-process session).
+ * {@code _magrathea_<runId>}, an LLM tool reuses its caller-process session).
  *
  * <p>An {@code initialMessage} on the action is dispatched as a
  * {@code USER_CHAT_INPUT} pending message right after spawn — same

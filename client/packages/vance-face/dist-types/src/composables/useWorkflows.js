@@ -38,7 +38,7 @@ export function useWorkflows() {
     }
     /**
      * GET {@code /workflows/runs?workflow=<name>} — newest first, max 100.
-     * Server-side limit is enforced by HactarWorkflowController.LIST_LIMIT.
+     * Server-side limit is enforced by MagratheaWorkflowController.LIST_LIMIT.
      */
     async function loadRuns(projectId, name) {
         error.value = null;

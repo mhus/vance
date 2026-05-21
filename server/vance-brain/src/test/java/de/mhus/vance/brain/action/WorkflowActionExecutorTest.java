@@ -9,8 +9,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.action.TriggerAction;
-import de.mhus.vance.brain.hactar.HactarWorkflowService;
-import de.mhus.vance.brain.hactar.HactarWorkflowService.HactarWorkflowException;
+import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
+import de.mhus.vance.brain.magrathea.MagratheaWorkflowService.MagratheaWorkflowException;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
@@ -22,7 +22,7 @@ class WorkflowActionExecutorTest {
 
     @Test
     void start_succeeds_returns_scheduled_with_runId() {
-        HactarWorkflowService svc = mock(HactarWorkflowService.class);
+        MagratheaWorkflowService svc = mock(MagratheaWorkflowService.class);
         when(svc.start(eq("t1"), eq("p1"), eq("pr-review"), any(), eq("alice")))
                 .thenReturn("run-123");
 
@@ -37,8 +37,8 @@ class WorkflowActionExecutorTest {
     }
 
     @Test
-    void hactar_disabled_returns_technical_error_without_calling_service() {
-        ObjectProvider<HactarWorkflowService> provider = providerOf(null);
+    void magrathea_disabled_returns_technical_error_without_calling_service() {
+        ObjectProvider<MagratheaWorkflowService> provider = providerOf(null);
         WorkflowActionExecutor exec = new WorkflowActionExecutor(provider);
 
         ActionResult r = exec.execute(new ActionInvocation<>(
@@ -47,14 +47,14 @@ class WorkflowActionExecutorTest {
                 TriggerKind.SCHEDULER));
 
         assertThat(r.outcome()).isEqualTo(ActionOutcome.TECHNICAL_ERROR);
-        assertThat(r.errorMessage()).contains("Hactar workflow subsystem is not active");
+        assertThat(r.errorMessage()).contains("Magrathea workflow subsystem is not active");
     }
 
     @Test
     void workflow_not_found_maps_to_technical_error() {
-        HactarWorkflowService svc = mock(HactarWorkflowService.class);
+        MagratheaWorkflowService svc = mock(MagratheaWorkflowService.class);
         when(svc.start(any(), any(), any(), any(), any()))
-                .thenThrow(new HactarWorkflowException("Workflow 'gone' not found in cascade"));
+                .thenThrow(new MagratheaWorkflowException("Workflow 'gone' not found in cascade"));
 
         ActionResult r = newExecutor(svc).execute(new ActionInvocation<>(
                 new TriggerAction.Workflow("gone", null, null),
@@ -67,7 +67,7 @@ class WorkflowActionExecutorTest {
 
     @Test
     void generic_runtime_exception_maps_to_technical_error() {
-        HactarWorkflowService svc = mock(HactarWorkflowService.class);
+        MagratheaWorkflowService svc = mock(MagratheaWorkflowService.class);
         when(svc.start(any(), any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("mongo down"));
 
@@ -82,7 +82,7 @@ class WorkflowActionExecutorTest {
 
     @Test
     void runAs_passed_through_to_service() {
-        HactarWorkflowService svc = mock(HactarWorkflowService.class);
+        MagratheaWorkflowService svc = mock(MagratheaWorkflowService.class);
         when(svc.start(any(), any(), any(), any(), any())).thenReturn("run-x");
         TriggerContext customCtx = new TriggerContext(
                 "t1", "p1", "ci-bot", null, null, null, null);
@@ -97,14 +97,14 @@ class WorkflowActionExecutorTest {
 
     @Test
     void actionType_returns_workflow_class() {
-        assertThat(newExecutor(mock(HactarWorkflowService.class)).actionType())
+        assertThat(newExecutor(mock(MagratheaWorkflowService.class)).actionType())
                 .isEqualTo(TriggerAction.Workflow.class);
     }
 
     @Test
-    void service_never_called_when_hactar_disabled() {
-        HactarWorkflowService svc = mock(HactarWorkflowService.class);
-        ObjectProvider<HactarWorkflowService> provider = providerOf(null);
+    void service_never_called_when_magrathea_disabled() {
+        MagratheaWorkflowService svc = mock(MagratheaWorkflowService.class);
+        ObjectProvider<MagratheaWorkflowService> provider = providerOf(null);
 
         WorkflowActionExecutor exec = new WorkflowActionExecutor(provider);
         exec.execute(new ActionInvocation<>(
@@ -115,13 +115,13 @@ class WorkflowActionExecutorTest {
 
     // ──────────────────── Helpers ────────────────────
 
-    private static WorkflowActionExecutor newExecutor(HactarWorkflowService svc) {
+    private static WorkflowActionExecutor newExecutor(MagratheaWorkflowService svc) {
         return new WorkflowActionExecutor(providerOf(svc));
     }
 
     @SuppressWarnings("unchecked")
-    private static ObjectProvider<HactarWorkflowService> providerOf(HactarWorkflowService bean) {
-        ObjectProvider<HactarWorkflowService> provider = mock(ObjectProvider.class);
+    private static ObjectProvider<MagratheaWorkflowService> providerOf(MagratheaWorkflowService bean) {
+        ObjectProvider<MagratheaWorkflowService> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(bean);
         return provider;
     }

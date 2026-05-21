@@ -1,11 +1,11 @@
 import { type Ref } from 'vue';
-import type { HactarProcessDto, HactarWorkflowDto, HactarWorkflowSummary } from '@vance/generated';
+import type { MagratheaProcessDto, MagratheaWorkflowDto, MagratheaWorkflowSummary } from '@vance/generated';
 /**
  * Workflow definitions + run listings for the insights workflows tab.
  *
  * <p>Workflow definitions cascade via the document layer
  * ({@code project → _vance}); workflow runs are read from the
- * {@code hactar_journal} via the projector. {@code start} mints a
+ * {@code magrathea_journal} via the projector. {@code start} mints a
  * fresh runId and the projector reaches DONE once the lane finishes.
  */
 export interface WorkflowStartResult {
@@ -13,9 +13,9 @@ export interface WorkflowStartResult {
     workflowRunId: string;
 }
 export declare function useWorkflows(): {
-    workflows: Ref<HactarWorkflowSummary[]>;
-    current: Ref<HactarWorkflowDto | null>;
-    runs: Ref<HactarProcessDto[]>;
+    workflows: Ref<MagratheaWorkflowSummary[]>;
+    current: Ref<MagratheaWorkflowDto | null>;
+    runs: Ref<MagratheaProcessDto[]>;
     loading: Ref<boolean>;
     busy: Ref<boolean>;
     error: Ref<string | null>;

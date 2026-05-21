@@ -105,7 +105,7 @@ public sealed interface TriggerAction
     // ──────────────────── Workflow ────────────────────
 
     /**
-     * Spawn a Hactar workflow run. The workflow is resolved through
+     * Spawn a Magrathea workflow run. The workflow is resolved through
      * the normal workflow cascade (project → _vance → bundled).
      */
     record Workflow(

@@ -40,7 +40,7 @@ public final class HookHostApi {
     /** Structured logging into the hook-run log (not the process log). */
     public final HookLog log;
 
-    /** Hactar workflow write channel — {@code workflows.start(name, params)}. */
+    /** Magrathea workflow write channel — {@code workflows.start(name, params)}. */
     public final HookWorkflowClient workflows;
 
     public HookHostApi(

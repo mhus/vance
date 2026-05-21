@@ -8,15 +8,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.brain.hactar.HactarWorkflowService;
-import de.mhus.vance.shared.hactar.HactarWorkflowParseException;
+import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
+import de.mhus.vance.shared.magrathea.MagratheaWorkflowParseException;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class HookWorkflowClientTest {
 
-    private final HactarWorkflowService workflowService = mock(HactarWorkflowService.class);
+    private final MagratheaWorkflowService workflowService = mock(MagratheaWorkflowService.class);
     private final HookWorkflowClient client = new HookWorkflowClient(
             workflowService, "acme", "proj", "my-hook");
 
@@ -71,7 +71,7 @@ class HookWorkflowClientTest {
     @Test
     void workflow_not_found_returns_null() {
         when(workflowService.start(any(), any(), any(), any(), any()))
-                .thenThrow(new HactarWorkflowService.HactarWorkflowException(
+                .thenThrow(new MagratheaWorkflowService.MagratheaWorkflowException(
                         "Workflow 'ghost' not found"));
 
         assertThat(client.start("ghost", Map.of())).isNull();
@@ -80,7 +80,7 @@ class HookWorkflowClientTest {
     @Test
     void yaml_parse_failure_returns_null() {
         when(workflowService.start(any(), any(), any(), any(), any()))
-                .thenThrow(new HactarWorkflowParseException("bad shape"));
+                .thenThrow(new MagratheaWorkflowParseException("bad shape"));
 
         assertThat(client.start("broken", Map.of())).isNull();
     }

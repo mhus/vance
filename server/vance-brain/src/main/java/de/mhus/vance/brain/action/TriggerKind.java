@@ -15,7 +15,7 @@ public enum TriggerKind {
     /** Inbound webhook / HTTP event. No spawning Process behind it. */
     EVENT,
 
-    /** Hactar workflow task. Run scope provides identity. */
+    /** Magrathea workflow task. Run scope provides identity. */
     WORKFLOW_TASK,
 
     /** LLM-issued tool call. Process scope (the calling ThinkProcess) provides identity. */

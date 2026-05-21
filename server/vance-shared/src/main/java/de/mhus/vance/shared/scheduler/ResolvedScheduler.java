@@ -69,7 +69,7 @@ public record ResolvedScheduler(
             @Nullable Integer timeoutSeconds) {
     }
 
-    /** {@code true} when this scheduler spawns a Hactar workflow run rather than a ThinkProcess. */
+    /** {@code true} when this scheduler spawns a Magrathea workflow run rather than a ThinkProcess. */
     public boolean isWorkflowTrigger() {
         return workflow != null && !workflow.isBlank();
     }

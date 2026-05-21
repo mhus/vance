@@ -1,9 +1,9 @@
 import { ref, type Ref } from 'vue';
 import { brainFetch } from '@vance/shared';
 import type {
-  HactarProcessDto,
-  HactarWorkflowDto,
-  HactarWorkflowSummary,
+  MagratheaProcessDto,
+  MagratheaWorkflowDto,
+  MagratheaWorkflowSummary,
 } from '@vance/generated';
 
 /**
@@ -11,7 +11,7 @@ import type {
  *
  * <p>Workflow definitions cascade via the document layer
  * ({@code project → _vance}); workflow runs are read from the
- * {@code hactar_journal} via the projector. {@code start} mints a
+ * {@code magrathea_journal} via the projector. {@code start} mints a
  * fresh runId and the projector reaches DONE once the lane finishes.
  */
 export interface WorkflowStartResult {
@@ -20,9 +20,9 @@ export interface WorkflowStartResult {
 }
 
 export function useWorkflows(): {
-  workflows: Ref<HactarWorkflowSummary[]>;
-  current: Ref<HactarWorkflowDto | null>;
-  runs: Ref<HactarProcessDto[]>;
+  workflows: Ref<MagratheaWorkflowSummary[]>;
+  current: Ref<MagratheaWorkflowDto | null>;
+  runs: Ref<MagratheaProcessDto[]>;
   loading: Ref<boolean>;
   busy: Ref<boolean>;
   error: Ref<string | null>;
@@ -38,9 +38,9 @@ export function useWorkflows(): {
   clearCurrent: () => void;
   clearLastResult: () => void;
 } {
-  const workflows = ref<HactarWorkflowSummary[]>([]);
-  const current = ref<HactarWorkflowDto | null>(null);
-  const runs = ref<HactarProcessDto[]>([]);
+  const workflows = ref<MagratheaWorkflowSummary[]>([]);
+  const current = ref<MagratheaWorkflowDto | null>(null);
+  const runs = ref<MagratheaProcessDto[]>([]);
   const loading = ref(false);
   const busy = ref(false);
   const error = ref<string | null>(null);
@@ -50,7 +50,7 @@ export function useWorkflows(): {
     loading.value = true;
     error.value = null;
     try {
-      workflows.value = await brainFetch<HactarWorkflowSummary[]>(
+      workflows.value = await brainFetch<MagratheaWorkflowSummary[]>(
         'GET',
         `project/${encodeURIComponent(projectId)}/workflows`,
       );
@@ -66,7 +66,7 @@ export function useWorkflows(): {
     busy.value = true;
     error.value = null;
     try {
-      current.value = await brainFetch<HactarWorkflowDto>(
+      current.value = await brainFetch<MagratheaWorkflowDto>(
         'GET',
         `project/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(name)}`,
       );
@@ -80,12 +80,12 @@ export function useWorkflows(): {
 
   /**
    * GET {@code /workflows/runs?workflow=<name>} — newest first, max 100.
-   * Server-side limit is enforced by HactarWorkflowController.LIST_LIMIT.
+   * Server-side limit is enforced by MagratheaWorkflowController.LIST_LIMIT.
    */
   async function loadRuns(projectId: string, name: string): Promise<void> {
     error.value = null;
     try {
-      runs.value = await brainFetch<HactarProcessDto[]>(
+      runs.value = await brainFetch<MagratheaProcessDto[]>(
         'GET',
         `project/${encodeURIComponent(projectId)}/workflows/runs?workflow=${encodeURIComponent(name)}`,
       );

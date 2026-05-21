@@ -6,7 +6,7 @@ import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
 import de.mhus.vance.brain.action.TriggerKind;
-import de.mhus.vance.brain.hactar.HactarWorkflowService;
+import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
 import de.mhus.vance.brain.scheduler.SystemSessionResolver;
 import de.mhus.vance.shared.events.EventLoader;
 import de.mhus.vance.shared.events.ResolvedEvent;
@@ -28,10 +28,10 @@ import org.springframework.web.server.ResponseStatusException;
  * Runtime side of the events subsystem: resolves the event in the
  * cascade, checks the HTTP method, performs bearer-token authentication
  * (literal or via setting cascade), and delegates the workflow spawn
- * to {@link HactarWorkflowService}.
+ * to {@link MagratheaWorkflowService}.
  *
  * <p>Lives in {@code vance-brain} because (a) it depends on
- * {@code HactarWorkflowService} which is brain-only and (b) the brain
+ * {@code MagratheaWorkflowService} which is brain-only and (b) the brain
  * is the only deployment surface that exposes the {@code /brain/...}
  * REST endpoints. {@code vance-anus} (pod runtime) does not see this
  * class, matching the user instruction not to wire workflow spawn
@@ -54,8 +54,8 @@ public class EventService {
     private final EventLoader eventLoader;
     private final SettingService settingService;
     private final MetricService metricService;
-    /** Optional — Hactar is feature-flagged; when off, workflow-events return 503. */
-    private final ObjectProvider<HactarWorkflowService> workflowServiceProvider;
+    /** Optional — Magrathea is feature-flagged; when off, workflow-events return 503. */
+    private final ObjectProvider<MagratheaWorkflowService> workflowServiceProvider;
     private final ActionExecutorRegistry actionExecutorRegistry;
     private final SystemSessionResolver systemSessionResolver;
 
@@ -74,7 +74,7 @@ public class EventService {
      *   <li>resolve event via cascade ({@code project → _vance}) → 404</li>
      *   <li>{@code enabled: false} or method-not-allowed → 404 (don't leak existence)</li>
      *   <li>bearer auth check (when {@code auth:} block configured) → 401</li>
-     *   <li>{@link HactarWorkflowService#start} (start fails → 502 / 400)</li>
+     *   <li>{@link MagratheaWorkflowService#start} (start fails → 502 / 400)</li>
      * </ol>
      *
      * <p>{@code payload} is nested under {@link #PAYLOAD_PARAM_KEY} in
@@ -174,15 +174,15 @@ public class EventService {
                     "Event action build failed: " + ex.getMessage(), ex);
         }
 
-        // Workflow-trigger requires Hactar — keep the 503 semantics.
+        // Workflow-trigger requires Magrathea — keep the 503 semantics.
         if (action instanceof TriggerAction.Workflow
                 && workflowServiceProvider.getIfAvailable() == null) {
-            log.warn("Event '{}/{}/{}' wants workflow '{}' but Hactar is not active "
-                            + "(vance.services.hactar=false)",
+            log.warn("Event '{}/{}/{}' wants workflow '{}' but Magrathea is not active "
+                            + "(vance.services.magrathea=false)",
                     tenantId, projectId, eventName, event.workflow());
-            countOutcome(eventName, "hactar_unavailable");
+            countOutcome(eventName, "magrathea_unavailable");
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Hactar workflow subsystem is not active");
+                    "Magrathea workflow subsystem is not active");
         }
 
         // Recipe-trigger needs a system session — same pattern as the
@@ -294,7 +294,7 @@ public class EventService {
 
     private static String mapResponseStatusToOutcome(ResponseStatusException ex) {
         int code = ex.getStatusCode().value();
-        if (code == 503) return "hactar_unavailable";
+        if (code == 503) return "magrathea_unavailable";
         if (code == 502) return "spawn_failed";
         if (code == 403) return "permission_denied";
         if (code == 500) return "bad_payload";

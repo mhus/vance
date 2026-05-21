@@ -179,7 +179,7 @@ public class SchedulerLoader {
         if (targetCount == 0) {
             throw new IllegalStateException(
                     "missing trigger target — set 'recipe' (spawns a ThinkProcess), "
-                            + "'workflow' (spawns a Hactar workflow run), "
+                            + "'workflow' (spawns a Magrathea workflow run), "
                             + "or 'script' (runs a JS script)");
         }
         String timezone = stringOrNull(spec.get("timezone"));

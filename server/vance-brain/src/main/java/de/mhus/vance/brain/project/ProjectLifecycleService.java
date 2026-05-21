@@ -226,6 +226,20 @@ public class ProjectLifecycleService {
             log.debug("Project '{}/{}' already RUNNING — claim refreshed", tenantId, projectName);
             return doc;
         }
+        // Bring = project is coming online on this pod from a non-RUNNING
+        // state. No client can be legitimately bound right now — either
+        // the previous owner pod died (and its WS connections died with
+        // it), or the project was suspended and the workspace was off-disk.
+        // Stale boundConnectionId values would otherwise reject the first
+        // reconnect with 409 Already-Bound. The reclaimer's boot-time pass
+        // only catches projects that were homeNode=self before, so this
+        // covers every other path: self-pull, distributor, locator,
+        // direct-spawn.
+        long unbound = sessionService.unbindAllForProjects(List.of(projectName));
+        if (unbound > 0) {
+            log.info("Project '{}/{}' bring: cleared {} stale session binding(s)",
+                    tenantId, projectName, unbound);
+        }
         ProjectStatus from = doc.getStatus();
         doc = projectService.transitionStatus(tenantId, projectName, from, ProjectStatus.RECOVERING);
         try {

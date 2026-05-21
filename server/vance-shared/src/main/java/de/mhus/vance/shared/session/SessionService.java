@@ -7,6 +7,7 @@ import de.mhus.vance.api.session.SessionMetadataPatchRequest;
 import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.session.SuspendCause;
 import de.mhus.vance.api.session.SuspendPolicy;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -84,6 +85,15 @@ public class SessionService {
 
     private final SessionRepository repository;
     private final MongoTemplate mongoTemplate;
+
+    /**
+     * Max age of {@code lastActivityAt} before a bound connection is
+     * considered dead and {@link #tryBind} grants stale-takeover to a
+     * fresh connection. Default {@code PT2M} = 4× the default WS
+     * ping interval (30s), tolerant of one missed ping plus jitter.
+     */
+    @org.springframework.beans.factory.annotation.Value("${vance.session.bindStaleAfter:PT2M}")
+    private Duration bindStaleAfter = Duration.ofMinutes(2);
 
     // ---------------------------------------------------------------- reads
 
@@ -273,32 +283,44 @@ public class SessionService {
     // --------------------------------------------------------- atomic locks
 
     /**
-     * Atomically claims the connection lock on {@code sessionId}. Succeeds only
-     * if the session is in a bindable status (everything except
-     * {@link SessionStatus#CLOSED} and {@link SessionStatus#ARCHIVED}) and no
-     * other connection is currently bound.
+     * Atomically claims the connection lock on {@code sessionId}. Succeeds when
+     * the session is bindable (status not CLOSED/ARCHIVED) and one of:
+     * <ul>
+     *   <li>no connection is currently bound, or</li>
+     *   <li>the bound connection's last heartbeat (={@code lastActivityAt})
+     *       is older than {@link #bindStaleAfter} — the previous owner is
+     *       assumed dead and gets taken over.</li>
+     * </ul>
      *
-     * <p>Pod-affinity is no longer tracked here — it lives on the session's
-     * project. Callers should ensure the project is claimed by this pod
-     * before invoking {@code tryBind}.
+     * <p>The stale-takeover branch is what unblocks reconnects after a
+     * crashed pod or a TCP-only loss: heartbeats (any inbound frame, ping
+     * included) keep the bind alive, no heartbeats for two ping intervals
+     * release it. Pod-affinity is tracked elsewhere — see project
+     * lifecycle.
      *
      * @return {@code true} if the caller now owns the lock, {@code false} if
-     *         the session is closed/archived, missing, or already held by
-     *         someone else.
+     *         the session is closed/archived, missing, or held by another
+     *         connection whose heartbeat is still fresh.
      */
     public boolean tryBind(String sessionId, String connectionId) {
-        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
-                .and(F_STATUS).nin(SessionStatus.CLOSED, SessionStatus.ARCHIVED)
-                .and(F_BOUND_CONNECTION).isNull());
+        Instant now = Instant.now();
+        Instant staleBefore = now.minus(bindStaleAfter);
+        Criteria base = Criteria.where(F_SESSION_ID).is(sessionId)
+                .and(F_STATUS).nin(SessionStatus.CLOSED, SessionStatus.ARCHIVED);
+        Criteria takeoverPredicate = new Criteria().orOperator(
+                Criteria.where(F_BOUND_CONNECTION).isNull(),
+                Criteria.where(F_BOUND_CONNECTION).is(connectionId),
+                Criteria.where(F_LAST_ACTIVITY).lt(staleBefore));
+        Query query = new Query(new Criteria().andOperator(base, takeoverPredicate));
         Update update = new Update()
                 .set(F_BOUND_CONNECTION, connectionId)
-                .set(F_LAST_ACTIVITY, Instant.now());
+                .set(F_LAST_ACTIVITY, now);
         UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
         boolean bound = result.getModifiedCount() == 1;
         if (bound) {
             log.debug("Bound session '{}' to connection '{}'", sessionId, connectionId);
         } else {
-            log.debug("Bind rejected for session '{}' — no matching non-CLOSED/-ARCHIVED unbound record",
+            log.debug("Bind rejected for session '{}' — no matching non-CLOSED/-ARCHIVED record with stale or free bind",
                     sessionId);
         }
         return bound;

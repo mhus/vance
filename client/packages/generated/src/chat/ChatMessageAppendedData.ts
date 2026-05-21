@@ -12,4 +12,5 @@ export interface ChatMessageAppendedData {
   role: ChatRole;
   content: string;
   createdAt?: Date;
+  meta?: Record<string, any>;
 }

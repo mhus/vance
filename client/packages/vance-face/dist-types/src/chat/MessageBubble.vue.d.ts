@@ -1,4 +1,10 @@
 type RoleName = 'USER' | 'ASSISTANT' | 'SYSTEM';
+/** ASK_USER picker option (mirrors the {@code label/description} schema
+ *  defined in {@code ArthurActionSchema} / {@code EddieActionSchema}). */
+export interface AskUserOption {
+    label: string;
+    description?: string;
+}
 type __VLS_Props = {
     role: RoleName | string;
     content: string;
@@ -19,10 +25,29 @@ type __VLS_Props = {
     /** Max characters for worker truncation (0 = disabled). Defaults to
      *  the env-configured {@code uiTheme.lineMaxChars}. */
     lineMaxChars?: number;
+    /**
+     * Optional structured metadata mirroring
+     * {@code ChatMessageDto.meta}. Today we only consume
+     * {@code askUserOptions}; future keys (typed side-channels) are
+     * ignored gracefully.
+     */
+    meta?: Record<string, unknown>;
+    /**
+     * When the meta carries picker options, this flag controls whether
+     * the buttons are still actionable. Set false once the user has
+     * answered (a later USER message landed) so stale buttons grey out
+     * instead of double-firing the same answer.
+     */
+    optionsActionable?: boolean;
 };
-declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{}>, {
+declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
+    pickOption: (label: string) => any;
+}, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
+    onPickOption?: ((label: string) => any) | undefined;
+}>, {
     worker: boolean;
     lineMaxChars: number;
+    optionsActionable: boolean;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=MessageBubble.vue.d.ts.map

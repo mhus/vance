@@ -11,6 +11,13 @@ import { uiTheme, paletteStyle } from '@composables/useUiTheme';
 // as a plain string at the component boundary instead.
 type RoleName = 'USER' | 'ASSISTANT' | 'SYSTEM';
 
+/** ASK_USER picker option (mirrors the {@code label/description} schema
+ *  defined in {@code ArthurActionSchema} / {@code EddieActionSchema}). */
+export interface AskUserOption {
+  label: string;
+  description?: string;
+}
+
 const props = withDefaults(defineProps<{
   role: RoleName | string;
   content: string;
@@ -31,10 +38,54 @@ const props = withDefaults(defineProps<{
   /** Max characters for worker truncation (0 = disabled). Defaults to
    *  the env-configured {@code uiTheme.lineMaxChars}. */
   lineMaxChars?: number;
+  /**
+   * Optional structured metadata mirroring
+   * {@code ChatMessageDto.meta}. Today we only consume
+   * {@code askUserOptions}; future keys (typed side-channels) are
+   * ignored gracefully.
+   */
+  meta?: Record<string, unknown>;
+  /**
+   * When the meta carries picker options, this flag controls whether
+   * the buttons are still actionable. Set false once the user has
+   * answered (a later USER message landed) so stale buttons grey out
+   * instead of double-firing the same answer.
+   */
+  optionsActionable?: boolean;
 }>(), {
   worker: false,
   lineMaxChars: () => uiTheme.lineMaxChars,
+  optionsActionable: true,
 });
+
+const emit = defineEmits<{
+  (e: 'pickOption', label: string): void;
+}>();
+
+const askUserOptions = computed<AskUserOption[]>(() => {
+  const raw = props.meta?.['askUserOptions'];
+  if (!Array.isArray(raw)) return [];
+  const out: AskUserOption[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as Record<string, unknown>;
+    const label = obj['label'];
+    if (typeof label !== 'string' || !label.trim()) continue;
+    const desc = obj['description'];
+    out.push({
+      label: label.trim(),
+      description: typeof desc === 'string' && desc.trim() ? desc.trim() : undefined,
+    });
+  }
+  return out;
+});
+
+const showOptions = computed(() => askUserOptions.value.length > 0);
+
+function onPick(label: string): void {
+  if (!props.optionsActionable) return;
+  emit('pickOption', label);
+}
 
 const isUser = computed(() => props.role === 'USER');
 const isAssistant = computed(() => props.role === 'ASSISTANT');
@@ -113,6 +164,35 @@ const bubbleStyle = computed(() => {
         <span v-if="formatted" class="opacity-60">· {{ formatted }}</span>
       </div>
       <MarkdownView :source="content" />
+      <!-- ASK_USER picker — see specification/eddie-engine.md §5.6 / §5.8.
+           Buttons are visible whenever the bubble carries
+           askUserOptions in its meta. Click sends the label text as
+           the next USER chat input. Disabled state (greyed out)
+           applies once the parent decides the question has been
+           answered (optionsActionable=false). -->
+      <div
+        v-if="showOptions"
+        class="mt-3 flex flex-wrap gap-2"
+      >
+        <button
+          v-for="opt in askUserOptions"
+          :key="opt.label"
+          type="button"
+          :disabled="!optionsActionable"
+          class="px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          :class="optionsActionable
+            ? 'border-primary/40 bg-primary/10 hover:bg-primary/20'
+            : 'border-base-300 bg-base-200'"
+          :title="opt.description ?? opt.label"
+          @click="onPick(opt.label)"
+        >
+          <span>{{ opt.label }}</span>
+          <span
+            v-if="opt.description"
+            class="block text-[10px] font-normal opacity-70 mt-0.5"
+          >{{ opt.description }}</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>

@@ -3,6 +3,7 @@ package de.mhus.vance.api.chat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.time.Instant;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -36,4 +37,13 @@ public class ChatMessageAppendedData {
     private String content;
 
     private @Nullable Instant createdAt;
+
+    /**
+     * Optional structured metadata mirroring
+     * {@link ChatMessageDto#getMeta()}. Picker-aware clients render
+     * {@code askUserOptions} as buttons; Markdown rendering of the
+     * same data lives in {@link #content} as a fallback for plain
+     * Markdown / voice clients.
+     */
+    private @Nullable Map<String, Object> meta;
 }

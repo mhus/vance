@@ -219,6 +219,7 @@ public class EddieChatFrameHandler implements EddieFrameRouter.ChatFrameHandler 
                 .role(workerData.getRole())
                 .content(workerData.getContent())
                 .createdAt(workerData.getCreatedAt())
+                .meta(workerData.getMeta())
                 .build();
 
         try {

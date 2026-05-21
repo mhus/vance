@@ -297,6 +297,43 @@ const allMessages = computed(() => {
     }
     return result;
 });
+/**
+ * Id of the most recent ASSISTANT message that carries
+ * {@code askUserOptions} AND has no subsequent USER message — the
+ * only ASK_USER picker the user can still answer by clicking. Older
+ * pickers grey out (their question has either been answered already
+ * or got overtaken by a fresh exchange). Returns null when there is
+ * no pending question.
+ */
+const activeAskUserMessageId = computed(() => {
+    const msgs = allMessages.value;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (String(m.role) === 'USER') {
+            // A user message came after any earlier ASK_USER, so there is
+            // no pending question worth a picker.
+            return null;
+        }
+        if (String(m.role) !== 'ASSISTANT')
+            continue;
+        const raw = m.meta?.['askUserOptions'];
+        if (Array.isArray(raw) && raw.length > 0) {
+            return m.messageId;
+        }
+    }
+    return null;
+});
+function onPickAskUserOption(label) {
+    if (!label || !label.trim())
+        return;
+    if (sending.value)
+        return;
+    composerText.value = label.trim();
+    // Fire-and-forget — `send()` reads composerText, clears it,
+    // pushes the optimistic user bubble, and dispatches the WS frame.
+    // Picker click is semantically a normal user reply.
+    void send();
+}
 /** Sticky chat-process draft for the optimistic streaming bubble. */
 const visibleDraft = computed(() => {
     if (!chatProcessName.value)
@@ -370,6 +407,7 @@ function appendMessageBubble(data) {
         role: data.role,
         content: data.content,
         createdAt: data.createdAt,
+        meta: data.meta,
     });
     if (isWorkerProcess(data.processName)) {
         workerMessageIds.value = new Set(workerMessageIds.value).add(data.chatMessageId);
@@ -803,38 +841,51 @@ for (const [msg] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
     /** @type {[typeof MessageBubble, ]} */ ;
     // @ts-ignore
     const __VLS_21 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
+        ...{ 'onPickOption': {} },
         key: (msg.messageId),
         role: (String(msg.role)),
         content: (msg.content),
         createdAt: (msg.createdAt),
         worker: (__VLS_ctx.workerMessageIds.has(msg.messageId)),
+        meta: (msg.meta),
+        optionsActionable: (msg.messageId === __VLS_ctx.activeAskUserMessageId),
     }));
     const __VLS_22 = __VLS_21({
+        ...{ 'onPickOption': {} },
         key: (msg.messageId),
         role: (String(msg.role)),
         content: (msg.content),
         createdAt: (msg.createdAt),
         worker: (__VLS_ctx.workerMessageIds.has(msg.messageId)),
+        meta: (msg.meta),
+        optionsActionable: (msg.messageId === __VLS_ctx.activeAskUserMessageId),
     }, ...__VLS_functionalComponentArgsRest(__VLS_21));
+    let __VLS_24;
+    let __VLS_25;
+    let __VLS_26;
+    const __VLS_27 = {
+        onPickOption: (__VLS_ctx.onPickAskUserOption)
+    };
+    var __VLS_23;
 }
 if (__VLS_ctx.visibleDraft) {
     /** @type {[typeof MessageBubble, ]} */ ;
     // @ts-ignore
-    const __VLS_24 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
+    const __VLS_28 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
         role: (String(__VLS_ctx.visibleDraft.role)),
         content: (__VLS_ctx.visibleDraft.content),
         streaming: (true),
     }));
-    const __VLS_25 = __VLS_24({
+    const __VLS_29 = __VLS_28({
         role: (String(__VLS_ctx.visibleDraft.role)),
         content: (__VLS_ctx.visibleDraft.content),
         streaming: (true),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_24));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_28));
 }
 for (const [draft] of __VLS_getVForSourceType((__VLS_ctx.visibleWorkerDrafts))) {
     /** @type {[typeof MessageBubble, ]} */ ;
     // @ts-ignore
-    const __VLS_27 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
+    const __VLS_31 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
         key: (`worker-draft-${draft.processName}`),
         role: (String(draft.role)),
         content: (draft.content),
@@ -842,27 +893,27 @@ for (const [draft] of __VLS_getVForSourceType((__VLS_ctx.visibleWorkerDrafts))) 
         processName: (draft.processName),
         streaming: (true),
     }));
-    const __VLS_28 = __VLS_27({
+    const __VLS_32 = __VLS_31({
         key: (`worker-draft-${draft.processName}`),
         role: (String(draft.role)),
         content: (draft.content),
         worker: (true),
         processName: (draft.processName),
         streaming: (true),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_27));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_31));
 }
 /** @type {[typeof PlanModeIndicator, ]} */ ;
 // @ts-ignore
-const __VLS_30 = __VLS_asFunctionalComponent(PlanModeIndicator, new PlanModeIndicator({
+const __VLS_34 = __VLS_asFunctionalComponent(PlanModeIndicator, new PlanModeIndicator({
     mode: (__VLS_ctx.chatProcessMode),
     todos: (__VLS_ctx.chatTodos),
     planMeta: (__VLS_ctx.planMeta),
 }));
-const __VLS_31 = __VLS_30({
+const __VLS_35 = __VLS_34({
     mode: (__VLS_ctx.chatProcessMode),
     todos: (__VLS_ctx.chatTodos),
     planMeta: (__VLS_ctx.planMeta),
-}, ...__VLS_functionalComponentArgsRest(__VLS_30));
+}, ...__VLS_functionalComponentArgsRest(__VLS_34));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.footer, __VLS_intrinsicElements.footer)({
     ...{ onDragenter: (__VLS_ctx.onComposerDragEnter) },
     ...{ onDragover: (__VLS_ctx.onComposerDragOver) },
@@ -880,38 +931,22 @@ if (__VLS_ctx.dragActive) {
     (__VLS_ctx.$t('chat.attachments.dropToAttach'));
 }
 if (__VLS_ctx.sendError) {
-    const __VLS_33 = {}.VAlert;
-    /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
-    // @ts-ignore
-    const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
-        variant: "error",
-        ...{ class: "mb-2" },
-    }));
-    const __VLS_35 = __VLS_34({
-        variant: "error",
-        ...{ class: "mb-2" },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_34));
-    __VLS_36.slots.default;
-    (__VLS_ctx.sendError);
-    var __VLS_36;
-}
-if (__VLS_ctx.sessionResolveError) {
     const __VLS_37 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
     const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
-        variant: "warning",
+        variant: "error",
         ...{ class: "mb-2" },
     }));
     const __VLS_39 = __VLS_38({
-        variant: "warning",
+        variant: "error",
         ...{ class: "mb-2" },
     }, ...__VLS_functionalComponentArgsRest(__VLS_38));
     __VLS_40.slots.default;
-    (__VLS_ctx.sessionResolveError);
+    (__VLS_ctx.sendError);
     var __VLS_40;
 }
-if (__VLS_ctx.speechError) {
+if (__VLS_ctx.sessionResolveError) {
     const __VLS_41 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
@@ -924,8 +959,24 @@ if (__VLS_ctx.speechError) {
         ...{ class: "mb-2" },
     }, ...__VLS_functionalComponentArgsRest(__VLS_42));
     __VLS_44.slots.default;
-    (__VLS_ctx.speechError);
+    (__VLS_ctx.sessionResolveError);
     var __VLS_44;
+}
+if (__VLS_ctx.speechError) {
+    const __VLS_45 = {}.VAlert;
+    /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+    // @ts-ignore
+    const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+        variant: "warning",
+        ...{ class: "mb-2" },
+    }));
+    const __VLS_47 = __VLS_46({
+        variant: "warning",
+        ...{ class: "mb-2" },
+    }, ...__VLS_functionalComponentArgsRest(__VLS_46));
+    __VLS_48.slots.default;
+    (__VLS_ctx.speechError);
+    var __VLS_48;
 }
 if (__VLS_ctx.selectedFiles.length > 0) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -947,66 +998,66 @@ if (__VLS_ctx.selectedFiles.length > 0) {
             ...{ class: "text-xs opacity-60" },
         });
         (__VLS_ctx.formatBytes(file.size));
-        const __VLS_45 = {}.VButton;
+        const __VLS_49 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+        const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             disabled: (__VLS_ctx.sending || __VLS_ctx.uploading),
             title: (__VLS_ctx.$t('chat.attachments.remove')),
         }));
-        const __VLS_47 = __VLS_46({
+        const __VLS_51 = __VLS_50({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             disabled: (__VLS_ctx.sending || __VLS_ctx.uploading),
             title: (__VLS_ctx.$t('chat.attachments.remove')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_46));
-        let __VLS_49;
-        let __VLS_50;
-        let __VLS_51;
-        const __VLS_52 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_50));
+        let __VLS_53;
+        let __VLS_54;
+        let __VLS_55;
+        const __VLS_56 = {
             onClick: (...[$event]) => {
                 if (!(__VLS_ctx.selectedFiles.length > 0))
                     return;
                 __VLS_ctx.removeFile(idx);
             }
         };
-        __VLS_48.slots.default;
-        var __VLS_48;
+        __VLS_52.slots.default;
+        var __VLS_52;
     }
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "max-w-3xl mx-auto flex gap-2 items-end" },
 });
-const __VLS_53 = {}.VButton;
+const __VLS_57 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_54 = __VLS_asFunctionalComponent(__VLS_53, new __VLS_53({
+const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
 }));
-const __VLS_55 = __VLS_54({
+const __VLS_59 = __VLS_58({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     title: (__VLS_ctx.multiline ? __VLS_ctx.$t('chat.multilineToggleSingle') : __VLS_ctx.$t('chat.multilineToggleMulti')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_54));
-let __VLS_57;
-let __VLS_58;
-let __VLS_59;
-const __VLS_60 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_58));
+let __VLS_61;
+let __VLS_62;
+let __VLS_63;
+const __VLS_64 = {
     onClick: (...[$event]) => {
         __VLS_ctx.multiline = !__VLS_ctx.multiline;
     }
 };
-__VLS_56.slots.default;
+__VLS_60.slots.default;
 (__VLS_ctx.multiline ? '▲' : '▼');
-var __VLS_56;
+var __VLS_60;
 if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "relative" },
@@ -1015,87 +1066,87 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
         ...{ class: "flex gap-1" },
     });
     if (__VLS_ctx.speechSupported) {
-        const __VLS_61 = {}.VButton;
+        const __VLS_65 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_62 = __VLS_asFunctionalComponent(__VLS_61, new __VLS_61({
+        const __VLS_66 = __VLS_asFunctionalComponent(__VLS_65, new __VLS_65({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
             title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
         }));
-        const __VLS_63 = __VLS_62({
+        const __VLS_67 = __VLS_66({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speechRecording ? 'text-error animate-pulse' : '') },
             title: (__VLS_ctx.speechRecording ? __VLS_ctx.$t('chat.speech.stopSpeechToText') : __VLS_ctx.$t('chat.speech.startSpeechToText')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_62));
-        let __VLS_65;
-        let __VLS_66;
-        let __VLS_67;
-        const __VLS_68 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_66));
+        let __VLS_69;
+        let __VLS_70;
+        let __VLS_71;
+        const __VLS_72 = {
             onClick: (__VLS_ctx.toggleSpeech)
         };
-        __VLS_64.slots.default;
-        var __VLS_64;
+        __VLS_68.slots.default;
+        var __VLS_68;
     }
     if (__VLS_ctx.speakerSupported) {
-        const __VLS_69 = {}.VButton;
+        const __VLS_73 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_70 = __VLS_asFunctionalComponent(__VLS_69, new __VLS_69({
+        const __VLS_74 = __VLS_asFunctionalComponent(__VLS_73, new __VLS_73({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
             title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
         }));
-        const __VLS_71 = __VLS_70({
+        const __VLS_75 = __VLS_74({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             ...{ class: (__VLS_ctx.speakerEnabled ? (__VLS_ctx.speakerSpeaking ? 'text-success animate-pulse' : 'text-success') : '') },
             title: (__VLS_ctx.speakerEnabled ? __VLS_ctx.$t('chat.speech.muteIncoming') : __VLS_ctx.$t('chat.speech.readAloud')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_70));
-        let __VLS_73;
-        let __VLS_74;
-        let __VLS_75;
-        const __VLS_76 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_74));
+        let __VLS_77;
+        let __VLS_78;
+        let __VLS_79;
+        const __VLS_80 = {
             onClick: (__VLS_ctx.toggleSpeaker)
         };
-        __VLS_72.slots.default;
+        __VLS_76.slots.default;
         (__VLS_ctx.speakerEnabled ? '🔊' : '🔇');
-        var __VLS_72;
+        var __VLS_76;
     }
-    const __VLS_77 = {}.VButton;
+    const __VLS_81 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_78 = __VLS_asFunctionalComponent(__VLS_77, new __VLS_77({
+    const __VLS_82 = __VLS_asFunctionalComponent(__VLS_81, new __VLS_81({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         title: (__VLS_ctx.$t('chat.speech.settings')),
     }));
-    const __VLS_79 = __VLS_78({
+    const __VLS_83 = __VLS_82({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         title: (__VLS_ctx.$t('chat.speech.settings')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_78));
-    let __VLS_81;
-    let __VLS_82;
-    let __VLS_83;
-    const __VLS_84 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_82));
+    let __VLS_85;
+    let __VLS_86;
+    let __VLS_87;
+    const __VLS_88 = {
         onClick: (...[$event]) => {
             if (!(__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported))
                 return;
             __VLS_ctx.speechSettingsOpen = !__VLS_ctx.speechSettingsOpen;
         }
     };
-    __VLS_80.slots.default;
-    var __VLS_80;
+    __VLS_84.slots.default;
+    var __VLS_84;
     if (__VLS_ctx.speechSettingsOpen) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "absolute bottom-full mb-2 left-0 z-10 w-80 bg-base-100 border border-base-300 rounded shadow-lg p-3 flex flex-col gap-3" },
@@ -1105,52 +1156,52 @@ if (__VLS_ctx.speechSupported || __VLS_ctx.speakerSupported) {
             ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
         });
         (__VLS_ctx.$t('chat.speech.language'));
-        const __VLS_85 = {}.VSelect;
+        const __VLS_89 = {}.VSelect;
         /** @type {[typeof __VLS_components.VSelect, ]} */ ;
         // @ts-ignore
-        const __VLS_86 = __VLS_asFunctionalComponent(__VLS_85, new __VLS_85({
+        const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.speechLanguageStored),
             options: (__VLS_ctx.speechLanguageOptions),
         }));
-        const __VLS_87 = __VLS_86({
+        const __VLS_91 = __VLS_90({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.speechLanguageStored),
             options: (__VLS_ctx.speechLanguageOptions),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_86));
-        let __VLS_89;
-        let __VLS_90;
-        let __VLS_91;
-        const __VLS_92 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_90));
+        let __VLS_93;
+        let __VLS_94;
+        let __VLS_95;
+        const __VLS_96 = {
             'onUpdate:modelValue': (__VLS_ctx.onLanguageChanged)
         };
-        var __VLS_88;
+        var __VLS_92;
         if (__VLS_ctx.speakerSupported) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1" },
             });
             (__VLS_ctx.$t('chat.speech.voice'));
-            const __VLS_93 = {}.VSelect;
+            const __VLS_97 = {}.VSelect;
             /** @type {[typeof __VLS_components.VSelect, ]} */ ;
             // @ts-ignore
-            const __VLS_94 = __VLS_asFunctionalComponent(__VLS_93, new __VLS_93({
+            const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.speechVoiceUri ?? '__auto__'),
                 options: (__VLS_ctx.voiceOptions),
             }));
-            const __VLS_95 = __VLS_94({
+            const __VLS_99 = __VLS_98({
                 ...{ 'onUpdate:modelValue': {} },
                 modelValue: (__VLS_ctx.speechVoiceUri ?? '__auto__'),
                 options: (__VLS_ctx.voiceOptions),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_94));
-            let __VLS_97;
-            let __VLS_98;
-            let __VLS_99;
-            const __VLS_100 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_98));
+            let __VLS_101;
+            let __VLS_102;
+            let __VLS_103;
+            const __VLS_104 = {
                 'onUpdate:modelValue': (__VLS_ctx.onVoiceChanged)
             };
-            var __VLS_96;
+            var __VLS_100;
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-1 flex justify-between" },
@@ -1204,117 +1255,117 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
     multiple: true,
 });
 /** @type {typeof __VLS_ctx.fileInputRef} */ ;
-const __VLS_101 = {}.VButton;
+const __VLS_105 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_102 = __VLS_asFunctionalComponent(__VLS_101, new __VLS_101({
+const __VLS_106 = __VLS_asFunctionalComponent(__VLS_105, new __VLS_105({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     disabled: (__VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
     title: (__VLS_ctx.$t('chat.attachments.pickerTooltip')),
 }));
-const __VLS_103 = __VLS_102({
+const __VLS_107 = __VLS_106({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     disabled: (__VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
     title: (__VLS_ctx.$t('chat.attachments.pickerTooltip')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_102));
-let __VLS_105;
-let __VLS_106;
-let __VLS_107;
-const __VLS_108 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_106));
+let __VLS_109;
+let __VLS_110;
+let __VLS_111;
+const __VLS_112 = {
     onClick: (() => __VLS_ctx.fileInputRef?.click())
 };
-__VLS_104.slots.default;
-var __VLS_104;
+__VLS_108.slots.default;
+var __VLS_108;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1" },
 });
-const __VLS_109 = {}.VTextarea;
+const __VLS_113 = {}.VTextarea;
 /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
 // @ts-ignore
-const __VLS_110 = __VLS_asFunctionalComponent(__VLS_109, new __VLS_109({
+const __VLS_114 = __VLS_asFunctionalComponent(__VLS_113, new __VLS_113({
     ...{ 'onKeydown': {} },
     modelValue: (__VLS_ctx.composerText),
     placeholder: (__VLS_ctx.composerPlaceholder),
     rows: (__VLS_ctx.composerRows),
 }));
-const __VLS_111 = __VLS_110({
+const __VLS_115 = __VLS_114({
     ...{ 'onKeydown': {} },
     modelValue: (__VLS_ctx.composerText),
     placeholder: (__VLS_ctx.composerPlaceholder),
     rows: (__VLS_ctx.composerRows),
-}, ...__VLS_functionalComponentArgsRest(__VLS_110));
-let __VLS_113;
-let __VLS_114;
-let __VLS_115;
-const __VLS_116 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_114));
+let __VLS_117;
+let __VLS_118;
+let __VLS_119;
+const __VLS_120 = {
     onKeydown: (__VLS_ctx.onComposerKeydown)
 };
-var __VLS_112;
-const __VLS_117 = {}.VButton;
+var __VLS_116;
+const __VLS_121 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_118 = __VLS_asFunctionalComponent(__VLS_117, new __VLS_117({
+const __VLS_122 = __VLS_asFunctionalComponent(__VLS_121, new __VLS_121({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: ((!__VLS_ctx.composerText.trim() && __VLS_ctx.selectedFiles.length === 0)
         || __VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
     loading: (__VLS_ctx.sending || __VLS_ctx.uploading),
 }));
-const __VLS_119 = __VLS_118({
+const __VLS_123 = __VLS_122({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: ((!__VLS_ctx.composerText.trim() && __VLS_ctx.selectedFiles.length === 0)
         || __VLS_ctx.sending || __VLS_ctx.uploading || !__VLS_ctx.chatProcessName),
     loading: (__VLS_ctx.sending || __VLS_ctx.uploading),
-}, ...__VLS_functionalComponentArgsRest(__VLS_118));
-let __VLS_121;
-let __VLS_122;
-let __VLS_123;
-const __VLS_124 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_122));
+let __VLS_125;
+let __VLS_126;
+let __VLS_127;
+const __VLS_128 = {
     onClick: (__VLS_ctx.send)
 };
-__VLS_120.slots.default;
+__VLS_124.slots.default;
 (__VLS_ctx.$t('chat.send'));
-var __VLS_120;
+var __VLS_124;
 if (__VLS_ctx.sending) {
-    const __VLS_125 = {}.VButton;
+    const __VLS_129 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_126 = __VLS_asFunctionalComponent(__VLS_125, new __VLS_125({
+    const __VLS_130 = __VLS_asFunctionalComponent(__VLS_129, new __VLS_129({
         ...{ 'onClick': {} },
         variant: "danger",
         title: (__VLS_ctx.$t('chat.pauseTooltip')),
     }));
-    const __VLS_127 = __VLS_126({
+    const __VLS_131 = __VLS_130({
         ...{ 'onClick': {} },
         variant: "danger",
         title: (__VLS_ctx.$t('chat.pauseTooltip')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_126));
-    let __VLS_129;
-    let __VLS_130;
-    let __VLS_131;
-    const __VLS_132 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_130));
+    let __VLS_133;
+    let __VLS_134;
+    let __VLS_135;
+    const __VLS_136 = {
         onClick: (__VLS_ctx.pause)
     };
-    __VLS_128.slots.default;
+    __VLS_132.slots.default;
     (__VLS_ctx.$t('chat.pause'));
-    var __VLS_128;
+    var __VLS_132;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
     ...{ class: "w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto" },
 });
 /** @type {[typeof ProgressFeed, ]} */ ;
 // @ts-ignore
-const __VLS_133 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
+const __VLS_137 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
     events: (__VLS_ctx.progressEvents),
 }));
-const __VLS_134 = __VLS_133({
+const __VLS_138 = __VLS_137({
     events: (__VLS_ctx.progressEvents),
-}, ...__VLS_functionalComponentArgsRest(__VLS_133));
+}, ...__VLS_functionalComponentArgsRest(__VLS_137));
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
@@ -1523,6 +1574,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             sessionResolveError: sessionResolveError,
             messageContainer: messageContainer,
             allMessages: allMessages,
+            activeAskUserMessageId: activeAskUserMessageId,
+            onPickAskUserOption: onPickAskUserOption,
             visibleDraft: visibleDraft,
             visibleWorkerDrafts: visibleWorkerDrafts,
             send: send,

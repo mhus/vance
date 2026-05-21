@@ -4,7 +4,35 @@ import { uiTheme, paletteStyle } from '@composables/useUiTheme';
 const props = withDefaults(defineProps(), {
     worker: false,
     lineMaxChars: () => uiTheme.lineMaxChars,
+    optionsActionable: true,
 });
+const emit = defineEmits();
+const askUserOptions = computed(() => {
+    const raw = props.meta?.['askUserOptions'];
+    if (!Array.isArray(raw))
+        return [];
+    const out = [];
+    for (const item of raw) {
+        if (!item || typeof item !== 'object')
+            continue;
+        const obj = item;
+        const label = obj['label'];
+        if (typeof label !== 'string' || !label.trim())
+            continue;
+        const desc = obj['description'];
+        out.push({
+            label: label.trim(),
+            description: typeof desc === 'string' && desc.trim() ? desc.trim() : undefined,
+        });
+    }
+    return out;
+});
+const showOptions = computed(() => askUserOptions.value.length > 0);
+function onPick(label) {
+    if (!props.optionsActionable)
+        return;
+    emit('pickOption', label);
+}
 const isUser = computed(() => props.role === 'USER');
 const isAssistant = computed(() => props.role === 'ASSISTANT');
 const isSystem = computed(() => props.role === 'SYSTEM');
@@ -48,6 +76,7 @@ debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
     worker: false,
     lineMaxChars: () => uiTheme.lineMaxChars,
+    optionsActionable: true,
 });
 const __VLS_ctx = {};
 let __VLS_components;
@@ -117,6 +146,38 @@ else {
     const __VLS_2 = __VLS_1({
         source: (__VLS_ctx.content),
     }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+    if (__VLS_ctx.showOptions) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "mt-3 flex flex-wrap gap-2" },
+        });
+        for (const [opt] of __VLS_getVForSourceType((__VLS_ctx.askUserOptions))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.worker))
+                            return;
+                        if (!(__VLS_ctx.showOptions))
+                            return;
+                        __VLS_ctx.onPick(opt.label);
+                    } },
+                key: (opt.label),
+                type: "button",
+                disabled: (!__VLS_ctx.optionsActionable),
+                ...{ class: "px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" },
+                ...{ class: (__VLS_ctx.optionsActionable
+                        ? 'border-primary/40 bg-primary/10 hover:bg-primary/20'
+                        : 'border-base-300 bg-base-200') },
+                title: (opt.description ?? opt.label),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+            (opt.label);
+            if (opt.description) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "block text-[10px] font-normal opacity-70 mt-0.5" },
+                });
+                (opt.description);
+            }
+        }
+    }
 }
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['justify-start']} */ ;
@@ -155,11 +216,32 @@ else {
 /** @type {__VLS_StyleScopedClasses['bg-success']} */ ;
 /** @type {__VLS_StyleScopedClasses['animate-pulse']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['transition-colors']} */ ;
+/** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['disabled:cursor-not-allowed']} */ ;
+/** @type {__VLS_StyleScopedClasses['block']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-[10px]']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-normal']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-0.5']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             MarkdownView: MarkdownView,
+            askUserOptions: askUserOptions,
+            showOptions: showOptions,
+            onPick: onPick,
             isUser: isUser,
             isAssistant: isAssistant,
             isSystem: isSystem,
@@ -169,6 +251,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             bubbleStyle: bubbleStyle,
         };
     },
+    __typeEmits: {},
     __typeProps: {},
     props: {},
 });
@@ -176,6 +259,7 @@ export default (await import('vue')).defineComponent({
     setup() {
         return {};
     },
+    __typeEmits: {},
     __typeProps: {},
     props: {},
 });

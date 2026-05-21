@@ -11,4 +11,5 @@ export interface ChatMessageDto {
   role: ChatRole;
   content: string;
   createdAt?: Date;
+  meta?: Record<string, any>;
 }

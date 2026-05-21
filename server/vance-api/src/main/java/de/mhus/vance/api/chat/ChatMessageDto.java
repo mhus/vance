@@ -3,6 +3,7 @@ package de.mhus.vance.api.chat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import java.time.Instant;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -34,4 +35,15 @@ public class ChatMessageDto {
     private String content;
 
     private @Nullable Instant createdAt;
+
+    /**
+     * Optional structured metadata that travels alongside the
+     * message content. Today this is used for ASK_USER picker
+     * options (key {@code askUserOptions} → array of
+     * {@code { label, description? }}); future engines may use it
+     * for other typed side-channels. Picker-aware clients render
+     * the options as buttons; clients that ignore the meta still
+     * see the Markdown rendering in {@link #content}.
+     */
+    private @Nullable Map<String, Object> meta;
 }

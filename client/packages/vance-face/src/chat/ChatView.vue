@@ -411,6 +411,42 @@ const allMessages = computed<ChatMessageDto[]>(() => {
   return result;
 });
 
+/**
+ * Id of the most recent ASSISTANT message that carries
+ * {@code askUserOptions} AND has no subsequent USER message — the
+ * only ASK_USER picker the user can still answer by clicking. Older
+ * pickers grey out (their question has either been answered already
+ * or got overtaken by a fresh exchange). Returns null when there is
+ * no pending question.
+ */
+const activeAskUserMessageId = computed<string | null>(() => {
+  const msgs = allMessages.value;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (String(m.role) === 'USER') {
+      // A user message came after any earlier ASK_USER, so there is
+      // no pending question worth a picker.
+      return null;
+    }
+    if (String(m.role) !== 'ASSISTANT') continue;
+    const raw = m.meta?.['askUserOptions'];
+    if (Array.isArray(raw) && raw.length > 0) {
+      return m.messageId;
+    }
+  }
+  return null;
+});
+
+function onPickAskUserOption(label: string): void {
+  if (!label || !label.trim()) return;
+  if (sending.value) return;
+  composerText.value = label.trim();
+  // Fire-and-forget — `send()` reads composerText, clears it,
+  // pushes the optimistic user bubble, and dispatches the WS frame.
+  // Picker click is semantically a normal user reply.
+  void send();
+}
+
 /** Sticky chat-process draft for the optimistic streaming bubble. */
 const visibleDraft = computed(() => {
   if (!chatProcessName.value) return null;
@@ -485,6 +521,7 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
     role: data.role,
     content: data.content,
     createdAt: data.createdAt,
+    meta: data.meta,
   });
   if (isWorkerProcess(data.processName)) {
     workerMessageIds.value = new Set(workerMessageIds.value).add(data.chatMessageId);
@@ -860,6 +897,9 @@ watch(() => props.sessionId, async (newId, oldId) => {
             :content="msg.content"
             :created-at="msg.createdAt"
             :worker="workerMessageIds.has(msg.messageId)"
+            :meta="msg.meta"
+            :options-actionable="msg.messageId === activeAskUserMessageId"
+            @pick-option="onPickAskUserOption"
           />
 
           <MessageBubble

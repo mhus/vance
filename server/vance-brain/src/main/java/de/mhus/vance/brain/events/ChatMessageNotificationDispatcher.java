@@ -64,6 +64,8 @@ public class ChatMessageNotificationDispatcher {
                             .role(msg.getRole())
                             .content(msg.getContent())
                             .createdAt(msg.getCreatedAt())
+                            .meta(msg.getMeta() == null || msg.getMeta().isEmpty()
+                                    ? null : msg.getMeta())
                             .build());
         } catch (Exception e) {
             log.warn("Failed to push CHAT_MESSAGE_APPENDED for chatMessageId='{}' session='{}': {}",

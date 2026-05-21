@@ -108,6 +108,8 @@ public class ChatHistoryController {
                 .role(doc.getRole())
                 .content(doc.getContent())
                 .createdAt(doc.getCreatedAt())
+                .meta(doc.getMeta() == null || doc.getMeta().isEmpty()
+                        ? null : doc.getMeta())
                 .build();
     }
 

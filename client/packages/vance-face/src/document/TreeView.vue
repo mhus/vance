@@ -2,7 +2,11 @@
 import { computed, inject, nextTick, provide, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
-import type { TreeDocument, TreeItem } from './treeItemsCodec';
+import { parseTree, type TreeDocument, type TreeItem } from './treeItemsCodec';
+import TreeViewReadNode from './TreeViewReadNode.vue';
+import type { DocumentDto } from '@vance/generated';
+import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
 
 /**
  * Recursive editor for `kind: tree` documents. The component runs in
@@ -34,10 +38,23 @@ const props = withDefaults(defineProps<{
    *  An item at index {@code idx} in {@code items} has the global
    *  path {@code [...pathPrefix, idx]}. Top-level uses {@code []}. */
   pathPrefix?: number[];
+  /** Three modes (spec §11.2):
+   *    - `editor`   — full editor surface (default).
+   *    - `inline`   — compact read-only render from `content`.
+   *    - `embedded` — compact read-only render from `document`.   */
+  mode?: 'editor' | 'inline' | 'embedded';
+  /** Inline mode — Markdown bullet hierarchy. */
+  content?: string;
+  meta?: FenceMeta;
+  /** Embedded mode — loaded Document. */
+  document?: DocumentDto;
+  embedRef?: EmbedRef;
 }>(), {
   doc: null,
   items: () => [],
   pathPrefix: () => [],
+  mode: 'editor',
+  meta: () => ({}),
 });
 
 const emit = defineEmits<{
@@ -71,12 +88,42 @@ interface TreeEditorApi {
   prevDfsPath: (path: number[]) => number[] | null;
 }
 
-const isTopLevel = props.doc !== null;
-const editor: TreeEditorApi = isTopLevel
-  ? createEditor(props.doc!, (next) => emit('update:doc', next))
-  : inject<TreeEditorApi>('treeEditor')!;
+const isEditor = computed(() => props.mode === 'editor');
 
-if (isTopLevel) {
+/**
+ * Read-only TreeDocument for inline / embedded modes. Editor mode
+ * keeps the existing editor state path — these refs stay unused.
+ */
+const readOnlyDoc = computed<TreeDocument>(() => {
+  if (props.mode === 'inline') {
+    try { return parseTree(props.content ?? '', 'text/markdown'); }
+    catch (e) {
+      console.warn('TreeView: failed to parse inline content', e);
+      return { kind: 'tree', items: [], extra: {} };
+    }
+  }
+  if (props.mode === 'embedded') {
+    const d = props.document;
+    if (!d || !d.inlineText) return { kind: 'tree', items: [], extra: {} };
+    try { return parseTree(d.inlineText, d.mimeType ?? 'text/markdown'); }
+    catch (e) {
+      console.warn('TreeView: failed to parse embedded document', e);
+      return { kind: 'tree', items: [], extra: {} };
+    }
+  }
+  return { kind: 'tree', items: [], extra: {} };
+});
+
+const isTopLevel = props.doc !== null || props.mode !== 'editor';
+const editor: TreeEditorApi = props.mode === 'editor'
+  ? (props.doc !== null
+      ? createEditor(props.doc, (next) => emit('update:doc', next))
+      : inject<TreeEditorApi>('treeEditor')!)
+  // non-editor modes never use the editor API; build a stub so the
+  // recursive template's references stay non-null in v-if branches.
+  : (null as unknown as TreeEditorApi);
+
+if (isTopLevel && props.mode === 'editor') {
   provide<TreeEditorApi>('treeEditor', editor);
 }
 
@@ -429,7 +476,21 @@ function pathsEqual(a: number[], b: number[]): boolean {
 </script>
 
 <template>
-  <div :class="isTopLevel ? 'tree-edit' : 'tree-edit-nested'">
+  <!-- Compact read-only render for inline / embedded modes — nested
+       bullets, no edit affordances. Recursive via `TreeViewReadNode`
+       defined below. -->
+  <ul v-if="!isEditor" :class="['tree-read', `tree-read--${mode}`]">
+    <TreeViewReadNode
+      v-for="(item, idx) in readOnlyDoc.items"
+      :key="idx"
+      :item="item"
+    />
+    <li v-if="readOnlyDoc.items.length === 0" class="tree-read__empty">
+      (leer)
+    </li>
+  </ul>
+
+  <div v-else :class="isTopLevel ? 'tree-edit' : 'tree-edit-nested'">
     <VueDraggable
       v-if="renderItems.length > 0"
       v-model="renderItems"
@@ -522,6 +583,25 @@ function pathsEqual(a: number[], b: number[]): boolean {
 </template>
 
 <style scoped>
+.tree-read {
+  list-style: disc;
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.tree-read__empty {
+  opacity: 0.5;
+  font-style: italic;
+  list-style: none;
+  padding: 0.5rem 0;
+}
+.tree-read--inline,
+.tree-read--embedded {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
 .tree-edit {
   font-size: 0.95rem;
 }

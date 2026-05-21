@@ -1,10 +1,10 @@
+import { type QuestionOption } from './QuestionCanvas.vue';
 type RoleName = 'USER' | 'ASSISTANT' | 'SYSTEM';
 /** ASK_USER picker option (mirrors the {@code label/description} schema
- *  defined in {@code ArthurActionSchema} / {@code EddieActionSchema}). */
-export interface AskUserOption {
-    label: string;
-    description?: string;
-}
+ *  defined in {@code ArthurActionSchema} / {@code EddieActionSchema}).
+ *  Kept as a re-export so existing call-sites stay valid; the new
+ *  canonical name is {@link QuestionOption} in QuestionCanvas. */
+export type AskUserOption = QuestionOption;
 type __VLS_Props = {
     role: RoleName | string;
     content: string;

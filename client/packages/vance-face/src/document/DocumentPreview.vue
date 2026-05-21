@@ -9,7 +9,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore — Vite asset import resolves at build time.
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-interface Props {
+export interface Props {
   documentId: string;
   mimeType?: string | null;
   /** True when the source is editable inline-text — preview steps

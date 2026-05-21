@@ -114,6 +114,29 @@ public class DocumentController {
         return DocumentKindsResponse.builder().kinds(kinds).build();
     }
 
+    /**
+     * Find one document by ({@code projectId}, {@code path}). Powers the
+     * Web-UI embedded-link resolver (Markdown links with {@code vance:}
+     * URI) — see specification/inline-and-embedded-content.md §11.8.
+     *
+     * <p>Path must match exactly. Returns 404 when no document with the
+     * given path exists.
+     */
+    @GetMapping("/brain/{tenant}/documents/by-path")
+    public DocumentDto findByPath(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("path") String path,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        return toDto(doc);
+    }
+
     @GetMapping("/brain/{tenant}/documents/{id}")
     public DocumentDto findOne(
             @PathVariable("tenant") String tenant,

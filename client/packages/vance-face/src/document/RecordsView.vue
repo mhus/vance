@@ -3,8 +3,11 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
 import { VButton } from '@/components';
-import type { RecordsDocument, RecordsItem } from './recordsCodec';
+import { parseRecords, type RecordsDocument, type RecordsItem } from './recordsCodec';
 import { emptyRecord } from './recordsCodec';
+import type { DocumentDto } from '@vance/generated';
+import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
 
 /**
  * Editor for `kind: records` documents — flat table with a fixed
@@ -17,9 +20,24 @@ import { emptyRecord } from './recordsCodec';
  * {@link RecordsDocument}; the parent re-serialises into the raw
  * body so the existing Save button writes the canonical form.
  *
+ * Three modes (spec §11.2):
+ *   - `editor`   — full editor (default).
+ *   - `inline`   — read-only table from fence content.
+ *   - `embedded` — read-only table from loaded document.
+ *
  * Spec: `specification/doc-kind-records.md`.
  */
-const props = defineProps<{ doc: RecordsDocument }>();
+const props = withDefaults(defineProps<{
+  mode?: 'editor' | 'inline' | 'embedded';
+  doc?: RecordsDocument;
+  content?: string;
+  meta?: FenceMeta;
+  document?: DocumentDto;
+  embedRef?: EmbedRef;
+}>(), {
+  mode: 'editor',
+  meta: () => ({}),
+});
 
 const emit = defineEmits<{
   (event: 'update:doc', doc: RecordsDocument): void;
@@ -29,24 +47,49 @@ const { t } = useI18n();
 
 // ── Editor state ────────────────────────────────────────────────────
 
+const isEditor = computed(() => props.mode === 'editor');
+
+/** Read-only RecordsDocument resolved for inline / embedded modes. */
+const resolvedDoc = computed<RecordsDocument>(() => {
+  if (props.mode === 'editor') return props.doc ?? emptyRecordsDoc();
+  if (props.mode === 'inline') {
+    try { return parseRecords(props.content ?? '', 'text/markdown'); }
+    catch (e) {
+      console.warn('RecordsView: failed to parse inline content', e);
+      return emptyRecordsDoc();
+    }
+  }
+  const d = props.document;
+  if (!d || !d.inlineText) return emptyRecordsDoc();
+  try { return parseRecords(d.inlineText, d.mimeType ?? 'text/markdown'); }
+  catch (e) {
+    console.warn('RecordsView: failed to parse embedded document', e);
+    return emptyRecordsDoc();
+  }
+});
+
+function emptyRecordsDoc(): RecordsDocument {
+  return { kind: 'records', schema: [], items: [], extra: {} };
+}
+
 /** Local mutable copy of the schema. Schema-edit mode mutates this
  *  in place; the body cells re-render against it immediately. */
-const localSchema = ref<string[]>([...props.doc.schema]);
+const localSchema = ref<string[]>([...resolvedDoc.value.schema]);
 /** Local mutable copy of the record list — vue-draggable-plus mutates
  *  the array via `v-model` during a drag. The watch below mirrors
  *  external doc updates back into this ref (e.g. Raw-tab edits). */
-const localItems = ref<RecordsItem[]>(cloneItems(props.doc.items));
+const localItems = ref<RecordsItem[]>(cloneItems(resolvedDoc.value.items));
 
 watch(
-  () => props.doc.items,
+  () => resolvedDoc.value.items,
   (next) => { localItems.value = cloneItems(next); },
   { deep: true },
 );
 watch(
-  () => props.doc.schema,
+  () => resolvedDoc.value.schema,
   (next) => {
     localSchema.value = [...next];
-    localItems.value = cloneItems(props.doc.items);
+    localItems.value = cloneItems(resolvedDoc.value.items);
   },
   { deep: true },
 );
@@ -86,11 +129,12 @@ function cloneItems(src: RecordsItem[]): RecordsItem[] {
 }
 
 function emitDoc(): void {
+  if (!isEditor.value) return;
   emit('update:doc', {
-    kind: props.doc.kind || 'records',
+    kind: resolvedDoc.value.kind || 'records',
     schema: [...localSchema.value],
     items: localItems.value,
-    extra: props.doc.extra,
+    extra: resolvedDoc.value.extra,
   });
 }
 
@@ -433,7 +477,37 @@ const hasOverflow = computed(() =>
 </script>
 
 <template>
-  <div class="records-edit" :class="{ 'records-edit--schema': schemaMode }">
+  <!-- Compact read-only table for inline / embedded modes. -->
+  <div v-if="!isEditor" :class="['records-read', `records-read--${mode}`]">
+    <table v-if="localSchema.length > 0 || localItems.length > 0" class="records-read__table">
+      <thead v-if="localSchema.length > 0">
+        <tr>
+          <th
+            v-for="col in localSchema"
+            :key="col"
+            class="records-read__th"
+          >{{ col }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="(row, ridx) in localItems" :key="ridx" class="records-read__tr">
+          <td
+            v-for="col in localSchema"
+            :key="col"
+            class="records-read__td"
+          >{{ row.values[col] ?? '' }}</td>
+        </tr>
+        <tr v-if="localItems.length === 0">
+          <td :colspan="Math.max(localSchema.length, 1)" class="records-read__empty">
+            (leer)
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div v-else class="records-read__empty">(leer)</div>
+  </div>
+
+  <div v-else class="records-edit" :class="{ 'records-edit--schema': schemaMode }">
     <!-- Toolbar: schema-mode toggle and (when active) inline error. -->
     <div class="records-toolbar">
       <VButton
@@ -609,6 +683,40 @@ const hasOverflow = computed(() =>
 </template>
 
 <style scoped>
+.records-read {
+  overflow-x: auto;
+  font-size: 0.9rem;
+}
+.records-read--inline,
+.records-read--embedded {
+  max-height: 24rem;
+  overflow-y: auto;
+}
+.records-read__table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.records-read__th,
+.records-read__td {
+  border: 1px solid hsl(var(--bc) / 0.2);
+  padding: 0.3em 0.6em;
+  text-align: left;
+  vertical-align: top;
+}
+.records-read__th {
+  background: hsl(var(--bc) / 0.06);
+  font-weight: 600;
+}
+.records-read__tr:nth-child(even) .records-read__td {
+  background: hsl(var(--bc) / 0.03);
+}
+.records-read__empty {
+  padding: 0.6rem;
+  opacity: 0.55;
+  font-style: italic;
+  text-align: center;
+}
+
 .records-edit {
   font-size: 0.95rem;
 }

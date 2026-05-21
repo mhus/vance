@@ -802,7 +802,12 @@ public class EddieEngine extends StructuredActionEngine {
                     modelInfo.actionLoopCorrections());
 
             ActionTurnOutcome outcome;
+            // actionType is non-null only when the LLM produced a parseable
+            // action (success path). Free-text fallbacks below leave it
+            // null; the Web-UI then renders them as plain Markdown.
+            String actionType = null;
             if (loopResult.isAction()) {
+                actionType = loopResult.action().type();
                 outcome = handleAction(loopResult.action(), process, ctx);
                 // Post-LEARN consolidation: a small LLM pass within
                 // Eddie's lane that resolves contradictions and trims
@@ -884,9 +889,15 @@ public class EddieEngine extends StructuredActionEngine {
                         .role(ChatRole.ASSISTANT)
                         .content(chatMessage);
                 Map<String, Object> outcomeMeta = outcome.chatMessageMeta();
+                Map<String, Object> mergedMeta = null;
                 if (outcomeMeta != null && !outcomeMeta.isEmpty()) {
-                    builder.meta(new LinkedHashMap<>(outcomeMeta));
+                    mergedMeta = new LinkedHashMap<>(outcomeMeta);
                 }
+                if (actionType != null) {
+                    if (mergedMeta == null) mergedMeta = new LinkedHashMap<>();
+                    mergedMeta.put(ChatMessageDocument.META_ACTION_TYPE, actionType);
+                }
+                if (mergedMeta != null) builder.meta(mergedMeta);
                 ChatMessageDocument saved = chatLog.append(builder.build());
                 // Flush buffered history tags (TOOL_CALL/RESOURCE/FILE_EDIT
                 // from the dispatcher hook) onto the assistant turn.

@@ -1,4 +1,7 @@
-import type { RecordsDocument } from './recordsCodec';
+import { type RecordsDocument } from './recordsCodec';
+import type { DocumentDto } from '@vance/generated';
+import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
 /**
  * Editor for `kind: records` documents — flat table with a fixed
  * schema and one record per row. Click a cell to edit, Enter to
@@ -10,15 +13,28 @@ import type { RecordsDocument } from './recordsCodec';
  * {@link RecordsDocument}; the parent re-serialises into the raw
  * body so the existing Save button writes the canonical form.
  *
+ * Three modes (spec §11.2):
+ *   - `editor`   — full editor (default).
+ *   - `inline`   — read-only table from fence content.
+ *   - `embedded` — read-only table from loaded document.
+ *
  * Spec: `specification/doc-kind-records.md`.
  */
 type __VLS_Props = {
-    doc: RecordsDocument;
+    mode?: 'editor' | 'inline' | 'embedded';
+    doc?: RecordsDocument;
+    content?: string;
+    meta?: FenceMeta;
+    document?: DocumentDto;
+    embedRef?: EmbedRef;
 };
 declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
     "update:doc": (doc: RecordsDocument) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
     "onUpdate:doc"?: ((doc: RecordsDocument) => any) | undefined;
-}>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
+}>, {
+    mode: "editor" | "inline" | "embedded";
+    meta: FenceMeta;
+}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=RecordsView.vue.d.ts.map

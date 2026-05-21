@@ -18,6 +18,7 @@ import { r } from '@codemirror/legacy-modes/mode/r';
 const props = withDefaults(defineProps(), {
     rows: 20,
     disabled: false,
+    readOnly: false,
 });
 const emit = defineEmits();
 const host = ref(null);
@@ -104,7 +105,7 @@ onMounted(() => {
             emit('update:modelValue', u.state.doc.toString());
         }),
         languageCompartment.of(languageFor(props.mimeType)),
-        readOnlyCompartment.of(readOnlyExt(props.disabled)),
+        readOnlyCompartment.of(readOnlyExt(props.disabled || props.readOnly)),
     ];
     const state = EditorState.create({
         doc: props.modelValue ?? '',
@@ -131,11 +132,11 @@ watch(() => props.mimeType, (mt) => {
         effects: languageCompartment.reconfigure(languageFor(mt)),
     });
 });
-watch(() => props.disabled, (d) => {
+watch(() => [props.disabled, props.readOnly], ([d, r]) => {
     if (!view)
         return;
     view.dispatch({
-        effects: readOnlyCompartment.reconfigure(readOnlyExt(d)),
+        effects: readOnlyCompartment.reconfigure(readOnlyExt(d || r)),
     });
 });
 onBeforeUnmount(() => {
@@ -146,6 +147,7 @@ debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
     rows: 20,
     disabled: false,
+    readOnly: false,
 });
 const __VLS_ctx = {};
 let __VLS_components;

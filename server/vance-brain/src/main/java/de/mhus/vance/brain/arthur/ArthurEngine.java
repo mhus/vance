@@ -705,7 +705,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                     modelInfo.actionLoopCorrections());
 
             ActionTurnOutcome outcome;
+            // actionType is non-null only when the LLM produced a parseable
+            // action (success path). Free-text fallbacks below leave it
+            // null; the Web-UI then renders them as plain Markdown.
+            String actionType = null;
             if (loopResult.isAction()) {
+                actionType = loopResult.action().type();
                 outcome = handleAction(loopResult.action(), process, ctx);
             } else if ("max-iters".equals(loopResult.fallbackReason())
                     && loopResult.madeProgress()
@@ -782,9 +787,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         .role(ChatRole.ASSISTANT)
                         .content(chatMessage);
                 Map<String, Object> outcomeMeta = outcome.chatMessageMeta();
+                Map<String, Object> mergedMeta = null;
                 if (outcomeMeta != null && !outcomeMeta.isEmpty()) {
-                    cmBuilder.meta(new LinkedHashMap<>(outcomeMeta));
+                    mergedMeta = new LinkedHashMap<>(outcomeMeta);
                 }
+                if (actionType != null) {
+                    if (mergedMeta == null) mergedMeta = new LinkedHashMap<>();
+                    mergedMeta.put(ChatMessageDocument.META_ACTION_TYPE, actionType);
+                }
+                if (mergedMeta != null) cmBuilder.meta(mergedMeta);
                 ChatMessageDocument saved = chatLog.append(cmBuilder.build());
                 // Flush buffered history tags onto the freshly persisted
                 // assistant message. The tool-dispatcher hook + plan-mode

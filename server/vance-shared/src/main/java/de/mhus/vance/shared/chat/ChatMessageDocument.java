@@ -57,6 +57,30 @@ public class ChatMessageDocument {
      */
     public static final String META_ASK_USER_OPTIONS = "askUserOptions";
 
+    /**
+     * {@link #meta} key for the engine-action type that produced the
+     * chat message — typically one of {@code ANSWER}, {@code ASK_USER},
+     * {@code REJECT}, {@code WAIT}, {@code RELAY} (engine-specific).
+     * Web-UI dispatches its rendering on this — see
+     * {@code specification/inline-and-embedded-content.md} §11
+     * (chat-message dispatch). Absent on messages that didn't pass
+     * through an action handler (e.g. the LLM fell back to raw text,
+     * USER-originated turns, system notices); UI falls back to the
+     * default Markdown render in that case.
+     */
+    public static final String META_ACTION_TYPE = "actionType";
+
+    /** Action-type value: free-form answer. */
+    public static final String ACTION_TYPE_ANSWER = "ANSWER";
+    /** Action-type value: clarification question (optionally with picker options). */
+    public static final String ACTION_TYPE_ASK_USER = "ASK_USER";
+    /** Action-type value: out-of-scope refusal. */
+    public static final String ACTION_TYPE_REJECT = "REJECT";
+    /** Action-type value: async work in flight, ephemeral notice. */
+    public static final String ACTION_TYPE_WAIT = "WAIT";
+    /** Action-type value: relayed worker reply. */
+    public static final String ACTION_TYPE_RELAY = "RELAY";
+
     @Id
     private @Nullable String id;
 

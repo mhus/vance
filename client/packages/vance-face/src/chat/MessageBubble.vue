@@ -2,6 +2,13 @@
 import { computed } from 'vue';
 import { MarkdownView } from '@components/index';
 import { uiTheme, paletteStyle } from '@composables/useUiTheme';
+import QuestionCanvas, { type QuestionOption } from './QuestionCanvas.vue';
+
+// Action-type values mirror constants in
+// {@code ChatMessageDocument.ACTION_TYPE_*}.
+const ACTION_TYPE_ASK_USER = 'ASK_USER';
+const ACTION_TYPE_REJECT = 'REJECT';
+const ACTION_TYPE_WAIT = 'WAIT';
 
 // Role on the wire is the Java enum *name* (`"USER"` / `"ASSISTANT"` /
 // `"SYSTEM"`) — Jackson serialises enums by name. We don't import
@@ -12,11 +19,10 @@ import { uiTheme, paletteStyle } from '@composables/useUiTheme';
 type RoleName = 'USER' | 'ASSISTANT' | 'SYSTEM';
 
 /** ASK_USER picker option (mirrors the {@code label/description} schema
- *  defined in {@code ArthurActionSchema} / {@code EddieActionSchema}). */
-export interface AskUserOption {
-  label: string;
-  description?: string;
-}
+ *  defined in {@code ArthurActionSchema} / {@code EddieActionSchema}).
+ *  Kept as a re-export so existing call-sites stay valid; the new
+ *  canonical name is {@link QuestionOption} in QuestionCanvas. */
+export type AskUserOption = QuestionOption;
 
 const props = withDefaults(defineProps<{
   role: RoleName | string;
@@ -80,7 +86,23 @@ const askUserOptions = computed<AskUserOption[]>(() => {
   return out;
 });
 
-const showOptions = computed(() => askUserOptions.value.length > 0);
+/**
+ * Engine-action type from {@code meta.actionType}. Drives the
+ * render-mode dispatch — see spec §11. Absent on USER messages,
+ * fallback-text replies (LLM emitted raw text instead of an
+ * arthur_action / eddie_action tool call), and legacy messages
+ * persisted before the actionType tagging landed.
+ */
+const actionType = computed<string | null>(() => {
+  const v = props.meta?.['actionType'];
+  return typeof v === 'string' && v.trim() ? v.trim().toUpperCase() : null;
+});
+
+const isAskUser = computed(() =>
+  actionType.value === ACTION_TYPE_ASK_USER || askUserOptions.value.length > 0,
+);
+const isReject = computed(() => actionType.value === ACTION_TYPE_REJECT);
+const isWait   = computed(() => actionType.value === ACTION_TYPE_WAIT);
 
 function onPick(label: string): void {
   if (!props.optionsActionable) return;
@@ -90,6 +112,24 @@ function onPick(label: string): void {
 const isUser = computed(() => props.role === 'USER');
 const isAssistant = computed(() => props.role === 'ASSISTANT');
 const isSystem = computed(() => props.role === 'SYSTEM');
+
+/**
+ * True when the message contains rich-content artifacts (fenced code
+ * blocks with a kind tag, or {@code vance:} Markdown links). Such
+ * messages get a full-width bubble so the {@code <KindBox>} canvas
+ * (mindmap, table, graph, PDF preview, …) is readable rather than
+ * squeezed into the chat's default {@code max-w-[85%]}. See
+ * specification/inline-and-embedded-content.md §11.6.
+ */
+const hasRichContent = computed<boolean>(() => {
+  const src = props.content;
+  if (!src) return false;
+  // Fenced block with non-empty lang tag (the kind discriminator).
+  if (/^ {0,3}```[A-Za-z][\w-]*/m.test(src)) return true;
+  // Markdown link or image with vance: URI.
+  if (/!?\[[^\]]*\]\(vance:/.test(src)) return true;
+  return false;
+});
 
 const workerText = computed<string>(() => {
   if (!props.worker) return '';
@@ -147,8 +187,9 @@ const bubbleStyle = computed(() => {
     :class="isUser ? 'justify-end' : 'justify-start'"
   >
     <div
-      class="max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm"
+      class="rounded-2xl px-4 py-2.5 shadow-sm"
       :class="[
+        hasRichContent ? 'w-full' : 'max-w-[85%]',
         bubbleStyle ? '' : (isUser ? 'bg-primary text-primary-content' : ''),
         bubbleStyle ? '' : (isAssistant ? 'bg-base-100 border border-base-300' : ''),
         bubbleStyle ? '' : (isSystem ? 'bg-base-200 text-sm italic opacity-80' : ''),
@@ -163,36 +204,29 @@ const bubbleStyle = computed(() => {
         <span v-if="streaming" class="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
         <span v-if="formatted" class="opacity-60">· {{ formatted }}</span>
       </div>
-      <MarkdownView :source="content" />
-      <!-- ASK_USER picker — see specification/eddie-engine.md §5.6 / §5.8.
-           Buttons are visible whenever the bubble carries
-           askUserOptions in its meta. Click sends the label text as
-           the next USER chat input. Disabled state (greyed out)
-           applies once the parent decides the question has been
-           answered (optionsActionable=false). -->
-      <div
-        v-if="showOptions"
-        class="mt-3 flex flex-wrap gap-2"
-      >
-        <button
-          v-for="opt in askUserOptions"
-          :key="opt.label"
-          type="button"
-          :disabled="!optionsActionable"
-          class="px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          :class="optionsActionable
-            ? 'border-primary/40 bg-primary/10 hover:bg-primary/20'
-            : 'border-base-300 bg-base-200'"
-          :title="opt.description ?? opt.label"
-          @click="onPick(opt.label)"
-        >
-          <span>{{ opt.label }}</span>
-          <span
-            v-if="opt.description"
-            class="block text-[10px] font-normal opacity-70 mt-0.5"
-          >{{ opt.description }}</span>
-        </button>
+      <!-- ASK_USER question canvas — question text + structured option
+           buttons as one closed unit. See spec §11 (meta.actionType
+           dispatch). Falls back to legacy showOptions check so old
+           messages without actionType still render correctly. -->
+      <QuestionCanvas
+        v-if="isAskUser"
+        :content="content"
+        :options="askUserOptions"
+        :actionable="optionsActionable"
+        @pick="onPick"
+      />
+      <!-- WAIT — async work in flight; show only a thin status line, no
+           full bubble payload. -->
+      <div v-else-if="isWait" class="text-xs italic opacity-70">
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-warning animate-pulse mr-2" />
+        {{ content }}
       </div>
+      <!-- REJECT — out-of-scope refusal; render in muted/warning tone. -->
+      <div v-else-if="isReject" class="text-sm italic opacity-80">
+        <MarkdownView :source="content" />
+      </div>
+      <!-- ANSWER / RELAY / untagged: default Markdown rendering. -->
+      <MarkdownView v-else :source="content" />
     </div>
   </div>
 </template>

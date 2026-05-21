@@ -1,6 +1,8 @@
 import { computed, inject, nextTick, provide, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
+import { parseTree } from './treeItemsCodec';
+import TreeViewReadNode from './TreeViewReadNode.vue';
 /**
  * Recursive editor for `kind: tree` documents. The component runs in
  * two modes:
@@ -25,14 +27,49 @@ const props = withDefaults(defineProps(), {
     doc: null,
     items: () => [],
     pathPrefix: () => [],
+    mode: 'editor',
+    meta: () => ({}),
 });
 const emit = defineEmits();
 const { t } = useI18n();
-const isTopLevel = props.doc !== null;
-const editor = isTopLevel
-    ? createEditor(props.doc, (next) => emit('update:doc', next))
-    : inject('treeEditor');
-if (isTopLevel) {
+const isEditor = computed(() => props.mode === 'editor');
+/**
+ * Read-only TreeDocument for inline / embedded modes. Editor mode
+ * keeps the existing editor state path — these refs stay unused.
+ */
+const readOnlyDoc = computed(() => {
+    if (props.mode === 'inline') {
+        try {
+            return parseTree(props.content ?? '', 'text/markdown');
+        }
+        catch (e) {
+            console.warn('TreeView: failed to parse inline content', e);
+            return { kind: 'tree', items: [], extra: {} };
+        }
+    }
+    if (props.mode === 'embedded') {
+        const d = props.document;
+        if (!d || !d.inlineText)
+            return { kind: 'tree', items: [], extra: {} };
+        try {
+            return parseTree(d.inlineText, d.mimeType ?? 'text/markdown');
+        }
+        catch (e) {
+            console.warn('TreeView: failed to parse embedded document', e);
+            return { kind: 'tree', items: [], extra: {} };
+        }
+    }
+    return { kind: 'tree', items: [], extra: {} };
+});
+const isTopLevel = props.doc !== null || props.mode !== 'editor';
+const editor = props.mode === 'editor'
+    ? (props.doc !== null
+        ? createEditor(props.doc, (next) => emit('update:doc', next))
+        : inject('treeEditor'))
+    // non-editor modes never use the editor API; build a stub so the
+    // recursive template's references stay non-null in v-if branches.
+    : null;
+if (isTopLevel && props.mode === 'editor') {
     provide('treeEditor', editor);
 }
 /** The list of items to render at this level — bound via v-model
@@ -370,6 +407,8 @@ const __VLS_withDefaultsArg = (function (t) { return t; })({
     doc: null,
     items: () => [],
     pathPrefix: () => [],
+    mode: 'editor',
+    meta: () => ({}),
 });
 const __VLS_ctx = {};
 let __VLS_components;
@@ -383,185 +422,225 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['add-root']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: (__VLS_ctx.isTopLevel ? 'tree-edit' : 'tree-edit-nested') },
-});
-if (__VLS_ctx.renderItems.length > 0) {
-    const __VLS_0 = {}.VueDraggable;
-    /** @type {[typeof __VLS_components.VueDraggable, typeof __VLS_components.VueDraggable, ]} */ ;
-    // @ts-ignore
-    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-        ...{ 'onStart': {} },
-        ...{ 'onEnd': {} },
-        modelValue: (__VLS_ctx.renderItems),
-        tag: "ul",
-        ...{ class: "tree-rows" },
-        animation: (150),
-        group: (__VLS_ctx.dragGroup),
-        handle: ".drag-handle",
-        ghostClass: "row--ghost",
-        chosenClass: "row--chosen",
-        dragClass: "row--drag",
-    }));
-    const __VLS_2 = __VLS_1({
-        ...{ 'onStart': {} },
-        ...{ 'onEnd': {} },
-        modelValue: (__VLS_ctx.renderItems),
-        tag: "ul",
-        ...{ class: "tree-rows" },
-        animation: (150),
-        group: (__VLS_ctx.dragGroup),
-        handle: ".drag-handle",
-        ghostClass: "row--ghost",
-        chosenClass: "row--chosen",
-        dragClass: "row--drag",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-    let __VLS_4;
-    let __VLS_5;
-    let __VLS_6;
-    const __VLS_7 = {
-        onStart: (__VLS_ctx.onDragStart)
-    };
-    const __VLS_8 = {
-        onEnd: (__VLS_ctx.onDragEnd)
-    };
-    __VLS_3.slots.default;
-    for (const [item, idx] of __VLS_getVForSourceType((__VLS_ctx.renderItems))) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+if (!__VLS_ctx.isEditor) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+        ...{ class: (['tree-read', `tree-read--${__VLS_ctx.mode}`]) },
+    });
+    for (const [item, idx] of __VLS_getVForSourceType((__VLS_ctx.readOnlyDoc.items))) {
+        /** @type {[typeof TreeViewReadNode, ]} */ ;
+        // @ts-ignore
+        const __VLS_0 = __VLS_asFunctionalComponent(TreeViewReadNode, new TreeViewReadNode({
             key: (idx),
-            ...{ class: "tree-row" },
+            item: (item),
+        }));
+        const __VLS_1 = __VLS_0({
+            key: (idx),
+            item: (item),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_0));
+    }
+    if (__VLS_ctx.readOnlyDoc.items.length === 0) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: "tree-read__empty" },
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "row-head" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "drag-handle" },
-            title: (__VLS_ctx.t('documents.treeEditor.dragHandle')),
-            'aria-hidden': "true",
-        });
-        if (item.children.length > 0) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!(__VLS_ctx.renderItems.length > 0))
-                            return;
-                        if (!(item.children.length > 0))
-                            return;
-                        __VLS_ctx.editor.toggleCollapsed(__VLS_ctx.pathFor(idx));
-                    } },
-                type: "button",
-                ...{ class: "disclosure" },
-                title: (__VLS_ctx.editor.isCollapsed(__VLS_ctx.pathFor(idx))
-                    ? __VLS_ctx.t('documents.treeEditor.expand')
-                    : __VLS_ctx.t('documents.treeEditor.collapse')),
+    }
+}
+else {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: (__VLS_ctx.isTopLevel ? 'tree-edit' : 'tree-edit-nested') },
+    });
+    if (__VLS_ctx.renderItems.length > 0) {
+        const __VLS_3 = {}.VueDraggable;
+        /** @type {[typeof __VLS_components.VueDraggable, typeof __VLS_components.VueDraggable, ]} */ ;
+        // @ts-ignore
+        const __VLS_4 = __VLS_asFunctionalComponent(__VLS_3, new __VLS_3({
+            ...{ 'onStart': {} },
+            ...{ 'onEnd': {} },
+            modelValue: (__VLS_ctx.renderItems),
+            tag: "ul",
+            ...{ class: "tree-rows" },
+            animation: (150),
+            group: (__VLS_ctx.dragGroup),
+            handle: ".drag-handle",
+            ghostClass: "row--ghost",
+            chosenClass: "row--chosen",
+            dragClass: "row--drag",
+        }));
+        const __VLS_5 = __VLS_4({
+            ...{ 'onStart': {} },
+            ...{ 'onEnd': {} },
+            modelValue: (__VLS_ctx.renderItems),
+            tag: "ul",
+            ...{ class: "tree-rows" },
+            animation: (150),
+            group: (__VLS_ctx.dragGroup),
+            handle: ".drag-handle",
+            ghostClass: "row--ghost",
+            chosenClass: "row--chosen",
+            dragClass: "row--drag",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_4));
+        let __VLS_7;
+        let __VLS_8;
+        let __VLS_9;
+        const __VLS_10 = {
+            onStart: (__VLS_ctx.onDragStart)
+        };
+        const __VLS_11 = {
+            onEnd: (__VLS_ctx.onDragEnd)
+        };
+        __VLS_6.slots.default;
+        for (const [item, idx] of __VLS_getVForSourceType((__VLS_ctx.renderItems))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                key: (idx),
+                ...{ class: "tree-row" },
             });
-            (__VLS_ctx.editor.isCollapsed(__VLS_ctx.pathFor(idx)) ? '▸' : '▾');
-        }
-        else {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-                ...{ class: "disclosure-spacer" },
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "row-head" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "drag-handle" },
+                title: (__VLS_ctx.t('documents.treeEditor.dragHandle')),
                 'aria-hidden': "true",
             });
-        }
-        if (__VLS_ctx.editor.isEditing(__VLS_ctx.pathFor(idx))) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.textarea)({
-                ...{ onBlur: (...[$event]) => {
-                        if (!(__VLS_ctx.renderItems.length > 0))
-                            return;
-                        if (!(__VLS_ctx.editor.isEditing(__VLS_ctx.pathFor(idx))))
-                            return;
-                        __VLS_ctx.editor.commitEdit();
-                    } },
-                ...{ onKeydown: (...[$event]) => {
-                        if (!(__VLS_ctx.renderItems.length > 0))
-                            return;
-                        if (!(__VLS_ctx.editor.isEditing(__VLS_ctx.pathFor(idx))))
-                            return;
-                        __VLS_ctx.onEditKeydown($event, __VLS_ctx.pathFor(idx));
-                    } },
-                ...{ onInput: (__VLS_ctx.autoGrow) },
-                ref: ((el) => __VLS_ctx.registerInput(__VLS_ctx.pathFor(idx), el)),
-                value: (__VLS_ctx.editor.editBuffer.value),
-                ...{ class: "edit-input" },
-                rows: "1",
-            });
-        }
-        else {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!(__VLS_ctx.renderItems.length > 0))
-                            return;
-                        if (!!(__VLS_ctx.editor.isEditing(__VLS_ctx.pathFor(idx))))
-                            return;
-                        __VLS_ctx.editor.startEdit(__VLS_ctx.pathFor(idx));
-                    } },
-                type: "button",
-                ...{ class: "text" },
-                title: (__VLS_ctx.t('documents.treeEditor.clickToEdit')),
-            });
-            if (item.text) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                    ...{ class: "text-content" },
+            if (item.children.length > 0) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.isEditor))
+                                return;
+                            if (!(__VLS_ctx.renderItems.length > 0))
+                                return;
+                            if (!(item.children.length > 0))
+                                return;
+                            __VLS_ctx.editor.toggleCollapsed(__VLS_ctx.pathFor(idx));
+                        } },
+                    type: "button",
+                    ...{ class: "disclosure" },
+                    title: (__VLS_ctx.editor.isCollapsed(__VLS_ctx.pathFor(idx))
+                        ? __VLS_ctx.t('documents.treeEditor.expand')
+                        : __VLS_ctx.t('documents.treeEditor.collapse')),
                 });
-                (item.text);
+                (__VLS_ctx.editor.isCollapsed(__VLS_ctx.pathFor(idx)) ? '▸' : '▾');
             }
             else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                    ...{ class: "text-empty" },
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+                    ...{ class: "disclosure-spacer" },
+                    'aria-hidden': "true",
                 });
-                (__VLS_ctx.t('documents.treeEditor.emptyItem'));
+            }
+            if (__VLS_ctx.editor.isEditing(__VLS_ctx.pathFor(idx))) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.textarea)({
+                    ...{ onBlur: (...[$event]) => {
+                            if (!!(!__VLS_ctx.isEditor))
+                                return;
+                            if (!(__VLS_ctx.renderItems.length > 0))
+                                return;
+                            if (!(__VLS_ctx.editor.isEditing(__VLS_ctx.pathFor(idx))))
+                                return;
+                            __VLS_ctx.editor.commitEdit();
+                        } },
+                    ...{ onKeydown: (...[$event]) => {
+                            if (!!(!__VLS_ctx.isEditor))
+                                return;
+                            if (!(__VLS_ctx.renderItems.length > 0))
+                                return;
+                            if (!(__VLS_ctx.editor.isEditing(__VLS_ctx.pathFor(idx))))
+                                return;
+                            __VLS_ctx.onEditKeydown($event, __VLS_ctx.pathFor(idx));
+                        } },
+                    ...{ onInput: (__VLS_ctx.autoGrow) },
+                    ref: ((el) => __VLS_ctx.registerInput(__VLS_ctx.pathFor(idx), el)),
+                    value: (__VLS_ctx.editor.editBuffer.value),
+                    ...{ class: "edit-input" },
+                    rows: "1",
+                });
+            }
+            else {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.isEditor))
+                                return;
+                            if (!(__VLS_ctx.renderItems.length > 0))
+                                return;
+                            if (!!(__VLS_ctx.editor.isEditing(__VLS_ctx.pathFor(idx))))
+                                return;
+                            __VLS_ctx.editor.startEdit(__VLS_ctx.pathFor(idx));
+                        } },
+                    type: "button",
+                    ...{ class: "text" },
+                    title: (__VLS_ctx.t('documents.treeEditor.clickToEdit')),
+                });
+                if (item.text) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                        ...{ class: "text-content" },
+                    });
+                    (item.text);
+                }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                        ...{ class: "text-empty" },
+                    });
+                    (__VLS_ctx.t('documents.treeEditor.emptyItem'));
+                }
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.isEditor))
+                            return;
+                        if (!(__VLS_ctx.renderItems.length > 0))
+                            return;
+                        __VLS_ctx.editor.addChild(__VLS_ctx.pathFor(idx));
+                    } },
+                type: "button",
+                ...{ class: "row-action" },
+                title: (__VLS_ctx.t('documents.treeEditor.addChild')),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.isEditor))
+                            return;
+                        if (!(__VLS_ctx.renderItems.length > 0))
+                            return;
+                        __VLS_ctx.editor.deleteAt(__VLS_ctx.pathFor(idx));
+                    } },
+                type: "button",
+                ...{ class: "row-action row-delete" },
+                title: (__VLS_ctx.t('documents.treeEditor.deleteItem')),
+            });
+            if (item.children.length > 0 && !__VLS_ctx.editor.isCollapsed(__VLS_ctx.pathFor(idx))) {
+                const __VLS_12 = {}.TreeView;
+                /** @type {[typeof __VLS_components.TreeView, ]} */ ;
+                // @ts-ignore
+                const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
+                    items: (item.children),
+                    pathPrefix: (__VLS_ctx.pathFor(idx)),
+                }));
+                const __VLS_14 = __VLS_13({
+                    items: (item.children),
+                    pathPrefix: (__VLS_ctx.pathFor(idx)),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_13));
             }
         }
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!(__VLS_ctx.renderItems.length > 0))
-                        return;
-                    __VLS_ctx.editor.addChild(__VLS_ctx.pathFor(idx));
-                } },
-            type: "button",
-            ...{ class: "row-action" },
-            title: (__VLS_ctx.t('documents.treeEditor.addChild')),
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!(__VLS_ctx.renderItems.length > 0))
-                        return;
-                    __VLS_ctx.editor.deleteAt(__VLS_ctx.pathFor(idx));
-                } },
-            type: "button",
-            ...{ class: "row-action row-delete" },
-            title: (__VLS_ctx.t('documents.treeEditor.deleteItem')),
-        });
-        if (item.children.length > 0 && !__VLS_ctx.editor.isCollapsed(__VLS_ctx.pathFor(idx))) {
-            const __VLS_9 = {}.TreeView;
-            /** @type {[typeof __VLS_components.TreeView, ]} */ ;
-            // @ts-ignore
-            const __VLS_10 = __VLS_asFunctionalComponent(__VLS_9, new __VLS_9({
-                items: (item.children),
-                pathPrefix: (__VLS_ctx.pathFor(idx)),
-            }));
-            const __VLS_11 = __VLS_10({
-                items: (item.children),
-                pathPrefix: (__VLS_ctx.pathFor(idx)),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_10));
-        }
+        var __VLS_6;
     }
-    var __VLS_3;
+    if (__VLS_ctx.isTopLevel) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "add-row" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (...[$event]) => {
+                    if (!!(!__VLS_ctx.isEditor))
+                        return;
+                    if (!(__VLS_ctx.isTopLevel))
+                        return;
+                    __VLS_ctx.editor.addRoot();
+                } },
+            type: "button",
+            ...{ class: "add-root" },
+        });
+        (__VLS_ctx.t('documents.treeEditor.addItem'));
+    }
 }
-if (__VLS_ctx.isTopLevel) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "add-row" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-        ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.isTopLevel))
-                    return;
-                __VLS_ctx.editor.addRoot();
-            } },
-        type: "button",
-        ...{ class: "add-root" },
-    });
-    (__VLS_ctx.t('documents.treeEditor.addItem'));
-}
+/** @type {__VLS_StyleScopedClasses['tree-read']} */ ;
+/** @type {__VLS_StyleScopedClasses['tree-read__empty']} */ ;
 /** @type {__VLS_StyleScopedClasses['tree-rows']} */ ;
 /** @type {__VLS_StyleScopedClasses['tree-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['row-head']} */ ;
@@ -582,7 +661,10 @@ const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             VueDraggable: VueDraggable,
+            TreeViewReadNode: TreeViewReadNode,
             t: t,
+            isEditor: isEditor,
+            readOnlyDoc: readOnlyDoc,
             isTopLevel: isTopLevel,
             editor: editor,
             renderItems: renderItems,

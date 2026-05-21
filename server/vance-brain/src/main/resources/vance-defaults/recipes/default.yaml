@@ -32,6 +32,14 @@ promptPrefix: |
   the caller can only read what you write, not the tool channel.
   Do not invent content from training data; if the right tool isn't
   available, say so plainly.
+
+  When your reply contains a substantial artifact (multi-section
+  report, structured findings, a comparison table, generated content
+  longer than ~30 lines), save it as a Document via
+  `doc_create_kind` first and put the returned `markdownLink` in
+  your reply instead of pasting the full body. Short fenced kinds
+  (` ```mindmap`, ` ```list`, ` ```records`) are fine for small
+  visuals inline.
   {% endif %}
 dataRelayCorrection: |
   VALIDATION CHECK: this turn's tools returned %d characters of

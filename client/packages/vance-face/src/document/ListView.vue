@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
 import { VButton } from '@/components';
-import type { ListDocument, ListItem } from './listItemsCodec';
+import { parseList, type ListDocument, type ListItem } from './listItemsCodec';
+import type { DocumentDto } from '@vance/generated';
+import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
 
 /**
  * Editor for `kind: list` documents — flat list of items, one row
@@ -16,10 +19,26 @@ import type { ListDocument, ListItem } from './listItemsCodec';
  * Mutations bubble up through {@code update:doc} as a fresh
  * {@link ListDocument}. The parent re-serialises into the raw body
  * so the existing Save button writes the canonical form back.
+ *
+ * Three modes (spec §11.2):
+ *   - `editor`  — full editor surface (this file's original use).
+ *   - `inline`  — compact read-only render from a fence body in `content`.
+ *   - `embedded`— compact read-only render from a loaded Document.
  */
-const props = defineProps<{
-  doc: ListDocument;
-}>();
+const props = withDefaults(defineProps<{
+  mode?: 'editor' | 'inline' | 'embedded';
+  /** Editor mode — full mutable doc. */
+  doc?: ListDocument;
+  /** Inline mode — Markdown bullet-list (or json/yaml) fence body. */
+  content?: string;
+  meta?: FenceMeta;
+  /** Embedded mode — loaded Document. */
+  document?: DocumentDto;
+  embedRef?: EmbedRef;
+}>(), {
+  mode: 'editor',
+  meta: () => ({}),
+});
 
 const emit = defineEmits<{
   (event: 'update:doc', doc: ListDocument): void;
@@ -56,6 +75,39 @@ function selectionCount(): number {
   return selectedIndices.value.size;
 }
 
+const isEditor = computed(() => props.mode === 'editor');
+
+/**
+ * Compact read-only doc resolution for inline/embedded modes.
+ * Editor mode keeps the original `doc` prop as the source-of-truth.
+ */
+const resolvedDoc = computed<ListDocument>(() => {
+  if (props.mode === 'editor') {
+    return props.doc ?? emptyDoc();
+  }
+  if (props.mode === 'inline') {
+    try {
+      return parseList(props.content ?? '', 'text/markdown');
+    } catch (e) {
+      console.warn('ListView: failed to parse inline content', e);
+      return emptyDoc();
+    }
+  }
+  // embedded
+  const d = props.document;
+  if (!d || !d.inlineText) return emptyDoc();
+  try {
+    return parseList(d.inlineText, d.mimeType ?? 'text/markdown');
+  } catch (e) {
+    console.warn('ListView: failed to parse embedded document', e);
+    return emptyDoc();
+  }
+});
+
+function emptyDoc(): ListDocument {
+  return { kind: 'list', items: [], extra: {} };
+}
+
 /**
  * Local mutable copy of the item list — required by `vue-draggable-plus`,
  * which mutates its `v-model` array in place during a drag. CRUD
@@ -63,11 +115,15 @@ function selectionCount(): number {
  * so the parent receives a fresh ListDocument and re-serialises into the
  * raw body. External updates (e.g. user typed in the Raw tab) flow back
  * via the {@link watch} below.
+ *
+ * Initialised from {@link resolvedDoc} so non-editor modes still
+ * populate the list correctly; the read-only template only reads
+ * from this ref, never mutates.
  */
-const localItems = ref<ListItem[]>(cloneItems(props.doc.items));
+const localItems = ref<ListItem[]>(cloneItems(resolvedDoc.value.items));
 
 watch(
-  () => props.doc.items,
+  () => resolvedDoc.value.items,
   (next) => {
     // Always sync local from props — the codec is idempotent on a
     // round-trip, so mirroring our own emit's parsed-and-reserialised
@@ -82,10 +138,11 @@ function cloneItems(src: ListItem[]): ListItem[] {
 }
 
 function emitDoc(): void {
+  if (!isEditor.value) return;
   emit('update:doc', {
-    kind: props.doc.kind || 'list',
+    kind: resolvedDoc.value.kind || 'list',
     items: localItems.value,
-    extra: props.doc.extra,
+    extra: resolvedDoc.value.extra,
   });
 }
 
@@ -256,7 +313,23 @@ function autoGrow(event: Event): void {
 </script>
 
 <template>
-  <div class="list-edit">
+  <!-- Compact read-only render for inline / embedded modes. Bullets
+       only, no drag handles, no edit, no toolbar. -->
+  <ul v-if="!isEditor" :class="['list-read', `list-read--${mode}`]">
+    <li
+      v-for="(item, idx) in localItems"
+      :key="idx"
+      class="list-read__item"
+    >
+      <span v-if="item.text" class="list-read__text">{{ item.text }}</span>
+      <span v-else class="list-read__empty">—</span>
+    </li>
+    <li v-if="localItems.length === 0" class="list-read__empty-row">
+      (leer)
+    </li>
+  </ul>
+
+  <div v-else class="list-edit">
     <!-- Bulk-action bar — appears only while a multi-select is in
          flight. Sits above the list to stay visible regardless of
          scroll position; sticky so long lists keep it on screen. -->
@@ -339,6 +412,23 @@ function autoGrow(event: Event): void {
 </template>
 
 <style scoped>
+.list-read {
+  list-style: disc;
+  margin: 0;
+  padding-left: 1.4rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.list-read__item { margin: 0.15em 0; }
+.list-read__text { word-break: break-word; }
+.list-read__empty { opacity: 0.5; }
+.list-read__empty-row { opacity: 0.5; font-style: italic; list-style: none; padding: 0.5rem 0; }
+.list-read--inline,
+.list-read--embedded {
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
 .list-edit {
   font-size: 0.95rem;
 }

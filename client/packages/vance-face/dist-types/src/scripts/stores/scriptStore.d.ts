@@ -194,6 +194,6 @@ export declare const useScriptStore: import("pinia").StoreDefinition<"scriptCort
     saveActive: () => Promise<void>;
     createFile: (body: CreateBody) => Promise<ScriptFile>;
     deleteFile: (id: string) => Promise<void>;
-}, "openFile" | "deleteFile" | "loadList" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "createFile">>;
+}, "loadList" | "openFile" | "setActiveTab" | "closeTab" | "updateActiveContent" | "saveActive" | "createFile" | "deleteFile">>;
 export {};
 //# sourceMappingURL=scriptStore.d.ts.map

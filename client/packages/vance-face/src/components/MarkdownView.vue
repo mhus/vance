@@ -1,55 +1,181 @@
-<script setup lang="ts">
-import { computed } from 'vue';
-import { marked } from 'marked';
+<script lang="ts">
+/**
+ * Markdown renderer with Vance-specific rich-content dispatch.
+ *
+ * - Standard Markdown via {@code marked} + DOMPurify (block + inline).
+ * - Code blocks with a kind tag → {@link InlineKindBox} (canvas
+ *   rendering by registry).
+ * - Markdown links / images with {@code vance:} URI → {@link
+ *   EmbeddedKindBox} (Document resolved via store).
+ *
+ * Uses a render function rather than a template because the
+ * walked block stream is a heterogeneous array of VNodes
+ * (component instances + sanitized-HTML chunks), which Vue templates
+ * can't iterate over via `<component :is="vnode">` directly.
+ *
+ * Spec: specification/inline-and-embedded-content.md §11.7.
+ */
+import { computed, defineComponent, h, type PropType, type VNode } from 'vue';
+import { marked, type Tokens } from 'marked';
 import DOMPurify from 'dompurify';
+import InlineKindBox from './InlineKindBox.vue';
+import EmbeddedKindBox from './EmbeddedKindBox.vue';
+import { hasRenderer } from '@/kindRenderers/registry';
+import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
+import { isVanceUri, parseVanceUri } from '@/kindRenderers/parseVanceUri';
 
-interface Props {
-  /** Raw Markdown source. {@code null}/blank renders empty. */
-  source?: string | null;
-  /**
-   * Compact one-line rendering (no block elements). Useful when
-   * the same content appears as a chat-bubble or list-row preview.
-   * Default `false` — full block rendering.
-   */
-  inline?: boolean;
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  inline: false,
-});
-
-// Configure marked once per module load — defaults are safe enough,
-// we just want GFM (tables, task-lists, fenced code) and breaks.
 marked.setOptions({
   gfm: true,
   breaks: true,
 });
 
-const html = computed<string>(() => {
-  const src = props.source ?? '';
-  if (!src) return '';
-  // marked's parse can be sync or async depending on extensions. We
-  // use no async extensions, so the sync path is guaranteed; cast to
-  // string for the strict-typed call site.
-  const raw = props.inline
-    ? (marked.parseInline(src) as string)
-    : (marked.parse(src) as string);
-  // The body is user / LLM content. We must sanitize before
-  // injecting via v-html — DOMPurify drops scripts, on*-handlers,
-  // javascript: URLs, etc. Keep a tight allow-list of attributes.
-  return DOMPurify.sanitize(raw, {
-    USE_PROFILES: { html: true },
-  });
+function renderHtmlForTokens(tokens: Tokens.Generic[]): string {
+  if (tokens.length === 0) return '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const list = tokens as any;
+  if (!list.links) list.links = {};
+  const raw = marked.parser(list) as string;
+  return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+}
+
+function flushHtmlBuffer(buffer: Tokens.Generic[], out: VNode[]): void {
+  if (buffer.length === 0) return;
+  const html = renderHtmlForTokens(buffer);
+  buffer.length = 0;
+  if (!html) return;
+  out.push(h('div', { class: 'markdown-view__chunk', innerHTML: html }));
+}
+
+function isInlineFenceToken(token: Tokens.Generic): boolean {
+  if (token.type !== 'code') return false;
+  const codeTok = token as Tokens.Code;
+  return !!codeTok.lang && codeTok.lang.trim().length > 0;
+}
+
+function isVanceLinkParagraph(token: Tokens.Generic): boolean {
+  if (token.type !== 'paragraph') return false;
+  const para = token as Tokens.Paragraph;
+  const inner = para.tokens ?? [];
+  const significant = inner.filter(
+    (t) => t.type !== 'text' || ((t as Tokens.Text).text ?? '').trim().length > 0,
+  );
+  if (significant.length === 0) return false;
+  if (significant.length === 1) {
+    const t = significant[0];
+    return (
+      (t.type === 'link' || t.type === 'image') &&
+      isVanceUri((t as Tokens.Link | Tokens.Image).href)
+    );
+  }
+  return false;
+}
+
+function tokensToText(tokens: Tokens.Generic[]): string {
+  return tokens.map((t) => (t as Tokens.Text).text ?? '').join('');
+}
+
+function vnodesForTokens(tokens: Tokens.Generic[]): VNode[] {
+  const out: VNode[] = [];
+  const buffer: Tokens.Generic[] = [];
+
+  for (const token of tokens) {
+    if (isInlineFenceToken(token)) {
+      const codeTok = token as Tokens.Code;
+      const parsed = parseFenceLang(codeTok.lang ?? '');
+      if (parsed.kind && hasRenderer(parsed.kind)) {
+        flushHtmlBuffer(buffer, out);
+        out.push(
+          h(InlineKindBox, {
+            kind: parsed.kind,
+            content: codeTok.text ?? '',
+            meta: parsed.meta,
+          }),
+        );
+        continue;
+      }
+      // Unknown kind / no registered renderer → keep as standard
+      // Markdown code block (lang-class on <pre><code>).
+      buffer.push(token);
+      continue;
+    }
+    if (isVanceLinkParagraph(token)) {
+      const para = token as Tokens.Paragraph;
+      const linkTok = para.tokens?.find(
+        (t) =>
+          (t.type === 'link' || t.type === 'image') &&
+          isVanceUri((t as Tokens.Link | Tokens.Image).href),
+      ) as Tokens.Link | Tokens.Image | undefined;
+      if (linkTok) {
+        const isImage = linkTok.type === 'image';
+        const text = isImage
+          ? ((linkTok as Tokens.Image).text ?? '')
+          : tokensToText((linkTok as Tokens.Link).tokens ?? []);
+        try {
+          const embedRef = parseVanceUri((linkTok as Tokens.Link).href, {
+            text,
+            imageStyle: isImage,
+          });
+          flushHtmlBuffer(buffer, out);
+          out.push(h(EmbeddedKindBox, { embedRef }));
+          continue;
+        } catch (e) {
+          console.warn('MarkdownView: failed to parse vance: URI', e);
+        }
+      }
+      buffer.push(token);
+      continue;
+    }
+    buffer.push(token);
+  }
+  flushHtmlBuffer(buffer, out);
+  return out;
+}
+
+export default defineComponent({
+  name: 'MarkdownView',
+  props: {
+    /** Raw Markdown source. {@code null}/blank renders empty. */
+    source: {
+      type: [String, null] as unknown as PropType<string | null>,
+      default: null,
+    },
+    /**
+     * Compact one-line rendering (no block elements). Skips the
+     * token walker — chat-bubble / list-row previews shouldn't grow
+     * fence canvases.
+     */
+    inline: { type: Boolean, default: false },
+  },
+  setup(props) {
+    const inlineHtml = computed<string>(() => {
+      const src = props.source ?? '';
+      if (!src) return '';
+      const raw = marked.parseInline(src) as string;
+      return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+    });
+
+    const blockNodes = computed<VNode[]>(() => {
+      const src = props.source ?? '';
+      if (!src) return [];
+      const tokens = marked.lexer(src);
+      return vnodesForTokens(tokens as Tokens.Generic[]);
+    });
+
+    return () => {
+      if (props.inline) {
+        return h('div', {
+          class: ['markdown-view', 'markdown-view--inline'],
+          innerHTML: inlineHtml.value,
+        });
+      }
+      return h('div', { class: 'markdown-view' }, blockNodes.value);
+    };
+  },
 });
 </script>
 
-<template>
-  <div :class="['markdown-view', { 'markdown-view--inline': inline }]" v-html="html" />
-</template>
-
 <style scoped>
 .markdown-view {
-  /* Block layout for headings, lists, code blocks, tables. */
   font-size: 0.95rem;
   line-height: 1.55;
   word-break: break-word;
@@ -136,9 +262,10 @@ const html = computed<string>(() => {
   border-radius: 0.375rem;
 }
 
-/* Compact inline-mode: strip block margins so the rendered
-   fragment fits inside a one-line container (chat bubble,
-   list-row preview). */
+.markdown-view__chunk:not(:first-child) {
+  margin-top: 0.25rem;
+}
+
 .markdown-view--inline :deep(p),
 .markdown-view--inline :deep(ul),
 .markdown-view--inline :deep(ol) {

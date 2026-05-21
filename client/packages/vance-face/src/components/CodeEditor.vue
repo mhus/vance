@@ -35,7 +35,16 @@ interface Props {
    */
   mimeType?: string | null;
   label?: string;
+  /** Disabled state — read-only AND visually dimmed (form-disabled look). */
   disabled?: boolean;
+  /**
+   * Read-only without dimming — used when the same editor surface
+   * shows generated / referenced code (rich-content blocks in chat,
+   * embedded snippets in documents). Mutually exclusive with
+   * {@link disabled} from a UX standpoint, but stacking is safe: both
+   * map to the same underlying {@code EditorState.readOnly}.
+   */
+  readOnly?: boolean;
   /** Approximate visible-line count — drives min-height. */
   rows?: number;
 }
@@ -43,6 +52,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   rows: 20,
   disabled: false,
+  readOnly: false,
 });
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: string): void }>();
@@ -134,7 +144,7 @@ onMounted(() => {
       emit('update:modelValue', u.state.doc.toString());
     }),
     languageCompartment.of(languageFor(props.mimeType)),
-    readOnlyCompartment.of(readOnlyExt(props.disabled)),
+    readOnlyCompartment.of(readOnlyExt(props.disabled || props.readOnly)),
   ];
   const state = EditorState.create({
     doc: props.modelValue ?? '',
@@ -168,11 +178,11 @@ watch(
 );
 
 watch(
-  () => props.disabled,
-  (d) => {
+  () => [props.disabled, props.readOnly] as const,
+  ([d, r]) => {
     if (!view) return;
     view.dispatch({
-      effects: readOnlyCompartment.reconfigure(readOnlyExt(d)),
+      effects: readOnlyCompartment.reconfigure(readOnlyExt(d || r)),
     });
   },
 );

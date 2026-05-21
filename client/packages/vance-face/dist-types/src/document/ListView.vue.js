@@ -1,8 +1,12 @@
-import { nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
 import { VButton } from '@/components';
-const props = defineProps();
+import { parseList } from './listItemsCodec';
+const props = withDefaults(defineProps(), {
+    mode: 'editor',
+    meta: () => ({}),
+});
 const emit = defineEmits();
 const { t } = useI18n();
 /** Current edit-target row index. {@code null} = no edit in flight. */
@@ -30,6 +34,39 @@ function clearSelection() {
 function selectionCount() {
     return selectedIndices.value.size;
 }
+const isEditor = computed(() => props.mode === 'editor');
+/**
+ * Compact read-only doc resolution for inline/embedded modes.
+ * Editor mode keeps the original `doc` prop as the source-of-truth.
+ */
+const resolvedDoc = computed(() => {
+    if (props.mode === 'editor') {
+        return props.doc ?? emptyDoc();
+    }
+    if (props.mode === 'inline') {
+        try {
+            return parseList(props.content ?? '', 'text/markdown');
+        }
+        catch (e) {
+            console.warn('ListView: failed to parse inline content', e);
+            return emptyDoc();
+        }
+    }
+    // embedded
+    const d = props.document;
+    if (!d || !d.inlineText)
+        return emptyDoc();
+    try {
+        return parseList(d.inlineText, d.mimeType ?? 'text/markdown');
+    }
+    catch (e) {
+        console.warn('ListView: failed to parse embedded document', e);
+        return emptyDoc();
+    }
+});
+function emptyDoc() {
+    return { kind: 'list', items: [], extra: {} };
+}
 /**
  * Local mutable copy of the item list — required by `vue-draggable-plus`,
  * which mutates its `v-model` array in place during a drag. CRUD
@@ -37,9 +74,13 @@ function selectionCount() {
  * so the parent receives a fresh ListDocument and re-serialises into the
  * raw body. External updates (e.g. user typed in the Raw tab) flow back
  * via the {@link watch} below.
+ *
+ * Initialised from {@link resolvedDoc} so non-editor modes still
+ * populate the list correctly; the read-only template only reads
+ * from this ref, never mutates.
  */
-const localItems = ref(cloneItems(props.doc.items));
-watch(() => props.doc.items, (next) => {
+const localItems = ref(cloneItems(resolvedDoc.value.items));
+watch(() => resolvedDoc.value.items, (next) => {
     // Always sync local from props — the codec is idempotent on a
     // round-trip, so mirroring our own emit's parsed-and-reserialised
     // result back into localItems is a no-op effect, not a loop.
@@ -49,10 +90,12 @@ function cloneItems(src) {
     return src.map((it) => ({ text: it.text, extra: { ...it.extra } }));
 }
 function emitDoc() {
+    if (!isEditor.value)
+        return;
     emit('update:doc', {
-        kind: props.doc.kind || 'list',
+        kind: resolvedDoc.value.kind || 'list',
         items: localItems.value,
-        extra: props.doc.extra,
+        extra: resolvedDoc.value.extra,
     });
 }
 // ─── Click → edit ───────────────────────────────────────────────────
@@ -209,6 +252,10 @@ function autoGrow(event) {
     el.style.height = el.scrollHeight + 'px';
 }
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
+const __VLS_withDefaultsArg = (function (t) { return t; })({
+    mode: 'editor',
+    meta: () => ({}),
+});
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
@@ -220,198 +267,238 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['row-delete']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "list-edit" },
-});
-if (__VLS_ctx.selectionCount() > 0) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "bulk-bar" },
+if (!__VLS_ctx.isEditor) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+        ...{ class: (['list-read', `list-read--${__VLS_ctx.mode}`]) },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "bulk-count" },
-    });
-    (__VLS_ctx.selectionCount() === 1
-        ? __VLS_ctx.t('documents.listEditor.selectedCountSingular', { count: __VLS_ctx.selectionCount() })
-        : __VLS_ctx.t('documents.listEditor.selectedCountPlural', { count: __VLS_ctx.selectionCount() }));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-        ...{ class: "grow" },
-    });
-    const __VLS_0 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-    }));
-    const __VLS_2 = __VLS_1({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-    let __VLS_4;
-    let __VLS_5;
-    let __VLS_6;
-    const __VLS_7 = {
-        onClick: (__VLS_ctx.clearSelection)
-    };
-    __VLS_3.slots.default;
-    (__VLS_ctx.t('documents.listEditor.clearSelection'));
-    var __VLS_3;
-    const __VLS_8 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
-        ...{ 'onClick': {} },
-        variant: "danger",
-        size: "sm",
-    }));
-    const __VLS_10 = __VLS_9({
-        ...{ 'onClick': {} },
-        variant: "danger",
-        size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-    let __VLS_12;
-    let __VLS_13;
-    let __VLS_14;
-    const __VLS_15 = {
-        onClick: (__VLS_ctx.deleteSelected)
-    };
-    __VLS_11.slots.default;
-    (__VLS_ctx.t('documents.listEditor.deleteSelected'));
-    var __VLS_11;
-}
-if (__VLS_ctx.localItems.length > 0) {
-    const __VLS_16 = {}.VueDraggable;
-    /** @type {[typeof __VLS_components.VueDraggable, typeof __VLS_components.VueDraggable, ]} */ ;
-    // @ts-ignore
-    const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
-        ...{ 'onStart': {} },
-        ...{ 'onEnd': {} },
-        modelValue: (__VLS_ctx.localItems),
-        tag: "ul",
-        ...{ class: "rows" },
-        animation: (150),
-        handle: ".drag-handle",
-        ghostClass: "row--ghost",
-        chosenClass: "row--chosen",
-        dragClass: "row--drag",
-    }));
-    const __VLS_18 = __VLS_17({
-        ...{ 'onStart': {} },
-        ...{ 'onEnd': {} },
-        modelValue: (__VLS_ctx.localItems),
-        tag: "ul",
-        ...{ class: "rows" },
-        animation: (150),
-        handle: ".drag-handle",
-        ghostClass: "row--ghost",
-        chosenClass: "row--chosen",
-        dragClass: "row--drag",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_17));
-    let __VLS_20;
-    let __VLS_21;
-    let __VLS_22;
-    const __VLS_23 = {
-        onStart: (__VLS_ctx.onDragStart)
-    };
-    const __VLS_24 = {
-        onEnd: (__VLS_ctx.onDragEnd)
-    };
-    __VLS_19.slots.default;
     for (const [item, idx] of __VLS_getVForSourceType((__VLS_ctx.localItems))) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
             key: (idx),
-            ...{ class: "row" },
-            ...{ class: ({ 'row--selected': __VLS_ctx.isSelected(idx) }) },
+            ...{ class: "list-read__item" },
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "drag-handle" },
-            title: (__VLS_ctx.t('documents.listEditor.dragHandle')),
-            'aria-hidden': "true",
-        });
-        if (__VLS_ctx.editingIndex === idx) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.textarea)({
-                ...{ onBlur: (__VLS_ctx.commitEdit) },
-                ...{ onKeydown: (...[$event]) => {
-                        if (!(__VLS_ctx.localItems.length > 0))
-                            return;
-                        if (!(__VLS_ctx.editingIndex === idx))
-                            return;
-                        __VLS_ctx.onEditKeydown($event, idx);
-                    } },
-                ...{ onInput: (__VLS_ctx.autoGrow) },
-                ref: ((el) => { if (el)
-                    __VLS_ctx.inputRefs[idx] = el; }),
-                value: (__VLS_ctx.editBuffer),
-                ...{ class: "edit-input" },
-                rows: "1",
+        if (item.text) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "list-read__text" },
             });
+            (item.text);
         }
         else {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!(__VLS_ctx.localItems.length > 0))
-                            return;
-                        if (!!(__VLS_ctx.editingIndex === idx))
-                            return;
-                        __VLS_ctx.onItemClick($event, idx);
-                    } },
-                type: "button",
-                ...{ class: "text" },
-                title: (__VLS_ctx.t('documents.listEditor.clickToEdit')),
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "list-read__empty" },
             });
-            if (item.text) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                    ...{ class: "text-content" },
-                });
-                (item.text);
-            }
-            else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                    ...{ class: "text-empty" },
-                });
-                (__VLS_ctx.t('documents.listEditor.emptyItem'));
-            }
         }
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!(__VLS_ctx.localItems.length > 0))
-                        return;
-                    __VLS_ctx.deleteItem(idx);
-                } },
-            type: "button",
-            ...{ class: "row-delete" },
-            title: (__VLS_ctx.t('documents.listEditor.deleteItem')),
+    }
+    if (__VLS_ctx.localItems.length === 0) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+            ...{ class: "list-read__empty-row" },
         });
     }
-    var __VLS_19;
 }
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "add-row" },
-});
-const __VLS_25 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-}));
-const __VLS_27 = __VLS_26({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-}, ...__VLS_functionalComponentArgsRest(__VLS_26));
-let __VLS_29;
-let __VLS_30;
-let __VLS_31;
-const __VLS_32 = {
-    onClick: (__VLS_ctx.addItem)
-};
-__VLS_28.slots.default;
-(__VLS_ctx.t('documents.listEditor.addItem'));
-var __VLS_28;
+else {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "list-edit" },
+    });
+    if (__VLS_ctx.selectionCount() > 0) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "bulk-bar" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "bulk-count" },
+        });
+        (__VLS_ctx.selectionCount() === 1
+            ? __VLS_ctx.t('documents.listEditor.selectedCountSingular', { count: __VLS_ctx.selectionCount() })
+            : __VLS_ctx.t('documents.listEditor.selectedCountPlural', { count: __VLS_ctx.selectionCount() }));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+            ...{ class: "grow" },
+        });
+        const __VLS_0 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+        }));
+        const __VLS_2 = __VLS_1({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+        let __VLS_4;
+        let __VLS_5;
+        let __VLS_6;
+        const __VLS_7 = {
+            onClick: (__VLS_ctx.clearSelection)
+        };
+        __VLS_3.slots.default;
+        (__VLS_ctx.t('documents.listEditor.clearSelection'));
+        var __VLS_3;
+        const __VLS_8 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+            ...{ 'onClick': {} },
+            variant: "danger",
+            size: "sm",
+        }));
+        const __VLS_10 = __VLS_9({
+            ...{ 'onClick': {} },
+            variant: "danger",
+            size: "sm",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+        let __VLS_12;
+        let __VLS_13;
+        let __VLS_14;
+        const __VLS_15 = {
+            onClick: (__VLS_ctx.deleteSelected)
+        };
+        __VLS_11.slots.default;
+        (__VLS_ctx.t('documents.listEditor.deleteSelected'));
+        var __VLS_11;
+    }
+    if (__VLS_ctx.localItems.length > 0) {
+        const __VLS_16 = {}.VueDraggable;
+        /** @type {[typeof __VLS_components.VueDraggable, typeof __VLS_components.VueDraggable, ]} */ ;
+        // @ts-ignore
+        const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
+            ...{ 'onStart': {} },
+            ...{ 'onEnd': {} },
+            modelValue: (__VLS_ctx.localItems),
+            tag: "ul",
+            ...{ class: "rows" },
+            animation: (150),
+            handle: ".drag-handle",
+            ghostClass: "row--ghost",
+            chosenClass: "row--chosen",
+            dragClass: "row--drag",
+        }));
+        const __VLS_18 = __VLS_17({
+            ...{ 'onStart': {} },
+            ...{ 'onEnd': {} },
+            modelValue: (__VLS_ctx.localItems),
+            tag: "ul",
+            ...{ class: "rows" },
+            animation: (150),
+            handle: ".drag-handle",
+            ghostClass: "row--ghost",
+            chosenClass: "row--chosen",
+            dragClass: "row--drag",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+        let __VLS_20;
+        let __VLS_21;
+        let __VLS_22;
+        const __VLS_23 = {
+            onStart: (__VLS_ctx.onDragStart)
+        };
+        const __VLS_24 = {
+            onEnd: (__VLS_ctx.onDragEnd)
+        };
+        __VLS_19.slots.default;
+        for (const [item, idx] of __VLS_getVForSourceType((__VLS_ctx.localItems))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                key: (idx),
+                ...{ class: "row" },
+                ...{ class: ({ 'row--selected': __VLS_ctx.isSelected(idx) }) },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "drag-handle" },
+                title: (__VLS_ctx.t('documents.listEditor.dragHandle')),
+                'aria-hidden': "true",
+            });
+            if (__VLS_ctx.editingIndex === idx) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.textarea)({
+                    ...{ onBlur: (__VLS_ctx.commitEdit) },
+                    ...{ onKeydown: (...[$event]) => {
+                            if (!!(!__VLS_ctx.isEditor))
+                                return;
+                            if (!(__VLS_ctx.localItems.length > 0))
+                                return;
+                            if (!(__VLS_ctx.editingIndex === idx))
+                                return;
+                            __VLS_ctx.onEditKeydown($event, idx);
+                        } },
+                    ...{ onInput: (__VLS_ctx.autoGrow) },
+                    ref: ((el) => { if (el)
+                        __VLS_ctx.inputRefs[idx] = el; }),
+                    value: (__VLS_ctx.editBuffer),
+                    ...{ class: "edit-input" },
+                    rows: "1",
+                });
+            }
+            else {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.isEditor))
+                                return;
+                            if (!(__VLS_ctx.localItems.length > 0))
+                                return;
+                            if (!!(__VLS_ctx.editingIndex === idx))
+                                return;
+                            __VLS_ctx.onItemClick($event, idx);
+                        } },
+                    type: "button",
+                    ...{ class: "text" },
+                    title: (__VLS_ctx.t('documents.listEditor.clickToEdit')),
+                });
+                if (item.text) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                        ...{ class: "text-content" },
+                    });
+                    (item.text);
+                }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                        ...{ class: "text-empty" },
+                    });
+                    (__VLS_ctx.t('documents.listEditor.emptyItem'));
+                }
+            }
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.isEditor))
+                            return;
+                        if (!(__VLS_ctx.localItems.length > 0))
+                            return;
+                        __VLS_ctx.deleteItem(idx);
+                    } },
+                type: "button",
+                ...{ class: "row-delete" },
+                title: (__VLS_ctx.t('documents.listEditor.deleteItem')),
+            });
+        }
+        var __VLS_19;
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "add-row" },
+    });
+    const __VLS_25 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+    }));
+    const __VLS_27 = __VLS_26({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_26));
+    let __VLS_29;
+    let __VLS_30;
+    let __VLS_31;
+    const __VLS_32 = {
+        onClick: (__VLS_ctx.addItem)
+    };
+    __VLS_28.slots.default;
+    (__VLS_ctx.t('documents.listEditor.addItem'));
+    var __VLS_28;
+}
+/** @type {__VLS_StyleScopedClasses['list-read']} */ ;
+/** @type {__VLS_StyleScopedClasses['list-read__item']} */ ;
+/** @type {__VLS_StyleScopedClasses['list-read__text']} */ ;
+/** @type {__VLS_StyleScopedClasses['list-read__empty']} */ ;
+/** @type {__VLS_StyleScopedClasses['list-read__empty-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['list-edit']} */ ;
 /** @type {__VLS_StyleScopedClasses['bulk-bar']} */ ;
 /** @type {__VLS_StyleScopedClasses['bulk-count']} */ ;
@@ -438,6 +525,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             inputRefs: inputRefs,
             clearSelection: clearSelection,
             selectionCount: selectionCount,
+            isEditor: isEditor,
             localItems: localItems,
             commitEdit: commitEdit,
             addItem: addItem,
@@ -453,6 +541,7 @@ const __VLS_self = (await import('vue')).defineComponent({
     },
     __typeEmits: {},
     __typeProps: {},
+    props: {},
 });
 export default (await import('vue')).defineComponent({
     setup() {
@@ -460,6 +549,7 @@ export default (await import('vue')).defineComponent({
     },
     __typeEmits: {},
     __typeProps: {},
+    props: {},
 });
 ; /* PartiallyEnd: #4569/main.vue */
 //# sourceMappingURL=ListView.vue.js.map

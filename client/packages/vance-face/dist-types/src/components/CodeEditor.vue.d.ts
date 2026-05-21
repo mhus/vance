@@ -8,7 +8,16 @@ interface Props {
      */
     mimeType?: string | null;
     label?: string;
+    /** Disabled state — read-only AND visually dimmed (form-disabled look). */
     disabled?: boolean;
+    /**
+     * Read-only without dimming — used when the same editor surface
+     * shows generated / referenced code (rich-content blocks in chat,
+     * embedded snippets in documents). Mutually exclusive with
+     * {@link disabled} from a UX standpoint, but stacking is safe: both
+     * map to the same underlying {@code EditorState.readOnly}.
+     */
+    readOnly?: boolean;
     /** Approximate visible-line count — drives min-height. */
     rows?: number;
 }
@@ -18,6 +27,7 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
     "onUpdate:modelValue"?: ((value: string) => any) | undefined;
 }>, {
     disabled: boolean;
+    readOnly: boolean;
     rows: number;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;

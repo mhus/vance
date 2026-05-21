@@ -2,22 +2,54 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable } from 'vue-draggable-plus';
 import { VButton } from '@/components';
+import { parseRecords } from './recordsCodec';
 import { emptyRecord } from './recordsCodec';
-const props = defineProps();
+const props = withDefaults(defineProps(), {
+    mode: 'editor',
+    meta: () => ({}),
+});
 const emit = defineEmits();
 const { t } = useI18n();
 // ── Editor state ────────────────────────────────────────────────────
+const isEditor = computed(() => props.mode === 'editor');
+/** Read-only RecordsDocument resolved for inline / embedded modes. */
+const resolvedDoc = computed(() => {
+    if (props.mode === 'editor')
+        return props.doc ?? emptyRecordsDoc();
+    if (props.mode === 'inline') {
+        try {
+            return parseRecords(props.content ?? '', 'text/markdown');
+        }
+        catch (e) {
+            console.warn('RecordsView: failed to parse inline content', e);
+            return emptyRecordsDoc();
+        }
+    }
+    const d = props.document;
+    if (!d || !d.inlineText)
+        return emptyRecordsDoc();
+    try {
+        return parseRecords(d.inlineText, d.mimeType ?? 'text/markdown');
+    }
+    catch (e) {
+        console.warn('RecordsView: failed to parse embedded document', e);
+        return emptyRecordsDoc();
+    }
+});
+function emptyRecordsDoc() {
+    return { kind: 'records', schema: [], items: [], extra: {} };
+}
 /** Local mutable copy of the schema. Schema-edit mode mutates this
  *  in place; the body cells re-render against it immediately. */
-const localSchema = ref([...props.doc.schema]);
+const localSchema = ref([...resolvedDoc.value.schema]);
 /** Local mutable copy of the record list — vue-draggable-plus mutates
  *  the array via `v-model` during a drag. The watch below mirrors
  *  external doc updates back into this ref (e.g. Raw-tab edits). */
-const localItems = ref(cloneItems(props.doc.items));
-watch(() => props.doc.items, (next) => { localItems.value = cloneItems(next); }, { deep: true });
-watch(() => props.doc.schema, (next) => {
+const localItems = ref(cloneItems(resolvedDoc.value.items));
+watch(() => resolvedDoc.value.items, (next) => { localItems.value = cloneItems(next); }, { deep: true });
+watch(() => resolvedDoc.value.schema, (next) => {
     localSchema.value = [...next];
-    localItems.value = cloneItems(props.doc.items);
+    localItems.value = cloneItems(resolvedDoc.value.items);
 }, { deep: true });
 /** {row, field} of the currently editing cell. `null` = no edit. */
 const editingRow = ref(null);
@@ -48,11 +80,13 @@ function cloneItems(src) {
     }));
 }
 function emitDoc() {
+    if (!isEditor.value)
+        return;
     emit('update:doc', {
-        kind: props.doc.kind || 'records',
+        kind: resolvedDoc.value.kind || 'records',
         schema: [...localSchema.value],
         items: localItems.value,
-        extra: props.doc.extra,
+        extra: resolvedDoc.value.extra,
     });
 }
 function clearSelection() {
@@ -379,9 +413,15 @@ function registerInput(row, field, el) {
 }
 const hasOverflow = computed(() => localItems.value.some((it) => it.overflow.length > 0));
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
+const __VLS_withDefaultsArg = (function (t) { return t; })({
+    mode: 'editor',
+    meta: () => ({}),
+});
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['records-read__th']} */ ;
+/** @type {__VLS_StyleScopedClasses['records-read__td']} */ ;
 /** @type {__VLS_StyleScopedClasses['header-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['header-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['row']} */ ;
@@ -403,347 +443,419 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['schema-name-input']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "records-edit" },
-    ...{ class: ({ 'records-edit--schema': __VLS_ctx.schemaMode }) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "records-toolbar" },
-});
-const __VLS_0 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-    ...{ 'onClick': {} },
-    variant: (__VLS_ctx.schemaMode ? 'primary' : 'ghost'),
-    size: "sm",
-}));
-const __VLS_2 = __VLS_1({
-    ...{ 'onClick': {} },
-    variant: (__VLS_ctx.schemaMode ? 'primary' : 'ghost'),
-    size: "sm",
-}, ...__VLS_functionalComponentArgsRest(__VLS_1));
-let __VLS_4;
-let __VLS_5;
-let __VLS_6;
-const __VLS_7 = {
-    onClick: (__VLS_ctx.toggleSchemaMode)
-};
-__VLS_3.slots.default;
-(__VLS_ctx.schemaMode
-    ? __VLS_ctx.t('documents.recordsEditor.doneEditingSchema')
-    : __VLS_ctx.t('documents.recordsEditor.editSchema'));
-var __VLS_3;
-if (__VLS_ctx.schemaError) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "schema-error" },
-    });
-    (__VLS_ctx.schemaError);
-}
-if (__VLS_ctx.selectionCount() > 0 && !__VLS_ctx.schemaMode) {
+if (!__VLS_ctx.isEditor) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "bulk-bar" },
+        ...{ class: (['records-read', `records-read--${__VLS_ctx.mode}`]) },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "bulk-count" },
-    });
-    (__VLS_ctx.selectionCount() === 1
-        ? __VLS_ctx.t('documents.recordsEditor.selectedCountSingular', { count: __VLS_ctx.selectionCount() })
-        : __VLS_ctx.t('documents.recordsEditor.selectedCountPlural', { count: __VLS_ctx.selectionCount() }));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-        ...{ class: "grow" },
-    });
-    const __VLS_8 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-    }));
-    const __VLS_10 = __VLS_9({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-    let __VLS_12;
-    let __VLS_13;
-    let __VLS_14;
-    const __VLS_15 = {
-        onClick: (__VLS_ctx.clearSelection)
-    };
-    __VLS_11.slots.default;
-    (__VLS_ctx.t('documents.recordsEditor.clearSelection'));
-    var __VLS_11;
-    const __VLS_16 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
-        ...{ 'onClick': {} },
-        variant: "danger",
-        size: "sm",
-    }));
-    const __VLS_18 = __VLS_17({
-        ...{ 'onClick': {} },
-        variant: "danger",
-        size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_17));
-    let __VLS_20;
-    let __VLS_21;
-    let __VLS_22;
-    const __VLS_23 = {
-        onClick: (__VLS_ctx.deleteSelected)
-    };
-    __VLS_19.slots.default;
-    (__VLS_ctx.t('documents.recordsEditor.deleteSelected'));
-    var __VLS_19;
-}
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "header-row" },
-    ...{ style: (__VLS_ctx.gridStyle) },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-    ...{ class: "header-cell handle-cell" },
-    'aria-hidden': "true",
-});
-if (!__VLS_ctx.schemaMode) {
-    for (const [field] of __VLS_getVForSourceType((__VLS_ctx.schema))) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            key: (field),
-            ...{ class: "header-cell" },
-            title: (field),
+    if (__VLS_ctx.localSchema.length > 0 || __VLS_ctx.localItems.length > 0) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.table, __VLS_intrinsicElements.table)({
+            ...{ class: "records-read__table" },
         });
-        (field);
+        if (__VLS_ctx.localSchema.length > 0) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.thead, __VLS_intrinsicElements.thead)({});
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({});
+            for (const [col] of __VLS_getVForSourceType((__VLS_ctx.localSchema))) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.th, __VLS_intrinsicElements.th)({
+                    key: (col),
+                    ...{ class: "records-read__th" },
+                });
+                (col);
+            }
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.tbody, __VLS_intrinsicElements.tbody)({});
+        for (const [row, ridx] of __VLS_getVForSourceType((__VLS_ctx.localItems))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({
+                key: (ridx),
+                ...{ class: "records-read__tr" },
+            });
+            for (const [col] of __VLS_getVForSourceType((__VLS_ctx.localSchema))) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                    key: (col),
+                    ...{ class: "records-read__td" },
+                });
+                (row.values[col] ?? '');
+            }
+        }
+        if (__VLS_ctx.localItems.length === 0) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.tr, __VLS_intrinsicElements.tr)({});
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.td, __VLS_intrinsicElements.td)({
+                colspan: (Math.max(__VLS_ctx.localSchema.length, 1)),
+                ...{ class: "records-read__empty" },
+            });
+        }
     }
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-        ...{ class: "header-cell action-cell" },
-        'aria-hidden': "true",
-    });
+    else {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "records-read__empty" },
+        });
+    }
 }
 else {
-    for (const [field, idx] of __VLS_getVForSourceType((__VLS_ctx.schema))) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            key: (field + '@' + idx),
-            ...{ class: "header-cell schema-edit" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "schema-controls" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.schemaMode))
-                        return;
-                    __VLS_ctx.moveColumn(idx, -1);
-                } },
-            type: "button",
-            ...{ class: "schema-arrow" },
-            disabled: (idx === 0),
-            title: (__VLS_ctx.t('documents.recordsEditor.moveColumnLeft')),
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.schemaMode))
-                        return;
-                    __VLS_ctx.moveColumn(idx, 1);
-                } },
-            type: "button",
-            ...{ class: "schema-arrow" },
-            disabled: (idx === __VLS_ctx.schema.length - 1),
-            title: (__VLS_ctx.t('documents.recordsEditor.moveColumnRight')),
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    if (!!(!__VLS_ctx.schemaMode))
-                        return;
-                    __VLS_ctx.deleteColumn(idx);
-                } },
-            type: "button",
-            ...{ class: "schema-remove" },
-            disabled: (__VLS_ctx.schema.length <= 1),
-            title: (__VLS_ctx.t('documents.recordsEditor.deleteColumn')),
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
-            ...{ onChange: ((e) => __VLS_ctx.renameColumn(idx, e.target.value, e.target)) },
-            ...{ onKeydown: (...[$event]) => {
-                    if (!!(!__VLS_ctx.schemaMode))
-                        return;
-                    $event.target.blur();
-                } },
-            type: "text",
-            ...{ class: "schema-name-input" },
-            value: (field),
-        });
-    }
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "header-cell action-cell" },
+        ...{ class: "records-edit" },
+        ...{ class: ({ 'records-edit--schema': __VLS_ctx.schemaMode }) },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-        ...{ onClick: (__VLS_ctx.addColumn) },
-        type: "button",
-        ...{ class: "schema-add" },
-        title: (__VLS_ctx.t('documents.recordsEditor.addColumn')),
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "records-toolbar" },
     });
-}
-if (__VLS_ctx.localItems.length > 0) {
-    const __VLS_24 = {}.VueDraggable;
-    /** @type {[typeof __VLS_components.VueDraggable, typeof __VLS_components.VueDraggable, ]} */ ;
+    const __VLS_0 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
-        ...{ 'onStart': {} },
-        ...{ 'onEnd': {} },
-        modelValue: (__VLS_ctx.localItems),
-        tag: "div",
-        ...{ class: "rows" },
-        animation: (150),
-        handle: ".drag-handle",
-        disabled: (__VLS_ctx.schemaMode),
-        ghostClass: "row--ghost",
-        chosenClass: "row--chosen",
-        dragClass: "row--drag",
+    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+        ...{ 'onClick': {} },
+        variant: (__VLS_ctx.schemaMode ? 'primary' : 'ghost'),
+        size: "sm",
     }));
-    const __VLS_26 = __VLS_25({
-        ...{ 'onStart': {} },
-        ...{ 'onEnd': {} },
-        modelValue: (__VLS_ctx.localItems),
-        tag: "div",
-        ...{ class: "rows" },
-        animation: (150),
-        handle: ".drag-handle",
-        disabled: (__VLS_ctx.schemaMode),
-        ghostClass: "row--ghost",
-        chosenClass: "row--chosen",
-        dragClass: "row--drag",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_25));
-    let __VLS_28;
-    let __VLS_29;
-    let __VLS_30;
-    const __VLS_31 = {
-        onStart: (__VLS_ctx.onDragStart)
+    const __VLS_2 = __VLS_1({
+        ...{ 'onClick': {} },
+        variant: (__VLS_ctx.schemaMode ? 'primary' : 'ghost'),
+        size: "sm",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+    let __VLS_4;
+    let __VLS_5;
+    let __VLS_6;
+    const __VLS_7 = {
+        onClick: (__VLS_ctx.toggleSchemaMode)
     };
-    const __VLS_32 = {
-        onEnd: (__VLS_ctx.onDragEnd)
-    };
-    __VLS_27.slots.default;
-    for (const [item, row] of __VLS_getVForSourceType((__VLS_ctx.localItems))) {
+    __VLS_3.slots.default;
+    (__VLS_ctx.schemaMode
+        ? __VLS_ctx.t('documents.recordsEditor.doneEditingSchema')
+        : __VLS_ctx.t('documents.recordsEditor.editSchema'));
+    var __VLS_3;
+    if (__VLS_ctx.schemaError) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "schema-error" },
+        });
+        (__VLS_ctx.schemaError);
+    }
+    if (__VLS_ctx.selectionCount() > 0 && !__VLS_ctx.schemaMode) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            key: (row),
-            ...{ class: "row" },
-            ...{ class: ({
-                    'row--selected': __VLS_ctx.isRowSelected(row),
-                    'row--frozen': __VLS_ctx.schemaMode,
-                }) },
-            ...{ style: (__VLS_ctx.gridStyle) },
+            ...{ class: "bulk-bar" },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ onClick: (...[$event]) => {
-                    if (!(__VLS_ctx.localItems.length > 0))
-                        return;
-                    __VLS_ctx.onHandleClick($event, row);
-                } },
-            ...{ class: "drag-handle" },
-            title: (__VLS_ctx.t('documents.recordsEditor.dragHandle')),
+            ...{ class: "bulk-count" },
         });
+        (__VLS_ctx.selectionCount() === 1
+            ? __VLS_ctx.t('documents.recordsEditor.selectedCountSingular', { count: __VLS_ctx.selectionCount() })
+            : __VLS_ctx.t('documents.recordsEditor.selectedCountPlural', { count: __VLS_ctx.selectionCount() }));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+            ...{ class: "grow" },
+        });
+        const __VLS_8 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+        }));
+        const __VLS_10 = __VLS_9({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+        let __VLS_12;
+        let __VLS_13;
+        let __VLS_14;
+        const __VLS_15 = {
+            onClick: (__VLS_ctx.clearSelection)
+        };
+        __VLS_11.slots.default;
+        (__VLS_ctx.t('documents.recordsEditor.clearSelection'));
+        var __VLS_11;
+        const __VLS_16 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
+            ...{ 'onClick': {} },
+            variant: "danger",
+            size: "sm",
+        }));
+        const __VLS_18 = __VLS_17({
+            ...{ 'onClick': {} },
+            variant: "danger",
+            size: "sm",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+        let __VLS_20;
+        let __VLS_21;
+        let __VLS_22;
+        const __VLS_23 = {
+            onClick: (__VLS_ctx.deleteSelected)
+        };
+        __VLS_19.slots.default;
+        (__VLS_ctx.t('documents.recordsEditor.deleteSelected'));
+        var __VLS_19;
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "header-row" },
+        ...{ style: (__VLS_ctx.gridStyle) },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+        ...{ class: "header-cell handle-cell" },
+        'aria-hidden': "true",
+    });
+    if (!__VLS_ctx.schemaMode) {
         for (const [field] of __VLS_getVForSourceType((__VLS_ctx.schema))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                key: (field),
+                ...{ class: "header-cell" },
+                title: (field),
+            });
             (field);
-            if (__VLS_ctx.editingRow === row && __VLS_ctx.editingField === field) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
-                    ...{ onBlur: (__VLS_ctx.commitEdit) },
-                    ...{ onKeydown: (...[$event]) => {
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+            ...{ class: "header-cell action-cell" },
+            'aria-hidden': "true",
+        });
+    }
+    else {
+        for (const [field, idx] of __VLS_getVForSourceType((__VLS_ctx.schema))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                key: (field + '@' + idx),
+                ...{ class: "header-cell schema-edit" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "schema-controls" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.isEditor))
+                            return;
+                        if (!!(!__VLS_ctx.schemaMode))
+                            return;
+                        __VLS_ctx.moveColumn(idx, -1);
+                    } },
+                type: "button",
+                ...{ class: "schema-arrow" },
+                disabled: (idx === 0),
+                title: (__VLS_ctx.t('documents.recordsEditor.moveColumnLeft')),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.isEditor))
+                            return;
+                        if (!!(!__VLS_ctx.schemaMode))
+                            return;
+                        __VLS_ctx.moveColumn(idx, 1);
+                    } },
+                type: "button",
+                ...{ class: "schema-arrow" },
+                disabled: (idx === __VLS_ctx.schema.length - 1),
+                title: (__VLS_ctx.t('documents.recordsEditor.moveColumnRight')),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.isEditor))
+                            return;
+                        if (!!(!__VLS_ctx.schemaMode))
+                            return;
+                        __VLS_ctx.deleteColumn(idx);
+                    } },
+                type: "button",
+                ...{ class: "schema-remove" },
+                disabled: (__VLS_ctx.schema.length <= 1),
+                title: (__VLS_ctx.t('documents.recordsEditor.deleteColumn')),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+                ...{ onChange: ((e) => __VLS_ctx.renameColumn(idx, e.target.value, e.target)) },
+                ...{ onKeydown: (...[$event]) => {
+                        if (!!(!__VLS_ctx.isEditor))
+                            return;
+                        if (!!(!__VLS_ctx.schemaMode))
+                            return;
+                        $event.target.blur();
+                    } },
+                type: "text",
+                ...{ class: "schema-name-input" },
+                value: (field),
+            });
+        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "header-cell action-cell" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.addColumn) },
+            type: "button",
+            ...{ class: "schema-add" },
+            title: (__VLS_ctx.t('documents.recordsEditor.addColumn')),
+        });
+    }
+    if (__VLS_ctx.localItems.length > 0) {
+        const __VLS_24 = {}.VueDraggable;
+        /** @type {[typeof __VLS_components.VueDraggable, typeof __VLS_components.VueDraggable, ]} */ ;
+        // @ts-ignore
+        const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
+            ...{ 'onStart': {} },
+            ...{ 'onEnd': {} },
+            modelValue: (__VLS_ctx.localItems),
+            tag: "div",
+            ...{ class: "rows" },
+            animation: (150),
+            handle: ".drag-handle",
+            disabled: (__VLS_ctx.schemaMode),
+            ghostClass: "row--ghost",
+            chosenClass: "row--chosen",
+            dragClass: "row--drag",
+        }));
+        const __VLS_26 = __VLS_25({
+            ...{ 'onStart': {} },
+            ...{ 'onEnd': {} },
+            modelValue: (__VLS_ctx.localItems),
+            tag: "div",
+            ...{ class: "rows" },
+            animation: (150),
+            handle: ".drag-handle",
+            disabled: (__VLS_ctx.schemaMode),
+            ghostClass: "row--ghost",
+            chosenClass: "row--chosen",
+            dragClass: "row--drag",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_25));
+        let __VLS_28;
+        let __VLS_29;
+        let __VLS_30;
+        const __VLS_31 = {
+            onStart: (__VLS_ctx.onDragStart)
+        };
+        const __VLS_32 = {
+            onEnd: (__VLS_ctx.onDragEnd)
+        };
+        __VLS_27.slots.default;
+        for (const [item, row] of __VLS_getVForSourceType((__VLS_ctx.localItems))) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                key: (row),
+                ...{ class: "row" },
+                ...{ class: ({
+                        'row--selected': __VLS_ctx.isRowSelected(row),
+                        'row--frozen': __VLS_ctx.schemaMode,
+                    }) },
+                ...{ style: (__VLS_ctx.gridStyle) },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.isEditor))
+                            return;
+                        if (!(__VLS_ctx.localItems.length > 0))
+                            return;
+                        __VLS_ctx.onHandleClick($event, row);
+                    } },
+                ...{ class: "drag-handle" },
+                title: (__VLS_ctx.t('documents.recordsEditor.dragHandle')),
+            });
+            for (const [field] of __VLS_getVForSourceType((__VLS_ctx.schema))) {
+                (field);
+                if (__VLS_ctx.editingRow === row && __VLS_ctx.editingField === field) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+                        ...{ onBlur: (__VLS_ctx.commitEdit) },
+                        ...{ onKeydown: (...[$event]) => {
+                                if (!!(!__VLS_ctx.isEditor))
+                                    return;
+                                if (!(__VLS_ctx.localItems.length > 0))
+                                    return;
+                                if (!(__VLS_ctx.editingRow === row && __VLS_ctx.editingField === field))
+                                    return;
+                                __VLS_ctx.onEditKeydown($event, row, field);
+                            } },
+                        ref: ((el) => __VLS_ctx.registerInput(row, field, el)),
+                        value: (__VLS_ctx.editBuffer),
+                        type: "text",
+                        ...{ class: "cell-input" },
+                    });
+                }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                        ...{ onClick: (...[$event]) => {
+                                if (!!(!__VLS_ctx.isEditor))
+                                    return;
+                                if (!(__VLS_ctx.localItems.length > 0))
+                                    return;
+                                if (!!(__VLS_ctx.editingRow === row && __VLS_ctx.editingField === field))
+                                    return;
+                                __VLS_ctx.startEdit(row, field);
+                            } },
+                        type: "button",
+                        ...{ class: "cell" },
+                        title: (__VLS_ctx.t('documents.recordsEditor.clickToEdit')),
+                    });
+                    if (item.values[field]) {
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "cell-content" },
+                        });
+                        (item.values[field]);
+                    }
+                    else {
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "cell-empty" },
+                        });
+                        (__VLS_ctx.t('documents.recordsEditor.emptyCell'));
+                    }
+                }
+            }
+            if (!__VLS_ctx.schemaMode) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.isEditor))
+                                return;
                             if (!(__VLS_ctx.localItems.length > 0))
                                 return;
-                            if (!(__VLS_ctx.editingRow === row && __VLS_ctx.editingField === field))
+                            if (!(!__VLS_ctx.schemaMode))
                                 return;
-                            __VLS_ctx.onEditKeydown($event, row, field);
+                            __VLS_ctx.deleteRow(row);
                         } },
-                    ref: ((el) => __VLS_ctx.registerInput(row, field, el)),
-                    value: (__VLS_ctx.editBuffer),
-                    type: "text",
-                    ...{ class: "cell-input" },
+                    type: "button",
+                    ...{ class: "row-delete" },
+                    title: (__VLS_ctx.t('documents.recordsEditor.deleteItem')),
                 });
             }
             else {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                    ...{ onClick: (...[$event]) => {
-                            if (!(__VLS_ctx.localItems.length > 0))
-                                return;
-                            if (!!(__VLS_ctx.editingRow === row && __VLS_ctx.editingField === field))
-                                return;
-                            __VLS_ctx.startEdit(row, field);
-                        } },
-                    type: "button",
-                    ...{ class: "cell" },
-                    title: (__VLS_ctx.t('documents.recordsEditor.clickToEdit')),
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+                    ...{ class: "row-delete-spacer" },
+                    'aria-hidden': "true",
                 });
-                if (item.values[field]) {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "cell-content" },
-                    });
-                    (item.values[field]);
-                }
-                else {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        ...{ class: "cell-empty" },
-                    });
-                    (__VLS_ctx.t('documents.recordsEditor.emptyCell'));
-                }
             }
         }
-        if (!__VLS_ctx.schemaMode) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!(__VLS_ctx.localItems.length > 0))
-                            return;
-                        if (!(!__VLS_ctx.schemaMode))
-                            return;
-                        __VLS_ctx.deleteRow(row);
-                    } },
-                type: "button",
-                ...{ class: "row-delete" },
-                title: (__VLS_ctx.t('documents.recordsEditor.deleteItem')),
-            });
-        }
-        else {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
-                ...{ class: "row-delete-spacer" },
-                'aria-hidden': "true",
-            });
-        }
+        var __VLS_27;
     }
-    var __VLS_27;
+    if (__VLS_ctx.hasOverflow) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "overflow-note" },
+        });
+        (__VLS_ctx.t('documents.recordsEditor.overflowHint'));
+    }
+    if (!__VLS_ctx.schemaMode) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "add-row" },
+        });
+        const __VLS_33 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+        }));
+        const __VLS_35 = __VLS_34({
+            ...{ 'onClick': {} },
+            variant: "ghost",
+            size: "sm",
+        }, ...__VLS_functionalComponentArgsRest(__VLS_34));
+        let __VLS_37;
+        let __VLS_38;
+        let __VLS_39;
+        const __VLS_40 = {
+            onClick: (__VLS_ctx.addRowAndEdit)
+        };
+        __VLS_36.slots.default;
+        (__VLS_ctx.t('documents.recordsEditor.addRow'));
+        var __VLS_36;
+    }
 }
-if (__VLS_ctx.hasOverflow) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "overflow-note" },
-    });
-    (__VLS_ctx.t('documents.recordsEditor.overflowHint'));
-}
-if (!__VLS_ctx.schemaMode) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "add-row" },
-    });
-    const __VLS_33 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-    }));
-    const __VLS_35 = __VLS_34({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_34));
-    let __VLS_37;
-    let __VLS_38;
-    let __VLS_39;
-    const __VLS_40 = {
-        onClick: (__VLS_ctx.addRowAndEdit)
-    };
-    __VLS_36.slots.default;
-    (__VLS_ctx.t('documents.recordsEditor.addRow'));
-    var __VLS_36;
-}
+/** @type {__VLS_StyleScopedClasses['records-read']} */ ;
+/** @type {__VLS_StyleScopedClasses['records-read__table']} */ ;
+/** @type {__VLS_StyleScopedClasses['records-read__th']} */ ;
+/** @type {__VLS_StyleScopedClasses['records-read__tr']} */ ;
+/** @type {__VLS_StyleScopedClasses['records-read__td']} */ ;
+/** @type {__VLS_StyleScopedClasses['records-read__empty']} */ ;
+/** @type {__VLS_StyleScopedClasses['records-read__empty']} */ ;
 /** @type {__VLS_StyleScopedClasses['records-edit']} */ ;
 /** @type {__VLS_StyleScopedClasses['records-edit--schema']} */ ;
 /** @type {__VLS_StyleScopedClasses['records-toolbar']} */ ;
@@ -787,6 +899,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             VueDraggable: VueDraggable,
             VButton: VButton,
             t: t,
+            isEditor: isEditor,
+            localSchema: localSchema,
             localItems: localItems,
             editingRow: editingRow,
             editingField: editingField,
@@ -818,6 +932,7 @@ const __VLS_self = (await import('vue')).defineComponent({
     },
     __typeEmits: {},
     __typeProps: {},
+    props: {},
 });
 export default (await import('vue')).defineComponent({
     setup() {
@@ -825,6 +940,7 @@ export default (await import('vue')).defineComponent({
     },
     __typeEmits: {},
     __typeProps: {},
+    props: {},
 });
 ; /* PartiallyEnd: #4569/main.vue */
 //# sourceMappingURL=RecordsView.vue.js.map

@@ -1,0 +1,153 @@
+<script setup lang="ts">
+/**
+ * Wrapper around {@link KindBox} for the embedded channel —
+ * Markdown links / images with {@code vance:} URI.
+ *
+ * Default actions (spec §4 + §11.6):
+ *   - Copy (primary) — Document source-content to clipboard
+ *   - Open (primary) — navigate to the Document editor
+ *   - Download (secondary) — original-file blob
+ *
+ * Renderer comes from {@link kindRegistry}, keyed on the effective
+ * kind (kindHint first-paint, then verified against the loaded
+ * Document's metadata).
+ */
+import { computed, onMounted, ref } from 'vue';
+import KindBox from './KindBox.vue';
+import { kindIcon, kindLabel, resolveRenderer } from '@/kindRenderers/registry';
+import { useDocumentRefStore } from '@/document/documentRefStore';
+import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+
+interface Props {
+  embedRef: EmbedRef;
+}
+
+const props = defineProps<Props>();
+
+const store = useDocumentRefStore();
+const doc = ref<Awaited<ReturnType<typeof store.resolve>> | null>(null);
+const loadError = ref<string | null>(null);
+
+const effectiveKind = computed<string>(() => {
+  // Loaded doc kind wins over hint (§3.3 conflict-resolution).
+  return (doc.value?.kind ?? props.embedRef.kindHint ?? 'document').toLowerCase();
+});
+
+const renderer = computed(() => resolveRenderer(effectiveKind.value, 'embedded'));
+const label = computed(() => kindLabel(effectiveKind.value));
+const icon = computed(() => kindIcon(effectiveKind.value));
+const title = computed(() => doc.value?.title ?? props.embedRef.text ?? props.embedRef.path);
+
+onMounted(async () => {
+  try {
+    doc.value = await store.resolve(props.embedRef);
+  } catch (e) {
+    loadError.value = (e as Error).message;
+  }
+});
+
+function onCopy(): void {
+  if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+  if (doc.value?.inlineText != null) {
+    void navigator.clipboard.writeText(doc.value.inlineText);
+  } else {
+    // Fall back to URI when content isn't loaded yet / is binary.
+    void navigator.clipboard.writeText(props.embedRef.raw);
+  }
+}
+
+function onOpen(): void {
+  const projectSegment = props.embedRef.project ?? doc.value?.projectId ?? '';
+  const path = encodeURIComponent(props.embedRef.path);
+  const url = projectSegment
+    ? `/document/?project=${encodeURIComponent(projectSegment)}&path=${path}`
+    : `/document/?path=${path}`;
+  window.open(url, '_blank', 'noopener');
+}
+
+function onDownload(): void {
+  // Without a content-bearing REST endpoint surfaced via the store
+  // we fall back to opening the document editor where the user can
+  // download from the raw tab.
+  onOpen();
+}
+</script>
+
+<template>
+  <KindBox
+    :kind="effectiveKind"
+    :label="label"
+    :icon="icon"
+    :title="title"
+  >
+    <template #actions>
+      <button class="kbx-act" :title="$t?.('chat.kindBox.copy') ?? 'Copy'" @click="onCopy">⧉</button>
+      <button class="kbx-act" :title="$t?.('chat.kindBox.open') ?? 'Open'" @click="onOpen">↗</button>
+      <button class="kbx-act" :title="$t?.('chat.kindBox.download') ?? 'Download'" @click="onDownload">↓</button>
+    </template>
+
+    <div v-if="loadError" class="kbx-error">
+      {{ loadError }}
+    </div>
+    <div v-else-if="!doc" class="kbx-loading">
+      <span class="kbx-skeleton" />
+    </div>
+    <component
+      v-else-if="renderer"
+      :is="renderer.embedded"
+      mode="embedded"
+      :document="doc"
+      :embed-ref="embedRef"
+    />
+    <div v-else class="kbx-fallback">
+      <span class="opacity-70">{{ embedRef.path }}</span>
+    </div>
+  </KindBox>
+</template>
+
+<style scoped>
+.kbx-act {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  opacity: 0.7;
+}
+.kbx-act:hover {
+  background: hsl(var(--bc) / 0.1);
+  opacity: 1;
+}
+.kbx-loading {
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 0;
+}
+.kbx-skeleton {
+  width: 100%;
+  height: 4rem;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--bc) / 0.05) 25%,
+    hsl(var(--bc) / 0.12) 50%,
+    hsl(var(--bc) / 0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: kbx-shimmer 1.4s infinite;
+  border-radius: 0.25rem;
+}
+@keyframes kbx-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.kbx-error {
+  color: hsl(var(--er));
+  padding: 0.5rem;
+  font-size: 0.85rem;
+}
+.kbx-fallback {
+  padding: 0.5rem;
+  font-size: 0.9rem;
+}
+</style>

@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n';
 import { WebSocketRequestError, AUTO_LANGUAGE, SUPPORTED_SPEECH_LANGUAGES, getSpeechLanguage, resolveSpeechLanguage, setSpeechLanguage, getSpeakerEnabled, getSpeechRate, getSpeechVoiceURI, getSpeechVolume, setSpeakerEnabled, setSpeechRate, setSpeechVoiceURI, setSpeechVolume, stripMarkdown, MIN_RATE, MAX_RATE, MIN_VOLUME, MAX_VOLUME, } from '@vance/shared';
 import { buildUtterance, isSpeechSynthesisSupported, listVoices, onVoicesChanged, } from '../platform/speechWeb';
 import { useChatHistory } from '@composables/useChatHistory';
+import { useDocumentRefStore } from '@/document/documentRefStore';
 import { uploadChatboxAttachments, ChatboxUploadError, } from '@composables/useChatboxUpload';
 import { SessionHeader, VAlert, VButton, VSelect, VTextarea } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
@@ -65,6 +66,14 @@ const dragActive = ref(false);
  *  Required for attachment uploads — the documents endpoint is
  *  project-scoped. */
 const chatProjectId = ref('');
+// Keep the embedded-document resolver and the save-as-document promote
+// path informed about the chat's current project — both fall back to
+// this store value when a vance:/-link or a kindbox action omits the
+// authority segment. See documentRefStore + InlineKindBox.
+const documentRefStore = useDocumentRefStore();
+watch(chatProjectId, (id) => {
+    documentRefStore.setCurrentProject(id);
+}, { immediate: true });
 /**
  * Composer mode: single-line uses Enter to send (Shift+Enter for a hard
  * break), multi-line uses Ctrl/Cmd+Enter (because plain Enter is the

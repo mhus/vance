@@ -76,4 +76,32 @@ The correct loop:
    awaiting_user_input=…)` and no other tool calls.
 
 Never put the user-facing reply outside `respond`.
+
+## Rich Content & Document Output
+
+When your work produces a substantial artifact — a research
+summary, a multi-section report, a mindmap, a table of findings,
+a generated image, etc. — **save it as a Document** rather than
+dumping the whole content into your `respond` message.
+
+The right pattern:
+
+1. Call `doc_create_kind(path=..., kind=..., body=...)`. Pick the
+   kind that matches the artifact (`text`, `mindmap`, `tree`,
+   `records`, `list`, `data`).
+2. The tool response carries a ready-to-insert `markdownLink`.
+3. Put that link in your `respond` message: a short summary line
+   plus the link. Don't paste the body content too — the caller
+   can open the link.
+
+Why this matters: callers (Arthur / Eddie) RELAY your reply to the
+user. A 200-line dump in the chat is ugly and unsearchable; a one-
+line summary + `[Q1-Report](vance:/documents/...)` link lets the
+user open the canvas and find it again later.
+
+For small inline artifacts (a 3-line table, a 4-node mindmap),
+fenced blocks are fine: ` ```mindmap`, ` ```tree`, ` ```list`,
+` ```records`, ` ```table`. Use plain Markdown for ordinary code
+or config snippets — no special kind tag for ` ```java`, ` ```json`,
+etc.
 {% endif %}

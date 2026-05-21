@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.tools.kinds;
 
+import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -46,6 +47,7 @@ public class DocCreateKindTool implements Tool {
     }
 
     private final KindToolSupport support;
+    private final DocumentLinkBuilder linkBuilder;
 
     @Override public String name() { return "doc_create_kind"; }
     @Override public String description() {
@@ -93,6 +95,10 @@ public class DocCreateKindTool implements Tool {
         out.put("path", created.getPath());
         out.put("kind", created.getKind());
         if (created.getMimeType() != null) out.put("mimeType", created.getMimeType());
+        // Pre-built Markdown link so the LLM can embed the new doc
+        // into its reply without a second tool round-trip. See
+        // specification/inline-and-embedded-content.md §10.1.
+        out.put("markdownLink", linkBuilder.linkFor(created, ctx.projectId()));
         return out;
     }
 

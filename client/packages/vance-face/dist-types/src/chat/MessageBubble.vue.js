@@ -1,6 +1,12 @@
 import { computed } from 'vue';
 import { MarkdownView } from '@components/index';
 import { uiTheme, paletteStyle } from '@composables/useUiTheme';
+import QuestionCanvas from './QuestionCanvas.vue';
+// Action-type values mirror constants in
+// {@code ChatMessageDocument.ACTION_TYPE_*}.
+const ACTION_TYPE_ASK_USER = 'ASK_USER';
+const ACTION_TYPE_REJECT = 'REJECT';
+const ACTION_TYPE_WAIT = 'WAIT';
 const props = withDefaults(defineProps(), {
     worker: false,
     lineMaxChars: () => uiTheme.lineMaxChars,
@@ -27,7 +33,20 @@ const askUserOptions = computed(() => {
     }
     return out;
 });
-const showOptions = computed(() => askUserOptions.value.length > 0);
+/**
+ * Engine-action type from {@code meta.actionType}. Drives the
+ * render-mode dispatch — see spec §11. Absent on USER messages,
+ * fallback-text replies (LLM emitted raw text instead of an
+ * arthur_action / eddie_action tool call), and legacy messages
+ * persisted before the actionType tagging landed.
+ */
+const actionType = computed(() => {
+    const v = props.meta?.['actionType'];
+    return typeof v === 'string' && v.trim() ? v.trim().toUpperCase() : null;
+});
+const isAskUser = computed(() => actionType.value === ACTION_TYPE_ASK_USER || askUserOptions.value.length > 0);
+const isReject = computed(() => actionType.value === ACTION_TYPE_REJECT);
+const isWait = computed(() => actionType.value === ACTION_TYPE_WAIT);
 function onPick(label) {
     if (!props.optionsActionable)
         return;
@@ -36,6 +55,26 @@ function onPick(label) {
 const isUser = computed(() => props.role === 'USER');
 const isAssistant = computed(() => props.role === 'ASSISTANT');
 const isSystem = computed(() => props.role === 'SYSTEM');
+/**
+ * True when the message contains rich-content artifacts (fenced code
+ * blocks with a kind tag, or {@code vance:} Markdown links). Such
+ * messages get a full-width bubble so the {@code <KindBox>} canvas
+ * (mindmap, table, graph, PDF preview, …) is readable rather than
+ * squeezed into the chat's default {@code max-w-[85%]}. See
+ * specification/inline-and-embedded-content.md §11.6.
+ */
+const hasRichContent = computed(() => {
+    const src = props.content;
+    if (!src)
+        return false;
+    // Fenced block with non-empty lang tag (the kind discriminator).
+    if (/^ {0,3}```[A-Za-z][\w-]*/m.test(src))
+        return true;
+    // Markdown link or image with vance: URI.
+    if (/!?\[[^\]]*\]\(vance:/.test(src))
+        return true;
+    return false;
+});
 const workerText = computed(() => {
     if (!props.worker)
         return '';
@@ -111,8 +150,9 @@ else {
         ...{ class: (__VLS_ctx.isUser ? 'justify-end' : 'justify-start') },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm" },
+        ...{ class: "rounded-2xl px-4 py-2.5 shadow-sm" },
         ...{ class: ([
+                __VLS_ctx.hasRichContent ? 'w-full' : 'max-w-[85%]',
                 __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isUser ? 'bg-primary text-primary-content' : ''),
                 __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isAssistant ? 'bg-base-100 border border-base-300' : ''),
                 __VLS_ctx.bubbleStyle ? '' : (__VLS_ctx.isSystem ? 'bg-base-200 text-sm italic opacity-80' : ''),
@@ -137,46 +177,62 @@ else {
             (__VLS_ctx.formatted);
         }
     }
-    const __VLS_0 = {}.MarkdownView;
-    /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
-    // @ts-ignore
-    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-        source: (__VLS_ctx.content),
-    }));
-    const __VLS_2 = __VLS_1({
-        source: (__VLS_ctx.content),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-    if (__VLS_ctx.showOptions) {
+    if (__VLS_ctx.isAskUser) {
+        /** @type {[typeof QuestionCanvas, ]} */ ;
+        // @ts-ignore
+        const __VLS_0 = __VLS_asFunctionalComponent(QuestionCanvas, new QuestionCanvas({
+            ...{ 'onPick': {} },
+            content: (__VLS_ctx.content),
+            options: (__VLS_ctx.askUserOptions),
+            actionable: (__VLS_ctx.optionsActionable),
+        }));
+        const __VLS_1 = __VLS_0({
+            ...{ 'onPick': {} },
+            content: (__VLS_ctx.content),
+            options: (__VLS_ctx.askUserOptions),
+            actionable: (__VLS_ctx.optionsActionable),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_0));
+        let __VLS_3;
+        let __VLS_4;
+        let __VLS_5;
+        const __VLS_6 = {
+            onPick: (__VLS_ctx.onPick)
+        };
+        var __VLS_2;
+    }
+    else if (__VLS_ctx.isWait) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "mt-3 flex flex-wrap gap-2" },
+            ...{ class: "text-xs italic opacity-70" },
         });
-        for (const [opt] of __VLS_getVForSourceType((__VLS_ctx.askUserOptions))) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        if (!!(__VLS_ctx.worker))
-                            return;
-                        if (!(__VLS_ctx.showOptions))
-                            return;
-                        __VLS_ctx.onPick(opt.label);
-                    } },
-                key: (opt.label),
-                type: "button",
-                disabled: (!__VLS_ctx.optionsActionable),
-                ...{ class: "px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" },
-                ...{ class: (__VLS_ctx.optionsActionable
-                        ? 'border-primary/40 bg-primary/10 hover:bg-primary/20'
-                        : 'border-base-300 bg-base-200') },
-                title: (opt.description ?? opt.label),
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-            (opt.label);
-            if (opt.description) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                    ...{ class: "block text-[10px] font-normal opacity-70 mt-0.5" },
-                });
-                (opt.description);
-            }
-        }
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span)({
+            ...{ class: "inline-block w-1.5 h-1.5 rounded-full bg-warning animate-pulse mr-2" },
+        });
+        (__VLS_ctx.content);
+    }
+    else if (__VLS_ctx.isReject) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "text-sm italic opacity-80" },
+        });
+        const __VLS_7 = {}.MarkdownView;
+        /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
+        // @ts-ignore
+        const __VLS_8 = __VLS_asFunctionalComponent(__VLS_7, new __VLS_7({
+            source: (__VLS_ctx.content),
+        }));
+        const __VLS_9 = __VLS_8({
+            source: (__VLS_ctx.content),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_8));
+    }
+    else {
+        const __VLS_11 = {}.MarkdownView;
+        /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
+        // @ts-ignore
+        const __VLS_12 = __VLS_asFunctionalComponent(__VLS_11, new __VLS_11({
+            source: (__VLS_ctx.content),
+        }));
+        const __VLS_13 = __VLS_12({
+            source: (__VLS_ctx.content),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_12));
     }
 }
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -198,7 +254,6 @@ else {
 /** @type {__VLS_StyleScopedClasses['animate-pulse']} */ ;
 /** @type {__VLS_StyleScopedClasses['shrink-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['max-w-[85%]']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded-2xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['py-2.5']} */ ;
@@ -216,35 +271,34 @@ else {
 /** @type {__VLS_StyleScopedClasses['bg-success']} */ ;
 /** @type {__VLS_StyleScopedClasses['animate-pulse']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
-/** @type {__VLS_StyleScopedClasses['rounded-lg']} */ ;
-/** @type {__VLS_StyleScopedClasses['border']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
-/** @type {__VLS_StyleScopedClasses['transition-colors']} */ ;
-/** @type {__VLS_StyleScopedClasses['disabled:opacity-50']} */ ;
-/** @type {__VLS_StyleScopedClasses['disabled:cursor-not-allowed']} */ ;
-/** @type {__VLS_StyleScopedClasses['block']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-[10px]']} */ ;
-/** @type {__VLS_StyleScopedClasses['font-normal']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['italic']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['inline-block']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['h-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-warning']} */ ;
+/** @type {__VLS_StyleScopedClasses['animate-pulse']} */ ;
+/** @type {__VLS_StyleScopedClasses['mr-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['italic']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             MarkdownView: MarkdownView,
+            QuestionCanvas: QuestionCanvas,
             askUserOptions: askUserOptions,
-            showOptions: showOptions,
+            isAskUser: isAskUser,
+            isReject: isReject,
+            isWait: isWait,
             onPick: onPick,
             isUser: isUser,
             isAssistant: isAssistant,
             isSystem: isSystem,
+            hasRichContent: hasRichContent,
             workerText: workerText,
             formatted: formatted,
             workerStyle: workerStyle,

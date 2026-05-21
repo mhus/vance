@@ -47,6 +47,7 @@ import type {
   TodosUpdatedNotification,
 } from '@vance/generated';
 import { useChatHistory } from '@composables/useChatHistory';
+import { useDocumentRefStore } from '@/document/documentRefStore';
 import {
   uploadChatboxAttachments,
   ChatboxUploadError,
@@ -135,6 +136,15 @@ const dragActive = ref(false);
  *  Required for attachment uploads — the documents endpoint is
  *  project-scoped. */
 const chatProjectId = ref<string>('');
+
+// Keep the embedded-document resolver and the save-as-document promote
+// path informed about the chat's current project — both fall back to
+// this store value when a vance:/-link or a kindbox action omits the
+// authority segment. See documentRefStore + InlineKindBox.
+const documentRefStore = useDocumentRefStore();
+watch(chatProjectId, (id) => {
+  documentRefStore.setCurrentProject(id);
+}, { immediate: true });
 
 /**
  * Composer mode: single-line uses Enter to send (Shift+Enter for a hard

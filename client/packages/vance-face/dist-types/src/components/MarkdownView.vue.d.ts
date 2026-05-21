@@ -1,15 +1,39 @@
-interface Props {
+import { type PropType, type VNode } from 'vue';
+declare const _default: import("vue").DefineComponent<import("vue").ExtractPropTypes<{
     /** Raw Markdown source. {@code null}/blank renders empty. */
-    source?: string | null;
+    source: {
+        type: PropType<string | null>;
+        default: null;
+    };
     /**
-     * Compact one-line rendering (no block elements). Useful when
-     * the same content appears as a chat-bubble or list-row preview.
-     * Default `false` — full block rendering.
+     * Compact one-line rendering (no block elements). Skips the
+     * token walker — chat-bubble / list-row previews shouldn't grow
+     * fence canvases.
      */
-    inline?: boolean;
-}
-declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<Props> & Readonly<{}>, {
+    inline: {
+        type: BooleanConstructor;
+        default: boolean;
+    };
+}>, () => VNode<import("vue").RendererNode, import("vue").RendererElement, {
+    [key: string]: any;
+}>, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {}, string, import("vue").PublicProps, Readonly<import("vue").ExtractPropTypes<{
+    /** Raw Markdown source. {@code null}/blank renders empty. */
+    source: {
+        type: PropType<string | null>;
+        default: null;
+    };
+    /**
+     * Compact one-line rendering (no block elements). Skips the
+     * token walker — chat-bubble / list-row previews shouldn't grow
+     * fence canvases.
+     */
+    inline: {
+        type: BooleanConstructor;
+        default: boolean;
+    };
+}>> & Readonly<{}>, {
     inline: boolean;
-}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
+    source: string | null;
+}, {}, {}, {}, string, import("vue").ComponentProvideOptions, true, {}, any>;
 export default _default;
 //# sourceMappingURL=MarkdownView.vue.d.ts.map

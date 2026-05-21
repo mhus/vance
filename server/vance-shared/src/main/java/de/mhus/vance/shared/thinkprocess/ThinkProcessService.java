@@ -823,6 +823,42 @@ public class ThinkProcessService {
         return result.getModifiedCount() > 0;
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Eddie's working-project pointer ("spot"). The home project lives
+    // on {@link ThinkProcessDocument#getProjectId()} and never moves;
+    // this field is the currently-coordinated foreign project.
+    // See specification/eddie-engine.md (working-project concept).
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Atomically sets {@code workingProjectId} on Eddie's process. Pass
+     * a {@code ProjectDocument.name}, not a Mongo id. Blank/null is
+     * coerced to {@code null} so the field stays canonical.
+     *
+     * @return {@code true} if the row exists and was updated
+     */
+    public boolean setWorkingProjectId(String processId, @Nullable String workingProjectId) {
+        String normalised = (workingProjectId == null || workingProjectId.isBlank())
+                ? null : workingProjectId.trim();
+        Query query = new Query(Criteria.where("_id").is(processId));
+        Update update = normalised == null
+                ? new Update().unset("workingProjectId")
+                : new Update().set("workingProjectId", normalised);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        if (result.getModifiedCount() > 0) {
+            log.debug("Eddie working-project set id='{}' workingProjectId={}",
+                    processId, normalised);
+            return true;
+        }
+        return false;
+    }
+
+    /** Convenience — equivalent to {@code setWorkingProjectId(processId, null)}. */
+    public boolean clearWorkingProjectId(String processId) {
+        return setWorkingProjectId(processId, null);
+    }
+
     /**
      * Replaces the entire TodoList. Called from {@code PROPOSE_PLAN}
      * (initial plan and edited plans alike — no merge, full replace).

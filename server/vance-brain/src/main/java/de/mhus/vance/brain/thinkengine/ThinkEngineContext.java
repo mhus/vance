@@ -34,8 +34,42 @@ public interface ThinkEngineContext {
      * Project id the session lives under ({@code ProjectDocument.name}).
      * Resolved once per context build via the session lookup; cached for
      * the lifetime of the call.
+     *
+     * <p>This is the engine's <em>home</em> — where local writes
+     * ({@code doc_*}, {@code scratch_*}, activity log) land. Eddie's
+     * "spot" pointer for cross-project work is exposed separately via
+     * {@link #workingProjectId()}.
      */
     String projectId();
+
+    /**
+     * Eddie's "spot" — the foreign project currently coordinated, set
+     * via {@code SWITCH_PROJECT} / {@code DELEGATE_PROJECT}-side-effect
+     * / {@code /project} slash-command. {@code null} when no working
+     * project has been selected yet, or for any non-Eddie engine.
+     *
+     * <p>Read this when an engine needs to address the working project
+     * directly (e.g. relay messages, mediation). Tool implementations
+     * should instead reach it via {@code ToolInvocationContext} so the
+     * LLM cannot override it with a hallucinated param.
+     */
+    @Nullable String workingProjectId();
+
+    /**
+     * Spot-bound resolution helper — equivalent to
+     * {@link #workingProjectId()} but throws {@link IllegalStateException}
+     * when no working project is selected. The error message surfaces
+     * back to the LLM via the standard tool-error path, so a premature
+     * cross-project call self-corrects.
+     */
+    default String requireWorkingProjectId() {
+        String spot = workingProjectId();
+        if (spot == null || spot.isBlank()) {
+            throw new IllegalStateException(
+                    "No working project selected — emit SWITCH_PROJECT before using this tool");
+        }
+        return spot;
+    }
 
     /**
      * Owner-userId of the session, or {@code null} when unavailable

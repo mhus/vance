@@ -284,6 +284,27 @@ public class ThinkProcessDocument {
     private @Nullable Mediation mediation;
 
     /**
+     * Eddie-only: the foreign project Eddie currently coordinates with
+     * (her "spot"). Set by {@code SWITCH_PROJECT}, by
+     * {@code DELEGATE_PROJECT} as a side-effect, or via the
+     * {@code /project} slash-command. {@link #projectId} (Eddie's home)
+     * is unaffected — only the spot moves.
+     *
+     * <p>References a {@code ProjectDocument.name}, not a Mongo id. Empty
+     * string is normalised to {@code null} by the service helpers.
+     *
+     * <p>Spot-bound tools (e.g. {@code STEER_PROJECT},
+     * {@code project_chat_send}) read this via
+     * {@link de.mhus.vance.brain.thinkengine.ThinkEngineContext#requireWorkingProjectId()};
+     * when it is {@code null} those tools fail fast instead of letting
+     * the LLM hallucinate a project name. Home-bound tools
+     * ({@code doc_*}, {@code scratch_*}) continue to use {@link #projectId}.
+     *
+     * <p>Always {@code null} for non-Eddie engines.
+     */
+    private @Nullable String workingProjectId;
+
+    /**
      * Tools that the LLM has activated by calling {@code describe_tool}
      * on a {@link de.mhus.vance.toolpack.Tool#deferred()}-marked tool.
      * Map value is the activation timestamp (refreshed on every

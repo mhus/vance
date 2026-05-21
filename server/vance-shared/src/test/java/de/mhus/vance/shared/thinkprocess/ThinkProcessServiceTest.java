@@ -495,6 +495,102 @@ class ThinkProcessServiceTest {
         assertThat(captor.getValue().getUpdateObject()).containsKey("$unset");
     }
 
+    // ─── workingProjectId (Eddie's spot pointer) ─────────────────────────
+
+    @Test
+    void setWorkingProjectId_setsTheField_whenNonBlank() {
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        boolean changed = service.setWorkingProjectId("eddie-1", "projA");
+
+        assertThat(changed).isTrue();
+        var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        org.bson.Document raw = captor.getValue().getUpdateObject();
+        assertThat(raw).containsKey("$set");
+        assertThat(raw.toString()).contains("workingProjectId").contains("projA");
+    }
+
+    @Test
+    void setWorkingProjectId_trimsWhitespace_beforePersisting() {
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        service.setWorkingProjectId("eddie-1", "  projA  ");
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        // The trimmed canonical form lands in Mongo — no leading/trailing
+        // whitespace ever becomes part of the project identifier.
+        assertThat(captor.getValue().getUpdateObject().toString())
+                .contains("projA").doesNotContain("  projA");
+    }
+
+    @Test
+    void setWorkingProjectId_blank_unsetsTheField() {
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        boolean changed = service.setWorkingProjectId("eddie-1", "");
+
+        assertThat(changed).isTrue();
+        var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        // Blank input is normalised to null → $unset, keeping the
+        // field's "absent" state canonical (no stored empty string).
+        assertThat(captor.getValue().getUpdateObject()).containsKey("$unset");
+    }
+
+    @Test
+    void setWorkingProjectId_null_unsetsTheField() {
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        service.setWorkingProjectId("eddie-1", null);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        assertThat(captor.getValue().getUpdateObject()).containsKey("$unset");
+    }
+
+    @Test
+    void clearWorkingProjectId_delegatesToSetWithNull() {
+        UpdateResult ok = mock(UpdateResult.class);
+        when(ok.getModifiedCount()).thenReturn(1L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(ok);
+
+        service.clearWorkingProjectId("eddie-1");
+
+        var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
+                eq(ThinkProcessDocument.class));
+        assertThat(captor.getValue().getUpdateObject()).containsKey("$unset");
+    }
+
+    @Test
+    void setWorkingProjectId_returnsFalse_whenProcessUnknown() {
+        UpdateResult miss = mock(UpdateResult.class);
+        when(miss.getModifiedCount()).thenReturn(0L);
+        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
+                eq(ThinkProcessDocument.class))).thenReturn(miss);
+
+        assertThat(service.setWorkingProjectId("ghost", "projA")).isFalse();
+    }
+
     // ─── findDescendantIds (cross-process history scope resolution) ─────
 
     @Test

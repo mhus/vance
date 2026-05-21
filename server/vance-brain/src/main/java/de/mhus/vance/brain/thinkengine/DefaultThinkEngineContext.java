@@ -77,13 +77,21 @@ record DefaultThinkEngineContext(
     }
 
     @Override
+    public @Nullable String workingProjectId() {
+        String spot = process.getWorkingProjectId();
+        if (spot == null || spot.isBlank()) return null;
+        return spot;
+    }
+
+    @Override
     public ContextToolsApi tools() {
         ToolInvocationContext scope = new ToolInvocationContext(
                 process.getTenantId(),
                 projectId,
                 process.getSessionId(),
                 process.getId(),
-                userId);
+                userId,
+                workingProjectId());
         // Re-resolve the tool filter every call against the process's
         // current mode — see class doc for why a snapshot won't do.
         RecipeResolver.ToolFilter filter = toolFilterResolver.apply(process.getMode(), scope);

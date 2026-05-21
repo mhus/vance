@@ -2,7 +2,9 @@ package de.mhus.vance.shared.chat;
 
 import de.mhus.vance.api.chat.ChatRole;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -47,6 +49,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
 @AllArgsConstructor
 public class ChatMessageDocument {
 
+    /**
+     * {@link #meta} key for the structured ASK_USER picker options.
+     * Value is {@code List<Map<String, Object>>} with at least
+     * {@code label} and optional {@code description} per entry. See
+     * {@code specification/eddie-engine.md} §5.6 / §5.8.
+     */
+    public static final String META_ASK_USER_OPTIONS = "askUserOptions";
+
     @Id
     private @Nullable String id;
 
@@ -83,6 +93,27 @@ public class ChatMessageDocument {
      */
     @Builder.Default
     private Set<String> tags = new LinkedHashSet<>();
+
+    /**
+     * Optional structured metadata that travels alongside the message
+     * content. Used today for {@code ASK_USER} actions to carry the
+     * structured {@code options} picker — Markdown rendering of the
+     * options lives in {@code content}, the typed array lives here so
+     * picker-aware clients (Web-UI) and the cross-engine relay path
+     * (see {@code specification/eddie-engine.md} §5.8) can read the
+     * structured form without parsing markdown.
+     *
+     * <p>Conventional keys (additive — unknown keys are tolerated and
+     * passed through):
+     * <ul>
+     *   <li>{@code askUserOptions} — {@code List<Map<String,Object>>}
+     *       with at least {@code label}, optionally {@code description}
+     *       per entry. Set by ASK_USER action handlers that received a
+     *       non-empty {@code options} param.</li>
+     * </ul>
+     */
+    @Builder.Default
+    private Map<String, Object> meta = new LinkedHashMap<>();
 
     @CreatedDate
     private @Nullable Instant createdAt;

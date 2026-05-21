@@ -196,7 +196,19 @@ public abstract class StructuredActionEngine implements ThinkEngine {
      */
     public record ActionTurnOutcome(
             @Nullable String chatMessage,
-            boolean awaitingUserInput) {}
+            boolean awaitingUserInput,
+            @Nullable Map<String, Object> chatMessageMeta) {
+
+        /**
+         * Convenience constructor for the common case where the
+         * outcome carries no structured chat-message metadata.
+         * Delegates to the canonical 3-arg form with {@code null}
+         * meta. All legacy 2-arg callers keep working.
+         */
+        public ActionTurnOutcome(@Nullable String chatMessage, boolean awaitingUserInput) {
+            this(chatMessage, awaitingUserInput, null);
+        }
+    }
 
     // ─────────────────────────────────────────────
     // The action loop

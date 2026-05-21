@@ -877,13 +877,17 @@ public class EddieEngine extends StructuredActionEngine {
             String chatMessage = outcome.chatMessage();
             boolean appendedChat = chatMessage != null && !chatMessage.isBlank();
             if (appendedChat) {
-                ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
+                ChatMessageDocument.ChatMessageDocumentBuilder builder = ChatMessageDocument.builder()
                         .tenantId(process.getTenantId())
                         .sessionId(process.getSessionId())
                         .thinkProcessId(process.getId())
                         .role(ChatRole.ASSISTANT)
-                        .content(chatMessage)
-                        .build());
+                        .content(chatMessage);
+                Map<String, Object> outcomeMeta = outcome.chatMessageMeta();
+                if (outcomeMeta != null && !outcomeMeta.isEmpty()) {
+                    builder.meta(new LinkedHashMap<>(outcomeMeta));
+                }
+                ChatMessageDocument saved = chatLog.append(builder.build());
                 // Flush buffered history tags (TOOL_CALL/RESOURCE/FILE_EDIT
                 // from the dispatcher hook) onto the assistant turn.
                 if (saved != null && saved.getId() != null) {
@@ -1248,9 +1252,43 @@ public class EddieEngine extends StructuredActionEngine {
         if (message == null || message.isBlank()) {
             message = action.reason();
         }
-        String rendered = renderAskUserOptions(message,
-                action.params().get(EddieActionSchema.PARAM_OPTIONS));
-        return new ActionTurnOutcome(rendered, /*awaitingUserInput*/ true);
+        Object optionsRaw = action.params().get(EddieActionSchema.PARAM_OPTIONS);
+        String rendered = renderAskUserOptions(message, optionsRaw);
+        // Surface the structured options as ChatMessage.meta so picker-
+        // aware clients (Web-UI) and the cross-engine relay path
+        // (see specification/eddie-engine.md §5.8) can read them without
+        // parsing markdown. Empty / non-list → no meta attached.
+        Map<String, Object> meta = buildAskUserMeta(optionsRaw);
+        return new ActionTurnOutcome(rendered, /*awaitingUserInput*/ true, meta);
+    }
+
+    /**
+     * Builds the {@code meta} payload attached to an ASK_USER chat
+     * message. Returns {@code null} when the LLM did not pass an
+     * {@code options} array — keeps the persisted document clean for
+     * the open-ended-question case (no empty meta sub-document).
+     */
+    private static @Nullable Map<String, Object> buildAskUserMeta(@Nullable Object optionsRaw) {
+        if (!(optionsRaw instanceof List<?> rawList) || rawList.isEmpty()) {
+            return null;
+        }
+        List<Map<String, Object>> cleaned = new ArrayList<>();
+        for (Object item : rawList) {
+            if (!(item instanceof Map<?, ?> m)) continue;
+            Object label = m.get("label");
+            if (!(label instanceof String l) || l.isBlank()) continue;
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("label", l.trim());
+            Object desc = m.get("description");
+            if (desc instanceof String d && !d.isBlank()) {
+                entry.put("description", d.trim());
+            }
+            cleaned.add(entry);
+        }
+        if (cleaned.isEmpty()) return null;
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put(de.mhus.vance.shared.chat.ChatMessageDocument.META_ASK_USER_OPTIONS, cleaned);
+        return out;
     }
 
     /**
@@ -1467,12 +1505,39 @@ public class EddieEngine extends StructuredActionEngine {
             out.append(prefix.trim()).append("\n\n");
         }
         out.append(lastReply.getContent());
-        log.info("Eddie id='{}' RELAY source='{}' ({} chars) reason='{}'",
+        // Cross-engine ASK_USER picker — see specification/eddie-engine.md
+        // §5.8. When the relayed worker reply was an ASK_USER with
+        // structured options, the worker's chat-message carries them
+        // in meta.askUserOptions. Re-emit the same options on Eddie's
+        // outgoing chat message so picker-aware clients render the
+        // picker on Eddie's side too (the worker's options aren't
+        // user-facing; only Eddie's are).
+        Map<String, Object> relayedMeta = extractAskUserOptionsMeta(lastReply);
+        log.info("Eddie id='{}' RELAY source='{}' ({} chars) reason='{}'{}",
                 process.getId(),
                 action.stringParam(EddieActionSchema.PARAM_SOURCE),
                 lastReply.getContent().length(),
-                summariseReason(action.reason()));
-        return new ActionTurnOutcome(out.toString(), /*awaitingUserInput*/ true);
+                summariseReason(action.reason()),
+                relayedMeta != null ? " — forwarding askUserOptions" : "");
+        return new ActionTurnOutcome(out.toString(), /*awaitingUserInput*/ true, relayedMeta);
+    }
+
+    /**
+     * Reads {@code meta.askUserOptions} from a worker's chat message
+     * and rebuilds the meta map for Eddie's own outgoing chat message.
+     * Returns {@code null} when no options were attached — keeps the
+     * relayed message clean for non-ASK_USER reports.
+     */
+    @SuppressWarnings("unchecked")
+    private static @Nullable Map<String, Object> extractAskUserOptionsMeta(
+            ChatMessageDocument workerReply) {
+        Map<String, Object> meta = workerReply.getMeta();
+        if (meta == null || meta.isEmpty()) return null;
+        Object options = meta.get(ChatMessageDocument.META_ASK_USER_OPTIONS);
+        if (!(options instanceof List<?> list) || list.isEmpty()) return null;
+        Map<String, Object> forward = new LinkedHashMap<>();
+        forward.put(ChatMessageDocument.META_ASK_USER_OPTIONS, list);
+        return forward;
     }
 
     /**

@@ -41,6 +41,17 @@
 #                                      # Absent / unknown models are treated
 #                                      # as text-only with no thinking
 #                                      # (pessimistic defaults).
+#       actionLoopCorrections: <int>   # Pacemaker for the structured-action
+#                                      # loop. When the LLM emits free text
+#                                      # without calling the engine's action
+#                                      # tool, the loop re-prompts up to this
+#                                      # many times before falling back to
+#                                      # bestFreeText. Optional; defaults to
+#                                      # 2 when absent. Bump for models that
+#                                      # occasionally return empty STOP
+#                                      # after long tool-call chains
+#                                      # (gemini-2.5-pro is the known case
+#                                      # — see plan-mode.md §14a).
 #
 # Adjust freely; this file is committed (no secrets here).
 

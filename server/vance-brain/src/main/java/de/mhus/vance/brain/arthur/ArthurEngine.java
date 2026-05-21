@@ -228,14 +228,16 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
     /**
      * Action types Arthur is forbidden from emitting on a turn that was
-     * triggered without any USER_CHAT_INPUT. RELAY / ANSWER / WAIT /
-     * REJECT stay allowed — those report state to the user without
-     * spawning anything, which is exactly what an event-triggered turn
-     * should do.
+     * triggered without any USER_CHAT_INPUT. RELAY / ANSWER / ASK_USER /
+     * WAIT / REJECT stay allowed — those report state to the user
+     * (or ask for clarification) without spawning anything, which is
+     * exactly what an event-triggered turn should do. ASK_USER was
+     * originally listed here but removed once we confirmed it's a
+     * plain conversational question that pauses the lane on BLOCKED —
+     * no spawn, no cascade.
      */
     private static final Set<String> SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS = Set.of(
-            ArthurActionSchema.TYPE_DELEGATE,
-            ArthurActionSchema.TYPE_ASK_USER);
+            ArthurActionSchema.TYPE_DELEGATE);
 
     public ArthurEngine(
             ThinkProcessService thinkProcessService,
@@ -648,17 +650,35 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                         narration == null ? 0 : narration.length());
                 outcome = new ActionTurnOutcome(chatNote, /*awaiting*/ false);
             } else {
-                // Structural fallback: LLM never produced a valid
-                // arthur_action despite corrections. Use whatever
-                // free-text it generated as a best-effort ANSWER so
-                // the user still sees something.
                 String text = loopResult.fallbackText();
-                outcome = new ActionTurnOutcome(
-                        text == null || text.isBlank()
-                                ? "(internal: action loop produced no usable output — "
-                                        + loopResult.fallbackReason() + ")"
-                                : text,
-                        true);
+                if (text != null && !text.isBlank()) {
+                    // LLM emitted free text but no action — surface it
+                    // as the user-facing reply rather than the internal
+                    // diagnostic. The validator gave it
+                    // actionLoopCorrections chances; this is the best
+                    // we can do without making something up.
+                    outcome = new ActionTurnOutcome(text, true);
+                } else if (process.getMode()
+                        == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
+                        && allTodosCompleted(process)) {
+                    // Graceful plan-completion close: tool calls ran
+                    // until everything in the plan was done, then the
+                    // model went silent (Gemini Pro empty STOP after
+                    // long tool chains). Don't leak the "internal:
+                    // action loop ..." string — synthesise a brief
+                    // summary from the TodoList so the user sees a
+                    // real reply. Mirror of EddieEngine.runTurnFor.
+                    outcome = new ActionTurnOutcome(
+                            renderPlanCompletionSummary(process), true);
+                } else {
+                    outcome = new ActionTurnOutcome(
+                            "_Mir ist gerade die Spur verloren gegangen "
+                                    + "— sag mir kurz wo es weitergehen soll._",
+                            true);
+                    log.warn("Arthur.turn id='{}' action-loop fallback with no usable "
+                                    + "text (reason={}) — posting placeholder reply",
+                            process.getId(), loopResult.fallbackReason());
+                }
             }
             awaitingUserInput = outcome.awaitingUserInput();
 
@@ -1012,13 +1032,114 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // Reuse the same dispatch as terminal actions — handleTodoUpdate
         // is idempotent and persists the new state in process.todos.
         // Discard the ActionTurnOutcome (chatMessage / awaiting) since
-        // continuing actions don't produce chat messages and don't end
-        // the turn.
+        // continuing actions don't produce chat messages directly. We
+        // add a small user-visible chat note for COMPLETED transitions
+        // (below) so the user sees plan progress live instead of
+        // long silent runs. Mirror of EddieEngine.applyContinuingAction.
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todosBefore =
+                snapshotTodos(process);
         ActionTurnOutcome ignored = handleAction(action, process, ctx);
         if (ArthurActionSchema.TYPE_TODO_UPDATE.equals(action.type())) {
+            appendProgressChatForCompletions(process, ctx, todosBefore);
             return renderTodoUpdateFeedback(process);
         }
         return "Action " + action.type() + " applied.";
+    }
+
+    /**
+     * Snapshot of the process's todos used to detect transitions
+     * inside {@link #applyContinuingAction}. Returns an empty list
+     * when no todos are persisted yet.
+     */
+    private static java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> snapshotTodos(
+            ThinkProcessDocument process) {
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        if (todos == null) return java.util.List.of();
+        return new java.util.ArrayList<>(todos);
+    }
+
+    /**
+     * Appends a brief assistant chat message for every todo that just
+     * transitioned to COMPLETED. Mirror of
+     * {@code EddieEngine.appendProgressChatForCompletions} — closes
+     * the silent-execution UX gap during plan-mode runs.
+     */
+    private void appendProgressChatForCompletions(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> before) {
+        java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> prior =
+                new java.util.HashMap<>();
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : before) {
+            if (t.getId() != null) prior.put(t.getId(), t.getStatus());
+        }
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> now = process.getTodos();
+        if (now == null) return;
+        java.util.List<String> completedTitles = new java.util.ArrayList<>();
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : now) {
+            if (t.getStatus() != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) continue;
+            de.mhus.vance.api.thinkprocess.TodoStatus previously = prior.get(t.getId());
+            if (previously == de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) continue;
+            String label = t.getContent();
+            if (label == null || label.isBlank()) label = t.getId();
+            completedTitles.add(label);
+        }
+        if (completedTitles.isEmpty()) return;
+        StringBuilder msg = new StringBuilder();
+        for (int i = 0; i < completedTitles.size(); i++) {
+            if (i > 0) msg.append('\n');
+            msg.append("✓ ").append(completedTitles.get(i));
+        }
+        try {
+            ctx.chatMessageService().append(
+                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
+                            .content(msg.toString())
+                            .build());
+        } catch (RuntimeException e) {
+            log.warn("Arthur id='{}' failed to append plan-progress chat note: {}",
+                    process.getId(), e.toString());
+        }
+    }
+
+    /**
+     * True when the process has at least one todo and every entry is
+     * COMPLETED. Mirror of {@code EddieEngine.allTodosCompleted}.
+     */
+    private static boolean allTodosCompleted(ThinkProcessDocument process) {
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        if (todos == null || todos.isEmpty()) return false;
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
+            if (t.getStatus() != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Plan-completion summary stand-in when the LLM emitted no text
+     * after running through every todo. Lists the todo titles so the
+     * user sees what got done. Mirror of
+     * {@code EddieEngine.renderPlanCompletionSummary}.
+     */
+    private static String renderPlanCompletionSummary(ThinkProcessDocument process) {
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        if (todos == null || todos.isEmpty()) {
+            return "Plan abgeschlossen.";
+        }
+        StringBuilder sb = new StringBuilder("Plan abgeschlossen — alle Schritte erledigt:");
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
+            sb.append("\n- ");
+            String label = t.getContent();
+            if (label == null || label.isBlank()) label = t.getId();
+            sb.append(label == null ? "" : label);
+        }
+        sb.append("\n\nSchau in deine Dokumente — die Ergebnisse sind dort abgelegt.");
+        return sb.toString();
     }
 
     /**
@@ -1100,7 +1221,49 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         if (message == null || message.isBlank()) {
             message = action.reason();
         }
-        return new ActionTurnOutcome(message, /*awaitingUserInput*/ true);
+        String rendered = renderAskUserOptions(message,
+                action.params().get(ArthurActionSchema.PARAM_OPTIONS));
+        return new ActionTurnOutcome(rendered, /*awaitingUserInput*/ true);
+    }
+
+    /**
+     * Appends structured ASK_USER options to the question text as a
+     * Markdown list the UI / voice channel can present. Mirror of
+     * {@code EddieEngine.renderAskUserOptions}; kept in Arthur because
+     * Arthur sometimes runs without Eddie (foot- or web-session
+     * direct on a project Arthur). When Arthur sits under Eddie, the
+     * cross-engine relay path (eddie-engine.md §5.8) takes over and
+     * Eddie re-renders the picker on the user-facing side.
+     *
+     * <p>Pass-through when {@code options} is null / empty / not a
+     * list — keeps the free-text question shape intact.
+     */
+    @SuppressWarnings("unchecked")
+    private static String renderAskUserOptions(
+            String baseMessage, @Nullable Object optionsRaw) {
+        if (!(optionsRaw instanceof List<?> rawList) || rawList.isEmpty()) {
+            return baseMessage;
+        }
+        StringBuilder sb = new StringBuilder(baseMessage == null ? "" : baseMessage);
+        boolean any = false;
+        for (Object item : rawList) {
+            if (!(item instanceof Map<?, ?> m)) continue;
+            Object label = ((Map<String, Object>) m).get("label");
+            if (!(label instanceof String l) || l.isBlank()) continue;
+            if (!any) {
+                if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') {
+                    sb.append("\n\n");
+                }
+                any = true;
+            }
+            sb.append("- **").append(l.trim()).append("**");
+            Object desc = ((Map<String, Object>) m).get("description");
+            if (desc instanceof String d && !d.isBlank()) {
+                sb.append(" — ").append(d.trim());
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
     }
 
     /**

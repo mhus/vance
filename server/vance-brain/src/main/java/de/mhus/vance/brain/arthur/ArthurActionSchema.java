@@ -141,6 +141,17 @@ public final class ArthurActionSchema {
     public static final String PARAM_SOURCE  = "source";
     public static final String PARAM_PREFIX  = "prefix";
 
+    /**
+     * Optional structured options for {@link #TYPE_ASK_USER}. Each
+     * entry is {@code { "label": "…", "description"?: "…" }}. The
+     * handler renders them as a Markdown bullet list below the
+     * question — UIs can render the same as a picker; voice channels
+     * read each option aloud. Empty / null → free-text question.
+     * Mirrors the same field in {@code EddieActionSchema} (see
+     * specification/eddie-engine.md §5.6 / §5.8).
+     */
+    public static final String PARAM_OPTIONS = "options";
+
     // Plan-Mode params
     public static final String PARAM_GOAL    = "goal";
     public static final String PARAM_PLAN    = "plan";
@@ -289,6 +300,42 @@ public final class ArthurActionSchema {
                 "TodoItem status updates. Required for TODO_UPDATE. "
                         + "Items not listed are left untouched.");
 
+        // ASK_USER options — optional structured picker. Same shape
+        // as EddieActionSchema; the handler renders them as a Markdown
+        // bullet list and picker-aware UIs can sniff them out of the
+        // action params for button rendering.
+        Map<String, Object> optionItemSchema = new LinkedHashMap<>();
+        optionItemSchema.put("type", "object");
+        Map<String, Object> optionItemProps = new LinkedHashMap<>();
+        Map<String, Object> optionLabelProp = new LinkedHashMap<>();
+        optionLabelProp.put("type", "string");
+        optionLabelProp.put("description",
+                "Short label the user picks. 1-5 words ideal — this "
+                        + "is what the user reads (and voice channels "
+                        + "say aloud) as the choice text.");
+        Map<String, Object> optionDescProp = new LinkedHashMap<>();
+        optionDescProp.put("type", "string");
+        optionDescProp.put("description",
+                "Optional one-line clarification of what this option "
+                        + "means / what happens when picked. Skipped "
+                        + "when the label is self-explanatory.");
+        optionItemProps.put("label", optionLabelProp);
+        optionItemProps.put("description", optionDescProp);
+        optionItemSchema.put("properties", optionItemProps);
+        optionItemSchema.put("required", List.of("label"));
+
+        Map<String, Object> optionsProp = new LinkedHashMap<>();
+        optionsProp.put("type", "array");
+        optionsProp.put("items", optionItemSchema);
+        optionsProp.put("description",
+                "ASK_USER-only: structured options for a multiple-"
+                        + "choice question. Use when the answer set is "
+                        + "small (2-4) and discrete (yes/no, A/B/C). "
+                        + "Omit for open-ended questions. The user can "
+                        + "always type free text instead of picking — "
+                        + "the options are a UI shortcut, not a "
+                        + "constraint.");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("type", typeProp);
         properties.put("reason", reasonProp);
@@ -303,6 +350,7 @@ public final class ArthurActionSchema {
         properties.put(PARAM_TODOS, todosProp);
         properties.put(PARAM_NOTES, notesProp);
         properties.put(PARAM_UPDATES, updatesProp);
+        properties.put(PARAM_OPTIONS, optionsProp);
 
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("type", "object");

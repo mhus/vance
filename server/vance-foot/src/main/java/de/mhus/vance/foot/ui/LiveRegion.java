@@ -481,9 +481,16 @@ public class LiveRegion {
                 if (b == 27) {
                     int next = r.read(80L);
                     if (next < 0) {
-                        // Lone Esc → interrupt callback (foot used Esc to
-                        // pause the active chat process).
-                        fireInterrupt();
+                        // Lone Esc: if the input buffer is non-empty,
+                        // clear it first. Only an Esc on an already
+                        // empty prompt fires the interrupt — so pressing
+                        // Esc twice still reaches the pause path.
+                        if (!inputText.isEmpty()) {
+                            clearInput();
+                            paintLive();
+                        } else {
+                            fireInterrupt();
+                        }
                         continue;
                     }
                     if (next == 13 || next == 10) {
@@ -554,6 +561,14 @@ public class LiveRegion {
         int c = Math.min(Math.max(cursorIdx, 0), inputText.length());
         inputText = inputText.substring(0, c) + s + inputText.substring(c);
         cursorIdx = c + s.length();
+    }
+
+    private synchronized void clearInput() {
+        inputText = "";
+        cursorIdx = 0;
+        inputViewportTop = 0;
+        historyIdx = history.size();
+        pendingInput = "";
     }
 
     private synchronized boolean backspaceAtCursor() {

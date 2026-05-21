@@ -185,16 +185,20 @@ public class EddieEngine extends StructuredActionEngine {
      * triggered without any USER_CHAT_INPUT. These spawn / push new
      * work that an event-only turn has no business doing —
      * DELEGATE_PROJECT creates new projects + Arthur chats,
-     * STEER_PROJECT keeps prodding a child Arthur, ASK_USER expects a
-     * user already in the loop. Everything else (ANSWER, RELAY,
-     * RELAY_INBOX, LEARN, MEDIATE, WAIT, REJECT) is fine on an event
-     * turn: those report state, absorb context, or yield. Mirrors the
-     * Arthur {@code SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS} gate.
+     * STEER_PROJECT keeps prodding a child Arthur. Everything else
+     * (ANSWER, ASK_USER, RELAY, RELAY_INBOX, LEARN, MEDIATE, WAIT,
+     * REJECT) is fine on an event turn: those report state, ask a
+     * direct chat question (no inbox detour — ASK_USER is just a
+     * spoken/chat question that pauses for the user's reply),
+     * absorb context, or yield. Mirrors the Arthur
+     * {@code SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS} gate; ASK_USER
+     * was originally listed here but removed once we confirmed that
+     * Eddie's ASK_USER is a plain conversational question, not a
+     * spawn that could cascade.
      */
     private static final Set<String> SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS = Set.of(
             EddieActionSchema.TYPE_DELEGATE_PROJECT,
-            EddieActionSchema.TYPE_STEER_PROJECT,
-            EddieActionSchema.TYPE_ASK_USER);
+            EddieActionSchema.TYPE_STEER_PROJECT);
 
 
     // ──────────────────── Dependencies ────────────────────
@@ -471,6 +475,27 @@ public class EddieEngine extends StructuredActionEngine {
 
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
+        // Plan-Mode self-continuation — mirrors ArthurEngine.runTurn.
+        // While in EXPLORING / PLANNING / EXECUTING, an IDLE status
+        // after a turn means "Eddie wants to keep working" (the user
+        // accepted the plan via START_EXECUTION and didn't say anything
+        // else), so we re-fire runTurnFor with an empty inbox and let
+        // the LLM emit the next todo step. NORMAL-mode IDLE genuinely
+        // means "waiting for the next user message" — no continuation.
+        //
+        // Budget bounds runaway action loops (model emitting the same
+        // idempotent transition repeatedly). At budget exhaustion the
+        // process moves to BLOCKED so the user sees the engine paused
+        // instead of leaving it silently IDLE.
+        //
+        // The silent-turn-in-a-row guard is the sharper circuit
+        // breaker: if 3 turns in a row produce no chat and no tool
+        // use, abort early — the model is stuck.
+        final int continuationBudget = 8;
+        final int silentTurnsLimit = 3;
+        int continuationsRemaining = continuationBudget;
+        int silentTurnsInARow = 0;
+        boolean continueWithEmptyInbox = false;
         while (true) {
             if (thinkProcessService.isHaltRequested(process.getId())) {
                 log.info("Eddie.runTurn id='{}' — halt requested, yielding",
@@ -489,10 +514,170 @@ public class EddieEngine extends StructuredActionEngine {
             }
             List<SteerMessage> drained = ctx.drainPending();
             if (drained.isEmpty()) {
-                return;
+                if (!continueWithEmptyInbox) {
+                    return;
+                }
+                continueWithEmptyInbox = false;
+                continuationsRemaining--;
+                if (continuationsRemaining < 0) {
+                    log.warn("Eddie.runTurn id='{}' — continuation budget "
+                            + "({}) exhausted; transitioning to BLOCKED so the "
+                            + "user can intervene",
+                            process.getId(), continuationBudget);
+                    thinkProcessService.updateStatus(
+                            process.getId(), ThinkProcessStatus.BLOCKED);
+                    return;
+                }
             }
-            runTurnFor(process, ctx, drained);
+
+            de.mhus.vance.api.thinkprocess.ProcessMode modeBefore = process.getMode();
+            TurnSignal signal = runTurnFor(process, ctx, drained);
+            if (signal.madeProgress()) {
+                silentTurnsInARow = 0;
+            } else {
+                silentTurnsInARow++;
+                if (silentTurnsInARow >= silentTurnsLimit) {
+                    log.warn("Eddie.runTurn id='{}' — {} silent turns in a row "
+                            + "(LLM stuck — no chat, no tool calls); transitioning "
+                            + "to BLOCKED so the user can intervene",
+                            process.getId(), silentTurnsLimit);
+                    thinkProcessService.updateStatus(
+                            process.getId(), ThinkProcessStatus.BLOCKED);
+                    return;
+                }
+            }
+
+            ThinkProcessStatus currentStatus = thinkProcessService
+                    .findById(process.getId())
+                    .map(ThinkProcessDocument::getStatus)
+                    .orElse(ThinkProcessStatus.SUSPENDED);
+            de.mhus.vance.api.thinkprocess.ProcessMode currentMode = process.getMode();
+            boolean activeMode = currentMode != null
+                    && currentMode != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
+            // Continue if (a) mode changed (entered new plan-mode phase),
+            // OR (b) we're in any active plan-mode and the engine isn't
+            // waiting on user input. PROPOSE_PLAN / ANSWER / ASK_USER set
+            // awaiting=true → BLOCKED → no continuation, the user's next
+            // message reactivates via the regular pending pipeline.
+            if (currentStatus == ThinkProcessStatus.IDLE
+                    && (currentMode != modeBefore || activeMode)) {
+                continueWithEmptyInbox = true;
+            }
         }
+    }
+
+    /**
+     * Per-turn signal returned by {@link #runTurnFor}. {@link #runTurn}
+     * uses {@link #madeProgress()} to break the plan-mode self-
+     * continuation loop early when the LLM produced neither chat nor
+     * tool calls — the silent-loop circuit-breaker.
+     */
+    private record TurnSignal(boolean appendedChat, boolean toolUsed) {
+        boolean madeProgress() {
+            return appendedChat || toolUsed;
+        }
+    }
+
+    /**
+     * Renders the live plan-mode state for the system prompt. When
+     * Plan-Mode is active (EXPLORING / PLANNING / EXECUTING) the
+     * block carries the current mode plus mode-specific guidance.
+     * In EXECUTING (or anytime todos exist) it includes the live
+     * TodoList with status markers ({@code [ ]}/{@code [~]}/{@code [✓]}).
+     * In NORMAL with no todos → empty string (block is skipped).
+     *
+     * <p>The same guidance loop matters in EXPLORING too: without a
+     * mode marker the LLM emits {@code START_PLAN} idempotently turn
+     * after turn instead of actually exploring or proposing a plan.
+     * Same fix as the EXECUTING re-emit loop — tell the LLM where
+     * it is and what to do next.
+     */
+    private String buildTodoListBlock(ThinkProcessDocument process) {
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        de.mhus.vance.api.thinkprocess.ProcessMode mode = process.getMode();
+        boolean activeMode = mode != null
+                && mode != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
+        boolean hasTodos = todos != null && !todos.isEmpty();
+        if (!activeMode && !hasTodos) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n## Current TodoList (mode=")
+                .append(mode == null ? "NORMAL" : mode.name())
+                .append(")\n\n");
+
+        // Mode-specific guidance for the no-todos cases (EXPLORING
+        // straight after START_PLAN, PLANNING straight after a fresh
+        // PROPOSE_PLAN where todos haven't persisted yet). Without
+        // this the LLM falls into a re-emit loop on the just-emitted
+        // transition action.
+        if (!hasTodos) {
+            String modeGuidance = switch (mode) {
+                case EXPLORING -> "Current mode: **EXPLORING** — you just "
+                        + "entered this via START_PLAN. NEVER emit START_PLAN "
+                        + "again, you're already in it. Now actually explore: "
+                        + "`web_search`, `doc_read`, `doc_list`, `manual_read`, "
+                        + "or any read-only tool to gather what you need. "
+                        + "Once you have enough information, emit `PROPOSE_PLAN` "
+                        + "with a structured plan + todos.";
+                case PLANNING -> "Current mode: **PLANNING** — plan proposed, "
+                        + "awaiting user. The user's next message will either "
+                        + "accept (emit START_EXECUTION) or revise (emit a "
+                        + "fresh PROPOSE_PLAN). Do not re-emit PROPOSE_PLAN "
+                        + "from your own initiative — wait for the user.";
+                case EXECUTING -> "Current mode: **EXECUTING** — but the "
+                        + "TodoList is empty. This is a degenerate state — "
+                        + "emit ANSWER explaining what was done (if anything) "
+                        + "and the plan is complete.";
+                default -> null;
+            };
+            if (modeGuidance != null) {
+                sb.append(modeGuidance).append("\n");
+                return sb.toString();
+            }
+        }
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
+            de.mhus.vance.api.thinkprocess.TodoStatus s = t.getStatus() == null
+                    ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING
+                    : t.getStatus();
+            String marker = switch (s) {
+                case PENDING -> "[ ]";
+                case IN_PROGRESS -> "[~]";
+                case COMPLETED -> "[✓]";
+            };
+            sb.append(marker).append(' ')
+                    .append("(id=").append(t.getId() == null ? "" : t.getId()).append(") ");
+            String content = t.getContent() == null ? "" : t.getContent();
+            if (s == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS
+                    && t.getActiveForm() != null && !t.getActiveForm().isBlank()) {
+                content = t.getActiveForm();
+            }
+            sb.append(content).append('\n');
+        }
+        sb.append("\nGuidance: pick the first item that is **not [✓] "
+                + "COMPLETED**. If it's [ ] PENDING, your next TODO_UPDATE "
+                + "should set it IN_PROGRESS. If it's [~] IN_PROGRESS, do "
+                + "the actual work for that step now — typically "
+                + "`web_search` for research items, `doc_create_text` / "
+                + "`doc_edit` to persist results, `DELEGATE_PROJECT` / "
+                + "`STEER_PROJECT` for substantial worker hand-off — "
+                + "then TODO_UPDATE it to COMPLETED in the same turn "
+                + "or the next.\n\n"
+                + "**Hard rules — never regress state:**\n"
+                + "- NEVER emit TODO_UPDATE that downgrades an item: "
+                + "[✓] COMPLETED stays COMPLETED forever; [~] IN_PROGRESS "
+                + "must not go back to [ ] PENDING.\n"
+                + "- NEVER emit START_EXECUTION again — the mode header "
+                + "above already says EXECUTING. Emitting it a second "
+                + "time is a no-op that wastes a turn; do real work or "
+                + "TODO_UPDATE instead.\n"
+                + "- If you see [✓] COMPLETED items above, that work is "
+                + "**already done in a previous turn** — DO NOT redo it. "
+                + "Skip past them to the first non-COMPLETED row.\n"
+                + "- If everything is [✓] COMPLETED, emit ANSWER with a "
+                + "brief summary of what was done. Do not look for "
+                + "additional work the plan didn't list.\n");
+        return sb.toString();
     }
 
     @Override
@@ -544,7 +729,7 @@ public class EddieEngine extends StructuredActionEngine {
 
     // ──────────────────── One turn ────────────────────
 
-    private void runTurnFor(
+    private TurnSignal runTurnFor(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             List<SteerMessage> inbox) {
@@ -613,7 +798,8 @@ public class EddieEngine extends StructuredActionEngine {
             // bypassing the LLM-visibility gate.
             ActionLoopResult loopResult = runStructuredActionLoop(
                     aiChat, ContextToolsApi::primaryAsLc4j,
-                    messages, ctx, process, maxIters, modelAlias);
+                    messages, ctx, process, maxIters, modelAlias,
+                    modelInfo.actionLoopCorrections());
 
             ActionTurnOutcome outcome;
             if (loopResult.isAction()) {
@@ -629,19 +815,68 @@ public class EddieEngine extends StructuredActionEngine {
                     runLearnConsolidation(loopResult.action(), aiChat,
                             process, ctx, modelAlias);
                 }
+            } else if ("max-iters".equals(loopResult.fallbackReason())
+                    && loopResult.madeProgress()
+                    && (process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
+                        || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXPLORING
+                        || process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.PLANNING)) {
+                // Plan-mode mid-execution pause: the LLM was actively
+                // calling tools (web search, doc writes, …) and just
+                // hit the per-turn cap before reaching a terminal
+                // action. Don't BLOCK the user — yield non-awaiting
+                // and let the outer self-continuation pick up the
+                // next turn with a fresh iter budget. Persist any
+                // free-text narration so the next turn's prompt
+                // carries cross-turn memory of in-turn work.
+                String narration = loopResult.fallbackText();
+                String chatNote = (narration == null || narration.isBlank())
+                        ? null
+                        : narration;
+                log.info("Eddie.turn id='{}' max-iters with progress "
+                        + "({} tool invocations, narration={} chars) — "
+                        + "yielding for outer continuation",
+                        process.getId(), loopResult.toolInvocations(),
+                        narration == null ? 0 : narration.length());
+                outcome = new ActionTurnOutcome(chatNote, /*awaiting*/ false);
             } else {
                 String text = loopResult.fallbackText();
-                outcome = new ActionTurnOutcome(
-                        text == null || text.isBlank()
-                                ? "(internal: action loop produced no usable output — "
-                                        + loopResult.fallbackReason() + ")"
-                                : text,
-                        true);
+                if (text != null && !text.isBlank()) {
+                    // LLM emitted free text but no action — surface it
+                    // as the user-facing reply rather than the internal
+                    // diagnostic. The validator gave it 2 chances; this
+                    // is the best we can do.
+                    outcome = new ActionTurnOutcome(text, true);
+                } else if (process.getMode()
+                        == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
+                        && allTodosCompleted(process)) {
+                    // Graceful plan-completion close: the LLM emitted
+                    // tool calls until everything in the plan was done,
+                    // then went silent (Gemini 2.5 Pro occasionally
+                    // returns empty STOP after many tool calls). Don't
+                    // leak the "internal: action loop ..." string —
+                    // synthesise a brief summary from the TodoList so
+                    // the user sees a real reply.
+                    outcome = new ActionTurnOutcome(
+                            renderPlanCompletionSummary(process), true);
+                } else {
+                    // Genuine stuck path — LLM gave nothing usable, no
+                    // plan to fall back on. Keep the diagnostic but
+                    // mark it clearly as a system hint, not a "user
+                    // visible answer" pretending to be Eddie's voice.
+                    outcome = new ActionTurnOutcome(
+                            "_Mir ist gerade die Spur verloren gegangen "
+                                    + "— sag mir kurz wo es weitergehen soll._",
+                            true);
+                    log.warn("Eddie id='{}' action-loop fallback with no usable "
+                                    + "text (reason={}) — posting placeholder reply",
+                            process.getId(), loopResult.fallbackReason());
+                }
             }
             awaitingUserInput = outcome.awaitingUserInput();
 
             String chatMessage = outcome.chatMessage();
-            if (chatMessage != null && !chatMessage.isBlank()) {
+            boolean appendedChat = chatMessage != null && !chatMessage.isBlank();
+            if (appendedChat) {
                 ChatMessageDocument saved = chatLog.append(ChatMessageDocument.builder()
                         .tenantId(process.getTenantId())
                         .sessionId(process.getSessionId())
@@ -665,6 +900,7 @@ public class EddieEngine extends StructuredActionEngine {
                 log.info("Eddie.turn id='{}' awaiting={} (silent — no chat append)",
                         process.getId(), awaitingUserInput);
             }
+            return new TurnSignal(appendedChat, loopResult.madeProgress());
         } finally {
             currentTurnHadUserInput.remove(process.getId());
             ThinkProcessStatus exitStatus = awaitingUserInput
@@ -696,6 +932,239 @@ public class EddieEngine extends StructuredActionEngine {
         return EddieActionSchema.SUPPORTED_TYPES;
     }
 
+    /**
+     * Plan-mode actions that mutate state but don't end the turn —
+     * the LLM should chain real work (read tools, write tools,
+     * delegation) immediately after. Without in-loop chaining the
+     * LLM emits the same idempotent transition over and over, sees
+     * no record of having done it (silent action, no chat append),
+     * and burns the silent-turn budget.
+     *
+     * <p>Mirrors Arthur's CONTINUING_ACTIONS set but covers the
+     * mode transitions too. Arthur deliberately keeps mode flips
+     * terminal because its tool-set is mode-aware via recipe-modes
+     * blocks (EXPLORING / PLANNING strip @write); Eddie's recipe
+     * doesn't define mode-specific tool blocks today so the tool
+     * manifest stays the same across modes — in-loop chaining is
+     * safe.
+     */
+    private static final Set<String> CONTINUING_ACTIONS = Set.of(
+            de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_PLAN,
+            de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_EXECUTION,
+            de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_TODO_UPDATE);
+
+    @Override
+    protected boolean isTerminalAction(EngineAction action) {
+        return !CONTINUING_ACTIONS.contains(action.type());
+    }
+
+    @Override
+    protected String applyContinuingAction(
+            EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        // Reuse the same dispatch as terminal actions — the plan-mode
+        // handlers are idempotent and persist new state. Discard the
+        // ActionTurnOutcome (chatMessage / awaiting) since continuing
+        // actions don't produce chat messages directly. We add a small
+        // user-visible chat note for TODO_UPDATE COMPLETED transitions
+        // (below) so the user sees plan progress live instead of a
+        // 2-minute silent run.
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todosBefore =
+                snapshotTodos(process);
+        ActionTurnOutcome ignored = handleAction(action, process, ctx);
+        String type = action.type();
+        if (de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_EXECUTION
+                .equals(type)) {
+            return renderStartExecutionFeedback(process);
+        }
+        if (de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_TODO_UPDATE
+                .equals(type)) {
+            appendProgressChatForCompletions(process, ctx, todosBefore);
+            return renderTodoListFeedback(process, "TODO_UPDATE applied");
+        }
+        if (de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_PLAN
+                .equals(type)) {
+            return "START_PLAN applied — mode is now EXPLORING. NEVER emit "
+                    + "START_PLAN again. Use read-only tools (web_search, "
+                    + "doc_read, doc_list, manual_read) to gather what you "
+                    + "need. Once you have enough information, emit "
+                    + "PROPOSE_PLAN with a structured plan + todos.";
+        }
+        return "Action " + type + " applied.";
+    }
+
+    /**
+     * True when the process has at least one todo and every entry is
+     * {@code COMPLETED}. Used by the action-loop-fallback branch to
+     * decide whether a graceful plan-completion summary is the right
+     * stand-in for a missing terminal action.
+     */
+    private static boolean allTodosCompleted(ThinkProcessDocument process) {
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        if (todos == null || todos.isEmpty()) return false;
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
+            if (t.getStatus() != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Builds the user-facing summary when Plan-Mode reaches
+     * all-COMPLETED but the LLM didn't emit a terminal {@code ANSWER}.
+     * Lists the todo titles so the user sees what got done; the
+     * exact artifact paths show up via the per-step
+     * {@link #appendProgressChatForCompletions} notes already.
+     */
+    private static String renderPlanCompletionSummary(ThinkProcessDocument process) {
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        if (todos == null || todos.isEmpty()) {
+            return "Plan abgeschlossen.";
+        }
+        StringBuilder sb = new StringBuilder("Plan abgeschlossen — alle Schritte erledigt:");
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
+            sb.append("\n- ");
+            String label = t.getContent();
+            if (label == null || label.isBlank()) label = t.getId();
+            sb.append(label == null ? "" : label);
+        }
+        sb.append("\n\nSchau in deine Dokumente — die Ergebnisse sind dort abgelegt.");
+        return sb.toString();
+    }
+
+    /**
+     * Snapshot of the process's todos used to detect transitions
+     * inside {@link #applyContinuingAction}. Returns an empty list
+     * when no todos are persisted yet.
+     */
+    private static java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> snapshotTodos(
+            ThinkProcessDocument process) {
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        if (todos == null) return java.util.List.of();
+        return new java.util.ArrayList<>(todos);
+    }
+
+    /**
+     * Appends a brief assistant chat message for every todo that just
+     * transitioned to COMPLETED. Without this the user stares at a
+     * silent chat for the entire plan execution — even though Eddie
+     * is actively making progress, the only visible signal is the end-
+     * of-plan ANSWER. Posting one short line per step closes the
+     * feedback gap.
+     *
+     * <p>Idempotent: only NEW completions trigger a message; if the
+     * LLM re-emits TODO_UPDATE for an already-COMPLETED item nothing
+     * new is appended.
+     */
+    private void appendProgressChatForCompletions(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> before) {
+        java.util.Map<String, de.mhus.vance.api.thinkprocess.TodoStatus> prior = new java.util.HashMap<>();
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : before) {
+            if (t.getId() != null) prior.put(t.getId(), t.getStatus());
+        }
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> now = process.getTodos();
+        if (now == null) return;
+        java.util.List<String> completedTitles = new java.util.ArrayList<>();
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : now) {
+            if (t.getStatus() != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) continue;
+            de.mhus.vance.api.thinkprocess.TodoStatus previously = prior.get(t.getId());
+            if (previously == de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) continue;
+            String label = t.getContent();
+            if (label == null || label.isBlank()) label = t.getId();
+            completedTitles.add(label);
+        }
+        if (completedTitles.isEmpty()) return;
+        StringBuilder msg = new StringBuilder();
+        for (int i = 0; i < completedTitles.size(); i++) {
+            if (i > 0) msg.append('\n');
+            msg.append("✓ ").append(completedTitles.get(i));
+        }
+        try {
+            ctx.chatMessageService().append(
+                    de.mhus.vance.shared.chat.ChatMessageDocument.builder()
+                            .tenantId(process.getTenantId())
+                            .sessionId(process.getSessionId())
+                            .thinkProcessId(process.getId())
+                            .role(de.mhus.vance.api.chat.ChatRole.ASSISTANT)
+                            .content(msg.toString())
+                            .build());
+        } catch (RuntimeException e) {
+            log.warn("Eddie id='{}' failed to append plan-progress chat note: {}",
+                    process.getId(), e.toString());
+        }
+    }
+
+    /**
+     * In-loop feedback for {@code START_EXECUTION}: renders the live
+     * TodoList and tells the LLM what to do next. Without this the
+     * model re-emits {@code START_EXECUTION} every turn because the
+     * silent transition leaves no record in the chat history.
+     */
+    private String renderStartExecutionFeedback(ThinkProcessDocument process) {
+        return renderTodoListFeedback(process,
+                "START_EXECUTION applied — mode is now EXECUTING");
+    }
+
+    /**
+     * Shared feedback renderer: header + TodoList with status markers +
+     * guidance pointing the LLM at the first non-COMPLETED item. Used
+     * for both START_EXECUTION (initial entry into EXECUTING) and
+     * TODO_UPDATE (status changes during execution).
+     */
+    private String renderTodoListFeedback(ThinkProcessDocument process, String header) {
+        StringBuilder sb = new StringBuilder(header).append(". Current TodoList:\n");
+        java.util.List<de.mhus.vance.api.thinkprocess.TodoItem> todos = process.getTodos();
+        if (todos == null) todos = java.util.List.of();
+        de.mhus.vance.api.thinkprocess.TodoItem firstActive = null;
+        for (de.mhus.vance.api.thinkprocess.TodoItem t : todos) {
+            de.mhus.vance.api.thinkprocess.TodoStatus s = t.getStatus() == null
+                    ? de.mhus.vance.api.thinkprocess.TodoStatus.PENDING
+                    : t.getStatus();
+            String marker = switch (s) {
+                case PENDING -> "[ ]";
+                case IN_PROGRESS -> "[~]";
+                case COMPLETED -> "[✓]";
+            };
+            sb.append(marker).append(" (id=")
+                    .append(t.getId() == null ? "" : t.getId())
+                    .append(") ")
+                    .append(t.getContent() == null ? "" : t.getContent())
+                    .append('\n');
+            if (firstActive == null
+                    && s != de.mhus.vance.api.thinkprocess.TodoStatus.COMPLETED) {
+                firstActive = t;
+            }
+        }
+        sb.append('\n');
+        if (firstActive == null) {
+            sb.append("All todos COMPLETED. Emit ANSWER with a brief summary "
+                    + "so the user sees the final result.");
+        } else if (firstActive.getStatus()
+                == de.mhus.vance.api.thinkprocess.TodoStatus.IN_PROGRESS) {
+            sb.append("The first active item (id=")
+                    .append(firstActive.getId())
+                    .append(") is already IN_PROGRESS. Do NOT emit TODO_UPDATE "
+                    + "for it again — that's a no-op. Instead, call read/write "
+                    + "tools (web_search, doc_read, doc_create_text, doc_edit, "
+                    + "etc.) or DELEGATE_PROJECT / STEER_PROJECT to make real "
+                    + "progress. Once the work is done, emit TODO_UPDATE to "
+                    + "mark it COMPLETED and pick the next item.");
+        } else {
+            sb.append("Next: emit TODO_UPDATE setting id=")
+                    .append(firstActive.getId())
+                    .append(" to IN_PROGRESS, then in the same or next "
+                    + "iteration call the read/write tools to do the actual "
+                    + "work (web_search, doc_create_text, …) or "
+                    + "DELEGATE_PROJECT / STEER_PROJECT for hand-off. "
+                    + "NEVER re-emit START_EXECUTION.");
+        }
+        return sb.toString();
+    }
+
     @Override
     protected ActionTurnOutcome handleAction(
             EngineAction action,
@@ -709,7 +1178,19 @@ public class EddieEngine extends StructuredActionEngine {
         // actual project_create but the LLM-spawn cascade still burns
         // budget. RELAY / RELAY_INBOX / ANSWER / WAIT / REJECT / LEARN
         // / MEDIATE stay allowed — they report state without spawning.
+        //
+        // **Plan-mode exception**: in EXPLORING / PLANNING / EXECUTING
+        // the lane runs a *legitimate* self-continuation loop (see
+        // runTurn). ASK_USER for clarification on a failed tool call,
+        // DELEGATE_PROJECT to hand off a step, STEER_PROJECT to drive
+        // an existing worker — all are intentional actions during plan
+        // execution, not respawn cascades. Skip the gate so the LLM
+        // isn't forced to emit the rejection hint as a user-facing
+        // chat message.
+        boolean inActivePlanMode = process.getMode() != null
+                && process.getMode() != de.mhus.vance.api.thinkprocess.ProcessMode.NORMAL;
         if (!Boolean.TRUE.equals(currentTurnHadUserInput.get(process.getId()))
+                && !inActivePlanMode
                 && SPAWN_ACTIONS_FORBIDDEN_ON_EVENT_TURNS.contains(action.type())) {
             log.warn("Eddie id='{}' rejected spawn-action '{}' on event-only turn"
                             + " (no fresh user-input in inbox) — reason: '{}'",
@@ -767,7 +1248,49 @@ public class EddieEngine extends StructuredActionEngine {
         if (message == null || message.isBlank()) {
             message = action.reason();
         }
-        return new ActionTurnOutcome(message, /*awaitingUserInput*/ true);
+        String rendered = renderAskUserOptions(message,
+                action.params().get(EddieActionSchema.PARAM_OPTIONS));
+        return new ActionTurnOutcome(rendered, /*awaitingUserInput*/ true);
+    }
+
+    /**
+     * Appends structured ASK_USER options to the question text as a
+     * Markdown list the UI / voice channel can present. Pure-text
+     * fallback so any client renders something useful — a Markdown-
+     * aware UI shows it as bullets, a voice channel reads each
+     * option aloud, a future picker-aware UI can sniff the options
+     * back out of the chat-message or read them from the action
+     * params side-channel (not implemented yet).
+     *
+     * <p>Pass-through when {@code options} is null / empty / not a
+     * list — keeps the free-text question shape intact.
+     */
+    @SuppressWarnings("unchecked")
+    private static String renderAskUserOptions(
+            String baseMessage, @Nullable Object optionsRaw) {
+        if (!(optionsRaw instanceof List<?> rawList) || rawList.isEmpty()) {
+            return baseMessage;
+        }
+        StringBuilder sb = new StringBuilder(baseMessage == null ? "" : baseMessage);
+        boolean any = false;
+        for (Object item : rawList) {
+            if (!(item instanceof Map<?, ?> m)) continue;
+            Object label = ((Map<String, Object>) m).get("label");
+            if (!(label instanceof String l) || l.isBlank()) continue;
+            if (!any) {
+                if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') {
+                    sb.append("\n\n");
+                }
+                any = true;
+            }
+            sb.append("- **").append(l.trim()).append("**");
+            Object desc = ((Map<String, Object>) m).get("description");
+            if (desc instanceof String d && !d.isBlank()) {
+                sb.append(" — ").append(d.trim());
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
     }
 
     /**
@@ -1645,6 +2168,18 @@ public class EddieEngine extends StructuredActionEngine {
             messages.add(VanceSystemMessage.dynamic(toolHintsBlock));
         }
 
+        // ── PLAN-MODE TODO LIST — live state for EXPLORING / PLANNING /
+        // EXECUTING modes. Without this the LLM sitting in EXECUTING
+        // mode (after START_EXECUTION) has no in-prompt indicator of
+        // "you're past planning, now do the actual work" and keeps
+        // emitting START_EXECUTION idempotently. Mirrors Arthur's
+        // buildTodoListBlock — see ArthurEngine for the canonical
+        // version.
+        String todoBlock = buildTodoListBlock(process);
+        if (todoBlock != null && !todoBlock.isBlank()) {
+            messages.add(VanceSystemMessage.dynamic(todoBlock));
+        }
+
         List<ChatMessageDocument> history = chatLog.activeHistory(
                 process.getTenantId(), process.getSessionId(), process.getId());
         for (ChatMessageDocument msg : history) {
@@ -1704,6 +2239,32 @@ public class EddieEngine extends StructuredActionEngine {
                 + "start of a fresh conversation, when confirming "
                 + "something they just asked, when delivering a result. "
                 + "Don't tack it onto every line.");
+
+        // Hub-project routing hint: when Eddie's chat-process is in
+        // the tenant hub (`_tenant`), document writes default to that
+        // SYSTEM project and get rejected. Tell the LLM explicitly
+        // which user-project to address. Without this hint the LLM
+        // remembers the projectId for the first call or two and then
+        // drops it on later calls (we saw this in plan-mode loops).
+        String currentProjectId = process.getProjectId();
+        if (hasUserId
+                && de.mhus.vance.shared.home.HomeBootstrapService.TENANT_PROJECT_NAME
+                        .equals(currentProjectId)) {
+            String userProject = de.mhus.vance.shared.home.HomeBootstrapService
+                    .HUB_PROJECT_NAME_PREFIX + userId;
+            sb.append("\n\n**Routing — where user-facing artifacts land:** "
+                    + "this chat sits in the tenant hub (`_tenant`, "
+                    + "SYSTEM). Any document, scratchpad, or workspace "
+                    + "write the user asked for must target the user "
+                    + "project `")
+                    .append(userProject)
+                    .append("`. Always pass `projectId=\"")
+                    .append(userProject)
+                    .append("\"` to `doc_create_text`, `doc_edit`, "
+                    + "`doc_write_text`, `scratch_write`, etc. — the "
+                    + "default routes to `_tenant` and gets rejected "
+                    + "because the hub is SYSTEM-protected.");
+        }
         return sb.toString();
     }
 

@@ -92,7 +92,16 @@ public abstract class StructuredActionEngine implements ThinkEngine {
 
     private static final Logger log = LoggerFactory.getLogger(StructuredActionEngine.class);
 
-    /** Max correction rounds for malformed / missing action calls. */
+    /**
+     * Global default for the action-loop "free text / invalid action"
+     * correction budget. Mirrors
+     * {@link de.mhus.vance.brain.ai.ModelInfo#DEFAULT_ACTION_LOOP_CORRECTIONS}.
+     * Per-model overrides come from {@code ai-models.yaml} via
+     * {@link de.mhus.vance.brain.ai.ModelInfo#actionLoopCorrections()};
+     * callers pass that value into
+     * {@link #runStructuredActionLoop(AiChat, Function, List,
+     * ThinkEngineContext, ThinkProcessDocument, int, String, int)}.
+     */
     protected static final int MAX_ACTION_CORRECTIONS = 2;
 
     private final StreamingProperties streamingProperties;
@@ -231,6 +240,27 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             ThinkProcessDocument process,
             int maxIters,
             String modelAlias) {
+        return runStructuredActionLoop(aiChat, readToolSpecsFactory, messages,
+                ctx, process, maxIters, modelAlias, MAX_ACTION_CORRECTIONS);
+    }
+
+    /**
+     * Action-loop variant that lets the caller override the action
+     * correction budget. {@link #MAX_ACTION_CORRECTIONS} is the global
+     * default; engines pass a per-model value from
+     * {@code ai-models.yaml} (via
+     * {@link de.mhus.vance.brain.ai.ModelInfo#actionLoopCorrections()})
+     * so chatty / silent-prone models get more head-room.
+     */
+    protected ActionLoopResult runStructuredActionLoop(
+            AiChat aiChat,
+            Function<ContextToolsApi, List<ToolSpecification>> readToolSpecsFactory,
+            List<ChatMessage> messages,
+            ThinkEngineContext ctx,
+            ThinkProcessDocument process,
+            int maxIters,
+            String modelAlias,
+            int maxCorrections) {
 
         // Fresh tools + spec list per loop. Refreshed after any
         // iteration that called read tools so describe_tool
@@ -271,11 +301,11 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             }
 
             if (!reply.hasToolExecutionRequests()) {
-                if (corrections < MAX_ACTION_CORRECTIONS) {
+                if (corrections < maxCorrections) {
                     log.info(
                             "{} id='{}' action-loop: free text without action call, correcting ({}/{})",
                             name(), process.getId(),
-                            corrections + 1, MAX_ACTION_CORRECTIONS);
+                            corrections + 1, maxCorrections);
                     messages.add(reply);
                     messages.add(SystemMessage.from(noActionCorrection()));
                     corrections++;
@@ -356,11 +386,11 @@ public abstract class StructuredActionEngine implements ThinkEngine {
             // Parse + validate the action.
             ParseResult parsed = parseAction(actionCall);
             if (!parsed.valid()) {
-                if (corrections < MAX_ACTION_CORRECTIONS) {
+                if (corrections < maxCorrections) {
                     log.info(
                             "{} id='{}' action-loop: invalid action ({}), correcting ({}/{})",
                             name(), process.getId(), parsed.error(),
-                            corrections + 1, MAX_ACTION_CORRECTIONS);
+                            corrections + 1, maxCorrections);
                     messages.add(ToolExecutionResultMessage.from(actionCall,
                             invalidActionToolResult(parsed.error())));
                     corrections++;

@@ -159,6 +159,17 @@ public final class EddieActionSchema {
     public static final String PARAM_MODE         = "mode";
 
     /**
+     * ASK_USER optional structured options. Each entry is
+     * {@code { "label": "…", "description"?: "…" }}. When set, the
+     * UI is expected to render the question as a multiple-choice
+     * picker; the user's reply lands as a regular text chat-input
+     * with the chosen label as the text (or free text if the user
+     * types something else). Leave unset for open-ended free-text
+     * questions — the default.
+     */
+    public static final String PARAM_OPTIONS      = "options";
+
+    /**
      * Schema (flat) covering all action types. Per-type required-field
      * validation lives in {@code EddieEngine.handleAction}, where the
      * type is known. Top-level {@code type} and {@code reason} are
@@ -389,6 +400,40 @@ public final class EddieActionSchema {
         updatesProp.put("description",
                 "TodoItem status updates. Required for TODO_UPDATE.");
 
+        // ASK_USER options — optional structured picker. Each entry
+        // is {label, description?}. Empty / null → free-text question.
+        Map<String, Object> optionItemSchema = new LinkedHashMap<>();
+        optionItemSchema.put("type", "object");
+        Map<String, Object> optionItemProps = new LinkedHashMap<>();
+        Map<String, Object> optionLabelProp = new LinkedHashMap<>();
+        optionLabelProp.put("type", "string");
+        optionLabelProp.put("description",
+                "Short, spoken-friendly label the user picks. 1-5 words "
+                        + "ideal — this is what the user reads (and the "
+                        + "voice channel says aloud) as the choice text.");
+        Map<String, Object> optionDescProp = new LinkedHashMap<>();
+        optionDescProp.put("type", "string");
+        optionDescProp.put("description",
+                "Optional one-line clarification of what this option "
+                        + "means / what happens when picked. Skipped when "
+                        + "the label is already self-explanatory.");
+        optionItemProps.put("label", optionLabelProp);
+        optionItemProps.put("description", optionDescProp);
+        optionItemSchema.put("properties", optionItemProps);
+        optionItemSchema.put("required", List.of("label"));
+
+        Map<String, Object> optionsProp = new LinkedHashMap<>();
+        optionsProp.put("type", "array");
+        optionsProp.put("items", optionItemSchema);
+        optionsProp.put("description",
+                "ASK_USER-only: structured options for a multiple-choice "
+                        + "question. Use when the answer set is small "
+                        + "(2-4) and discrete (yes/no, A/B/C, a fixed "
+                        + "list of named choices). Omit for open-ended "
+                        + "questions. The user can always type free text "
+                        + "instead of picking — the options are a UI "
+                        + "shortcut, not a constraint.");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("type", typeProp);
         properties.put("reason", reasonProp);
@@ -405,6 +450,7 @@ public final class EddieActionSchema {
         properties.put(PARAM_SPOKEN, spokenProp);
         properties.put(PARAM_SCOPE, scopeProp);
         properties.put(PARAM_MODE, modeProp);
+        properties.put(PARAM_OPTIONS, optionsProp);
         // Plan-Mode params from PlanModeActionSchema.
         properties.put(PlanModeActionSchema.PARAM_GOAL, planGoalProp);
         properties.put(PlanModeActionSchema.PARAM_PLAN, planProp);

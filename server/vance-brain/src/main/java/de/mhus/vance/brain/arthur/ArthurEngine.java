@@ -609,7 +609,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             // activations propagate within the turn.
             ActionLoopResult loopResult = runStructuredActionLoop(
                     aiChat, ContextToolsApi::primaryAsLc4j,
-                    messages, ctx, process, maxIters, modelAlias);
+                    messages, ctx, process, maxIters, modelAlias,
+                    modelInfo.actionLoopCorrections());
 
             ActionTurnOutcome outcome;
             if (loopResult.isAction()) {

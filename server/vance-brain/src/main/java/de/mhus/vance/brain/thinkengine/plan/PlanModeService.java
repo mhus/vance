@@ -198,7 +198,19 @@ public class PlanModeService {
 
     /**
      * {@code TODO_UPDATE} — mark TodoList items as IN_PROGRESS or
-     * COMPLETED during execution. No chat message, no mode change.
+     * COMPLETED during execution. No chat message.
+     *
+     * <p>Auto-promotes {@code PLANNING → EXECUTING} when the LLM
+     * skipped {@code START_EXECUTION} and jumped straight to a
+     * {@code TODO_UPDATE} after the user accepted the plan. Gemini
+     * 2.5 Pro does this occasionally — sees "ok" + the plan in
+     * history, starts the work directly, never emits the mode
+     * transition. Without the auto-promote the process stays in
+     * PLANNING forever (UI keeps the approval-banner up, plan-mode
+     * tool filters stay restricted). The promote fires the same
+     * {@code MODE_CHANGED} event {@link #handleStartExecution}
+     * would — UI clears the banner, plan-mode-aware code paths see
+     * EXECUTING.
      */
     ActionTurnOutcome handleTodoUpdate(
             EngineAction action, ThinkProcessDocument process, ThinkEngineContext ctx) {
@@ -208,6 +220,16 @@ public class PlanModeService {
             log.warn("{}.TODO_UPDATE id='{}' empty — reason='{}'",
                     engineName(process), process.getId(), action.reason());
             return new ActionTurnOutcome(null, /*awaitingUserInput*/ false);
+        }
+        if (process.getMode() == ProcessMode.PLANNING) {
+            ProcessMode prior = process.getMode();
+            thinkProcessService.updateMode(process.getId(), ProcessMode.EXECUTING);
+            process.setMode(ProcessMode.EXECUTING);
+            planModeEventEmitter.emitModeChanged(process, prior, ProcessMode.EXECUTING);
+            ctx.historyTagSink().emit(Set.of("MODE:execute"));
+            log.info("{}.TODO_UPDATE id='{}' auto-promoted PLANNING → EXECUTING "
+                            + "(LLM skipped START_EXECUTION)",
+                    engineName(process), process.getId());
         }
         boolean ok = thinkProcessService.updateTodoStatuses(process.getId(), updates);
         log.info("{}.TODO_UPDATE id='{}' applied={} count={} reason='{}'",

@@ -25,7 +25,8 @@ public record ModelInfo(
         int defaultMaxOutputTokens,
         ModelSize size,
         Set<ModelCapability> capabilities,
-        int timeoutSeconds) {
+        int timeoutSeconds,
+        int actionLoopCorrections) {
 
     /**
      * Conservative per-call timeout used when neither the catalog
@@ -36,12 +37,26 @@ public record ModelInfo(
      */
     public static final int DEFAULT_TIMEOUT_SECONDS = 60;
 
+    /**
+     * Default budget for action-loop "free text without tool call"
+     * corrections. The action loop re-prompts the LLM up to this many
+     * times before falling back to the best free-text it captured.
+     * Two is enough for most models; Gemini 2.5 Pro occasionally
+     * emits empty {@code STOP} after long tool-call sequences and
+     * benefits from a higher budget — bump it via the
+     * {@code actionLoopCorrections} field in {@code ai-models.yaml}.
+     */
+    public static final int DEFAULT_ACTION_LOOP_CORRECTIONS = 2;
+
     public ModelInfo {
         // Defensive copy + immutability so callers can hand the record
         // around without worrying about Set mutation.
         capabilities = capabilities == null ? Set.of() : Set.copyOf(capabilities);
         if (timeoutSeconds <= 0) {
             timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
+        }
+        if (actionLoopCorrections <= 0) {
+            actionLoopCorrections = DEFAULT_ACTION_LOOP_CORRECTIONS;
         }
     }
 

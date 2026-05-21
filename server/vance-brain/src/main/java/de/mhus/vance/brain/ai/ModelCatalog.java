@@ -66,7 +66,8 @@ public class ModelCatalog {
 
     private static final ModelInfo FALLBACK_TEMPLATE = new ModelInfo(
             "?", "?", 8192, 4096, ModelSize.LARGE, Set.of(),
-            ModelInfo.DEFAULT_TIMEOUT_SECONDS);
+            ModelInfo.DEFAULT_TIMEOUT_SECONDS,
+            ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS);
 
     private final DocumentService documentService;
 
@@ -231,7 +232,10 @@ public class ModelCatalog {
         Set<ModelCapability> caps = readCapabilities(spec.get("capabilities"), provider, modelName);
         int timeout = readInt(spec.get("timeoutSeconds"),
                 FALLBACK_TEMPLATE.timeoutSeconds());
-        return new ModelInfo(provider, modelName, ctx, out, size, caps, timeout);
+        int corrections = readInt(spec.get("actionLoopCorrections"),
+                FALLBACK_TEMPLATE.actionLoopCorrections());
+        return new ModelInfo(provider, modelName, ctx, out, size, caps,
+                timeout, corrections);
     }
 
     private static ModelInfo fallback(@Nullable String provider, @Nullable String modelName) {
@@ -246,7 +250,8 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.defaultMaxOutputTokens(),
                 FALLBACK_TEMPLATE.size(),
                 FALLBACK_TEMPLATE.capabilities(),
-                FALLBACK_TEMPLATE.timeoutSeconds());
+                FALLBACK_TEMPLATE.timeoutSeconds(),
+                FALLBACK_TEMPLATE.actionLoopCorrections());
     }
 
     private static int readInt(@Nullable Object raw, int fallback) {

@@ -84,3 +84,15 @@ profiles:
 tags:
   - deep-think
   - orchestrator
+# Trigger keywords for the deterministic recipe-router pre-check
+# (see specification/recipe-routing.md §5). Substring match,
+# case-insensitive — keep entries short and unambiguous.
+triggers:
+  keywords:
+    - marvin
+    - deep think
+    - deep-think
+    - tiefgehend nachdenken
+    - tiefes denken
+    - decompose this
+    - task tree

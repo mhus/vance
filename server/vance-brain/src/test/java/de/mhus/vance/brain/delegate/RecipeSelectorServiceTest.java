@@ -25,9 +25,10 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Unit tests for {@link RecipeSelectorService}. Stubs the LLM via a
- * scripted {@link ChatModel} that returns prepared JSON, then
- * verifies the parse, existence-check and NONE-fallback paths.
+ * Unit tests for the trigger-gated {@link RecipeSelectorService}. The
+ * service now runs a deterministic pre-check (recipe-name word-boundary
+ * + trigger-keyword substring) BEFORE any LLM call. The LLM only fires
+ * when multiple trigger-matched candidates need disambiguation.
  */
 class RecipeSelectorServiceTest {
 
@@ -43,8 +44,6 @@ class RecipeSelectorServiceTest {
         AiModelResolver aiModelResolver = mock(AiModelResolver.class);
         AiModelService aiModelService = mock(AiModelService.class);
 
-        EngineCatalog catalog = new EngineCatalog();
-        catalog.load();
         chatModel = new ScriptedChatModel();
         AiChat scriptedAiChat = mock(AiChat.class);
         when(scriptedAiChat.chatModel()).thenReturn(chatModel);
@@ -54,7 +53,6 @@ class RecipeSelectorServiceTest {
         // settings; here we return the scripted stub directly.
         selector = new RecipeSelectorService(
                 JsonMapper.builder().build(),
-                catalog,
                 recipeLoader,
                 settingService,
                 aiModelResolver,
@@ -72,16 +70,7 @@ class RecipeSelectorServiceTest {
         caller.setSessionId("sess-1");
     }
 
-    @Test
-    void noRecipesAvailable_returnsNoneWithoutLlmCall() {
-        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of());
-
-        RecipeSelectorService.Result r = selector.select(caller, "do something");
-
-        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
-        assertThat(r.recipeName()).isNull();
-        assertThat(r.rationale()).contains("no recipes available");
-    }
+    // ──────────────────── deterministic pre-check ────────────────────
 
     @Test
     void emptyTaskDescription_returnsNone() {
@@ -92,14 +81,146 @@ class RecipeSelectorServiceTest {
     }
 
     @Test
-    void llmReturnsMatch_resolvesToRecipe() {
-        when(recipeLoader.listAll(anyString(), any()))
-                .thenReturn(List.of(stub("essay-pipeline", "marvin")));
+    void noRecipesAvailable_returnsNoneWithoutLlm() {
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of());
+
+        RecipeSelectorService.Result r = selector.select(caller, "do something");
+
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
+        assertThat(r.rationale()).contains("no recipes available");
+        assertThat(chatModel.invocations).isZero();
+    }
+
+    @Test
+    void goalContainsRecipeName_directMatchNoLlm() {
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stub("marvin", "marvin"),
+                stub("essay-pipeline", "marvin")));
+
+        RecipeSelectorService.Result r = selector.select(caller,
+                "nutze Marvin um die Notizen zu sortieren");
+
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.MATCH);
+        assertThat(r.recipeName()).isEqualTo("marvin");
+        assertThat(r.engineName()).isEqualTo("marvin");
+        assertThat(chatModel.invocations).isZero();
+    }
+
+    @Test
+    void longerRecipeNameWinsOverShorter() {
+        // Both "analyze" and "deep-analyze" appear as recipes; the
+        // goal contains the longer phrase. Longest-match must win
+        // so the specific recipe gets picked.
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stub("analyze", "ford"),
+                stub("deep-analyze", "marvin")));
+
+        RecipeSelectorService.Result r = selector.select(caller,
+                "please run a deep-analyze on this code");
+
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.MATCH);
+        assertThat(r.recipeName()).isEqualTo("deep-analyze");
+        assertThat(chatModel.invocations).isZero();
+    }
+
+    @Test
+    void recipeNameMatchRequiresWordBoundary() {
+        // Recipe "ford" must NOT match the substring inside "effort".
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stub("ford", "ford")));
+
+        RecipeSelectorService.Result r = selector.select(caller,
+                "considerable effort required");
+
+        // No recipe-name match, no trigger keywords on ford stub → NONE.
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
+        assertThat(chatModel.invocations).isZero();
+    }
+
+    @Test
+    void goalContainsTriggerKeyword_singleMatchNoLlm() {
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stubWithTriggers("hactar", "hactar",
+                        List.of("hactar", "javascript script"))));
+
+        RecipeSelectorService.Result r = selector.select(caller,
+                "Generiere mir bitte ein javascript script zur Verarbeitung");
+
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.MATCH);
+        assertThat(r.recipeName()).isEqualTo("hactar");
+        assertThat(chatModel.invocations).isZero();
+    }
+
+    @Test
+    void goalWithoutTrigger_returnsNoneWithoutLlm() {
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stubWithTriggers("marvin", "marvin",
+                        List.of("marvin", "deep think")),
+                stubWithTriggers("hactar", "hactar",
+                        List.of("hactar", "javascript"))));
+
+        RecipeSelectorService.Result r = selector.select(caller,
+                "schreib mir eine zusammenfassung");
+
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
+        assertThat(r.rationale()).contains("no trigger detected");
+        assertThat(r.triggerObserved())
+                .as("no trigger keyword fired → caller should fall through "
+                        + "to the default recipe, not the configurable fallback")
+                .isFalse();
+        assertThat(chatModel.invocations).isZero();
+    }
+
+    @Test
+    void llmReturnsNone_isMarkedTriggerObserved() {
+        // Trigger fires (two candidates), but the LLM rejects both —
+        // caller must spawn the configurable fallback recipe, not
+        // the default. The triggerObserved flag carries that.
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stubWithTriggers("essay-a", "marvin", List.of("essay")),
+                stubWithTriggers("essay-b", "vogon", List.of("essay"))));
+        chatModel.script(List.of("""
+                {
+                  "decision": "NONE",
+                  "recipe": null,
+                  "rationale": "neither candidate truly fits"
+                }
+                """));
+
+        RecipeSelectorService.Result r = selector.select(caller,
+                "schreib mir ein essay über depressive roboter");
+
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
+        assertThat(r.triggerObserved()).isTrue();
+        assertThat(chatModel.invocations).isEqualTo(1);
+    }
+
+    @Test
+    void slartGeneratedRecipes_excludedFromInventory() {
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stub("_slart/abc/x", "marvin")));
+
+        RecipeSelectorService.Result r = selector.select(caller,
+                "_slart/abc/x"); // even mentioning the path → no match
+
+        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
+        assertThat(chatModel.invocations).isZero();
+    }
+
+    // ──────────────────── LLM disambiguation ────────────────────
+
+    @Test
+    void multipleTriggerMatches_runLlmDisambiguation() {
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stubWithTriggers("essay-pipeline", "marvin",
+                        List.of("essay")),
+                stubWithTriggers("school-essay", "vogon",
+                        List.of("essay"))));
         chatModel.script(List.of("""
                 {
                   "decision": "MATCH",
-                  "recipe": "essay-pipeline",
-                  "rationale": "user asks for an essay"
+                  "recipe": "school-essay",
+                  "rationale": "school context fits better"
                 }
                 """));
 
@@ -107,15 +228,16 @@ class RecipeSelectorServiceTest {
                 "schreib mir ein essay über depressive roboter");
 
         assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.MATCH);
-        assertThat(r.recipeName()).isEqualTo("essay-pipeline");
-        assertThat(r.engineName()).isEqualTo("marvin");
-        assertThat(r.rationale()).contains("user asks for an essay");
+        assertThat(r.recipeName()).isEqualTo("school-essay");
+        assertThat(r.engineName()).isEqualTo("vogon");
+        assertThat(chatModel.invocations).isEqualTo(1);
     }
 
     @Test
     void llmReturnsNone_propagatedAsNone() {
-        when(recipeLoader.listAll(anyString(), any()))
-                .thenReturn(List.of(stub("essay-pipeline", "marvin")));
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stubWithTriggers("essay-a", "marvin", List.of("essay")),
+                stubWithTriggers("essay-b", "vogon", List.of("essay"))));
         chatModel.script(List.of("""
                 {
                   "decision": "NONE",
@@ -124,17 +246,19 @@ class RecipeSelectorServiceTest {
                 }
                 """));
 
-        RecipeSelectorService.Result r = selector.select(caller, "do something");
+        RecipeSelectorService.Result r = selector.select(caller,
+                "essay something");
 
         assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
-        assertThat(r.recipeName()).isNull();
         assertThat(r.rationale()).contains("ambiguous");
+        assertThat(chatModel.invocations).isEqualTo(1);
     }
 
     @Test
     void llmHallucinatesRecipeName_caughtAndReturnedAsNone() {
-        when(recipeLoader.listAll(anyString(), any()))
-                .thenReturn(List.of(stub("essay-pipeline", "marvin")));
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stubWithTriggers("essay-a", "marvin", List.of("essay")),
+                stubWithTriggers("essay-b", "vogon", List.of("essay"))));
         chatModel.script(List.of("""
                 {
                   "decision": "MATCH",
@@ -143,7 +267,7 @@ class RecipeSelectorServiceTest {
                 }
                 """));
 
-        RecipeSelectorService.Result r = selector.select(caller, "task");
+        RecipeSelectorService.Result r = selector.select(caller, "essay task");
 
         assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
         assertThat(r.rationale())
@@ -152,76 +276,37 @@ class RecipeSelectorServiceTest {
 
     @Test
     void llmReturnsMalformedJson_returnsNoneWithDiagnostic() {
-        when(recipeLoader.listAll(anyString(), any()))
-                .thenReturn(List.of(stub("essay-pipeline", "marvin")));
+        when(recipeLoader.listAll(anyString(), any())).thenReturn(List.of(
+                stubWithTriggers("essay-a", "marvin", List.of("essay")),
+                stubWithTriggers("essay-b", "vogon", List.of("essay"))));
         chatModel.script(List.of("not even JSON"));
 
-        RecipeSelectorService.Result r = selector.select(caller, "task");
+        RecipeSelectorService.Result r = selector.select(caller, "essay task");
 
         assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
         assertThat(r.rationale()).contains("no JSON object");
     }
 
-    @Test
-    void engineDefaultRecipes_excludedFromInventory() {
-        // Engine-alias recipes (arthur, ford, marvin-worker, zaphod)
-        // carry tag 'engine-default'. They must not appear in the
-        // selector inventory — only task-oriented recipes do.
-        when(recipeLoader.listAll(anyString(), any()))
-                .thenReturn(List.of(
-                        stub("essay-pipeline", "marvin", List.of()),
-                        stubWithTags("ford", "ford", List.of("engine-default"))));
-        chatModel.script(List.of("""
-                {
-                  "decision": "MATCH",
-                  "recipe": "ford",
-                  "rationale": "n/a"
-                }
-                """));
-
-        RecipeSelectorService.Result r = selector.select(caller, "task");
-
-        // 'ford' was filtered out, so picking it comes back as
-        // unknown — same defensive shape as picking a hallucinated
-        // name.
-        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
-        assertThat(r.rationale()).contains("unknown recipe 'ford'");
-    }
+    // ──────────────────── word-boundary helper ────────────────────
 
     @Test
-    void slartGeneratedRecipes_excludedFromInventory() {
-        when(recipeLoader.listAll(anyString(), any()))
-                .thenReturn(List.of(
-                        stub("essay-pipeline", "marvin"),
-                        stub("_slart/abc/x", "marvin")));
-        chatModel.script(List.of("""
-                {
-                  "decision": "MATCH",
-                  "recipe": "_slart/abc/x",
-                  "rationale": "n/a"
-                }
-                """));
-
-        RecipeSelectorService.Result r = selector.select(caller, "task");
-
-        // _slart/* recipes are filtered out of the inventory the
-        // selector sees, so picking one comes back as unknown.
-        assertThat(r.decision()).isEqualTo(RecipeSelectorService.Result.Decision.NONE);
-        assertThat(r.rationale()).contains("_slart/abc/x");
+    void containsAsWord_matchesAtBoundary() {
+        assertThat(RecipeSelectorService.containsAsWord("use marvin now", "marvin")).isTrue();
+        assertThat(RecipeSelectorService.containsAsWord("marvin", "marvin")).isTrue();
+        assertThat(RecipeSelectorService.containsAsWord("Marvin!".toLowerCase(), "marvin")).isTrue();
+        assertThat(RecipeSelectorService.containsAsWord("quick-lookup is fast", "quick-lookup")).isTrue();
+        assertThat(RecipeSelectorService.containsAsWord("considerable effort", "ford")).isFalse();
+        assertThat(RecipeSelectorService.containsAsWord("marvinify", "marvin")).isFalse();
     }
 
     // ──────────────────── helpers ────────────────────
 
     private static ResolvedRecipe stub(String name, String engine) {
-        return stubWithTags(name, engine, java.util.List.of());
+        return stubWithTriggers(name, engine, List.of());
     }
 
-    private static ResolvedRecipe stub(String name, String engine, java.util.List<String> tags) {
-        return stubWithTags(name, engine, tags);
-    }
-
-    private static ResolvedRecipe stubWithTags(
-            String name, String engine, java.util.List<String> tags) {
+    private static ResolvedRecipe stubWithTriggers(
+            String name, String engine, List<String> triggerKeywords) {
         return new ResolvedRecipe(
                 name,
                 "stub recipe " + name,
@@ -237,13 +322,15 @@ class RecipeSelectorServiceTest {
                 java.util.Map.of(),
                 java.util.List.of(),
                 null,
+                triggerKeywords,
                 false,
-                tags,
+                java.util.List.of(),
                 RecipeSource.PROJECT);
     }
 
     private static class ScriptedChatModel implements ChatModel {
         private final java.util.Deque<String> responses = new java.util.ArrayDeque<>();
+        int invocations;
 
         void script(List<String> entries) {
             responses.clear();
@@ -252,6 +339,7 @@ class RecipeSelectorServiceTest {
 
         @Override
         public ChatResponse chat(ChatRequest request) {
+            invocations++;
             if (responses.isEmpty()) {
                 throw new IllegalStateException("ScriptedChatModel: no responses");
             }

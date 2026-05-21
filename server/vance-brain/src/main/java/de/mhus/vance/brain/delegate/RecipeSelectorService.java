@@ -18,7 +18,7 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -26,29 +26,39 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Picks a project recipe for a free-text task description. Single
- * synchronous LLM call — no sub-process spawn, no tool turn — so
- * {@code process_create}'s selector-routed mode stays cheap.
+ * Picks a project recipe for a free-text task description. Trigger-
+ * gated: a deterministic pre-check (recipe-name word-boundary + trigger-
+ * keyword substring) runs first. The LLM call only fires when multiple
+ * recipes match the same trigger and need disambiguation. Without any
+ * trigger the selector returns {@code NONE} immediately — caller falls
+ * back to its default recipe (typically {@code default} → ford).
  *
- * <p>The prompt embeds two reference blocks:
+ * <p>See {@code specification/recipe-routing.md} for the full design.
  *
+ * <h2>Pre-check stages</h2>
  * <ol>
- *   <li>{@link EngineCatalog} — what each engine is for, hand-curated.</li>
- *   <li>The project's recipe inventory (cascade: project → tenant →
- *       bundled defaults), with each recipe's name + engine +
- *       description.</li>
+ *   <li><b>Recipe-name word-boundary match.</b> Any recipe name that
+ *       appears as a word in the goal text is a direct match — no LLM,
+ *       no ambiguity. Longest-match wins when two recipe names overlap
+ *       (e.g. {@code analyze} vs {@code deep-analyze}).</li>
+ *   <li><b>Trigger-keyword substring match.</b> Recipes declare phrases
+ *       via {@code triggers.keywords:} in their YAML. Substring match
+ *       on the lower-cased goal. Multiple matches → only-matched
+ *       candidates feed the LLM for disambiguation; single match →
+ *       deterministic.</li>
+ *   <li><b>No trigger.</b> Return {@code NONE} with a rationale.
+ *       The caller spawns its default recipe (no Slart fallback —
+ *       see {@code routing.fallback.recipe} setting).</li>
  * </ol>
  *
- * <p>Output is structured JSON: {@code {"decision":"MATCH"|"NONE",
- * "recipe":<name>|null,"rationale":<text>}}. Returning
- * {@code NONE} is a first-class outcome — caller decides whether to
- * fall back to Slartibartfast (generate a new recipe) or escalate
- * to the user. The selector itself takes no spawn action.
+ * <h2>Why deterministic comes first</h2>
  *
- * <p>This service is the only LLM-using piece of the unified
- * {@code process_create} tool's selector-routed mode (the path taken
- * when no {@code recipe} is supplied); the tool wraps it with the
- * downstream spawn.
+ * Magical LLM-routing on every empty-recipe spawn was the source of
+ * the worst routing failures we saw in field testing: the selector
+ * picked specialist engines (Marvin, Vogon) for trivial tasks, or
+ * the opposite. Forcing the user to <em>opt in</em> by naming the
+ * engine / recipe / category keyword turns the selector into a clear
+ * escalation gate.
  */
 @Service
 @RequiredArgsConstructor
@@ -58,24 +68,13 @@ public class RecipeSelectorService {
     /** Selector identity used for tracing / model-alias namespacing. */
     private static final String SELECTOR_NAME = "recipe-selector";
 
-    /** Cap the recipe inventory we pour into the prompt. Beyond this
-     *  the prompt becomes noisy and the LLM picks worse. Real
-     *  projects won't hit this limit; we'd need a pre-filter
-     *  (e.g. tag-based) before then. */
-    private static final int RECIPE_LIST_LIMIT = 50;
-
-    /** Recipes carrying this tag are engine-default wrappers
-     *  (arthur, ford, marvin-worker, zaphod) — they exist so
-     *  {@code process_create(engine="X")} resolves to a valid
-     *  recipe, but they are not user-task-oriented and would only
-     *  add noise to the selector prompt. Hidden from the inventory. */
-    private static final String INTERNAL_TAG = "engine-default";
-
     private static final String SYSTEM_PROMPT = """
             You are the recipe selector for the Vance multi-engine
-            think-system. Given a free-text task description, you pick
-            the best-matching project recipe (which carries an engine
-            and default parameters), or report that no recipe matches.
+            think-system. The caller has already determined — via a
+            deterministic keyword pre-check — that the user's goal
+            triggers one of several candidate recipes. Your job is to
+            pick the single best fit from the short candidate list,
+            or report that none of them actually fits.
 
             HARD OUTPUT CONTRACT:
             - End your reply with EXACTLY one JSON object.
@@ -85,59 +84,35 @@ public class RecipeSelectorService {
             Schema (every field mandatory, even when null):
                 {
                   "decision":  "MATCH" | "NONE",
-                  "recipe":    "<recipe-name from the catalog>" | null,
+                  "recipe":    "<recipe-name from the candidates>" | null,
                   "rationale": "<1-2 sentences: why this recipe, or
                                 why nothing matched>"
                 }
 
             Decision rules:
-            - "MATCH" when the task can plausibly be done by one of
-              the listed recipes. The recipe-name MUST appear
-              VERBATIM in the recipe inventory below — no inventing
-              names.
-            - "NONE" when no recipe is a reasonable fit, OR when the
-              task is too ambiguous to pick safely. The caller will
-              fall back to Slartibartfast (generate a new recipe) or
-              ask the user to clarify.
+            - "MATCH" when one of the listed candidates fits the
+              user's intent. The recipe-name MUST appear VERBATIM in
+              the candidate list — no inventing names.
+            - "NONE" when the keyword-matched candidates all turn out
+              to be wrong fits on closer inspection. The caller will
+              fall back to a configured fallback recipe
+              (routing.fallback.recipe — typically Hactar, which can
+              generate a script to handle arbitrary goals).
 
             Selection guidance:
-            - Match on the user's INTENT, not surface words. "Schreib
-              mir was Schönes mit den Notizen" matches a
-              note-processing or essay recipe better than a
-              cooking-recipe (even if the German word "Rezept" appears
-              elsewhere). The engine catalog tells you which engine
-              shape fits which task type — use it.
-            - Prefer specific recipes over generic ones when the
-              specific one truly fits. A recipe named
-              {@code essay-pipeline} is a better match for "write me
-              an essay" than the generic {@code default}.
-            - "NONE" is a respectable answer. Better to escalate than
-              to force a poor fit.
-
-            CRITICAL — generic orchestrators are a TRAP:
-            - Recipes tagged {@code orchestrator}, {@code deep-think},
-              or {@code marvin} are decomposition engines. They are
-              ONLY useful when the project also contains specific
-              sub-recipes the orchestrator can dispatch to (e.g. a
-              {@code chapter-writer}, {@code section-drafter},
-              {@code editorial-pass}). When the catalog has only the
-              orchestrator itself — no purpose-specific sub-recipes
-              that fit the task — DO NOT pick the orchestrator.
-              Return NONE so the caller falls back to Slartibartfast,
-              which generates a purpose-built recipe with the right
-              shape (Vogon-strategy with proper phases). A bare
-              orchestrator with no sub-recipe support stalls — the
-              sub-task spawns return empty.
-            - Same rule for generic "default" or "chat" recipes:
-              if they don't address the specific task shape, prefer
-              NONE.
-            - Heuristic: if you would have to write {@code "Marvin
-              will figure out which sub-recipes to use"} in your
-              rationale, that is the signal to pick NONE instead.
+            - Match on the user's INTENT, not surface words. The
+              keyword that triggered the candidates is a hint, not a
+              decision.
+            - Prefer specific recipes over generic orchestrators when
+              both are candidates. A purpose-built recipe is almost
+              always a better fit than a bare Marvin/Vogon shell
+              with no sub-recipes.
+            - "NONE" is a respectable answer when none of the
+              candidates is a real fit — the fallback recipe is built
+              for that case.
             """;
 
     private final ObjectMapper objectMapper;
-    private final EngineCatalog engineCatalog;
     private final RecipeLoader recipeLoader;
     private final SettingService settingService;
     private final AiModelResolver aiModelResolver;
@@ -151,57 +126,145 @@ public class RecipeSelectorService {
      */
     public Result select(ThinkProcessDocument caller, String taskDescription) {
         if (taskDescription == null || taskDescription.isBlank()) {
-            return Result.none("empty task description");
+            return Result.noneWithoutTrigger("empty task description");
         }
-        List<ResolvedRecipe> recipes = listRecipes(caller);
-        if (recipes.isEmpty()) {
-            return Result.none(
-                    "no recipes available in this project / tenant — "
-                            + "fall back to Slartibartfast");
-        }
-
-        AiChat chat = buildChat(caller);
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(SYSTEM_PROMPT));
-        messages.add(UserMessage.from(buildUserPrompt(recipes, taskDescription)));
-
-        String text;
-        try {
-            ChatResponse response = chat.chatModel().chat(
-                    ChatRequest.builder().messages(messages).build());
-            text = response.aiMessage() == null
-                    ? "" : response.aiMessage().text();
-        } catch (RuntimeException e) {
-            log.warn("RecipeSelector: LLM call failed: {}", e.toString());
-            return Result.none("LLM call failed: " + e.getMessage());
+        List<ResolvedRecipe> inventory = listRecipesForRouting(caller);
+        if (inventory.isEmpty()) {
+            return Result.noneWithoutTrigger(
+                    "no recipes available in tenant/project — "
+                            + "caller falls back to default recipe");
         }
 
-        return parseResult(text, recipes);
+        String lower = taskDescription.toLowerCase(Locale.ROOT);
+
+        // Stage 1: deterministic recipe-name match.
+        ResolvedRecipe byName = matchByRecipeName(inventory, lower);
+        if (byName != null) {
+            log.debug("RecipeSelector: deterministic recipe-name match recipe='{}' engine='{}'",
+                    byName.name(), byName.engine());
+            return Result.match(byName.name(), byName.engine(),
+                    "Recipe name '" + byName.name()
+                            + "' detected in goal (deterministic, no LLM call).");
+        }
+
+        // Stage 2: trigger-keyword pre-filter.
+        List<ResolvedRecipe> triggered = matchByTriggerKeywords(inventory, lower);
+        if (triggered.isEmpty()) {
+            return Result.noneWithoutTrigger(
+                    "no trigger detected in goal — caller falls back to "
+                            + "default recipe (no LLM call made).");
+        }
+        if (triggered.size() == 1) {
+            ResolvedRecipe r = triggered.get(0);
+            log.debug("RecipeSelector: single trigger-keyword match recipe='{}' engine='{}'",
+                    r.name(), r.engine());
+            return Result.match(r.name(), r.engine(),
+                    "Trigger keyword in recipe '" + r.name()
+                            + "' matched the goal (deterministic, no LLM call).");
+        }
+
+        // Stage 3: multiple candidates → ask the LLM for disambiguation.
+        log.debug("RecipeSelector: {} candidates triggered, running LLM disambiguation",
+                triggered.size());
+        return runLlmDisambiguation(caller, triggered, taskDescription);
     }
 
-    // ──────────────────── prompt helpers ────────────────────
+    // ──────────────────── deterministic matchers ────────────────────
 
-    private List<ResolvedRecipe> listRecipes(ThinkProcessDocument caller) {
+    /**
+     * Walks the full inventory and returns the recipe whose name
+     * appears as a stand-alone word in the goal text. Word boundary
+     * counts {@code a-z 0-9 _ -} as word characters so hyphenated
+     * names like {@code quick-lookup} stay intact. Longest match
+     * wins to avoid {@code analyze} stealing from {@code deep-analyze}.
+     */
+    private static @Nullable ResolvedRecipe matchByRecipeName(
+            List<ResolvedRecipe> inventory, String lowerGoal) {
+        ResolvedRecipe best = null;
+        int bestLen = 0;
+        for (ResolvedRecipe r : inventory) {
+            String n = r.name().toLowerCase(Locale.ROOT);
+            if (n.isEmpty() || n.length() <= bestLen) continue;
+            if (containsAsWord(lowerGoal, n)) {
+                best = r;
+                bestLen = n.length();
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Returns every recipe whose {@code triggerKeywords} contains a
+     * substring found in {@code lowerGoal}. Trigger keywords are
+     * already lower-cased at parse time, so the comparison is a plain
+     * {@link String#contains}. Order matches the inventory order,
+     * which itself reflects the cascade (project → tenant → bundled).
+     */
+    private static List<ResolvedRecipe> matchByTriggerKeywords(
+            List<ResolvedRecipe> inventory, String lowerGoal) {
+        List<ResolvedRecipe> hits = new ArrayList<>();
+        for (ResolvedRecipe r : inventory) {
+            List<String> kws = r.triggerKeywords();
+            if (kws == null || kws.isEmpty()) continue;
+            for (String kw : kws) {
+                if (lowerGoal.contains(kw)) {
+                    hits.add(r);
+                    break;
+                }
+            }
+        }
+        return hits;
+    }
+
+    /**
+     * Word-boundary {@link String#contains}. We hand-roll instead of
+     * using a regex because we walk the inventory for every spawn
+     * and want the allocation profile flat.
+     */
+    static boolean containsAsWord(String haystack, String needle) {
+        if (needle.isEmpty() || needle.length() > haystack.length()) return false;
+        int idx = 0;
+        while ((idx = haystack.indexOf(needle, idx)) >= 0) {
+            char before = idx == 0 ? ' ' : haystack.charAt(idx - 1);
+            int after = idx + needle.length();
+            char afterC = after >= haystack.length() ? ' ' : haystack.charAt(after);
+            if (!isWordChar(before) && !isWordChar(afterC)) return true;
+            idx++;
+        }
+        return false;
+    }
+
+    private static boolean isWordChar(char c) {
+        return (c >= 'a' && c <= 'z')
+                || (c >= '0' && c <= '9')
+                || c == '_' || c == '-';
+    }
+
+    // ──────────────────── inventory ────────────────────
+
+    /**
+     * Returns the recipe inventory the routing layer should consider.
+     * Excludes:
+     * <ul>
+     *   <li>{@code _slart/*} — Slart's persisted past outputs are
+     *       not human-curated recipes,</li>
+     *   <li>{@code _*} — system-internal documents.</li>
+     * </ul>
+     * Engine-default tagged recipes (marvin, hactar, zaphod, …) ARE
+     * included — they are matchable via their own name or via their
+     * declared trigger keywords. The {@code engine-default} tag was
+     * historically used to hide them from the LLM-driven inventory
+     * dump; the new deterministic pre-check needs them present.
+     */
+    private List<ResolvedRecipe> listRecipesForRouting(ThinkProcessDocument caller) {
         try {
             List<ResolvedRecipe> all = recipeLoader.listAll(
                     caller.getTenantId(), caller.getProjectId());
-            // The selector is for "pick something the user can act on
-            // immediately". Filtered out:
-            //   - `_slart/*`      — Slart's own past outputs (not
-            //                       human-curated workflows)
-            //   - `_*`            — system-internal documents
-            //   - tag `engine-default` — engine-name aliases (arthur,
-            //                       ford, marvin-worker, zaphod) used
-            //                       by direct-engine spawns; they hold
-            //                       no task-specific intent and would
-            //                       only dilute the selector prompt.
-            List<ResolvedRecipe> visible = new ArrayList<>();
+            List<ResolvedRecipe> visible = new ArrayList<>(all.size());
             for (ResolvedRecipe r : all) {
                 if (r.name().startsWith("_slart/")) continue;
                 if (r.name().startsWith("_")) continue;
-                if (r.tags() != null && r.tags().contains(INTERNAL_TAG)) continue;
                 visible.add(r);
-                if (visible.size() >= RECIPE_LIST_LIMIT) break;
             }
             return visible;
         } catch (RuntimeException e) {
@@ -211,17 +274,39 @@ public class RecipeSelectorService {
         }
     }
 
-    private String buildUserPrompt(List<ResolvedRecipe> recipes, String task) {
-        StringBuilder sb = new StringBuilder();
+    // ──────────────────── LLM disambiguation ────────────────────
 
-        String catalog = engineCatalog.renderForPrompt();
-        if (!catalog.isEmpty()) {
-            sb.append("== Engines (what each is for) ==\n");
-            sb.append(catalog).append('\n');
+    /**
+     * Runs the LLM only over the trigger-matched candidates. Same
+     * structured-output contract as before, just with a tighter
+     * candidate list so the LLM can't wander into unrelated recipes.
+     */
+    private Result runLlmDisambiguation(
+            ThinkProcessDocument caller,
+            List<ResolvedRecipe> candidates,
+            String taskDescription) {
+        AiChat chat = buildChat(caller);
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(SystemMessage.from(SYSTEM_PROMPT));
+        messages.add(UserMessage.from(buildUserPrompt(candidates, taskDescription)));
+
+        String text;
+        try {
+            ChatResponse response = chat.chatModel().chat(
+                    ChatRequest.builder().messages(messages).build());
+            text = response.aiMessage() == null
+                    ? "" : response.aiMessage().text();
+        } catch (RuntimeException e) {
+            log.warn("RecipeSelector: LLM call failed: {}", e.toString());
+            return Result.noneAfterTrigger("LLM call failed: " + e.getMessage());
         }
+        return parseResult(text, candidates);
+    }
 
-        sb.append("== Recipes available in this project ==\n");
-        for (ResolvedRecipe r : recipes) {
+    private String buildUserPrompt(List<ResolvedRecipe> candidates, String task) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("== Trigger-matched recipe candidates ==\n");
+        for (ResolvedRecipe r : candidates) {
             sb.append("- **").append(r.name()).append("** [engine: ")
                     .append(r.engine()).append("]");
             String desc = r.description();
@@ -235,54 +320,56 @@ public class RecipeSelectorService {
         sb.append("== Task description ==\n");
         sb.append(task.trim()).append("\n\n");
 
-        sb.append("Pick the matching recipe (or NONE) and emit a single "
-                + "JSON object now.");
+        sb.append("Pick the matching candidate (or NONE) and emit a "
+                + "single JSON object now.");
         return sb.toString();
     }
 
     // ──────────────────── response parsing ────────────────────
 
-    private Result parseResult(String text, List<ResolvedRecipe> recipes) {
+    private Result parseResult(String text, List<ResolvedRecipe> candidates) {
+        // All NONE / failure paths here come from the LLM-
+        // disambiguation stage, which only runs when the trigger
+        // pre-check matched ≥1 candidate. They are therefore
+        // {@link Result#noneAfterTrigger} cases — caller should
+        // consult {@code routing.fallback.recipe}, not the default
+        // recipe.
         if (text == null || text.isBlank()) {
-            return Result.none("LLM returned empty reply");
+            return Result.noneAfterTrigger("LLM returned empty reply");
         }
         String json = extractJsonObject(text);
         if (json == null) {
-            return Result.none("LLM reply has no JSON object");
+            return Result.noneAfterTrigger("LLM reply has no JSON object");
         }
         ParsedResult parsed;
         try {
             parsed = objectMapper.readValue(json, ParsedResult.class);
         } catch (RuntimeException e) {
-            return Result.none("JSON parse error: " + e.getMessage());
+            return Result.noneAfterTrigger("JSON parse error: " + e.getMessage());
         }
         if (parsed.decision() == null) {
-            return Result.none("LLM reply missing 'decision' field");
+            return Result.noneAfterTrigger("LLM reply missing 'decision' field");
         }
         if ("NONE".equalsIgnoreCase(parsed.decision())) {
-            return Result.none(orFallback(parsed.rationale(),
+            return Result.noneAfterTrigger(orFallback(parsed.rationale(),
                     "LLM returned NONE without rationale"));
         }
         if (!"MATCH".equalsIgnoreCase(parsed.decision())) {
-            return Result.none(
+            return Result.noneAfterTrigger(
                     "LLM returned unrecognised decision: " + parsed.decision());
         }
         if (parsed.recipe() == null || parsed.recipe().isBlank()) {
-            return Result.none("LLM returned MATCH without a recipe name");
+            return Result.noneAfterTrigger("LLM returned MATCH without a recipe name");
         }
-        // Existence check — same defensive posture as the
-        // ValidatingPhase recipes-exist rule. If the LLM still
-        // hallucinates a name despite the strict prompt, we catch
-        // it here rather than handing junk to process_create.
         String picked = parsed.recipe().trim();
-        for (ResolvedRecipe r : recipes) {
+        for (ResolvedRecipe r : candidates) {
             if (r.name().equals(picked)) {
                 return Result.match(picked, r.engine(),
                         orFallback(parsed.rationale(), ""));
             }
         }
-        return Result.none(
-                "LLM returned unknown recipe '" + picked + "' — not in inventory");
+        return Result.noneAfterTrigger(
+                "LLM returned unknown recipe '" + picked + "' — not in candidate list");
     }
 
     private static @Nullable String extractJsonObject(String raw) {
@@ -330,21 +417,39 @@ public class RecipeSelectorService {
     // ──────────────────── result types ────────────────────
 
     /** What the selector decided. {@code engineName} is a courtesy
-     *  echo so callers can log / audit without a second lookup. */
+     *  echo so callers can log / audit without a second lookup.
+     *  {@code triggerObserved} tells the caller whether the user goal
+     *  contained a trigger (recipe-name / engine-name / declared
+     *  keyword) — the {@code process_create} fallback chain treats
+     *  {@code NONE + triggerObserved=true} (trigger seen, no match)
+     *  differently from {@code NONE + triggerObserved=false} (no
+     *  trigger at all → use the {@code default} recipe → ford). */
     public record Result(
             Decision decision,
             @Nullable String recipeName,
             @Nullable String engineName,
+            boolean triggerObserved,
             String rationale) {
 
         public enum Decision { MATCH, NONE }
 
         public static Result match(String recipe, String engine, String rationale) {
-            return new Result(Decision.MATCH, recipe, engine, rationale);
+            return new Result(Decision.MATCH, recipe, engine, true, rationale);
         }
 
-        public static Result none(String rationale) {
-            return new Result(Decision.NONE, null, null, rationale);
+        /** No trigger detected in the goal — caller should fall
+         *  through to the standard default recipe ({@code default}
+         *  → ford). The configurable fallback recipe is reserved
+         *  for the trigger-observed-but-no-match case. */
+        public static Result noneWithoutTrigger(String rationale) {
+            return new Result(Decision.NONE, null, null, false, rationale);
+        }
+
+        /** Trigger detected but no candidate matched (multi-candidate
+         *  LLM disambiguation returned NONE, or the LLM call failed).
+         *  Caller should consult {@code routing.fallback.recipe}. */
+        public static Result noneAfterTrigger(String rationale) {
+            return new Result(Decision.NONE, null, null, true, rationale);
         }
     }
 

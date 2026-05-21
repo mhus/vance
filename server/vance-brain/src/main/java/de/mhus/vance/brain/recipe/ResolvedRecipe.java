@@ -51,6 +51,16 @@ public record ResolvedRecipe(
          * Default-Verhalten); an empty list means complete lock-down.
          */
         @Nullable List<String> allowedSkills,
+        /**
+         * Trigger keywords parsed from the YAML {@code triggers.keywords}
+         * block. Used by {@link de.mhus.vance.brain.delegate.RecipeSelectorService}
+         * for the deterministic pre-check that fires before any LLM call.
+         * Empty list means "no triggers" — this recipe is structurally
+         * invoked (eddie, arthur, ford, default) or only by explicit name.
+         * Entries are normalised to lower-case at parse time so matching
+         * is case-insensitive without per-call work.
+         */
+        List<String> triggerKeywords,
         boolean locked,
         List<String> tags,
         RecipeSource source) {

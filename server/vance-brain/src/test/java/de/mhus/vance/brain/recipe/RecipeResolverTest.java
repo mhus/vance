@@ -211,6 +211,7 @@ class RecipeResolverTest {
                 new HashMap<>(),
                 List.of(),
                 null,
+                List.of(),
                 locked,
                 List.of(),
                 RecipeSource.RESOURCE);

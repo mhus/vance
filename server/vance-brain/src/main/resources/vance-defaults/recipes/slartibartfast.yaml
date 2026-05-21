@@ -25,3 +25,23 @@ params:
 tags:
   - architect
   - engine-default
+# Trigger keywords for the deterministic recipe-router pre-check
+# (see specification/recipe-routing.md §5). Slart is no longer
+# the auto-fallback for unmatched goals — these triggers are the
+# explicit opt-in path for plan-architect generation. `vogon` is
+# included here because Vogon has no engine-default recipe of its
+# own and Slart's default `outputSchemaType: vogon-strategy`
+# means "use vogon" naturally maps to a Slart-generated Vogon
+# strategy.
+triggers:
+  keywords:
+    - slart
+    - slartibartfast
+    - plan architect
+    - plan-architect
+    - generate strategy
+    - strategie generieren
+    - meta-recipe
+    - vogon
+    - vogon strategy
+    - vogon-strategy

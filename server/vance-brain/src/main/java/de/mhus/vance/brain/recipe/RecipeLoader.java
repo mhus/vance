@@ -173,6 +173,7 @@ public class RecipeLoader {
                 spec.get("defaultActiveSkills"), "defaultActiveSkills");
         List<String> allowedSkills = parseAllowedSkills(spec.get("allowedSkills"));
         validateDefaultsAreAllowed(name, defaultActiveSkills, allowedSkills);
+        List<String> triggerKeywords = parseTriggerKeywords(spec.get("triggers"));
         boolean locked = spec.get("locked") instanceof Boolean b && b;
         List<String> tags = stringList(spec.get("tags"), "tags");
 
@@ -182,8 +183,45 @@ public class RecipeLoader {
                 dataRelayCorrection,
                 add, remove, defer, baseModes, profiles,
                 defaultActiveSkills, allowedSkills,
+                triggerKeywords,
                 locked, tags,
                 mapSource(hit.source()));
+    }
+
+    /**
+     * Parses {@code triggers.keywords} (nested YAML). Normalises every
+     * entry to lower-case and trims whitespace so the selector pre-check
+     * can compare without per-call work. Blank entries are dropped,
+     * duplicates de-duped while keeping first-occurrence order.
+     *
+     * <p>Returns an empty list when the {@code triggers} block is missing
+     * or contains no {@code keywords} field. The block itself may carry
+     * other (future) sub-fields without breaking this loader.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<String> parseTriggerKeywords(@Nullable Object raw) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof Map<?, ?> rawMap)) {
+            throw new IllegalStateException("'triggers' must be a map");
+        }
+        Object keywordsRaw = ((Map<String, Object>) rawMap).get("keywords");
+        if (keywordsRaw == null) return List.of();
+        if (!(keywordsRaw instanceof List<?> list)) {
+            throw new IllegalStateException("'triggers.keywords' must be a list");
+        }
+        List<String> out = new ArrayList<>(list.size());
+        for (Object item : list) {
+            if (!(item instanceof String s)) {
+                throw new IllegalStateException(
+                        "'triggers.keywords' contains a non-string entry");
+            }
+            String norm = s.trim().toLowerCase();
+            if (norm.isEmpty()) continue;
+            if (!out.contains(norm)) {
+                out.add(norm);
+            }
+        }
+        return List.copyOf(out);
     }
 
     /**

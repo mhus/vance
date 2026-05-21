@@ -140,33 +140,26 @@ public class MarvinEngine implements ThinkEngine {
                        taskSpec.childTemplate = {goal, taskKind, taskSpec}
                        with {{item.text}} / {{record.<field>}} / {{index}}
                        / {{root.title}} / {{parent.goal}} placeholders.
-                       childTemplate.recipe is OPTIONAL — set it for
-                       direct binding (typical when one specific recipe
-                       handles every item) or omit it and let the
-                       selector pick per materialised child based on
-                       the substituted goal text (each child fires one
-                       selector LLM-call at spawn-time, so prefer the
-                       direct binding for very large EXPAND batches).
+                       childTemplate.recipe is REQUIRED — selector-routed
+                       recipe-less EXPAND children were retired with the
+                       recipe-routing rework. Set it directly (typical
+                       when one specific recipe handles every item) or
+                       use the template's {{...}} placeholders to vary
+                       params per child.
                        Optional: treeMode (RECURSIVE|FLAT), failOnEmpty,
                        failOnMissingField.
             - WORKER - taskSpec.steerContent must be set; taskSpec.recipe
-                       is OPTIONAL.
-                       * With recipe set (e.g. "marvin-worker", "web-research",
-                         "code-read", "analyze") the engine spawns that recipe
-                         directly. Prefer recipe="marvin-worker" when you want
-                         the structured Marvin worker output contract (DONE /
-                         NEEDS_SUBTASKS / NEEDS_USER_INPUT / BLOCKED_BY_PROBLEM);
-                         specialist recipes work but won't carry that contract.
-                       * Without recipe — only the goal — the engine routes
-                         through the unified process_create selector at
-                         spawn-time: a one-shot LLM picks the matching project
-                         recipe based on engine catalog + recipe inventory, or
-                         falls back to Slartibartfast for a freshly-generated
-                         recipe (adds 60-180s) when nothing fits. Use this when
-                         you have a clear task description but don't want to
-                         commit to a specific recipe — typical for novel or
-                         ambiguous subtasks. The goal field IS the task
-                         description the selector reads, so make it specific.
+                       is REQUIRED. Set it explicitly (e.g.
+                       "marvin-worker", "web-research", "code-read",
+                       "analyze") — selector-routed recipe-less worker
+                       spawn was retired with the recipe-routing rework
+                       (the trigger-gated selector returns NONE for the
+                       free-form worker goals Marvin produces). Prefer
+                       recipe="marvin-worker" when you want the
+                       structured Marvin worker output contract (DONE /
+                       NEEDS_SUBTASKS / NEEDS_USER_INPUT /
+                       BLOCKED_BY_PROBLEM); specialist recipes work but
+                       won't carry that contract.
             - USER_INPUT - taskSpec.type (DECISION|FEEDBACK|APPROVAL),
                            taskSpec.title, taskSpec.body, taskSpec.criticality.
             - AGGREGATE - put as the LAST sibling under a parent that has
@@ -265,12 +258,6 @@ public class MarvinEngine implements ThinkEngine {
     private final LaneScheduler laneScheduler;
     private final DocumentExpander documentExpander;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
-    /** Used to route recipe-less PLAN-WORKER children through the
-     *  selector. PLAN-LLM may emit just a {@code goal} without
-     *  picking a recipe — the selector reads project recipes at
-     *  spawn-time and picks the best match. Same engine catalog +
-     *  inventory as {@code process_create}'s selector-routed mode. */
-    private final de.mhus.vance.brain.delegate.RecipeSelectorService recipeSelector;
     /** Lazy because {@code ThinkEngineService} wires every engine
      *  bean — we'd otherwise close a cycle. */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
@@ -1315,22 +1302,14 @@ public class MarvinEngine implements ThinkEngine {
                     Object tmplRecipe = tmplMap.get("recipe");
                     String tmplRecipeName = null;
                     if (!(tmplRecipe instanceof String rs) || rs.isBlank()) {
-                        // Selector-mode: childTemplate.recipe is
-                        // optional when childTemplate.goal is set.
-                        // Each materialised child arrives with no
-                        // recipe, and runWorker() picks one via the
-                        // selector at spawn-time using the
-                        // (template-substituted) goal as task
-                        // description. Same dispatch as top-level
-                        // recipe-less WORKER children.
-                        Object tmplGoal = tmplMap.get("goal");
-                        if (!(tmplGoal instanceof String gs) || gs.isBlank()) {
-                            violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                                    + "' childTemplate has neither `recipe` "
-                                    + "nor a non-blank `goal` template — set "
-                                    + "one of them so each materialised child "
-                                    + "knows what to do");
-                        }
+                        // childTemplate.recipe is now required —
+                        // recipe-less expansion routed through the
+                        // selector was retired with the recipe-routing
+                        // rework (specification/recipe-routing.md).
+                        violations.add("EXPAND_FROM_DOC child '" + ns.goal()
+                                + "' childTemplate is missing `recipe` — "
+                                + "set it explicitly (recipe-less "
+                                + "selector-routed expansion was retired)");
                     } else {
                         tmplRecipeName = rs.trim();
                         if (allowed != null && !allowed.contains(tmplRecipeName)) {
@@ -1373,16 +1352,15 @@ public class MarvinEngine implements ThinkEngine {
             Object recipeRaw = ns.taskSpec() == null ? null : ns.taskSpec().get("recipe");
             String recipe = recipeRaw instanceof String s ? s.trim() : null;
             if (recipe == null || recipe.isBlank()) {
-                // Selector-mode: a WORKER without a recipe is allowed
-                // when the goal is non-blank. {@code runWorker} calls
-                // {@link RecipeSelectorService} at spawn-time to pick
-                // a recipe based on the goal text. The PLAN-LLM
-                // doesn't have to know recipe names.
-                if (ns.goal() == null || ns.goal().isBlank()) {
-                    violations.add("WORKER child has neither taskSpec.recipe "
-                            + "nor a non-blank goal — give one of them so the "
-                            + "spawn knows what to do");
-                }
+                // WORKER children now require an explicit recipe —
+                // selector-routed recipe-less worker spawn was
+                // retired with the recipe-routing rework
+                // (specification/recipe-routing.md). The PLAN-LLM
+                // must pick from the catalog or `allowedSubTaskRecipes`.
+                violations.add("WORKER child '" + ns.goal()
+                        + "' is missing taskSpec.recipe — pick one "
+                        + "from the catalog (or from allowedSubTaskRecipes "
+                        + "if the recipe constrains workers)");
                 continue;
             }
             if (allowed != null && !allowed.contains(recipe)) {
@@ -1593,18 +1571,11 @@ public class MarvinEngine implements ThinkEngine {
         boolean failOnEmpty = paramBool(node, "failOnEmpty", false);
         boolean strictMissing = paramBool(node, "failOnMissingField", false);
 
-        // Memoization: if the childTemplate has no recipe, run the
-        // selector ONCE on the goal template before materialising.
-        // The picked recipe gets written into childTemplate, so all
-        // materialised children carry it and the per-child
-        // runWorker-selector path is bypassed for the whole batch.
-        // Items in EXPAND-batches share a goal-shape (only
-        // placeholders vary) — they should resolve to the same
-        // recipe by construction. If the selector returns NONE here,
-        // we leave childTemplate recipe-less and let the per-child
-        // path try again at spawn-time as a graceful fallback.
-        childTemplate = preSelectChildTemplateRecipe(process, node, childTemplate);
-
+        // childTemplate must pin a recipe — recipe-less EXPAND
+        // children no longer route through the selector (that path
+        // was retired with the recipe-routing rework; see
+        // specification/recipe-routing.md). The validator below
+        // catches missing recipes via the standard runWorker check.
         DocumentExpander.ExpansionPlan plan;
         try {
             plan = documentExpander.expand(
@@ -1758,24 +1729,20 @@ public class MarvinEngine implements ThinkEngine {
             MarvinNodeDocument node) {
         String recipeName = paramString(node, "recipe", null);
         if (recipeName == null) {
-            // Selector-mode: PLAN-LLM emitted the child without a
-            // recipe binding — pick one based on the node's goal.
-            // Same routing as process_create's selector-routed mode.
-            recipeName = pickRecipeViaSelector(process, node);
-            if (recipeName == null) {
-                // Selector returned NONE — surface a node-level
-                // failure with the rationale baked in (the warn
-                // log emitted by the helper has the LLM rationale).
-                nodeService.markFailed(node,
-                        "WORKER node has no recipe and the selector "
-                                + "could not pick one for goal: "
-                                + abbrev(node.getGoal()));
-                return false;
-            }
-            log.info("Marvin id='{}' WORKER node='{}' recipe-less spawn — "
-                            + "selector picked recipe='{}' for goal='{}'",
-                    process.getId(), node.getId(), recipeName,
-                    abbrev(node.getGoal()));
+            // Recipe-less WORKER children no longer route through
+            // the selector — that path was retired with the recipe-
+            // routing rework (specification/recipe-routing.md).
+            // PLAN-LLMs must pick a recipe per child, ideally via
+            // the recipe's allowedSubTaskRecipes constraint.
+            nodeService.markFailed(node,
+                    "WORKER node has no recipe — PLAN-LLM must pick "
+                            + "one (set taskSpec.recipe, or constrain via "
+                            + "allowedSubTaskRecipes). Recipe-less worker "
+                            + "spawn is no longer routed automatically.");
+            log.warn("Marvin id='{}' WORKER node='{}' recipe-less spawn — "
+                            + "failing (selector-routed worker spawn retired)",
+                    process.getId(), node.getId());
+            return false;
         }
         String steerContent = paramString(node, "steerContent", node.getGoal());
         Map<String, Object> recipeParams = paramMap(node, "params");
@@ -2300,96 +2267,5 @@ public class MarvinEngine implements ThinkEngine {
     private static String abbrev(@Nullable String s) {
         if (s == null) return "";
         return s.length() <= 80 ? s : s.substring(0, 77) + "...";
-    }
-
-    /**
-     * Memoizes the selector across an EXPAND-batch: when the
-     * childTemplate has no {@code recipe}, runs ONE selector call
-     * on the goal template and stamps the picked recipe back into
-     * the (returned, copied) childTemplate. The DocumentExpander
-     * then materialises all children with that recipe — saves N-1
-     * per-child selector calls.
-     *
-     * <p>Returns the (possibly modified) childTemplate. When the
-     * selector returns NONE here, the original recipe-less
-     * childTemplate is returned unchanged — the per-child
-     * runWorker-selector path acts as fallback.
-     */
-    private Map<String, Object> preSelectChildTemplateRecipe(
-            ThinkProcessDocument process,
-            MarvinNodeDocument node,
-            Map<String, Object> childTemplate) {
-        Object tmplRecipe = childTemplate.get("recipe");
-        if (tmplRecipe instanceof String s && !s.isBlank()) {
-            // childTemplate already pins a recipe — no work.
-            return childTemplate;
-        }
-        Object tmplGoal = childTemplate.get("goal");
-        if (!(tmplGoal instanceof String goalTpl) || goalTpl.isBlank()) {
-            // No goal template either — runWorker will fail or call
-            // the selector per child if the materialised goal is
-            // non-blank. Nothing to memoize here.
-            return childTemplate;
-        }
-        try {
-            de.mhus.vance.brain.delegate.RecipeSelectorService.Result r =
-                    recipeSelector.select(process, goalTpl);
-            if (r.decision()
-                    != de.mhus.vance.brain.delegate.RecipeSelectorService.Result.Decision.MATCH) {
-                log.info("Marvin id='{}' EXPAND node='{}' pre-select returned NONE "
-                                + "for goal-template — per-child selector fallback applies "
-                                + "(rationale: {})",
-                        process.getId(), node.getId(), r.rationale());
-                return childTemplate;
-            }
-            Map<String, Object> updated = new LinkedHashMap<>(childTemplate);
-            updated.put("recipe", r.recipeName());
-            log.info("Marvin id='{}' EXPAND node='{}' memoized recipe='{}' for batch "
-                            + "(goal-template: '{}')",
-                    process.getId(), node.getId(), r.recipeName(),
-                    abbrev(goalTpl));
-            return updated;
-        } catch (RuntimeException e) {
-            log.warn("Marvin id='{}' EXPAND node='{}' pre-select call failed: {} "
-                            + "— falling back to per-child selector",
-                    process.getId(), node.getId(), e.toString());
-            return childTemplate;
-        }
-    }
-
-    /**
-     * Routes a recipe-less WORKER node through {@link
-     * de.mhus.vance.brain.delegate.RecipeSelectorService}. Returns
-     * the picked recipe name on MATCH; null on NONE / failure.
-     * Caller decides how to fail the node.
-     *
-     * <p>Cost: one synchronous selector LLM-call per recipe-less
-     * spawn. PLAN-LLMs that pre-emit recipes via
-     * {@code allowedSubTaskRecipes} bypass this path entirely.
-     */
-    private @Nullable String pickRecipeViaSelector(
-            ThinkProcessDocument process, MarvinNodeDocument node) {
-        String goal = node.getGoal();
-        if (goal == null || goal.isBlank()) {
-            log.warn("Marvin id='{}' WORKER node='{}' has no goal — "
-                            + "cannot run selector",
-                    process.getId(), node.getId());
-            return null;
-        }
-        try {
-            de.mhus.vance.brain.delegate.RecipeSelectorService.Result r =
-                    recipeSelector.select(process, goal);
-            if (r.decision()
-                    == de.mhus.vance.brain.delegate.RecipeSelectorService.Result.Decision.MATCH) {
-                return r.recipeName();
-            }
-            log.warn("Marvin id='{}' WORKER node='{}' selector returned NONE: {}",
-                    process.getId(), node.getId(), r.rationale());
-            return null;
-        } catch (RuntimeException e) {
-            log.warn("Marvin id='{}' WORKER node='{}' selector call failed: {}",
-                    process.getId(), node.getId(), e.toString());
-            return null;
-        }
     }
 }

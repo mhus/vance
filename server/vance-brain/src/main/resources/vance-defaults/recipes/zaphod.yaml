@@ -20,3 +20,15 @@ tags:
   - default
   - multi-head
   - engine-default
+# Trigger keywords for the deterministic recipe-router pre-check
+# (see specification/recipe-routing.md §5). Zaphod itself is a
+# bare engine-default — real use-cases hit council-* recipes via
+# their own names. These triggers cover the engine-name reference
+# only.
+triggers:
+  keywords:
+    - zaphod
+    - council
+    - gremium
+    - multi-perspective
+    - mehrere perspektiven

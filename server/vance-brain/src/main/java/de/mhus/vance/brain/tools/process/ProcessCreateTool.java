@@ -1,7 +1,6 @@
 package de.mhus.vance.brain.tools.process;
 
 import de.mhus.vance.brain.delegate.RecipeSelectorService;
-import de.mhus.vance.brain.delegate.SlartibartfastFallback;
 import de.mhus.vance.brain.enginemessage.EngineMessageRouter;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeLoader;
@@ -9,6 +8,7 @@ import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -48,14 +48,20 @@ import org.springframework.stereotype.Component;
  *       {@code engine="ford"} → no recipe lookup, just caller-supplied
  *       {@code params} on the named engine.</li>
  *   <li><b>Selector-routed.</b> Both {@code recipe} and {@code engine}
- *       omitted → the {@link RecipeSelectorService} reads the project's
- *       recipe inventory and picks a match for the supplied
- *       {@code goal}. NONE falls through to a Slartibartfast spawn
- *       that generates a fresh recipe (unless {@code fallbackOnNone:
- *       false}). This is the "I know what I want done but not which
- *       recipe to call" entry — replaces the former
- *       {@code process_create_delegate} surface, which only differed in
- *       its strict requirement of a task description.</li>
+ *       omitted → the {@link RecipeSelectorService} runs its trigger
+ *       pre-check on the supplied {@code goal} (recipe-name word
+ *       boundary, trigger-keyword substring). A deterministic match
+ *       spawns the matched recipe; a multi-candidate match calls the
+ *       LLM for disambiguation; no trigger at all returns NONE.
+ *       <br>
+ *       <b>On NONE</b> the tool reads the setting
+ *       {@code routing.fallback.recipe} (default {@code hactar}) and
+ *       spawns that recipe so the user's goal still gets handled.
+ *       Empty-string setting disables the fallback — the tool then
+ *       returns NONE to the caller, which decides whether to ask the
+ *       user or pick a recipe explicitly. The Slart-generation
+ *       fallback that used to live here is gone — see
+ *       {@code specification/recipe-routing.md} §6.</li>
  * </ul>
  *
  * <p>If both {@code recipe} and {@code engine} are set, {@code recipe}
@@ -78,6 +84,25 @@ public class ProcessCreateTool implements Tool {
      * their template needs to provide something rather than nothing.
      */
     public static final String RECIPE_AUTO = "auto";
+
+    /** Tenant-overridable setting that names the recipe to spawn when
+     *  the selector returns NONE for a goal-only spawn (selector-routed
+     *  mode). Empty value disables the fallback entirely — caller then
+     *  sees the bare NONE result and decides what to do. See
+     *  {@code specification/recipe-routing.md} §6. */
+    static final String SETTING_FALLBACK_RECIPE = "routing.fallback.recipe";
+
+    /** Default value for {@link #SETTING_FALLBACK_RECIPE} when no
+     *  tenant override is set. Hactar can generate a JavaScript handler
+     *  for arbitrary goals — the most flexible default fallback. */
+    static final String DEFAULT_FALLBACK_RECIPE = "hactar";
+
+    /** Recipe used when the selector returns NONE and no trigger was
+     *  observed in the goal. This is the standard non-specialty path:
+     *  no trigger → ford via the bundled {@code default} recipe.
+     *  Not configurable per tenant — tenants override the
+     *  {@code default} recipe document itself via the cascade. */
+    static final String DEFAULT_RECIPE = "default";
 
     /** Cap on the "Did you mean" suggestion list — keep the error compact. */
     private static final int SUGGESTION_LIMIT = 5;
@@ -139,19 +164,12 @@ public class ProcessCreateTool implements Tool {
         properties.put("fallbackOnNone", Map.of(
                 "type", "boolean",
                 "description", "Selector-routed mode only: when the selector "
-                        + "returns NONE (no existing recipe matches), "
-                        + "automatically spawn Slartibartfast to generate a "
-                        + "fresh recipe and spawn that recipe. Adds 60-180s "
-                        + "to the tool round-trip when triggered. Default "
-                        + "true. Set false to let the caller handle NONE."));
-        properties.put("asyncFallback", Map.of(
-                "type", "boolean",
-                "description", "Selector-routed mode only: when async=true "
-                        + "the tool spawns Slartibartfast and returns "
-                        + "immediately with {outcome: PENDING, "
-                        + "slartProcessId}; the caller observes Slart's "
-                        + "terminal event and decides whether to spawn the "
-                        + "generated recipe. Default false (sync + auto-spawn)."));
+                        + "returns NONE (no recipe-name match and no trigger "
+                        + "keyword hit), spawn the tenant-configured fallback "
+                        + "recipe (`routing.fallback.recipe`, default hactar) "
+                        + "so the user's goal still gets handled. Default "
+                        + "true. Set false to receive the bare NONE result "
+                        + "and decide explicitly."));
         SCHEMA = Map.of(
                 "type", "object",
                 "properties", properties,
@@ -169,7 +187,7 @@ public class ProcessCreateTool implements Tool {
     private final RecipeResolver recipeResolver;
     private final RecipeLoader recipeLoader;
     private final RecipeSelectorService selector;
-    private final SlartibartfastFallback slartFallback;
+    private final SettingService settingService;
     /** Same lazy-lookup reasoning — router pulls in EngineWsClient + emitter. */
     private final ObjectProvider<EngineMessageRouter> messageRouterProvider;
 
@@ -179,14 +197,14 @@ public class ProcessCreateTool implements Tool {
             RecipeResolver recipeResolver,
             RecipeLoader recipeLoader,
             RecipeSelectorService selector,
-            SlartibartfastFallback slartFallback,
+            SettingService settingService,
             ObjectProvider<EngineMessageRouter> messageRouterProvider) {
         this.thinkProcessService = thinkProcessService;
         this.thinkEngineServiceProvider = thinkEngineServiceProvider;
         this.recipeResolver = recipeResolver;
         this.recipeLoader = recipeLoader;
         this.selector = selector;
-        this.slartFallback = slartFallback;
+        this.settingService = settingService;
         this.messageRouterProvider = messageRouterProvider;
     }
 
@@ -203,16 +221,20 @@ public class ProcessCreateTool implements Tool {
                 + "names fail strict with a suggestion list so you can "
                 + "retry with a fixed name. (b) pass `engine` for a "
                 + "direct-engine spawn without recipe defaults. (c) "
-                + "leave both empty so the system picks the best-"
-                + "matching recipe from `goal` via the selector LLM, "
-                + "with Slartibartfast fallback when nothing fits. "
+                + "leave both empty so the trigger-gated selector "
+                + "picks a recipe from `goal` (deterministic recipe-"
+                + "name / engine-name / trigger-keyword pre-check; LLM "
+                + "only on multi-trigger ambiguity). On NONE the "
+                + "tenant fallback recipe (`routing.fallback.recipe`, "
+                + "default hactar) is spawned so the goal still gets "
+                + "handled. "
                 + "Modes (a)/(b) return {name, status, engine, recipe?, "
                 + "steered?}. Mode (c) returns {decision, recipe, "
                 + "engine, rationale, fallback?, process?} — the "
                 + "spawn metadata is nested under `process` on a MATCH "
-                + "or GENERATED outcome. Pass `steerContent` to "
-                + "atomically push an initial USER_CHAT_INPUT into the "
-                + "new process's pending queue.";
+                + "outcome or when the fallback recipe was spawned. "
+                + "Pass `steerContent` to atomically push an initial "
+                + "USER_CHAT_INPUT into the new process's pending queue.";
     }
 
     @Override
@@ -244,7 +266,6 @@ public class ProcessCreateTool implements Tool {
         String steerContent = optString(params, "steerContent");
         Map<String, Object> callerParams = optMap(params, "params");
         boolean fallbackOnNone = optBoolean(params, "fallbackOnNone", true);
-        boolean asyncFallback = optBoolean(params, "asyncFallback", false);
 
         if (recipeName != null && engineName != null) {
             log.info("process_create called with both recipe='{}' and engine='{}' — recipe wins",
@@ -253,13 +274,14 @@ public class ProcessCreateTool implements Tool {
         }
 
         // Selector-routed mode: no explicit recipe and no explicit engine
-        // means the LLM is telling us "you decide". Route through the
-        // selector + Slart fallback, then re-enter this tool with the
-        // chosen recipe so the actual spawn shares one code path.
+        // means the caller is asking us to route. Run the trigger-gated
+        // selector. On NONE, spawn the tenant fallback recipe so the
+        // goal isn't dropped. The actual spawn re-enters this tool with
+        // the chosen recipe, so all three paths share one code path.
         if (recipeName == null && engineName == null) {
             return invokeSelectorRouted(
                     ctx, name, goal, title, steerContent, callerParams,
-                    fallbackOnNone, asyncFallback);
+                    fallbackOnNone);
         }
 
         // Inherit the connection-profile from the parent process so a worker
@@ -310,18 +332,19 @@ public class ProcessCreateTool implements Tool {
     }
 
     /**
-     * Run the selector + optional Slart-fallback for the "you pick"
-     * mode, then re-enter this tool with the chosen recipe via the
-     * explicit-recipe path. Keeps one spawn code path — the only
-     * thing the selector-mode adds is the routing decision and (in
-     * the NONE case) a Slart spawn that produces the recipe before
-     * the actual spawn happens.
+     * Run the trigger-gated selector and, on NONE, spawn the tenant
+     * fallback recipe. Re-enters {@link #invoke} via {@link #spawnAndReturn}
+     * so the actual spawn shares one code path with explicit-recipe
+     * mode. The fallback recipe comes from setting
+     * {@link #SETTING_FALLBACK_RECIPE} (default {@link #DEFAULT_FALLBACK_RECIPE}).
+     * Empty setting value disables the fallback — the tool then returns
+     * the bare NONE result.
      */
     private Map<String, Object> invokeSelectorRouted(
             ToolInvocationContext ctx, String name, String goal,
             @Nullable String title, @Nullable String steerContent,
             @Nullable Map<String, Object> callerParams,
-            boolean fallbackOnNone, boolean asyncFallback) {
+            boolean fallbackOnNone) {
         ThinkProcessDocument caller = resolveCaller(ctx);
         RecipeSelectorService.Result result = selector.select(caller, goal);
 
@@ -342,39 +365,65 @@ public class ProcessCreateTool implements Tool {
                     title, steerContent, callerParams);
         }
 
-        // NONE path.
+        // NONE splits into two cases (see specification/recipe-routing.md):
+        //   * triggerObserved=false: the goal contained no trigger
+        //     at all. Spawn the standard `default` recipe (ford in
+        //     bundled defaults) — that is the regular non-specialty
+        //     path, not the configurable fallback.
+        //   * triggerObserved=true: a trigger fired but no candidate
+        //     matched after LLM disambiguation. Spawn the configurable
+        //     fallback recipe (routing.fallback.recipe, default hactar).
         if (!fallbackOnNone) {
-            log.info("process_create name='{}' goal='{}' → NONE (no fallback): {}",
+            log.info("process_create name='{}' goal='{}' → NONE (fallbackOnNone=false): {}",
                     name, abbrev(goal, 80), result.rationale());
             return out;
         }
-
-        log.info("process_create name='{}' → NONE, invoking Slart fallback "
-                        + "({} mode, rationale: {})",
-                name, asyncFallback ? "async" : "sync", result.rationale());
-        SlartibartfastFallback.Result fb = asyncFallback
-                ? slartFallback.invokeAsync(caller, goal, name)
-                : slartFallback.invoke(caller, goal, name);
-
-        Map<String, Object> fallbackInfo = new LinkedHashMap<>();
-        fallbackInfo.put("outcome", fb.outcome().name());
-        fallbackInfo.put("slartProcessId", fb.slartProcessId());
-        fallbackInfo.put("recipeName", fb.recipeName());
-        fallbackInfo.put("recipePath", fb.recipePath());
-        fallbackInfo.put("rationale", fb.rationale());
-        out.put("fallback", fallbackInfo);
-
-        // Async mode never auto-spawns the generated recipe — caller
-        // watches Slart's terminal event and decides. GENERATED is a
-        // sync-mode outcome only.
-        if (fb.outcome() != SlartibartfastFallback.Outcome.GENERATED) {
-            log.info("process_create name='{}' fallback outcome={}: {}",
-                    name, fb.outcome(), fb.rationale());
-            return out;
+        if (!result.triggerObserved()) {
+            log.info("process_create name='{}' → NONE without trigger, "
+                            + "falling through to default recipe (rationale: {})",
+                    name, result.rationale());
+            Map<String, Object> fallbackInfo = new LinkedHashMap<>();
+            fallbackInfo.put("recipe", DEFAULT_RECIPE);
+            fallbackInfo.put("source", "default-recipe (no trigger)");
+            out.put("fallback", fallbackInfo);
+            return spawnAndReturn(out, ctx, name, goal, DEFAULT_RECIPE,
+                    title, steerContent, callerParams);
         }
 
-        return spawnAndReturn(out, ctx, name, goal, fb.recipeName(),
+        // Trigger seen but no concrete match — consult the setting.
+        String fallbackRecipe = resolveFallbackRecipe(ctx);
+        if (fallbackRecipe == null) {
+            log.info("process_create name='{}' → NONE after trigger, "
+                            + "fallback disabled by setting: {}",
+                    name, result.rationale());
+            return out;
+        }
+        log.info("process_create name='{}' → NONE after trigger, "
+                        + "spawning fallback recipe '{}' (rationale: {})",
+                name, fallbackRecipe, result.rationale());
+        Map<String, Object> fallbackInfo = new LinkedHashMap<>();
+        fallbackInfo.put("recipe", fallbackRecipe);
+        fallbackInfo.put("source", SETTING_FALLBACK_RECIPE);
+        out.put("fallback", fallbackInfo);
+
+        return spawnAndReturn(out, ctx, name, goal, fallbackRecipe,
                 title, steerContent, callerParams);
+    }
+
+    /**
+     * Reads {@link #SETTING_FALLBACK_RECIPE} via the cascade. Empty
+     * string disables the fallback (returns {@code null} so the caller
+     * doesn't spawn). Missing value falls through to
+     * {@link #DEFAULT_FALLBACK_RECIPE}.
+     */
+    private @Nullable String resolveFallbackRecipe(ToolInvocationContext ctx) {
+        String configured = settingService.getStringValueCascade(
+                ctx.tenantId(), ctx.projectId(), /*processId*/ null,
+                SETTING_FALLBACK_RECIPE);
+        if (configured == null) return DEFAULT_FALLBACK_RECIPE;
+        String trimmed = configured.trim();
+        if (trimmed.isEmpty()) return null;     // explicit opt-out
+        return trimmed;
     }
 
     /**

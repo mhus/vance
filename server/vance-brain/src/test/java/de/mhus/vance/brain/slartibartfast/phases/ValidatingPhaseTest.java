@@ -600,6 +600,7 @@ class ValidatingPhaseTest {
                 java.util.Map.of(),
                 java.util.List.of(),
                 /*allowedSkills*/ null,
+                /*triggerKeywords*/ java.util.List.of(),
                 /*locked*/ false,
                 java.util.List.of(),
                 de.mhus.vance.brain.recipe.RecipeSource.PROJECT);

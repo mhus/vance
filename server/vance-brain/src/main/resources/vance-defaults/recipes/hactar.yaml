@@ -20,3 +20,16 @@ tags:
   - default
   - script-architect
   - engine-default
+# Trigger keywords for the deterministic recipe-router pre-check
+# (see specification/recipe-routing.md §5). Hactar is also the
+# default `routing.fallback.recipe` — these triggers let the user
+# opt into Hactar explicitly via free-text goals.
+triggers:
+  keywords:
+    - hactar
+    - javascript
+    - js script
+    - skript erzeugen
+    - script erzeugen
+    - generate script
+    - automate via script

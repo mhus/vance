@@ -201,6 +201,7 @@ export function useChatLive(sessionId: string): UseChatLiveResult {
               role,
               content: data.content,
               createdAt: data.createdAt,
+              meta: data.meta,
             };
             if (dropIdx >= 0) {
               const copy = prev.slice();

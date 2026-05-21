@@ -16,9 +16,11 @@ type Route = RouteProp<ChatStackParamList, 'ChatLive'>;
 
 interface BubbleItem {
   key: string;
+  messageId: string;
   role: ChatRole;
   content: string;
   streaming: boolean;
+  meta?: Record<string, unknown> | null;
 }
 
 export default function ChatLiveScreen() {
@@ -33,13 +35,16 @@ export default function ChatLiveScreen() {
   const items = useMemo<BubbleItem[]>(() => {
     const out: BubbleItem[] = live.messages.map((m: ChatMessageDto) => ({
       key: m.messageId,
+      messageId: m.messageId,
       role: m.role,
       content: m.content,
       streaming: false,
+      meta: m.meta as Record<string, unknown> | null | undefined,
     }));
     for (const [tpId, draft] of live.streamingDrafts) {
       out.push({
         key: `stream:${tpId}`,
+        messageId: `stream:${tpId}`,
         role: draft.role,
         content: draft.chunk,
         streaming: true,
@@ -47,6 +52,29 @@ export default function ChatLiveScreen() {
     }
     return out;
   }, [live.messages, live.streamingDrafts]);
+
+  /**
+   * Id of the most recent ASSISTANT message with picker options and
+   * no subsequent USER message — the only ASK_USER picker the user
+   * can still answer by clicking. Older pickers grey out. Mirrors
+   * {@code ChatView.activeAskUserMessageId} in vance-face.
+   */
+  const activeAskUserMessageId = useMemo<string | null>(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const m = items[i];
+      if (m.role === ChatRole.USER) return null;
+      if (m.role !== ChatRole.ASSISTANT) continue;
+      const raw = m.meta?.['askUserOptions'];
+      if (Array.isArray(raw) && raw.length > 0) return m.messageId;
+    }
+    return null;
+  }, [items]);
+
+  const onPickAskUserOption = (label: string) => {
+    if (!label || !label.trim()) return;
+    if (live.connectionState !== 'open') return;
+    void live.send(label.trim());
+  };
 
   // Auto-scroll to bottom when new content arrives.
   useEffect(() => {
@@ -98,7 +126,14 @@ export default function ChatLiveScreen() {
               data={items}
               keyExtractor={(item) => item.key}
               renderItem={({ item }) => (
-                <MessageBubble role={item.role} content={item.content} streaming={item.streaming} />
+                <MessageBubble
+                  role={item.role}
+                  content={item.content}
+                  streaming={item.streaming}
+                  meta={item.meta}
+                  optionsActionable={item.messageId === activeAskUserMessageId}
+                  onPickOption={onPickAskUserOption}
+                />
               )}
               contentContainerStyle={{ paddingVertical: 8 }}
               onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}

@@ -5,6 +5,7 @@ import de.mhus.vance.api.thinkprocess.ProcessSteerRequest;
 import de.mhus.vance.api.thinkprocess.ProcessSteerResponse;
 import de.mhus.vance.api.thinkprocess.ProcessStopRequest;
 import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.foot.chat.PendingAskUserPicker;
 import de.mhus.vance.foot.connection.BrainException;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ide.IdeContextBuilder;
@@ -49,6 +50,7 @@ public class ChatInputService {
     private final PromptGate promptGate;
     private final BusyIndicator busyIndicator;
     private final IdeContextBuilder ideContextBuilder;
+    private final PendingAskUserPicker askUserPicker;
 
     /**
      * Background executor for async chat submission. Keeps the REPL
@@ -68,7 +70,8 @@ public class ChatInputService {
                             ChatTerminal chatTerminal,
                             PromptGate promptGate,
                             BusyIndicator busyIndicator,
-                            IdeContextBuilder ideContextBuilder) {
+                            IdeContextBuilder ideContextBuilder,
+                            PendingAskUserPicker askUserPicker) {
         this.commandService = commandService;
         this.connection = connection;
         this.sessions = sessions;
@@ -76,6 +79,7 @@ public class ChatInputService {
         this.promptGate = promptGate;
         this.busyIndicator = busyIndicator;
         this.ideContextBuilder = ideContextBuilder;
+        this.askUserPicker = askUserPicker;
     }
 
     /**
@@ -97,10 +101,27 @@ public class ChatInputService {
                 boolean matched = commandService.execute(trimmed);
                 return InputResult.command(trimmed, matched, null);
             }
-            return sendChatLocked(trimmed, DEFAULT_CHAT_TIMEOUT);
+            String chatText = expandPickerShortcut(trimmed);
+            return sendChatLocked(chatText, DEFAULT_CHAT_TIMEOUT);
         } finally {
             promptGate.exitExclusive();
         }
+    }
+
+    /**
+     * If an ASK_USER picker is active and the user typed a single
+     * digit matching one of the options (1-based), replace the input
+     * with the option's label so the brain sees a normal text reply.
+     * Non-numeric / out-of-range / no-active-picker → input passes
+     * through verbatim. The picker itself is cleared by the chat
+     * message handler once the USER echo lands.
+     */
+    private String expandPickerShortcut(String trimmed) {
+        if (!askUserPicker.hasActive()) return trimmed;
+        String resolved = askUserPicker.resolveNumericPick(trimmed);
+        if (resolved == null) return trimmed;
+        chatTerminal.verbose("→ picker: " + trimmed + " → " + resolved);
+        return resolved;
     }
 
     /**

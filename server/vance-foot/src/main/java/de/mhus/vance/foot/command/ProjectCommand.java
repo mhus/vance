@@ -7,6 +7,7 @@ import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import java.time.Duration;
 import java.util.List;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,7 +27,12 @@ public class ProjectCommand implements SlashCommand {
     private final ConnectionService connection;
     private final ChatTerminal terminal;
 
-    public ProjectCommand(ConnectionService connection, ChatTerminal terminal) {
+    // {@code @Lazy} keeps ProjectCommand out of the
+    // ConnectionService → MessageDispatcher → handlers →
+    // DaemonRegistrationService → ConnectionService construction cycle.
+    // The lazy proxy is fine — the actual request only fires when the
+    // user types {@code /project} (after Spring boot completes).
+    public ProjectCommand(@Lazy ConnectionService connection, ChatTerminal terminal) {
         this.connection = connection;
         this.terminal = terminal;
     }

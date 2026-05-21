@@ -10,7 +10,6 @@ import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import java.time.Duration;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -27,19 +26,32 @@ import org.springframework.stereotype.Component;
  * {@link #reannounce} — used by hot-loaded plugins.
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class DaemonRegistrationService {
 
     private final FootConfig config;
     private final ChatTerminal terminal;
     private final ClientToolService clientTools;
-    /**
-     * {@code @Lazy} breaks the cycle ConnectionService → MessageDispatcher →
-     * handlers → DaemonRegistrationService → ConnectionService.
-     */
-    @Lazy
     private final ConnectionService connection;
+
+    /**
+     * {@code @Lazy} on the constructor parameter (not on the field —
+     * Lombok's {@code @RequiredArgsConstructor} doesn't propagate
+     * field annotations to the generated constructor, so the lazy
+     * proxy was getting lost in Spring Boot 4 and the cycle
+     * ConnectionService → MessageDispatcher → handlers →
+     * DaemonRegistrationService → ConnectionService re-emerged).
+     */
+    public DaemonRegistrationService(
+            FootConfig config,
+            ChatTerminal terminal,
+            ClientToolService clientTools,
+            @Lazy ConnectionService connection) {
+        this.config = config;
+        this.terminal = terminal;
+        this.clientTools = clientTools;
+        this.connection = connection;
+    }
 
     /** Invoked by the welcome-handler after the connection comes up. */
     public void triggerAfterWelcome() {

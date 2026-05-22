@@ -27,6 +27,7 @@ const MindmapView = defineAsyncComponent(() => import('@/document/MindmapView.vu
 const ListView    = defineAsyncComponent(() => import('@/document/ListView.vue'));
 const TreeView    = defineAsyncComponent(() => import('@/document/TreeView.vue'));
 const RecordsView = defineAsyncComponent(() => import('@/document/RecordsView.vue'));
+const ChartView   = defineAsyncComponent(() => import('@/document/ChartView.vue'));
 const ImageView   = defineAsyncComponent(() => import('@/document/ImageView.vue'));
 const PdfView     = defineAsyncComponent(() => import('@/document/PdfView.vue'));
 const AudioView   = defineAsyncComponent(() => import('@/document/AudioView.vue'));
@@ -52,6 +53,7 @@ export const kindRegistry: Record<string, KindRenderer> = {
   list:    { inline: ListView,    embedded: ListView,    label: 'List',    icon: '•'  },
   items:   { inline: ListView,    embedded: ListView,    label: 'Items',   icon: '•'  },
   records: { inline: RecordsView, embedded: RecordsView, label: 'Records', icon: '▤'  },
+  chart:   { inline: ChartView,   embedded: ChartView,   label: 'Chart',   icon: '📊' },
 
   // Binary kinds — embedded only (no inline fence form). Spec §8.
   image: { embedded: ImageView, label: 'Image', icon: '🖼' },

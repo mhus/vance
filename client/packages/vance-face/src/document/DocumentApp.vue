@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
@@ -30,6 +30,9 @@ import TreeView from './TreeView.vue';
 import MindmapView from './MindmapView.vue';
 import RecordsView from './RecordsView.vue';
 import GraphView from './GraphView.vue';
+// ECharts (~600 KB modular) ships only when a chart document is
+// opened — keep the documents bundle lean.
+const ChartView = defineAsyncComponent(() => import('./ChartView.vue'));
 import SheetView from './SheetView.vue';
 import {
   isListMime,
@@ -59,6 +62,13 @@ import {
   GraphCodecError,
   type GraphDocument,
 } from './graphCodec';
+import {
+  isChartMime,
+  parseChart,
+  serializeChart,
+  ChartCodecError,
+  type ChartDocument,
+} from './chartCodec';
 import {
   isSheetMime,
   parseSheet,
@@ -358,6 +368,7 @@ function fillEditor(): void {
   // default — `sheet`, `graph`, `records`, `mindmap`, `list`,
   // `tree`, then `raw` for everything else.
   if (isSheetDocument.value) contentTab.value = 'sheet';
+  else if (isChartDocument.value) contentTab.value = 'chart';
   else if (isGraphDocument.value) contentTab.value = 'graph';
   else if (isRecordsDocument.value) contentTab.value = 'records';
   else if (isListDocument.value) contentTab.value = 'list';
@@ -374,7 +385,7 @@ function fillEditor(): void {
 // raw editor. The tab is in-memory only — switching does not hit the
 // server, the body just gets reparsed each time.
 
-type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap' | 'records' | 'graph' | 'sheet';
+type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap' | 'records' | 'graph' | 'chart' | 'sheet';
 const contentTab = ref<ContentTab>('raw');
 
 const isListDocument = computed<boolean>(() => {
@@ -415,6 +426,15 @@ const isGraphDocument = computed<boolean>(() => {
   if (!sel?.inline) return false;
   if ((sel.kind ?? '').toLowerCase() !== 'graph') return false;
   return isGraphMime(sel.mimeType);
+});
+
+// Chart documents: kind: chart + json/yaml only — markdown bodies
+// fall back to the Raw editor (spec doc-kind-chart.md §3.3).
+const isChartDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'chart') return false;
+  return isChartMime(sel.mimeType);
 });
 
 // Sheet documents: kind: sheet + json/yaml only — markdown bodies
@@ -509,6 +529,25 @@ const parsedGraph = computed<ParsedGraph>(() => {
     return { doc, error: null };
   } catch (e) {
     if (e instanceof GraphCodecError) {
+      return { doc: null, error: e.message };
+    }
+    return { doc: null, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+interface ParsedChart {
+  doc: ChartDocument | null;
+  error: string | null;
+}
+
+const parsedChart = computed<ParsedChart>(() => {
+  if (!isChartDocument.value) return { doc: null, error: null };
+  try {
+    const sel = docsState.selected.value;
+    const doc = parseChart(editInlineText.value, sel?.mimeType ?? '');
+    return { doc, error: null };
+  } catch (e) {
+    if (e instanceof ChartCodecError) {
       return { doc: null, error: e.message };
     }
     return { doc: null, error: e instanceof Error ? e.message : String(e) };
@@ -620,6 +659,17 @@ function onSheetChanged(updated: SheetDocument): void {
   }
 }
 
+function onChartChanged(updated: ChartDocument): void {
+  const sel = docsState.selected.value;
+  if (!sel?.mimeType) return;
+  try {
+    editInlineText.value = serializeChart(updated, sel.mimeType);
+    editError.value = null;
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
 // ─── Contextual help ────────────────────────────────────────────────────
 //
 // When the selected document sits under one of these path prefixes we
@@ -712,7 +762,7 @@ function openCreateModal(prefill?: CreateModalPrefill): void {
  * they are domain tokens, not localisable noise.
  */
 const KIND_CREATE_OPTIONS = [
-  'list', 'tree', 'text', 'mindmap', 'graph', 'sheet', 'data', 'records', 'schema',
+  'list', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet', 'data', 'records', 'schema',
 ] as const;
 
 const kindCreateOptions = computed(() => [
@@ -764,6 +814,12 @@ function buildKindStub(kind: string, mime: string): string {
     // gets just the header and a hint to switch mime type via Raw.
     if (isJson) return '{\n  "$meta": { "kind": "graph" },\n  "graph": { "directed": true },\n  "nodes": [\n    { "id": "alice", "label": "Alice" },\n    { "id": "bob", "label": "Bob" }\n  ],\n  "edges": [\n    { "source": "alice", "target": "bob" }\n  ]\n}\n';
     if (isYaml) return '$meta:\n  kind: graph\ngraph:\n  directed: true\nnodes:\n  - id: alice\n    label: Alice\n  - id: bob\n    label: Bob\nedges:\n  - source: alice\n    target: bob\n';
+  }
+  if (kind === 'chart') {
+    // Markdown isn't supported for charts (spec §3.3) — same fallback
+    // behaviour as graph.
+    if (isJson) return '{\n  "$meta": { "kind": "chart" },\n  "chart": { "chartType": "line", "title": "New Chart" },\n  "xAxis": { "type": "category" },\n  "yAxis": { "type": "value" },\n  "series": [\n    { "name": "Series 1", "data": [\n      { "x": "A", "y": 10 },\n      { "x": "B", "y": 20 },\n      { "x": "C", "y": 15 }\n    ] }\n  ]\n}\n';
+    if (isYaml) return '$meta:\n  kind: chart\nchart:\n  chartType: line\n  title: New Chart\nxAxis:\n  type: category\nyAxis:\n  type: value\nseries:\n  - name: Series 1\n    data:\n      - { x: A, y: 10 }\n      - { x: B, y: 20 }\n      - { x: C, y: 15 }\n';
   }
   if (kind === 'sheet') {
     // Markdown not supported for sheets (spec §3.3) — falls through
@@ -1316,6 +1372,20 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isChartDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'chart' }"
+                  @click="contentTab = 'chart'"
+                >{{ $t('documents.detail.tabChart') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
               <div v-else-if="isRecordsDocument" class="content-tabs">
                 <button
                   type="button"
@@ -1395,6 +1465,17 @@ const formatBytes = (n: number): string => {
                   v-else-if="parsedGraph.doc"
                   :doc="parsedGraph.doc"
                   @update:doc="onGraphChanged"
+                />
+              </template>
+
+              <template v-else-if="isChartDocument && contentTab === 'chart'">
+                <VAlert v-if="parsedChart.error" variant="warning">
+                  <span>{{ $t('documents.detail.chartParseError', { message: parsedChart.error }) }}</span>
+                </VAlert>
+                <ChartView
+                  v-else-if="parsedChart.doc"
+                  :doc="parsedChart.doc"
+                  @update:doc="onChartChanged"
                 />
               </template>
 

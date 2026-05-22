@@ -2,9 +2,9 @@
  * Typed in-memory models and codecs for the {@code kind: …} document
  * payloads — one class family per kind ({@code list}, {@code tree},
  * {@code records}, {@code sheet}, {@code mindmap}, {@code graph},
- * {@code data}). Each codec parses the on-disk body (markdown / JSON /
- * YAML where applicable) into a typed model and serialises it back
- * round-trip stable.
+ * {@code data}, {@code chart}). Each codec parses the on-disk body
+ * (markdown / JSON / YAML where applicable) into a typed model and
+ * serialises it back round-trip stable.
  *
  * <p>Server-side counterpart of the TypeScript codecs under
  * {@code packages/vance-face/src/document/*Codec.ts}. Same wire
@@ -18,6 +18,7 @@
  *   <li>{@code specification/doc-kind-sheet.md} — {@code kind: sheet}</li>
  *   <li>{@code specification/doc-kind-mindmap.md} — {@code kind: mindmap}</li>
  *   <li>{@code specification/doc-kind-graph.md} — {@code kind: graph}</li>
+ *   <li>{@code specification/doc-kind-chart.md} — {@code kind: chart}</li>
  * </ul>
  *
  * <p>Hard rule: classes here are <strong>service-free</strong> — pure

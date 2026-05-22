@@ -34,10 +34,10 @@ public class DocCreateKindTool implements Tool {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
         p.remove("id");
         p.put("kind", Map.of("type", "string",
-                "description", "One of: list, tree, mindmap, records, sheet, graph, data, text, schema."));
+                "description", "One of: list, tree, mindmap, records, sheet, graph, chart, data, text, schema."));
         p.put("mimeType", Map.of("type", "string",
                 "description", "Mime type for the new body. Defaults to a kind-appropriate value: "
-                        + "text/markdown for list/tree/mindmap/records, application/json for sheet/graph/data."));
+                        + "text/markdown for list/tree/mindmap/records, application/json for sheet/graph/chart/data."));
         p.put("title", Map.of("type", "string", "description", "Optional display title."));
         p.put("tags", Map.of("type", "array", "items", Map.of("type", "string"),
                 "description", "Optional tag list."));
@@ -105,7 +105,7 @@ public class DocCreateKindTool implements Tool {
     private static String defaultMimeFor(String kind) {
         return switch (kind) {
             case "list", "tree", "mindmap", "records", "text" -> "text/markdown";
-            case "sheet", "graph", "data" -> "application/json";
+            case "sheet", "graph", "chart", "data" -> "application/json";
             case "schema" -> "application/json";
             default -> "text/markdown";
         };
@@ -138,6 +138,9 @@ public class DocCreateKindTool implements Tool {
             case "graph" -> json
                     ? "{\n  \"$meta\": { \"kind\": \"graph\" },\n  \"graph\": { \"directed\": true },\n  \"nodes\": [],\n  \"edges\": []\n}\n"
                     : "$meta:\n  kind: graph\ngraph:\n  directed: true\nnodes: []\nedges: []\n";
+            case "chart" -> json
+                    ? "{\n  \"$meta\": { \"kind\": \"chart\" },\n  \"chart\": { \"chartType\": \"line\", \"title\": \"New Chart\" },\n  \"xAxis\": { \"type\": \"category\" },\n  \"yAxis\": { \"type\": \"value\" },\n  \"series\": [\n    { \"name\": \"Series 1\", \"data\": [\n      { \"x\": \"A\", \"y\": 10 },\n      { \"x\": \"B\", \"y\": 20 },\n      { \"x\": \"C\", \"y\": 15 }\n    ] }\n  ]\n}\n"
+                    : "$meta:\n  kind: chart\nchart:\n  chartType: line\n  title: New Chart\nxAxis:\n  type: category\nyAxis:\n  type: value\nseries:\n  - name: Series 1\n    data:\n      - { x: A, y: 10 }\n      - { x: B, y: 20 }\n      - { x: C, y: 15 }\n";
             case "data" -> json
                     ? "{\n  \"$meta\": { \"kind\": \"data\" }\n}\n"
                     : "$meta:\n  kind: data\n";

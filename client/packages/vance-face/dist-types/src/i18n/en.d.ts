@@ -239,12 +239,14 @@ declare const _default: {
             tabRecords: string;
             tabGraph: string;
             tabSheet: string;
+            tabChart: string;
             listParseError: string;
             treeParseError: string;
             mindmapParseError: string;
             recordsParseError: string;
             graphParseError: string;
             sheetParseError: string;
+            chartParseError: string;
             delete: string;
             deletePermanent: string;
             download: string;

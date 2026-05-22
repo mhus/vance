@@ -32,6 +32,7 @@
     "@vance/shared": "workspace:*",
     "@vue-flow/core": "^1.48.2",
     "dompurify": "^3.4.1",
+    "echarts": "^6.1.0",
     "js-yaml": "^4.1.1",
     "marked": "^18.0.2",
     "markmap-lib": "^0.18.12",

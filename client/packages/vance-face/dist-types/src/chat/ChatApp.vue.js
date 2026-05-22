@@ -10,6 +10,7 @@ const mode = ref('connecting');
 const errorMessage = ref(null);
 const socket = ref(null);
 const activeSessionId = ref(null);
+const mediation = ref(null);
 const username = computed(() => getUsername());
 const connectionState = computed(() => {
     if (mode.value === 'live')
@@ -56,6 +57,7 @@ async function resumeSessionId(sessionId) {
         setActiveSessionId(sessionId);
         pushSessionIdToUrl(sessionId);
         mode.value = 'live';
+        return;
     }
     catch (e) {
         if (e instanceof WebSocketRequestError) {
@@ -80,6 +82,73 @@ async function resumeSessionId(sessionId) {
         mode.value = 'failed';
         errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
     }
+}
+/**
+ * Handle a server-pushed {@code mediate-handover} frame — fires in two
+ * directions:
+ *
+ *  - **Into mediation**: Eddie emits the MEDIATE action. Server sends
+ *    a handover whose {@code targetSessionId} is the worker session.
+ *    We unbind the current Eddie session and resume the worker session
+ *    on the same WS. The {@link mediation} ref carries the project
+ *    name (for the banner) and Eddie's session id (for the return).
+ *
+ *  - **Out of mediation**: user sent {@code /hub}; server's
+ *    {@code MediationEndHandler} clears Eddie's mediation flag and
+ *    sends a reverse handover with {@code targetSessionId === eddieSessionId}.
+ *    Same flow, just rebinds back to Eddie and clears the local state.
+ *
+ *  The frame itself doesn't tell us "which direction" — we infer from
+ *  comparing {@code targetSessionId} vs {@code eddieSessionId}: equal
+ *  means returning, different means going.
+ */
+async function onMediateHandover(data) {
+    if (!socket.value)
+        return;
+    const target = data.targetSessionId;
+    if (!target)
+        return;
+    const returning = target === data.eddieSessionId;
+    // Release the current binding so the WS becomes session-less before
+    // the resume (server's SessionResumeHandler requires that).
+    if (activeSessionId.value) {
+        socket.value.sendNoReply('session-unbind');
+    }
+    try {
+        await socket.value.send('session-resume', { sessionId: target });
+    }
+    catch (e) {
+        // Rebind failed — surface a minimal error and leave the user
+        // session-less. They can hit "back to picker" to recover.
+        mode.value = 'failed';
+        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
+        return;
+    }
+    activeSessionId.value = target;
+    setActiveSessionId(target);
+    pushSessionIdToUrl(target);
+    if (returning) {
+        // Bounced back to Eddie — clear the banner.
+        mediation.value = null;
+    }
+    else {
+        mediation.value = {
+            workerProjectName: data.targetProjectId || data.targetProcessName || target,
+            workerSessionId: target,
+            eddieSessionId: data.eddieSessionId,
+        };
+    }
+}
+/**
+ * User-triggered return path. Sends a {@code mediation-end} frame; the
+ * brain intercepts it, clears Eddie's mediation flag, and replies with
+ * a reverse handover that {@link onMediateHandover} rebinds on. Treated
+ * as fire-and-forget — the server replies but we don't need the body.
+ */
+function sendMediationEnd() {
+    if (!socket.value || !mediation.value)
+        return;
+    socket.value.sendNoReply('mediation-end');
 }
 async function onSessionPicked(sessionId) {
     errorMessage.value = null;
@@ -152,6 +221,11 @@ onMounted(async () => {
             errorMessage.value = t('chat.connectionClosed');
         }
     });
+    // Mediation pushes flow on the connection regardless of which
+    // session is currently bound — subscribe once at the socket level
+    // so we catch both the "go to worker" handover and the reverse
+    // "back to Eddie" after /hub.
+    mediateHandoverUnsubscribe = socket.value.on('mediate-handover', (data) => { void onMediateHandover(data); });
     // Resume hint: URL param wins over localStorage.
     const hinted = urlSessionId() ?? getActiveSessionId();
     if (hinted) {
@@ -161,8 +235,10 @@ onMounted(async () => {
         mode.value = 'picker';
     }
 });
+let mediateHandoverUnsubscribe = null;
 onBeforeUnmount(() => {
     window.removeEventListener('beforeunload', beforeUnloadGuard);
+    mediateHandoverUnsubscribe?.();
     socket.value?.close();
 });
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
@@ -314,19 +390,26 @@ else if (__VLS_ctx.mode === 'live' && __VLS_ctx.socket && __VLS_ctx.activeSessio
     // @ts-ignore
     const __VLS_41 = __VLS_asFunctionalComponent(ChatView, new ChatView({
         ...{ 'onLeave': {} },
+        ...{ 'onHub': {} },
         socket: (__VLS_ctx.socket),
         sessionId: (__VLS_ctx.activeSessionId),
+        mediation: (__VLS_ctx.mediation),
     }));
     const __VLS_42 = __VLS_41({
         ...{ 'onLeave': {} },
+        ...{ 'onHub': {} },
         socket: (__VLS_ctx.socket),
         sessionId: (__VLS_ctx.activeSessionId),
+        mediation: (__VLS_ctx.mediation),
     }, ...__VLS_functionalComponentArgsRest(__VLS_41));
     let __VLS_44;
     let __VLS_45;
     let __VLS_46;
     const __VLS_47 = {
         onLeave: (__VLS_ctx.leaveLive)
+    };
+    const __VLS_48 = {
+        onHub: (__VLS_ctx.sendMediationEnd)
     };
     var __VLS_43;
 }
@@ -365,9 +448,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             errorMessage: errorMessage,
             socket: socket,
             activeSessionId: activeSessionId,
+            mediation: mediation,
             username: username,
             connectionState: connectionState,
             resumeSessionId: resumeSessionId,
+            sendMediationEnd: sendMediationEnd,
             onSessionPicked: onSessionPicked,
             onSessionBootstrapped: onSessionBootstrapped,
             leaveLive: leaveLive,

@@ -27,6 +27,10 @@ export * from './scripts/ScriptValidateError';
 export * from './scripts/ScriptValidateRequest';
 export * from './scripts/ScriptValidateResponse';
 
+export * from './eddie/ChannelMode';
+export * from './eddie/MediateHandoverNotification';
+export * from './eddie/MediationState';
+
 export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';
 export * from './documents/DocumentFoldersResponse';

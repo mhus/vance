@@ -106,6 +106,10 @@ export default {
         connectionClosed: 'Connection closed.',
         sessionOccupiedBy: 'Session "{id}" is held by another connection.',
         sessionNotFound: 'Session "{id}" no longer exists. Pick another.',
+        mediation: {
+            banner: 'Direct connection with the agent in {project} — type /hub or use the button to return.',
+            backToHub: 'Back to hub',
+        },
         sessionForbidden: 'Session "{id}" belongs to another user.',
         attachments: {
             pickerTooltip: 'Attach a file (or drop one onto the message box)',

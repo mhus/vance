@@ -101,6 +101,10 @@ export default {
         sessionOccupiedBy: 'Session „{id}" wird von einer anderen Verbindung gehalten.',
         sessionNotFound: 'Session „{id}" existiert nicht mehr. Bitte eine andere wählen.',
         sessionForbidden: 'Session „{id}" gehört einem anderen Benutzer.',
+        mediation: {
+            banner: 'Direktverbindung mit dem Agent in {project} — tippe /hub oder nutze den Button, um zurückzukehren.',
+            backToHub: 'Zurück zum Hub',
+        },
         attachments: {
             pickerTooltip: 'Datei anhängen (oder ins Eingabefeld ziehen)',
             dropToAttach: 'Zum Anhängen loslassen',

@@ -10,6 +10,7 @@ import {
   getActiveSessionId,
 } from '@vance/shared';
 import type {
+  MediateHandoverNotification,
   SessionResumeRequest,
   SessionResumeResponse,
 } from '@vance/generated';
@@ -27,6 +28,25 @@ const mode = ref<Mode>('connecting');
 const errorMessage = ref<string | null>(null);
 const socket = ref<BrainWebSocket | null>(null);
 const activeSessionId = ref<string | null>(null);
+
+/**
+ * Mediation state — non-null while the WS is bound to a worker
+ * session that Eddie handed us off to (spec §8.5). Cleared by either
+ * a return-trip {@code mediate-handover} (server-side after
+ * {@code mediation-end}) or by an outright session leave. The banner
+ * + {@code /hub} slash command both live off this object.
+ */
+interface MediationState {
+  /** Display name for the banner — "Direkt mit Arthur in <name>". */
+  workerProjectName: string;
+  /** Worker session id we're currently bound to. */
+  workerSessionId: string;
+  /** Eddie's session id — where {@code /hub} bounces us back to.
+   *  Comes from the original handover frame so we don't have to
+   *  remember the pre-mediation session-resume target. */
+  eddieSessionId: string;
+}
+const mediation = ref<MediationState | null>(null);
 
 const username = computed<string | null>(() => getUsername());
 
@@ -74,6 +94,7 @@ async function resumeSessionId(sessionId: string): Promise<void> {
     setActiveSessionId(sessionId);
     pushSessionIdToUrl(sessionId);
     mode.value = 'live';
+    return;
   } catch (e) {
     if (e instanceof WebSocketRequestError) {
       switch (e.errorCode) {
@@ -97,6 +118,75 @@ async function resumeSessionId(sessionId: string): Promise<void> {
     mode.value = 'failed';
     errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
   }
+}
+
+/**
+ * Handle a server-pushed {@code mediate-handover} frame — fires in two
+ * directions:
+ *
+ *  - **Into mediation**: Eddie emits the MEDIATE action. Server sends
+ *    a handover whose {@code targetSessionId} is the worker session.
+ *    We unbind the current Eddie session and resume the worker session
+ *    on the same WS. The {@link mediation} ref carries the project
+ *    name (for the banner) and Eddie's session id (for the return).
+ *
+ *  - **Out of mediation**: user sent {@code /hub}; server's
+ *    {@code MediationEndHandler} clears Eddie's mediation flag and
+ *    sends a reverse handover with {@code targetSessionId === eddieSessionId}.
+ *    Same flow, just rebinds back to Eddie and clears the local state.
+ *
+ *  The frame itself doesn't tell us "which direction" — we infer from
+ *  comparing {@code targetSessionId} vs {@code eddieSessionId}: equal
+ *  means returning, different means going.
+ */
+async function onMediateHandover(data: MediateHandoverNotification): Promise<void> {
+  if (!socket.value) return;
+  const target = data.targetSessionId;
+  if (!target) return;
+  const returning = target === data.eddieSessionId;
+
+  // Release the current binding so the WS becomes session-less before
+  // the resume (server's SessionResumeHandler requires that).
+  if (activeSessionId.value) {
+    socket.value.sendNoReply('session-unbind');
+  }
+
+  try {
+    await socket.value.send<SessionResumeRequest, SessionResumeResponse>(
+      'session-resume', { sessionId: target });
+  } catch (e) {
+    // Rebind failed — surface a minimal error and leave the user
+    // session-less. They can hit "back to picker" to recover.
+    mode.value = 'failed';
+    errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
+    return;
+  }
+
+  activeSessionId.value = target;
+  setActiveSessionId(target);
+  pushSessionIdToUrl(target);
+
+  if (returning) {
+    // Bounced back to Eddie — clear the banner.
+    mediation.value = null;
+  } else {
+    mediation.value = {
+      workerProjectName: data.targetProjectId || data.targetProcessName || target,
+      workerSessionId: target,
+      eddieSessionId: data.eddieSessionId,
+    };
+  }
+}
+
+/**
+ * User-triggered return path. Sends a {@code mediation-end} frame; the
+ * brain intercepts it, clears Eddie's mediation flag, and replies with
+ * a reverse handover that {@link onMediateHandover} rebinds on. Treated
+ * as fire-and-forget — the server replies but we don't need the body.
+ */
+function sendMediationEnd(): void {
+  if (!socket.value || !mediation.value) return;
+  socket.value.sendNoReply('mediation-end');
 }
 
 async function onSessionPicked(sessionId: string): Promise<void> {
@@ -174,6 +264,13 @@ onMounted(async () => {
     }
   });
 
+  // Mediation pushes flow on the connection regardless of which
+  // session is currently bound — subscribe once at the socket level
+  // so we catch both the "go to worker" handover and the reverse
+  // "back to Eddie" after /hub.
+  mediateHandoverUnsubscribe = socket.value.on<MediateHandoverNotification>(
+    'mediate-handover', (data) => { void onMediateHandover(data); });
+
   // Resume hint: URL param wins over localStorage.
   const hinted = urlSessionId() ?? getActiveSessionId();
   if (hinted) {
@@ -183,8 +280,11 @@ onMounted(async () => {
   }
 });
 
+let mediateHandoverUnsubscribe: (() => void) | null = null;
+
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', beforeUnloadGuard);
+  mediateHandoverUnsubscribe?.();
   socket.value?.close();
 });
 </script>
@@ -232,7 +332,9 @@ onBeforeUnmount(() => {
           v-else-if="mode === 'live' && socket && activeSessionId"
           :socket="socket"
           :session-id="activeSessionId"
+          :mediation="mediation"
           @leave="leaveLive"
+          @hub="sendMediationEnd"
         />
 
         <div v-else-if="mode === 'connecting'" class="p-6 text-sm opacity-60">

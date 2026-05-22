@@ -97,6 +97,10 @@ declare const _default: {
         sessionOccupiedBy: string;
         sessionNotFound: string;
         sessionForbidden: string;
+        mediation: {
+            banner: string;
+            backToHub: string;
+        };
         attachments: {
             pickerTooltip: string;
             dropToAttach: string;

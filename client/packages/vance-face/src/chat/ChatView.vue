@@ -62,14 +62,30 @@ import ProgressFeed from './ProgressFeed.vue';
 // always miss — same string-literal pattern as MessageBubble's role.
 type ProcessModeName = 'NORMAL' | 'EXPLORING' | 'PLANNING' | 'EXECUTING';
 
+/**
+ * Mirrors {@code ChatApp.MediationState}. Non-null while the bound
+ * session is a worker Eddie handed off to. Drives the mediation
+ * banner and lets {@code send()} intercept the {@code /hub} slash
+ * command (spec eddie-engine.md §8.5 + engine-message-routing.md §4.1.2).
+ */
+interface MediationState {
+  workerProjectName: string;
+  workerSessionId: string;
+  eddieSessionId: string;
+}
+
 const props = defineProps<{
   socket: BrainWsApi;
   sessionId: string;
+  mediation?: MediationState | null;
 }>();
 
 const { t } = useI18n();
 
-const emit = defineEmits<{ (event: 'leave'): void }>();
+const emit = defineEmits<{
+  (event: 'leave'): void;
+  (event: 'hub'): void;
+}>();
 
 const PROGRESS_CAP = 50;
 
@@ -618,6 +634,18 @@ function scrollToBottom(): void {
 async function send(): Promise<void> {
   const text = composerText.value.trim();
   const filesSnapshot = selectedFiles.value.slice();
+
+  // While bound to a worker via Eddie's MEDIATE handover, the user can
+  // type {@code /hub} to bounce back to Eddie. We intercept it here
+  // so the brain's MediationEndHandler picks up the control frame
+  // instead of process-steer enqueueing "/hub" as a chat message at
+  // the worker. Pre-empts the optimistic-bubble path below.
+  if (props.mediation && text === '/hub' && filesSnapshot.length === 0) {
+    composerText.value = '';
+    emit('hub');
+    return;
+  }
+
   // Allow attachment-only sends so the user can drop a PDF and hit
   // send without typing — Arthur can then ask "what should I do with
   // this?" rather than the UI silently rejecting the click.
@@ -892,6 +920,21 @@ watch(() => props.sessionId, async (newId, oldId) => {
           {{ modeBadge }}
         </span>
       </header>
+
+      <!-- Mediation banner — Eddie handed us over to a worker; the
+           composer below sends straight to that worker's Arthur. -->
+      <div
+        v-if="mediation"
+        class="px-6 py-2 border-b border-base-300 bg-info/10 flex items-center gap-3 text-sm"
+      >
+        <span class="text-base">🔗</span>
+        <span class="flex-1 min-w-0 truncate">
+          {{ $t('chat.mediation.banner', { project: mediation.workerProjectName }) }}
+        </span>
+        <VButton variant="ghost" size="sm" @click="emit('hub')">
+          {{ $t('chat.mediation.backToHub') }}
+        </VButton>
+      </div>
 
       <div ref="messageContainer" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
         <div class="max-w-3xl mx-auto flex flex-col gap-3">

@@ -75,7 +75,7 @@ public final class GraphCodec {
 
     private static GraphDocument parseYaml(String body) {
         if (body.isBlank()) return GraphDocument.empty();
-        return promoteToDocument(KindHeaderCodec.mergeYamlMultiDoc(body));
+        return promoteToDocument(KindHeaderCodec.parseYamlBody(body));
     }
 
     private static String serializeJson(GraphDocument doc) {
@@ -88,7 +88,7 @@ public final class GraphCodec {
     }
 
     private static String serializeYaml(GraphDocument doc) {
-        return KindHeaderCodec.dumpYamlMultiDoc(canonicalKind(doc), buildBody(doc));
+        return KindHeaderCodec.dumpYamlBody(canonicalKind(doc), buildBody(doc));
     }
 
     // ── Promotion ──────────────────────────────────────────────────

@@ -741,40 +741,40 @@ function buildKindStub(kind: string, mime: string): string {
   if (kind === 'list') {
     if (isMd) return '---\nkind: list\n---\n- item 1\n- item 2\n';
     if (isJson) return '{\n  "$meta": { "kind": "list" },\n  "items": [\n    { "text": "item 1" },\n    { "text": "item 2" }\n  ]\n}\n';
-    if (isYaml) return 'kind: list\n---\nitems:\n  - text: item 1\n  - text: item 2\n';
+    if (isYaml) return '$meta:\n  kind: list\nitems:\n  - text: item 1\n  - text: item 2\n';
   }
   if (kind === 'tree') {
     if (isMd) return '---\nkind: tree\n---\n- parent\n  - child\n';
     if (isJson) return '{\n  "$meta": { "kind": "tree" },\n  "items": [\n    { "text": "parent", "children": [\n      { "text": "child", "children": [] }\n    ]}\n  ]\n}\n';
-    if (isYaml) return 'kind: tree\n---\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
+    if (isYaml) return '$meta:\n  kind: tree\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
   }
   if (kind === 'mindmap') {
     if (isMd) return '---\nkind: mindmap\n---\n- root topic\n  - branch one\n  - branch two\n';
     if (isJson) return '{\n  "$meta": { "kind": "mindmap" },\n  "items": [\n    { "text": "root topic", "children": [\n      { "text": "branch one", "children": [] },\n      { "text": "branch two", "children": [] }\n    ]}\n  ]\n}\n';
-    if (isYaml) return 'kind: mindmap\n---\nitems:\n  - text: root topic\n    children:\n      - text: branch one\n        children: []\n      - text: branch two\n        children: []\n';
+    if (isYaml) return '$meta:\n  kind: mindmap\nitems:\n  - text: root topic\n    children:\n      - text: branch one\n        children: []\n      - text: branch two\n        children: []\n';
   }
   if (kind === 'records') {
     if (isMd) return '---\nkind: records\nschema: name, email, role\n---\n- Alice, alice@example.com, admin\n- Bob, bob@example.com, user\n';
     if (isJson) return '{\n  "$meta": { "kind": "records" },\n  "schema": ["name", "email", "role"],\n  "items": [\n    { "name": "Alice", "email": "alice@example.com", "role": "admin" },\n    { "name": "Bob", "email": "bob@example.com", "role": "user" }\n  ]\n}\n';
-    if (isYaml) return 'kind: records\n---\nschema: [name, email, role]\nitems:\n  - name: Alice\n    email: alice@example.com\n    role: admin\n  - name: Bob\n    email: bob@example.com\n    role: user\n';
+    if (isYaml) return '$meta:\n  kind: records\nschema: [name, email, role]\nitems:\n  - name: Alice\n    email: alice@example.com\n    role: admin\n  - name: Bob\n    email: bob@example.com\n    role: user\n';
   }
   if (kind === 'graph') {
     // Markdown isn't supported for graphs (spec §3.3); fall through
     // to the schema-less branch below if md is picked, so the user
     // gets just the header and a hint to switch mime type via Raw.
     if (isJson) return '{\n  "$meta": { "kind": "graph" },\n  "graph": { "directed": true },\n  "nodes": [\n    { "id": "alice", "label": "Alice" },\n    { "id": "bob", "label": "Bob" }\n  ],\n  "edges": [\n    { "source": "alice", "target": "bob" }\n  ]\n}\n';
-    if (isYaml) return 'kind: graph\n---\ngraph:\n  directed: true\nnodes:\n  - id: alice\n    label: Alice\n  - id: bob\n    label: Bob\nedges:\n  - source: alice\n    target: bob\n';
+    if (isYaml) return '$meta:\n  kind: graph\ngraph:\n  directed: true\nnodes:\n  - id: alice\n    label: Alice\n  - id: bob\n    label: Bob\nedges:\n  - source: alice\n    target: bob\n';
   }
   if (kind === 'sheet') {
     // Markdown not supported for sheets (spec §3.3) — falls through
     // to the schema-less branch below if md is picked.
     if (isJson) return '{\n  "$meta": { "kind": "sheet" },\n  "schema": ["A", "B", "C"],\n  "rows": 5,\n  "cells": [\n    { "field": "A1", "data": "Item" },\n    { "field": "B1", "data": "Qty" },\n    { "field": "C1", "data": "Total" },\n    { "field": "A2", "data": "Apples" },\n    { "field": "B2", "data": "10" },\n    { "field": "C2", "data": "=B2*1.5" }\n  ]\n}\n';
-    if (isYaml) return 'kind: sheet\n---\nschema: [A, B, C]\nrows: 5\ncells:\n  - field: A1\n    data: Item\n  - field: B1\n    data: Qty\n  - field: C1\n    data: Total\n  - field: A2\n    data: Apples\n  - field: B2\n    data: "10"\n  - field: C2\n    data: "=B2*1.5"\n';
+    if (isYaml) return '$meta:\n  kind: sheet\nschema: [A, B, C]\nrows: 5\ncells:\n  - field: A1\n    data: Item\n  - field: B1\n    data: Qty\n  - field: C1\n    data: Total\n  - field: A2\n    data: Apples\n  - field: B2\n    data: "10"\n  - field: C2\n    data: "=B2*1.5"\n';
   }
   // Schema-less kinds — header only, body stays empty.
   if (isMd) return `---\nkind: ${kind}\n---\n`;
   if (isJson) return `{\n  "$meta": { "kind": "${kind}" }\n}\n`;
-  if (isYaml) return `kind: ${kind}\n---\n`;
+  if (isYaml) return `$meta:\n  kind: ${kind}\n`;
   return '';
 }
 

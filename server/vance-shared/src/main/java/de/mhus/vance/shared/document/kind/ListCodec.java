@@ -245,7 +245,7 @@ public final class ListCodec {
 
     private static ListDocument parseYaml(String body) {
         if (body.isBlank()) return ListDocument.empty();
-        Map<String, Object> merged = KindHeaderCodec.mergeYamlMultiDoc(body);
+        Map<String, Object> merged = KindHeaderCodec.parseYamlBody(body);
         return promoteToDocument(merged);
     }
 
@@ -253,7 +253,7 @@ public final class ListCodec {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("items", itemsToList(doc.items()));
         body.putAll(doc.extra());
-        return KindHeaderCodec.dumpYamlMultiDoc(canonicalKind(doc), body);
+        return KindHeaderCodec.dumpYamlBody(canonicalKind(doc), body);
     }
 
     // ── Shared promotion logic (json + yaml share the object shape) ─

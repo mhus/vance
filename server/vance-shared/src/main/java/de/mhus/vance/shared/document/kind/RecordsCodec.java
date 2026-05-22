@@ -294,7 +294,7 @@ public final class RecordsCodec {
         if (body.isBlank()) {
             throw new KindCodecException("Empty YAML body — `kind: records` requires a schema");
         }
-        Map<String, Object> merged = KindHeaderCodec.mergeYamlMultiDoc(body);
+        Map<String, Object> merged = KindHeaderCodec.parseYamlBody(body);
         return promoteToDocument(merged);
     }
 
@@ -306,7 +306,7 @@ public final class RecordsCodec {
         body.put("schema", new ArrayList<>(doc.schema()));
         body.put("items", itemsToList(doc));
         body.putAll(doc.extra());
-        return KindHeaderCodec.dumpYamlMultiDoc(canonicalKind(doc), body);
+        return KindHeaderCodec.dumpYamlBody(canonicalKind(doc), body);
     }
 
     // ── Promotion ───────────────────────────────────────────────────

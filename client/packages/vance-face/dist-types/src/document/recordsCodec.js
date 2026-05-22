@@ -7,7 +7,7 @@
 // See `specification/doc-kind-records.md` for the schema, the
 // schema-declaration semantics, the resilience rules (missing field
 // → empty), and the markdown CSV-light grammar.
-import { dumpYamlMultiDoc, mergeYamlMultiDoc, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
 export class RecordsCodecError extends Error {
     cause;
     constructor(message, cause) {
@@ -292,7 +292,7 @@ function parseRecordsYaml(body) {
     }
     let merged;
     try {
-        merged = mergeYamlMultiDoc(body);
+        merged = parseYamlBody(body);
     }
     catch (e) {
         throw new RecordsCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
@@ -303,7 +303,7 @@ function serializeRecordsYaml(doc) {
     if (doc.schema.length === 0) {
         throw new RecordsCodecError('Cannot serialise records without a schema');
     }
-    return dumpYamlMultiDoc(doc.kind || 'records', {
+    return dumpYamlBody(doc.kind || 'records', {
         schema: doc.schema,
         items: doc.items.map((item) => itemToObject(item, doc.schema)),
         ...doc.extra,

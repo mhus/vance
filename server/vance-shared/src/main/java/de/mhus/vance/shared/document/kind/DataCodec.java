@@ -1,8 +1,6 @@
 package de.mhus.vance.shared.document.kind;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.yaml.snakeyaml.DumperOptions;
@@ -95,36 +93,16 @@ public final class DataCodec {
         opts.setAllowDuplicateKeys(false);
         opts.setMaxAliasesForCollections(50);
         Yaml yaml = new Yaml(new SafeConstructor(opts));
-        List<Object> docs = new ArrayList<>();
+        Object root;
         try {
-            for (Object d : yaml.loadAll(body)) docs.add(d);
+            root = yaml.load(body);
         } catch (RuntimeException e) {
             throw new KindCodecException("Invalid YAML: " + e.getMessage(), e);
         }
-        if (docs.isEmpty()) return DataDocument.empty();
-
-        // Multi-doc: doc 1 is the header (must contain `kind`), doc 2
-        // is the body. Doc 2 can be Object, Array, or scalar.
-        if (docs.size() >= 2 && docs.get(0) instanceof Map<?, ?> header
-                && header.containsKey("kind")) {
-            Map<String, Object> meta = new LinkedHashMap<>();
-            String kind = "";
-            for (Map.Entry<?, ?> e : header.entrySet()) {
-                if (!(e.getKey() instanceof String key)) continue;
-                if ("kind".equals(key)) {
-                    kind = (e.getValue() instanceof String ks) ? ks : "";
-                } else {
-                    meta.put(key, e.getValue());
-                }
-            }
-            return new DataDocument(kind.isEmpty() ? "data" : kind, docs.get(1), meta);
-        }
-
-        // Single-doc: same logic as JSON top-level — Object form
-        // pulls kind from `kind` (legacy) since there's no $meta in
-        // YAML's flat top-level convention; Array/Scalar form just
-        // takes the value as body.
-        return promoteFromObject(docs.get(0));
+        // Map / Array / Scalar / null — same shape as JSON top-level.
+        // Object form goes through promoteFromObject so $meta.kind is
+        // unwrapped consistently with JsonHeaderStrategy.
+        return promoteFromObject(root);
     }
 
     private static String serializeYaml(DataDocument doc) {
@@ -134,14 +112,7 @@ public final class DataCodec {
         opts.setWidth(100);
         opts.setSplitLines(false);
         Yaml yaml = new Yaml(new Representer(opts), opts);
-
-        Map<String, Object> header = new LinkedHashMap<>();
-        header.put("kind", canonicalKind(doc));
-        for (Map.Entry<String, Object> e : doc.meta().entrySet()) {
-            if ("kind".equals(e.getKey())) continue;
-            header.put(e.getKey(), e.getValue());
-        }
-        return yaml.dump(header) + "---\n" + yaml.dump(doc.body());
+        return yaml.dump(buildOnDiskValue(doc));
     }
 
     // ── Promotion / on-disk ─────────────────────────────────────────

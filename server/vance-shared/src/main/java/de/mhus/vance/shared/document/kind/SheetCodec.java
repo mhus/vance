@@ -117,7 +117,7 @@ public final class SheetCodec {
 
     private static SheetDocument parseYaml(String body) {
         if (body.isBlank()) return SheetDocument.empty();
-        return promoteToDocument(KindHeaderCodec.mergeYamlMultiDoc(body));
+        return promoteToDocument(KindHeaderCodec.parseYamlBody(body));
     }
 
     private static String serializeJson(SheetDocument doc) {
@@ -130,7 +130,7 @@ public final class SheetCodec {
     }
 
     private static String serializeYaml(SheetDocument doc) {
-        return KindHeaderCodec.dumpYamlMultiDoc(canonicalKind(doc), buildBody(doc));
+        return KindHeaderCodec.dumpYamlBody(canonicalKind(doc), buildBody(doc));
     }
 
     // ── Promotion ──────────────────────────────────────────────────

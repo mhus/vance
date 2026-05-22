@@ -261,7 +261,7 @@ public final class TreeCodec {
 
     private static TreeDocument parseYaml(String body, String defaultKind) {
         if (body.isBlank()) return TreeDocument.empty();
-        Map<String, Object> merged = KindHeaderCodec.mergeYamlMultiDoc(body);
+        Map<String, Object> merged = KindHeaderCodec.parseYamlBody(body);
         return promoteToDocument(merged, defaultKind);
     }
 
@@ -269,7 +269,7 @@ public final class TreeCodec {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("items", itemsToList(doc.items()));
         body.putAll(doc.extra());
-        return KindHeaderCodec.dumpYamlMultiDoc(canonicalKind(doc, "tree"), body);
+        return KindHeaderCodec.dumpYamlBody(canonicalKind(doc, "tree"), body);
     }
 
     // ── Promotion ───────────────────────────────────────────────────

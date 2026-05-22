@@ -8,8 +8,8 @@
 // spec §6.1 for v2 client-eval and §6.2 for v3 server-eval.
 
 import {
-  dumpYamlMultiDoc,
-  mergeYamlMultiDoc,
+  dumpYamlBody,
+  parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
 } from './documentHeaderCodec';
@@ -141,7 +141,7 @@ function parseSheetYaml(body: string): SheetDocument {
   if (body.trim() === '') return emptyDoc();
   let merged: Record<string, unknown>;
   try {
-    merged = mergeYamlMultiDoc(body);
+    merged = parseYamlBody(body);
   } catch (e) {
     throw new SheetCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
   }
@@ -149,7 +149,7 @@ function parseSheetYaml(body: string): SheetDocument {
 }
 
 function serializeSheetYaml(doc: SheetDocument): string {
-  return dumpYamlMultiDoc(doc.kind || 'sheet', buildBody(doc));
+  return dumpYamlBody(doc.kind || 'sheet', buildBody(doc));
 }
 
 // ── Promotion ───────────────────────────────────────────────────────

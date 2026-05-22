@@ -8,7 +8,7 @@
 // convention used by Cytoscape, GraphML/GEXF, vue-flow internally,
 // and the JSON Graph Spec. Edges that point to unknown ids are
 // preserved across round-trip but the renderer skips them.
-import { dumpYamlMultiDoc, mergeYamlMultiDoc, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
 export class GraphCodecError extends Error {
     cause;
     constructor(message, cause) {
@@ -98,7 +98,7 @@ function parseGraphYaml(body) {
         return emptyDoc();
     let merged;
     try {
-        merged = mergeYamlMultiDoc(body);
+        merged = parseYamlBody(body);
     }
     catch (e) {
         throw new GraphCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
@@ -106,7 +106,7 @@ function parseGraphYaml(body) {
     return promoteToGraphDocument(merged);
 }
 function serializeGraphYaml(doc) {
-    return dumpYamlMultiDoc(doc.kind || 'graph', buildOnDiskBody(doc));
+    return dumpYamlBody(doc.kind || 'graph', buildOnDiskBody(doc));
 }
 // ── Shared promotion + writeback ────────────────────────────────────
 function emptyDoc() {

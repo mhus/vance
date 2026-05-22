@@ -6,7 +6,7 @@
 // formatting appear on disk. Formulas live as plain strings (lead
 // with `=`) and round-trip stably; v1 does not evaluate them, see
 // spec §6.1 for v2 client-eval and §6.2 for v3 server-eval.
-import { dumpYamlMultiDoc, mergeYamlMultiDoc, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
 export class SheetCodecError extends Error {
     cause;
     constructor(message, cause) {
@@ -107,7 +107,7 @@ function parseSheetYaml(body) {
         return emptyDoc();
     let merged;
     try {
-        merged = mergeYamlMultiDoc(body);
+        merged = parseYamlBody(body);
     }
     catch (e) {
         throw new SheetCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
@@ -115,7 +115,7 @@ function parseSheetYaml(body) {
     return promoteToSheetDocument(merged);
 }
 function serializeSheetYaml(doc) {
-    return dumpYamlMultiDoc(doc.kind || 'sheet', buildBody(doc));
+    return dumpYamlBody(doc.kind || 'sheet', buildBody(doc));
 }
 // ── Promotion ───────────────────────────────────────────────────────
 function emptyDoc() {

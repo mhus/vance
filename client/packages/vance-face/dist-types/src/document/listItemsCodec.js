@@ -10,7 +10,7 @@
 // extra fields (see `parseListMarkdown` notes).
 //
 // See `specification/doc-kind-items.md` for the schema.
-import { dumpYamlMultiDoc, mergeYamlMultiDoc, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
 export class ListCodecError extends Error {
     cause;
     constructor(message, cause) {
@@ -175,7 +175,7 @@ function parseListYaml(body) {
     }
     let merged;
     try {
-        merged = mergeYamlMultiDoc(body);
+        merged = parseYamlBody(body);
     }
     catch (e) {
         throw new ListCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
@@ -183,7 +183,7 @@ function parseListYaml(body) {
     return promoteToListDocument(merged);
 }
 function serializeListYaml(doc) {
-    return dumpYamlMultiDoc(doc.kind || 'list', {
+    return dumpYamlBody(doc.kind || 'list', {
         items: doc.items.map(itemToObject),
         ...doc.extra,
     });

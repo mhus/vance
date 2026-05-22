@@ -5,7 +5,7 @@
 //
 // See `specification/doc-kind-tree.md` for the schema and the
 // markdown indent-nesting rules.
-import { dumpYamlMultiDoc, mergeYamlMultiDoc, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
 export class TreeCodecError extends Error {
     cause;
     constructor(message, cause) {
@@ -211,7 +211,7 @@ function parseTreeYaml(body) {
     }
     let merged;
     try {
-        merged = mergeYamlMultiDoc(body);
+        merged = parseYamlBody(body);
     }
     catch (e) {
         throw new TreeCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
@@ -219,7 +219,7 @@ function parseTreeYaml(body) {
     return promoteToTreeDocument(merged);
 }
 function serializeTreeYaml(doc) {
-    return dumpYamlMultiDoc(doc.kind || 'tree', {
+    return dumpYamlBody(doc.kind || 'tree', {
         items: doc.items.map(itemToObject),
         ...doc.extra,
     });

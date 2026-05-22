@@ -10,8 +10,8 @@
 // preserved across round-trip but the renderer skips them.
 
 import {
-  dumpYamlMultiDoc,
-  mergeYamlMultiDoc,
+  dumpYamlBody,
+  parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
 } from './documentHeaderCodec';
@@ -151,7 +151,7 @@ function parseGraphYaml(body: string): GraphDocument {
   if (body.trim() === '') return emptyDoc();
   let merged: Record<string, unknown>;
   try {
-    merged = mergeYamlMultiDoc(body);
+    merged = parseYamlBody(body);
   } catch (e) {
     throw new GraphCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
   }
@@ -159,7 +159,7 @@ function parseGraphYaml(body: string): GraphDocument {
 }
 
 function serializeGraphYaml(doc: GraphDocument): string {
-  return dumpYamlMultiDoc(doc.kind || 'graph', buildOnDiskBody(doc));
+  return dumpYamlBody(doc.kind || 'graph', buildOnDiskBody(doc));
 }
 
 // ── Shared promotion + writeback ────────────────────────────────────

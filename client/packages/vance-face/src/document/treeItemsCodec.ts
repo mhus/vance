@@ -7,8 +7,8 @@
 // markdown indent-nesting rules.
 
 import {
-  dumpYamlMultiDoc,
-  mergeYamlMultiDoc,
+  dumpYamlBody,
+  parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
 } from './documentHeaderCodec';
@@ -241,7 +241,7 @@ function parseTreeYaml(body: string): TreeDocument {
   }
   let merged: Record<string, unknown>;
   try {
-    merged = mergeYamlMultiDoc(body);
+    merged = parseYamlBody(body);
   } catch (e) {
     throw new TreeCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
   }
@@ -249,7 +249,7 @@ function parseTreeYaml(body: string): TreeDocument {
 }
 
 function serializeTreeYaml(doc: TreeDocument): string {
-  return dumpYamlMultiDoc(doc.kind || 'tree', {
+  return dumpYamlBody(doc.kind || 'tree', {
     items: doc.items.map(itemToObject),
     ...doc.extra,
   });

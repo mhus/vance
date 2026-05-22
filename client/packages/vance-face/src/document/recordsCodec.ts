@@ -9,8 +9,8 @@
 // → empty), and the markdown CSV-light grammar.
 
 import {
-  dumpYamlMultiDoc,
-  mergeYamlMultiDoc,
+  dumpYamlBody,
+  parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
 } from './documentHeaderCodec';
@@ -322,7 +322,7 @@ function parseRecordsYaml(body: string): RecordsDocument {
   }
   let merged: Record<string, unknown>;
   try {
-    merged = mergeYamlMultiDoc(body);
+    merged = parseYamlBody(body);
   } catch (e) {
     throw new RecordsCodecError('Invalid YAML: ' + (e instanceof Error ? e.message : String(e)), e);
   }
@@ -333,7 +333,7 @@ function serializeRecordsYaml(doc: RecordsDocument): string {
   if (doc.schema.length === 0) {
     throw new RecordsCodecError('Cannot serialise records without a schema');
   }
-  return dumpYamlMultiDoc(doc.kind || 'records', {
+  return dumpYamlBody(doc.kind || 'records', {
     schema: doc.schema,
     items: doc.items.map((item) => itemToObject(item, doc.schema)),
     ...doc.extra,

@@ -29,6 +29,12 @@ const editPath = ref('');
 const editInlineText = ref('');
 const editAutoSummary = ref(false);
 const editSummaryDirty = ref(false);
+/**
+ * Tri-state for the project-RAG inclusion override. {@code 'auto'} (default
+ * — null in the DTO) follows the project rule "documents/** + textual mime";
+ * {@code 'on'} forces inclusion, {@code 'off'} excludes the document.
+ */
+const editRagEnabled = ref('auto');
 const editError = ref(null);
 const saving = ref(false);
 const showCreateModal = ref(false);
@@ -267,6 +273,7 @@ function fillEditor() {
     editInlineText.value = sel?.inlineText ?? '';
     editAutoSummary.value = sel?.autoSummary ?? false;
     editSummaryDirty.value = sel?.summaryDirty ?? false;
+    editRagEnabled.value = sel?.ragEnabled == null ? 'auto' : (sel.ragEnabled ? 'on' : 'off');
     editError.value = null;
     // Switching documents resets the editor mode to the kind-aware
     // default — `sheet`, `graph`, `records`, `mindmap`, `list`,
@@ -616,7 +623,7 @@ function buildKindStub(kind, mime) {
         if (isJson)
             return '{\n  "$meta": { "kind": "list" },\n  "items": [\n    { "text": "item 1" },\n    { "text": "item 2" }\n  ]\n}\n';
         if (isYaml)
-            return 'kind: list\n---\nitems:\n  - text: item 1\n  - text: item 2\n';
+            return '$meta:\n  kind: list\nitems:\n  - text: item 1\n  - text: item 2\n';
     }
     if (kind === 'tree') {
         if (isMd)
@@ -624,7 +631,7 @@ function buildKindStub(kind, mime) {
         if (isJson)
             return '{\n  "$meta": { "kind": "tree" },\n  "items": [\n    { "text": "parent", "children": [\n      { "text": "child", "children": [] }\n    ]}\n  ]\n}\n';
         if (isYaml)
-            return 'kind: tree\n---\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
+            return '$meta:\n  kind: tree\nitems:\n  - text: parent\n    children:\n      - text: child\n        children: []\n';
     }
     if (kind === 'mindmap') {
         if (isMd)
@@ -632,7 +639,7 @@ function buildKindStub(kind, mime) {
         if (isJson)
             return '{\n  "$meta": { "kind": "mindmap" },\n  "items": [\n    { "text": "root topic", "children": [\n      { "text": "branch one", "children": [] },\n      { "text": "branch two", "children": [] }\n    ]}\n  ]\n}\n';
         if (isYaml)
-            return 'kind: mindmap\n---\nitems:\n  - text: root topic\n    children:\n      - text: branch one\n        children: []\n      - text: branch two\n        children: []\n';
+            return '$meta:\n  kind: mindmap\nitems:\n  - text: root topic\n    children:\n      - text: branch one\n        children: []\n      - text: branch two\n        children: []\n';
     }
     if (kind === 'records') {
         if (isMd)
@@ -640,7 +647,7 @@ function buildKindStub(kind, mime) {
         if (isJson)
             return '{\n  "$meta": { "kind": "records" },\n  "schema": ["name", "email", "role"],\n  "items": [\n    { "name": "Alice", "email": "alice@example.com", "role": "admin" },\n    { "name": "Bob", "email": "bob@example.com", "role": "user" }\n  ]\n}\n';
         if (isYaml)
-            return 'kind: records\n---\nschema: [name, email, role]\nitems:\n  - name: Alice\n    email: alice@example.com\n    role: admin\n  - name: Bob\n    email: bob@example.com\n    role: user\n';
+            return '$meta:\n  kind: records\nschema: [name, email, role]\nitems:\n  - name: Alice\n    email: alice@example.com\n    role: admin\n  - name: Bob\n    email: bob@example.com\n    role: user\n';
     }
     if (kind === 'graph') {
         // Markdown isn't supported for graphs (spec §3.3); fall through
@@ -649,7 +656,7 @@ function buildKindStub(kind, mime) {
         if (isJson)
             return '{\n  "$meta": { "kind": "graph" },\n  "graph": { "directed": true },\n  "nodes": [\n    { "id": "alice", "label": "Alice" },\n    { "id": "bob", "label": "Bob" }\n  ],\n  "edges": [\n    { "source": "alice", "target": "bob" }\n  ]\n}\n';
         if (isYaml)
-            return 'kind: graph\n---\ngraph:\n  directed: true\nnodes:\n  - id: alice\n    label: Alice\n  - id: bob\n    label: Bob\nedges:\n  - source: alice\n    target: bob\n';
+            return '$meta:\n  kind: graph\ngraph:\n  directed: true\nnodes:\n  - id: alice\n    label: Alice\n  - id: bob\n    label: Bob\nedges:\n  - source: alice\n    target: bob\n';
     }
     if (kind === 'sheet') {
         // Markdown not supported for sheets (spec §3.3) — falls through
@@ -657,7 +664,7 @@ function buildKindStub(kind, mime) {
         if (isJson)
             return '{\n  "$meta": { "kind": "sheet" },\n  "schema": ["A", "B", "C"],\n  "rows": 5,\n  "cells": [\n    { "field": "A1", "data": "Item" },\n    { "field": "B1", "data": "Qty" },\n    { "field": "C1", "data": "Total" },\n    { "field": "A2", "data": "Apples" },\n    { "field": "B2", "data": "10" },\n    { "field": "C2", "data": "=B2*1.5" }\n  ]\n}\n';
         if (isYaml)
-            return 'kind: sheet\n---\nschema: [A, B, C]\nrows: 5\ncells:\n  - field: A1\n    data: Item\n  - field: B1\n    data: Qty\n  - field: C1\n    data: Total\n  - field: A2\n    data: Apples\n  - field: B2\n    data: "10"\n  - field: C2\n    data: "=B2*1.5"\n';
+            return '$meta:\n  kind: sheet\nschema: [A, B, C]\nrows: 5\ncells:\n  - field: A1\n    data: Item\n  - field: B1\n    data: Qty\n  - field: C1\n    data: Total\n  - field: A2\n    data: Apples\n  - field: B2\n    data: "10"\n  - field: C2\n    data: "=B2*1.5"\n';
     }
     // Schema-less kinds — header only, body stays empty.
     if (isMd)
@@ -665,7 +672,7 @@ function buildKindStub(kind, mime) {
     if (isJson)
         return `{\n  "$meta": { "kind": "${kind}" }\n}\n`;
     if (isYaml)
-        return `kind: ${kind}\n---\n`;
+        return `$meta:\n  kind: ${kind}\n`;
     return '';
 }
 // Auto-fill the body when the user picks a kind (or switches the
@@ -827,6 +834,16 @@ async function apply() {
         }
         if (editSummaryDirty.value !== (sel.summaryDirty ?? false)) {
             body.summaryDirty = editSummaryDirty.value;
+        }
+        // RAG tri-state — server takes "auto" / "on" / "off"; the document
+        // exposes ragEnabled as boolean|null, mapping is identical to the
+        // editor's radio value, so we just need to detect whether the user
+        // actually changed it before sending.
+        const currentRag = sel.ragEnabled == null ? 'auto'
+            : sel.ragEnabled ? 'on'
+                : 'off';
+        if (editRagEnabled.value !== currentRag) {
+            body.ragEnabled = editRagEnabled.value;
         }
         await docsState.update(sel.id, body);
         if (docsState.error.value) {
@@ -1234,6 +1251,49 @@ else if (__VLS_ctx.docsState.selected.value) {
         help: (__VLS_ctx.$t('documents.detail.summary.summaryDirtyHelp')),
         disabled: (__VLS_ctx.saving),
     }, ...__VLS_functionalComponentArgsRest(__VLS_41));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex flex-col gap-1" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
+        ...{ class: "text-xs opacity-70" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex gap-4 text-sm" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
+        ...{ class: "flex items-center gap-1.5 cursor-pointer" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+        type: "radio",
+        value: "auto",
+        disabled: (__VLS_ctx.saving),
+    });
+    (__VLS_ctx.editRagEnabled);
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
+        ...{ class: "flex items-center gap-1.5 cursor-pointer" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+        type: "radio",
+        value: "on",
+        disabled: (__VLS_ctx.saving),
+    });
+    (__VLS_ctx.editRagEnabled);
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
+        ...{ class: "flex items-center gap-1.5 cursor-pointer" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+        type: "radio",
+        value: "off",
+        disabled: (__VLS_ctx.saving),
+    });
+    (__VLS_ctx.editRagEnabled);
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-xs opacity-60" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.code, __VLS_intrinsicElements.code)({});
     if (!__VLS_ctx.docsState.selected.value.inline) {
         const __VLS_44 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
@@ -2871,6 +2931,28 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['cursor-pointer']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['cursor-pointer']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['cursor-pointer']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -3038,6 +3120,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             editInlineText: editInlineText,
             editAutoSummary: editAutoSummary,
             editSummaryDirty: editSummaryDirty,
+            editRagEnabled: editRagEnabled,
             editError: editError,
             saving: saving,
             showCreateModal: showCreateModal,

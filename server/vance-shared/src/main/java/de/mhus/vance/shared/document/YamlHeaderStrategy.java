@@ -10,35 +10,37 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
- * YAML front-matter via the YAML spec's native multi-document feature. A
- * stream of two documents separated by {@code ---} is valid YAML; the first
- * document acts as the header, the second as the body:
+ * YAML front-matter via a reserved top-level {@code $meta} mapping — the
+ * exact same convention as {@link JsonHeaderStrategy}. Keeping JSON and
+ * YAML symmetric means a single mental model ({@code $meta.kind} lives
+ * at the top of the document, regardless of format) and a single parser
+ * pathway:
  *
  * <pre>
- * kind: list
- * schema: requirement
- * ---
- * - item one
- * - item two
+ * $meta:
+ *   kind: list
+ *   schema: requirement
+ * items:
+ *   - item one
+ *   - item two
  * </pre>
  *
- * <p>The header is only accepted when <em>all</em> of these hold:
- * <ul>
- *   <li>the first document is a flat {@code Map<String,Object>}</li>
- *   <li>a second document follows (single-doc files are treated as body)</li>
- *   <li>the first document carries a non-blank {@code kind:} entry</li>
- * </ul>
- * The {@code kind} requirement is what discriminates a Vance-typed document
- * from an ordinary multi-document YAML stream (e.g. a Kubernetes manifest):
- * unlike markdown's fence or JSON's {@code $meta} object, multi-document
- * YAML is a legitimate native format on its own and would otherwise yield
- * false-positive headers. No {@code kind} → no header.
+ * <p>The header is only accepted when the document's top-level value is
+ * a YAML mapping containing a {@code $meta} mapping. Sequences, scalars
+ * and mappings without {@code $meta} have no header. Non-scalar values
+ * inside {@code $meta} (nested map, list) are skipped — same rule as
+ * JSON.
  *
- * <p>Map values that are themselves complex (nested map, list) are skipped
- * — only scalar leaves end up in the {@link DocumentHeader#getValues}.
+ * <p>Multi-document YAML streams (with {@code ---} separators) are no
+ * longer treated as Vance-typed documents — that convention was
+ * ambiguous with legitimate uses of the YAML spec's multi-doc feature
+ * (e.g. Kubernetes manifests). A document with {@code $meta} at the top
+ * is the unambiguous signal.
  */
 @Component
 public class YamlHeaderStrategy implements HeaderStrategy {
+
+    private static final String META_KEY = "$meta";
 
     @Override
     public boolean supports(@Nullable String mimeType) {
@@ -52,43 +54,26 @@ public class YamlHeaderStrategy implements HeaderStrategy {
     @Override
     public Optional<DocumentHeader> parse(String body) {
         // SafeConstructor so we never instantiate arbitrary classes via
-        // YAML's tag system. Document-count cap defends against pathological
-        // inputs (a million empty fences would otherwise stream forever).
+        // YAML's tag system. Alias cap defends against billion-laughs
+        // style pathological inputs.
         LoaderOptions opts = new LoaderOptions();
         opts.setAllowDuplicateKeys(false);
         opts.setMaxAliasesForCollections(50);
         Yaml yaml = new Yaml(new SafeConstructor(opts));
 
-        Iterable<Object> docs;
+        Object root;
         try {
-            docs = yaml.loadAll(body);
+            root = yaml.load(body);
         } catch (RuntimeException e) {
             return Optional.empty();
         }
-
-        Object first = null;
-        boolean hasSecond = false;
-        try {
-            int seen = 0;
-            for (Object doc : docs) {
-                if (seen == 0) {
-                    first = doc;
-                } else {
-                    hasSecond = true;
-                    break;
-                }
-                seen++;
-            }
-        } catch (RuntimeException e) {
-            return Optional.empty();
-        }
-
-        if (!hasSecond) return Optional.empty();
-        if (!(first instanceof Map<?, ?> rawMap)) return Optional.empty();
+        if (!(root instanceof Map<?, ?> rootMap)) return Optional.empty();
+        Object metaVal = rootMap.get(META_KEY);
+        if (!(metaVal instanceof Map<?, ?> meta)) return Optional.empty();
 
         Map<String, String> values = new LinkedHashMap<>();
         String kind = null;
-        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+        for (Map.Entry<?, ?> entry : meta.entrySet()) {
             if (!(entry.getKey() instanceof String rawKey)) continue;
             Object rawValue = entry.getValue();
             String value = scalarToString(rawValue);

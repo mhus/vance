@@ -118,32 +118,32 @@ public class DocCreateKindTool implements Tool {
         return switch (kind) {
             case "list" -> md ? "---\nkind: list\n---\n- item 1\n- item 2\n"
                     : json ? "{\n  \"$meta\": { \"kind\": \"list\" },\n  \"items\": []\n}\n"
-                    : yaml ? "kind: list\n---\nitems: []\n"
+                    : yaml ? "$meta:\n  kind: list\nitems: []\n"
                     : "";
             case "tree" -> md ? "---\nkind: tree\n---\n- parent\n  - child\n"
                     : json ? "{\n  \"$meta\": { \"kind\": \"tree\" },\n  \"items\": []\n}\n"
-                    : yaml ? "kind: tree\n---\nitems: []\n"
+                    : yaml ? "$meta:\n  kind: tree\nitems: []\n"
                     : "";
             case "mindmap" -> md ? "---\nkind: mindmap\n---\n- root\n  - branch\n"
                     : json ? "{\n  \"$meta\": { \"kind\": \"mindmap\" },\n  \"items\": []\n}\n"
-                    : yaml ? "kind: mindmap\n---\nitems: []\n"
+                    : yaml ? "$meta:\n  kind: mindmap\nitems: []\n"
                     : "";
             case "records" -> md ? "---\nkind: records\nschema: name, value\n---\n"
                     : json ? "{\n  \"$meta\": { \"kind\": \"records\" },\n  \"schema\": [\"name\", \"value\"],\n  \"items\": []\n}\n"
-                    : yaml ? "kind: records\n---\nschema: [name, value]\nitems: []\n"
+                    : yaml ? "$meta:\n  kind: records\nschema: [name, value]\nitems: []\n"
                     : "";
             case "sheet" -> json
                     ? "{\n  \"$meta\": { \"kind\": \"sheet\" },\n  \"schema\": [\"A\", \"B\", \"C\"],\n  \"rows\": 5,\n  \"cells\": []\n}\n"
-                    : "kind: sheet\n---\nschema: [A, B, C]\nrows: 5\ncells: []\n";
+                    : "$meta:\n  kind: sheet\nschema: [A, B, C]\nrows: 5\ncells: []\n";
             case "graph" -> json
                     ? "{\n  \"$meta\": { \"kind\": \"graph\" },\n  \"graph\": { \"directed\": true },\n  \"nodes\": [],\n  \"edges\": []\n}\n"
-                    : "kind: graph\n---\ngraph:\n  directed: true\nnodes: []\nedges: []\n";
+                    : "$meta:\n  kind: graph\ngraph:\n  directed: true\nnodes: []\nedges: []\n";
             case "data" -> json
                     ? "{\n  \"$meta\": { \"kind\": \"data\" }\n}\n"
-                    : "kind: data\n---\n{}\n";
+                    : "$meta:\n  kind: data\n";
             default -> md ? "---\nkind: " + kind + "\n---\n"
                     : json ? "{\n  \"$meta\": { \"kind\": \"" + kind + "\" }\n}\n"
-                    : "kind: " + kind + "\n---\n";
+                    : "$meta:\n  kind: " + kind + "\n";
         };
     }
 }

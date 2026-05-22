@@ -1,36 +1,46 @@
 package de.mhus.vance.foot.command;
 
+import de.mhus.vance.api.ws.MessageType;
+import de.mhus.vance.api.ws.SessionResumeRequest;
+import de.mhus.vance.api.ws.SessionResumeResponse;
 import de.mhus.vance.foot.connection.ConnectionService;
+import de.mhus.vance.foot.session.SessionService;
+import de.mhus.vance.foot.session.SessionSwitchTracker;
 import de.mhus.vance.foot.ui.ChatTerminal;
+import java.time.Duration;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * {@code /hub} — ends an Eddie-mediated direct-conversation with a
- * worker session and bounces the foot client back to Eddie's hub
- * session. Sends a single {@code mediation-end} frame; the brain-side
- * {@code MediationEndHandler} intercepts it (the worker never sees
- * the frame) and replies with a {@code mediate-handover} pointing at
- * Eddie's session, which the foot's existing handover handler turns
- * into a {@code session-resume}.
+ * {@code /hub} — return from a session Eddie switched us into. Mirror
+ * of the web client's {@code /hub} slash command: pop the previous
+ * session id off the {@link SessionSwitchTracker}, tear down the WS,
+ * reopen it, {@code session-resume} on the remembered id.
  *
- * <p>No-op when no mediation is active — the brain-side handler
- * silently acknowledges in that case, so the user just sees a quick
- * "no mediation in progress" line in the terminal.
+ * <p>Purely client-local — the server keeps no switch-state, so this
+ * command never talks to the brain beyond the normal WS reconnect +
+ * session-resume frames. No-op when no previous session is
+ * remembered (we're already at the hub).
  *
- * <p>See {@code specification/eddie-engine.md} §8.5.5 +
- * {@code engine-message-routing.md} §4.1.2.
+ * <p>Spec: {@code specification/eddie-engine.md} §8.5.4.
  */
 @Component
 @Slf4j
 public class HubSlashCommand implements SlashCommand {
 
     private final ConnectionService connection;
+    private final SessionService sessions;
+    private final SessionSwitchTracker tracker;
     private final ChatTerminal terminal;
 
-    public HubSlashCommand(ConnectionService connection, ChatTerminal terminal) {
+    public HubSlashCommand(ConnectionService connection,
+                           SessionService sessions,
+                           SessionSwitchTracker tracker,
+                           ChatTerminal terminal) {
         this.connection = connection;
+        this.sessions = sessions;
+        this.tracker = tracker;
         this.terminal = terminal;
     }
 
@@ -41,14 +51,29 @@ public class HubSlashCommand implements SlashCommand {
 
     @Override
     public String description() {
-        return "Return to Eddie's hub session — ends a direct worker conversation Eddie handed you off to.";
+        return "Return to the hub session after a switch — close the current WS and resume the previously-bound session.";
     }
 
     @Override
     public void execute(List<String> args) {
-        // Foot's switch-to / switch-back handlers are not wired yet.
-        // Once they are, /hub becomes a local close+reopen on the
-        // remembered hub sessionId — same flow as the web client.
-        terminal.warn("/hub is not implemented in foot yet — switch back via /session-resume or restart the client.");
+        String target = tracker.pop();
+        if (target == null) {
+            terminal.info("Already at the hub — no previous session to return to.");
+            return;
+        }
+        try {
+            connection.disconnect("hub return");
+            connection.connect();
+            SessionResumeResponse resp = connection.request(
+                    MessageType.SESSION_RESUME,
+                    SessionResumeRequest.builder().sessionId(target).build(),
+                    SessionResumeResponse.class,
+                    Duration.ofSeconds(10));
+            sessions.bind(resp.getSessionId(), resp.getProjectId());
+            terminal.info("Back at the hub: " + resp.getSessionId());
+        } catch (Exception e) {
+            log.error("/hub: rebind to '{}' failed: {}", target, e.toString());
+            terminal.error("Could not return to the hub: " + e.getMessage());
+        }
     }
 }

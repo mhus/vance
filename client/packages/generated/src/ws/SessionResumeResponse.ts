@@ -6,4 +6,5 @@
 export interface SessionResumeResponse {
   sessionId: string;
   projectId: string;
+  chatProcessName?: string;
 }

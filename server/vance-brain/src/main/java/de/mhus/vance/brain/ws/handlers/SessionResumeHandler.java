@@ -111,9 +111,19 @@ public class SessionResumeHandler implements WsHandler {
         thinkProcessService.updateBoundProfileForSession(
                 doc.getSessionId(), ctx.getProfile());
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
+        // Look up the chat-process name (typically "chat") so the
+        // client can set its active-process pointer in the same round
+        // trip — same convenience SessionBootstrapResponse provides.
+        String chatProcessName = null;
+        if (doc.getChatProcessId() != null && !doc.getChatProcessId().isBlank()) {
+            chatProcessName = thinkProcessService.findById(doc.getChatProcessId())
+                    .map(p -> p.getName())
+                    .orElse(null);
+        }
         SessionResumeResponse response = SessionResumeResponse.builder()
                 .sessionId(doc.getSessionId())
                 .projectId(doc.getProjectId())
+                .chatProcessName(chatProcessName)
                 .build();
         sender.sendReply(wsSession, envelope, MessageType.SESSION_RESUME, response);
     }

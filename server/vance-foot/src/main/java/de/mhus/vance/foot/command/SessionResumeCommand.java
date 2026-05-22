@@ -95,6 +95,9 @@ public class SessionResumeCommand implements SlashCommand {
                 Duration.ofSeconds(10));
 
         sessions.bind(response.getSessionId(), response.getProjectId());
+        if (response.getChatProcessName() != null && !response.getChatProcessName().isBlank()) {
+            sessions.setActiveProcess(response.getChatProcessName());
+        }
         // Pull title + icon into the status-bar cache; best-effort.
         try {
             SessionListResponse list = connection.request(

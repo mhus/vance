@@ -130,6 +130,12 @@ public class SwitchToHandler implements MessageHandler {
                     SessionResumeResponse.class,
                     Duration.ofSeconds(10));
             sessions.bind(resp.getSessionId(), resp.getProjectId());
+            // Server tells us which process is the session's chat —
+            // set it as active so the next composer line goes to it
+            // without a manual /process.
+            if (resp.getChatProcessName() != null && !resp.getChatProcessName().isBlank()) {
+                sessions.setActiveProcess(resp.getChatProcessName());
+            }
         } catch (Exception e) {
             log.error("switch-to: rebind failed for target='{}'", target, e);
             terminal.error("Switch failed: " + e);

@@ -75,6 +75,9 @@ public class HubSlashCommand implements SlashCommand {
                     SessionResumeResponse.class,
                     Duration.ofSeconds(10));
             sessions.bind(resp.getSessionId(), resp.getProjectId());
+            if (resp.getChatProcessName() != null && !resp.getChatProcessName().isBlank()) {
+                sessions.setActiveProcess(resp.getChatProcessName());
+            }
             terminal.info("Back at the hub: " + resp.getSessionId());
         } catch (Exception e) {
             log.error("/hub: rebind to '{}' failed: {}", target, e.toString());

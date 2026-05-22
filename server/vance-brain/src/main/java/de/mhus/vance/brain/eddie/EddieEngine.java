@@ -2014,6 +2014,7 @@ public class EddieEngine extends StructuredActionEngine {
                 var l = linked.get();
                 resolved = new MediateTarget(
                         l.getWorkerSessionId(),
+                        l.getWorkerProcessId(),
                         l.getWorkerProjectName());
             }
         }
@@ -2026,6 +2027,26 @@ public class EddieEngine extends StructuredActionEngine {
             return new ActionTurnOutcome(
                     "Konnte das Projekt '" + target + "' nicht öffnen — kein "
                             + "aktiver Chat-Prozess gefunden.", true);
+        }
+
+        // Resurrect a closed / stopped / done chat-process. Older
+        // project sessions often have their chat-process in a
+        // terminal status from a previous test run; the user's
+        // explicit MEDIATE intent says "I want to talk to this
+        // project's agent", so revive the existing process (keeping
+        // history) instead of refusing. The next process-steer from
+        // the client will trigger the lane normally because the
+        // status is back to READY.
+        if (resolved.workerProcessId() != null && !resolved.workerProcessId().isBlank()) {
+            thinkProcessService.findById(resolved.workerProcessId()).ifPresent(p -> {
+                ThinkProcessStatus s = p.getStatus();
+                if (s != ThinkProcessStatus.IDLE && s != ThinkProcessStatus.RUNNING) {
+                    log.info("Eddie id='{}' MEDIATE: resurrecting chat-process '{}' "
+                            + "from status={}",
+                            process.getId(), p.getId(), s);
+                    thinkProcessService.updateStatus(p.getId(), ThinkProcessStatus.IDLE);
+                }
+            });
         }
 
         // Take over the target session's binding. If another connection
@@ -2075,10 +2096,11 @@ public class EddieEngine extends StructuredActionEngine {
                 /*awaitingUserInput=*/ true);
     }
 
-    /** Two fields the switch-to frame needs — keeps the worker-links
-     *  fast path and the project-name fallback uniform. */
+    /** Fields the switch-to frame + resurrect logic need — keeps the
+     *  worker-links fast path and the project-name fallback uniform. */
     private record MediateTarget(
             String workerSessionId,
+            String workerProcessId,
             String workerProjectName) {}
 
     /**
@@ -2113,7 +2135,7 @@ public class EddieEngine extends StructuredActionEngine {
             if (ai != null && (bi == null || ai.isAfter(bi))) best = s;
         }
         if (best == null) return null;
-        return new MediateTarget(best.getSessionId(), projectName);
+        return new MediateTarget(best.getSessionId(), best.getChatProcessId(), projectName);
     }
 
     private ActionTurnOutcome handleWait(EngineAction action) {

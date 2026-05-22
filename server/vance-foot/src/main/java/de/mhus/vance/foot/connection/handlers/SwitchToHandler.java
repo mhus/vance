@@ -92,13 +92,28 @@ public class SwitchToHandler implements MessageHandler {
         SessionService.BoundSession current = sessions.current();
         tracker.push(current == null ? null : current.sessionId());
 
-        // Echo Eddie's announcement before the disconnect so the user
-        // sees the context for the impending terminal-line silence.
+        // Echo Eddie's announcement before the switch so the user sees
+        // the context for the impending silence.
         String announcement = data.getVoiceAnnouncement();
         if (announcement != null && !announcement.isBlank()) {
             terminal.info(announcement);
         }
 
+        // The unbind+resume round-trips are synchronous request/reply
+        // pairs, but this handler runs on the MessageDispatcher's
+        // receive thread — that thread is also what completes
+        // pendingReplies, so a synchronous request from here would
+        // deadlock on its own response. Hand the work to a fresh
+        // thread; AutoBootstrapService does the same.
+        String label = data.getTargetProjectId() != null && !data.getTargetProjectId().isBlank()
+                ? data.getTargetProjectId()
+                : (data.getTargetProcessName() != null ? data.getTargetProcessName() : target);
+        Thread worker = new Thread(() -> runSwitch(target, label), "vance-foot-switch");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void runSwitch(String target, String label) {
         try {
             // session-unbind on the same WS — quick round-trip, no
             // disconnect / reconnect / welcome / auto-bootstrap chain.
@@ -116,16 +131,12 @@ public class SwitchToHandler implements MessageHandler {
                     Duration.ofSeconds(10));
             sessions.bind(resp.getSessionId(), resp.getProjectId());
         } catch (Exception e) {
-            log.error("switch-to: rebind failed for target='{}': {}", target, e.toString());
-            terminal.error("Switch failed: " + e.getMessage());
+            log.error("switch-to: rebind failed for target='{}'", target, e);
+            terminal.error("Switch failed: " + e);
             // Drop the back-stack — there's no consistent state to return to.
             tracker.clear();
             return;
         }
-
-        String label = data.getTargetProjectId() != null && !data.getTargetProjectId().isBlank()
-                ? data.getTargetProjectId()
-                : (data.getTargetProcessName() != null ? data.getTargetProcessName() : target);
         terminal.info("Switched to " + label + " — type /hub to return.");
     }
 }

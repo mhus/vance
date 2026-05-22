@@ -11,6 +11,14 @@ const errorMessage = ref(null);
 const socket = ref(null);
 const activeSessionId = ref(null);
 const mediation = ref(null);
+/**
+ * Single-level back-stack: the session id we were bound to before the
+ * current switch-to. {@code null} means we're at the hub already.
+ * {@code /hub} closes the current WS and reopens one bound to this
+ * id. v2 can grow this into a real stack for multi-hop project
+ * context switching.
+ */
+const previousSessionId = ref(null);
 const username = computed(() => getUsername());
 const connectionState = computed(() => {
     if (mode.value === 'live')
@@ -48,16 +56,84 @@ async function openSocket() {
         clientVersion: CLIENT_VERSION,
     });
 }
-async function resumeSessionId(sessionId) {
-    if (!socket.value)
-        return;
+/**
+ * Open a session-less socket and attach the global listeners. Used
+ * by the picker, which then drives session-bootstrap on this same
+ * socket. The picker's success path goes through
+ * {@link onSessionBootstrapped} without re-opening the socket.
+ */
+async function openSocketForPicker() {
+    if (socket.value) {
+        switchToUnsubscribe?.();
+        switchToUnsubscribe = null;
+        socket.value.close();
+        socket.value = null;
+    }
+    try {
+        socket.value = await openSocket();
+    }
+    catch (e) {
+        mode.value = 'failed';
+        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToOpen');
+        return false;
+    }
+    attachSocketListeners(socket.value);
+    return true;
+}
+/**
+ * Attach onClose + switch-to listeners on the given socket. Pulled
+ * out so both paths (session-bound via {@link openAndBind} and
+ * session-less via {@link openSocketForPicker}) share the same
+ * wiring.
+ */
+function attachSocketListeners(s) {
+    s.onClose(() => {
+        if (mode.value === 'live') {
+            mode.value = 'failed';
+            errorMessage.value = t('chat.connectionLost');
+        }
+        else if (mode.value === 'picker' || mode.value === 'occupied') {
+            mode.value = 'failed';
+            errorMessage.value = t('chat.connectionClosed');
+        }
+    });
+    switchToUnsubscribe = s.on('switch-to', (data) => { void onSwitchTo(data); });
+}
+/**
+ * Open a fresh WS and bind it to {@code sessionId}. Closes any existing
+ * WS first. This is the unified switch path used by both the initial
+ * connect (from picker / URL hint) and the server-pushed switch-to
+ * frame. Re-registers the switch-to listener on the new socket so a
+ * subsequent switch still finds us.
+ *
+ * @returns {@code true} on a clean bind, {@code false} when resume
+ *          failed (mode + errorMessage are populated as a side effect).
+ */
+async function openAndBind(sessionId) {
+    // Tear down the old socket. close() is idempotent and harmless when
+    // there's nothing to close (first connect).
+    if (socket.value) {
+        switchToUnsubscribe?.();
+        switchToUnsubscribe = null;
+        socket.value.close();
+        socket.value = null;
+    }
+    try {
+        socket.value = await openSocket();
+    }
+    catch (e) {
+        mode.value = 'failed';
+        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToOpen');
+        return false;
+    }
+    attachSocketListeners(socket.value);
     try {
         await socket.value.send('session-resume', { sessionId });
         activeSessionId.value = sessionId;
         setActiveSessionId(sessionId);
         pushSessionIdToUrl(sessionId);
         mode.value = 'live';
-        return;
+        return true;
     }
     catch (e) {
         if (e instanceof WebSocketRequestError) {
@@ -65,94 +141,66 @@ async function resumeSessionId(sessionId) {
                 case 409:
                     mode.value = 'occupied';
                     errorMessage.value = t('chat.sessionOccupiedBy', { id: sessionId });
-                    return;
+                    return false;
                 case 404:
-                    // Stale sessionId (closed or never existed) — drop it and fall back to picker.
                     setActiveSessionId(null);
                     pushSessionIdToUrl(null);
                     mode.value = 'picker';
                     errorMessage.value = t('chat.sessionNotFound', { id: sessionId });
-                    return;
+                    return false;
                 case 403:
                     mode.value = 'failed';
                     errorMessage.value = t('chat.sessionForbidden', { id: sessionId });
-                    return;
+                    return false;
             }
         }
         mode.value = 'failed';
         errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
+        return false;
     }
 }
 /**
- * Handle a server-pushed {@code mediate-handover} frame — fires in two
- * directions:
- *
- *  - **Into mediation**: Eddie emits the MEDIATE action. Server sends
- *    a handover whose {@code targetSessionId} is the worker session.
- *    We unbind the current Eddie session and resume the worker session
- *    on the same WS. The {@link mediation} ref carries the project
- *    name (for the banner) and Eddie's session id (for the return).
- *
- *  - **Out of mediation**: user sent {@code /hub}; server's
- *    {@code MediationEndHandler} clears Eddie's mediation flag and
- *    sends a reverse handover with {@code targetSessionId === eddieSessionId}.
- *    Same flow, just rebinds back to Eddie and clears the local state.
- *
- *  The frame itself doesn't tell us "which direction" — we infer from
- *  comparing {@code targetSessionId} vs {@code eddieSessionId}: equal
- *  means returning, different means going.
+ * Server-pushed {@code switch-to} frame — Eddie's MEDIATE action (or a
+ * future flow like project-tab switching) asks the client to drop the
+ * current WS and open a new one bound to {@code targetSessionId}. The
+ * previous session id is pushed onto our single-level back-stack so
+ * {@code /hub} can return.
  */
-async function onMediateHandover(data) {
-    if (!socket.value)
-        return;
+async function onSwitchTo(data) {
     const target = data.targetSessionId;
     if (!target)
         return;
-    const returning = target === data.eddieSessionId;
-    // Release the current binding so the WS becomes session-less before
-    // the resume (server's SessionResumeHandler requires that).
-    if (activeSessionId.value) {
-        socket.value.sendNoReply('session-unbind');
-    }
-    try {
-        await socket.value.send('session-resume', { sessionId: target });
-    }
-    catch (e) {
-        // Rebind failed — surface a minimal error and leave the user
-        // session-less. They can hit "back to picker" to recover.
-        mode.value = 'failed';
-        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToResume');
+    const fromSessionId = activeSessionId.value;
+    const ok = await openAndBind(target);
+    if (!ok)
         return;
-    }
-    activeSessionId.value = target;
-    setActiveSessionId(target);
-    pushSessionIdToUrl(target);
-    if (returning) {
-        // Bounced back to Eddie — clear the banner.
-        mediation.value = null;
-    }
-    else {
-        mediation.value = {
-            workerProjectName: data.targetProjectId || data.targetProcessName || target,
-            workerSessionId: target,
-            eddieSessionId: data.eddieSessionId,
-        };
-    }
+    previousSessionId.value = fromSessionId;
+    mediation.value = {
+        workerProjectName: data.targetProjectId || data.targetProcessName || target,
+    };
 }
 /**
- * User-triggered return path. Sends a {@code mediation-end} frame; the
- * brain intercepts it, clears Eddie's mediation flag, and replies with
- * a reverse handover that {@link onMediateHandover} rebinds on. Treated
- * as fire-and-forget — the server replies but we don't need the body.
+ * User-triggered {@code /hub} — purely client-side. Close the current
+ * WS, open a new one bound to the remembered previous session, drop
+ * the mediation banner. No server round-trip; the server doesn't know
+ * (or care) about the back-stack — workers are regular sessions, the
+ * hub is a regular session, switching between them is local.
+ *
+ * No-op when we're already at the hub (no previous session remembered).
  */
-function sendMediationEnd() {
-    if (!socket.value || !mediation.value)
+async function backToHub() {
+    const target = previousSessionId.value;
+    if (!target)
         return;
-    socket.value.sendNoReply('mediation-end');
+    const ok = await openAndBind(target);
+    if (!ok)
+        return;
+    previousSessionId.value = null;
+    mediation.value = null;
 }
 async function onSessionPicked(sessionId) {
     errorMessage.value = null;
-    await resumeSessionId(sessionId);
+    await openAndBind(sessionId);
 }
 async function onSessionBootstrapped(sessionId) {
     // session-bootstrap binds the socket as a side effect; no extra resume.
@@ -202,43 +250,24 @@ function backToPicker() {
     pushSessionIdToUrl(null);
     mode.value = 'picker';
 }
+let switchToUnsubscribe = null;
 onMounted(async () => {
-    try {
-        socket.value = await openSocket();
-    }
-    catch (e) {
-        mode.value = 'failed';
-        errorMessage.value = e instanceof Error ? e.message : t('chat.failedToOpen');
-        return;
-    }
-    socket.value.onClose(() => {
-        if (mode.value === 'live') {
-            mode.value = 'failed';
-            errorMessage.value = t('chat.connectionLost');
-        }
-        else if (mode.value === 'picker' || mode.value === 'occupied') {
-            mode.value = 'failed';
-            errorMessage.value = t('chat.connectionClosed');
-        }
-    });
-    // Mediation pushes flow on the connection regardless of which
-    // session is currently bound — subscribe once at the socket level
-    // so we catch both the "go to worker" handover and the reverse
-    // "back to Eddie" after /hub.
-    mediateHandoverUnsubscribe = socket.value.on('mediate-handover', (data) => { void onMediateHandover(data); });
-    // Resume hint: URL param wins over localStorage.
+    // Resume hint: URL param wins over localStorage. With a hint we go
+    // straight to a session-bound socket via openAndBind; without one
+    // we open a session-less socket for the picker.
     const hinted = urlSessionId() ?? getActiveSessionId();
     if (hinted) {
-        await resumeSessionId(hinted);
+        await openAndBind(hinted);
     }
     else {
-        mode.value = 'picker';
+        const ok = await openSocketForPicker();
+        if (ok)
+            mode.value = 'picker';
     }
 });
-let mediateHandoverUnsubscribe = null;
 onBeforeUnmount(() => {
     window.removeEventListener('beforeunload', beforeUnloadGuard);
-    mediateHandoverUnsubscribe?.();
+    switchToUnsubscribe?.();
     socket.value?.close();
 });
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
@@ -322,7 +351,7 @@ if (__VLS_ctx.errorMessage) {
                     return;
                 if (!(__VLS_ctx.mode === 'occupied'))
                     return;
-                __VLS_ctx.resumeSessionId(__VLS_ctx.activeSessionId ?? '');
+                __VLS_ctx.openAndBind(__VLS_ctx.activeSessionId ?? '');
             }
         };
         __VLS_20.slots.default;
@@ -391,6 +420,7 @@ else if (__VLS_ctx.mode === 'live' && __VLS_ctx.socket && __VLS_ctx.activeSessio
     const __VLS_41 = __VLS_asFunctionalComponent(ChatView, new ChatView({
         ...{ 'onLeave': {} },
         ...{ 'onHub': {} },
+        key: (__VLS_ctx.activeSessionId),
         socket: (__VLS_ctx.socket),
         sessionId: (__VLS_ctx.activeSessionId),
         mediation: (__VLS_ctx.mediation),
@@ -398,6 +428,7 @@ else if (__VLS_ctx.mode === 'live' && __VLS_ctx.socket && __VLS_ctx.activeSessio
     const __VLS_42 = __VLS_41({
         ...{ 'onLeave': {} },
         ...{ 'onHub': {} },
+        key: (__VLS_ctx.activeSessionId),
         socket: (__VLS_ctx.socket),
         sessionId: (__VLS_ctx.activeSessionId),
         mediation: (__VLS_ctx.mediation),
@@ -409,7 +440,7 @@ else if (__VLS_ctx.mode === 'live' && __VLS_ctx.socket && __VLS_ctx.activeSessio
         onLeave: (__VLS_ctx.leaveLive)
     };
     const __VLS_48 = {
-        onHub: (__VLS_ctx.sendMediationEnd)
+        onHub: (__VLS_ctx.backToHub)
     };
     var __VLS_43;
 }
@@ -451,8 +482,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             mediation: mediation,
             username: username,
             connectionState: connectionState,
-            resumeSessionId: resumeSessionId,
-            sendMediationEnd: sendMediationEnd,
+            openAndBind: openAndBind,
+            backToHub: backToHub,
             onSessionPicked: onSessionPicked,
             onSessionBootstrapped: onSessionBootstrapped,
             leaveLive: leaveLive,

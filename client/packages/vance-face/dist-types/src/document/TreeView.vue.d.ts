@@ -29,8 +29,8 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {
     "onUpdate:doc"?: ((doc: TreeDocument) => any) | undefined;
 }>, {
     mode: "editor" | "inline" | "embedded";
-    doc: TreeDocument | null;
     meta: FenceMeta;
+    doc: TreeDocument | null;
     items: TreeItem[];
     pathPrefix: number[];
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;

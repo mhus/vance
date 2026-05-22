@@ -1,7 +1,5 @@
 package de.mhus.vance.foot.command;
 
-import de.mhus.vance.api.ws.MessageType;
-import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.foot.connection.ConnectionService;
 import de.mhus.vance.foot.ui.ChatTerminal;
 import java.util.List;
@@ -48,13 +46,9 @@ public class HubSlashCommand implements SlashCommand {
 
     @Override
     public void execute(List<String> args) {
-        WebSocketEnvelope frame = WebSocketEnvelope.notification(
-                MessageType.MEDIATION_END, null);
-        boolean sent = connection.send(frame);
-        if (!sent) {
-            terminal.warn("Could not send /hub — no active connection.");
-            return;
-        }
-        terminal.info("/hub — asking the brain to bounce me back to Eddie.");
+        // Foot's switch-to / switch-back handlers are not wired yet.
+        // Once they are, /hub becomes a local close+reopen on the
+        // remembered hub sessionId — same flow as the web client.
+        terminal.warn("/hub is not implemented in foot yet — switch back via /session-resume or restart the client.");
     }
 }

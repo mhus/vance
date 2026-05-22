@@ -28,8 +28,7 @@ export * from './scripts/ScriptValidateRequest';
 export * from './scripts/ScriptValidateResponse';
 
 export * from './eddie/ChannelMode';
-export * from './eddie/MediateHandoverNotification';
-export * from './eddie/MediationState';
+export * from './eddie/SwitchToNotification';
 
 export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';

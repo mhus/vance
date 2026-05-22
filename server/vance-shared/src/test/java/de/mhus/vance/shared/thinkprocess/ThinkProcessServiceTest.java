@@ -454,47 +454,6 @@ class ThinkProcessServiceTest {
         assertThat(service.findWorkerLink("eddie-1", "missing")).isEmpty();
     }
 
-    // ─── mediation (Eddie's MEDIATE action persistence) ─────────────────
-
-    @Test
-    void setMediation_atomicallySetsTheEmbeddedRecord() {
-        UpdateResult ok = mock(UpdateResult.class);
-        when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
-
-        de.mhus.vance.shared.eddie.Mediation m = de.mhus.vance.shared.eddie.Mediation.builder()
-                .workerProcessId("w-1")
-                .workerSessionId("ws-1")
-                .startedAt(java.time.Instant.parse("2026-05-08T10:00:00Z"))
-                .state(de.mhus.vance.api.eddie.MediationState.ACTIVE)
-                .build();
-
-        boolean ok2 = service.setMediation("eddie-1", m);
-
-        assertThat(ok2).isTrue();
-        var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
-        assertThat(captor.getValue().getUpdateObject()).containsKey("$set");
-    }
-
-    @Test
-    void clearMediation_unsetsTheField() {
-        UpdateResult ok = mock(UpdateResult.class);
-        when(ok.getModifiedCount()).thenReturn(1L);
-        when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
-                eq(ThinkProcessDocument.class))).thenReturn(ok);
-
-        boolean ok2 = service.clearMediation("eddie-1");
-
-        assertThat(ok2).isTrue();
-        var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
-        assertThat(captor.getValue().getUpdateObject()).containsKey("$unset");
-    }
-
     // ─── workingProjectId (Eddie's spot pointer) ─────────────────────────
 
     @Test

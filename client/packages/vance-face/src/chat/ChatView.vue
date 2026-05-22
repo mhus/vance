@@ -64,14 +64,12 @@ type ProcessModeName = 'NORMAL' | 'EXPLORING' | 'PLANNING' | 'EXECUTING';
 
 /**
  * Mirrors {@code ChatApp.MediationState}. Non-null while the bound
- * session is a worker Eddie handed off to. Drives the mediation
- * banner and lets {@code send()} intercept the {@code /hub} slash
- * command (spec eddie-engine.md §8.5 + engine-message-routing.md §4.1.2).
+ * session is one Eddie switched us into. Drives the mediation banner
+ * and lets {@code send()} intercept the {@code /hub} slash command
+ * (spec eddie-engine.md §8.5).
  */
 interface MediationState {
   workerProjectName: string;
-  workerSessionId: string;
-  eddieSessionId: string;
 }
 
 const props = defineProps<{

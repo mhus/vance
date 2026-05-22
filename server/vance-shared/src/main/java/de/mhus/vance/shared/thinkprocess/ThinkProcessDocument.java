@@ -5,7 +5,6 @@ import de.mhus.vance.api.thinkprocess.ProcessMode;
 import de.mhus.vance.api.thinkprocess.PromptMode;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.api.thinkprocess.TodoItem;
-import de.mhus.vance.shared.eddie.Mediation;
 import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -274,14 +273,6 @@ public class ThinkProcessDocument {
      */
     @Builder.Default
     private List<de.mhus.vance.shared.eddie.WorkerLinkSnapshot> workerLinks = new ArrayList<>();
-
-    /**
-     * Eddie-only: marks an active WS mediation — the user-client is
-     * currently rebound to a worker session, Eddie's LLM lane pauses
-     * until the user comes back. {@code null} when no mediation is
-     * active. See {@code specification/eddie-engine.md} §8.5.
-     */
-    private @Nullable Mediation mediation;
 
     /**
      * Eddie-only: the foreign project Eddie currently coordinates with

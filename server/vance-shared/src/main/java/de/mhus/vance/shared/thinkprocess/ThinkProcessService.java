@@ -823,6 +823,27 @@ public class ThinkProcessService {
         return result.getModifiedCount() > 0;
     }
 
+    /**
+     * Drop {@code mediation} on every think-process at once. Used on
+     * Brain startup: mediation is live-wire state (a WS bound to a
+     * worker session + Eddie's LLM-lane on hold), which has no meaning
+     * across a Brain restart — the WS dies, the lane never ran. Leaving
+     * a stale flag in Mongo would keep Eddie's lane permanently paused
+     * for the next session-resume, with no way for the user to recover
+     * except a hand-rolled DB edit. We persist it during the live
+     * window only so that subsequent lane-turns within the same Brain
+     * process can skip the LLM call.
+     *
+     * @return number of documents whose {@code mediation} was unset
+     */
+    public long clearAllMediations() {
+        Query query = new Query(Criteria.where("mediation").exists(true));
+        Update update = new Update().unset("mediation");
+        UpdateResult result = mongoTemplate.updateMulti(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount();
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Eddie's working-project pointer ("spot"). The home project lives
     // on {@link ThinkProcessDocument#getProjectId()} and never moves;

@@ -328,6 +328,16 @@ public class SessionBootstrapHandler implements WsHandler {
             }
         }
 
+        // Propagate the connection profile to every think-process on the
+        // session so the per-turn tool filter (Tool.allowedForProfile)
+        // and capability checks (e.g. Eddie's canMediate gate) see the
+        // current bound profile. Done after chat-process spawn + any
+        // additional processes so they're all included. Mirrors
+        // SessionCreateHandler / SessionResumeHandler. See
+        // engine-message-routing.md §4.1.1.
+        thinkProcessService.updateBoundProfileForSession(
+                session.getSessionId(), ctx.getProfile());
+
         SessionBootstrapResponse response = SessionBootstrapResponse.builder()
                 .sessionId(session.getSessionId())
                 .projectId(session.getProjectId())

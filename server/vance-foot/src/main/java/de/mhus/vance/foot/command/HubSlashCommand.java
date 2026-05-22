@@ -62,8 +62,13 @@ public class HubSlashCommand implements SlashCommand {
             return;
         }
         try {
-            connection.disconnect("hub return");
-            connection.connect();
+            // Same unbind+resume pattern as SwitchToHandler — keeps the
+            // WS open so we don't re-fire WelcomeHandler.autoBootstrap
+            // on every /hub.
+            connection.request(
+                    MessageType.SESSION_UNBIND,
+                    null, Void.class, Duration.ofSeconds(10));
+            sessions.clear();
             SessionResumeResponse resp = connection.request(
                     MessageType.SESSION_RESUME,
                     SessionResumeRequest.builder().sessionId(target).build(),

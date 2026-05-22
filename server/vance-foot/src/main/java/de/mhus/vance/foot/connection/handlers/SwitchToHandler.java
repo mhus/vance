@@ -20,17 +20,20 @@ import org.springframework.stereotype.Component;
 /**
  * Handles the server-pushed {@code switch-to} frame — Eddie's
  * {@code MEDIATE} action (or any future flow that wants to redirect
- * the client to a different session) tells us to drop the current
- * WebSocket and open a new one bound to the target session.
+ * the client to a different session) tells us to switch the WS to a
+ * different session.
  *
- * <p>Flow mirrors the web client (see {@code ChatApp.onSwitchTo}):
+ * <p>Flow:
  * <ol>
  *   <li>Remember the current session id on the back-stack so
  *       {@code /hub} can later return to it.</li>
- *   <li>Tear down the WS (close + reopen — clean break, no
- *       session-unbind dance).</li>
- *   <li>{@code session-resume} on the target id, bind the session
- *       service.</li>
+ *   <li>{@code session-unbind} the current session, then
+ *       {@code session-resume} the target on the same WS. Same
+ *       semantic result as the web client's close+reopen dance, but
+ *       skips the WS handshake — and crucially avoids re-firing
+ *       {@code WelcomeHandler.autoBootstrap}, which would otherwise
+ *       race the resume and try to create a fresh session.</li>
+ *   <li>Bind the session service to the new target.</li>
  *   <li>Echo a one-line "switched to X — type /hub to return" hint
  *       to the terminal so the user knows where they ended up.</li>
  * </ol>
@@ -97,8 +100,15 @@ public class SwitchToHandler implements MessageHandler {
         }
 
         try {
-            connection.disconnect("switching to " + target);
-            connection.connect();
+            // session-unbind on the same WS — quick round-trip, no
+            // disconnect / reconnect / welcome / auto-bootstrap chain.
+            connection.request(
+                    MessageType.SESSION_UNBIND,
+                    null, Void.class, Duration.ofSeconds(10));
+            sessions.clear();
+            // Then resume on the target. SessionResumeHandler requires
+            // a session-less connection, which the unbind above
+            // guaranteed.
             SessionResumeResponse resp = connection.request(
                     MessageType.SESSION_RESUME,
                     SessionResumeRequest.builder().sessionId(target).build(),

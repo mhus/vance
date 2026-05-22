@@ -201,7 +201,33 @@ public final class ChartCodec {
             }
             out.add(new ChartSeries(name, color, data, extra));
         }
+        // If the on-disk body offered series entries but none survived
+        // validation, the input is structurally wrong (most often raw
+        // ECharts options that miss `name` / `data` per series). A
+        // silent empty chart would just hide the mistake — throw so the
+        // editor's parse-error alert (or the chat's render-error path)
+        // can show the user what to fix.
+        if (out.isEmpty() && !list.isEmpty()) {
+            throw new KindCodecException(
+                    "No valid series in `series` (input had " + list.size() + " entries). "
+                    + "Each series needs `name` (string) and `data` (non-empty array of points "
+                    + "matching chartType `" + type.wire() + "`, e.g. " + sampleShape(type)
+                    + "). Vance charts use this schema directly — do not use raw ECharts "
+                    + "options like `dataset` or bare `series[].type`.");
+        }
         return out;
+    }
+
+    /** Human-readable hint for the data-point shape of a given chart
+     *  type — embedded in the codec error so the user (and the LLM on
+     *  retry) sees exactly what to emit. */
+    private static String sampleShape(ChartType type) {
+        return switch (type) {
+            case LINE, BAR, AREA, SCATTER -> "{ x: 'A', y: 10 }";
+            case PIE, DONUT -> "{ name: 'A', value: 10 }";
+            case CANDLESTICK -> "{ t: '2024-01-01', o: 1, h: 2, l: 0.5, c: 1.5 }";
+            case HEATMAP -> "{ x: 0, y: 0, v: 1 }";
+        };
     }
 
     @SuppressWarnings("unchecked")

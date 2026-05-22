@@ -240,6 +240,46 @@ class ChartCodecTest {
     }
 
     @Test
+    void parseJson_allSeriesRejected_throws() {
+        // Mimics the failure mode where the LLM emits raw ECharts
+        // options — `series[].type` without `name`/`data`. Used to
+        // silently render an empty chart; now throws so the editor
+        // shows the user what's wrong.
+        String body = """
+                {
+                  "$meta": { "kind": "chart" },
+                  "chart": { "chartType": "bar" },
+                  "series": [
+                    { "type": "bar" },
+                    { "type": "bar" }
+                  ]
+                }
+                """;
+
+        assertThatThrownBy(() -> ChartCodec.parse(body, "application/json"))
+                .isInstanceOf(KindCodecException.class)
+                .hasMessageContaining("No valid series")
+                .hasMessageContaining("chartType `bar`");
+    }
+
+    @Test
+    void parseJson_emptySeriesArray_isAccepted() {
+        // Skeleton state — `series: []` is legitimate (user is about
+        // to populate). Only throws when there were inputs that all
+        // got rejected.
+        String body = """
+                {
+                  "$meta": { "kind": "chart" },
+                  "chart": { "chartType": "line" },
+                  "series": []
+                }
+                """;
+
+        ChartDocument doc = ChartCodec.parse(body, "application/json");
+        assertThat(doc.series()).isEmpty();
+    }
+
+    @Test
     void parseJson_seriesWithNoValidPoints_elided() {
         String body = """
                 {

@@ -688,13 +688,41 @@ Block:
 - ` ```tree` — nested-Bullet-Outline
 - ` ```list` / ` ```items` — flache Bullet-List
 - ` ```records` — Markdown-Tabelle mit Schema-Header
-- ` ```chart` — Diagramm (JSON oder YAML mit `$meta: { kind: chart }`).
-  `chart.chartType` ist einer aus `line`, `bar`, `area`, `scatter`,
-  `pie`, `donut`, `candlestick`, `heatmap`. Renderer ist ECharts;
-  Datenpunkt-Shape pro `chartType` ist fest (z.B. `{x, y}` für
-  line/bar, `{name, value}` für pie, `{t, o, h, l, c}` für
-  candlestick). Nutze das, wenn der User Daten sehen will — direkt
-  hier, ohne Document-Umweg.
+- ` ```chart` — Diagramm. Eigenes Vance-Schema, **nicht** rohe
+  ECharts-Optionen. Top-Level: `$meta: { kind: chart }`, dann
+  `chart: { chartType, title?, legend?, stacked?, smooth? }`,
+  `xAxis: { type }`, `yAxis: { type }`, `series: [{ name, data: [...] }]`.
+  `chartType` ist einer aus `line`, `bar`, `area`, `scatter`, `pie`,
+  `donut`, `candlestick`, `heatmap`. Datenpunkt-Form pro `chartType`:
+
+  - line/bar/area/scatter: `{ x, y }`
+  - pie/donut: `{ name, value }`
+  - candlestick: `{ t, o, h, l, c }` (optional `v` für Volumen)
+  - heatmap: `{ x, y, v }`
+
+  Minimal-Beispiel:
+
+  ` ```chart`
+  ```yaml
+  $meta:
+    kind: chart
+  chart:
+    chartType: bar
+    title: Sales Q1
+  xAxis: { type: category }
+  yAxis: { type: value }
+  series:
+    - name: Revenue
+      data:
+        - { x: Jan, y: 12000 }
+        - { x: Feb, y: 14500 }
+        - { x: Mar, y: 13200 }
+  ```
+  ` ``` `
+
+  Pro Serie ein `name` (String) und `data` (Array). Nutze **keine**
+  ECharts-Konstrukte wie `dataset.source` oder `series[].type` ohne
+  `data` — der Codec lehnt das ab und der Chart bleibt leer.
 - ` ```youtube` — Body = YouTube-URL oder 11-Char-Video-ID; Meta-Keys
   `start=N` (Sekunden-Offset), `title=...` (Caption). Rendert
   privacy-freundlich (youtube-nocookie). Nutze das, wenn der User

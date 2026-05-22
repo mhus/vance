@@ -305,7 +305,38 @@ function promoteSeries(raw: unknown, chartType: ChartType): ChartSeries[] {
     }
     out.push({ name: nameRaw, color, data, extra });
   }
+  // If the on-disk body offered series entries but none survived
+  // validation, the input is structurally wrong (most often raw
+  // ECharts options with `series[].type` and no `name`/`data`).
+  // A silent empty chart would hide the mistake; throw so the editor
+  // surfaces the parse error and the LLM sees the contract on retry.
+  if (out.length === 0 && raw.length > 0) {
+    throw new ChartCodecError(
+      `No valid series in \`series\` (input had ${raw.length} entries). `
+      + 'Each series needs `name` (string) and `data` (non-empty array of points '
+      + `matching chartType \`${chartType}\`, e.g. ${sampleShape(chartType)}). `
+      + 'Vance charts use this schema directly — do not use raw ECharts options '
+      + 'like `dataset` or bare `series[].type`.',
+    );
+  }
   return out;
+}
+
+function sampleShape(type: ChartType): string {
+  switch (type) {
+    case 'line':
+    case 'bar':
+    case 'area':
+    case 'scatter':
+      return "{ x: 'A', y: 10 }";
+    case 'pie':
+    case 'donut':
+      return "{ name: 'A', value: 10 }";
+    case 'candlestick':
+      return "{ t: '2024-01-01', o: 1, h: 2, l: 0.5, c: 1.5 }";
+    case 'heatmap':
+      return '{ x: 0, y: 0, v: 1 }';
+  }
 }
 
 function promoteOverride(raw: unknown): Record<string, unknown> | null {

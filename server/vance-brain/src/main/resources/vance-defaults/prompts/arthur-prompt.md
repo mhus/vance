@@ -588,13 +588,41 @@ foot-CLI shows the raw fenced block:
 - ` ```tree` — nested-bullet outline
 - ` ```list` / ` ```items` — flat bullet list
 - ` ```records` — Markdown table with a schema header
-- ` ```chart` — chart (JSON or YAML with `$meta: { kind: chart }`).
-  `chart.chartType` is one of `line`, `bar`, `area`, `scatter`,
-  `pie`, `donut`, `candlestick`, `heatmap`. Renderer is ECharts;
-  the data-point shape is fixed per `chartType` (e.g. `{x, y}` for
-  line/bar, `{name, value}` for pie, `{t, o, h, l, c}` for
-  candlestick). Use this when the user wants to *see* numbers —
-  right here, no Document detour.
+- ` ```chart` — chart. Vance schema, **not** raw ECharts options.
+  Top-level: `$meta: { kind: chart }`, then
+  `chart: { chartType, title?, legend?, stacked?, smooth? }`,
+  `xAxis: { type }`, `yAxis: { type }`, `series: [{ name, data: [...] }]`.
+  `chartType` is one of `line`, `bar`, `area`, `scatter`, `pie`,
+  `donut`, `candlestick`, `heatmap`. Data-point shape per `chartType`:
+
+  - line/bar/area/scatter: `{ x, y }`
+  - pie/donut: `{ name, value }`
+  - candlestick: `{ t, o, h, l, c }` (optional `v` for volume)
+  - heatmap: `{ x, y, v }`
+
+  Minimal example:
+
+  ` ```chart`
+  ```yaml
+  $meta:
+    kind: chart
+  chart:
+    chartType: bar
+    title: Sales Q1
+  xAxis: { type: category }
+  yAxis: { type: value }
+  series:
+    - name: Revenue
+      data:
+        - { x: Jan, y: 12000 }
+        - { x: Feb, y: 14500 }
+        - { x: Mar, y: 13200 }
+  ```
+  ` ``` `
+
+  Each series needs a `name` (string) and a `data` array. Do **not**
+  use ECharts constructs like `dataset.source` or `series[].type`
+  without `data` — the codec rejects them and the chart stays empty.
 - ` ```youtube` — body is a YouTube URL or 11-char video ID; meta keys
   `start=N` (seconds offset), `title=...` (caption). Renders as a
   privacy-friendly embed (youtube-nocookie). Use this when the user

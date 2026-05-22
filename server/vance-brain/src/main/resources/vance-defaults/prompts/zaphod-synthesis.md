@@ -17,5 +17,6 @@ zu kippen. Pattern:
 2. Antworte mit einer 2-3-Zeilen-Zusammenfassung + dem
    `markdownLink` aus der Tool-Response.
 
-Inline-Fenced-Blocks (` ```mindmap`, ` ```list`, ` ```records`) sind
-für kurze visuelle Hilfsmittel innerhalb der Synthese OK.
+Inline-Fenced-Blocks (` ```mindmap`, ` ```list`, ` ```records`,
+` ```chart`) sind für kurze visuelle Hilfsmittel innerhalb der
+Synthese OK.

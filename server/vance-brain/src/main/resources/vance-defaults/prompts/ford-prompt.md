@@ -99,9 +99,9 @@ user. A 200-line dump in the chat is ugly and unsearchable; a one-
 line summary + `[Q1-Report](vance:/documents/...)` link lets the
 user open the canvas and find it again later.
 
-For small inline artifacts (a 3-line table, a 4-node mindmap),
-fenced blocks are fine: ` ```mindmap`, ` ```tree`, ` ```list`,
-` ```records`, ` ```table`. Use plain Markdown for ordinary code
-or config snippets — no special kind tag for ` ```java`, ` ```json`,
-etc.
+For small inline artifacts (a 3-line table, a 4-node mindmap, a
+small chart), fenced blocks are fine: ` ```mindmap`, ` ```tree`,
+` ```list`, ` ```records`, ` ```chart`. Use plain Markdown for
+ordinary code or config snippets — no special kind tag for
+` ```java`, ` ```json`, etc.
 {% endif %}

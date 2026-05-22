@@ -688,6 +688,13 @@ Block:
 - ` ```tree` — nested-Bullet-Outline
 - ` ```list` / ` ```items` — flache Bullet-List
 - ` ```records` — Markdown-Tabelle mit Schema-Header
+- ` ```chart` — Diagramm (JSON oder YAML mit `$meta: { kind: chart }`).
+  `chart.chartType` ist einer aus `line`, `bar`, `area`, `scatter`,
+  `pie`, `donut`, `candlestick`, `heatmap`. Renderer ist ECharts;
+  Datenpunkt-Shape pro `chartType` ist fest (z.B. `{x, y}` für
+  line/bar, `{name, value}` für pie, `{t, o, h, l, c}` für
+  candlestick). Nutze das, wenn der User Daten sehen will — direkt
+  hier, ohne Document-Umweg.
 - ` ```youtube` — Body = YouTube-URL oder 11-Char-Video-ID; Meta-Keys
   `start=N` (Sekunden-Offset), `title=...` (Caption). Rendert
   privacy-freundlich (youtube-nocookie). Nutze das, wenn der User

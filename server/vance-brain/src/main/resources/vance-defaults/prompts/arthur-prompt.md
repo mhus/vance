@@ -588,6 +588,13 @@ foot-CLI shows the raw fenced block:
 - ` ```tree` — nested-bullet outline
 - ` ```list` / ` ```items` — flat bullet list
 - ` ```records` — Markdown table with a schema header
+- ` ```chart` — chart (JSON or YAML with `$meta: { kind: chart }`).
+  `chart.chartType` is one of `line`, `bar`, `area`, `scatter`,
+  `pie`, `donut`, `candlestick`, `heatmap`. Renderer is ECharts;
+  the data-point shape is fixed per `chartType` (e.g. `{x, y}` for
+  line/bar, `{name, value}` for pie, `{t, o, h, l, c}` for
+  candlestick). Use this when the user wants to *see* numbers —
+  right here, no Document detour.
 - ` ```youtube` — body is a YouTube URL or 11-char video ID; meta keys
   `start=N` (seconds offset), `title=...` (caption). Renders as a
   privacy-friendly embed (youtube-nocookie). Use this when the user
@@ -613,7 +620,7 @@ through the tool call, not as text.
 |---|---|
 | One-line answer, casual chat | Plain text |
 | User wants to *see* something right now ("show me", "embed", "play", "zeig mir", "spiel ab") | **Inline fence** — do NOT detour through a Document |
-| YouTube video, single image, quick mindmap, small example table | **Inline fence** in the chat |
+| YouTube video, single image, quick mindmap, small example table, small chart | **Inline fence** in the chat |
 | User wants something they will *keep / find again* ("write", "draft", "summarise", "plan", "list", "compare", "outline", "research", "save this", "for later") | Document + embedded link |
 | Worker reply with substantive content (> ~30 lines text, multi-section report) | Save via `doc_create_kind`, RELAY with the link — don't paste 100 lines |
 | Large image, PDF, audio, video you generate yourself | Document + link (only path that works) |

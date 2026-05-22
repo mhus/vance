@@ -4,6 +4,7 @@ import de.mhus.vance.foot.agent.ClientAgentDocService;
 import de.mhus.vance.foot.command.SuggestionCache;
 import de.mhus.vance.foot.tools.ClientToolService;
 import de.mhus.vance.foot.tools.exec.FootExecEventDispatcher;
+import de.mhus.vance.foot.ui.BusyIndicator;
 import de.mhus.vance.foot.ui.StatusBar;
 import de.mhus.vance.foot.ui.WindowTitleService;
 import java.util.concurrent.atomic.AtomicReference;
@@ -40,6 +41,7 @@ public class SessionService {
     private final ObjectProvider<SuggestionCache> suggestionCache;
     private final ObjectProvider<FootExecEventDispatcher> execEventDispatcher;
     private final WindowTitleService windowTitle;
+    private final ObjectProvider<BusyIndicator> busyIndicator;
 
     public SessionService(
             ObjectProvider<StatusBar> statusBar,
@@ -47,13 +49,15 @@ public class SessionService {
             ObjectProvider<ClientAgentDocService> clientAgentDocService,
             ObjectProvider<SuggestionCache> suggestionCache,
             ObjectProvider<FootExecEventDispatcher> execEventDispatcher,
-            WindowTitleService windowTitle) {
+            WindowTitleService windowTitle,
+            ObjectProvider<BusyIndicator> busyIndicator) {
         this.statusBar = statusBar;
         this.clientToolService = clientToolService;
         this.clientAgentDocService = clientAgentDocService;
         this.suggestionCache = suggestionCache;
         this.execEventDispatcher = execEventDispatcher;
         this.windowTitle = windowTitle;
+        this.busyIndicator = busyIndicator;
     }
 
     public @Nullable BoundSession current() {
@@ -62,6 +66,11 @@ public class SessionService {
 
     public void bind(String sessionId, String projectId) {
         current.set(new BoundSession(sessionId, projectId, null, null));
+        // Any engine_turn frames from the previously bound session
+        // (or from before this fresh bind) can no longer reach us —
+        // clear the in-flight counter so the spinner doesn't stick.
+        BusyIndicator busy = busyIndicator.getIfAvailable();
+        if (busy != null) busy.clear();
         notifyStatusBar();
         notifyWindowTitle();
         notifyClientTools();

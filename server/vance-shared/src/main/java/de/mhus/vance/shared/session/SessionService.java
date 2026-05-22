@@ -327,6 +327,38 @@ public class SessionService {
     }
 
     /**
+     * Force-release the connection lock regardless of which connection
+     * currently owns it. Used by Eddie's {@code MEDIATE} action when
+     * the user explicitly asks to take over a session that another
+     * connection (usually a stale tab) is sitting on. The session
+     * itself stays OPEN; only the binding is cleared.
+     *
+     * <p>Multi-pod safe: the Mongo update is authoritative across
+     * pods. The previous owner's in-memory state on the other pod
+     * (connection registries, WS handle) goes stale but does no harm
+     * — the next frame from that connection gets a "session lost"
+     * rejection because Mongo's {@code boundConnectionId} no longer
+     * matches.
+     *
+     * @return {@code true} when a bound connection was cleared,
+     *         {@code false} when the session was already unbound or
+     *         missing
+     */
+    public boolean forceUnbind(String sessionId) {
+        Query query = new Query(Criteria.where(F_SESSION_ID).is(sessionId)
+                .and(F_BOUND_CONNECTION).ne(null));
+        Update update = new Update()
+                .set(F_BOUND_CONNECTION, null)
+                .set(F_LAST_ACTIVITY, Instant.now());
+        UpdateResult result = mongoTemplate.updateFirst(query, update, SessionDocument.class);
+        boolean unbound = result.getModifiedCount() == 1;
+        if (unbound) {
+            log.info("Force-unbound session '{}'", sessionId);
+        }
+        return unbound;
+    }
+
+    /**
      * Releases the connection lock if this caller still owns it. Safe to call
      * on sessions that were already unbound — it just does nothing.
      */

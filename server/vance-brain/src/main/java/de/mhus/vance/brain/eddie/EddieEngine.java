@@ -2028,6 +2028,22 @@ public class EddieEngine extends StructuredActionEngine {
                             + "aktiver Chat-Prozess gefunden.", true);
         }
 
+        // Take over the target session's binding. If another connection
+        // (typically a stale browser tab or a previous foot run) is
+        // sitting on the worker session, session-resume on the new
+        // client side would 409. MEDIATE is an explicit user intent
+        // to redirect their attention to this project — force-clear
+        // the bind so the upcoming session-resume succeeds. Multi-pod
+        // safe: Mongo is authoritative; the previous owner's stale
+        // in-memory state on the other pod stops mattering as soon as
+        // the next frame from them is rejected against the cleared
+        // bind. See SessionService.forceUnbind javadoc.
+        boolean tookOver = sessionService.forceUnbind(resolved.workerSessionId());
+        if (tookOver) {
+            log.info("Eddie id='{}' MEDIATE: took over session='{}' from previous binding",
+                    process.getId(), resolved.workerSessionId());
+        }
+
         // Push the switch-to frame. No server-side state writes — the
         // client owns the back-stack. Eddie's lane keeps running
         // normally; absence of user input is the natural "quiet" state

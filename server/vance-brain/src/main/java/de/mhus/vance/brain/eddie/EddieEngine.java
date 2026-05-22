@@ -2007,38 +2007,60 @@ public class EddieEngine extends StructuredActionEngine {
             return new ActionTurnOutcome(
                     "Sorry — interner Fehler: Mediate-Ziel fehlte.", true);
         }
-        // Resolve the worker link by name (process name from delegated_workers block).
-        var maybeLink = process.getWorkerLinks() == null
-                ? java.util.Optional.<de.mhus.vance.shared.eddie.WorkerLinkSnapshot>empty()
-                : process.getWorkerLinks().stream()
-                        .filter(l -> target.equals(l.getWorkerProcessName())
-                                || target.equals(l.getWorkerProcessId()))
-                        .findFirst();
-        if (maybeLink.isEmpty()) {
-            log.warn("Eddie id='{}' MEDIATE: no worker link for target='{}'",
+        // Resolve the mediation target. Two paths:
+        //
+        //  1) Fast path — Eddie delegated this worker herself, so the
+        //     identity fields live on her own workerLinks snapshot.
+        //  2) Fallback — the project pre-existed (user just named it).
+        //     Look up the project's chat-process via SessionService, the
+        //     same path ProjectChatSendTool uses for STEER_PROJECT.
+        //     Mediation needs three fields from either source: the
+        //     worker process id, the worker session id, and the worker
+        //     project name (for the handover frame).
+        MediateTarget resolved = null;
+        if (process.getWorkerLinks() != null) {
+            var linked = process.getWorkerLinks().stream()
+                    .filter(l -> target.equals(l.getWorkerProcessName())
+                            || target.equals(l.getWorkerProcessId()))
+                    .findFirst();
+            if (linked.isPresent()) {
+                var l = linked.get();
+                resolved = new MediateTarget(
+                        l.getWorkerProcessId(),
+                        l.getWorkerSessionId(),
+                        l.getWorkerProjectName());
+            }
+        }
+        if (resolved == null) {
+            resolved = resolveMediateTargetByProject(process, target);
+        }
+        if (resolved == null) {
+            log.warn("Eddie id='{}' MEDIATE: no worker / chat-process for target='{}'",
                     process.getId(), target);
             return new ActionTurnOutcome(
-                    "Konnte den Worker '" + target + "' nicht finden.", true);
+                    "Konnte das Projekt '" + target + "' nicht öffnen — kein "
+                            + "aktiver Chat-Prozess gefunden.", true);
         }
-        var link = maybeLink.get();
 
         // Persist mediation state — atomic.
         de.mhus.vance.shared.eddie.Mediation mediation =
                 de.mhus.vance.shared.eddie.Mediation.builder()
-                        .workerProcessId(link.getWorkerProcessId())
-                        .workerSessionId(link.getWorkerSessionId())
+                        .workerProcessId(resolved.workerProcessId())
+                        .workerSessionId(resolved.workerSessionId())
                         .startedAt(java.time.Instant.now())
                         .state(de.mhus.vance.api.eddie.MediationState.ACTIVE)
                         .build();
         thinkProcessService.setMediation(process.getId(), mediation);
 
         // Tear down the Working-WS to this worker — the client takes
-        // over the live conversation directly.
+        // over the live conversation directly. (Only relevant for the
+        // fast path; the fallback path never had a Working-WS, so the
+        // pool close is a harmless no-op.)
         try {
-            workerConnectionPool.close(process.getId(), link.getWorkerProcessId());
+            workerConnectionPool.close(process.getId(), resolved.workerProcessId());
         } catch (RuntimeException e) {
             log.debug("Eddie MEDIATE: pool close failed for worker={}: {}",
-                    link.getWorkerProcessId(), e.toString());
+                    resolved.workerProcessId(), e.toString());
         }
 
         // Plan-cleanup: empty the fused TodoList on the user-client.
@@ -2062,9 +2084,9 @@ public class EddieEngine extends StructuredActionEngine {
                 de.mhus.vance.api.eddie.MediateHandoverNotification.builder()
                         .eddieProcessId(process.getId() == null ? "" : process.getId())
                         .eddieSessionId(process.getSessionId())
-                        .targetSessionId(link.getWorkerSessionId())
-                        .targetProjectId(link.getWorkerProjectName())
-                        .targetProcessName(link.getWorkerProcessName())
+                        .targetSessionId(resolved.workerSessionId())
+                        .targetProjectId(resolved.workerProjectName())
+                        .targetProcessName(target)
                         .voiceAnnouncement(voice)
                         .build();
         try {
@@ -2081,12 +2103,59 @@ public class EddieEngine extends StructuredActionEngine {
                     true);
         }
 
-        log.info("Eddie id='{}' MEDIATE worker='{}' targetSession='{}' reason='{}'",
-                process.getId(), link.getWorkerProcessName(),
-                link.getWorkerSessionId(), summariseReason(action.reason()));
+        log.info("Eddie id='{}' MEDIATE target='{}' worker='{}' targetSession='{}' reason='{}'",
+                process.getId(), target, resolved.workerProcessId(),
+                resolved.workerSessionId(), summariseReason(action.reason()));
 
         return new ActionTurnOutcome(voice == null || voice.isBlank() ? null : voice,
                 /*awaitingUserInput=*/ true);
+    }
+
+    /** Three fields the {@link de.mhus.vance.shared.eddie.Mediation}
+     *  record + the {@link de.mhus.vance.api.eddie.MediateHandoverNotification}
+     *  need from either the worker-links fast path or the project-name
+     *  fallback. */
+    private record MediateTarget(
+            String workerProcessId,
+            String workerSessionId,
+            String workerProjectName) {}
+
+    /**
+     * Resolve a mediation target by project name when no worker-link
+     * exists (project pre-existed before Eddie started). Uses the same
+     * lookup chain as {@code ProjectChatSendTool}: project's sessions →
+     * most-recent session with {@code chatProcessId} → that chat-
+     * process's id + session id.
+     *
+     * <p>Returns {@code null} when the project has no chat-process —
+     * caller treats that as "no mediatable target".
+     */
+    private @Nullable MediateTarget resolveMediateTargetByProject(
+            ThinkProcessDocument process, String projectName) {
+        String tenantId = process.getTenantId();
+        if (tenantId == null || tenantId.isBlank()) return null;
+        java.util.List<de.mhus.vance.shared.session.SessionDocument> sessions;
+        try {
+            sessions = sessionService.listForProject(tenantId, projectName);
+        } catch (RuntimeException e) {
+            log.debug("Eddie MEDIATE: session lookup failed for project='{}': {}",
+                    projectName, e.toString());
+            return null;
+        }
+        if (sessions == null || sessions.isEmpty()) return null;
+        de.mhus.vance.shared.session.SessionDocument best = null;
+        for (var s : sessions) {
+            if (s.getChatProcessId() == null || s.getChatProcessId().isBlank()) continue;
+            if (best == null) { best = s; continue; }
+            java.time.Instant ai = s.getCreatedAt();
+            java.time.Instant bi = best.getCreatedAt();
+            if (ai != null && (bi == null || ai.isAfter(bi))) best = s;
+        }
+        if (best == null) return null;
+        return new MediateTarget(
+                best.getChatProcessId(),
+                best.getSessionId(),
+                projectName);
     }
 
     private ActionTurnOutcome handleWait(EngineAction action) {

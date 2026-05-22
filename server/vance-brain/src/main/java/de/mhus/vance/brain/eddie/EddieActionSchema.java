@@ -143,6 +143,18 @@ public final class EddieActionSchema {
     /** Worker process name whose last reply to relay (RELAY / RELAY_INBOX). */
     public static final String PARAM_SOURCE       = "source";
 
+    /** Worker process name (or id) to mediate to (MEDIATE) — distinct
+     *  from RELAY's {@link #PARAM_SOURCE} both semantically and to keep
+     *  the schema descriptions of the two parameters mutually exclusive
+     *  per action. */
+    public static final String PARAM_TARGET       = "target";
+
+    /** Optional short spoken sentence Eddie says to the user immediately
+     *  before the WS-rebind to the worker session (MEDIATE). Tells the
+     *  user what's happening and reminds them of the {@code /hub}
+     *  return path. */
+    public static final String PARAM_VOICE_ANNOUNCEMENT = "voiceAnnouncement";
+
     /** Optional short prefix prepended to relayed worker text (RELAY). */
     public static final String PARAM_PREFIX       = "prefix";
 
@@ -284,6 +296,25 @@ public final class EddieActionSchema {
                         + "relayed. Required for RELAY and RELAY_INBOX. Use "
                         + "the sourceProcessName from the most recent "
                         + "<process-event> marker, not a guess.");
+
+        Map<String, Object> targetProp = new LinkedHashMap<>();
+        targetProp.put("type", "string");
+        targetProp.put("description",
+                "Worker process name (or id) to mediate to. Required for "
+                        + "MEDIATE. Hands the user-WS directly to the named "
+                        + "worker's session for a pass-through conversation; "
+                        + "Eddie's LLM-lane pauses until the user types /hub "
+                        + "or the worker terminates. Pick the worker by name "
+                        + "from the delegated_workers block — not a guess.");
+
+        Map<String, Object> voiceAnnouncementProp = new LinkedHashMap<>();
+        voiceAnnouncementProp.put("type", "string");
+        voiceAnnouncementProp.put("description",
+                "Optional short spoken sentence Eddie says immediately "
+                        + "before the rebind (MEDIATE only). Should tell "
+                        + "the user what's about to happen and remind them "
+                        + "of the /hub return path. Leave empty for silent "
+                        + "hand-over.");
 
         Map<String, Object> prefixProp = new LinkedHashMap<>();
         prefixProp.put("type", "string");
@@ -445,6 +476,8 @@ public final class EddieActionSchema {
         properties.put(PARAM_PROJECT, projectProp);
         properties.put(PARAM_CONTENT, contentProp);
         properties.put(PARAM_SOURCE, sourceProp);
+        properties.put(PARAM_TARGET, targetProp);
+        properties.put(PARAM_VOICE_ANNOUNCEMENT, voiceAnnouncementProp);
         properties.put(PARAM_PREFIX, prefixProp);
         properties.put(PARAM_INBOX_TITLE, inboxTitleProp);
         properties.put(PARAM_SPOKEN, spokenProp);

@@ -2000,25 +2000,25 @@ public class EddieEngine extends StructuredActionEngine {
                     true);
         }
 
-        String source = action.stringParam(EddieActionSchema.PARAM_SOURCE);
-        if (source == null || source.isBlank()) {
-            log.warn("Eddie id='{}' MEDIATE missing source — reason='{}'",
+        String target = action.stringParam(EddieActionSchema.PARAM_TARGET);
+        if (target == null || target.isBlank()) {
+            log.warn("Eddie id='{}' MEDIATE missing target — reason='{}'",
                     process.getId(), action.reason());
             return new ActionTurnOutcome(
-                    "Sorry — interner Fehler: Worker-Quelle fehlte.", true);
+                    "Sorry — interner Fehler: Mediate-Ziel fehlte.", true);
         }
         // Resolve the worker link by name (process name from delegated_workers block).
         var maybeLink = process.getWorkerLinks() == null
                 ? java.util.Optional.<de.mhus.vance.shared.eddie.WorkerLinkSnapshot>empty()
                 : process.getWorkerLinks().stream()
-                        .filter(l -> source.equals(l.getWorkerProcessName())
-                                || source.equals(l.getWorkerProcessId()))
+                        .filter(l -> target.equals(l.getWorkerProcessName())
+                                || target.equals(l.getWorkerProcessId()))
                         .findFirst();
         if (maybeLink.isEmpty()) {
-            log.warn("Eddie id='{}' MEDIATE: no worker link for source='{}'",
-                    process.getId(), source);
+            log.warn("Eddie id='{}' MEDIATE: no worker link for target='{}'",
+                    process.getId(), target);
             return new ActionTurnOutcome(
-                    "Konnte den Worker '" + source + "' nicht finden.", true);
+                    "Konnte den Worker '" + target + "' nicht finden.", true);
         }
         var link = maybeLink.get();
 
@@ -2057,7 +2057,7 @@ public class EddieEngine extends StructuredActionEngine {
         }
 
         // Hand-over instruction to the client.
-        String voice = action.stringParam(EddieActionSchema.PARAM_MESSAGE);
+        String voice = action.stringParam(EddieActionSchema.PARAM_VOICE_ANNOUNCEMENT);
         de.mhus.vance.api.eddie.MediateHandoverNotification handover =
                 de.mhus.vance.api.eddie.MediateHandoverNotification.builder()
                         .eddieProcessId(process.getId() == null ? "" : process.getId())

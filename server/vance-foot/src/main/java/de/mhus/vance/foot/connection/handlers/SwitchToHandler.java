@@ -14,6 +14,7 @@ import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 /**
@@ -47,7 +48,13 @@ public class SwitchToHandler implements MessageHandler {
     private final ChatTerminal terminal;
     private final ObjectMapper json = JsonMapper.builder().build();
 
-    public SwitchToHandler(ConnectionService connection,
+    /**
+     * {@code @Lazy} on {@link ConnectionService} breaks the cycle:
+     * ConnectionService → MessageDispatcher → List&lt;MessageHandler&gt;
+     * → SwitchToHandler → ConnectionService. Same trick as
+     * {@code WelcomeHandler}.
+     */
+    public SwitchToHandler(@Lazy ConnectionService connection,
                            SessionService sessions,
                            SessionSwitchTracker tracker,
                            ChatTerminal terminal) {

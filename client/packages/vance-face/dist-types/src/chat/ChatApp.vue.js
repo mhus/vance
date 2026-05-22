@@ -1,4 +1,4 @@
-import { onBeforeUnmount, onMounted, ref, computed, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { BrainWebSocket, WebSocketRequestError, getTenantId, getUsername, setActiveSessionId, getActiveSessionId, } from '@vance/shared';
 import { EditorShell, VAlert, VButton } from '@components/index';
@@ -63,12 +63,7 @@ async function openSocket() {
  * {@link onSessionBootstrapped} without re-opening the socket.
  */
 async function openSocketForPicker() {
-    if (socket.value) {
-        switchToUnsubscribe?.();
-        switchToUnsubscribe = null;
-        socket.value.close();
-        socket.value = null;
-    }
+    await teardownCurrentSocket();
     try {
         socket.value = await openSocket();
     }
@@ -81,13 +76,31 @@ async function openSocketForPicker() {
     return true;
 }
 /**
+ * Drop the current socket and detach its listeners. Called before
+ * any switch — the listener unsubs run before close() so onClose
+ * doesn't fire the "connection lost" UI message for what's really an
+ * intentional swap.
+ */
+async function teardownCurrentSocket() {
+    switchToUnsubscribe?.();
+    switchToUnsubscribe = null;
+    onCloseUnsubscribe?.();
+    onCloseUnsubscribe = null;
+    if (socket.value) {
+        socket.value.close();
+        socket.value = null;
+    }
+}
+/**
  * Attach onClose + switch-to listeners on the given socket. Pulled
  * out so both paths (session-bound via {@link openAndBind} and
  * session-less via {@link openSocketForPicker}) share the same
- * wiring.
+ * wiring. The handles live in module-level refs so
+ * {@link teardownCurrentSocket} can detach them before an intentional
+ * close.
  */
 function attachSocketListeners(s) {
-    s.onClose(() => {
+    onCloseUnsubscribe = s.onClose(() => {
         if (mode.value === 'live') {
             mode.value = 'failed';
             errorMessage.value = t('chat.connectionLost');
@@ -110,14 +123,7 @@ function attachSocketListeners(s) {
  *          failed (mode + errorMessage are populated as a side effect).
  */
 async function openAndBind(sessionId) {
-    // Tear down the old socket. close() is idempotent and harmless when
-    // there's nothing to close (first connect).
-    if (socket.value) {
-        switchToUnsubscribe?.();
-        switchToUnsubscribe = null;
-        socket.value.close();
-        socket.value = null;
-    }
+    await teardownCurrentSocket();
     try {
         socket.value = await openSocket();
     }
@@ -132,6 +138,10 @@ async function openAndBind(sessionId) {
         activeSessionId.value = sessionId;
         setActiveSessionId(sessionId);
         pushSessionIdToUrl(sessionId);
+        // Clear any stale failure message from a prior connection cycle —
+        // we just successfully bound, so anything that complained about a
+        // lost connection is no longer true.
+        errorMessage.value = null;
         mode.value = 'live';
         return true;
     }
@@ -211,14 +221,10 @@ async function onSessionBootstrapped(sessionId) {
     mode.value = 'live';
 }
 async function leaveLive() {
-    // Guard against accidental loss: the WS will be unbound and any
-    // composer draft / unread progress disappears. Native confirm() is
-    // intentional — a modal dialog buys polish but adds component
-    // weight, and this is the only confirmation surface in the chat
-    // editor for now.
-    const ok = window.confirm(t('chat.confirmLeave'));
-    if (!ok)
-        return;
+    // No confirm dialog — the session stays alive on the server and the
+    // user can always re-enter it from the picker. Sending session-
+    // unbind frees the binding so the server marks the connection
+    // available; the WS itself stays open for picker / bootstrap use.
     if (socket.value && !socket.value.closed()) {
         socket.value.sendNoReply('session-unbind');
     }
@@ -227,30 +233,13 @@ async function leaveLive() {
     // localStorage.activeSessionId stays — it's a hint for next visit, not state.
     mode.value = 'picker';
 }
-/**
- * Browser tab close / navigation guard. Active only while in live
- * mode — the picker has no state worth protecting. The actual prompt
- * text is browser-controlled (locked down for anti-spam reasons), so
- * we only need to set {@code returnValue} to a non-empty string.
- */
-function beforeUnloadGuard(event) {
-    event.preventDefault();
-    event.returnValue = '';
-}
-watch(mode, (next, prev) => {
-    if (next === 'live' && prev !== 'live') {
-        window.addEventListener('beforeunload', beforeUnloadGuard);
-    }
-    else if (prev === 'live' && next !== 'live') {
-        window.removeEventListener('beforeunload', beforeUnloadGuard);
-    }
-});
 function backToPicker() {
     errorMessage.value = null;
     pushSessionIdToUrl(null);
     mode.value = 'picker';
 }
 let switchToUnsubscribe = null;
+let onCloseUnsubscribe = null;
 onMounted(async () => {
     // Resume hint: URL param wins over localStorage. With a hint we go
     // straight to a session-bound socket via openAndBind; without one
@@ -266,8 +255,8 @@ onMounted(async () => {
     }
 });
 onBeforeUnmount(() => {
-    window.removeEventListener('beforeunload', beforeUnloadGuard);
     switchToUnsubscribe?.();
+    onCloseUnsubscribe?.();
     socket.value?.close();
 });
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */

@@ -84,7 +84,32 @@ public class RecipeResolver {
         if (name == null || name.isBlank()) {
             return Optional.empty();
         }
-        return loader.load(tenantId, effectiveProjectId(projectId), name);
+        String effectiveProject = effectiveProjectId(projectId);
+
+        // 1. Exact match in the cascade (project → _tenant → bundled).
+        Optional<ResolvedRecipe> exact = loader.load(tenantId, effectiveProject, name);
+        if (exact.isPresent()) return exact;
+
+        // 2. User-namespace fallback. Slartibartfast persists named
+        //    recipes under `_user/<name>` (Phase-D convention), but
+        //    chat users refer to them by short name ("rat-der-macher",
+        //    not "_user/rat-der-macher"). When the caller passes a
+        //    bare name without a slash, retry once in the user
+        //    namespace before declaring the recipe unknown. Skipped
+        //    when the caller already specified a path (contains '/'),
+        //    so explicit `_slart/<runId>/<name>` lookups don't loop.
+        if (!name.contains("/")) {
+            Optional<ResolvedRecipe> userScoped =
+                    loader.load(tenantId, effectiveProject, "_user/" + name);
+            if (userScoped.isPresent()) {
+                log.info("RecipeResolver: short name '{}' resolved via "
+                                + "_user/-namespace fallback → '{}'",
+                        name, userScoped.get().name());
+                return userScoped;
+            }
+        }
+
+        return Optional.empty();
     }
 
     /**

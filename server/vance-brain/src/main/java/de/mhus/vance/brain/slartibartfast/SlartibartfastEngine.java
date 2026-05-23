@@ -158,6 +158,12 @@ public class SlartibartfastEngine implements ThinkEngine {
 
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
+    /** Fires per-phase progress status events so the chat user
+     *  sees Slart's lifecycle live instead of staring at silence
+     *  for 2-5 minutes. Each phase transition emits one
+     *  {@link de.mhus.vance.api.progress.StatusTag#PHASE_DONE}
+     *  status with the iteration's output summary. */
+    private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
     private final InboxItemService inboxItemService;
@@ -446,8 +452,11 @@ public class SlartibartfastEngine implements ThinkEngine {
                 }
             }
 
+            ArchitectStatus statusBefore = state.getStatus();
+            int iterationsBefore = state.getIterations().size();
             advanceOnePhase(process, ctx, state);
             persistState(process, state);
+            emitPhaseProgress(process, statusBefore, state, iterationsBefore);
 
             // Park check: if the phase posted an inbox dialog and
             // status didn't move to a terminal, BLOCK the process
@@ -789,6 +798,50 @@ public class SlartibartfastEngine implements ThinkEngine {
      * without LLM calls. M2 onward replaces the stubs in
      * {@link SlartibartfastPhases} with real implementations.
      */
+    /**
+     * Surface the just-completed phase transition to the chat user
+     * via {@link de.mhus.vance.brain.progress.ProgressEmitter} —
+     * Slart's runtime is a 2-5 minute pipeline with no inherent
+     * sub-process output, so without these status events the user
+     * stares at a silent chat. Emits a
+     * {@link de.mhus.vance.api.progress.StatusTag#PHASE_DONE}
+     * carrying the phase name + the new PhaseIteration's
+     * output-summary when a new iteration was appended. Skips
+     * spam-events on null-transitions (recovery rollbacks that
+     * don't add an iteration).
+     */
+    private void emitPhaseProgress(
+            ThinkProcessDocument process,
+            ArchitectStatus statusBefore,
+            ArchitectState state,
+            int iterationsBefore) {
+        java.util.List<de.mhus.vance.api.slartibartfast.PhaseIteration> iters =
+                state.getIterations();
+        if (iters.size() <= iterationsBefore) {
+            return;  // phase didn't append an iteration; nothing to report
+        }
+        de.mhus.vance.api.slartibartfast.PhaseIteration latest =
+                iters.get(iters.size() - 1);
+        String summary = latest.getOutputSummary() == null
+                ? "" : latest.getOutputSummary();
+        if (summary.length() > 200) summary = summary.substring(0, 200) + "…";
+        String label = latest.getPhase().name();
+        if (statusBefore != null
+                && statusBefore != latest.getPhase()
+                && statusBefore != ArchitectStatus.READY) {
+            label = statusBefore.name() + "→" + latest.getPhase().name();
+        }
+        String text = "Slartibartfast " + label
+                + (summary.isBlank() ? "" : ": " + summary);
+        try {
+            progressEmitter.emitStatus(process,
+                    de.mhus.vance.api.progress.StatusTag.PHASE_DONE, text);
+        } catch (RuntimeException e) {
+            log.debug("Slartibartfast id='{}' progress emit failed: {}",
+                    process.getId(), e.toString());
+        }
+    }
+
     private void advanceOnePhase(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,

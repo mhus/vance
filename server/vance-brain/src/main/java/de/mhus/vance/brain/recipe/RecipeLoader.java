@@ -93,8 +93,24 @@ public class RecipeLoader {
      * a single broken recipe must not poison {@code recipe_list}.
      */
     public List<ResolvedRecipe> listAll(String tenantId, @Nullable String projectId) {
-        Map<String, LookupResult> hits = documentService.listByPrefixCascade(
-                tenantId, effectiveProjectId(projectId), RECIPE_PATH_PREFIX);
+        String project = effectiveProjectId(projectId);
+        // 1. Top-level recipes: recipes/<name>.yaml (kit-installed,
+        //    bundled, _tenant-overrides). DocumentService's
+        //    matchesOneLevel filter keeps subdirectory contents out
+        //    of this slice.
+        Map<String, LookupResult> hits = new java.util.LinkedHashMap<>(
+                documentService.listByPrefixCascade(
+                        tenantId, project, RECIPE_PATH_PREFIX));
+        // 2. User-namespace recipes: recipes/_user/<name>.yaml (Slart
+        //    Phase-D persists named CREATEs here). Without this
+        //    explicit pass, recipe_list and the unknown-recipe error
+        //    message hide them — LLMs that just named a recipe via
+        //    Slart wouldn't see it on the next turn.
+        Map<String, LookupResult> userHits = documentService.listByPrefixCascade(
+                tenantId, project, RECIPE_PATH_PREFIX + "_user/");
+        for (Map.Entry<String, LookupResult> e : userHits.entrySet()) {
+            hits.putIfAbsent(e.getKey(), e.getValue());
+        }
         List<ResolvedRecipe> out = new ArrayList<>(hits.size());
         for (Map.Entry<String, LookupResult> e : hits.entrySet()) {
             String path = e.getKey();

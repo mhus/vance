@@ -88,17 +88,68 @@ public class ZaphodEngine implements ThinkEngine {
      *  fallback. Primary source is the document cascade
      *  ({@code prompts/zaphod-synthesis.md}); recipes can override the
      *  cascade path via {@code promptDocument}. The user-message prefix
-     *  remains a separate concern (recipe param {@code synthesisPrompt}). */
+     *  remains a separate concern (recipe param {@code synthesisPrompt}).
+     *
+     *  <p>HARD OUTPUT CONTRACT: structured JSON object. The engine
+     *  parses {@code synthesisMarkdown} and persists it as a project
+     *  document at the path resolved from
+     *  {@code params.outputPathTemplate} — the LLM does NOT call any
+     *  {@code doc_*} or {@code tool_*} pseudo-functions, those would
+     *  be hallucinated and silently fail. Worker generates content,
+     *  engine writes the file (see
+     *  {@code instructions/general/engines.md} §"Tool usage"). */
     private static final String SYNTHESIS_SYSTEM_PROMPT =
             """
-            Du synthetisierst die Sichten mehrerer Berater zu einer einzigen
-            Antwort. Strukturiere typisch:
+            Du bist der Synthesizer eines Zaphod-Konzils. Konsolidiere
+            die Sichten der Berater zu einer einzigen Empfehlung.
+
+            HARD OUTPUT CONTRACT:
+            - Liefere GENAU ein JSON-Objekt, kein Markdown-Wrapper,
+              kein Text davor oder danach.
+            - KEINE Pseudo-Tool-Aufrufe wie `doc_create_kind(...)`
+              oder `doc_write_text(...)`. Du hast KEINE Tools — die
+              Engine persistiert das Dokument deterministisch aus
+              `synthesisMarkdown`.
+
+            Schema (alle Felder Pflicht):
+                {
+                  "title":             "<5-10 Wörter, deutsch, kein Punkt am Ende>",
+                  "summary":           "<1-2 Sätze Kurzfassung — was der Rat empfiehlt>",
+                  "synthesisMarkdown": "<vollständige Synthese als Markdown>"
+                }
+
+            Strukturiere `synthesisMarkdown` typischerweise so:
             1. Gemeinsamer Konsens — wo sind sich alle einig?
-            2. Differenzen — wo widersprechen sich die Sichten, und welche
-               Argumente werden ins Feld geführt?
-            3. Empfehlung — eine konkrete Schlussfolgerung mit Begründung.
-            Zitiere konkrete Punkte aus den Köpfen, paraphrasiere nicht generisch.
+            2. Differenzen — wo widersprechen sich die Sichten,
+               welche Argumente werden ins Feld geführt?
+            3. Empfehlung — konkrete Schlussfolgerung mit Begründung.
+            Zitiere konkrete Punkte aus den Köpfen (per Name),
+            paraphrasiere nicht generisch.
+
+            `summary` ist das, was der Anfragende im Chat zu sehen
+            bekommt — also kurz, konkret, handlungsorientiert.
+            `synthesisMarkdown` ist die ausführliche Form, die als
+            Dokument abgelegt wird.
+
+            Sprache: schreibe in der Sprache der ursprünglichen
+            Frage. Bei deutscher Frage → deutsche Synthese.
             """;
+
+    /** Default template for the synthesis-document path. Placeholders:
+     *  {@code {recipeName}}, {@code {runId}}, {@code {timestamp}}.
+     *  When the spawned recipe-name is absent (anonymous council),
+     *  falls back to {@code "zaphod-council"} for the slug. */
+    private static final String DEFAULT_OUTPUT_PATH_TEMPLATE =
+            "councils/{recipeName}/{runId}.md";
+
+    /** {@code engineParams[OUTPUT_PATH_TEMPLATE_KEY]} — recipe
+     *  override for {@link #DEFAULT_OUTPUT_PATH_TEMPLATE}. */
+    public static final String OUTPUT_PATH_TEMPLATE_KEY = "outputPathTemplate";
+
+    /** Max structured-output retries when the synthesizer LLM
+     *  emits invalid JSON. Same budget Slart uses for FRAMING /
+     *  PROPOSING re-prompts. */
+    private static final int MAX_SYNTHESIS_CORRECTIONS = 2;
 
     /** Cascade path for the Zaphod synthesis prompt. Loaded via
      *  {@link de.mhus.vance.brain.thinkengine.EnginePromptResolver}. */
@@ -121,6 +172,12 @@ public class ZaphodEngine implements ThinkEngine {
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
+    /** Writes the synthesizer's structured-output markdown body
+     *  to a project document under the resolved
+     *  {@code outputPathTemplate}. The engine — not the LLM —
+     *  performs the persistence so the synthesis is guaranteed
+     *  to land. */
+    private final de.mhus.vance.shared.document.DocumentService documentService;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
 
     // ──────────────────── Metadata ────────────────────
@@ -443,30 +500,231 @@ public class ZaphodEngine implements ThinkEngine {
             messages.add(SystemMessage.from(promptTemplateRenderer.render(synthTpl, synthCtx)));
             messages.add(UserMessage.from(body.toString()));
             String modelAlias = config.provider() + ":" + config.modelName();
-            long startMs = System.currentTimeMillis();
-            ChatRequest request = ChatRequest.builder().messages(messages).build();
-            ChatResponse response = ai.chatModel().chat(request);
-            llmCallTracker.record(
-                    process, request, response, System.currentTimeMillis() - startMs, modelAlias);
-            String text = response.aiMessage() == null
-                    ? null : response.aiMessage().text();
-            if (text == null || text.isBlank()) {
+
+            // Structured-output loop: the synthesizer must emit a
+            // JSON object with title/summary/synthesisMarkdown.
+            // Up to MAX_SYNTHESIS_CORRECTIONS re-prompt attempts on
+            // parse failure — same budget Slart uses for its
+            // structured phases.
+            SynthesisResult parsed = null;
+            String validationError = null;
+            for (int attempt = 0; attempt <= MAX_SYNTHESIS_CORRECTIONS; attempt++) {
+                long startMs = System.currentTimeMillis();
+                ChatRequest request = ChatRequest.builder().messages(messages).build();
+                ChatResponse response = ai.chatModel().chat(request);
+                llmCallTracker.record(
+                        process, request, response,
+                        System.currentTimeMillis() - startMs, modelAlias);
+                String text = response.aiMessage() == null
+                        ? null : response.aiMessage().text();
+                if (text == null || text.isBlank()) {
+                    validationError = "synthesizer returned empty reply";
+                } else {
+                    try {
+                        parsed = parseSynthesisJson(text);
+                        validationError = null;
+                        break;
+                    } catch (RuntimeException ve) {
+                        validationError = ve.getMessage();
+                        log.info("Zaphod id='{}' synthesis attempt {} parse failed: {}",
+                                process.getId(), attempt, validationError);
+                        if (attempt < MAX_SYNTHESIS_CORRECTIONS) {
+                            messages.add(dev.langchain4j.data.message.AiMessage.from(text));
+                            messages.add(UserMessage.from(
+                                    "Dein letztes JSON war ungültig: "
+                                            + validationError
+                                            + "\n\nKorrigiere es und liefere "
+                                            + "GENAU EIN JSON-Objekt nach dem Schema "
+                                            + "oben — kein Markdown-Wrapper, KEINE "
+                                            + "Pseudo-Tool-Aufrufe."));
+                        }
+                    }
+                }
+            }
+            if (parsed == null) {
                 state.setStatus(ZaphodStatus.FAILED);
-                state.setFailureReason("Synthesizer returned empty reply.");
-                log.warn("Zaphod id='{}' synthesizer returned empty reply",
-                        process.getId());
+                state.setFailureReason("Synthesizer failed after "
+                        + MAX_SYNTHESIS_CORRECTIONS
+                        + " corrections — last error: " + validationError);
+                log.warn("Zaphod id='{}' synthesizer budget exhausted: {}",
+                        process.getId(), validationError);
                 return;
             }
-            state.setSynthesis(text.trim());
+
+            // Resolve the output path + persist the markdown body
+            // as a project document. Engine writes the file —
+            // the LLM only produced content (see instructions/
+            // general/engines.md §"Tool usage").
+            String outputPath = resolveOutputPath(process, state);
+            try {
+                documentService.createText(
+                        process.getTenantId(),
+                        process.getProjectId(),
+                        outputPath,
+                        parsed.title(),
+                        java.util.List.of("council", "synthesis"),
+                        parsed.synthesisMarkdown(),
+                        "zaphod:" + process.getId());
+            } catch (RuntimeException e) {
+                // Persist failure — keep the synthesis in-state so
+                // the user can still see it via the parent-summary,
+                // but mark the run failed because the document
+                // contract is broken.
+                state.setSynthesis(parsed.synthesisMarkdown());
+                state.setSynthesisTitle(parsed.title());
+                state.setSynthesisSummary(parsed.summary());
+                state.setStatus(ZaphodStatus.FAILED);
+                state.setFailureReason("Synthesizer produced output but "
+                        + "document write to '" + outputPath + "' failed: "
+                        + e.getMessage());
+                log.warn("Zaphod id='{}' synthesis-doc write failed at '{}': {}",
+                        process.getId(), outputPath, e.toString());
+                return;
+            }
+
+            state.setSynthesis(parsed.synthesisMarkdown());
+            state.setSynthesisTitle(parsed.title());
+            state.setSynthesisSummary(parsed.summary());
+            state.setSynthesisDocumentPath(outputPath);
             state.setStatus(ZaphodStatus.DONE);
-            log.info("Zaphod id='{}' synthesis done — {} chars",
-                    process.getId(), text.length());
+
+            // Persist the FULL synthesis as the ASSISTANT chat message
+            // so Arthur's RELAY hands the user the complete consolidated
+            // answer in one go — not a summary with a path the user has
+            // to open. The document copy (above) stays as an audit
+            // asset; the chat is the primary output channel.
+            StringBuilder reply = new StringBuilder();
+            reply.append("**").append(parsed.title()).append("**\n\n")
+                    .append(parsed.synthesisMarkdown())
+                    .append("\n\n---\n_Synthese gespeichert unter `")
+                    .append(outputPath).append("`._");
+            ChatMessageDocument assistantReply = ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(ChatRole.ASSISTANT)
+                    .content(reply.toString())
+                    .createdAt(java.time.Instant.now())
+                    .build();
+            chatMessageService.append(assistantReply);
+
+            log.info("Zaphod id='{}' synthesis done — {} chars markdown, "
+                            + "persisted at '{}'",
+                    process.getId(), parsed.synthesisMarkdown().length(), outputPath);
         } catch (RuntimeException e) {
             state.setStatus(ZaphodStatus.FAILED);
             state.setFailureReason("Synthesizer failed: " + e.getMessage());
             log.warn("Zaphod id='{}' synthesis failed: {}",
                     process.getId(), e.toString());
         }
+    }
+
+    /**
+     * Strict JSON-object parse for the synthesizer reply. Required
+     * fields: title (non-blank string), summary (non-blank), and
+     * synthesisMarkdown (non-blank). Tolerates incidental prose
+     * outside the braces by extracting the first balanced JSON
+     * object — same shape Slart's FRAMING/PROPOSING parsers use.
+     */
+    private SynthesisResult parseSynthesisJson(String raw) {
+        String jsonOnly = extractFirstJsonObject(raw);
+        if (jsonOnly == null) {
+            throw new IllegalStateException(
+                    "no JSON object found in synthesizer reply");
+        }
+        Map<String, Object> root;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed =
+                    objectMapper.readValue(jsonOnly, Map.class);
+            root = parsed;
+        } catch (RuntimeException e) {
+            throw new IllegalStateException(
+                    "JSON parse error: " + e.getMessage());
+        }
+        String title = requireSynthesisString(root, "title");
+        String summary = requireSynthesisString(root, "summary");
+        String markdown = requireSynthesisString(root, "synthesisMarkdown");
+        // Defensive: refuse pseudo-tool-call bodies that some LLMs
+        // produce despite the explicit "no doc_*" instruction.
+        if (markdown.startsWith("doc_create_kind(")
+                || markdown.startsWith("doc_write_text(")
+                || markdown.startsWith("doc_create_text(")) {
+            throw new IllegalStateException(
+                    "synthesisMarkdown begins with a pseudo-tool-call — "
+                            + "emit pure markdown text, no `doc_*(...)` syntax");
+        }
+        return new SynthesisResult(title, summary, markdown);
+    }
+
+    private static String requireSynthesisString(Map<String, Object> root, String key) {
+        Object v = root.get(key);
+        if (!(v instanceof String s) || s.isBlank()) {
+            throw new IllegalStateException(
+                    "required field '" + key + "' missing or blank");
+        }
+        return s.trim();
+    }
+
+    private static @org.jspecify.annotations.Nullable String extractFirstJsonObject(String raw) {
+        if (raw == null) return null;
+        int start = raw.indexOf('{');
+        if (start < 0) return null;
+        int depth = 0;
+        boolean inString = false;
+        boolean escape = false;
+        for (int i = start; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (escape) { escape = false; continue; }
+            if (inString) {
+                if (c == '\\') escape = true;
+                else if (c == '"') inString = false;
+                continue;
+            }
+            if (c == '"') { inString = true; continue; }
+            if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) return raw.substring(start, i + 1);
+            }
+        }
+        return null;
+    }
+
+    private record SynthesisResult(
+            String title, String summary, String synthesisMarkdown) {}
+
+    /**
+     * Resolves the synthesis-document path from
+     * {@link #OUTPUT_PATH_TEMPLATE_KEY} (recipe override) or
+     * falls back to {@link #DEFAULT_OUTPUT_PATH_TEMPLATE}.
+     * Substitutes {@code {recipeName}}, {@code {runId}},
+     * {@code {timestamp}} placeholders. RecipeName falls back to
+     * {@code "zaphod-council"} for anonymous spawns.
+     */
+    private String resolveOutputPath(
+            ThinkProcessDocument process, ZaphodState state) {
+        String template = paramString(
+                process, OUTPUT_PATH_TEMPLATE_KEY,
+                DEFAULT_OUTPUT_PATH_TEMPLATE);
+        String recipeName = process.getRecipeName();
+        if (recipeName == null || recipeName.isBlank()) {
+            recipeName = "zaphod-council";
+        }
+        // Strip the _user/ prefix when the spawned recipe came
+        // from Slart's user-namespace — output documents are
+        // named after the council, not the namespace.
+        if (recipeName.startsWith("_user/")) {
+            recipeName = recipeName.substring("_user/".length());
+        }
+        String runId = process.getId() == null
+                ? "anon" : process.getId();
+        String timestamp = java.time.Instant.now().toString()
+                .replace(":", "-").replace(".", "-");
+        return template
+                .replace("{recipeName}", recipeName)
+                .replace("{runId}", runId)
+                .replace("{timestamp}", timestamp);
     }
 
     // ──────────────────── summarizeForParent ────────────────────
@@ -497,9 +755,27 @@ public class ZaphodEngine implements ThinkEngine {
         payload.put("heads", headEntries);
         payload.put("synthesisChars", state.getSynthesis() == null
                 ? 0 : state.getSynthesis().length());
+        payload.put("synthesisTitle", state.getSynthesisTitle());
+        payload.put("synthesisSummary", state.getSynthesisSummary());
+        payload.put("synthesisDocumentPath", state.getSynthesisDocumentPath());
 
         if (state.getStatus() == ZaphodStatus.DONE && state.getSynthesis() != null) {
-            return new ParentReport(state.getSynthesis(), payload);
+            // Parent-facing chat reply: the FULL consolidated synthesis
+            // so Arthur's RELAY hands it back to the user directly. The
+            // document persistence (above) is an audit asset, not the
+            // primary delivery channel. The user asked a question; the
+            // user gets the answer inline.
+            StringBuilder reply = new StringBuilder();
+            if (state.getSynthesisTitle() != null) {
+                reply.append("**").append(state.getSynthesisTitle()).append("**\n\n");
+            }
+            reply.append(state.getSynthesis());
+            if (state.getSynthesisDocumentPath() != null) {
+                reply.append("\n\n---\n_Synthese gespeichert unter `")
+                        .append(state.getSynthesisDocumentPath())
+                        .append("`._");
+            }
+            return new ParentReport(reply.toString().trim(), payload);
         }
         if (state.getStatus() == ZaphodStatus.FAILED) {
             return new ParentReport(

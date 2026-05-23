@@ -148,7 +148,9 @@ class SlartibartfastEngineLifecycleTest {
         }).when(persistingPhase).execute(any(), any(), any());
 
         engine = new SlartibartfastEngine(
-                thinkProcessService, eventEmitter, laneScheduler,
+                thinkProcessService, eventEmitter,
+                mock(de.mhus.vance.brain.progress.ProgressEmitter.class),
+                laneScheduler,
                 objectMapper, inboxItemService,
                 /*recipeResolver*/ null,
                 /*thinkEngineServiceProvider*/ null,

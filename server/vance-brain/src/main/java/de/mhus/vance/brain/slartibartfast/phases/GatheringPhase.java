@@ -4,6 +4,7 @@ import de.mhus.vance.api.slartibartfast.ArchitectState;
 import de.mhus.vance.api.slartibartfast.ArchitectStatus;
 import de.mhus.vance.api.slartibartfast.EvidenceSource;
 import de.mhus.vance.api.slartibartfast.EvidenceType;
+import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.PhaseIteration;
 import de.mhus.vance.api.slartibartfast.Rationale;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -19,6 +20,8 @@ import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 /**
@@ -54,6 +57,15 @@ public class GatheringPhase {
     /** Document-cascade prefix Slartibartfast scans for manuals.
      *  Same convention the existing {@code manual_read} tool uses. */
     public static final String MANUALS_PREFIX = "manuals/";
+
+    /** Classpath root for bundled engine-self-knowledge manuals.
+     *  GATHERING loads everything under
+     *  {@code vance-defaults/manuals/slartibartfast/<schema-arch>/}
+     *  in addition to the project's own {@code manuals/} folder,
+     *  so Slart can plan its three architect schemas even on
+     *  greenfield projects without an installed kit. */
+    public static final String BUNDLED_MANUALS_ROOT =
+            "classpath:vance-defaults/manuals/slartibartfast/";
 
     /** Per-source content cap. Manuals over this size get
      *  truncated with a marker — protects engineParams against
@@ -106,16 +118,49 @@ public class GatheringPhase {
                     .build());
         }
 
+        // Engine-self-knowledge: load bundled manuals for the
+        // active architect schema so Slart can plan even when the
+        // project has no domain kit installed. The schema sub-dir
+        // mirrors the bundled-recipe naming convention
+        // (vogon-architect / marvin-architect / zaphod-architect).
+        List<BundledManual> bundled = loadBundledManuals(state.getOutputSchemaType());
+        for (BundledManual b : bundled) {
+            String sourceId = "ev" + seq++;
+            String rationaleId = "rt" + rationaleSeq++;
+
+            rationalePool.add(Rationale.builder()
+                    .id(rationaleId)
+                    .text("bundled engine-self-knowledge '" + b.path
+                            + "' — what the active "
+                            + state.getOutputSchemaType()
+                            + " schema requires structurally")
+                    .sourceRefs(List.of(sourceId))
+                    .inferredAt(ArchitectStatus.GATHERING)
+                    .build());
+
+            sources.add(EvidenceSource.builder()
+                    .id(sourceId)
+                    .type(EvidenceType.MANUAL)
+                    .path(b.path)
+                    .content(b.content)
+                    .gatheringRationaleId(rationaleId)
+                    .build());
+        }
+
         state.setEvidenceSources(sources);
         state.setRationales(rationalePool);
 
         appendIteration(state,
                 "scanned project for manuals/ documents",
-                manuals.size() + " manual" + (manuals.size() == 1 ? "" : "s"),
+                manuals.size() + " project manual"
+                        + (manuals.size() == 1 ? "" : "s")
+                        + " + " + bundled.size() + " bundled self-knowledge",
                 PhaseIteration.IterationOutcome.PASSED);
 
-        log.info("Slartibartfast id='{}' GATHERING ingested {} manual(s)",
-                process.getId(), manuals.size());
+        log.info("Slartibartfast id='{}' GATHERING ingested {} project manual(s) "
+                        + "+ {} bundled self-knowledge file(s) for schema {}",
+                process.getId(), manuals.size(), bundled.size(),
+                state.getOutputSchemaType());
     }
 
     // ──────────────────── Listing + reading ────────────────────
@@ -138,6 +183,63 @@ public class GatheringPhase {
         // on the document repository's iteration order.
         manuals.sort(Comparator.comparing(DocumentDocument::getPath));
         return manuals;
+    }
+
+    /**
+     * Schema-sub-directory under {@link #BUNDLED_MANUALS_ROOT} for
+     * the active architect schema. Matches the bundled-recipe
+     * naming so the two stay paired (one folder per architect).
+     */
+    private static String bundledSchemaDir(OutputSchemaType type) {
+        return switch (type) {
+            case VOGON_STRATEGY -> "vogon-architect";
+            case MARVIN_RECIPE -> "marvin-architect";
+            case ZAPHOD_RECIPE -> "zaphod-architect";
+        };
+    }
+
+    private record BundledManual(String path, String content) {}
+
+    /**
+     * Loads every {@code *.md} file under
+     * {@code vance-defaults/manuals/slartibartfast/<schema-dir>/}
+     * as bundled self-knowledge. Missing directory is fine — we
+     * simply return an empty list. Errors during read are logged
+     * and the offending file is skipped.
+     */
+    private List<BundledManual> loadBundledManuals(OutputSchemaType schemaType) {
+        String pattern = BUNDLED_MANUALS_ROOT + bundledSchemaDir(schemaType) + "/*.md";
+        PathMatchingResourcePatternResolver resolver =
+                new PathMatchingResourcePatternResolver(getClass().getClassLoader());
+        List<BundledManual> out = new ArrayList<>();
+        try {
+            Resource[] resources = resolver.getResources(pattern);
+            // Sort by URI for stable ev-id assignment across runs.
+            java.util.Arrays.sort(resources, Comparator.comparing(r -> {
+                try { return r.getURI().toString(); }
+                catch (IOException e) { return ""; }
+            }));
+            for (Resource resource : resources) {
+                try (InputStream in = resource.getInputStream()) {
+                    byte[] bytes = in.readAllBytes();
+                    String content = new String(bytes, StandardCharsets.UTF_8);
+                    String filename = resource.getFilename();
+                    if (filename == null) continue;
+                    String displayPath = "vance-defaults/manuals/slartibartfast/"
+                            + bundledSchemaDir(schemaType) + "/" + filename;
+                    out.add(new BundledManual(displayPath, content));
+                } catch (IOException e) {
+                    log.warn("Slartibartfast GATHERING failed reading bundled "
+                                    + "manual '{}': {}",
+                            resource.getDescription(), e.toString());
+                }
+            }
+        } catch (IOException e) {
+            log.warn("Slartibartfast GATHERING failed listing bundled manuals "
+                            + "under '{}': {}",
+                    pattern, e.toString());
+        }
+        return out;
     }
 
     private String readContent(DocumentDocument doc) {

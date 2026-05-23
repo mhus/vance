@@ -209,8 +209,19 @@ public class BindingPhase {
         }
 
         // 3. Speculation-bound.
+        //    Relaxed when the run had no evidence to anchor on: if
+        //    GATHERING ingested 0 sources AND CLASSIFYING produced
+        //    0 claims, DECOMPOSING was forced to mark every subgoal
+        //    as speculative — there's no claim id to reference. The
+        //    cap exists to catch the LLM ignoring available evidence,
+        //    not to penalise greenfield projects that ship without
+        //    an evidence kit. We still record the ratio so the audit
+        //    chain shows the speculation level honestly.
         double ratio = (double) speculativeCount / state.getSubgoals().size();
-        if (ratio > state.getMaxSpeculativeRatio()) {
+        boolean noEvidenceAvailable =
+                state.getEvidenceClaims().isEmpty()
+                        && state.getEvidenceSources().isEmpty();
+        if (ratio > state.getMaxSpeculativeRatio() && !noEvidenceAvailable) {
             ValidationCheck v = ValidationCheck.builder()
                     .rule(RULE_SPECULATION_BOUND)
                     .passed(false)
@@ -225,6 +236,20 @@ public class BindingPhase {
             report.add(v);
             if (firstFail == null) firstFail = v;
             anyHardFail = true;
+        } else if (ratio > state.getMaxSpeculativeRatio()) {
+            // Relaxed-pass on no-evidence projects — record an
+            // informational PASSED check so the relaxation shows
+            // up in the audit.
+            report.add(ValidationCheck.builder()
+                    .rule(RULE_SPECULATION_BOUND)
+                    .passed(true)
+                    .message("speculative ratio "
+                            + String.format(java.util.Locale.ROOT, "%.2f", ratio)
+                            + " above bound "
+                            + state.getMaxSpeculativeRatio()
+                            + " — RELAXED because no evidence sources "
+                            + "or claims available to anchor subgoals")
+                    .build());
         }
 
         // 4. If everything passed, drop a single PASSED check so

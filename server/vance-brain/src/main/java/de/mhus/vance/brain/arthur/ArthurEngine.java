@@ -2043,13 +2043,17 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * {@code recipe_list} at runtime.
      */
     private String buildRecipeCatalogSection(ThinkProcessDocument process) {
-        // No projectId on a ThinkProcessDocument — RecipeLoader falls back
-        // to the _vance system project, which is what Arthur wants here:
-        // the catalog in the system prompt covers tenant-wide + bundled
-        // recipes. Project-scoped recipes show up at runtime through
-        // recipe_list (which has the full ToolInvocationContext).
+        // Pass the live projectId so the cascade includes user-namespace
+        // recipes that Slart's Phase-D persists into
+        // `recipes/_user/<name>.yaml` of the active project. Without the
+        // projectId, the listing falls back to the _vance system project
+        // and Arthur cannot see the user's just-authored recipes — Arthur
+        // then either refuses ("rat-der-macher is unknown") or tries to
+        // re-create them, which collides at PERSISTING.
+        String projectId = process.getProjectId();
         java.util.List<ResolvedRecipe> recipes = recipeLoader.listAll(
-                process.getTenantId(), null);
+                process.getTenantId(),
+                projectId == null || projectId.isBlank() ? null : projectId);
         if (recipes.isEmpty()) {
             return "";
         }

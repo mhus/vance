@@ -79,7 +79,12 @@ public class ZaphodArchitect implements SchemaArchitect {
                       persona: |
                         ...
                   synthesisPrompt: |
-                    <instruction for the synthesizer turn>
+                    <instruction for the synthesizer turn — describes
+                    the content/shape of the consolidated synthesis,
+                    NOT how to persist it (that is engine business)>
+                  outputPathTemplate: "councils/{recipeName}/{runId}.md"
+                    # optional; default is exactly this. Placeholders:
+                    # {recipeName}, {runId}, {timestamp}.
 
             ── HEADS-SHAPE rules ──
 
@@ -111,6 +116,30 @@ public class ZaphodArchitect implements SchemaArchitect {
             - Optional but recommended: name the deliverable
               shape (one paragraph, a bulleted decision matrix,
               a recommendation with caveats).
+
+            ── CRITICAL: synthesizer has NO TOOLS ──
+
+            The synthesizer is a direct LLM call with structured
+            JSON output — it does NOT have access to
+            `doc_create_text`, `doc_write_text`, `doc_create_kind`
+            or any other file-writing tool. The Zaphod engine
+            persists the synthesis document deterministically from
+            the LLM's structured reply.
+
+            DO NOT write a synthesisPrompt that asks the
+            synthesizer to "create a document", "save the answer
+            as a file", "write to <path>", or anything similar.
+            Those instructions cause the LLM to hallucinate
+            pseudo-tool-call text ("doc_create_kind(path=…)") in
+            its reply body, which the engine then has to recover
+            from.
+
+            DO write a synthesisPrompt that describes the CONTENT
+            and SHAPE of the synthesis text itself. Persistence is
+            an engine concern. If the user requested a specific
+            output path, set the recipe-level
+            `params.outputPathTemplate` field instead (placeholders
+            `{recipeName}`, `{runId}`, `{timestamp}`).
 
             ── EXAMPLE ──
 

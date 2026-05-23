@@ -36,9 +36,33 @@ public class ZaphodState {
      *  message). {@code null} = use only the engine default. */
     private @Nullable String synthesizerPrompt;
 
-    /** Final synthesized result. Set after the synthesizer LLM-call
-     *  succeeds; {@code null} until then. */
+    /** Final synthesized result — the full markdown body produced
+     *  by the synthesizer turn. The synthesizer LLM emits a
+     *  structured JSON object; this field carries the
+     *  {@code synthesisMarkdown} member. The engine persists it as
+     *  a project document at {@link #synthesisDocumentPath}
+     *  immediately after parsing (Worker generates content,
+     *  engine writes the file — see
+     *  {@code instructions/general/engines.md} §"Tool usage").
+     *  {@code null} until the synthesizer LLM call succeeds. */
     private @Nullable String synthesis;
+
+    /** Short title (5-10 words) the synthesizer emitted alongside
+     *  the markdown body. Used as the document title at
+     *  persistence time and shown in the parent's DONE-payload. */
+    private @Nullable String synthesisTitle;
+
+    /** 1-2 sentence executive summary the synthesizer emitted
+     *  alongside the markdown body. Surfaces as Arthur's relayed
+     *  ASSISTANT reply — the chat user sees this directly without
+     *  having to open the persisted document. */
+    private @Nullable String synthesisSummary;
+
+    /** Project-relative path where the engine persisted
+     *  {@link #synthesis} as a markdown document. Default:
+     *  {@code councils/<recipeName>/<runId>.md}; recipes can
+     *  override via {@code params.outputPathTemplate}. */
+    private @Nullable String synthesisDocumentPath;
 
     @Builder.Default
     private ZaphodStatus status = ZaphodStatus.SPAWNING;

@@ -62,6 +62,7 @@ class SlartibartfastEngineSummarizeForParentTest {
         engine = new SlartibartfastEngine(
                 mock(ThinkProcessService.class),
                 mock(ProcessEventEmitter.class),
+                mock(de.mhus.vance.brain.progress.ProgressEmitter.class),
                 mock(LaneScheduler.class),
                 objectMapper,
                 mock(InboxItemService.class),

@@ -6,6 +6,7 @@ Vance is not a chatbot and not a coding assistant. It is a server on which AI re
 
 ## What Vance actually does
 
+- **A coworker, not an advisor.** Vance works on tasks across multiple steps — researching, analyzing, writing, calling tools. The engine decides what makes sense next, but inside structures you defined. Every step is visible and steerable.
 - **Persistent thinking processes.** A Think Process has status, lifecycle, memory, and survives disconnects. Mongo stores history and intermediate results — not the RAM of a session.
 - **Determinism + AI, mixed.** Engines drive the control flow in Java code, not the LLM. `vogon` runs strict phase pipelines with gates and output schemas, `marvin` grows task trees dynamically, `ford` works as a generalist worker, `arthur` and `eddie` coordinate the user session. The LLM call is a tool inside the engine logic.
 - **Project Kits.** A Git bundle of skills, recipes, tools, and settings. `kit install` makes a project productive immediately. Pre-configured kits are possible (e.g. `kernel-security`, `python-data-science`); tenants maintain their own.

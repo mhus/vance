@@ -72,16 +72,19 @@ class GatheringPhaseTest {
         phase.execute(state, process, ctx);
 
         // Alphabetical by path → STRUCTURE.md (S-T) before STYLE.md (S-T-Y).
+        // Project manuals first, then bundled engine self-knowledge for
+        // the active schema (default VOGON_STRATEGY → vogon-architect/).
         assertThat(state.getEvidenceSources())
                 .extracting(EvidenceSource::getPath)
-                .containsExactly("manuals/essay/STRUCTURE.md",
+                .containsSequence("manuals/essay/STRUCTURE.md",
                         "manuals/essay/STYLE.md");
         assertThat(state.getEvidenceSources())
                 .extracting(EvidenceSource::getType)
                 .containsOnly(EvidenceType.MANUAL);
         assertThat(state.getEvidenceSources())
-                .extracting(EvidenceSource::getId)
-                .containsExactly("ev1", "ev2");
+                .as("bundled engine self-knowledge appended after project manuals")
+                .anySatisfy(s -> assertThat(s.getPath())
+                        .startsWith("vance-defaults/manuals/slartibartfast/"));
     }
 
     @Test
@@ -116,14 +119,22 @@ class GatheringPhaseTest {
     }
 
     @Test
-    void noManuals_yieldsEmptyEvidenceSourcesList_butStillAppendsIteration() {
+    void noProjectManuals_stillEmitsBundledEngineSelfKnowledge() {
         when(documentService.listByProject("acme", "test-project"))
                 .thenReturn(List.of(manual("recipes/foo.yaml", "x")));
 
         ArchitectState state = ArchitectState.builder().runId("run1").build();
         phase.execute(state, process, ctx);
 
-        assertThat(state.getEvidenceSources()).isEmpty();
+        // Greenfield project (no manuals/ folder) still gets the
+        // bundled engine-self-knowledge so DECOMPOSING has evidence
+        // to anchor subgoals against. That is variant-C of the
+        // "Slart without an installed kit" fix.
+        assertThat(state.getEvidenceSources())
+                .as("bundled self-knowledge must be loaded even without project manuals")
+                .isNotEmpty()
+                .allSatisfy(s -> assertThat(s.getPath())
+                        .startsWith("vance-defaults/manuals/slartibartfast/"));
         assertThat(state.getIterations())
                 .filteredOn(it -> it.getPhase() == ArchitectStatus.GATHERING)
                 .hasSize(1);
@@ -138,7 +149,8 @@ class GatheringPhaseTest {
 
         ArchitectState state = ArchitectState.builder().runId("run1").build();
         phase.execute(state, process, ctx);
-        assertThat(state.getEvidenceSources()).hasSize(1);
+        // 1 project manual + bundled self-knowledge for default schema.
+        assertThat(state.getEvidenceSources()).hasSizeGreaterThanOrEqualTo(2);
 
         // Second pass with a different manual set — the new gather
         // must replace the old one, not extend it.
@@ -148,9 +160,14 @@ class GatheringPhaseTest {
                         manual("manuals/c.md", "third")));
         phase.execute(state, process, ctx);
 
+        // Project manuals first (in alpha order), bundled appended.
         assertThat(state.getEvidenceSources())
                 .extracting(EvidenceSource::getPath)
-                .containsExactly("manuals/b.md", "manuals/c.md");
+                .containsSequence("manuals/b.md", "manuals/c.md");
+        // Old "manuals/a.md" from the first pass must be gone.
+        assertThat(state.getEvidenceSources())
+                .extracting(EvidenceSource::getPath)
+                .doesNotContain("manuals/a.md");
 
         // Two iteration entries — initial + recovery.
         assertThat(state.getIterations())

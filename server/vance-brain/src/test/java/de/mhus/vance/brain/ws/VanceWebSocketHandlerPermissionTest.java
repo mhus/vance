@@ -83,7 +83,9 @@ class VanceWebSocketHandlerPermissionTest {
         };
         VanceWebSocketHandler dispatcher = new VanceWebSocketHandler(
                 sessionService, sessionLifecycle, properties, objectMapper,
-                sender, clientToolRegistry, connectionRegistry, executionRegistry,
+                sender, clientToolRegistry,
+                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
+                connectionRegistry, executionRegistry,
                 scriptExecutionWsRegistry, new de.mhus.vance.brain.daemon.DaemonRegistry(),
                 emptyServerToolRegistryProvider(),
                 List.of(denyingHandler));
@@ -109,7 +111,9 @@ class VanceWebSocketHandlerPermissionTest {
         };
         VanceWebSocketHandler dispatcher = new VanceWebSocketHandler(
                 sessionService, sessionLifecycle, properties, objectMapper,
-                sender, clientToolRegistry, connectionRegistry, executionRegistry,
+                sender, clientToolRegistry,
+                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class),
+                connectionRegistry, executionRegistry,
                 scriptExecutionWsRegistry, new de.mhus.vance.brain.daemon.DaemonRegistry(),
                 emptyServerToolRegistryProvider(),
                 List.of(boomHandler));

@@ -49,7 +49,9 @@ class ToolDispatcherPermissionTest {
                 .thenReturn(Optional.of(fakeTool));
         when(src.sourceId()).thenReturn("test");
 
-        dispatcher = new ToolDispatcher(List.of(src), permissions);
+        dispatcher = new ToolDispatcher(List.of(src), permissions,
+                mock(de.mhus.vance.brain.fook.FookChecker.class),
+                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class));
     }
 
     @Test

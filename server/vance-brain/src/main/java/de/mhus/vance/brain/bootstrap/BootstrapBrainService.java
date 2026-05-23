@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.bootstrap;
 
+import de.mhus.vance.brain.fook.ToolErrorPatternResolver;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.password.PasswordService;
@@ -10,6 +11,8 @@ import de.mhus.vance.shared.team.TeamService;
 import de.mhus.vance.shared.tenant.TenantService;
 import de.mhus.vance.shared.user.UserService;
 import jakarta.annotation.PostConstruct;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -126,6 +129,13 @@ public class BootstrapBrainService {
         // against http://localhost:18099 without any manual setup.
         ensureMockOAuthProvider(ACME_TENANT);
 
+        // Seed the bundled tool-error pattern document so tenant admins
+        // see + can edit the rules through the regular document editor.
+        // The resolver still falls back to the classpath version when
+        // the doc is missing — this is just for discoverability and
+        // tenant-level overrides. See specification/fook-engine.md §4.2.
+        ensureFookErrorPatternDocument(ACME_TENANT);
+
         // LLM keys, provider/model defaults, etc. — loaded from a
         // gitignored YAML so a Mongo wipe doesn't lose them. The
         // entries land on the tenant's _vance project (see
@@ -156,6 +166,44 @@ public class BootstrapBrainService {
             """;
 
     private static final String MOCK_OAUTH_PROVIDER_ID = "mock";
+
+    /**
+     * Drops the bundled {@code fook/error-patterns.yaml} into the
+     * tenant's system project on first boot so admins can edit it
+     * through the regular document editor. The
+     * {@link ToolErrorPatternResolver} reads the bundled file as the
+     * cascade root regardless — this seed only exists for visibility
+     * and tenant-level overrides. Idempotent.
+     */
+    private void ensureFookErrorPatternDocument(String tenantId) {
+        String tenantProject = HomeBootstrapService.TENANT_PROJECT_NAME;
+        String docPath = ToolErrorPatternResolver.DOCUMENT_PATH;
+        if (documentService.findByPath(tenantId, tenantProject, docPath).isPresent()) {
+            return;
+        }
+        String body = readClasspathResource(ToolErrorPatternResolver.BUNDLED_RESOURCE);
+        if (body == null) {
+            log.warn("Bootstrap: bundled fook patterns resource missing — skipping seed");
+            return;
+        }
+        documentService.createText(
+                tenantId, tenantProject, docPath,
+                "Fook error patterns",
+                List.of("fook", "tools", "config"),
+                body,
+                "bootstrap");
+        log.info("Bootstrap: seeded fook error-patterns document '{}'", docPath);
+    }
+
+    private static @Nullable String readClasspathResource(String resource) {
+        try (InputStream in = BootstrapBrainService.class.getClassLoader()
+                .getResourceAsStream(resource)) {
+            if (in == null) return null;
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            return null;
+        }
+    }
 
     /**
      * Provision a ready-to-go mock OAuth provider in the {@code _tenant}

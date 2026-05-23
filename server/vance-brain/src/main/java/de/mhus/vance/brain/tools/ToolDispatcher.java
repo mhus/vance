@@ -5,10 +5,12 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolException;
 
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.brain.fook.FookChecker;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
 import de.mhus.vance.shared.permission.SecurityContext;
+import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,6 +38,8 @@ public class ToolDispatcher {
 
     private final List<ToolSource> sources;
     private final PermissionService permissionService;
+    private final FookChecker fookChecker;
+    private final ToolHealthService toolHealthService;
 
     @jakarta.annotation.PostConstruct
     public void postConstruct() {
@@ -95,14 +99,48 @@ public class ToolDispatcher {
                 () -> new ToolException("Unknown tool: " + name));
         permissionService.enforce(securityContextOf(ctx), resourceOf(ctx), Action.EXECUTE);
         try {
-            return tools == null
+            Map<String, Object> result = tools == null
                     ? r.tool().invoke(params, ctx)
                     : r.tool().invoke(params, ctx, tools);
+            // Auto-clear any health entry / cooldowns this caller may have
+            // triggered earlier — the tool just proved it works.
+            noteSuccess(name, ctx);
+            return result;
         } catch (ToolException e) {
+            triage(name, e, ctx);
             throw e;
         } catch (RuntimeException e) {
+            triage(name, e, ctx);
             throw new ToolException(
                     "Tool '" + name + "' failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Best-effort handoff to {@link FookChecker} when a tool invocation
+     * throws. Side-effects only (cooldown set, health-doc updated when
+     * the matched rule asks for it). The original error still propagates
+     * to the LLM unchanged — Fook's classification just influences
+     * future invocations.
+     */
+    private void triage(String name, Throwable error, ToolInvocationContext ctx) {
+        try {
+            fookChecker.handle(name, error, ctx);
+        } catch (RuntimeException secondary) {
+            log.warn("FookChecker raised during triage of tool='{}': {}",
+                    name, secondary.toString());
+        }
+    }
+
+    /** Auto-clear matching cooldowns + flip DOWN→OK on successful calls. */
+    private void noteSuccess(String name, ToolInvocationContext ctx) {
+        try {
+            toolHealthService.noteSuccessfulCall(
+                    ctx.tenantId(), ctx.sessionId(), ctx.userId(),
+                    ctx.projectId(), name);
+        } catch (RuntimeException secondary) {
+            log.warn("ToolHealth auto-clear failed for tool='{}': {}",
+                    name, secondary.toString());
         }
     }
 

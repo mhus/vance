@@ -1,5 +1,8 @@
 package de.mhus.vance.brain.ws;
 
+import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.api.toolhealth.ToolHealthClassification;
+import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.api.ws.ServerInfo;
 import de.mhus.vance.api.ws.WebSocketEnvelope;
@@ -10,6 +13,7 @@ import de.mhus.vance.brain.session.SessionLifecycleService;
 import de.mhus.vance.brain.tools.client.ClientToolRegistry;
 import de.mhus.vance.shared.permission.PermissionDeniedException;
 import de.mhus.vance.shared.session.SessionService;
+import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +53,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final WebSocketSender sender;
     private final ClientToolRegistry clientToolRegistry;
+    private final ToolHealthService toolHealthService;
     private final SessionConnectionRegistry connectionRegistry;
     private final ExecutionRegistryService executionRegistry;
     private final de.mhus.vance.brain.script.cortex.ScriptExecutionWsRegistry
@@ -65,6 +70,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
             ObjectMapper objectMapper,
             WebSocketSender sender,
             ClientToolRegistry clientToolRegistry,
+            ToolHealthService toolHealthService,
             SessionConnectionRegistry connectionRegistry,
             ExecutionRegistryService executionRegistry,
             de.mhus.vance.brain.script.cortex.ScriptExecutionWsRegistry scriptExecutionWsRegistry,
@@ -78,6 +84,7 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         this.objectMapper = objectMapper;
         this.sender = sender;
         this.clientToolRegistry = clientToolRegistry;
+        this.toolHealthService = toolHealthService;
         this.connectionRegistry = connectionRegistry;
         this.executionRegistry = executionRegistry;
         this.scriptExecutionWsRegistry = scriptExecutionWsRegistry;
@@ -204,7 +211,12 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
         scriptExecutionWsRegistry.unregisterAllFor(wsSession);
         if (ctx.hasSession()) {
             String sessionId = ctx.getSessionId();
+            // Snapshot the client-tools before we unregister so we can
+            // mark them DOWN in the tool-health doc — once unregister
+            // runs the registry no longer knows what was there.
+            List<ToolSpec> clientTools = clientToolRegistry.toolsFor(sessionId);
             clientToolRegistry.unregister(sessionId);
+            markClientToolsUnavailable(ctx.getTenantId(), sessionId, clientTools);
             connectionRegistry.unregister(sessionId);
             sessionService.unbind(sessionId, ctx.getConnectionId());
             // Drive the per-session onDisconnect policy AFTER the connection
@@ -215,6 +227,27 @@ public class VanceWebSocketHandler extends TextWebSocketHandler {
                 sessionLifecycle.onDisconnect(sessionId);
             } catch (RuntimeException e) {
                 log.warn("onDisconnect dispatch failed for session='{}'", sessionId, e);
+            }
+        }
+    }
+
+    private void markClientToolsUnavailable(
+            String tenantId, String sessionId, List<ToolSpec> tools) {
+        if (tools.isEmpty()) return;
+        for (ToolSpec spec : tools) {
+            try {
+                toolHealthService.markUnavailable(
+                        tenantId,
+                        ToolHealthScope.SESSION,
+                        sessionId,
+                        spec.getName(),
+                        ToolHealthClassification.TECHNICALLY_BROKEN,
+                        null,
+                        "Client disconnected — tool reachable again on next bind",
+                        "ws-disconnect");
+            } catch (RuntimeException e) {
+                log.warn("markUnavailable for client tool '{}' on session '{}' failed: {}",
+                        spec.getName(), sessionId, e.toString());
             }
         }
     }

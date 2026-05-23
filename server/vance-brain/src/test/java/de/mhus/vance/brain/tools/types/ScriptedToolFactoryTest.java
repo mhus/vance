@@ -325,7 +325,9 @@ class ScriptedToolFactoryTest {
         when(src.tools(any())).thenReturn(List.<Tool>of());
         when(src.find(any(), any())).thenReturn(Optional.empty());
         ToolDispatcher dispatcher = new ToolDispatcher(
-                List.of(src), new PermissionService(new RecordingPermissionResolver()));
+                List.of(src), new PermissionService(new RecordingPermissionResolver()),
+                mock(de.mhus.vance.brain.fook.FookChecker.class),
+                mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class));
         return new ContextToolsApi(dispatcher, ctx(), Set.of());
     }
 }

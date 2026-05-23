@@ -1,0 +1,106 @@
+# Bundled tool-error pattern rules for the synchronous FookChecker.
+#
+# First-match-wins — rule order is semantic. Tenants override by
+# placing a file at `_tenant/fook/error-patterns.yaml` in their tenant
+# system project; projects can refine further at
+# `<project>/fook/error-patterns.yaml`. Rules with the same `id` in a
+# closer scope completely replace the bundled entry (no field-merge).
+#
+# Fields:
+#   id              stable identifier, unique within the file
+#   match           selector — AND across fields; arrays are OR
+#     httpStatus    exact HTTP status integer
+#     httpStatusRange [lo, hi] inclusive
+#     exceptionType array of fully-qualified Java exception classes
+#                   matched against the cause-chain (any frame counts)
+#     bodyContains  array of substrings, OR-matched against the tool
+#                   response payload (best-effort string form)
+#     errorCode     array of tool-result `error.code` markers
+#   signature       stable cooldown key (short, descriptive)
+#   classification  one of TECHNICALLY_BROKEN / USER_SPECIFIC_TECHNICAL
+#                          / USER_PERMISSION / USER_INPUT / INTERMITTENT
+#                          / UNCLEAR
+#   cooldown        ISO-8601 Duration or special "header:retry-after"
+#   healthAction    none | markUnavailable | markDegraded   (default none)
+#                   when set, the checker writes a status entry directly
+#                   without enqueuing Fook
+#   locked          true → future auto-pattern-pflege won't touch this rule
+#   note            optional audit string
+
+patterns:
+  - id: http-401-expired-token
+    match:
+      httpStatus: 401
+      bodyContains: ["expired_token", "token_expired", "ExpiredAccessToken"]
+    signature: http-401-expired
+    classification: USER_SPECIFIC_TECHNICAL
+    cooldown: PT24H
+    locked: true
+    note: "Token-refresh is tool-specific; user must re-link credentials."
+
+  - id: http-401-generic
+    match: { httpStatus: 401 }
+    signature: http-401
+    classification: UNCLEAR
+
+  - id: http-403
+    match: { httpStatus: 403 }
+    signature: http-403
+    classification: USER_PERMISSION
+    cooldown: PT24H
+    locked: true
+    note: "User lacks the required permission — not a tool-health issue."
+
+  - id: http-404-endpoint
+    match: { httpStatus: 404 }
+    signature: http-404
+    classification: UNCLEAR
+    note: "Could be path drift or server reconfiguration — escalate."
+
+  - id: http-429
+    match: { httpStatus: 429 }
+    signature: http-429
+    classification: INTERMITTENT
+    cooldown: header:retry-after
+    locked: true
+
+  - id: http-5xx
+    match:
+      httpStatusRange: [500, 599]
+    signature: http-5xx
+    classification: UNCLEAR
+
+  - id: socket-timeout
+    match:
+      exceptionType: ["java.net.SocketTimeoutException", "java.util.concurrent.TimeoutException"]
+    signature: timeout
+    classification: UNCLEAR
+
+  - id: connect-refused
+    match:
+      exceptionType: ["java.net.ConnectException", "java.net.UnknownHostException", "java.net.NoRouteToHostException"]
+    signature: connect-refused
+    classification: TECHNICALLY_BROKEN
+    healthAction: markUnavailable
+    cooldown: PT5M
+    locked: true
+
+  - id: schema-violation
+    match:
+      bodyContains: ["__schema_violation__"]
+    signature: schema-violation
+    classification: UNCLEAR
+
+  - id: tool-exception-generic
+    match:
+      exceptionType: ["de.mhus.vance.toolpack.ToolException"]
+    signature: tool-exception
+    classification: UNCLEAR
+
+  # Catch-all — empty match always succeeds; placed last so all the
+  # specific rules above can win first.
+  - id: fallback
+    match: {}
+    signature: unclassified
+    classification: UNCLEAR
+    locked: true

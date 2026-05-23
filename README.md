@@ -1,48 +1,40 @@
-# Vance
+# 𝑣 Vance
 
-**AI Multi-Agent Orchestration Platform**
+**Platform for hybrid AI reasoning.** Deterministic structures lead, AI agents work inside them. Persistent projects, memory in MongoDB, tenants and permissions.
 
-Vance is a multi-agent orchestration platform that enables complex, dialogic AI workflows through task trees, scope-aware memory, and human-in-the-loop steering.
+Vance is not a chatbot and not a coding assistant. It is a server on which AI reasoning processes run over days, stay persistent, and remain steerable by the user.
 
-## Core Concepts
+## What Vance actually does
 
-- **Brain** — Central orchestration server managing engines, task trees, memory, and LLM dispatch
-- **Engines** — Independent execution units, each with their own task tree and scope
-- **Task Trees** — Hierarchical decomposition of goals into executable steps with dependency tracking and invalidation
-- **Memory & RAG** — Scope-aware knowledge management (Node → Engine → Project → Tenant) with vector search
-- **Steering** — Human-in-the-loop control: pause, reorder, split, cancel, and redirect tasks at any point
-- **Lanes** — Serialized execution queues preventing race conditions across engines and projects
+- **Persistent thinking processes.** A Think Process has status, lifecycle, memory, and survives disconnects. Mongo stores history and intermediate results — not the RAM of a session.
+- **Determinism + AI, mixed.** Engines drive the control flow in Java code, not the LLM. `vogon` runs strict phase pipelines with gates and output schemas, `marvin` grows task trees dynamically, `ford` works as a generalist worker, `arthur` and `eddie` coordinate the user session. The LLM call is a tool inside the engine logic.
+- **Project Kits.** A Git bundle of skills, recipes, tools, and settings. `kit install` makes a project productive immediately. Pre-configured kits are possible (e.g. `kernel-security`, `python-data-science`); tenants maintain their own.
+- **Customizable per project.** Recipes, prompts, tools, settings — everything cascades from bundled defaults → tenant → project. Each project overrides selectively, without touching code.
+- **Scopes from day one.** Tenant → Project Group → Project → Session → Think Process. Memory cascades downward and is laterally isolated. Permissions, quotas, and settings attach to the scope.
+- **Multiple clients, one Brain.** CLI (`vance-foot`), web UI (`vance-face`), mobile (`vance-fingers`). Brain is the single source of truth; clients are different access surfaces — not views on the same content.
 
-## Architecture
+## What Vance is not
 
-```
-┌─────────────────────────────────────────────┐
-│                 Client SDK                   │
-│  WebSocket · Session · Local Tools           │
-├─────────┬──────────────┬────────────────────┤
-│ CLI     │ Desktop      │ Mobile / Web UI    │
-└────┬────┴──────┬───────┴─────────┬──────────┘
-     └───────────┼─────────────────┘
-                 │ WebSocket
-                 ▼
-┌─────────────────────────────────────────────┐
-│                Vance Brain                   │
-│  Engine Registry · Task Trees · Memory       │
-│  LLM Orchestration · Lane Serializer         │
-│  Session Manager · Tool Dispatcher           │
-├─────────────────────────────────────────────┤
-│  MongoDB · LLM Providers · Remote Tools      │
-└─────────────────────────────────────────────┘
-```
+Not a document editor, not a project management tool, not a notebook, not a Slack replacement. Vance exports results to Google Docs, Jira, Obsidian, etc. — managing those artifacts happens there, not in Vance.
 
-## License
+## Concepts in one line
 
-Vance is licensed under the [Vance Non-Commercial, Non-Production Copyleft License v1.0](LICENSE.txt).
+| Term | Meaning |
+|---|---|
+| **Engine** | Java algorithm with a lifecycle. Session layer (`arthur`, `eddie`), workers (`ford`, `marvin`, `vogon`, `zaphod`, `jeltz`), meta-engines that generate recipes (`slartibartfast`, `hactar`), service engine for tool health diagnosis (`agrajag`, classifies tool failures via LLM), plus workflow runtime `magrathea`. |
+| **Recipe** | YAML config: engine + default params + prompt prefix + tool adjustments. Many, no code change. |
+| **Think Process** | Running instance, persisted in Mongo. Status, task tree, inbox. |
+| **Project Kit** | Git repo with skills/recipes/tools/settings, imported into a project. |
+| **Scope** | Tenant/group/project/session/process — visibility for memory and permissions. |
 
-Use, copying, and modification are permitted **only** for non-commercial, non-production purposes (testing, evaluation, research, experimentation). Any production, operational, or commercial use is prohibited. Modifications redistributed to third parties must be published in source form under the same license. See [LICENSE.txt](LICENSE.txt) for the full terms and [CLA.md](CLA.md) for the contributor agreement.
+## Tech stack
 
-Enterprise features (SSO, Audit, Team Management) are available separately under a commercial license — see [vance-ee](https://github.com/mhus/vance-ee).
+Java 25 + Spring Boot 4 + MongoDB + langchain4j/langgraph4j (Brain) · TypeScript + Vue 3 + Vite (web) · React Native + Expo (mobile) · Picocli + JLine 3 + Lanterna (CLI).
 
 ## Status
 
-🚧 Early development — architecture and core concepts are being defined.
+In active development. Brain, CLI, and web UI run locally; eleven engines are implemented: `arthur`, `eddie`, `ford`, `marvin`, `vogon`, `zaphod`, `jeltz`, `slartibartfast`, `hactar`, `magrathea`, `agrajag`. Tenants and permissions are prepared in the data model; the full multi-user layer comes later.
+
+## License
+
+Vance Non-Commercial, Non-Production Copyleft v1.0 — see [`LICENSE.txt`](LICENSE.txt). Use only for non-commercial, non-production purposes (testing, evaluation, research). Enterprise features (SSO, audit, team management) are available separately under a commercial license: [`vance-ee`](https://github.com/mhus/vance-ee).

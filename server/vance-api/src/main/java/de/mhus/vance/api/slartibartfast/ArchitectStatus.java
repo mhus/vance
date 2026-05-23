@@ -19,8 +19,21 @@ public enum ArchitectStatus {
      *  {@link FramedGoal} with two distinct lists —
      *  {@link FramedGoal#getStatedCriteria()} (verbatim from the
      *  user) and {@link FramedGoal#getAssumedCriteria()}
-     *  (inferred conventions/domain/context, with rationales). */
+     *  (inferred conventions/domain/context, with rationales).
+     *  Also emits {@link ArchitectState#getMode()} (CREATE/EDIT),
+     *  optional {@link ArchitectState#getTargetRecipeName()} and
+     *  {@link ArchitectState#getRecipeName()}. */
     FRAMING,
+
+    /** Deterministic phase (no LLM): only entered when
+     *  {@link ArchitectState#getMode()} == {@link ArchitectMode#EDIT}.
+     *  Loads {@code recipes/_user/<targetRecipeName>.yaml} via
+     *  DocumentService, parses it, infers the
+     *  {@link OutputSchemaType} from the recipe's {@code engine:}
+     *  field (overriding any engineParam-supplied value), and
+     *  stashes the raw + parsed yaml on the state for subsequent
+     *  phases to consume. Skipped entirely when mode=CREATE. */
+    LOADING_EXISTING,
 
     /** Partition {@link FramedGoal#getAssumedCriteria()} by
      *  confidence: high-confidence inferences pass through into
@@ -56,10 +69,24 @@ public enum ArchitectStatus {
      *  speculation bound. Failure → re-prompt PROPOSING. */
     VALIDATING,
 
-    /** Recipe accepted — write to
-     *  {@code recipes/_slart/<runId>/<name>.yaml} plus an
-     *  {@code audit.json} with the full evidence chain. */
+    /** Recipe accepted — write to one of:
+     *  <ul>
+     *    <li>{@code recipes/_user/<recipeName>.yaml} when
+     *        {@link ArchitectState#getRecipeName()} is set (named
+     *        CREATE) or {@link ArchitectState#getMode()} = EDIT
+     *        (overwrite the existing recipe)</li>
+     *    <li>{@code recipes/_slart/<runId>/<name>.yaml} otherwise
+     *        (anonymous CREATE — the legacy sandbox path).</li>
+     *  </ul>
+     *  Audit chain lands beside the recipe — for EDIT it also
+     *  carries {@code previousRecipeYaml} for rollback. */
     PERSISTING,
+
+    /** LLM call: decide whether to execute the freshly persisted
+     *  recipe, and with what prompt. Output is one of three
+     *  {@link ExecutionDecision} values. Skipped entirely when
+     *  {@code engineParams.planOnly=true}. */
+    EXECUTION_PLANNING,
 
     /** {@link EscalationMode#ASK_USER}: max recoveries hit, inbox
      *  item posted, engine parks waiting for the user's verdict.

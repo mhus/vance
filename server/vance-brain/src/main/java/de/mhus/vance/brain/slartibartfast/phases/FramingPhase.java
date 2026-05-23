@@ -82,11 +82,15 @@ public class FramingPhase {
 
             Schema (every field mandatory unless noted):
                 {
-                  "framed":          "<re-stated request, one sentence>",
-                  "statedCriteria":  [
+                  "framed":              "<re-stated request, one sentence>",
+                  "mode":                "CREATE" | "EDIT",
+                  "targetRecipeName":    "<name> | null",
+                  "modificationSummary": "<what to change> | null",
+                  "recipeName":          "<name for new recipe> | null",
+                  "statedCriteria":      [
                     { "text": "<predicate>" }
                   ],
-                  "assumedCriteria": [
+                  "assumedCriteria":     [
                     {
                       "text":       "<predicate>",
                       "origin":     "INFERRED_CONVENTION" |
@@ -97,6 +101,26 @@ public class FramingPhase {
                     }
                   ]
                 }
+
+            mode / targetRecipeName / modificationSummary /
+            recipeName fields:
+
+            - mode = "EDIT" when the user wants to change an
+              EXISTING recipe by name. Signals: "Erweitere 'X'",
+              "modifiziere 'X'", "ändere 'X'", "in 'X' ergänze …",
+              "extend 'X'", "modify the 'X' recipe".
+              Set targetRecipeName = "X" and modificationSummary
+              = a 1-sentence description of the change. Leave
+              recipeName = null.
+            - mode = "CREATE" otherwise. Set targetRecipeName and
+              modificationSummary to null.
+              If the user says "speicher es unter 'X'" / "save
+              as X" / "name it X" / "unter dem Namen X", set
+              recipeName = "X" so the engine persists at a named
+              path. Otherwise recipeName = null.
+            - Extract names verbatim (preserve case, hyphens,
+              underscores). The recipe-name is a filesystem-ish
+              identifier — kebab-case is conventional.
 
             statedCriteria: only what is verbatim in the user text
             or an unambiguous paraphrase. Origin is implicitly
@@ -328,7 +352,37 @@ public class FramingPhase {
                     s.trim(), parsedOrigin, confidence, rationale.trim()));
         }
 
-        return new FramingResult(framed.trim(), statedCriteria, assumedCriteria);
+        // Phase-D fields (all optional in the JSON; engine-params
+        // win when both sources set the same field).
+        String mode = optString(root.get("mode"));
+        String targetRecipeName = optString(root.get("targetRecipeName"));
+        String modificationSummary = optString(root.get("modificationSummary"));
+        String recipeName = optString(root.get("recipeName"));
+
+        if (mode != null && !"CREATE".equals(mode) && !"EDIT".equals(mode)) {
+            throw new FramingValidationException(
+                    "mode '" + mode + "' must be CREATE or EDIT (or omitted)");
+        }
+        // EDIT mode without a target name is unusable — reject.
+        if ("EDIT".equals(mode)
+                && (targetRecipeName == null || targetRecipeName.isBlank())) {
+            throw new FramingValidationException(
+                    "mode=EDIT but targetRecipeName missing — extract "
+                            + "the recipe name from the user description "
+                            + "(e.g. \"Erweitere 'rat-der-macher'\" → \"rat-der-macher\")");
+        }
+
+        return new FramingResult(framed.trim(), statedCriteria, assumedCriteria,
+                mode, targetRecipeName, modificationSummary, recipeName);
+    }
+
+    private static @Nullable String optString(@Nullable Object v) {
+        if (v == null) return null;
+        if (v instanceof String s) {
+            String t = s.trim();
+            return t.isEmpty() || "null".equalsIgnoreCase(t) ? null : t;
+        }
+        return null;
     }
 
     /** Extract the first balanced top-level JSON object. Tolerates
@@ -411,6 +465,22 @@ public class FramingPhase {
                 .statedCriteria(stated)
                 .assumedCriteria(assumed)
                 .build());
+
+        // Phase-D fields: engine-param wins (set by buildInitialState),
+        // LLM only fills in when the state slot is still null.
+        if ("EDIT".equals(parsed.mode)
+                && state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.CREATE) {
+            state.setMode(de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT);
+        }
+        if (parsed.targetRecipeName != null && state.getTargetRecipeName() == null) {
+            state.setTargetRecipeName(parsed.targetRecipeName);
+        }
+        if (parsed.modificationSummary != null && state.getModificationSummary() == null) {
+            state.setModificationSummary(parsed.modificationSummary);
+        }
+        if (parsed.recipeName != null && state.getRecipeName() == null) {
+            state.setRecipeName(parsed.recipeName);
+        }
     }
 
     // ──────────────────── Audit append ────────────────────
@@ -469,7 +539,11 @@ public class FramingPhase {
     private record FramingResult(
             String framed,
             List<ParsedStated> statedCriteria,
-            List<ParsedAssumed> assumedCriteria) {}
+            List<ParsedAssumed> assumedCriteria,
+            @Nullable String mode,
+            @Nullable String targetRecipeName,
+            @Nullable String modificationSummary,
+            @Nullable String recipeName) {}
 
     private record ParsedStated(String text) {}
 

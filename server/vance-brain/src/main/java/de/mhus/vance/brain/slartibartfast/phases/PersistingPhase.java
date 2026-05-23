@@ -47,6 +47,7 @@ import tools.jackson.databind.ObjectMapper;
 public class PersistingPhase {
 
     public static final String SLART_PREFIX = "recipes/_slart/";
+    public static final String USER_PREFIX = "recipes/_user/";
 
     private final DocumentService documentService;
     private final ObjectMapper objectMapper;
@@ -69,12 +70,63 @@ public class PersistingPhase {
             return;
         }
 
-        String recipePath = SLART_PREFIX + runId + "/" + draft.getName() + ".yaml";
-        String auditPath = SLART_PREFIX + runId + "/audit.json";
+        // Phase-D write-path resolution:
+        //   EDIT                 → recipes/_user/<targetRecipeName>.yaml (overwrite)
+        //   CREATE + recipeName  → recipes/_user/<recipeName>.yaml       (refuse on collision)
+        //   CREATE anonymous     → recipes/_slart/<runId>/<draft.name>.yaml (legacy sandbox)
+        // Audit always lives next to the recipe; for EDIT the audit
+        // carries the previousRecipeYaml so the overwrite is
+        // reversible.
+        String recipePath;
+        String auditPath;
+        boolean isUserNamespace;
+        if (state.getMode() == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT) {
+            String name = state.getTargetRecipeName();
+            if (name == null || name.isBlank()) {
+                state.setFailureReason("PERSISTING in EDIT mode without "
+                        + "targetRecipeName — LOADING_EXISTING must set it");
+                return;
+            }
+            recipePath = USER_PREFIX + name + ".yaml";
+            auditPath = USER_PREFIX + name + ".audit.json";
+            isUserNamespace = true;
+        } else if (state.getRecipeName() != null && !state.getRecipeName().isBlank()) {
+            String name = state.getRecipeName();
+            recipePath = USER_PREFIX + name + ".yaml";
+            auditPath = USER_PREFIX + name + ".audit.json";
+            isUserNamespace = true;
+            // Collision refusal: named CREATE must not silently
+            // overwrite an existing recipe. The user explicitly
+            // chose the name, so a collision is intent-ambiguous.
+            if (documentService.findByPath(
+                    process.getTenantId(), process.getProjectId(), recipePath)
+                    .isPresent()) {
+                state.setFailureReason("Recipe '" + name + "' already "
+                        + "exists at " + recipePath + ". To modify it, "
+                        + "use EDIT mode (\"Erweitere '" + name + "' um …\"). "
+                        + "To replace it, delete the existing document first.");
+                appendIteration(state,
+                        "draft '" + draft.getName() + "', target=" + recipePath,
+                        "FAILED — collision with existing recipe",
+                        PhaseIteration.IterationOutcome.FAILED);
+                return;
+            }
+        } else {
+            recipePath = SLART_PREFIX + runId + "/" + draft.getName() + ".yaml";
+            auditPath = SLART_PREFIX + runId + "/audit.json";
+            isUserNamespace = false;
+        }
 
         try {
             writeOrUpdate(process, recipePath, draft.getYaml(),
-                    "Slartibartfast-generated recipe for run " + runId);
+                    isUserNamespace
+                            ? "Slartibartfast user-namespace recipe '"
+                                    + (state.getMode()
+                                            == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT
+                                            ? state.getTargetRecipeName()
+                                            : state.getRecipeName())
+                                    + "'"
+                            : "Slartibartfast-generated recipe for run " + runId);
         } catch (RuntimeException e) {
             state.setFailureReason("PERSISTING failed writing recipe "
                     + recipePath + ": " + e.getMessage());

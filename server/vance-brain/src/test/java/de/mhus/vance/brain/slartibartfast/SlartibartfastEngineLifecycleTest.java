@@ -157,6 +157,8 @@ class SlartibartfastEngineLifecycleTest {
                 decomposingPhase, bindingPhase,
                 proposingPhase, validatingPhase, persistingPhase,
                 /*executionValidatingPhase*/ null,
+                /*loadingExistingPhase*/ null,
+                /*executionPlanningPhase*/ null,
                 new PathCriteriaLifter());
     }
 

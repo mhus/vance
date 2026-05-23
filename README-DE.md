@@ -9,6 +9,7 @@ Vance ist kein Chatbot und kein Coding-Assistent. Es ist ein Server, auf dem KI-
 - **Persistente Denkprozesse.** Ein Think-Process hat Status, Lifecycle, Memory und überlebt Disconnects. Mongo speichert Verlauf und Zwischenergebnisse, nicht der RAM einer Session.
 - **Determinismus + KI gemischt.** Engines steuern den Ablauf in Java-Code, nicht der LLM. `vogon` fährt strikte Phasen-Pipelines mit Gates und Output-Schemas, `marvin` baut Task-Trees dynamisch, `ford` arbeitet als Generalist-Worker, `arthur` und `eddie` koordinieren die User-Session. Der LLM-Call ist Werkzeug innerhalb der Engine-Logik.
 - **Project Kits.** Git-Bundle aus Skills, Recipes, Tools und Settings. `kit install` macht ein Projekt sofort produktiv. Vorkonfigurierte Kits sind möglich (z.B. `kernel-security`, `python-data-science`); Tenants pflegen eigene.
+- **Pro Projekt anpassbar.** Recipes, Prompts, Tools, Settings — alles kommt per Cascade aus Bundled-Defaults → Tenant → Projekt. Jedes Projekt überschreibt selektiv, ohne Code anzufassen.
 - **Scopes von Anfang an.** Tenant → Projekt-Gruppe → Projekt → Session → Think-Process. Memory kaskadiert nach unten, ist seitlich isoliert. Rechte, Quotas und Settings hängen am Scope.
 - **Mehrere Clients, ein Brain.** CLI (`vance-foot`), Web-UI (`vance-face`), Mobile (`vance-fingers`). Brain ist Single Source of Truth, Clients sind unterschiedliche Zugänge — keine Views auf dasselbe.
 
@@ -20,7 +21,7 @@ Kein Dokument-Editor, kein Projektmanagement-Tool, kein Notebook, kein Slack-Ers
 
 | Begriff | Bedeutung |
 |---|---|
-| **Engine** | Java-Algorithmus mit Lifecycle. Session-Layer (`arthur`, `eddie`), Worker (`ford`, `marvin`, `vogon`, `zaphod`, `jeltz`), Meta-Engines, die Recipes generieren (`slartibartfast`, `hactar`), plus Workflow-Runtime `magrathea` und Failure-Tracking `agrajag`. |
+| **Engine** | Java-Algorithmus mit Lifecycle. Session-Layer (`arthur`, `eddie`), Worker (`ford`, `marvin`, `vogon`, `zaphod`, `jeltz`), Meta-Engines, die Recipes generieren (`slartibartfast`, `hactar`), Service-Engine für Tool-Health-Diagnose (`agrajag`, klassifiziert Tool-Fehler per LLM), plus Workflow-Runtime `magrathea`. |
 | **Recipe** | YAML-Konfig: Engine + Default-Params + Prompt-Prefix + Tool-Anpassungen. Viele, kein Code-Change. |
 | **Think Process** | Laufende Instanz, persistiert in Mongo. Status, Task-Tree, Inbox. |
 | **Project Kit** | Git-Repo mit Skills/Recipes/Tools/Settings, das in ein Projekt importiert wird. |

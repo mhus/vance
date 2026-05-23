@@ -47,9 +47,12 @@ class ValidatingPhaseTest {
                         stubRecipe("marvin-worker"),
                         stubRecipe("analyze"),
                         stubRecipe("code-read")));
-        phase = new ValidatingPhase(
-                recipeLoader,
-                new de.mhus.vance.brain.prompt.PromptTemplateRenderer());
+        de.mhus.vance.brain.prompt.PromptTemplateRenderer promptRenderer =
+                new de.mhus.vance.brain.prompt.PromptTemplateRenderer();
+        phase = new ValidatingPhase(java.util.List.of(
+                new de.mhus.vance.brain.slartibartfast.architect.VogonArchitect(recipeLoader),
+                new de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect(recipeLoader, promptRenderer),
+                new de.mhus.vance.brain.slartibartfast.architect.ZaphodArchitect()));
         process = new ThinkProcessDocument();
         process.setId("proc-1");
         process.setTenantId("acme");
@@ -116,7 +119,7 @@ class ValidatingPhaseTest {
 
         assertThat(state.getPendingRecovery()).isNull();
         assertThat(state.getValidationReport())
-                .filteredOn(v -> ValidatingPhase.RULE_MARVIN_PROMPT_PREFIX.equals(v.getRule()))
+                .filteredOn(v -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_PROMPT_PREFIX.equals(v.getRule()))
                 .extracting(ValidationCheck::isPassed)
                 .containsExactly(true);
     }
@@ -144,7 +147,7 @@ class ValidatingPhaseTest {
 
         assertThat(state.getPendingRecovery()).isNotNull();
         assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_MARVIN_PROMPT_PREFIX);
+                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_PROMPT_PREFIX);
     }
 
     @Test
@@ -283,7 +286,7 @@ class ValidatingPhaseTest {
 
         assertThat(state.getPendingRecovery()).isNotNull();
         assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_VOGON_STRATEGY_PARSES);
+                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect.VogonArchitect.RULE_VOGON_STRATEGY_PARSES);
     }
 
     @Test
@@ -308,7 +311,7 @@ class ValidatingPhaseTest {
 
         assertThat(state.getPendingRecovery()).isNotNull();
         assertThat(state.getPendingRecovery().getReason())
-                .isEqualTo(ValidatingPhase.RULE_VOGON_STRATEGY_PARSES);
+                .isEqualTo(de.mhus.vance.brain.slartibartfast.architect.VogonArchitect.RULE_VOGON_STRATEGY_PARSES);
     }
 
     @Test
@@ -392,7 +395,7 @@ class ValidatingPhaseTest {
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> ValidatingPhase.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule())
+                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule())
                         && !c.isPassed())
                 .extracting(ValidationCheck::getMessage)
                 .singleElement().asString()
@@ -414,7 +417,7 @@ class ValidatingPhaseTest {
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> ValidatingPhase.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule())
+                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule())
                         && !c.isPassed())
                 .extracting(ValidationCheck::getMessage)
                 .singleElement().asString()
@@ -434,7 +437,7 @@ class ValidatingPhaseTest {
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> ValidatingPhase.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule())
+                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule())
                         && !c.isPassed())
                 .extracting(ValidationCheck::getMessage)
                 .singleElement().asString()
@@ -452,7 +455,7 @@ class ValidatingPhaseTest {
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> ValidatingPhase.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule()))
+                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule()))
                 .extracting(ValidationCheck::isPassed)
                 .containsExactly(true);
     }
@@ -472,7 +475,7 @@ class ValidatingPhaseTest {
         phase.execute(state, process, ctx);
 
         assertThat(state.getValidationReport())
-                .filteredOn(c -> ValidatingPhase.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule()))
+                .filteredOn(c -> de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect.RULE_MARVIN_RECIPES_EXIST.equals(c.getRule()))
                 .extracting(ValidationCheck::isPassed)
                 .containsExactly(true);
     }

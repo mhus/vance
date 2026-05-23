@@ -1,7 +1,9 @@
 package de.mhus.vance.api.slartibartfast;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -79,6 +81,44 @@ public class ArchitectState {
 
     @Builder.Default
     private OutputSchemaType outputSchemaType = OutputSchemaType.VOGON_STRATEGY;
+
+    /** CREATE or EDIT — emitted by FRAMING, drives the
+     *  LOADING_EXISTING phase, the PROPOSING "invent vs. patch"
+     *  switch, and the PERSISTING write-path. See
+     *  {@link ArchitectMode}. */
+    @Builder.Default
+    private ArchitectMode mode = ArchitectMode.CREATE;
+
+    /** Set by FRAMING for CREATE when the user description includes
+     *  "speicher es unter 'X'" / "save as X" / "name it X".
+     *  Drives PERSISTING to write to {@code recipes/_user/<recipeName>.yaml}
+     *  instead of the legacy {@code _slart/<runId>/} sandbox.
+     *  Null = anonymous run, sandbox path. */
+    private @Nullable String recipeName;
+
+    /** EDIT only — name of the existing recipe to patch. Set by
+     *  FRAMING from "Erweitere 'X'", "modifiziere 'X'", "ändere
+     *  X" patterns. LOADING_EXISTING loads
+     *  {@code recipes/_user/<targetRecipeName>.yaml} and stashes
+     *  the parsed result in {@link #existingRecipeYaml} +
+     *  {@link #existingRecipeMap}. */
+    private @Nullable String targetRecipeName;
+
+    /** EDIT only — natural-language description of what to
+     *  change in the target recipe. Reaches PROPOSING as part
+     *  of the user prompt so the LLM knows what to patch and
+     *  what to leave intact. */
+    private @Nullable String modificationSummary;
+
+    /** EDIT only — raw YAML of the loaded existing recipe.
+     *  PROPOSING gets this as a verbatim reference so it can
+     *  "patch instead of invent". */
+    private @Nullable String existingRecipeYaml;
+
+    /** EDIT only — parsed top-level map of the existing recipe.
+     *  Useful for downstream inspection (justifications can
+     *  reference unchanged constraint-keys symbolically). */
+    private @Nullable Map<String, Object> existingRecipeMap;
 
     @Builder.Default
     private ArchitectStatus status = ArchitectStatus.READY;
@@ -275,4 +315,21 @@ public class ArchitectState {
      *  what happened without resolving the child process
      *  document. */
     private @Nullable String childExecutionSummary;
+
+    /** EXECUTION_PLANNING output — verdict on whether/how to
+     *  run the freshly persisted recipe. {@code null} until
+     *  EXECUTION_PLANNING runs (or planOnly=true skipped it). */
+    private @Nullable ExecutionDecision executionDecision;
+
+    /** EXECUTION_PLANNING output — the prompt that will be used
+     *  as the goal for the spawned child process. Equal to the
+     *  user description on USE_USER_PROMPT, or a Slart-LLM-
+     *  generated test prompt on USE_GENERATED_PROMPT. {@code null}
+     *  on SKIP. */
+    private @Nullable String executionPrompt;
+
+    /** EXECUTION_PLANNING output — natural-language rationale
+     *  for the decision. Surfaces on DONE-payload so the caller
+     *  (Arthur) can explain Slart's behavior. */
+    private @Nullable String executionDecisionReason;
 }

@@ -123,8 +123,38 @@ public class SlartibartfastEngine implements ThinkEngine {
      *  after PERSISTING with status DONE and skips the EXECUTING
      *  + EXECUTION_VALIDATING phases. Default {@code false}:
      *  Slart plans, executes via a spawned child, and validates
-     *  the produced artifacts before reporting DONE. */
+     *  the produced artifacts before reporting DONE. Note:
+     *  {@link de.mhus.vance.api.slartibartfast.ExecutionDecision#SKIP}
+     *  emitted by EXECUTION_PLANNING has the same effect (stops
+     *  after PERSISTING). */
     public static final String PLAN_ONLY_KEY = "planOnly";
+
+    /** {@code engineParams[RECIPE_NAME_KEY]} — optional caller-
+     *  supplied name under which to persist the generated recipe.
+     *  When set, PERSISTING writes to
+     *  {@code recipes/_user/<recipeName>.yaml} instead of the
+     *  legacy {@code _slart/<runId>/} sandbox. The FRAMING-LLM
+     *  can also emit this from a user description containing
+     *  "speicher es unter X" / "save as X". Engine-param value
+     *  takes precedence; LLM-emitted value fills in when the
+     *  param is empty. */
+    public static final String RECIPE_NAME_KEY = "recipeName";
+
+    /** {@code engineParams[TARGET_RECIPE_NAME_KEY]} — optional
+     *  caller-supplied target for an EDIT run. When set, Slart
+     *  enters EDIT mode and LOADING_EXISTING tries to load
+     *  {@code recipes/_user/<targetRecipeName>.yaml}. The
+     *  FRAMING-LLM can also detect EDIT-intent from phrases
+     *  like "Erweitere 'X' um …". Engine-param wins when both
+     *  are set. */
+    public static final String TARGET_RECIPE_NAME_KEY = "targetRecipeName";
+
+    /** {@code engineParams[MODIFICATION_SUMMARY_KEY]} — optional
+     *  free-text description of the requested modification for
+     *  EDIT runs. Surfaces in the PROPOSING user prompt next to
+     *  the existing recipe yaml. Usually emitted by the
+     *  FRAMING-LLM, but callers can override here. */
+    public static final String MODIFICATION_SUMMARY_KEY = "modificationSummary";
 
     private final ThinkProcessService thinkProcessService;
     private final ProcessEventEmitter eventEmitter;
@@ -143,6 +173,8 @@ public class SlartibartfastEngine implements ThinkEngine {
     private final ValidatingPhase validatingPhase;
     private final PersistingPhase persistingPhase;
     private final ExecutionValidatingPhase executionValidatingPhase;
+    private final de.mhus.vance.brain.slartibartfast.phases.LoadingExistingPhase loadingExistingPhase;
+    private final de.mhus.vance.brain.slartibartfast.phases.ExecutionPlanningPhase executionPlanningPhase;
     /**
      * Deterministic lift of file-path conventions from CLASSIFYING's
      * evidence into acceptanceCriteria. Runs between CLASSIFYING and
@@ -528,7 +560,12 @@ public class SlartibartfastEngine implements ThinkEngine {
                     childName,
                     targetEngine.name(), targetEngine.version(),
                     "Slart-spawned execution of " + applied.name(),
-                    state.getUserDescription(),
+                    // EXECUTION_PLANNING decided which prompt to run with.
+                    // Falls back to userDescription only when the new phase
+                    // didn't write — e.g. planOnly path or legacy state.
+                    state.getExecutionPrompt() != null
+                            ? state.getExecutionPrompt()
+                            : state.getUserDescription(),
                     process.getId(),
                     applied.params(), applied.name(),
                     applied.promptOverride(),
@@ -818,6 +855,17 @@ public class SlartibartfastEngine implements ThinkEngine {
                 framingPhase.execute(state, process, ctx);
                 if (state.getFailureReason() != null) {
                     state.setStatus(ArchitectStatus.FAILED);
+                } else if (state.getMode()
+                        == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT) {
+                    state.setStatus(ArchitectStatus.LOADING_EXISTING);
+                } else {
+                    state.setStatus(ArchitectStatus.CONFIRMING);
+                }
+            }
+            case LOADING_EXISTING -> {
+                loadingExistingPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
                 } else {
                     state.setStatus(ArchitectStatus.CONFIRMING);
                 }
@@ -900,6 +948,17 @@ public class SlartibartfastEngine implements ThinkEngine {
                 } else if (state.isPlanOnly()) {
                     state.setStatus(ArchitectStatus.DONE);
                 } else {
+                    state.setStatus(ArchitectStatus.EXECUTION_PLANNING);
+                }
+            }
+            case EXECUTION_PLANNING -> {
+                executionPlanningPhase.execute(state, process, ctx);
+                if (state.getFailureReason() != null) {
+                    state.setStatus(ArchitectStatus.FAILED);
+                } else if (state.getExecutionDecision()
+                        == de.mhus.vance.api.slartibartfast.ExecutionDecision.SKIP) {
+                    state.setStatus(ArchitectStatus.DONE);
+                } else {
                     state.setStatus(ArchitectStatus.EXECUTING);
                 }
             }
@@ -963,6 +1022,18 @@ public class SlartibartfastEngine implements ThinkEngine {
                 parseEscalationMode(stringParam(p, ESCALATION_MODE_KEY));
         boolean planOnly = parseBooleanParam(p, PLAN_ONLY_KEY);
         String proposingHints = stringParam(p, PROPOSING_HINTS_KEY);
+
+        // Phase-D engine-params: caller-supplied recipe naming + edit-target.
+        // FRAMING-LLM can populate these from the user description too;
+        // engine-params win when both are set (explicit > inferred).
+        String recipeName = stringParam(p, RECIPE_NAME_KEY);
+        String targetRecipeName = stringParam(p, TARGET_RECIPE_NAME_KEY);
+        String modificationSummary = stringParam(p, MODIFICATION_SUMMARY_KEY);
+        de.mhus.vance.api.slartibartfast.ArchitectMode initialMode =
+                targetRecipeName.isBlank()
+                        ? de.mhus.vance.api.slartibartfast.ArchitectMode.CREATE
+                        : de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT;
+
         return ArchitectState.builder()
                 .runId(generateRunId())
                 .userDescription(userDescription)
@@ -971,6 +1042,10 @@ public class SlartibartfastEngine implements ThinkEngine {
                 .confirmationMode(confirmationMode)
                 .escalationMode(escalationMode)
                 .planOnly(planOnly)
+                .mode(initialMode)
+                .recipeName(recipeName.isBlank() ? null : recipeName)
+                .targetRecipeName(targetRecipeName.isBlank() ? null : targetRecipeName)
+                .modificationSummary(modificationSummary.isBlank() ? null : modificationSummary)
                 .status(ArchitectStatus.READY)
                 .build();
     }

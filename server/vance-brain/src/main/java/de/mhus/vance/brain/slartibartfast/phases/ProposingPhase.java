@@ -268,6 +268,42 @@ public class ProposingPhase {
         sb.append("Output schema type: ")
                 .append(state.getOutputSchemaType()).append("\n\n");
 
+        // Edit-mode: the LLM patches an existing recipe instead of
+        // inventing one. Show the original yaml verbatim plus the
+        // modification request, and instruct the LLM to keep
+        // everything except the parts the modification touches.
+        if (state.getMode()
+                == de.mhus.vance.api.slartibartfast.ArchitectMode.EDIT
+                && state.getExistingRecipeYaml() != null) {
+            sb.append("================================================\n");
+            sb.append("⚙  EDIT MODE — PATCH THE EXISTING RECIPE ⚙\n");
+            sb.append("================================================\n\n");
+            sb.append("You are NOT authoring a new recipe from scratch. "
+                    + "You are modifying THIS existing recipe (named '")
+                    .append(state.getTargetRecipeName())
+                    .append("'):\n\n");
+            sb.append("```yaml\n").append(state.getExistingRecipeYaml())
+                    .append("\n```\n\n");
+            sb.append("Modification requested:\n  ")
+                    .append(state.getModificationSummary() == null
+                            ? "(no summary — infer from the framed goal below)"
+                            : state.getModificationSummary())
+                    .append("\n\n");
+            sb.append("RULES:\n");
+            sb.append("- Keep ALL existing structures EXCEPT what the "
+                    + "modification explicitly changes.\n");
+            sb.append("- Preserve existing names, personae, persona texts, "
+                    + "phase names, head recipe references — anything not "
+                    + "named in the modification stays IDENTICAL.\n");
+            sb.append("- Emit the COMPLETE modified recipe yaml (NOT a "
+                    + "diff). The validator parses the full yaml.\n");
+            sb.append("- justifications: for unchanged constraint-keys, "
+                    + "you may reuse the original justifications. For "
+                    + "changed/new constraint-keys, point at the sg-ids "
+                    + "from the modification's framed goal below.\n");
+            sb.append("================================================\n\n");
+        }
+
         sb.append("Framed goal:\n").append(state.getGoal().getFramed())
                 .append("\n\n");
 

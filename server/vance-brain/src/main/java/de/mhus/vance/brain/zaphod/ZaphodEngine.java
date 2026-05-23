@@ -106,7 +106,10 @@ public class ZaphodEngine implements ThinkEngine {
 
     /** Soft-cap on heads per council. More than this is almost
      *  certainly a config error; we warn + cut off. */
-    private static final int MAX_HEADS = 10;
+    /** Soft cap on the number of heads in a single council. Public
+     *  so the Slartibartfast-side {@code ZaphodHeadsParser} can stay
+     *  in sync with the engine's own start-up validation. */
+    public static final int MAX_HEADS = 10;
 
     private final ThinkProcessService thinkProcessService;
     private final ChatMessageService chatMessageService;

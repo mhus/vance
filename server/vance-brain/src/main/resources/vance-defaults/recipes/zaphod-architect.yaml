@@ -1,0 +1,42 @@
+description: |
+  Slartibartfast variant that generates a Zaphod council recipe
+  (engine: zaphod, heads + personae + synthesisPrompt) from a
+  free-text request. Same Slart lifecycle (FRAMING → … → PERSISTING
+  → EXECUTING → EXECUTION_VALIDATING), only the PROPOSING and
+  VALIDATING phases produce/check a council shape instead of a
+  Vogon strategy.
+
+  Use this when the user wants multiple distinct perspectives on
+  a topic, with a final synthesis — "set up a council of …", "give
+  me three viewpoints on … and a recommendation", "build a debate
+  panel for …". For workflow-style tasks ("write the document with
+  these phases") use plain `slartibartfast` (which defaults to
+  vogon-strategy) instead.
+engine: slartibartfast
+params:
+  outputSchemaType: zaphod-recipe
+  # Council generation benefits from a larger context — Slart
+  # reads the project's manuals and any persona-evidence at once
+  # during GATHERING, then composes 2-5 distinct head perspectives.
+  model: default:analyze
+tags:
+  - architect
+  - council
+  - engine-default
+# Trigger keywords for the deterministic recipe-router pre-check
+# (see specification/recipe-routing.md §5). The plain Slart recipe
+# claims the generic "plan-architect" keywords; this one claims
+# council-shaped intents.
+triggers:
+  keywords:
+    - council
+    - gremium
+    - kremium
+    - panel
+    - perspectives
+    - viewpoints
+    - debate
+    - zaphod
+    - zaphod-recipe
+    - council-recipe
+    - multi-perspective

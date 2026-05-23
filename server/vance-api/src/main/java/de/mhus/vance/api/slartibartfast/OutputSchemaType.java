@@ -18,4 +18,12 @@ public enum OutputSchemaType {
      *  {@code MarvinEngine.validatePlanChildren} enforces it
      *  during the actual run. */
     MARVIN_RECIPE,
+
+    /** Zaphod council recipe YAML — heads list (each with name,
+     *  recipe, persona), plus a {@code synthesisPrompt} for the
+     *  aggregator turn. Validated by {@code ZaphodHeadsParser}
+     *  (shape + per-head required fields); the runtime Zaphod
+     *  engine spawns one sub-process per head and runs the
+     *  synthesis turn over their outputs. */
+    ZAPHOD_RECIPE,
 }

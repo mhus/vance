@@ -150,12 +150,21 @@ public interface Tool {
 
     /**
      * Whether the tool is non-mutating ({@link ToolSafety#SAFE_PROBE})
-     * or mutates state somewhere ({@link ToolSafety#MUTATING}, default).
+     * or mutates state somewhere ({@link ToolSafety#MUTATING}).
      * Diagnostic engines (Agrajag) restrict themselves to {@code SAFE_PROBE}
      * tools during probe turns so checking the world can never change it.
+     *
+     * <p>Default derives from {@link #labels()}: any tool that carries
+     * the {@code "read-only"} label is automatically {@code SAFE_PROBE};
+     * everything else stays {@code MUTATING}. Tools can override
+     * explicitly when the label-derivation doesn't fit (e.g. lookup
+     * tools whose labels haven't been ported yet, or write tools that
+     * happen to be safe to retry).
      */
     default ToolSafety safety() {
-        return ToolSafety.MUTATING;
+        return labels().contains("read-only")
+                ? ToolSafety.SAFE_PROBE
+                : ToolSafety.MUTATING;
     }
 
     /**

@@ -1,13 +1,19 @@
 package de.mhus.vance.brain.tools;
 
 import de.mhus.vance.api.tools.ToolSpec;
+import de.mhus.vance.api.toolhealth.ToolHealthStatus;
 import de.mhus.vance.brain.history.HistoryTagBuilder;
 import de.mhus.vance.brain.history.HistoryTagSink;
+import de.mhus.vance.shared.toolhealth.ToolHealthDocument;
+import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolBus;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import dev.langchain4j.agent.tool.ToolSpecification;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -62,6 +68,14 @@ public final class ContextToolsApi implements ToolBus {
     private final HistoryTagBuilder historyTagBuilder;
     private final HistoryTagSink historyTagSink;
     private final @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage;
+    /**
+     * Optional — when set, {@link #primaryAsLc4j()} suffixes the
+     * description of each tool that has a non-OK health entry in the
+     * scope cascade. Wired by the LLM-facing engine path
+     * (DefaultThinkEngineContext); sub-tool / script paths pass
+     * {@code null} since they don't render manifests for an LLM.
+     */
+    private final @org.jspecify.annotations.Nullable ToolHealthService toolHealthService;
 
     public ContextToolsApi(ToolDispatcher dispatcher, ToolInvocationContext ctx) {
         this(dispatcher, ctx, Set.of(), Set.of(), Set.of(), Set.of(),
@@ -172,6 +186,30 @@ public final class ContextToolsApi implements ToolBus {
             @org.jspecify.annotations.Nullable HistoryTagBuilder historyTagBuilder,
             @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink,
             @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage) {
+        this(dispatcher, ctx, allowed, primary, deferred, activatedDeferred,
+                listener, activationRefresh, historyTagBuilder, historyTagSink,
+                toolResultStorage, null);
+    }
+
+    /**
+     * 12-arg constructor — adds the optional {@link ToolHealthService}
+     * so the LLM manifest can annotate {@code DOWN} / {@code DEGRADED}
+     * tools with a description suffix. See spec
+     * {@code specification/tool-availability.md} §9.
+     */
+    public ContextToolsApi(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> allowed,
+            Set<String> primary,
+            Set<String> deferred,
+            Set<String> activatedDeferred,
+            ToolInvocationListener listener,
+            java.util.function.@org.jspecify.annotations.Nullable Consumer<String> activationRefresh,
+            @org.jspecify.annotations.Nullable HistoryTagBuilder historyTagBuilder,
+            @org.jspecify.annotations.Nullable HistoryTagSink historyTagSink,
+            @org.jspecify.annotations.Nullable ToolResultStorage toolResultStorage,
+            @org.jspecify.annotations.Nullable ToolHealthService toolHealthService) {
         this.dispatcher = dispatcher;
         this.ctx = ctx;
         this.allowed = allowed == null ? Set.of() : Set.copyOf(allowed);
@@ -183,6 +221,7 @@ public final class ContextToolsApi implements ToolBus {
         this.historyTagBuilder = historyTagBuilder == null ? new HistoryTagBuilder() : historyTagBuilder;
         this.historyTagSink = historyTagSink == null ? HistoryTagSink.NOOP : historyTagSink;
         this.toolResultStorage = toolResultStorage;
+        this.toolHealthService = toolHealthService;
     }
 
     /** All tools visible in this scope (after the engine's allow-filter). */
@@ -451,13 +490,67 @@ public final class ContextToolsApi implements ToolBus {
      * — ready to drop into {@code ChatRequest.builder().toolSpecifications(...)}.
      */
     public List<ToolSpecification> primaryAsLc4j() {
+        Instant now = Instant.now();
         return visibleResolved().stream()
                 .map(r -> ToolSpecification.builder()
                         .name(r.tool().name())
-                        .description(r.tool().description())
+                        .description(annotateDescription(r.tool(), now))
                         .parameters(Lc4jSchema.toObjectSchema(r.tool().paramsSchema()))
                         .build())
                 .toList();
+    }
+
+    /**
+     * Returns {@code tool.description()} with an availability suffix when
+     * the cascade has a non-OK entry for this tool. Returns the unchanged
+     * description when no health service is wired (sub-tool / script
+     * paths), no entry exists, or {@code expectedRecoveryAt} has already
+     * passed (implicit RETESTING — next call probes naively).
+     */
+    String annotateDescription(Tool tool, Instant now) {
+        String base = tool.description();
+        if (toolHealthService == null) return base;
+        Optional<ToolHealthDocument> doc;
+        try {
+            doc = toolHealthService.lookup(
+                    ctx.tenantId(), ctx.sessionId(), ctx.userId(),
+                    ctx.projectId(), tool.name());
+        } catch (RuntimeException e) {
+            return base;
+        }
+        if (doc.isEmpty()) return base;
+        ToolHealthDocument h = doc.get();
+        if (h.getStatus() == ToolHealthStatus.OK) return base;
+        // expectedRecoveryAt in the past → status is implicitly RETESTING;
+        // hide the warning so the LLM gets a clean try.
+        Instant eta = h.getExpectedRecoveryAt();
+        if (eta != null && !eta.isAfter(now)) return base;
+        String suffix = healthSuffix(h, eta);
+        if (suffix.isEmpty()) return base;
+        return base + "\n\n" + suffix;
+    }
+
+    private static final DateTimeFormatter HEALTH_TIME_FORMAT =
+            DateTimeFormatter.ofPattern("HH:mm 'UTC'").withZone(ZoneId.of("UTC"));
+
+    private static String healthSuffix(ToolHealthDocument h, @org.jspecify.annotations.Nullable Instant eta) {
+        String head = switch (h.getStatus()) {
+            case DOWN -> "⚠ Currently unavailable";
+            case DEGRADED -> "⚠ Intermittent — recent failures detected";
+            case OK -> "";
+        };
+        if (head.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder(head);
+        if (eta != null) {
+            sb.append(" — expected back at ").append(HEALTH_TIME_FORMAT.format(eta));
+        } else if (h.getSince() != null) {
+            sb.append(" — since ").append(HEALTH_TIME_FORMAT.format(h.getSince()));
+        }
+        sb.append('.');
+        if (h.getLastNote() != null && !h.getLastNote().isBlank()) {
+            sb.append(' ').append(h.getLastNote());
+        }
+        return sb.toString();
     }
 
     /** The scope this API is bound to — exposed for tools that need it. */

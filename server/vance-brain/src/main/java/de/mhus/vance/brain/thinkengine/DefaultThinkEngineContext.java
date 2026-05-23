@@ -15,6 +15,7 @@ import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
+import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashSet;
@@ -63,7 +64,8 @@ record DefaultThinkEngineContext(
         LlmTraceService llmTraceService,
         HistoryTagBuilder historyTagBuilder,
         BufferingHistoryTagSink historyTagSink,
-        @Nullable ToolResultStorage toolResultStorage
+        @Nullable ToolResultStorage toolResultStorage,
+        ToolHealthService toolHealthService
 ) implements ThinkEngineContext {
 
     @Override
@@ -108,7 +110,8 @@ record DefaultThinkEngineContext(
                 c.allowed(), c.primary(), c.deferred(), c.activatedDeferred(),
                 toolInvocationListener, refresh,
                 historyTagBuilder, historyTagSink,
-                toolResultStorage);
+                toolResultStorage,
+                toolHealthService);
     }
 
     /**

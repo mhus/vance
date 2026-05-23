@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Read + write surface for tool-health state. The two callers are
- * {@code FookChecker} (sync path in vance-brain) and the lifecycle
+ * {@code AgrajagChecker} (sync path in vance-brain) and the lifecycle
  * code (system events like Foot-disconnect, MCP-close). LLM-facing
  * write tools live separately and route through this service.
  *

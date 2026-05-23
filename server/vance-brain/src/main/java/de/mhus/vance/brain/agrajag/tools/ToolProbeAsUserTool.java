@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.fook.tools;
+package de.mhus.vance.brain.agrajag.tools;
 
 import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.brain.tools.ToolDispatcher;
@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * Re-invokes a target tool with a substituted user identity so Fook can
+ * Re-invokes a target tool with a substituted user identity so Agrajag can
  * tell user-specific failures (token expired, permissions wrong) apart
  * from generic technical issues.
  *
@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
  * carry their own context don't.
  *
  * <p>Only {@link ToolSafety#SAFE_PROBE} target tools are accepted —
- * Fook must never mutate state while diagnosing.
+ * Agrajag must never mutate state while diagnosing.
  */
 @Component
 @RequiredArgsConstructor

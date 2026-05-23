@@ -1,10 +1,10 @@
-package de.mhus.vance.brain.fook;
+package de.mhus.vance.brain.agrajag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
-import de.mhus.vance.brain.fook.ToolErrorPattern.HealthAction;
+import de.mhus.vance.brain.agrajag.ToolErrorPattern.HealthAction;
 import de.mhus.vance.shared.document.DocumentService;
 import java.time.Duration;
 import java.util.List;

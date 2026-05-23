@@ -4,7 +4,7 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 
 /**
  * Safety classification of a tool — does the call mutate state somewhere?
- * Used by diagnostic / service engines (Fook, future Lunkwill) that may
+ * Used by diagnostic / service engines (Agrajag, future Lunkwill) that may
  * only invoke {@link #SAFE_PROBE} tools during a diagnostic turn so a
  * health-check can never accidentally change the world it's measuring.
  *

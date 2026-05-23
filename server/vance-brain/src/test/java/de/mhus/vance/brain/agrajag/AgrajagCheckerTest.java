@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.fook;
+package de.mhus.vance.brain.agrajag;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
-import de.mhus.vance.brain.fook.ToolErrorPattern.HealthAction;
+import de.mhus.vance.brain.agrajag.ToolErrorPattern.HealthAction;
 import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.toolpack.ToolException;
@@ -24,21 +24,21 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class FookCheckerTest {
+class AgrajagCheckerTest {
 
     private ToolErrorPatternResolver resolver;
     private ToolHealthService healthService;
-    private FookChecker checker;
+    private AgrajagChecker checker;
 
     @BeforeEach
     void setUp() {
         resolver = mock(ToolErrorPatternResolver.class);
         healthService = mock(ToolHealthService.class);
         @SuppressWarnings("unchecked")
-        org.springframework.beans.factory.ObjectProvider<FookSpawnerService> spawnerProvider =
+        org.springframework.beans.factory.ObjectProvider<AgrajagSpawnerService> spawnerProvider =
                 mock(org.springframework.beans.factory.ObjectProvider.class);
         when(spawnerProvider.getIfAvailable()).thenReturn(null);
-        checker = new FookChecker(resolver, healthService, spawnerProvider);
+        checker = new AgrajagChecker(resolver, healthService, spawnerProvider);
         when(healthService.lookupActiveCooldown(
                 anyString(), any(), anyString(), anyString(), anyString(),
                 any(), any()))
@@ -55,7 +55,7 @@ class FookCheckerTest {
         ToolException err = new ToolException(
                 "Forbidden (HTTP 403) — caller lacks scope");
 
-        FookCheckResult res = checker.handle("jira_create_issue", err, ctx);
+        AgrajagCheckResult res = checker.handle("jira_create_issue", err, ctx);
 
         assertThat(res.classification()).isEqualTo(ToolHealthClassification.USER_PERMISSION);
         assertThat(res.signature()).isEqualTo("http-403");
@@ -83,7 +83,7 @@ class FookCheckerTest {
                 "MCP connect failed",
                 new java.net.ConnectException("Connection refused"));
 
-        FookCheckResult res = checker.handle("mcp_search", err, ctx);
+        AgrajagCheckResult res = checker.handle("mcp_search", err, ctx);
 
         assertThat(res.classification()).isEqualTo(ToolHealthClassification.TECHNICALLY_BROKEN);
         assertThat(res.wroteHealth()).isTrue();
@@ -91,7 +91,7 @@ class FookCheckerTest {
                 eq("acme"), eq(ToolHealthScope.PROJECT), eq("proj-1"),
                 eq("mcp_search"),
                 eq(ToolHealthClassification.TECHNICALLY_BROKEN),
-                any(), any(), eq("fook-checker"));
+                any(), any(), eq("agrajag-checker"));
         verify(healthService, atLeastOnce()).setCooldown(
                 anyString(), any(), anyString(), anyString(),
                 anyString(), any(), any(), any(Duration.class), any());
@@ -135,7 +135,7 @@ class FookCheckerTest {
         ToolInvocationContext ctx = new ToolInvocationContext(
                 "acme", "proj-1", "sess-1", "proc-1", "alice");
 
-        FookCheckResult res = checker.handle("jira_create_issue",
+        AgrajagCheckResult res = checker.handle("jira_create_issue",
                 new ToolException("Forbidden 403"), ctx);
 
         assertThat(res.cooldownAlreadyActive()).isTrue();
@@ -154,7 +154,7 @@ class FookCheckerTest {
         ToolInvocationContext ctx = new ToolInvocationContext(
                 "acme", "proj-1", "sess-1", "proc-1", "alice");
 
-        FookCheckResult res = checker.handle("orphan_tool",
+        AgrajagCheckResult res = checker.handle("orphan_tool",
                 new ToolException("weird"), ctx);
         assertThat(res.classification()).isEqualTo(ToolHealthClassification.UNCLEAR);
         verify(healthService, never()).setCooldown(
@@ -170,10 +170,10 @@ class FookCheckerTest {
                 .signature("http-5xx")
                 .classification(ToolHealthClassification.UNCLEAR)
                 .build();
-        assertThat(FookChecker.matches(p, 500, List.of("X"), "")).isTrue();
-        assertThat(FookChecker.matches(p, 599, List.of("X"), "")).isTrue();
-        assertThat(FookChecker.matches(p, 499, List.of("X"), "")).isFalse();
-        assertThat(FookChecker.matches(p, 600, List.of("X"), "")).isFalse();
+        assertThat(AgrajagChecker.matches(p, 500, List.of("X"), "")).isTrue();
+        assertThat(AgrajagChecker.matches(p, 599, List.of("X"), "")).isTrue();
+        assertThat(AgrajagChecker.matches(p, 499, List.of("X"), "")).isFalse();
+        assertThat(AgrajagChecker.matches(p, 600, List.of("X"), "")).isFalse();
     }
 
     @Test
@@ -184,11 +184,11 @@ class FookCheckerTest {
                 .signature("timeout")
                 .classification(ToolHealthClassification.UNCLEAR)
                 .build();
-        assertThat(FookChecker.matches(
+        assertThat(AgrajagChecker.matches(
                 p, null,
                 List.of("de.foo.X", "java.util.concurrent.TimeoutException"),
                 "")).isTrue();
-        assertThat(FookChecker.matches(p, null, List.of("de.foo.X"), "")).isFalse();
+        assertThat(AgrajagChecker.matches(p, null, List.of("de.foo.X"), "")).isFalse();
     }
 
     @Test
@@ -198,10 +198,10 @@ class FookCheckerTest {
                 .signature("auth")
                 .classification(ToolHealthClassification.USER_SPECIFIC_TECHNICAL)
                 .build();
-        assertThat(FookChecker.matches(
+        assertThat(AgrajagChecker.matches(
                 p, null, List.of(),
                 "Server returned: {\"error\": \"EXPIRED_TOKEN\"}")).isTrue();
-        assertThat(FookChecker.matches(p, null, List.of(), "nope")).isFalse();
+        assertThat(AgrajagChecker.matches(p, null, List.of(), "nope")).isFalse();
     }
 
     // ──────────────────────────── helpers

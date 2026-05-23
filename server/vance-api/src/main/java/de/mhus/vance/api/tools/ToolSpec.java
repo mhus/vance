@@ -112,7 +112,7 @@ public class ToolSpec {
     /**
      * Wire-mirror of {@code Tool.safety()}. {@code SAFE_PROBE} when the
      * tool performs lookup-only / non-mutating work; {@code MUTATING}
-     * otherwise (default). Used by diagnostic / service engines (Fook)
+     * otherwise (default). Used by diagnostic / service engines (Agrajag)
      * that may only invoke {@code SAFE_PROBE} tools during a turn.
      */
     @Builder.Default
@@ -125,8 +125,8 @@ public class ToolSpec {
      * means "any engine may see this tool".
      *
      * <p>Used for the tool-health-writer / tool-prober / repair-actor
-     * audience gates introduced with Fook. See
-     * {@code specification/fook-engine.md} §8.
+     * audience gates introduced with Agrajag. See
+     * {@code specification/agrajag-engine.md} §8.
      */
     @Builder.Default
     private Set<String> requiresEngineRoles = new LinkedHashSet<>();

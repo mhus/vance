@@ -63,10 +63,10 @@ public interface ThinkEngine {
      * <p>Default empty: a regular user-facing engine has no special
      * roles and therefore cannot see any tool with a
      * {@code requiresEngineRoles} gate (e.g. the health-writer tools
-     * exposed only to Fook).
+     * exposed only to Agrajag).
      *
      * <p>See {@code specification/think-engines.md} §7b and
-     * {@code specification/fook-engine.md} §8.
+     * {@code specification/agrajag-engine.md} §8.
      */
     default Set<String> roles() {
         return Set.of();

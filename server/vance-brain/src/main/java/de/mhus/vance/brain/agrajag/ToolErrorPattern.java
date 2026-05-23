@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.fook;
+package de.mhus.vance.brain.agrajag;
 
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import java.time.Duration;

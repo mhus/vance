@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.fook.tools;
+package de.mhus.vance.brain.agrajag.tools;
 
 import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
@@ -33,7 +33,7 @@ public class ToolHealthClearCooldownTool implements Tool {
 
     @Override public String name() { return "tool_health_clear_cooldown"; }
     @Override public String description() {
-        return "Clear a specific cooldown entry — used by Fook when the "
+        return "Clear a specific cooldown entry — used by Agrajag when the "
                 + "original cause is resolved (token renewed, permissions "
                 + "granted, transient issue gone).";
     }

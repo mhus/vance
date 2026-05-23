@@ -15,7 +15,6 @@ import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolInvocationContext;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.graalvm.polyglot.Engine;
@@ -182,7 +181,7 @@ class GraaljsScriptExecutorHeaderTest {
         when(src.find(any(), any())).thenReturn(Optional.empty());
         ToolDispatcher dispatcher = new ToolDispatcher(
                 List.of(src), new PermissionService(new RecordingPermissionResolver()),
-                mock(de.mhus.vance.brain.fook.FookChecker.class),
+                mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class));
         ToolInvocationContext ctx = new ToolInvocationContext(
                 "acme", "proj-1", "sess-1", "proc-1", "alice");

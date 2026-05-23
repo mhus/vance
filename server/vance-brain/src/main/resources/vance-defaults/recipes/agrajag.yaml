@@ -1,8 +1,8 @@
-# Fook — tool-health diagnostic service engine.
+# Agrajag — tool-health diagnostic service engine.
 #
-# Spawned from FookChecker when a tool error doesn't match a clear
+# Spawned from AgrajagChecker when a tool error doesn't match a clear
 # pattern (UNCLEAR classification). Lives in a per-project
-# `_fook` system session — never user-facing.
+# `_agrajag` system session — never user-facing.
 #
 # v1 is a stub: the engine logs the failure context into the health
 # document and closes. LLM-driven probing + classification comes in a
@@ -11,13 +11,13 @@
 
 description: |
   Tool-health diagnostic service engine. Triggered when the synchronous
-  FookChecker cannot classify a tool error from patterns. Investigates
+  AgrajagChecker cannot classify a tool error from patterns. Investigates
   the failure, probes the tool with safe read-only calls if helpful,
   and writes a structured diagnosis into the tool-health document.
-engine: fook
+engine: agrajag
 category: service
 
-# Engine roles — the manifest builder uses these to expose Fook-only
+# Engine roles — the manifest builder uses these to expose Agrajag-only
 # tools (probe, health-write) that other engines can't see.
 roles:
   - tool-prober
@@ -27,7 +27,7 @@ roles:
 params:
   model: default:fast
   maxIterations: 3
-  # Maximum number of probe calls Fook may issue per diagnostic turn.
+  # Maximum number of probe calls Agrajag may issue per diagnostic turn.
   # Enforced engine-side to keep diagnosis bounded.
   maxProbes: 3
 
@@ -35,7 +35,7 @@ params:
 # strict outputSchema + probe-strategy lands with the LLM-driven
 # follow-up.
 promptPrefix: |
-  You are Fook, a tool-health diagnostic engine. You investigate a
+  You are Agrajag, a tool-health diagnostic engine. You investigate a
   single tool error report and produce a structured classification
   written into the tool-health document via the dedicated health-write
   tools.

@@ -1,9 +1,9 @@
-# Bundled tool-error pattern rules for the synchronous FookChecker.
+# Bundled tool-error pattern rules for the synchronous AgrajagChecker.
 #
 # First-match-wins — rule order is semantic. Tenants override by
-# placing a file at `_tenant/fook/error-patterns.yaml` in their tenant
+# placing a file at `_tenant/agrajag/error-patterns.yaml` in their tenant
 # system project; projects can refine further at
-# `<project>/fook/error-patterns.yaml`. Rules with the same `id` in a
+# `<project>/agrajag/error-patterns.yaml`. Rules with the same `id` in a
 # closer scope completely replace the bundled entry (no field-merge).
 #
 # Fields:
@@ -23,7 +23,7 @@
 #   cooldown        ISO-8601 Duration or special "header:retry-after"
 #   healthAction    none | markUnavailable | markDegraded   (default none)
 #                   when set, the checker writes a status entry directly
-#                   without enqueuing Fook
+#                   without enqueuing Agrajag
 #   locked          true → future auto-pattern-pflege won't touch this rule
 #   note            optional audit string
 

@@ -1,2 +1,2 @@
 @org.jspecify.annotations.NullMarked
-package de.mhus.vance.brain.fook;
+package de.mhus.vance.brain.agrajag;

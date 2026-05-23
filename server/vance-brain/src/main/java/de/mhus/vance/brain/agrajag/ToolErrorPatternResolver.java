@@ -1,7 +1,7 @@
-package de.mhus.vance.brain.fook;
+package de.mhus.vance.brain.agrajag;
 
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
-import de.mhus.vance.brain.fook.ToolErrorPattern.HealthAction;
+import de.mhus.vance.brain.agrajag.ToolErrorPattern.HealthAction;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import jakarta.annotation.PostConstruct;
@@ -24,9 +24,9 @@ import org.yaml.snakeyaml.Yaml;
 /**
  * Loads tool-error pattern rules through the document cascade
  * (project → tenant → bundled) and exposes the merged ordered list to
- * the {@code FookChecker}.
+ * the {@code AgrajagChecker}.
  *
- * <p>Per spec {@code specification/fook-engine.md} §4.2: rules in a
+ * <p>Per spec {@code specification/agrajag-engine.md} §4.2: rules in a
  * closer scope completely replace bundled entries with the same
  * {@code id} (no field-merge); new ids in the closer scope are
  * prepended in front of the catch-all fallback.
@@ -36,8 +36,8 @@ import org.yaml.snakeyaml.Yaml;
 @Slf4j
 public class ToolErrorPatternResolver {
 
-    public static final String BUNDLED_RESOURCE = "vance-defaults/fook/error-patterns.yaml";
-    public static final String DOCUMENT_PATH = "fook/error-patterns.yaml";
+    public static final String BUNDLED_RESOURCE = "vance-defaults/agrajag/error-patterns.yaml";
+    public static final String DOCUMENT_PATH = "agrajag/error-patterns.yaml";
 
     private final DocumentService documentService;
 

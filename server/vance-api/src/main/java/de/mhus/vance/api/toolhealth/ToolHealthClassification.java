@@ -4,8 +4,8 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 
 /**
  * Outcome of a tool-error analysis. Produced either by the synchronous
- * {@code FookChecker} (via pattern-matching against the error-patterns
- * cascade) or by the asynchronous Fook engine after probing.
+ * {@code AgrajagChecker} (via pattern-matching against the error-patterns
+ * cascade) or by the asynchronous Agrajag engine after probing.
  *
  * <p>Drives the health-document write decision — see
  * {@code specification/tool-availability.md} §3.2.
@@ -24,6 +24,6 @@ public enum ToolHealthClassification {
     INTERMITTENT,
     /** Tool works again — clears any prior DOWN/DEGRADED. */
     WORKING,
-    /** Checker cannot decide — should escalate to Fook's diagnostic engine. */
+    /** Checker cannot decide — should escalate to Agrajag's diagnostic engine. */
     UNCLEAR
 }

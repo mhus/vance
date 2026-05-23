@@ -5,7 +5,7 @@ import de.mhus.vance.api.annotations.GenerateTypeScript;
 /**
  * Coarse-grained classification produced directly by the tool-dispatch
  * path. Independent of the deeper {@link ToolHealthClassification} that
- * Fook's diagnostic engine may produce later.
+ * Agrajag's diagnostic engine may produce later.
  */
 @GenerateTypeScript("toolhealth")
 public enum ToolErrorCode {

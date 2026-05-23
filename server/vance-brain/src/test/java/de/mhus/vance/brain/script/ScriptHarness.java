@@ -170,7 +170,7 @@ public final class ScriptHarness {
         });
         ToolDispatcher dispatcher = new ToolDispatcher(
                 List.of(src), new PermissionService(new RecordingPermissionResolver()),
-                mock(de.mhus.vance.brain.fook.FookChecker.class),
+                mock(de.mhus.vance.brain.agrajag.AgrajagChecker.class),
                 mock(de.mhus.vance.shared.toolhealth.ToolHealthService.class));
         // ContextToolsApi's allow-filter set: include every mocked tool
         // by name so vance.tools.call(...) doesn't get filtered out.

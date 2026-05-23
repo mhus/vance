@@ -1,8 +1,7 @@
-package de.mhus.vance.brain.fook;
+package de.mhus.vance.brain.agrajag;
 
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
-import de.mhus.vance.brain.fook.ToolErrorPattern.HealthAction;
 import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -27,12 +26,12 @@ import org.springframework.stereotype.Service;
  * <p>Stays out of the way of working calls — invoked only on
  * {@link ToolInvocationContext}-bearing failures.
  *
- * <p>See {@code specification/fook-engine.md} §4.
+ * <p>See {@code specification/agrajag-engine.md} §4.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class FookChecker {
+public class AgrajagChecker {
 
     /** Default cooldowns per classification when the pattern doesn't pin one. */
     static final Duration DEFAULT_USER_PERMISSION_COOLDOWN = Duration.ofHours(24);
@@ -48,13 +47,13 @@ public class FookChecker {
      * Lazy — the spawner depends on {@code ThinkEngineService} which
      * pulls in the dispatcher cycle. Optional in tests.
      */
-    private final ObjectProvider<FookSpawnerService> spawnerProvider;
+    private final ObjectProvider<AgrajagSpawnerService> spawnerProvider;
 
     /**
      * Triage a failing tool invocation. Side-effects (cooldown,
      * health-doc) are performed against {@link ToolHealthService}.
      */
-    public FookCheckResult handle(
+    public AgrajagCheckResult handle(
             String toolName, Throwable error, ToolInvocationContext ctx) {
 
         Instant now = Instant.now();
@@ -73,8 +72,8 @@ public class FookChecker {
             }
         }
         if (matched == null) {
-            log.debug("FookChecker: no pattern matched for tool='{}'", toolName);
-            return FookCheckResult.unmatched();
+            log.debug("AgrajagChecker: no pattern matched for tool='{}'", toolName);
+            return AgrajagCheckResult.unmatched();
         }
 
         ToolHealthScope scope = chooseScope(matched.getClassification(), toolName, ctx);
@@ -87,9 +86,9 @@ public class FookChecker {
         Optional<ToolHealthCooldown> active = healthService.lookupActiveCooldown(
                 ctx.tenantId(), scope, scopeId, toolName, signature, userKey, now);
         if (active.isPresent()) {
-            log.debug("FookChecker: cooldown still active for tool='{}' sig='{}' user='{}' until {}",
+            log.debug("AgrajagChecker: cooldown still active for tool='{}' sig='{}' user='{}' until {}",
                     toolName, signature, userKey, active.get().getNextSpawnAllowedAt());
-            return new FookCheckResult(
+            return new AgrajagCheckResult(
                     matched.getId(), matched.getClassification(), signature,
                     true, false, matched.getNote());
         }
@@ -106,14 +105,14 @@ public class FookChecker {
                 healthService.markUnavailable(
                         ctx.tenantId(), scope, scopeId, toolName,
                         matched.getClassification(), expectedRecovery,
-                        matched.getNote(), "fook-checker");
+                        matched.getNote(), "agrajag-checker");
                 wroteHealth = true;
             }
             case MARK_DEGRADED -> {
                 healthService.markDegraded(
                         ctx.tenantId(), scope, scopeId, toolName,
                         matched.getClassification(), expectedRecovery,
-                        matched.getNote(), "fook-checker");
+                        matched.getNote(), "agrajag-checker");
                 wroteHealth = true;
             }
             case NONE -> { /* cooldown-only */ }
@@ -128,11 +127,11 @@ public class FookChecker {
                     matched.getNote());
         }
 
-        // Escalate UNCLEAR cases to Fook's async engine for deeper
+        // Escalate UNCLEAR cases to Agrajag's async engine for deeper
         // diagnosis. The cooldown above prevents spawn-storms; the
         // spawner itself swallows errors.
         if (matched.getClassification() == ToolHealthClassification.UNCLEAR) {
-            FookSpawnerService spawner = spawnerProvider.getIfAvailable();
+            AgrajagSpawnerService spawner = spawnerProvider.getIfAvailable();
             if (spawner != null) {
                 try {
                     spawner.spawnDiagnosis(
@@ -140,13 +139,13 @@ public class FookChecker {
                             scope, scopeId, signature,
                             ctx.userId(), buildSpawnNote(matched, error));
                 } catch (RuntimeException e) {
-                    log.warn("Fook spawnDiagnosis raised — proceeding without engine "
+                    log.warn("Agrajag spawnDiagnosis raised — proceeding without engine "
                             + "diagnosis: {}", e.toString());
                 }
             }
         }
 
-        return new FookCheckResult(
+        return new AgrajagCheckResult(
                 matched.getId(), matched.getClassification(), signature,
                 false, wroteHealth, matched.getNote());
     }

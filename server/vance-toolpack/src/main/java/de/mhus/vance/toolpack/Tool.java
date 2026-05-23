@@ -151,7 +151,7 @@ public interface Tool {
     /**
      * Whether the tool is non-mutating ({@link ToolSafety#SAFE_PROBE})
      * or mutates state somewhere ({@link ToolSafety#MUTATING}, default).
-     * Diagnostic engines (Fook) restrict themselves to {@code SAFE_PROBE}
+     * Diagnostic engines (Agrajag) restrict themselves to {@code SAFE_PROBE}
      * tools during probe turns so checking the world can never change it.
      */
     default ToolSafety safety() {
@@ -164,7 +164,7 @@ public interface Tool {
      * in this set. Default empty — any engine may see the tool.
      *
      * <p>The set is intersected with the engine's role set at classify
-     * time. Used for the Fook-specific audience gates
+     * time. Used for the Agrajag-specific audience gates
      * ({@code tool-prober}, {@code tool-health-writer},
      * {@code tool-health-reader}); future service engines (Lunkwill,
      * Prak) reuse the same mechanism with their own role labels.

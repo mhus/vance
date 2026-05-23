@@ -1,6 +1,6 @@
 package de.mhus.vance.brain.bootstrap;
 
-import de.mhus.vance.brain.fook.ToolErrorPatternResolver;
+import de.mhus.vance.brain.agrajag.ToolErrorPatternResolver;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.password.PasswordService;
@@ -133,8 +133,8 @@ public class BootstrapBrainService {
         // see + can edit the rules through the regular document editor.
         // The resolver still falls back to the classpath version when
         // the doc is missing — this is just for discoverability and
-        // tenant-level overrides. See specification/fook-engine.md §4.2.
-        ensureFookErrorPatternDocument(ACME_TENANT);
+        // tenant-level overrides. See specification/agrajag-engine.md §4.2.
+        ensureAgrajagErrorPatternDocument(ACME_TENANT);
 
         // LLM keys, provider/model defaults, etc. — loaded from a
         // gitignored YAML so a Mongo wipe doesn't lose them. The
@@ -168,14 +168,14 @@ public class BootstrapBrainService {
     private static final String MOCK_OAUTH_PROVIDER_ID = "mock";
 
     /**
-     * Drops the bundled {@code fook/error-patterns.yaml} into the
+     * Drops the bundled {@code agrajag/error-patterns.yaml} into the
      * tenant's system project on first boot so admins can edit it
      * through the regular document editor. The
      * {@link ToolErrorPatternResolver} reads the bundled file as the
      * cascade root regardless — this seed only exists for visibility
      * and tenant-level overrides. Idempotent.
      */
-    private void ensureFookErrorPatternDocument(String tenantId) {
+    private void ensureAgrajagErrorPatternDocument(String tenantId) {
         String tenantProject = HomeBootstrapService.TENANT_PROJECT_NAME;
         String docPath = ToolErrorPatternResolver.DOCUMENT_PATH;
         if (documentService.findByPath(tenantId, tenantProject, docPath).isPresent()) {
@@ -183,16 +183,16 @@ public class BootstrapBrainService {
         }
         String body = readClasspathResource(ToolErrorPatternResolver.BUNDLED_RESOURCE);
         if (body == null) {
-            log.warn("Bootstrap: bundled fook patterns resource missing — skipping seed");
+            log.warn("Bootstrap: bundled agrajag patterns resource missing — skipping seed");
             return;
         }
         documentService.createText(
                 tenantId, tenantProject, docPath,
-                "Fook error patterns",
-                List.of("fook", "tools", "config"),
+                "Agrajag error patterns",
+                List.of("agrajag", "tools", "config"),
                 body,
                 "bootstrap");
-        log.info("Bootstrap: seeded fook error-patterns document '{}'", docPath);
+        log.info("Bootstrap: seeded agrajag error-patterns document '{}'", docPath);
     }
 
     private static @Nullable String readClasspathResource(String resource) {

@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.fook.tools;
+package de.mhus.vance.brain.agrajag.tools;
 
 import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.brain.tools.ToolDispatcher;
@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Re-invokes a target tool without any user identity — uses tenant
- * defaults / system credentials. Used by Fook to test "is this a
+ * defaults / system credentials. Used by Agrajag to test "is this a
  * generic outage or specific to a user?".
  */
 @Component

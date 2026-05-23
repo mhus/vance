@@ -1,9 +1,8 @@
-package de.mhus.vance.brain.fook;
+package de.mhus.vance.brain.agrajag;
 
-import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.api.toolhealth.ToolHealthScope;
 import de.mhus.vance.api.ws.Profiles;
-import de.mhus.vance.brain.fook.engine.FookEngine;
+import de.mhus.vance.brain.agrajag.engine.AgrajagEngine;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -21,9 +20,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
- * Lazy-bootstraps the per-project {@code _fook} system session and
- * spawns a {@link FookEngine}-driven think-process on it for each
- * UNCLEAR triage decision coming out of {@code FookChecker}.
+ * Lazy-bootstraps the per-project {@code _agrajag} system session and
+ * spawns a {@link AgrajagEngine}-driven think-process on it for each
+ * UNCLEAR triage decision coming out of {@code AgrajagChecker}.
  *
  * <p>The system session is owned by the {@code _system} pseudo user
  * (created on demand), flagged {@code system=true}, and never shows up
@@ -32,14 +31,14 @@ import org.springframework.stereotype.Service;
  * close with {@code DONE}.
  *
  * <p>Failure to spawn is logged and swallowed; the original tool error
- * always reaches the LLM regardless of whether Fook could be launched.
+ * always reaches the LLM regardless of whether Agrajag could be launched.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class FookSpawnerService {
+public class AgrajagSpawnerService {
 
-    public static final String FOOK_SESSION_NAME = "_fook";
+    public static final String FOOK_SESSION_NAME = "_agrajag";
     public static final String FOOK_SYSTEM_USER = "_system";
 
     private final SessionService sessionService;
@@ -49,8 +48,8 @@ public class FookSpawnerService {
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
 
     /**
-     * Spawn a Fook diagnostic process for the given tool error. Idempotent
-     * at the session-level (creates {@code _fook} lazily); processes are
+     * Spawn a Agrajag diagnostic process for the given tool error. Idempotent
+     * at the session-level (creates {@code _agrajag} lazily); processes are
      * one-shot per call.
      */
     public void spawnDiagnosis(
@@ -64,7 +63,7 @@ public class FookSpawnerService {
             @Nullable String note) {
 
         try {
-            SessionDocument session = ensureFookSession(tenantId,
+            SessionDocument session = ensureAgrajagSession(tenantId,
                     projectId == null ? "" : projectId);
 
             Map<String, Object> engineParams = new LinkedHashMap<>();
@@ -85,19 +84,19 @@ public class FookSpawnerService {
                         projectId,
                         session.getSessionId(),
                         processName,
-                        FookEngine.NAME,
-                        FookEngine.VERSION,
-                        /*title*/ "Fook: " + toolName,
+                        AgrajagEngine.NAME,
+                        AgrajagEngine.VERSION,
+                        /*title*/ "Agrajag: " + toolName,
                         /*goal*/ "Diagnose tool-error signature='" + errorSignature + "'",
                         /*parentProcessId*/ null,
                         engineParams,
-                        /*recipeName*/ FookEngine.NAME,
+                        /*recipeName*/ AgrajagEngine.NAME,
                         /*promptOverride*/ null,
                         /*promptMode*/ null,
                         /*allowedToolsOverride*/ null);
             } catch (ThinkProcessAlreadyExistsException dup) {
                 // Should not happen with the UUID suffix, but be defensive.
-                log.debug("Fook spawn name clash — skipping: {}", dup.getMessage());
+                log.debug("Agrajag spawn name clash — skipping: {}", dup.getMessage());
                 return;
             }
 
@@ -106,30 +105,30 @@ public class FookSpawnerService {
                 try {
                     engines.start(process);
                 } catch (RuntimeException e) {
-                    log.warn("Fook engine.start failed id='{}': {}",
+                    log.warn("Agrajag engine.start failed id='{}': {}",
                             process.getId(), e.toString());
                 }
                 return null;
             });
         } catch (RuntimeException e) {
-            log.warn("Fook spawnDiagnosis failed tool='{}' tenant='{}' project='{}': {}",
+            log.warn("Agrajag spawnDiagnosis failed tool='{}' tenant='{}' project='{}': {}",
                     toolName, tenantId, projectId, e.toString());
         }
     }
 
-    /** Lazy-create the per-project _fook system session. Thread-safe via Mongo upsert semantics. */
-    private SessionDocument ensureFookSession(String tenantId, String projectId) {
+    /** Lazy-create the per-project _agrajag system session. Thread-safe via Mongo upsert semantics. */
+    private SessionDocument ensureAgrajagSession(String tenantId, String projectId) {
         return sessionService.findSystemSession(tenantId, projectId, FOOK_SESSION_NAME)
                 .orElseGet(() -> {
                     SessionDocument fresh = sessionService.create(
                             tenantId, FOOK_SYSTEM_USER, projectId,
                             FOOK_SESSION_NAME,
                             Profiles.WEB,            // profile is informational here
-                            /*clientVersion*/ "fook/" + FookEngine.VERSION,
-                            /*clientName*/ "fook-spawner",
+                            /*clientVersion*/ "agrajag/" + AgrajagEngine.VERSION,
+                            /*clientName*/ "agrajag-spawner",
                             /*system*/ true);
                     sessionService.markBootstrapped(fresh.getSessionId());
-                    log.info("Bootstrapped _fook system session for tenant='{}' project='{}' sessionId='{}'",
+                    log.info("Bootstrapped _agrajag system session for tenant='{}' project='{}' sessionId='{}'",
                             tenantId, projectId, fresh.getSessionId());
                     // markBootstrapped flips INIT → IDLE so the next find sees the active state.
                     return sessionService.findSystemSession(tenantId, projectId, FOOK_SESSION_NAME)

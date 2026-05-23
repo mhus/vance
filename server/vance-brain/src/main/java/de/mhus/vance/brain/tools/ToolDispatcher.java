@@ -5,7 +5,7 @@ import de.mhus.vance.toolpack.ToolInvocationContext;
 import de.mhus.vance.toolpack.ToolException;
 
 import de.mhus.vance.api.tools.ToolSpec;
-import de.mhus.vance.brain.fook.FookChecker;
+import de.mhus.vance.brain.agrajag.AgrajagChecker;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.PermissionService;
 import de.mhus.vance.shared.permission.Resource;
@@ -38,7 +38,7 @@ public class ToolDispatcher {
 
     private final List<ToolSource> sources;
     private final PermissionService permissionService;
-    private final FookChecker fookChecker;
+    private final AgrajagChecker agrajagChecker;
     private final ToolHealthService toolHealthService;
 
     @jakarta.annotation.PostConstruct
@@ -117,17 +117,17 @@ public class ToolDispatcher {
     }
 
     /**
-     * Best-effort handoff to {@link FookChecker} when a tool invocation
+     * Best-effort handoff to {@link AgrajagChecker} when a tool invocation
      * throws. Side-effects only (cooldown set, health-doc updated when
      * the matched rule asks for it). The original error still propagates
-     * to the LLM unchanged — Fook's classification just influences
+     * to the LLM unchanged — Agrajag's classification just influences
      * future invocations.
      */
     private void triage(String name, Throwable error, ToolInvocationContext ctx) {
         try {
-            fookChecker.handle(name, error, ctx);
+            agrajagChecker.handle(name, error, ctx);
         } catch (RuntimeException secondary) {
-            log.warn("FookChecker raised during triage of tool='{}': {}",
+            log.warn("AgrajagChecker raised during triage of tool='{}': {}",
                     name, secondary.toString());
         }
     }

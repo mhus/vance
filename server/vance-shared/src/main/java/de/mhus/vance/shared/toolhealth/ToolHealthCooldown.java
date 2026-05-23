@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One active cooldown entry. Tells {@code FookChecker} not to enqueue
+ * One active cooldown entry. Tells {@code AgrajagChecker} not to enqueue
  * (or write) anything for the next attempt with the same
  * {@code errorSignature} (and {@code userId}, if set) before
  * {@link #nextSpawnAllowedAt}.

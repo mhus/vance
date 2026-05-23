@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.fook.tools;
+package de.mhus.vance.brain.agrajag.tools;
 
 import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
@@ -48,7 +48,7 @@ public class ToolHealthSetUnavailableTool implements Tool {
     @Override public String name() { return "tool_health_set_unavailable"; }
     @Override public String description() {
         return "Mark a tool as DOWN in the tool-health document. Used by "
-                + "Fook to record a technical-broken or "
+                + "Agrajag to record a technical-broken or "
                 + "user-specific-technical diagnosis with an estimated "
                 + "recovery window.";
     }
@@ -97,7 +97,7 @@ public class ToolHealthSetUnavailableTool implements Tool {
     }
 
     static String callerLabel(ToolInvocationContext ctx) {
-        return ctx.processId() == null ? "fook-tool" : "fook-engine/" + ctx.processId();
+        return ctx.processId() == null ? "agrajag-tool" : "agrajag-engine/" + ctx.processId();
     }
 
     private static ToolHealthClassification parseClassification(String s) {

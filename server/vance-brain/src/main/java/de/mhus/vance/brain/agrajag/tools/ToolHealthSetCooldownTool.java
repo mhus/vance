@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.fook.tools;
+package de.mhus.vance.brain.agrajag.tools;
 
 import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.api.toolhealth.ToolHealthClassification;
@@ -55,7 +55,7 @@ public class ToolHealthSetCooldownTool implements Tool {
     @Override public String name() { return "tool_health_set_cooldown"; }
     @Override public String description() {
         return "Set or refresh a cooldown entry on a tool-health document. "
-                + "Cooldowns suppress further Fook spawns for the same "
+                + "Cooldowns suppress further Agrajag spawns for the same "
                 + "(toolName, signature[, userId]) until the duration expires.";
     }
     @Override public boolean primary() { return true; }

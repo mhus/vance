@@ -140,10 +140,23 @@ public class FootConfig {
      * default; disable for terminals that render the escape verbatim
      * instead of consuming it (rare, but configurable). Auto-suppressed
      * when stdout is not a TTY, so daemon log files never get titles.
+     *
+     * <p>{@link #format} is a string template expanded on every title
+     * change. Available placeholders:
+     * <ul>
+     *   <li>{@code {glyph}} — busy/idle status glyph (𝑣 idle, ● / ○ while busy).</li>
+     *   <li>{@code {session}} — current session label (blank when no session is bound).</li>
+     *   <li>{@code {connection}} — connection lifecycle / tenant (blank when nothing is set).</li>
+     *   <li>{@code {ide}} — {@code [ide]} when the IntelliJ bridge is attached, else blank.</li>
+     * </ul>
+     * Empty placeholders expand to the empty string and trailing whitespace
+     * is trimmed, so a format like {@code "{glyph} {session}"} renders as
+     * just {@code 𝑣} when no session is bound.
      */
     @Data
     public static class WindowTitle {
         private boolean enabled = true;
+        private String format = "{glyph} {session}";
     }
 
     /**

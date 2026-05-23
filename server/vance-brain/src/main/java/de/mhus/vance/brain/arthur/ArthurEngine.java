@@ -419,12 +419,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     public void suspend(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.debug("Arthur.suspend id='{}'", process.getId());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.SUSPENDED);
+        currentTurnHadUserInput.remove(process.getId());
     }
 
     @Override
     public void stop(ThinkProcessDocument process, ThinkEngineContext ctx) {
         log.info("Arthur.stop id='{}'", process.getId());
         thinkProcessService.closeProcess(process.getId(), CloseReason.STOPPED);
+        currentTurnHadUserInput.remove(process.getId());
     }
 
     /**

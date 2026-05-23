@@ -205,6 +205,22 @@ class SessionLifecycleServiceTest {
         verify(sessionService, never()).suspend(any(), any(), anyLong());
     }
 
+    @Test
+    void suspendCascade_forgetsPerProcessLanes() {
+        stubSession("s-1", SessionStatus.RUNNING, DisconnectPolicy.SUSPEND);
+        ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.RUNNING);
+        ThinkProcessDocument p2 = process("p-2", ThinkProcessStatus.IDLE);
+        when(thinkProcessService.findBySession(any(), eq("s-1")))
+                .thenReturn(List.of(p1, p2));
+
+        lifecycle.suspendCascade("s-1", SuspendCause.IDLE);
+
+        // After the cascade the per-process lane bookkeeping is gone —
+        // a SUSPENDED session must not retain in-memory state. See
+        // specification/session-lifecycle.md §7.
+        assertThat(laneScheduler.laneCount()).isZero();
+    }
+
     // ─── closeWithCascade ───────────────────────────────────────────────
 
     @Test

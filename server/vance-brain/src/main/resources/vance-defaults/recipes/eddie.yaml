@@ -126,9 +126,10 @@ profiles:
     params:
       useClientAgentDoc: true
     session:
-      onDisconnect: SUSPEND
-      onIdle: NONE
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
       onSuspend: KEEP
+      idleTimeoutMs: 3600000            # 1h
       suspendKeepDurationMs: 86400000
     promptPrefixAppend: |
       ## Client context — local CLI

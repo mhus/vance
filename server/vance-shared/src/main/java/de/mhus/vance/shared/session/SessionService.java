@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.session;
 
 import com.mongodb.client.result.UpdateResult;
+import de.mhus.vance.api.session.IdlePolicy;
 import de.mhus.vance.api.session.SessionColor;
 import de.mhus.vance.api.session.SessionLifecycleConfig;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
@@ -660,6 +661,22 @@ public class SessionService {
         if (result.getModifiedCount() == 1) {
             log.info("Resumed session '{}'", sessionId);
         }
+    }
+
+    /**
+     * Returns sessions in {@link SessionStatus#RUNNING}/{@link SessionStatus#IDLE}
+     * configured with {@link IdlePolicy#SUSPEND} whose {@code lastActivityAt}
+     * is older than {@code coarseCutoff}. This is the cheap pre-filter for
+     * the idle-sweeper using the {@code status_activity_idx} index; the
+     * caller must still verify each session's own {@code idleTimeoutMs}.
+     * See {@code specification/session-lifecycle.md} §7.
+     */
+    public List<SessionDocument> findIdleCandidates(Instant coarseCutoff) {
+        Query query = new Query(Criteria.where(F_STATUS)
+                .in(SessionStatus.RUNNING, SessionStatus.IDLE)
+                .and("onIdle").is(IdlePolicy.SUSPEND)
+                .and(F_LAST_ACTIVITY).lt(coarseCutoff));
+        return mongoTemplate.find(query, SessionDocument.class);
     }
 
     /**

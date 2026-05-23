@@ -119,9 +119,13 @@ public class SessionLifecycleService {
                 session.getTenantId(), sessionId);
         ThinkEngineService engines = thinkEngineServiceProvider.getObject();
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+        List<String> laneIdsToForget = new ArrayList<>();
         for (ThinkProcessDocument p : processes) {
-            if (p.getStatus() == ThinkProcessStatus.CLOSED
-                    || p.getStatus() == ThinkProcessStatus.SUSPENDED) {
+            if (p.getStatus() == ThinkProcessStatus.CLOSED) {
+                continue;
+            }
+            laneIdsToForget.add(p.getId());
+            if (p.getStatus() == ThinkProcessStatus.SUSPENDED) {
                 continue;
             }
             futures.add(laneScheduler.submit(p.getId(), () -> {
@@ -137,6 +141,13 @@ public class SessionLifecycleService {
             }));
         }
         joinAll(futures);
+        // Memory cleanup: drop each suspended process's lane and per-engine
+        // state so a SUSPENDED session lives only in MongoDB. The lane map
+        // would otherwise grow monotonically over the pod's lifetime.
+        // Lanes are lazily re-created on the next submit (e.g. on resume).
+        for (String id : laneIdsToForget) {
+            laneScheduler.forget(id);
+        }
         sessionService.suspend(sessionId, cause, forcedFloorMs);
     }
 

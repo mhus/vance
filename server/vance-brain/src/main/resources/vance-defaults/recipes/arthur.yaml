@@ -120,13 +120,19 @@ profiles:
       # memory block (in addition to the server-side agent doc).
       # See specification/recipes.md §6a.
       useClientAgentDoc: true
-    # Lifecycle for foot sessions — engines depend on local client
-    # tools, so disconnect must suspend; idle = "user is thinking".
-    # See specification/session-lifecycle.md §5.
+    # Lifecycle for foot sessions — same shape as web/mobile now:
+    # disconnect keeps the session running so an unrelated worker can
+    # finish (research/LLM-call without local tools), idle eventually
+    # parks it. Calls to client-only tools while the foot WS is gone
+    # surface as engine-side errors and let the engine decide how to
+    # recover. Idle window is generous (1h) so the user can step away
+    # mid-conversation without losing context. See
+    # specification/session-lifecycle.md §5 + §7.
     session:
-      onDisconnect: SUSPEND
-      onIdle: NONE
+      onDisconnect: KEEP_OPEN
+      onIdle: SUSPEND
       onSuspend: KEEP
+      idleTimeoutMs: 3600000            # 1h
       suspendKeepDurationMs: 86400000   # 24h
     promptPrefixAppend: |
       ## Client context — local CLI

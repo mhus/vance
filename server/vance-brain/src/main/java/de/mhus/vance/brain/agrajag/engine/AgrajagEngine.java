@@ -8,14 +8,19 @@ import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.thinkengine.SteerMessage;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.brain.tools.ContextToolsApi;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import de.mhus.vance.shared.toolhealth.ToolHealthCooldown;
 import de.mhus.vance.shared.toolhealth.ToolHealthDocument;
 import de.mhus.vance.shared.toolhealth.ToolHealthHistoryEntry;
 import de.mhus.vance.shared.toolhealth.ToolHealthService;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
@@ -59,7 +64,7 @@ import tools.jackson.databind.ObjectMapper;
 public class AgrajagEngine implements ThinkEngine {
 
     public static final String NAME = "agrajag";
-    public static final String VERSION = "0.2.0";
+    public static final String VERSION = "0.3.0";
 
     /** Recovery horizon stamped on fallback DEGRADED entries (LLM error / unparseable). */
     private static final Duration FALLBACK_RECOVERY_HORIZON = Duration.ofMinutes(15);
@@ -67,13 +72,31 @@ public class AgrajagEngine implements ThinkEngine {
     /** How many history entries we include in the LLM prompt. */
     private static final int HISTORY_CONTEXT_LIMIT = 6;
 
+    /** Hard cap on probe rounds — defends against recipe authors typing maxProbes=999. */
+    private static final int MAX_PROBES_HARD_CAP = 6;
+    /** Default when the recipe / engineParams don't pin a value. */
+    private static final int DEFAULT_MAX_PROBES = 3;
+
     private static final String SYSTEM_PROMPT = """
             You are Agrajag, the tool-health diagnostic engine for Vance.
 
             Input: one tool error report plus the recent history of the
-            tool-health document (if any). Output: exactly one JSON object
-            matching the schema below — no prose before or after, no
-            markdown fences, no commentary.
+            tool-health document (if any). You may optionally call probe
+            tools to gather more evidence before deciding:
+
+              - `tool_probe_as_user(toolName, userId, sampleInput)`
+                  Re-invokes the target tool as a specific user.
+              - `tool_probe_as_system(toolName, sampleInput)`
+                  Re-invokes without user credentials.
+              - `tool_health_read(toolName)`
+                  Reads the current tool-health document.
+
+            Only SAFE_PROBE target tools are accepted by the probes. Use
+            probing sparingly — every call costs latency and tokens.
+
+            When you're done, output exactly one JSON object matching the
+            schema below — no prose before or after, no markdown fences,
+            no commentary.
 
             Schema (all fields required except where marked optional):
             {
@@ -93,11 +116,13 @@ public class AgrajagEngine implements ThinkEngine {
             }
 
             Decision guidelines:
-            - Prefer history over speculation. Repeated INTERMITTENT in the
-              last hour → suggest a longer expectedRecoveryAt.
+            - Prefer history over probing when the same signature appeared
+              recently. Repeated INTERMITTENT in the last hour → suggest
+              a longer expectedRecoveryAt without probing.
+            - When the failure looks user-specific (auth-class signatures
+              with originatingUserId set), probe as system to confirm —
+              if the probe succeeds, classification is USER_SPECIFIC_TECHNICAL.
             - TECHNICALLY_BROKEN when every user is plausibly affected.
-              USER_SPECIFIC_TECHNICAL when only the originating user's
-              credentials look at fault (expired token, suspended account).
             - USER_PERMISSION and USER_INPUT are NOT tool-health issues;
               return them only if the evidence is unambiguous, and leave
               expectedRecoveryAt null.
@@ -127,11 +152,14 @@ public class AgrajagEngine implements ThinkEngine {
 
     @Override
     public Set<String> allowedTools() {
+        // Probe + read only — health-writes are done deterministically by
+        // the engine in applyDiagnosis() from the LLM's structured output.
+        // Keeping write tools out of the manifest means the LLM can't
+        // half-write a verdict and then refuse to summarise it.
         return Set.of(
-                "tool_probe_as_user", "tool_probe_as_system",
-                "tool_health_read",
-                "tool_health_set_unavailable", "tool_health_set_available",
-                "tool_health_set_cooldown", "tool_health_clear_cooldown");
+                "tool_probe_as_user",
+                "tool_probe_as_system",
+                "tool_health_read");
     }
 
     // ────────────────── Lifecycle ──────────────────
@@ -239,17 +267,90 @@ public class AgrajagEngine implements ThinkEngine {
             ThinkProcessDocument process, ThinkEngineContext ctx, String userPrompt) {
         EngineChatFactory.EngineChatBundle bundle =
                 engineChatFactory.forProcess(process, ctx, NAME);
+        ContextToolsApi tools = ctx.tools();
+        List<ToolSpecification> toolSpecs = tools.primaryAsLc4j();
+
+        int maxProbes = clampMaxProbes(intParam(process.getEngineParams(),
+                "maxProbes", DEFAULT_MAX_PROBES));
+        // Hard iteration cap = probes + 1 final "summarise" turn.
+        int maxIters = maxProbes + 1;
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(SYSTEM_PROMPT));
         messages.add(UserMessage.from(userPrompt));
 
-        ChatResponse response = bundle.chat().chatModel().chat(
-                ChatRequest.builder().messages(messages).build());
-        if (response.aiMessage() == null) return null;
-        String text = response.aiMessage().text();
-        if (text == null || text.isBlank()) return null;
+        for (int iter = 0; iter < maxIters; iter++) {
+            ChatRequest.Builder reqBuilder = ChatRequest.builder().messages(messages);
+            if (!toolSpecs.isEmpty()) {
+                reqBuilder.toolSpecifications(toolSpecs);
+            }
+            ChatResponse response = bundle.chat().chatModel().chat(reqBuilder.build());
+            AiMessage reply = response.aiMessage();
+            if (reply == null) return null;
+            messages.add(reply);
 
+            List<ToolExecutionRequest> calls = reply.toolExecutionRequests();
+            if (calls != null && !calls.isEmpty()) {
+                if (iter == maxIters - 1) {
+                    // Used the last iteration on tool calls without a
+                    // final summary — give the LLM one more no-tool
+                    // turn to summarise.
+                    log.info("Agrajag id='{}' exhausted probes ({}); forcing summary turn",
+                            process.getId(), maxProbes);
+                    for (ToolExecutionRequest call : calls) {
+                        messages.add(ToolExecutionResultMessage.from(call,
+                                "{\"error\":\"probe-limit reached — summarise now\"}"));
+                    }
+                    ChatResponse summary = bundle.chat().chatModel().chat(
+                            ChatRequest.builder().messages(messages).build());
+                    return parseOutput(process, summary.aiMessage());
+                }
+                for (ToolExecutionRequest call : calls) {
+                    String result = executeProbeCall(tools, call, process);
+                    messages.add(ToolExecutionResultMessage.from(call, result));
+                }
+                continue;
+            }
+
+            // No tool calls — the LLM is done, this turn should carry
+            // the structured output in its text.
+            return parseOutput(process, reply);
+        }
+        return null;
+    }
+
+    private String executeProbeCall(
+            ContextToolsApi tools, ToolExecutionRequest call, ThinkProcessDocument process) {
+        Map<String, Object> params;
+        try {
+            params = parseToolArgs(call.arguments());
+        } catch (RuntimeException e) {
+            return "{\"error\":\"invalid tool arguments: " + escape(e.getMessage()) + "\"}";
+        }
+        try {
+            Map<String, Object> result = tools.invoke(call.name(), params);
+            return objectMapper.writeValueAsString(
+                    result == null ? Map.of() : result);
+        } catch (RuntimeException e) {
+            log.debug("Agrajag id='{}' probe '{}' failed: {}",
+                    process.getId(), call.name(), e.toString());
+            return "{\"error\":\"" + escape(e.getMessage()) + "\"}";
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseToolArgs(@Nullable String arguments) {
+        if (arguments == null || arguments.isBlank()) return Map.of();
+        Object parsed = objectMapper.readValue(arguments, Object.class);
+        if (parsed instanceof Map<?, ?> map) return (Map<String, Object>) map;
+        return Map.of();
+    }
+
+    private @Nullable Map<String, Object> parseOutput(
+            ThinkProcessDocument process, @Nullable AiMessage reply) {
+        if (reply == null) return null;
+        String text = reply.text();
+        if (text == null || text.isBlank()) return null;
         String json = extractJson(text);
         try {
             Object parsed = objectMapper.readValue(json, Object.class);
@@ -258,14 +359,33 @@ public class AgrajagEngine implements ThinkEngine {
                 Map<String, Object> typed = (Map<String, Object>) map;
                 return typed;
             }
-            log.info("Agrajag id='{}' LLM output not a JSON object: {}",
-                    process.getId(), text.length() > 200 ? text.substring(0, 200) + "…" : text);
-            return null;
+            log.info("Agrajag id='{}' final reply not a JSON object", process.getId());
         } catch (RuntimeException e) {
-            log.info("Agrajag id='{}' LLM output not parseable JSON: {}",
+            log.info("Agrajag id='{}' final reply not parseable JSON: {}",
                     process.getId(), e.getMessage());
-            return null;
         }
+        return null;
+    }
+
+    private static int intParam(@Nullable Map<String, Object> params, String key, int dflt) {
+        if (params == null) return dflt;
+        Object v = params.get(key);
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof String s) {
+            try { return Integer.parseInt(s.trim()); }
+            catch (NumberFormatException ignored) { return dflt; }
+        }
+        return dflt;
+    }
+
+    private static int clampMaxProbes(int v) {
+        if (v < 0) return 0;
+        return Math.min(v, MAX_PROBES_HARD_CAP);
+    }
+
+    private static String escape(@Nullable String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private void applyDiagnosis(

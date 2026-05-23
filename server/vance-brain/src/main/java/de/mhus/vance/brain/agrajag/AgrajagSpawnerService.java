@@ -38,8 +38,8 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class AgrajagSpawnerService {
 
-    public static final String FOOK_SESSION_NAME = "_agrajag";
-    public static final String FOOK_SYSTEM_USER = "_system";
+    public static final String AGRAJAG_SESSION_NAME = "_agrajag";
+    public static final String AGRAJAG_SYSTEM_USER = "_system";
 
     private final SessionService sessionService;
     private final ThinkProcessService thinkProcessService;
@@ -118,11 +118,11 @@ public class AgrajagSpawnerService {
 
     /** Lazy-create the per-project _agrajag system session. Thread-safe via Mongo upsert semantics. */
     private SessionDocument ensureAgrajagSession(String tenantId, String projectId) {
-        return sessionService.findSystemSession(tenantId, projectId, FOOK_SESSION_NAME)
+        return sessionService.findSystemSession(tenantId, projectId, AGRAJAG_SESSION_NAME)
                 .orElseGet(() -> {
                     SessionDocument fresh = sessionService.create(
-                            tenantId, FOOK_SYSTEM_USER, projectId,
-                            FOOK_SESSION_NAME,
+                            tenantId, AGRAJAG_SYSTEM_USER, projectId,
+                            AGRAJAG_SESSION_NAME,
                             Profiles.WEB,            // profile is informational here
                             /*clientVersion*/ "agrajag/" + AgrajagEngine.VERSION,
                             /*clientName*/ "agrajag-spawner",
@@ -131,7 +131,7 @@ public class AgrajagSpawnerService {
                     log.info("Bootstrapped _agrajag system session for tenant='{}' project='{}' sessionId='{}'",
                             tenantId, projectId, fresh.getSessionId());
                     // markBootstrapped flips INIT → IDLE so the next find sees the active state.
-                    return sessionService.findSystemSession(tenantId, projectId, FOOK_SESSION_NAME)
+                    return sessionService.findSystemSession(tenantId, projectId, AGRAJAG_SESSION_NAME)
                             .orElse(fresh);
                 });
     }

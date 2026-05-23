@@ -202,6 +202,7 @@ public class ThinkEngineService {
         // the lifetime of this context only.
         de.mhus.vance.brain.history.BufferingHistoryTagSink tagSink =
                 new de.mhus.vance.brain.history.BufferingHistoryTagSink();
+        Set<String> engineRoles = engine.roles() == null ? Set.of() : Set.copyOf(engine.roles());
         return new DefaultThinkEngineContext(
                 process, projectId, userId, base,
                 aiModelService, settingService, chatMessageService,
@@ -215,7 +216,8 @@ public class ThinkEngineService {
                 historyTagBuilder,
                 tagSink,
                 toolResultStorage,
-                toolHealthService);
+                toolHealthService,
+                engineRoles);
     }
 
     /**

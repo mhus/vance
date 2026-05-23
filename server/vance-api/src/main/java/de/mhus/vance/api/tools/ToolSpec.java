@@ -108,4 +108,26 @@ public class ToolSpec {
      */
     @Builder.Default
     private String searchHint = "";
+
+    /**
+     * Wire-mirror of {@code Tool.safety()}. {@code SAFE_PROBE} when the
+     * tool performs lookup-only / non-mutating work; {@code MUTATING}
+     * otherwise (default). Used by diagnostic / service engines (Fook)
+     * that may only invoke {@code SAFE_PROBE} tools during a turn.
+     */
+    @Builder.Default
+    private ToolSafety safety = ToolSafety.MUTATING;
+
+    /**
+     * Wire-mirror of {@code Tool.requiresEngineRoles()}. When non-empty,
+     * the manifest builder hides the tool from engines whose declared
+     * {@code roles()} don't carry every role in this set. Default empty
+     * means "any engine may see this tool".
+     *
+     * <p>Used for the tool-health-writer / tool-prober / repair-actor
+     * audience gates introduced with Fook. See
+     * {@code specification/fook-engine.md} §8.
+     */
+    @Builder.Default
+    private Set<String> requiresEngineRoles = new LinkedHashSet<>();
 }

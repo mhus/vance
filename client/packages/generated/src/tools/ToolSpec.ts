@@ -3,6 +3,8 @@
  Source: de.mhus.vance.api.tools.ToolSpec
 */
 
+import { ToolSafety } from '../toolhealth/ToolSafety';
+
 export interface ToolSpec {
   name: string;
   description: string;
@@ -13,4 +15,6 @@ export interface ToolSpec {
   allowedProfiles: string[];
   deferred: boolean;
   searchHint: string;
+  safety: ToolSafety;
+  requiresEngineRoles: string[];
 }

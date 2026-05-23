@@ -1,5 +1,6 @@
 package de.mhus.vance.toolpack;
 
+import de.mhus.vance.api.tools.ToolSafety;
 import de.mhus.vance.api.tools.ToolSpec;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -148,6 +149,31 @@ public interface Tool {
     }
 
     /**
+     * Whether the tool is non-mutating ({@link ToolSafety#SAFE_PROBE})
+     * or mutates state somewhere ({@link ToolSafety#MUTATING}, default).
+     * Diagnostic engines (Fook) restrict themselves to {@code SAFE_PROBE}
+     * tools during probe turns so checking the world can never change it.
+     */
+    default ToolSafety safety() {
+        return ToolSafety.MUTATING;
+    }
+
+    /**
+     * When non-empty, the manifest builder hides the tool from engines
+     * whose declared {@code ThinkEngine.roles()} don't carry every role
+     * in this set. Default empty — any engine may see the tool.
+     *
+     * <p>The set is intersected with the engine's role set at classify
+     * time. Used for the Fook-specific audience gates
+     * ({@code tool-prober}, {@code tool-health-writer},
+     * {@code tool-health-reader}); future service engines (Lunkwill,
+     * Prak) reuse the same mechanism with their own role labels.
+     */
+    default Set<String> requiresEngineRoles() {
+        return Set.of();
+    }
+
+    /**
      * Default projection to the wire-format DTO. Overriding is rarely
      * useful — the wire contract matches this interface one-to-one.
      */
@@ -162,6 +188,8 @@ public interface Tool {
                 .allowedProfiles(new LinkedHashSet<>(allowedForProfile()))
                 .deferred(deferred())
                 .searchHint(searchHint())
+                .safety(safety())
+                .requiresEngineRoles(new LinkedHashSet<>(requiresEngineRoles()))
                 .build();
     }
 }

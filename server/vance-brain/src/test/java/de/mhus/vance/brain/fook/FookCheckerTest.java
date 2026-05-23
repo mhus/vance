@@ -34,7 +34,11 @@ class FookCheckerTest {
     void setUp() {
         resolver = mock(ToolErrorPatternResolver.class);
         healthService = mock(ToolHealthService.class);
-        checker = new FookChecker(resolver, healthService);
+        @SuppressWarnings("unchecked")
+        org.springframework.beans.factory.ObjectProvider<FookSpawnerService> spawnerProvider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(spawnerProvider.getIfAvailable()).thenReturn(null);
+        checker = new FookChecker(resolver, healthService, spawnerProvider);
         when(healthService.lookupActiveCooldown(
                 anyString(), any(), anyString(), anyString(), anyString(),
                 any(), any()))

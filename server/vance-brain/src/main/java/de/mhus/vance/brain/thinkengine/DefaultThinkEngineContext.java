@@ -65,7 +65,8 @@ record DefaultThinkEngineContext(
         HistoryTagBuilder historyTagBuilder,
         BufferingHistoryTagSink historyTagSink,
         @Nullable ToolResultStorage toolResultStorage,
-        ToolHealthService toolHealthService
+        ToolHealthService toolHealthService,
+        Set<String> engineRoles
 ) implements ThinkEngineContext {
 
     @Override
@@ -100,7 +101,8 @@ record DefaultThinkEngineContext(
         Set<String> activated = liveActivatedDeferredTools();
         ContextToolsApi.Classification c = ContextToolsApi.classify(
                 toolDispatcher, scope, baseAllowedTools, filter, activated,
-                process.getBoundProfile());
+                process.getBoundProfile(),
+                engineRoles);
         // Sliding-TTL refresh: when the LLM invokes an activated
         // deferred tool, bump its timestamp so frequent use beats decay.
         java.util.function.Consumer<String> refresh = name ->

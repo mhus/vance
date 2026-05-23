@@ -789,7 +789,7 @@ public final class ContextToolsApi implements ToolBus {
             Set<String> base,
             de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter filter,
             Set<String> activatedDeferred) {
-        return classify(dispatcher, ctx, base, filter, activatedDeferred, null);
+        return classify(dispatcher, ctx, base, filter, activatedDeferred, null, null);
     }
 
     /**
@@ -808,6 +808,26 @@ public final class ContextToolsApi implements ToolBus {
             de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter filter,
             Set<String> activatedDeferred,
             @org.jspecify.annotations.Nullable String profile) {
+        return classify(dispatcher, ctx, base, filter, activatedDeferred, profile, null);
+    }
+
+    /**
+     * Variant with explicit {@code engineRoles} gate (see
+     * {@code specification/think-engines.md} §7b). Tools whose
+     * {@code requiresEngineRoles()} set is non-empty drop out of
+     * {@code base} unless every required role is carried by
+     * {@code engineRoles}. {@code null} or empty engineRoles disables
+     * the role gate entirely — only tools without role requirements
+     * survive in that case.
+     */
+    public static Classification classify(
+            ToolDispatcher dispatcher,
+            ToolInvocationContext ctx,
+            Set<String> base,
+            de.mhus.vance.brain.recipe.RecipeResolver.ToolFilter filter,
+            Set<String> activatedDeferred,
+            @org.jspecify.annotations.Nullable String profile,
+            @org.jspecify.annotations.Nullable Set<String> engineRoles) {
         Set<String> remove = filter == null ? Set.of() : Set.copyOf(filter.remove());
         Set<String> add = filter == null ? Set.of() : Set.copyOf(filter.add());
         Set<String> defer = filter == null ? Set.of() : Set.copyOf(filter.defer());
@@ -831,9 +851,23 @@ public final class ContextToolsApi implements ToolBus {
             base = all;
         }
 
+        // Engine-role gate (Remove pre-step): drop tools whose
+        // requiresEngineRoles is non-empty unless every required role
+        // is carried by the engine. The default-empty engineRoles set
+        // intentionally hides every role-gated tool.
+        Set<String> roleFiltered = new LinkedHashSet<>(base);
+        Set<String> effectiveRoles = engineRoles == null ? Set.of() : engineRoles;
+        roleFiltered.removeIf(name -> {
+            Set<String> required = dispatcher.resolve(name, ctx)
+                    .map(r -> r.tool().requiresEngineRoles())
+                    .orElse(Set.of());
+            if (required == null || required.isEmpty()) return false;
+            return !effectiveRoles.containsAll(required);
+        });
+
         // Profile gate (Remove pre-step): drop tools whose
         // allowedForProfile() is non-empty and does not contain `profile`.
-        Set<String> profileFiltered = new LinkedHashSet<>(base);
+        Set<String> profileFiltered = new LinkedHashSet<>(roleFiltered);
         if (profile != null) {
             profileFiltered.removeIf(name -> {
                 Set<String> allowed = dispatcher.resolve(name, ctx)

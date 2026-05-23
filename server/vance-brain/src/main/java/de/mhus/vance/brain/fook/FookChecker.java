@@ -14,6 +14,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 /**
@@ -43,6 +44,11 @@ public class FookChecker {
 
     private final ToolErrorPatternResolver resolver;
     private final ToolHealthService healthService;
+    /**
+     * Lazy — the spawner depends on {@code ThinkEngineService} which
+     * pulls in the dispatcher cycle. Optional in tests.
+     */
+    private final ObjectProvider<FookSpawnerService> spawnerProvider;
 
     /**
      * Triage a failing tool invocation. Side-effects (cooldown,
@@ -122,9 +128,40 @@ public class FookChecker {
                     matched.getNote());
         }
 
+        // Escalate UNCLEAR cases to Fook's async engine for deeper
+        // diagnosis. The cooldown above prevents spawn-storms; the
+        // spawner itself swallows errors.
+        if (matched.getClassification() == ToolHealthClassification.UNCLEAR) {
+            FookSpawnerService spawner = spawnerProvider.getIfAvailable();
+            if (spawner != null) {
+                try {
+                    spawner.spawnDiagnosis(
+                            ctx.tenantId(), ctx.projectId(), toolName,
+                            scope, scopeId, signature,
+                            ctx.userId(), buildSpawnNote(matched, error));
+                } catch (RuntimeException e) {
+                    log.warn("Fook spawnDiagnosis raised — proceeding without engine "
+                            + "diagnosis: {}", e.toString());
+                }
+            }
+        }
+
         return new FookCheckResult(
                 matched.getId(), matched.getClassification(), signature,
                 false, wroteHealth, matched.getNote());
+    }
+
+    private static String buildSpawnNote(ToolErrorPattern matched, Throwable error) {
+        StringBuilder sb = new StringBuilder("pattern='").append(matched.getId()).append("'");
+        if (matched.getNote() != null && !matched.getNote().isBlank()) {
+            sb.append("; ").append(matched.getNote());
+        }
+        String msg = error.getMessage();
+        if (msg != null && !msg.isBlank()) {
+            if (msg.length() > 200) msg = msg.substring(0, 200) + "…";
+            sb.append("; error='").append(msg).append("'");
+        }
+        return sb.toString();
     }
 
     // ──────────────────────────────── matching

@@ -204,6 +204,14 @@ export default {
             planUpdated: 'Plan aktualisiert',
             status: 'Status',
         },
+        wizards: {
+            tabLabel: 'Assistenten',
+            progressTabLabel: 'Fortschritt',
+            title: 'Assistenten',
+            emptyHeadline: 'Keine Assistenten verfügbar',
+            emptyBody: 'Assistenten sind YAML-Formulare unter _vance/wizards/, die zu strukturierten Prompts werden.',
+            submit: 'Prompt erstellen',
+        },
         planMode: {
             modeBadgeTooltip: 'Aktueller Modus des Chat-Prozesses (Arthur Plan-Mode)',
             planTitle: 'Plan',

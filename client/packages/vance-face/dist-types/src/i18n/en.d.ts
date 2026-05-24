@@ -200,6 +200,14 @@ declare const _default: {
             planUpdated: string;
             status: string;
         };
+        wizards: {
+            tabLabel: string;
+            progressTabLabel: string;
+            title: string;
+            emptyHeadline: string;
+            emptyBody: string;
+            submit: string;
+        };
         planMode: {
             modeBadgeTooltip: string;
             planTitle: string;

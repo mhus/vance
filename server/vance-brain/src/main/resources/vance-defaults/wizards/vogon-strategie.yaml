@@ -1,0 +1,79 @@
+title:
+  de: "Vogon-Strategie planen"
+  en: "Plan a Vogon strategy"
+description:
+  de: "Mehrphasige Strategie für eine konkrete Aufgabe — z.B. Vergleichsbericht, Recherche, Konzept."
+  en: "Multi-phase strategy for a concrete deliverable — e.g. comparison report, research, concept."
+icon: clipboard-list
+category: strategie
+
+fields:
+  - name: outputName
+    type: string
+    required: true
+    label:
+      de: "Name der Strategie (Dateiname)"
+      en: "Strategy name (filename)"
+
+  - name: deliverable
+    type: textarea
+    rows: 3
+    required: true
+    label:
+      de: "Was soll am Ende rauskommen?"
+      en: "What is the final deliverable?"
+    help:
+      de: "Konkret: Format, Umfang, Zielgruppe. Z.B. '3-4-seitiger Vergleichsbericht für CTO'."
+      en: "Be concrete: format, length, audience. E.g. '3-4 page comparison report for the CTO'."
+
+  - name: scope
+    type: textarea
+    rows: 4
+    required: true
+    label:
+      de: "Inhalt / Scope"
+      en: "Content / scope"
+    help:
+      de: "Welche Aspekte sollen abgedeckt werden? Stichpunkte reichen."
+      en: "Which aspects should be covered? Bullet points are fine."
+
+  - name: depth
+    type: select
+    required: true
+    defaultValue: "balanced"
+    label:
+      de: "Tiefe"
+      en: "Depth"
+    choices:
+      - value: light
+        label:
+          de: "Überblick (1-2 Phasen)"
+          en: "Overview (1-2 phases)"
+      - value: balanced
+        label:
+          de: "Ausgewogen (3-4 Phasen)"
+          en: "Balanced (3-4 phases)"
+      - value: deep
+        label:
+          de: "Tiefgehend (5+ Phasen mit Quellen-Validierung)"
+          en: "Deep (5+ phases with source validation)"
+
+  - name: runNow
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Direkt ausführen"
+      en: "Run immediately"
+
+promptTemplate: |
+  Erstelle mit slart eine Vogon-Strategie:
+
+  **Deliverable:** {{ deliverable }}
+
+  **Scope:**
+  {{ scope }}
+
+  **Tiefe:** {% if depth == "light" %}Überblick mit 1-2 Phasen.{% elseif depth == "deep" %}Tiefgehend mit 5+ Phasen inkl. Quellen-Validierung und Cross-Check.{% else %}Ausgewogen mit 3-4 Phasen.{% endif %}
+
+  Speicher unter '{{ outputName }}'.
+  {% if runNow == "true" %}Führe sie direkt aus.{% else %}Erzeuge nur die Strategie, ohne auszuführen.{% endif %}

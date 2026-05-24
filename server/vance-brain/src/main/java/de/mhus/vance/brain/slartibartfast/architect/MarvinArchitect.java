@@ -27,21 +27,17 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 /**
- * Marvin-recipe architect. Produces recipes with
+ * Marvin v2 recipe architect. Produces recipes with
  * {@code engine: marvin}, a non-blank top-level
- * {@code promptPrefix} (the PLAN-LLM instruction), and a
- * {@code params} block carrying the Marvin runtime constraints
- * (allowedSubTaskRecipes, recipesOnlyViaExpand,
- * allowedExpandDocumentRefPaths, disallowedTaskKinds,
- * defaultExecutionMode, maxPlanCorrections).
+ * {@code promptPrefix} (additional goal context for the root
+ * worker), and a {@code params.availableRecipes} whitelist for
+ * CALL_RECIPE.
  *
- * <p>Status note: as documented in
- * {@code specification/slartibartfast-engine.md} §4, the
- * Marvin-recipe path ships skeleton-only today. The system prompt
- * and validators below are production-shaped — the open work is
- * promoting PROPOSING from placeholder to fully-driven Marvin
- * output. Carrying this code as its own bean isolates that work
- * from Vogon and Zaphod when it lands.
+ * <p>Marvin v2 nodes are autonomous workers — the recipe does NOT
+ * encode KIND-block skeletons or pre-decomposed plans. The
+ * worker's SCOPE/REFLECT/CONCLUDE phases decide the actual tree
+ * shape at runtime. Templates here therefore produce recipes
+ * with simple narrative promptPrefix, not procedural plans.
  */
 @Component
 @RequiredArgsConstructor
@@ -55,45 +51,27 @@ public class MarvinArchitect implements SchemaArchitect {
     public static final String RULE_PROMPT_PREFIX_TEMPLATE_VALID =
             "recipe-prompt-prefix-pebble-template-valid";
     public static final String RULE_MARVIN_RECIPES_EXIST =
-            "marvin-recipe-allowed-recipes-exist";
-    public static final String RULE_MARVIN_TASKKINDS_VALID =
-            "marvin-recipe-prompt-prefix-taskkinds-valid";
-    public static final String RULE_MARVIN_NO_ROOT_POSTACTIONS =
-            "marvin-recipe-no-root-postactions";
+            "marvin-recipe-available-recipes-exist";
     public static final String RULE_MARVIN_POSTACTION_VARS =
             "marvin-recipe-postaction-variables-valid";
 
-    /** Classpath location of the bundled Marvin recipe templates.
-     *  Each template is a Pebble file with a {@code params}-shaped
-     *  context plus literal {@code {% verbatim %}} blocks around
-     *  any inner Pebble that should reach Marvin's runtime. */
+    /** Classpath location of the bundled Marvin recipe templates. */
     private static final String TEMPLATE_PREFIX =
             "vance-defaults/manuals/slartibartfast/marvin-architect/templates/";
 
-    /** Whitelist of supported template IDs. The LLM must pick one
-     *  via the {@code templateId} field; anything else is rejected
-     *  at extraction time. New templates are added here. */
+    /** Whitelist of supported template IDs. */
     private static final Set<String> SUPPORTED_TEMPLATE_IDS = Set.of(
             "research-aggregate-write",
             "doc-driven-chapters",
             "decide-with-user-input");
 
-    /** Path segments that postAction args.path must NEVER target.
-     *  System-reserved buckets owned by engines / Slart. */
+    /** Path segments that postAction args.path must NEVER target. */
     private static final List<String> RESERVED_PATH_PREFIXES = List.of(
             "recipes/", "_user/", "_vance/", "_slart/", "_tenant/",
-            "_zaphod-drafts/", "_vogon-drafts/");
+            "_zaphod-drafts/", "_vogon-drafts/", "_marvin-drafts/");
 
-    /** Template-source cache. Loaded once per JVM. */
     private final Map<String, String> templateSourceCache = new ConcurrentHashMap<>();
 
-    /** Dedicated Pebble engine for the YAML recipe templates with
-     *  {@code newLineTrimming} disabled — Pebble's default eats one
-     *  newline after each tag, which collapses YAML structure when
-     *  rendering an entire recipe (top-level keys end up on the
-     *  same line). The shared {@link PromptTemplateRenderer} keeps
-     *  the default behaviour because Slart's other Pebble usage
-     *  (promptPrefix conditionals) was authored against it. */
     private final io.pebbletemplates.pebble.PebbleEngine templateEngine =
             new io.pebbletemplates.pebble.PebbleEngine.Builder()
                     .loader(new io.pebbletemplates.pebble.loader.StringLoader())
@@ -105,431 +83,98 @@ public class MarvinArchitect implements SchemaArchitect {
 
     private static final String SYSTEM_PROMPT = """
             You are the PROPOSING node of the Slartibartfast engine.
-            You build a Marvin recipe from a framed goal, subgoals
-            and available sub-recipes.
+            You build a Marvin v2 recipe from a framed goal,
+            subgoals and available sub-recipes.
 
-            IMPORTANT — you do NOT write YAML. You select a bundled
-            template and fill in its parameters as JSON. The engine
-            then renders the template into a guaranteed-valid Marvin
-            recipe. Your job is parameter selection, not YAML
-            authoring.
+            Marvin v2 nodes are autonomous workers running a
+            5-phase state-machine (SCOPE → REFLECT → POST_CHILDREN
+            → CONCLUDE → VALIDATE). They decide for themselves
+            when to call recipes, decompose, or conclude. Your
+            recipe therefore does NOT prescribe a fixed tree — it
+            supplies (a) a narrative promptPrefix that tells the
+            root worker WHAT to achieve and (b) a whitelist of
+            specialist recipes the worker may invoke via
+            CALL_RECIPE.
 
-            HARD OUTPUT CONTRACT:
-            - End your reply with EXACTLY one JSON object.
-            - NO markdown code fence (no ```json … ```).
-            - NO prose before or after the JSON.
+            ## Output schema
 
-            Top-level schema:
-                {
-                  "name":            "<kebab-case recipe name>",
-                  "templateId":      "<one of the supported templates below>",
-                  "params":          { <template-specific params> },
-                  "justifications":  { "<field-path>": "<sg-id>", ... },
-                  "confidence":      <0.0..1.0>,
-                  "shapeRationale":  "<why this template + these params, 1-2 sentences>"
-                }
+            Emit a SINGLE JSON object with FOUR top-level fields:
+              {
+                "templateId":     "<one of: research-aggregate-write,
+                                    doc-driven-chapters,
+                                    decide-with-user-input>",
+                "params":         { ...template-specific... },
+                "justifications": { "<constraint-key>": "<sg-id>", ... },
+                "shapeRationale": "<1-2 sentences explaining why this template fits>"
+              }
 
-            ── Supported templates ──
+            **All four fields are required.** `justifications` maps
+            constraint keys (e.g. "templateId", "params.aspects",
+            "params.outputPathTpl") to the matching `sg-id` from the
+            subgoals list. `shapeRationale` is a 1-2 sentence
+            explanation of why this template + params fit the
+            framed goal. Both are validated by the PROPOSING parser
+            — a missing or malformed one triggers a re-prompt.
 
-            Three templates ship today. Pick the one whose tree
-            shape matches the user's request — not the one whose
-            name sounds closest.
+            Pick the templateId that best fits the goal:
+              - research-aggregate-write — gather information from
+                multiple aspects, then synthesise & write to a file.
+              - doc-driven-chapters — write a structured document
+                (outline → chapter files → optional consolidation).
+              - decide-with-user-input — ask the user one or more
+                questions, then decide & write the decision.
 
-            template "research-aggregate-write" — the default for
-            "research a topic and produce a report" missions. The
-            engine renders a Marvin recipe of this exact shape:
-              * N parallel WORKER children, each running a chosen
-                gatherer recipe (web-research, analyze, …) on one
-                aspect of the topic;
-              * one AGGREGATE child that synthesizes the gathered
-                material into a final text result;
-              * one postAction on the AGGREGATE that writes the
-                synthesized text to the requested output path.
-            File persistence is engine-side and deterministic — you
-            do NOT need to plan a separate "save" worker.
+            ## Common params
 
-            Params shape for "research-aggregate-write":
-                {
-                  "name":              "<same as top-level name>",
-                  "description":       "<one-line recipe description>",
-                  "gathererRecipe":    "<name of a real project recipe>",
-                  "aspects": [
-                    { "role": "<short label>",
-                      "goal": "<what this aspect researches, plain text>" },
-                    ...
-                  ],
-                  "synthesisPrompt":   "<instruction for the AGGREGATE LLM>",
-                  "language":          "<ISO 639-1, e.g. \\"de\\" or \\"en\\">",
-                  "reportLengthWords": "<optional, e.g. \\"1500-2000\\">",
-                  "maxOutputChars":    <optional integer, default 15000>,
-                  "outputPathTpl":     "<path with optional Pebble: research/{{ process.goal | slug }}/report.md>",
-                  "outputTitleTpl":    "<optional title with Pebble allowed>",
-                  "processGoalLabel":  "<optional short label like \\"topic\\" or \\"question\\">"
-                }
+            All templates require these params:
+              - name (kebab-case identifier, unique)
+              - description (one-paragraph human description)
+              - language ("de" or "en" — matches the user's setting)
+              - availableRecipes (list of recipe names the worker
+                may call via CALL_RECIPE; pick ONLY from the
+                "Available sub-recipes" list shown below in the
+                user message — never invent names)
 
-            template "doc-driven-chapters" — for "write a multi-
-            chapter document where the chapter count comes from an
-            outline" missions (essays, multi-section reports). The
-            engine renders this shape:
-              * one WORKER (marvin-worker) that writes an outline
-                document to `outlinePath`;
-              * one EXPAND_FROM_DOC that iterates the outline and
-                spawns one marvin-worker per item to write a
-                chapter file under `chaptersDir/<slug>.md`;
-              * optional AGGREGATE that consolidates all chapters
-                into one final document at `finalPath`.
+            ## Template-specific params
 
-            Params shape for "doc-driven-chapters":
-                {
-                  "name":              "<same as top-level name>",
-                  "description":       "<one-line recipe description>",
-                  "outlinePrompt":     "<instruction for the outline-writing WORKER>",
-                  "outlinePath":       "<path of the outline doc, e.g. essays/{{ process.goal | slug }}/outline.md>",
-                  "chaptersDir":      "<directory for chapter files, e.g. essays/{{ process.goal | slug }}/chapters>",
-                  "chapterPromptTpl": "<chapter-worker goal — may reference {{ item.text }} from the outline iteration>",
-                  "consolidate":      <boolean — true to add a final consolidation step>,
-                  "consolidatePrompt":"<required when consolidate=true; AGGREGATE prompt>",
-                  "finalPath":         "<required when consolidate=true; e.g. essays/{{ process.goal | slug }}/final.md>",
-                  "outputTitleTpl":    "<optional title for the final doc>",
-                  "language":          "<ISO 639-1>",
-                  "maxOutputChars":    <optional integer, default 20000>,
-                  "processGoalLabel":  "<optional short label>"
-                }
+            research-aggregate-write:
+              - aspects: list of {role, goal}, 2-7 entries
+              - synthesisPrompt (string)
+              - outputPathTpl (string, e.g.
+                  "research/{{ process.goal | slug }}/report.md")
+              - reportLengthWords (optional, e.g. "1500-2000")
+              - outputTitleTpl (optional)
 
-            template "decide-with-user-input" — for "help me decide
-            X — ask me what you need to know first" missions. The
-            engine renders this shape:
-              * N USER_INPUT children (one per clarification
-                question) — Marvin parks waiting for the user's
-                inbox answer for each;
-              * one WORKER (marvin-worker) that synthesizes the
-                user's answers + the original goal into a decision
-                document and writes it via a postAction.
+            doc-driven-chapters:
+              - outlinePrompt (string)
+              - outlinePath (string, e.g.
+                  "essays/{{ process.goal | slug }}/outline.md")
+              - chaptersDir (string)
+              - chapterPromptTpl (string)
+              - consolidate (boolean)
+              - consolidatePrompt + finalPath (required if consolidate=true)
 
-            Params shape for "decide-with-user-input":
-                {
-                  "name":              "<same as top-level name>",
-                  "description":       "<one-line recipe description>",
-                  "questions": [
-                    {
-                      "role":         "<short label, e.g. 'skill-level'>",
-                      "title":        "<short question shown in the inbox>",
-                      "body":         "<longer explanation if needed>",
-                      "type":         "DECISION" | "FEEDBACK" | "APPROVAL",
-                      "criticality":  "LOW" | "NORMAL" | "HIGH" | "URGENT",
-                      "options":      [ "<option 1>", "<option 2>", ... ]   <-- optional, only for DECISION
-                    },
-                    ...
-                  ],
-                  "decisionPrompt":    "<worker instruction that synthesizes answers + goal into a decision>",
-                  "outputPathTpl":     "<where the decision doc is written>",
-                  "outputTitleTpl":    "<optional title>",
-                  "language":          "<ISO 639-1>",
-                  "processGoalLabel":  "<optional short label>"
-                }
+            decide-with-user-input:
+              - questions: list of {title, body, type, options}
+                where type ∈ {DECISION, FEEDBACK, APPROVAL}
+              - decisionPrompt (string)
+              - outputPathTpl (string)
 
-            ── Aspect design ──
+            ## postActions paths
 
-            Each aspect is one WORKER child. The runtime PLAN spawns
-            them in declared order. Choose 3-7 aspects that together
-            cover the user's request; fewer than 3 is usually too
-            shallow, more than 7 is bloat. Aspects should be
-            topic-agnostic — they describe WHAT to research, not the
-            topic itself (the topic comes from the process goal at
-            runtime). Bad: "Recherchiere die Geschichte der Atomkraft."
-            Good: "Geschichte und politischer Kontext."
-
-            ── Recipe selection ──
-
-            "gathererRecipe" must be one of the actual project
-            recipes listed in the user prompt. The recipe must be a
-            single-shot summary-in-reply worker — typical choices
-            are `web-research`, `analyze`, `code-read`. If you need
-            file I/O capability, choose `marvin-worker`. Do NOT
-            invent recipe names.
-
-            ── Path templates ──
-
-            `outputPathTpl` is a Pebble string emitted verbatim into
-            the rendered recipe. You may use:
-              {{ process.goal | slug }}  → URL-safe slug of the topic
-              {{ process.goal }}         → raw topic text (NOT for paths)
-            Reserved prefixes you must NEVER use:
+            outputPathTpl, outlinePath, chaptersDir, finalPath
+            must NOT start with any of these reserved prefixes:
               recipes/, _user/, _vance/, _slart/, _tenant/,
-              _zaphod-drafts/, _vogon-drafts/
-            Pick a fresh, descriptive folder under e.g. `research/`,
-            `reports/`, `documents/`.
+              _zaphod-drafts/, _vogon-drafts/, _marvin-drafts/.
+            Use fresh folders like research/, essays/, decisions/,
+            reports/, documents/.
 
-            ── justifications map ──
+            ## Pebble template variables
 
-            Every params-field you set MUST point to an sg-id that
-            exists in the subgoal list. The justification keys are
-            field paths into params, e.g.:
-              "params.aspects":         "sg1"
-              "params.synthesisPrompt": "sg3"
-              "params.outputPathTpl":   "sg4"
-
-            ── Worked example ──
-
-                {
-                  "name": "deep-research",
-                  "templateId": "research-aggregate-write",
-                  "params": {
-                    "name": "deep-research",
-                    "description": "Systematic web research with synthesized report.",
-                    "gathererRecipe": "web-research",
-                    "aspects": [
-                      {"role":"history",  "goal":"History and political context."},
-                      {"role":"tech",     "goal":"Current technology and state of the art."},
-                      {"role":"pros",     "goal":"Pro arguments and economic perspectives."},
-                      {"role":"cons",     "goal":"Cons, risks and counter-arguments."},
-                      {"role":"future",   "goal":"Future outlook and research trends."}
-                    ],
-                    "synthesisPrompt": "Verdichte die Recherche zu einem strukturierten Bericht mit Einleitung, Pro-/Contra-Hauptteil und Fazit. Belege Aussagen mit eingebetteten Quellenreferenzen.",
-                    "language": "de",
-                    "reportLengthWords": "1500-2000",
-                    "outputPathTpl": "research/{{ process.goal | slug }}/report.md",
-                    "outputTitleTpl": "Research Report — {{ process.goal }}",
-                    "processGoalLabel": "research topic"
-                  },
-                  "justifications": {
-                    "params.aspects":         "sg1",
-                    "params.synthesisPrompt": "sg3",
-                    "params.outputPathTpl":   "sg4"
-                  },
-                  "confidence": 0.95,
-                  "shapeRationale": "Five-aspect research pipeline with AGGREGATE synthesis and final-file postAction matches the user's 'research a topic and write a report' intent."
-                }
-
-            If you violate this contract the validator rejects your
-            output and asks you to correct it.
-            """;
-
-    private static final String SYSTEM_PROMPT_LEGACY = """
-            (deprecated, kept for reference only — the current Marvin
-            architect emits template parameters, not free-form YAML)
-            You are the PROPOSING node of the Slartibartfast engine.
-            From the framed goal, the subgoals, and the list of
-            available sub-recipes, you produce a Marvin recipe.
-            Marvin's PLAN validator enforces your constraints at
-            runtime — if you omit them the runtime PLAN-LLM takes
-            shortcuts and the pipeline does not run through.
-
-            HARD OUTPUT CONTRACT:
-            - End your reply with EXACTLY one JSON object.
-            - NO markdown code fence (no ```json … ```).
-            - NO prose before or after the JSON.
-
-            Schema:
-                {
-                  "name":           "<recipe-name, kebab-case>",
-                  "yaml":           "<full recipe YAML>",
-                  "justifications": {
-                    "params.allowedSubTaskRecipes": "<sg-id>",
-                    "promptPrefix":                 "<sg-id>",
-                    ...
-                  },
-                  "confidence":     <0.0..1.0>,
-                  "shapeRationale": "<why this shape — 1-2 sentences>"
-                }
-
-            ── COMPLETENESS REQUIREMENT ──
-
-            Your recipe MUST drive the user's request to a final
-            deliverable, not just one stage of it. If the user
-            asks for an essay, the recipe MUST run outline →
-            chapter writing → aggregation (final consolidation).
-            Producing only the outline phase, only chapters, or
-            stopping before aggregation is a hard failure: the
-            user gets no usable result and the validator will
-            reject the recipe.
-
-            When the available sub-recipes include outline-style,
-            chapter-style, AND aggregator-style entries, you MUST
-            wire all three into allowedSubTaskRecipes and the
-            promptPrefix. Pick fewer phases ONLY when the user's
-            request truly needs less (e.g. they explicitly asked
-            for an outline only).
-
-            ── MANDATORY CONSTRAINTS (set when applicable) ──
-
-            These constraints are NOT optional when the inputs
-            motivate them. Slartibartfast detects motivated
-            constraints from the subgoals + the available sub-recipes:
-
-            **allowedSubTaskRecipes** — REQUIRED whenever the
-              subgoals map to concrete sub-recipes. Inspect the
-              "Available sub-recipes" block in the user prompt. A
-              subgoal that "writes plot/cast/outline" maps to an
-              outline-style recipe; "writes chapters" to a
-              chapter-style recipe; "consolidates/aggregates" to an
-              aggregator-style recipe. List EXACTLY the recipes
-              your plan phases will use.
-
-            **recipesOnlyViaExpand** — REQUIRED when a subgoal
-              iterates "per item in a document". List the recipes
-              that may appear ONLY inside an EXPAND_FROM_DOC
-              childTemplate (typical: chapter-loop for
-              chapter-per-outline-item).
-
-            **allowedExpandDocumentRefPaths** — REQUIRED when you
-              set recipesOnlyViaExpand. List the document paths the
-              EXPAND_FROM_DOC iterates over (e.g.
-              "essay/outline.md").
-
-            **disallowedTaskKinds** — Set [AGGREGATE] when your
-              plan shape needs a WORKER aggregator (instead of
-              Marvin's built-in AGGREGATE summary). Standard for
-              pipelines with an aggregator-style recipe.
-
-            **defaultExecutionMode: SEQUENTIAL** — Default when the
-              plan phases build on each other (outline → chapters →
-              aggregator). Use PARALLEL only when phases are
-              independent.
-
-            **maxPlanCorrections: 2** — Default. Omit only for
-              extremely conservative use cases.
-
-            ── promptPrefix CONTRACT (the runtime PLAN-LLM reads it) ──
-
-            **CRITICAL — KIND-block parity rule:**
-              The number of KIND blocks in your promptPrefix MUST
-              equal the size of allowedSubTaskRecipes (and the
-              number of children Marvin's PLAN should emit).
-              EVERY recipe in allowedSubTaskRecipes MUST have
-              exactly one KIND block referencing it (either as a
-              direct WORKER taskSpec.recipe, or — for entries in
-              recipesOnlyViaExpand — as the EXPAND_FROM_DOC
-              childTemplate.recipe). If you list 3 recipes you MUST
-              write 3 KIND blocks; the runtime LLM otherwise drops
-              the trailing ones.
-
-            **JSON skeleton rule:** Each KIND block MUST contain a
-              concrete JSON skeleton for that child (literal
-              taskKind / goal / taskSpec). Plain prose without a
-              JSON sample lets the LLM omit the child.
-
-            **Order rule:** The KIND blocks MUST appear in
-              execution order (the order Marvin will use under
-              SEQUENTIAL). The order also reflects the
-              data-dependency chain (a phase that consumes
-              `essay/outline.md` comes after the phase that
-              produces it).
-
-            **No manual fan-out:** "Iterate per item in a document"
-              ALWAYS means EXPAND_FROM_DOC with documentRef +
-              childTemplate. Never enumerate items by hand.
-
-            ── YAML structure ──
-
-                name: <name, same as above>
-                description: |
-                  <1-2 sentences>
-                engine: marvin
-                params:
-                  rootTaskKind: PLAN
-                  maxPlanCorrections: 2
-                  defaultExecutionMode: SEQUENTIAL
-                  allowedSubTaskRecipes:
-                    - <recipe1-name>
-                    - <recipe2-name>
-                  recipesOnlyViaExpand:
-                    - <chapter-loop-name>
-                  allowedExpandDocumentRefPaths:
-                    - <e.g. essay/outline.md>
-                  disallowedTaskKinds: [AGGREGATE]
-                promptPrefix: |
-                  You are the `<name>` PLAN node. Emit EXACTLY N
-                  children in this exact order. N MUST equal the
-                  number of recipes in allowedSubTaskRecipes.
-
-                  KIND 1 — <description matching subgoal sg1>
-                  <one-line literal JSON skeleton for child 1>
-
-                  KIND 2 — <description matching sg2>
-                  <one-line literal JSON skeleton for child 2>
-
-                  ...
-
-                  Output contract — ONLY these N children:
-                      {"children": [<KIND 1>, <KIND 2>, ...]}
-
-                  Do not omit any KIND. Do not add extras. The
-                  number of children MUST be exactly N.
-
-            ── EXAMPLE (essay-style pipeline, N=3) ──
-
-                name: my-essay-pipeline
-                description: |
-                  Produces an essay through outline → chapters → aggregation.
-                engine: marvin
-                params:
-                  rootTaskKind: PLAN
-                  maxPlanCorrections: 2
-                  defaultExecutionMode: SEQUENTIAL
-                  allowedSubTaskRecipes:
-                    - outline_loop
-                    - chapter_loop
-                    - aggregator_run
-                  recipesOnlyViaExpand:
-                    - chapter_loop
-                  allowedExpandDocumentRefPaths:
-                    - essay/outline.md
-                  disallowedTaskKinds: [AGGREGATE]
-                promptPrefix: |
-                  You are the my-essay-pipeline PLAN node. Emit
-                  EXACTLY 3 children, one per recipe in
-                  allowedSubTaskRecipes [outline_loop, chapter_loop,
-                  aggregator_run], in this exact order:
-
-                  KIND 1 — WORKER outline_loop (produces essay/outline.md):
-                  {"taskKind":"WORKER","goal":"Draft plot, cast, and outline.","taskSpec":{"recipe":"outline_loop"}}
-
-                  KIND 2 — EXPAND_FROM_DOC over outline (one chapter per item):
-                  {"taskKind":"EXPAND_FROM_DOC","goal":"Run one chapter_loop per outline item.",
-                   "taskSpec":{"documentRef":{"path":"essay/outline.md"},
-                               "treeMode":"FLAT",
-                               "childTemplate":{"taskKind":"WORKER","recipe":"chapter_loop","goal":"Write the chapter."}}}
-
-                  KIND 3 — WORKER aggregator_run (consolidates chapters → final-essay.md):
-                  {"taskKind":"WORKER","goal":"Consolidate chapters into the final essay and post the inbox notification.","taskSpec":{"recipe":"aggregator_run"}}
-
-                  Output contract — EXACTLY these 3 children, no fewer:
-                      {"children":[<KIND 1>,<KIND 2>,<KIND 3>]}
-
-                  Do not omit KIND 3. The number of children MUST be 3.
-
-            ── Language ──
-
-            The promptPrefix you generate MUST be in English (the
-            runtime PLAN-LLM reads it as orchestration code). The
-            user-facing content language is carried separately by
-            the goal text and is not your concern here.
-
-            ── promptPrefix is a Pebble template ──
-
-            promptPrefix is rendered through Pebble before the
-            PLAN-LLM sees it, so plain prose passes through verbatim.
-            If you need a tier-aware variant (rare for PLAN nodes),
-            you may use:
-                {% if tier == "small" %}…{% else %}…{% endif %}
-            with `elseif` (NOT `elif`). Available variables:
-            tier, model, provider, mode, profile, recipe, engine,
-            params. Avoid Pebble syntax unless you actually need it
-            — plain text is the safer default. Anything that looks
-            like {{ … }} or {% … %} but isn't intended as a
-            template will be parsed as Pebble; escape with
-            {% raw %}…{% endraw %} if you must include braces
-            literally.
-
-            ── justifications map ──
-
-            Every constraint-key you set in the YAML (params.X or
-            promptPrefix) MUST point to an sg-id that exists in
-            the subgoal list.
-
-            If you violate this contract the validator rejects
-            your output and asks you to correct it.
+            The path strings render with {{ process.goal }} and
+            {{ process.goal | slug }} (URL-safe slug). Use those
+            verbatim in your params; the template engine inlines
+            them at recipe-eval time.
             """;
 
     private final RecipeLoader recipeLoader;
@@ -559,18 +204,9 @@ public class MarvinArchitect implements SchemaArchitect {
         if (availableRecipes.isEmpty()) {
             sb.append("  (none)\n\n")
                     .append("Because there are NO project sub-recipes:\n")
-                    .append("  - DO NOT set params.allowedSubTaskRecipes "
-                            + "(omit the field entirely).\n")
-                    .append("  - DO NOT set params.recipesOnlyViaExpand.\n")
-                    .append("  - Inventing recipe names ('web-research', "
-                            + "'analyze', 'marvin-worker', etc.) will be "
-                            + "rejected by the validator — those names "
-                            + "do not resolve at runtime.\n")
-                    .append("  - Drive the plan via the promptPrefix "
-                            + "alone; let Marvin's PLAN-LLM pick task "
-                            + "kinds (WORKER without recipe = generic "
-                            + "ford worker, EXPAND_FROM_DOC, etc.) at "
-                            + "runtime.\n\n");
+                    .append("  - leave params.availableRecipes empty\n")
+                    .append("  - the worker will need to answer directly "
+                            + "via PROCEED_TO_CONCLUDE without CALL_RECIPE.\n");
         } else {
             for (ResolvedRecipe r : availableRecipes) {
                 sb.append("  - ").append(r.name())
@@ -579,14 +215,10 @@ public class MarvinArchitect implements SchemaArchitect {
                         .append(abbrev(r.description(), 100))
                         .append("\n");
             }
-            sb.append("\nIf your subgoals map to any of these recipes, "
-                    + "set allowedSubTaskRecipes to the matching subset "
-                    + "and reference each recipe in the promptPrefix as "
-                    + "`taskSpec.recipe`. Remember the KIND-block parity "
-                    + "rule: the number of KIND blocks MUST equal the "
-                    + "size of allowedSubTaskRecipes. Use ONLY the names "
-                    + "listed above — every name must resolve to a real "
-                    + "project recipe.\n\n");
+            sb.append("\nWhen you set params.availableRecipes, use ONLY "
+                    + "names from this list. Recipes whose engine is "
+                    + "'marvin' are NOT allowed here — CALL_RECIPE on a "
+                    + "Marvin recipe is blocked in v1.\n");
         }
     }
 
@@ -604,8 +236,8 @@ public class MarvinArchitect implements SchemaArchitect {
             ValidationCheck v = ValidationCheck.builder()
                     .rule(RULE_MARVIN_PROMPT_PREFIX).passed(false)
                     .message("MARVIN_RECIPE must declare a non-blank "
-                            + "top-level 'promptPrefix' (the PLAN-LLM "
-                            + "instruction)")
+                            + "top-level 'promptPrefix' (narrative goal "
+                            + "context for the root worker)")
                     .build();
             report.add(v);
             return v;
@@ -615,10 +247,6 @@ public class MarvinArchitect implements SchemaArchitect {
                 .message("promptPrefix present (" + ppStr.length()
                         + " chars)").build());
 
-        // Recipes carry promptPrefix as a Pebble template (tier /
-        // mode / model conditions live inside the body). Compile
-        // it now so a syntax slip surfaces at validation time, not
-        // at first turn.
         try {
             promptTemplateRenderer.compile(ppStr);
             report.add(ValidationCheck.builder()
@@ -639,8 +267,7 @@ public class MarvinArchitect implements SchemaArchitect {
         if (!(params instanceof Map<?, ?>)) {
             ValidationCheck v = ValidationCheck.builder()
                     .rule(RULE_MARVIN_RECIPE_SHAPE).passed(false)
-                    .message("MARVIN_RECIPE must declare a 'params' map "
-                            + "(may be empty for a default Marvin run)")
+                    .message("MARVIN_RECIPE must declare a 'params' map")
                     .build();
             report.add(v);
             return v;
@@ -649,159 +276,38 @@ public class MarvinArchitect implements SchemaArchitect {
                 .rule(RULE_MARVIN_RECIPE_SHAPE).passed(true)
                 .message("params block present").build());
 
-        // Reject postActions anywhere in the recipe YAML — empirical:
-        // PROPOSING keeps inventing new nesting levels for them
-        // (root, params.postActions, …). Marvin's runtime ONLY reads
-        // node.taskSpec.postActions, and those live inside the
-        // KIND-block JSON skeletons embedded as strings in
-        // promptPrefix — never as YAML keys. So any postActions key
-        // we find walking the recipeMap is by definition misplaced.
-        java.util.List<String> misplacedPostActionPaths = new java.util.ArrayList<>();
-        scanForMisplacedPostActions(recipeMap, "", misplacedPostActionPaths);
-        if (!misplacedPostActionPaths.isEmpty()) {
-            ValidationCheck v = ValidationCheck.builder()
-                    .rule(RULE_MARVIN_NO_ROOT_POSTACTIONS).passed(false)
-                    .message("MARVIN_RECIPE has 'postActions' at YAML "
-                            + "location(s) " + misplacedPostActionPaths
-                            + " — Marvin only reads postActions from "
-                            + "node.taskSpec.postActions, and the only "
-                            + "valid place to declare them is INSIDE "
-                            + "the KIND-block JSON skeleton in "
-                            + "promptPrefix (as `\"taskSpec\":{ ..., "
-                            + "\"postActions\":[...] }`). Remove the "
-                            + "YAML-level postActions block(s) and "
-                            + "embed the postActions into the taskSpec "
-                            + "of the node whose output should be "
-                            + "persisted (typically the AGGREGATE "
-                            + "child or the final WORKER). YAML-level "
-                            + "postActions are silently dropped at "
-                            + "runtime.")
-                    .build();
-            report.add(v);
-            return v;
-        }
-        report.add(ValidationCheck.builder()
-                .rule(RULE_MARVIN_NO_ROOT_POSTACTIONS).passed(true)
-                .message("no misplaced YAML-level postActions (correct)")
-                .build());
-
-        // Scan promptPrefix for invented TaskKinds. PROPOSING tends
-        // to interpolate plausible-but-fake kinds like
-        // EXPAND_FROM_PROMPT from EXPAND_FROM_DOC. Marvin's runtime
-        // accepts only PLAN, EXPAND_FROM_DOC, WORKER, USER_INPUT,
-        // AGGREGATE — anything else fails the PLAN-LLM's first turn
-        // hours later. Catch it now.
-        ValidationCheck taskKindCheck =
-                checkPromptPrefixTaskKinds(ppStr);
-        report.add(taskKindCheck);
-        if (!taskKindCheck.isPassed()) return taskKindCheck;
-
-        // Scan postAction template strings (embedded in the
-        // promptPrefix as KIND-block JSON) for Pebble {{ var.… }}
-        // references with unknown root identifiers. Live 2026-05-24:
-        // PROPOSING wrote {{ process.recipe.yaml }} and similar
-        // hallucinated paths that render to "" at runtime and
-        // produce empty files. Better to reject at recipe-load with
-        // the allow-list spelled out.
-        ValidationCheck postActionVarCheck =
-                checkPostActionVariables(ppStr);
+        // Validate Pebble template variables embedded in the prompt
+        // (postActions blocks reference {{ node.result }} etc.).
+        ValidationCheck postActionVarCheck = checkPostActionVariables(ppStr);
         report.add(postActionVarCheck);
         if (!postActionVarCheck.isPassed()) return postActionVarCheck;
 
-        // MARVIN_RECIPE: every entry in allowedSubTaskRecipes /
-        // recipesOnlyViaExpand MUST be a real project recipe and
-        // must NOT be a reserved engine name. Empirical:
-        // PROPOSING fabricates plausible-sounding names ('ford',
-        // 'web-research', 'marvin-worker') when the project has
-        // no real sub-recipes — Marvin's runtime PLAN-validator
-        // rejects those, and the whole pipeline aborts. Catching
-        // it here saves a wallclock cycle through Marvin.
         @SuppressWarnings("unchecked")
-        ValidationCheck recipeCheck = checkAllowedSubTaskRecipes(
+        ValidationCheck recipeCheck = checkAvailableRecipes(
                 (Map<String, Object>) params, process);
         report.add(recipeCheck);
         return recipeCheck.isPassed() ? null : recipeCheck;
     }
 
-    /**
-     * Walks the recipe YAML and collects any {@code postActions}
-     * key paths found at the recipe-data level. The ONLY valid
-     * location for postActions is inside a KIND-block JSON
-     * skeleton embedded as a string inside {@code promptPrefix} —
-     * so any postActions key we hit by walking the parsed
-     * YAML structure is misplaced and silently dropped at runtime.
-     *
-     * <p>Path strings are dotted for readable diagnostics
-     * ({@code "params.postActions"}, {@code "postActions"}).
-     */
-    @SuppressWarnings("unchecked")
-    private static void scanForMisplacedPostActions(
-            Object node, String path, java.util.List<String> hits) {
-        if (node instanceof java.util.Map<?, ?> map) {
-            for (java.util.Map.Entry<?, ?> e : map.entrySet()) {
-                String key = String.valueOf(e.getKey());
-                String childPath = path.isEmpty() ? key : path + "." + key;
-                if ("postActions".equals(key)) {
-                    hits.add(childPath);
-                }
-                scanForMisplacedPostActions(e.getValue(), childPath, hits);
-            }
-        } else if (node instanceof java.util.List<?> list) {
-            for (int i = 0; i < list.size(); i++) {
-                scanForMisplacedPostActions(
-                        list.get(i), path + "[" + i + "]", hits);
-            }
-        }
-    }
-
-    /**
-     * Scans the promptPrefix for Pebble {@code {{ var.subvar }}}
-     * references and flags any whose root identifier is not in
-     * the Marvin postAction context allow-list. Catches LLM
-     * hallucinations like {@code {{ process.recipe.yaml }}} or
-     * {@code {{ aggregate.result.text }}} that render to "" at
-     * runtime and silently produce empty files.
-     *
-     * <p>Allowed roots: {@code node}, {@code result} (alias for
-     * node), {@code process}, plus the universal Pebble built-ins
-     * that engines configure (e.g. {@code item} inside an
-     * EXPAND_FROM_DOC childTemplate). The check is conservative —
-     * we only flag clearly-foreign roots like
-     * {@code aggregate.…} / {@code process.recipe.…}.
-     */
-    private static ValidationCheck checkPostActionVariables(
-            String promptPrefix) {
+    private static ValidationCheck checkPostActionVariables(String promptPrefix) {
         java.util.regex.Pattern p = java.util.regex.Pattern.compile(
                 "\\{\\{\\s*([A-Za-z_][A-Za-z0-9_]*)"
                         + "(?:\\.[A-Za-z_][A-Za-z0-9_]*)*"
                         + "(?:\\s*\\|\\s*[A-Za-z_][A-Za-z0-9_]*)?"
                         + "\\s*\\}\\}");
         java.util.regex.Matcher m = p.matcher(promptPrefix);
-        // Tight allow-list. Generic names like 'input' / 'topic' /
-        // 'goal' were removed: the LLM was using them as roots
-        // ('{{input.topic}}') and they slipped through, rendering
-        // to empty at runtime. The canonical accessors are
-        // `process.params.topic` (or `process.goal`) and `node.X`.
-        java.util.Set<String> allowedRoots = java.util.Set.of(
-                "node",          // canonical postAction root
-                "result",        // alias for node (LLM-friendly)
-                "process",       // process.goal / process.id / process.params.*
-                "item",          // EXPAND_FROM_DOC childTemplate iteration var
-                // Pebble template stdlib roots used by promptPrefix
-                // conditionals (tier-/mode-/provider-checks):
+        Set<String> allowedRoots = Set.of(
+                "node", "result", "process", "item",
                 "tier", "model", "provider", "mode", "profile",
                 "recipe", "engine", "lang", "params");
-        java.util.Set<String> bad = new java.util.LinkedHashSet<>();
-        // Also collect the full reference for the error message
-        // so the LLM can see what it wrote.
-        java.util.Map<String, String> badFullRef = new java.util.LinkedHashMap<>();
+        Set<String> bad = new LinkedHashSet<>();
+        Map<String, String> badFullRef = new LinkedHashMap<>();
         java.util.regex.Pattern fullRefP = java.util.regex.Pattern.compile(
                 "\\{\\{\\s*([A-Za-z_][A-Za-z0-9_.]*)");
         while (m.find()) {
             String root = m.group(1);
             if (!allowedRoots.contains(root)) {
                 bad.add(root);
-                // Pull the full ref for context
                 String matched = m.group();
                 java.util.regex.Matcher refM = fullRefP.matcher(matched);
                 if (refM.find()) badFullRef.putIfAbsent(root, refM.group(1));
@@ -810,134 +316,60 @@ public class MarvinArchitect implements SchemaArchitect {
         if (bad.isEmpty()) {
             return ValidationCheck.builder()
                     .rule(RULE_MARVIN_POSTACTION_VARS).passed(true)
-                    .message("postAction template variables look ok")
+                    .message("template variables look ok")
                     .build();
         }
-        StringBuilder msg = new StringBuilder();
-        msg.append("promptPrefix references unknown template root(s): ");
+        StringBuilder msg = new StringBuilder(
+                "promptPrefix references unknown template root(s): ");
         boolean first = true;
         for (String r : bad) {
             if (!first) msg.append(", ");
             first = false;
             msg.append("'").append(badFullRef.getOrDefault(r, r)).append("'");
         }
-        msg.append(". For postAction templates, use only these roots: ")
-                .append("node.result / node.summary / node.goal, ")
-                .append("process.goal / process.id / process.params.<key>, ")
-                .append("or 'result.<x>' (alias for node.<x>). ")
-                .append("`process.recipe.<x>`, `aggregate.<x>`, ")
-                .append("`worker.<x>` etc. are NOT valid — they are ")
-                .append("plausible-sounding but render to empty strings ")
-                .append("at runtime, producing empty files.");
+        msg.append(". Allowed roots: node.*, process.*, result.* (alias), "
+                + "item.* (EXPAND_FROM_DOC). Common mistakes: "
+                + "process.recipe.<x>, aggregate.<x>, worker.<x> "
+                + "(do not exist).");
         return ValidationCheck.builder()
                 .rule(RULE_MARVIN_POSTACTION_VARS).passed(false)
                 .message(msg.toString())
                 .build();
     }
 
-    /**
-     * Scans the promptPrefix for {@code "taskKind"} JSON-style
-     * mentions and flags any that aren't one of the runtime-
-     * accepted values. The matched names live inside the embedded
-     * KIND-block JSON skeletons in the prompt body — Marvin's PLAN
-     * runtime parses them as the literal TaskKind enum. A
-     * fabricated name (live 2026-05-24: {@code EXPAND_FROM_PROMPT})
-     * goes through validation, fails at first PLAN turn, costs an
-     * LLM round-trip.
-     *
-     * <p>Pattern is lenient: any token after {@code "taskKind"} and a
-     * quote-or-colon-or-whitespace prefix. Empty / commented-out
-     * mentions are ignored.
-     */
-    private static ValidationCheck checkPromptPrefixTaskKinds(
-            String promptPrefix) {
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
-                "[\"']taskKind[\"']\\s*[:=]\\s*[\"']([A-Z_]+)[\"']");
-        java.util.regex.Matcher m = p.matcher(promptPrefix);
-        java.util.Set<String> bad = new java.util.LinkedHashSet<>();
-        java.util.Set<String> validKinds = java.util.Set.of(
-                "PLAN", "EXPAND_FROM_DOC", "WORKER",
-                "USER_INPUT", "AGGREGATE");
-        while (m.find()) {
-            String kind = m.group(1);
-            if (!validKinds.contains(kind)) bad.add(kind);
-        }
-        if (bad.isEmpty()) {
-            return ValidationCheck.builder()
-                    .rule(RULE_MARVIN_TASKKINDS_VALID).passed(true)
-                    .message("promptPrefix references only valid TaskKinds")
-                    .build();
-        }
-        return ValidationCheck.builder()
-                .rule(RULE_MARVIN_TASKKINDS_VALID).passed(false)
-                .message("promptPrefix references invented TaskKind(s): "
-                        + String.join(", ", bad)
-                        + ". Valid TaskKinds are: "
-                        + String.join(", ", validKinds)
-                        + ". Rewrite the KIND blocks with one of those.")
-                .build();
-    }
-
     @Override
     public String recoveryHintTail(ThinkProcessDocument process) {
-        // Same protection for recipe names as for sg-ids: echo
-        // the actual project recipe inventory so the LLM can't
-        // fabricate plausible-sounding names. allowedSubTaskRecipes
-        // and recipesOnlyViaExpand take recipe names, never engine
-        // labels.
         List<String> available = listAvailableRecipeNames(process);
         StringBuilder sb = new StringBuilder();
-        sb.append("\nValid recipe names (use ONLY these in "
-                + "allowedSubTaskRecipes / recipesOnlyViaExpand): ");
+        sb.append("\nValid recipe names for params.availableRecipes "
+                + "(use ONLY these, never invent): ");
         if (available.isEmpty()) {
-            sb.append("(none — leave allowedSubTaskRecipes "
-                    + "and recipesOnlyViaExpand absent).\n");
+            sb.append("(none — leave availableRecipes empty).\n");
         } else {
             sb.append(String.join(", ", available)).append(".\n");
         }
-        sb.append("\nEmit a corrected recipe YAML as a JSON object "
-                + "with a valid name, engine: marvin, "
-                + "params.allowedSubTaskRecipes / "
-                + "params.recipesOnlyViaExpand / "
-                + "params.allowedExpandDocumentRefPaths / "
-                + "params.disallowedTaskKinds set per the "
-                + "system-prompt rules, a non-empty promptPrefix "
-                + "with one KIND block per recipe, and "
-                + "justifications all pointing to existing "
-                + "sg-ids from the list above.");
+        sb.append("\nEmit a corrected templateId + params JSON.");
         return sb.toString();
     }
 
-    // ──────────────────── Helpers ────────────────────
-
-    /**
-     * Validates that every entry in {@code params.allowedSubTaskRecipes}
-     * and {@code params.recipesOnlyViaExpand} is a real project
-     * recipe — both fields hold recipe names (NOT engine names), so
-     * a name that doesn't resolve via the recipe-cascade is by
-     * definition wrong (whether the LLM hallucinated it freshly or
-     * mis-typed an engine label is irrelevant). Also catches
-     * duplicate entries.
-     */
-    private ValidationCheck checkAllowedSubTaskRecipes(
+    private ValidationCheck checkAvailableRecipes(
             Map<String, Object> params, ThinkProcessDocument process) {
-        List<String> allowed = readStringList(params.get("allowedSubTaskRecipes"));
-        List<String> onlyViaExpand = readStringList(params.get("recipesOnlyViaExpand"));
-
-        if (allowed.isEmpty() && onlyViaExpand.isEmpty()) {
+        List<String> declared = readStringList(params.get("availableRecipes"));
+        if (declared.isEmpty()) {
             return ValidationCheck.builder()
                     .rule(RULE_MARVIN_RECIPES_EXIST).passed(true)
-                    .message("no allowedSubTaskRecipes / recipesOnlyViaExpand "
-                            + "constraints — no names to validate")
+                    .message("availableRecipes is empty — no names to validate")
                     .build();
         }
 
         Set<String> available = new LinkedHashSet<>();
+        Map<String, String> engineOfRecipe = new LinkedHashMap<>();
         try {
             for (ResolvedRecipe r : recipeLoader.listAll(
                     process.getTenantId(), process.getProjectId())) {
                 if (!r.name().startsWith("_slart/")) {
                     available.add(r.name());
+                    engineOfRecipe.put(r.name(), r.engine());
                 }
             }
         } catch (RuntimeException e) {
@@ -946,35 +378,42 @@ public class MarvinArchitect implements SchemaArchitect {
         }
 
         List<String> unknown = new ArrayList<>();
-        for (String name : allowed) {
-            if (!available.contains(name)) unknown.add(name);
-        }
-        for (String name : onlyViaExpand) {
-            if (!available.contains(name) && !unknown.contains(name)) {
+        List<String> marvinTargets = new ArrayList<>();
+        for (String name : declared) {
+            if (!available.contains(name)) {
                 unknown.add(name);
+                continue;
+            }
+            String engine = engineOfRecipe.get(name);
+            if ("marvin".equalsIgnoreCase(engine)) {
+                marvinTargets.add(name);
             }
         }
 
         Set<String> seen = new HashSet<>();
         Set<String> dupes = new LinkedHashSet<>();
-        for (String name : allowed) {
+        for (String name : declared) {
             if (!seen.add(name)) dupes.add(name);
         }
 
-        if (!unknown.isEmpty() || !dupes.isEmpty()) {
+        if (!unknown.isEmpty() || !dupes.isEmpty() || !marvinTargets.isEmpty()) {
             StringBuilder msg = new StringBuilder();
             if (!unknown.isEmpty()) {
                 msg.append("recipe(s) not found in project: ")
                         .append(String.join(", ", unknown)).append(". ");
             }
             if (!dupes.isEmpty()) {
-                msg.append("duplicate recipe name(s) in "
-                                + "allowedSubTaskRecipes: ")
+                msg.append("duplicate name(s) in availableRecipes: ")
                         .append(String.join(", ", dupes)).append(". ");
             }
+            if (!marvinTargets.isEmpty()) {
+                msg.append("recipe(s) use engine=marvin (not allowed as "
+                                + "CALL_RECIPE target in v1): ")
+                        .append(String.join(", ", marvinTargets)).append(". ");
+            }
             if (available.isEmpty()) {
-                msg.append("Project has no available recipes — drop the "
-                        + "allowedSubTaskRecipes constraint entirely.");
+                msg.append("Project has no available recipes — set "
+                        + "availableRecipes to []. ");
             } else {
                 msg.append("Available: ")
                         .append(String.join(", ", available)).append(".");
@@ -987,8 +426,8 @@ public class MarvinArchitect implements SchemaArchitect {
 
         return ValidationCheck.builder()
                 .rule(RULE_MARVIN_RECIPES_EXIST).passed(true)
-                .message("all " + (allowed.size() + onlyViaExpand.size())
-                        + " recipe name(s) resolve to project recipes")
+                .message("all " + declared.size()
+                        + " recipe name(s) resolve to non-marvin project recipes")
                 .build();
     }
 
@@ -997,7 +436,10 @@ public class MarvinArchitect implements SchemaArchitect {
             List<String> names = new ArrayList<>();
             for (ResolvedRecipe r : recipeLoader.listAll(
                     process.getTenantId(), process.getProjectId())) {
-                if (!r.name().startsWith("_slart/")) names.add(r.name());
+                if (!r.name().startsWith("_slart/")
+                        && !"marvin".equalsIgnoreCase(r.engine())) {
+                    names.add(r.name());
+                }
             }
             return names;
         } catch (RuntimeException e) {
@@ -1022,13 +464,24 @@ public class MarvinArchitect implements SchemaArchitect {
     // ──────────────────── Template-driven YAML extraction ────────────────────
 
     /**
-     * Marvin's recipe-YAML is not authored by the LLM. The LLM
-     * emits {@code templateId} + {@code params} as JSON; this
-     * method validates the params, picks the matching bundled
-     * Pebble template, and renders the final recipe YAML
-     * deterministically. Failures throw with a message
-     * ProposingPhase converts into a re-prompt hint.
+     * Marvin's PROPOSING LLM emits {@code {templateId, params}} —
+     * the recipe name lives inside {@code params}, not at the root.
      */
+    @Override
+    public String extractRecipeName(Map<String, Object> jsonRoot) {
+        Object paramsObj = jsonRoot.get("params");
+        if (!(paramsObj instanceof Map<?, ?> paramsRaw)) {
+            throw new IllegalArgumentException(
+                    "required field 'params' missing or not an object");
+        }
+        Object n = paramsRaw.get("name");
+        if (!(n instanceof String name) || name.isBlank()) {
+            throw new IllegalArgumentException(
+                    "required field 'params.name' missing or blank");
+        }
+        return name;
+    }
+
     @Override
     public String extractRecipeYaml(Map<String, Object> jsonRoot) {
         Object templateIdObj = jsonRoot.get("templateId");
@@ -1053,7 +506,12 @@ public class MarvinArchitect implements SchemaArchitect {
         @SuppressWarnings("unchecked")
         Map<String, Object> params = (Map<String, Object>) paramsRaw;
 
-        // Template-specific param validation.
+        // Common params required by all templates.
+        requireNonBlankString(params, "name");
+        requireNonBlankString(params, "description");
+        requireNonBlankString(params, "language");
+        validateAvailableRecipesShape(params);
+
         switch (tplId) {
             case "research-aggregate-write" ->
                     validateResearchAggregateWriteParams(params);
@@ -1088,34 +546,32 @@ public class MarvinArchitect implements SchemaArchitect {
         }
     }
 
-    /**
-     * Validates the params block for {@code research-aggregate-write}.
-     * Throws with explicit guidance for any missing / wrong-typed
-     * field so PROPOSING can re-prompt with a useful hint.
-     */
+    private static void validateAvailableRecipesShape(Map<String, Object> params) {
+        Object ar = params.get("availableRecipes");
+        if (ar == null) {
+            // Default to empty list — the worker can still answer
+            // directly via PROCEED_TO_CONCLUDE.
+            params.put("availableRecipes", new ArrayList<String>());
+            return;
+        }
+        if (!(ar instanceof List<?> list)) {
+            throw new IllegalArgumentException(
+                    "params.availableRecipes must be a list of recipe names");
+        }
+        for (int i = 0; i < list.size(); i++) {
+            if (!(list.get(i) instanceof String s) || s.isBlank()) {
+                throw new IllegalArgumentException(
+                        "params.availableRecipes[" + i + "] must be a non-blank string");
+            }
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static void validateResearchAggregateWriteParams(
             Map<String, Object> params) {
-        requireNonBlankString(params, "name");
-        requireNonBlankString(params, "description");
-        requireNonBlankString(params, "gathererRecipe");
         requireNonBlankString(params, "synthesisPrompt");
-        requireNonBlankString(params, "language");
         requireNonBlankString(params, "outputPathTpl");
-
-        String outputPath = ((String) params.get("outputPathTpl")).trim();
-        for (String reserved : RESERVED_PATH_PREFIXES) {
-            if (outputPath.startsWith(reserved)) {
-                throw new IllegalArgumentException(
-                        "params.outputPathTpl '" + outputPath
-                                + "' starts with reserved prefix '"
-                                + reserved + "'. Reserved buckets are "
-                                + "owned by engines and must not be "
-                                + "overwritten by recipes. Use a fresh "
-                                + "folder like research/, reports/, "
-                                + "documents/.");
-            }
-        }
+        checkReservedPath(params, "outputPathTpl");
 
         Object aspectsObj = params.get("aspects");
         if (!(aspectsObj instanceof List<?> aspectsList)
@@ -1127,7 +583,7 @@ public class MarvinArchitect implements SchemaArchitect {
         if (aspectsList.size() > 10) {
             throw new IllegalArgumentException(
                     "params.aspects has " + aspectsList.size()
-                            + " entries — keep it to 3-7 (10 is the hard cap)");
+                            + " entries — keep it to 2-7 (10 is the hard cap)");
         }
         for (int i = 0; i < aspectsList.size(); i++) {
             Object a = aspectsList.get(i);
@@ -1147,30 +603,14 @@ public class MarvinArchitect implements SchemaArchitect {
                         "params.aspects[" + i + "].goal missing or blank");
             }
         }
-
-        // Optional fields — type-check only when present.
-        Object maxChars = params.get("maxOutputChars");
-        if (maxChars != null && !(maxChars instanceof Number)) {
-            throw new IllegalArgumentException(
-                    "params.maxOutputChars must be an integer when set");
-        }
     }
 
-    /**
-     * Validates the params block for {@code doc-driven-chapters}.
-     * Reusable for any "1 outline → N chapters via EXPAND_FROM_DOC
-     * → optional final consolidation" pipeline.
-     */
     private static void validateDocDrivenChaptersParams(
             Map<String, Object> params) {
-        requireNonBlankString(params, "name");
-        requireNonBlankString(params, "description");
         requireNonBlankString(params, "outlinePrompt");
         requireNonBlankString(params, "outlinePath");
         requireNonBlankString(params, "chaptersDir");
         requireNonBlankString(params, "chapterPromptTpl");
-        requireNonBlankString(params, "language");
-
         checkReservedPath(params, "outlinePath");
         checkReservedPath(params, "chaptersDir");
 
@@ -1181,27 +621,13 @@ public class MarvinArchitect implements SchemaArchitect {
             requireNonBlankString(params, "finalPath");
             checkReservedPath(params, "finalPath");
         }
-
-        Object maxChars = params.get("maxOutputChars");
-        if (maxChars != null && !(maxChars instanceof Number)) {
-            throw new IllegalArgumentException(
-                    "params.maxOutputChars must be an integer when set");
-        }
     }
 
-    /**
-     * Validates the params block for {@code decide-with-user-input}.
-     * Reusable for any "N USER_INPUT clarifications → 1 worker
-     * synthesizes the decision" pipeline.
-     */
     @SuppressWarnings("unchecked")
     private static void validateDecideWithUserInputParams(
             Map<String, Object> params) {
-        requireNonBlankString(params, "name");
-        requireNonBlankString(params, "description");
         requireNonBlankString(params, "decisionPrompt");
         requireNonBlankString(params, "outputPathTpl");
-
         checkReservedPath(params, "outputPathTpl");
 
         Object qObj = params.get("questions");
@@ -1215,10 +641,8 @@ public class MarvinArchitect implements SchemaArchitect {
                     "params.questions has " + qList.size()
                             + " entries — keep it to 1-7 (10 is the hard cap)");
         }
-        java.util.Set<String> validTypes = java.util.Set.of(
-                "DECISION", "FEEDBACK", "APPROVAL");
-        java.util.Set<String> validCrit = java.util.Set.of(
-                "LOW", "NORMAL", "HIGH", "URGENT");
+        Set<String> validTypes = Set.of("DECISION", "FEEDBACK", "APPROVAL");
+        Set<String> validCrit = Set.of("LOW", "NORMAL", "HIGH", "URGENT");
         for (int i = 0; i < qList.size(); i++) {
             Object q = qList.get(i);
             if (!(q instanceof Map<?, ?> qMap)) {
@@ -1262,11 +686,8 @@ public class MarvinArchitect implements SchemaArchitect {
                 throw new IllegalArgumentException(
                         "params." + key + " '" + path
                                 + "' starts with reserved prefix '"
-                                + reserved + "'. Reserved buckets are "
-                                + "owned by engines and must not be "
-                                + "overwritten by recipes. Use a fresh "
-                                + "folder like research/, essays/, "
-                                + "decisions/, reports/, documents/.");
+                                + reserved + "'. Use research/, essays/, "
+                                + "decisions/, reports/, documents/ instead.");
             }
         }
     }
@@ -1280,11 +701,6 @@ public class MarvinArchitect implements SchemaArchitect {
         }
     }
 
-    /**
-     * Reads a template file from the classpath. Cached in memory
-     * because templates are immutable per-deployment and
-     * {@code extractRecipeYaml} runs in the LLM hot path.
-     */
     private String loadTemplate(String templateId) {
         return templateSourceCache.computeIfAbsent(
                 templateId, this::loadTemplateImpl);

@@ -227,6 +227,15 @@ export default {
       planUpdated: 'plan updated',
       status: 'status',
     },
+    wizards: {
+      tabLabel: 'Wizards',
+      progressTabLabel: 'Progress',
+      title: 'Wizards',
+      emptyHeadline: 'No wizards available',
+      emptyBody:
+        'Wizards are YAML forms under _vance/wizards/ that turn into structured prompts.',
+      submit: 'Generate prompt',
+    },
     planMode: {
       modeBadgeTooltip: 'Current chat-process mode (Arthur Plan-Mode)',
       planTitle: 'Plan',

@@ -1,9 +1,13 @@
 package de.mhus.vance.shared.marvin;
 
 import de.mhus.vance.api.marvin.NodeStatus;
+import de.mhus.vance.api.marvin.PhaseIteration;
 import de.mhus.vance.api.marvin.TaskKind;
+import de.mhus.vance.api.marvin.WorkerPhase;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -75,7 +79,7 @@ public class MarvinNodeDocument {
      *  worker gets as its initial steer. */
     private String goal = "";
 
-    private TaskKind taskKind = TaskKind.PLAN;
+    private TaskKind taskKind = TaskKind.WORKER;
 
     /** Type-specific spec — recipe + steer-content for WORKER,
      *  inbox-item shape for USER_INPUT, prompt-override for PLAN
@@ -104,6 +108,44 @@ public class MarvinNodeDocument {
      *  reverse lookup. */
     @Indexed(name = "inbox_item_idx", sparse = true)
     private @Nullable String inboxItemId;
+
+    // ───────── Marvin v2 state-machine cursor ─────────
+
+    /** Current phase of the WORKER state-machine. {@code null}
+     *  for never-touched WORKER nodes (will be SCOPE on first
+     *  drive) and for non-WORKER kinds. */
+    private @Nullable WorkerPhase currentPhase;
+
+    /** Iteration counter for the in-progress REFLECT loop (0..3). */
+    private int reflectIter;
+
+    /** Iteration counter for the in-progress VALIDATE loop (0..2). */
+    private int validateIter;
+
+    /** Iteration counter for CONCLUDE retries triggered by VALIDATE
+     *  RETRY_CONCLUDE / cap-forced hits (0..2). */
+    private int concludeRetries;
+
+    /** {@code true} while children spawned via NEEDS_SUBTASKS are
+     *  still in flight. Once they all terminate, the engine wakes
+     *  this node in POST_CHILDREN phase. */
+    private boolean awaitingPostChildren;
+
+    /** Last CONCLUDE candidate — what VALIDATE inspected most
+     *  recently. Retained on RETRY_CONCLUDE / NEED_MORE_DATA so
+     *  the cap-forced markDone path can fall back to it. */
+    private @Nullable String candidateResult;
+
+    /** Sub-process IDs spawned via CALL_RECIPE actions. */
+    @Indexed(name = "called_sub_process_idx", sparse = true)
+    @Builder.Default
+    private List<String> calledSubProcessIds = new ArrayList<>();
+
+    /** Audit trail — each LLM call's parsed output JSON, in
+     *  chronological order. NOT loaded into LLM memory; rendered
+     *  in the inspector / web UI / replay. */
+    @Builder.Default
+    private List<PhaseIteration> phaseHistory = new ArrayList<>();
 
     @CreatedDate
     private @Nullable Instant createdAt;

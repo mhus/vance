@@ -1,7 +1,9 @@
 package de.mhus.vance.shared.marvin;
 
 import de.mhus.vance.api.marvin.NodeStatus;
+import de.mhus.vance.api.marvin.PhaseIteration;
 import de.mhus.vance.api.marvin.TaskKind;
+import de.mhus.vance.api.marvin.WorkerPhase;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -187,8 +189,29 @@ public class MarvinNodeService {
         return repository.findBySpawnedProcessId(spawnedProcessId);
     }
 
+    public Optional<MarvinNodeDocument> findByCalledSubProcessId(String subProcessId) {
+        return repository.findByCalledSubProcessIdsContaining(subProcessId);
+    }
+
     public Optional<MarvinNodeDocument> findByInboxItemId(String inboxItemId) {
         return repository.findByInboxItemId(inboxItemId);
+    }
+
+    /**
+     * Depth of the given node from the tree root (root = 0).
+     * Used by the NEEDS_SUBTASKS gate that forbids further
+     * decomposition once {@code params.maxTreeDepth} is reached.
+     */
+    public int depthOf(MarvinNodeDocument node) {
+        int depth = 0;
+        MarvinNodeDocument cur = node;
+        while (cur != null && cur.getParentId() != null) {
+            Optional<MarvinNodeDocument> parent = repository.findById(cur.getParentId());
+            if (parent.isEmpty()) return depth;
+            cur = parent.get();
+            depth++;
+        }
+        return depth;
     }
 
     // ────────────────── Traversal ──────────────────
@@ -342,6 +365,23 @@ public class MarvinNodeService {
     }
 
     /**
+     * @return {@code true} iff every direct child of {@code node}
+     *         is terminal (DONE/FAILED/SKIPPED). Used by the
+     *         POST_CHILDREN trigger.
+     */
+    public boolean allChildrenTerminal(String processId, String parentId) {
+        List<MarvinNodeDocument> kids = findChildren(processId, parentId);
+        if (kids.isEmpty()) return false;
+        for (MarvinNodeDocument k : kids) {
+            NodeStatus s = k.getStatus();
+            if (s != NodeStatus.DONE && s != NodeStatus.FAILED && s != NodeStatus.SKIPPED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * @return {@code true} iff at least one node of this process is
      *         currently {@link NodeStatus#WAITING} on user input.
      *         RUNNING (a worker that's still going) is intentionally
@@ -421,6 +461,30 @@ public class MarvinNodeService {
 
     public MarvinNodeDocument setInboxItemId(MarvinNodeDocument node, String itemId) {
         node.setInboxItemId(itemId);
+        return repository.save(node);
+    }
+
+    public MarvinNodeDocument addCalledSubProcessId(
+            MarvinNodeDocument node, String subProcessId) {
+        if (node.getCalledSubProcessIds() == null) {
+            node.setCalledSubProcessIds(new ArrayList<>());
+        }
+        node.getCalledSubProcessIds().add(subProcessId);
+        return repository.save(node);
+    }
+
+    public MarvinNodeDocument appendPhaseHistory(
+            MarvinNodeDocument node, PhaseIteration iteration) {
+        if (node.getPhaseHistory() == null) {
+            node.setPhaseHistory(new ArrayList<>());
+        }
+        node.getPhaseHistory().add(iteration);
+        return repository.save(node);
+    }
+
+    public MarvinNodeDocument setCurrentPhase(
+            MarvinNodeDocument node, WorkerPhase phase) {
+        node.setCurrentPhase(phase);
         return repository.save(node);
     }
 

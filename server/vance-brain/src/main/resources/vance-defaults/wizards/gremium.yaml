@@ -1,0 +1,70 @@
+title:
+  de: "Gremium anlegen"
+  en: "Create a council"
+description:
+  de: "Persona-Gruppe definieren, die du später zu strategischen Fragen befragen kannst."
+  en: "Define a reusable advisory group of personas you can later consult on strategic questions."
+icon: users
+category: strategie
+
+fields:
+  - name: outputName
+    type: string
+    required: true
+    label:
+      de: "Name (Dateiname, ohne Leerzeichen)"
+      en: "Name (filename, no spaces)"
+    help:
+      de: "Das Gremium wird unter diesem Namen gespeichert."
+      en: "The council is saved under this name."
+
+  - name: purpose
+    type: textarea
+    rows: 3
+    required: true
+    label:
+      de: "Wozu soll das Gremium beraten?"
+      en: "Purpose of the council?"
+
+  - name: members
+    type: repeat
+    min: 2
+    max: 8
+    label:
+      de: "Mitglieder"
+      en: "Members"
+    item:
+      - name: name
+        type: string
+        required: true
+        label:
+          de: "Name"
+          en: "Name"
+      - name: description
+        type: textarea
+        rows: 4
+        required: true
+        label:
+          de: "Beschreibung / Rolle / Persona"
+          en: "Description / role / persona"
+
+  - name: createNow
+    type: boolean
+    defaultValue: "true"
+    label:
+      de: "Direkt erstellen (keine Test-Frage)"
+      en: "Create now (no test question)"
+
+promptTemplate: |
+  Erstelle mit slart ein Gremium aus folgenden {{ members | length }} Personen,
+  das ich später zu strategischen Fragen befragen kann.
+
+  Zweck: {{ purpose }}
+
+  Mitglieder:
+  {% for m in members %}
+  - **{{ m.name }}** — {{ m.description }}
+  {% endfor %}
+
+  Speicher es unter '{{ outputName }}'.
+  {% if createNow == "true" %}Führe es direkt aus.{% else %}Führe jetzt keinen Test aus.{% endif %}

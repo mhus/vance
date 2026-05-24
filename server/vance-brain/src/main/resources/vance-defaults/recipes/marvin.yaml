@@ -1,92 +1,34 @@
 description: |
-  Marvin — deep-think engine. Generic default for any goal that
-  benefits from decomposition, sub-task delegation, and synthesis.
-  Builds a dynamic task-tree on the fly: PLAN nodes call back to
-  the LLM to break a goal into subtasks, WORKER nodes spawn
-  Ford-style worker recipes, USER_INPUT nodes ask the user via
-  the inbox, AGGREGATE nodes collect children-artifacts into a
-  summary. Auto-applied when a process is spawned with
-  `engine="marvin"` but no specific recipe.
+  Marvin v2 — autonomous-worker deep-think engine. Every node is
+  a marvin-worker that walks the 5-phase state-machine. The tree
+  grows dynamically: nodes decide for themselves whether to call
+  a specialist recipe, decompose into children, ask the user, or
+  conclude. The Plan IS the Tree — every LLM call receives a live
+  snapshot of the entire tree as context.
+
+  Specialist recipes (web-research, analyze, code-read) are invoked
+  via the CALL_RECIPE action and run in their native mode — Marvin
+  does NOT layer the structured output contract on top of them.
 engine: marvin
 params:
   model: default:analyze
-  rootTaskKind: PLAN
-  # PLAN/AGGREGATE turns benefit from staying on the analyze tier;
-  # but if it's unavailable, falling to fast is better than dying
-  # mid-tree.
-  fallbackModels:
-    - default:fast
-  # Marvin's PLAN/AGGREGATE turns are the showcase for extended
-  # reasoning — decomposing a goal and synthesising sibling artifacts
-  # benefits substantially from a high thinking budget. Mapped per
-  # provider:
-  #   Anthropic       → thinking: {type:enabled, budget_tokens:16000}
-  #   OpenAI/LMStudio → reasoning_effort: high (o-series / gpt-5)
-  #   Gemini          → thinkingConfig.thinkingLevel: HIGH (2.5+)
-  #   Ollama(Cloud)   → think: true
-  # Requires the tenant's default:analyze alias to point at a model
-  # that supports reasoning; otherwise the API rejects the field.
+  # Specialist recipes available for CALL_RECIPE. Empty list means
+  # workers must answer directly or decompose; they cannot call out.
+  availableRecipes: []
+  # Hard cap on tree size before runaway protection kicks in.
+  maxTreeNodes: 200
+  # NEEDS_SUBTASKS-depth cap.
+  maxTreeDepth: 5
+  # Phase iteration bounds.
+  reflectMaxIterations: 3
+  validateMaxIterations: 2
+  concludeMaxRetries: 2
   thinking: high
   manualPaths:
     - manuals/
-promptPrefix: |
-  You are **Marvin**, the deep-think engine of a Vance session.
-  You don't talk to the user directly — that's Arthur's job. You
-  decompose the goal into a small task-tree, dispatch the actual
-  work to worker recipes, and synthesise their results back.
-
-  How you operate:
-  - Each turn, the runtime picks the next PENDING node from your
-    tree (pre-order DFS). PLAN and AGGREGATE nodes are handled by
-    you (LLM call); WORKER and USER_INPUT nodes are external
-    wait-points that pause the turn until the result arrives.
-  - When asked to PLAN, return a small JSON object listing 2–6
-    children. Mix kinds: most nodes should be WORKER (delegate the
-    real work), with USER_INPUT only when the user must decide,
-    and AGGREGATE as the last sibling under a PLAN parent.
-  - When asked to AGGREGATE, write a focused synthesis: quote
-    concrete data from the sibling artifacts, don't just reference
-    them.
-
-  Hard rules:
-  - Never invent content. WORKER artifacts and USER_INPUT answers
-    are the only ground truth.
-  - Keep the tree small. Three good WORKER children beat eight
-    speculative ones.
-  - The user owns the question; you own the decomposition.
-profiles:
-  # Marvin itself spawns no client_* tools — Workers it spawns
-  # inherit the connection profile and apply their own profile
-  # blocks. These prompt-only blocks help Marvin pick the right
-  # workers for the user's environment.
-  foot:
-    promptPrefixAppend: |
-      ## Client context — local CLI
-
-      User is on a foot client; spawned workers can reach the local
-      filesystem and shell. Prefer recipes that use `client_*`
-      tools (analyze, code-read, …) when local files are involved.
-
-  web:
-    promptPrefixAppend: |
-      ## Client context — web browser
-
-      User is on a web client — no local filesystem on their side.
-      Spawned workers will only have `workspace_*` access. Prefer
-      tasks that operate on project workspace files.
-
-  default:
-    promptPrefixAppend: |
-      ## Client context — non-CLI client
-
-      Spawned workers operate on the project workspace, not on the
-      user's local machine.
 tags:
   - deep-think
   - orchestrator
-# Trigger keywords for the deterministic recipe-router pre-check
-# (see specification/recipe-routing.md §5). Substring match,
-# case-insensitive — keep entries short and unambiguous.
 triggers:
   keywords:
     - marvin

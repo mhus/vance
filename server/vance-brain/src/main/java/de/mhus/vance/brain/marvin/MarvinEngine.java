@@ -3,23 +3,27 @@ package de.mhus.vance.brain.marvin;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.api.inbox.Criticality;
 import de.mhus.vance.api.inbox.InboxItemType;
-import de.mhus.vance.api.marvin.MarvinWorkerOutput;
-import de.mhus.vance.api.marvin.MarvinWorkerOutput.NewTaskSpec;
-import de.mhus.vance.api.marvin.MarvinWorkerOutput.UserInputSpec;
+import de.mhus.vance.api.marvin.ConcludeOutput;
+import de.mhus.vance.api.marvin.NewTaskSpec;
 import de.mhus.vance.api.marvin.NodeStatus;
+import de.mhus.vance.api.marvin.PhaseIteration;
+import de.mhus.vance.api.marvin.PostActionSpec;
+import de.mhus.vance.api.marvin.PostChildrenOutput;
+import de.mhus.vance.api.marvin.RecipeCall;
+import de.mhus.vance.api.marvin.ReflectOutput;
+import de.mhus.vance.api.marvin.ScopeOutput;
 import de.mhus.vance.api.marvin.TaskKind;
-import de.mhus.vance.api.marvin.WorkerOutcome;
+import de.mhus.vance.api.marvin.UserInputSpec;
+import de.mhus.vance.api.marvin.ValidateOutput;
+import de.mhus.vance.api.marvin.WorkerPhase;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
-import de.mhus.vance.brain.ai.AiChatOptions;
-import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
 import de.mhus.vance.brain.recipe.RecipeLoader;
-import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.brain.recipe.RecipeResolver;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ParentReport;
@@ -35,9 +39,6 @@ import de.mhus.vance.shared.inbox.InboxItemService;
 import de.mhus.vance.shared.marvin.MarvinNodeDocument;
 import de.mhus.vance.shared.marvin.MarvinNodeService;
 import de.mhus.vance.shared.marvin.MarvinNodeService.NodeSpec;
-import de.mhus.vance.shared.settings.SettingService;
-import de.mhus.vance.shared.thinkprocess.PendingMessageDocument;
-import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import dev.langchain4j.data.message.AiMessage;
@@ -46,6 +47,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,17 +63,21 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Marvin — the deep-think engine. Brain the size of a planet, and
- * for once it's allowed to use it on the actual problem.
+ * Marvin v2 — autonomous-worker deep-think engine.
  *
- * <p>Marvin owns a persistent task-tree of {@link MarvinNodeDocument}s.
- * Each {@link #runTurn} drains the process's pending queue, consolidates
- * worker / inbox events into node-status updates, then walks the tree
- * (pre-order DFS) looking for the next actionable node. Synchronous
- * task-kinds (PLAN, AGGREGATE) call the LLM and finish in the same
- * turn; asynchronous kinds (WORKER, USER_INPUT) park the node in
- * RUNNING/WAITING and return — the next turn (triggered by the worker's
- * ProcessEvent or the InboxAnswer) picks up where this one stopped.
+ * <p>Every WORKER node walks a five-phase state-machine
+ * (SCOPE → REFLECT → POST_CHILDREN → CONCLUDE → VALIDATE) with
+ * bounded iteration caps. The tree IS the plan: every LLM call
+ * receives a live snapshot of the entire tree, rendered by
+ * {@link PlanSnapshotRenderer}.
+ *
+ * <p>Specialised recipes (web-research, analyze, code-read …) are
+ * never spawned directly as WORKER nodes. Instead the worker LLM
+ * decides in SCOPE/REFLECT to {@code CALL_RECIPE} — Marvin spawns
+ * the sub-process synchronously, captures its reply, and appends
+ * it as a USER message before re-entering REFLECT. The specialist
+ * recipe runs in its native mode without the Marvin output
+ * contract being forced on it.
  *
  * <p>See {@code specification/marvin-engine.md} for the full design.
  */
@@ -81,152 +87,44 @@ import tools.jackson.databind.ObjectMapper;
 public class MarvinEngine implements ThinkEngine {
 
     public static final String NAME = "marvin";
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "2.0.0";
 
-    /** Engine-default fallback prompt — the bundled {@code marvin}
-     *  recipe normally supplies the rich PLAN/AGGREGATE prompts. */
-    private static final String ENGINE_FALLBACK_PROMPT =
-            "You are Marvin, the Vance deep-think engine. You decompose "
-                    + "goals into sub-tasks, delegate concrete work to worker "
-                    + "processes, and synthesize their results.";
+    /** Recipe-name of the worker LLM that drives every WORKER node.
+     *  When CALL_RECIPE targets a recipe other than this, that
+     *  recipe runs WITHOUT the phase contract being layered on top. */
+    public static final String WORKER_RECIPE_NAME = "marvin-worker";
 
-    /**
-     * Document-cascade paths for Marvin's PLAN and AGGREGATE prompts.
-     * Tenants/users can override the file at the matching path
-     * (project / {@code _vance} / classpath:vance-defaults/) without
-     * touching source.
-     */
-    private static final String PLAN_PROMPT_PATH = "prompts/marvin-plan.md";
-    private static final String AGGREGATE_PROMPT_PATH = "prompts/marvin-aggregate.md";
+    /** Document-cascade path for the marvin-worker system prompt. */
+    private static final String WORKER_SYSTEM_PROMPT_PATH =
+            "prompts/marvin-worker-system.md";
 
-    /** System prompt for the synchronous PLAN-call. The model must
-     *  return a JSON document with a {@code children} array; we parse
-     *  it into {@link NodeSpec}s and append them under the PLAN node. */
-    private static final String PLAN_SYSTEM_PROMPT =
-            """
-            You decompose a parent-goal into a small list of sequential subtasks.
+    /** Fallback embedded system prompt — bundled marvin-worker
+     *  recipe normally supplies a richer one via the document
+     *  cascade. */
+    private static final String FALLBACK_WORKER_SYSTEM_PROMPT = """
+            You are a Marvin worker. Each turn you receive a Phase
+            instruction and a live Plan snapshot. You respond with a
+            single JSON object matching the phase's schema. No prose
+            outside the JSON.
 
-            Return ONLY a JSON object of this shape (no prose, no Markdown):
-            {
-              "children": [
-                {
-                  "goal":     "<one-sentence goal for this subtask>",
-                  "taskKind": "PLAN" | "EXPAND_FROM_DOC" | "WORKER" | "USER_INPUT" | "AGGREGATE",
-                  "taskSpec": { ... task-kind-specific spec ... }
-                },
-                ...
-              ]
-            }
+            Available phases:
+              SCOPE   — initial decision (CALL_RECIPE | PROCEED_TO_CONCLUDE
+                        | NEEDS_SUBTASKS | NEEDS_USER_INPUT | BLOCKED_BY_PROBLEM)
+              REFLECT — after a CALL_RECIPE; same actions, capped at 3 calls
+              POST_CHILDREN — children done; PROCEED_TO_CONCLUDE | NEEDS_SUBTASKS | BLOCKED_BY_PROBLEM
+              CONCLUDE — produce the final markdown answer
+              VALIDATE — critique the candidate (PASS | RETRY_CONCLUDE | NEED_MORE_DATA | HARD_FAIL)
 
-            Rules:
-            - Order matters; siblings run sequentially.
-            - PLAN  - further decomposition (use sparingly).
-            - EXPAND_FROM_DOC - deterministic decomposition driven by an
-                       existing kind:list / kind:tree / kind:records document.
-                       Use this when the plan ALREADY EXISTS as a document
-                       (chapter outline, requirements list, …) — it iterates
-                       items and creates one child per item via a template,
-                       no LLM call.
-                       taskSpec.documentRef = {"path": "<exact-path>"} OR
-                                              {"id":   "<mongo-id>"}.
-                       The path/id MUST be one that already exists or that
-                       a prior sibling will write — copy it verbatim from
-                       the recipe / parent-goal context. NEVER fabricate
-                       paths like "tasks/<x>/output.md", "outline_document",
-                       "previous_step_result.md", etc. — those are
-                       hallucinations and lookup will fail. If the recipe
-                       tells you the outline lives at "essay/outline.md",
-                       use exactly that string.
-                       taskSpec.childTemplate = {goal, taskKind, taskSpec}
-                       with {{item.text}} / {{record.<field>}} / {{index}}
-                       / {{root.title}} / {{parent.goal}} placeholders.
-                       childTemplate.recipe is REQUIRED — selector-routed
-                       recipe-less EXPAND children were retired with the
-                       recipe-routing rework. Set it directly (typical
-                       when one specific recipe handles every item) or
-                       use the template's {{...}} placeholders to vary
-                       params per child.
-                       Optional: treeMode (RECURSIVE|FLAT), failOnEmpty,
-                       failOnMissingField.
-            - WORKER - taskSpec.steerContent must be set; taskSpec.recipe
-                       is REQUIRED. Set it explicitly (e.g.
-                       "marvin-worker", "web-research", "code-read",
-                       "analyze") — selector-routed recipe-less worker
-                       spawn was retired with the recipe-routing rework
-                       (the trigger-gated selector returns NONE for the
-                       free-form worker goals Marvin produces). Prefer
-                       recipe="marvin-worker" when you want the
-                       structured Marvin worker output contract (DONE /
-                       NEEDS_SUBTASKS / NEEDS_USER_INPUT /
-                       BLOCKED_BY_PROBLEM); specialist recipes work but
-                       won't carry that contract.
-            - USER_INPUT - taskSpec.type (DECISION|FEEDBACK|APPROVAL),
-                           taskSpec.title, taskSpec.body, taskSpec.criticality.
-            - AGGREGATE - put as the LAST sibling under a parent that has
-                          children whose artifacts you want synthesized.
-                          taskSpec.prompt is the synthesis instruction.
-            - Aim for 2-6 children; never exceed the maxChildren cap.
+            Before deciding, ALWAYS check the LIVE PLAN:
+              - if your goal is already covered by another node, do not duplicate it
+              - stay in your lane: do not spawn work that belongs to a sibling
+              - prefer doing the work yourself (PROCEED_TO_CONCLUDE) over decomposing.
             """;
 
-    /** System prompt for the synchronous AGGREGATE-call. */
-    private static final String AGGREGATE_SYSTEM_PROMPT =
-            "You synthesize the artifacts of sibling-nodes (already DONE) into "
-                    + "a single coherent summary. Stay below the maxOutputChars "
-                    + "limit. Quote concrete data from the siblings rather than "
-                    + "vaguely referencing them.";
-
-    /**
-     * Postfix appended to every worker's initial steer-message.
-     * Belt-and-braces: the {@code marvin-worker} recipe carries the
-     * same instruction in its system prompt, but appending it as the
-     * last line of the user message keeps the schema right under the
-     * model's nose at the end of the prompt where instructions stick
-     * best. See {@code specification/marvin-engine.md} §5a.
-     */
-    private static final String WORKER_SCHEMA_POSTFIX = """
-
-            ---
-            STRICT OUTPUT FORMAT — read carefully.
-            Your final reply MUST end with a single JSON object of this shape
-            (no fences required, no other JSON in the reply):
-
-            {
-              "outcome": "DONE" | "NEEDS_SUBTASKS" | "NEEDS_USER_INPUT" | "BLOCKED_BY_PROBLEM",
-              "result": "<Markdown — your final answer when outcome=DONE; partial result otherwise>",
-              "newTasks": [
-                {"goal": "...", "taskKind": "WORKER", "taskSpec": {"recipe": "...", "steerContent": "..."}}
-              ],
-              "userInput": {"type": "DECISION|FEEDBACK|APPROVAL", "title": "...", "body": "..."},
-              "problem": "<short description if BLOCKED_BY_PROBLEM>",
-              "reason": "<one-line explanation of your chosen outcome>"
-            }
-
-            Only include fields relevant to the outcome.
-            If you cannot finish without help, use NEEDS_USER_INPUT or
-            BLOCKED_BY_PROBLEM rather than guessing. Do not embed the
-            schema as an example — emit the actual filled-in object.
-
-            newTasks may use taskKind "EXPAND_FROM_DOC" for deterministic
-            decomposition when a kind:list / kind:tree / kind:records
-            document already carries the plan. taskSpec must then provide
-            documentRef={name|path|id} and childTemplate={goal, taskKind,
-            taskSpec} with {{item.text}}/{{record.<field>}}/{{index}}/
-            {{root.title}}/{{parent.goal}} placeholders. Marvin reads the
-            document and creates one child per item without an LLM call —
-            ideal when you wrote the outline yourself.
-            """;
-
-    /** Hard cap on JSON-format-correction re-prompts per worker. */
-    private static final int MAX_OUTPUT_CORRECTIONS = 2;
-
-    /**
-     * Marvin's tool cut for PLAN / AGGREGATE turns. Discovery + a
-     * narrow set of "look it up before deciding" tools so a PLAN
-     * isn't built from training-data guesses about a topic Marvin
-     * has never heard of. The actual heavy work still happens in
-     * spawned WORKER nodes (Ford recipes); these tools are for
-     * orientation only.
-     */
+    /** Marvin's discovery tool cut — same as v1; available only to
+     *  the very rare case where marvin-worker itself runs without a
+     *  recipe override. The bulk of tool use happens inside
+     *  CALL_RECIPE sub-processes. */
     private static final Set<String> ALLOWED_TOOLS = Set.of(
             "whoami",
             "current_time",
@@ -235,10 +133,7 @@ public class MarvinEngine implements ThinkEngine {
             "manual_list",
             "manual_read",
             "web_search",
-            "web_fetch",
-            "execute_javascript");
-
-    private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
+            "web_fetch");
 
     private final MarvinNodeService nodeService;
     private final MarvinProperties properties;
@@ -247,7 +142,8 @@ public class MarvinEngine implements ThinkEngine {
     private final ChatMessageService chatMessageService;
     private final RecipeResolver recipeResolver;
     private final RecipeLoader recipeLoader;
-    private final MarvinWorkerOutputParser workerOutputParser;
+    private final PhaseOutputParser phaseParser;
+    private final PlanSnapshotRenderer planSnapshotRenderer;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
@@ -258,78 +154,32 @@ public class MarvinEngine implements ThinkEngine {
     private final LaneScheduler laneScheduler;
     private final DocumentExpander documentExpander;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
-    /** Used by the postActions pipeline (doc_write_text /
-     *  doc_create_text). Lets a Marvin recipe declaratively persist
-     *  a worker's reply or an AGGREGATE's summary to a project
-     *  document without the LLM having to issue a tool call. */
     private final de.mhus.vance.shared.document.DocumentService documentService;
-    /** Lazy because {@code ThinkEngineService} wires every engine
-     *  bean — we'd otherwise close a cycle. */
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
 
     // ──────────────────── Metadata ────────────────────
 
-    @Override
-    public String name() {
-        return NAME;
+    @Override public String name() { return NAME; }
+    @Override public String title() { return "Marvin (Deep-Think)"; }
+    @Override public String description() {
+        return "Autonomous-worker deep-think engine. Every node runs the "
+                + "5-phase state-machine (SCOPE → REFLECT → POST_CHILDREN → "
+                + "CONCLUDE → VALIDATE). The tree grows dynamically; "
+                + "specialist recipes are invoked via CALL_RECIPE.";
     }
-
-    @Override
-    public String title() {
-        return "Marvin (Deep-Think)";
-    }
-
-    @Override
-    public String description() {
-        return "Methodical deep-think engine. Builds a dynamic task-tree, "
-                + "delegates work to Ford-style workers, asks the user via "
-                + "the inbox when needed, and synthesizes the results back.";
-    }
-
-    @Override
-    public String version() {
-        return VERSION;
-    }
-
-    @Override
-    public Set<String> allowedTools() {
-        return ALLOWED_TOOLS;
-    }
-
-    @Override
-    public boolean asyncSteer() {
-        // Marvin's runTurn happens on its own lane, triggered by
-        // start() and re-woken by child events. There's no
-        // per-steer reply — orchestrators (Arthur) shouldn't block
-        // on process_steer waiting for one.
-        return true;
-    }
+    @Override public String version() { return VERSION; }
+    @Override public Set<String> allowedTools() { return ALLOWED_TOOLS; }
+    @Override public boolean asyncSteer() { return true; }
 
     /**
-     * Marvin's parent-report carries the synthesized tree result —
-     * the parent (Arthur, Vogon, …) gets the actual content of the
-     * deep-think run, not a generic "status=done" line. Lookup
-     * order:
-     * <ol>
-     *   <li>Last DONE child of the root with {@code taskKind=AGGREGATE}
-     *       — that's the canonical synthesis when the PLAN included
-     *       one (recommended pattern).</li>
-     *   <li>The root node's own {@code result} artifact — covers
-     *       trees whose root was a single WORKER or a PLAN that
-     *       didn't append an AGGREGATE.</li>
-     *   <li>Concatenated {@code result}s of all DONE root-children
-     *       — last-resort dump so the parent sees something rather
-     *       than nothing.</li>
-     * </ol>
-     * Plus a small {@code payload} for downstream orchestrators
-     * (Vogon-style state-machines) that want structured access.
+     * Parent-report path. The deliverable of a Marvin process is the
+     * root WORKER's CONCLUDE result; fall back to a child-roll-up if
+     * the root hasn't reached DONE.
      */
     @Override
     public ParentReport summarizeForParent(
             ThinkProcessDocument process, ProcessEventType eventType) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("eventType", eventType.name());
-        payload.put("processId", process.getId());
         Optional<MarvinNodeDocument> rootOpt = nodeService.findRoot(process.getId());
         if (rootOpt.isEmpty()) {
             return new ParentReport(
@@ -340,14 +190,6 @@ public class MarvinEngine implements ThinkEngine {
         List<MarvinNodeDocument> rootChildren =
                 nodeService.findChildren(process.getId(), root.getId());
 
-        // Collect failures up-front — they get appended to every
-        // branch's text + a structured copy goes into the payload.
-        // Without this, FAILED children were silently dropped from
-        // the fallback branch and Arthur misread partial-success as
-        // full-success (live 2026-05-24: deep-research lost its
-        // EXPAND_FROM_DOC sibling but Arthur saw only the surviving
-        // web-research worker's reply and tried to manually
-        // compensate the missing report-write step).
         List<MarvinNodeDocument> failedChildren = new ArrayList<>();
         for (MarvinNodeDocument c : rootChildren) {
             if (c.getStatus() == NodeStatus.FAILED) failedChildren.add(c);
@@ -369,23 +211,7 @@ public class MarvinEngine implements ThinkEngine {
             payload.put("failedChildren", failedPayload);
         }
 
-        // 1. Look for an AGGREGATE child with a synthesis.
-        for (int i = rootChildren.size() - 1; i >= 0; i--) {
-            MarvinNodeDocument c = rootChildren.get(i);
-            if (c.getTaskKind() == TaskKind.AGGREGATE && c.getStatus() == NodeStatus.DONE
-                    && c.getArtifacts() != null) {
-                Object summary = c.getArtifacts().get("summary");
-                if (summary instanceof String s && !s.isBlank()) {
-                    payload.put("aggregateNodeId", c.getId());
-                    payload.put("nodeCount",
-                            nodeService.listAll(process.getId()).size());
-                    return new ParentReport(
-                            appendFailureBlock(s, failedChildren), payload);
-                }
-            }
-        }
-
-        // 2. Root's own result (e.g. when root was a single WORKER).
+        // Primary path: root's own result.
         Map<String, Object> rootArtifacts = root.getArtifacts();
         if (rootArtifacts != null) {
             Object res = rootArtifacts.get("result");
@@ -398,9 +224,7 @@ public class MarvinEngine implements ThinkEngine {
             }
         }
 
-        // 3. Concatenate child results as fallback. Header now
-        // reports "N of M succeeded" so the partial-success case
-        // (some children FAILED) is impossible to miss.
+        // Fallback: concatenate child results.
         int doneChildren = 0;
         for (MarvinNodeDocument c : rootChildren) {
             if (c.getStatus() == NodeStatus.DONE) doneChildren++;
@@ -432,24 +256,15 @@ public class MarvinEngine implements ThinkEngine {
                 appendFailureBlock(sb.toString(), failedChildren), payload);
     }
 
-    /**
-     * Tacks a "Failed nodes" section onto the main summary text so
-     * downstream consumers (Arthur, Eddie, the user via process-event
-     * relay) see partial-success situations explicitly. No-op when
-     * {@code failures} is empty.
-     */
     private static String appendFailureBlock(
             String mainText, List<MarvinNodeDocument> failures) {
         if (failures.isEmpty()) return mainText;
         StringBuilder sb = new StringBuilder(mainText);
         if (!mainText.endsWith("\n")) sb.append('\n');
-        sb.append("\n--- Failed nodes (")
-                .append(failures.size()).append(") ---\n");
+        sb.append("\n--- Failed nodes (").append(failures.size()).append(") ---\n");
         for (MarvinNodeDocument c : failures) {
             sb.append("- ");
-            if (c.getTaskKind() != null) {
-                sb.append(c.getTaskKind()).append(" / ");
-            }
+            if (c.getTaskKind() != null) sb.append(c.getTaskKind()).append(" / ");
             sb.append(abbrev(c.getGoal()));
             if (c.getFailureReason() != null && !c.getFailureReason().isBlank()) {
                 sb.append(" — ").append(c.getFailureReason());
@@ -471,17 +286,13 @@ public class MarvinEngine implements ThinkEngine {
             throw new IllegalStateException(
                     "Marvin.start requires process.goal — id='" + process.getId() + "'");
         }
-        TaskKind rootKind = parseTaskKind(
-                paramString(process, "rootTaskKind", null), TaskKind.PLAN);
-        Map<String, Object> rootSpec = buildRootTaskSpec(process, rootKind);
-        nodeService.createRoot(process.getTenantId(), process.getId(), goal,
-                rootKind, rootSpec);
+        // The root is ALWAYS a WORKER in v2 — there's no separate
+        // PLAN node anymore. The worker's SCOPE decides whether to
+        // call recipes, decompose, or answer directly.
+        nodeService.createRoot(
+                process.getTenantId(), process.getId(), goal,
+                TaskKind.WORKER, new LinkedHashMap<>());
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
-        // Schedule the first turn on Marvin's own lane — never run it
-        // synchronously here, otherwise we'd block whatever lane invoked
-        // `start` (typically the Arthur-side `process_create` flow). The
-        // PLAN/AGGREGATE chain can take many seconds per LLM round-trip,
-        // and the parent lane needs to return immediately.
         eventEmitter.scheduleTurn(process.getId());
     }
 
@@ -500,14 +311,6 @@ public class MarvinEngine implements ThinkEngine {
 
     @Override
     public void steer(ThinkProcessDocument process, ThinkEngineContext ctx, SteerMessage message) {
-        // Marvin is fundamentally async — the tree runs on Marvin's
-        // own lane, kicked off by start() and re-woken by child
-        // ProcessEvents / inbox answers via the persistent pending
-        // queue. A synchronous runTurn here would block the caller
-        // (typically `process_steer` from an Arthur turn) for the
-        // full duration of any in-flight LLM call, defeating the
-        // whole async point. Schedule a wakeup instead so the lane
-        // re-checks the queue, then return immediately.
         if (message instanceof SteerMessage.UserChatInput uci) {
             log.info("Marvin id='{}' steer (async) from='{}' content='{}'",
                     process.getId(), uci.fromUser(), abbrev(uci.content()));
@@ -525,23 +328,10 @@ public class MarvinEngine implements ThinkEngine {
 
     @Override
     public void runTurn(ThinkProcessDocument process, ThinkEngineContext ctx) {
-        // One node per lane-task. Synchronous handlers (PLAN /
-        // AGGREGATE) re-schedule another turn at the end; async
-        // handlers (WORKER / USER_INPUT) park and rely on the
-        // external event (ParentNotificationListener / inbox-answer
-        // router) to wake the next turn. Keeping each task short
-        // ensures unrelated lane work — like a queued
-        // {@code process_steer} no-op — can run between Marvin's
-        // LLM round-trips without waiting for the whole tree to
-        // finish.
         thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.RUNNING);
         try {
             runTurnInner(process, ctx);
         } finally {
-            // Snapshot the (possibly mutated) task-tree to the
-            // user-progress side-channel — runs on every turn end,
-            // including the failure path, so the HUD never freezes
-            // on a stale plan.
             try {
                 emitPlanSnapshot(process);
             } catch (RuntimeException pe) {
@@ -553,13 +343,17 @@ public class MarvinEngine implements ThinkEngine {
 
     private void runTurnInner(ThinkProcessDocument process, ThinkEngineContext ctx) {
         try {
-            // 1. Consume pending events into node-status updates.
             List<SteerMessage> drained = ctx.drainPending();
             for (SteerMessage msg : drained) {
                 consumePending(process, msg);
             }
 
-            // 2. Pick the next actionable node.
+            // Reactivate any awaitingPostChildren parent whose children
+            // have all reached a terminal status. Without this sweep
+            // a NEEDS_SUBTASKS parent would stay DONE forever and the
+            // POST_CHILDREN phase never run.
+            reactivatePostChildrenParents(process);
+
             Optional<MarvinNodeDocument> nextOpt =
                     nodeService.findNextActionableNode(
                             process.getId(), process.getEngineParams());
@@ -579,16 +373,9 @@ public class MarvinEngine implements ThinkEngine {
             MarvinNodeDocument node = nextOpt.get();
             boolean parked = executeNode(process, ctx, node);
             if (parked) {
-                // Async wait-point — external event will wake the
-                // next turn. Nothing more to do.
                 finalizeIdle(process);
                 return;
             }
-            // Synchronous completion (PLAN / AGGREGATE / sync-fail).
-            // Schedule the next turn so the lane processes the next
-            // node — but yield this task first so any other queued
-            // work (e.g. a parent's process_steer no-op) gets a
-            // chance to run between LLM round-trips.
             thinkProcessService.updateStatus(process.getId(), ThinkProcessStatus.IDLE);
             eventEmitter.scheduleTurn(process.getId());
         } catch (RuntimeException e) {
@@ -600,11 +387,33 @@ public class MarvinEngine implements ThinkEngine {
     }
 
     /**
-     * Folds one drained pending message into a node-status update.
-     * The two interesting cases are {@link SteerMessage.ProcessEvent}
-     * (worker reported back) and {@link SteerMessage.InboxAnswer}
-     * (user answered an ask).
+     * Flips DONE nodes carrying {@code awaitingPostChildren=true} back
+     * to {@code PENDING} with {@code currentPhase=POST_CHILDREN} once
+     * all their children have terminated. Called at the top of every
+     * runTurn so the DFS picks the resurrected node up in the same
+     * lane iteration.
+     *
+     * <p>Without this sweep the parent's POST_CHILDREN phase would
+     * never fire — the parent was made DONE on NEEDS_SUBTASKS to let
+     * the DFS descend into the spawned children, but nothing else
+     * would re-activate it.
      */
+    private void reactivatePostChildrenParents(ThinkProcessDocument process) {
+        List<MarvinNodeDocument> all = nodeService.listAll(process.getId());
+        for (MarvinNodeDocument n : all) {
+            if (!n.isAwaitingPostChildren()) continue;
+            if (n.getStatus() != NodeStatus.DONE) continue;
+            if (n.getId() == null) continue;
+            if (!nodeService.allChildrenTerminal(process.getId(), n.getId())) continue;
+            log.info("Marvin id='{}' reactivating node='{}' for POST_CHILDREN — children terminal",
+                    process.getId(), n.getId());
+            n.setAwaitingPostChildren(false);
+            n.setStatus(NodeStatus.PENDING);
+            n.setCurrentPhase(WorkerPhase.POST_CHILDREN);
+            nodeService.save(n);
+        }
+    }
+
     private void consumePending(ThinkProcessDocument process, SteerMessage msg) {
         switch (msg) {
             case SteerMessage.ProcessEvent pe -> handleProcessEvent(process, pe);
@@ -613,331 +422,48 @@ public class MarvinEngine implements ThinkEngine {
                     log.debug("Marvin id='{}' ignoring UserChatInput from='{}' — Marvin doesn't talk directly",
                             process.getId(), uci.fromUser());
             case SteerMessage.ToolResult tr ->
-                    log.debug("Marvin id='{}' ignoring ToolResult tool='{}' — Marvin uses synchronous tools",
+                    log.debug("Marvin id='{}' ignoring ToolResult tool='{}'",
                             process.getId(), tr.toolName());
             case SteerMessage.ExternalCommand ec ->
-                    log.info("Marvin id='{}' external command '{}' — not yet routed in v1",
+                    log.info("Marvin id='{}' external command '{}' — not yet routed",
                             process.getId(), ec.command());
             case SteerMessage.PeerEvent pe ->
-                    log.debug("Marvin id='{}' ignoring PeerEvent type='{}' (hub-only)",
+                    log.debug("Marvin id='{}' ignoring PeerEvent type='{}'",
                             process.getId(), pe.type());
         }
     }
 
-    // ──────────────────── Plan snapshot ────────────────────
-
     /**
-     * Builds a {@link de.mhus.vance.api.progress.PlanPayload} from the
-     * current task-tree and pushes it to the user-progress side-channel.
-     * Empty trees (process just spawned, root not yet created) are
-     * skipped — there's nothing useful to render.
-     */
-    private void emitPlanSnapshot(ThinkProcessDocument process) {
-        if (process.getId() == null) return;
-        List<MarvinNodeDocument> all = nodeService.listAll(process.getId());
-        if (all.isEmpty()) return;
-        Map<String, List<MarvinNodeDocument>> byParent = new LinkedHashMap<>();
-        MarvinNodeDocument root = null;
-        for (MarvinNodeDocument n : all) {
-            if (n.getParentId() == null) {
-                root = n;
-            } else {
-                byParent.computeIfAbsent(n.getParentId(), k -> new ArrayList<>()).add(n);
-            }
-        }
-        if (root == null) return;
-        for (List<MarvinNodeDocument> kids : byParent.values()) {
-            kids.sort((a, b) -> Integer.compare(a.getPosition(), b.getPosition()));
-        }
-        de.mhus.vance.api.progress.PlanNode rootPlanNode = toPlanNode(root, byParent);
-        progressEmitter.emitPlan(
-                process,
-                de.mhus.vance.api.progress.PlanPayload.builder()
-                        .rootNode(rootPlanNode)
-                        .build());
-    }
-
-    private de.mhus.vance.api.progress.PlanNode toPlanNode(
-            MarvinNodeDocument node,
-            Map<String, List<MarvinNodeDocument>> byParent) {
-        List<MarvinNodeDocument> kids = byParent.getOrDefault(node.getId(), List.of());
-        List<de.mhus.vance.api.progress.PlanNode> childPlans = kids.isEmpty()
-                ? null
-                : kids.stream().map(k -> toPlanNode(k, byParent)).toList();
-        Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("position", node.getPosition());
-        if (node.getFailureReason() != null) {
-            meta.put("failureReason", node.getFailureReason());
-        }
-        if (node.getSpawnedProcessId() != null) {
-            meta.put("spawnedProcessId", node.getSpawnedProcessId());
-        }
-        if (node.getInboxItemId() != null) {
-            meta.put("inboxItemId", node.getInboxItemId());
-        }
-        return de.mhus.vance.api.progress.PlanNode.builder()
-                .id(node.getId() == null ? "" : node.getId())
-                .kind(node.getTaskKind().name().toLowerCase())
-                .title(node.getGoal())
-                .status(node.getStatus().name().toLowerCase())
-                .children(childPlans)
-                .meta(meta)
-                .build();
-    }
-
-    /**
-     * Reacts to lifecycle events from a worker we spawned. Two flavours:
+     * Handles a child process's lifecycle event. Two channels:
      *
      * <ul>
-     *   <li><b>Synchronous LLM workers</b> (Ford / chat-style): Marvin
-     *       drives them inline in {@link #runWorker} and consumes the
-     *       reply right there, so the only events that still matter
-     *       are surprises (FAILED/STOPPED while node non-terminal).
-     *       Successful DONE/SUMMARY for these workers arrives as a
-     *       follow-up to the inline-routed output and is recorded as
-     *       a mid-flight note.</li>
-     *   <li><b>Async workers</b> (Vogon / nested Marvin / Trillian):
-     *       {@link #runWorker} only spawns + yields. The node stays
-     *       RUNNING until <i>this</i> handler sees the DONE event,
-     *       captures the {@code humanSummary} and {@code payload} as
-     *       artifacts and marks the node DONE.</li>
+     *   <li>Sub-processes spawned via CALL_RECIPE are tracked in
+     *       {@code node.calledSubProcessIds}; we don't act on their
+     *       events here because the calling worker's CALL_RECIPE
+     *       handler awaits them synchronously.</li>
+     *   <li>NEEDS_SUBTASKS-spawned WORKER children inherit the
+     *       state-machine and report DONE/FAILED themselves; the
+     *       POST_CHILDREN trigger fires once all of a node's
+     *       children are terminal (checked at runTurn-top via the
+     *       {@code awaitingPostChildren} flag).</li>
      * </ul>
      */
     private void handleProcessEvent(
             ThinkProcessDocument process, SteerMessage.ProcessEvent event) {
-        Optional<MarvinNodeDocument> nodeOpt =
+        Optional<MarvinNodeDocument> bySpawn =
                 nodeService.findBySpawnedProcessId(event.sourceProcessId());
-        if (nodeOpt.isEmpty()) {
-            log.debug("Marvin id='{}' ProcessEvent for unknown spawn='{}' (type={}) — ignoring",
-                    process.getId(), event.sourceProcessId(), event.type());
-            return;
+        if (bySpawn.isPresent()) {
+            // Spawned-by-WORKER (a recursive Marvin sub-process or
+            // EXPAND-promoted child). Most of these don't apply in
+            // v2 since WORKER nodes drive themselves via the
+            // state-machine; we keep the hook for engines that
+            // genuinely spawn children — log and move on.
+            log.debug("Marvin id='{}' ProcessEvent for spawned node='{}' type={}",
+                    process.getId(), bySpawn.get().getId(), event.type());
         }
-        MarvinNodeDocument node = nodeOpt.get();
-        if (isTerminalStatus(node.getStatus())) {
-            log.debug("Marvin id='{}' worker event {} for already-terminal node='{}' ({}) — ignoring",
-                    process.getId(), event.type(), node.getId(), node.getStatus());
-            return;
-        }
-        switch (event.type()) {
-            case FAILED, STOPPED -> {
-                String reason = "worker " + event.type().name().toLowerCase()
-                        + (event.humanSummary() == null ? "" : ": " + event.humanSummary());
-                nodeService.markFailed(node, reason);
-                log.info("Marvin id='{}' worker {} node='{}' worker='{}'",
-                        process.getId(), event.type(), node.getId(), event.sourceProcessId());
-            }
-            case DONE -> {
-                // Async-worker termination — finalise the node here.
-                // (Synchronous workers reach this branch too, but their
-                // node is already terminal at this point and we'd have
-                // bailed at the isTerminalStatus check above.)
-                Map<String, Object> artifacts = new LinkedHashMap<>();
-                if (event.humanSummary() != null) {
-                    artifacts.put("result", event.humanSummary());
-                }
-                if (event.payload() != null && !event.payload().isEmpty()) {
-                    artifacts.put("payload", event.payload());
-                }
-                if (event.humanSummary() != null && !event.humanSummary().isBlank()) {
-                    // Mirror the sync DONE path: store the worker's
-                    // textual reply under `result` so postActions
-                    // (and Marvin's own summary path) can address it.
-                    artifacts.put("result", event.humanSummary());
-                }
-                nodeService.markDone(node, artifacts);
-                int summaryChars = event.humanSummary() == null ? 0 : event.humanSummary().length();
-                log.info("Marvin id='{}' async worker DONE node='{}' worker='{}' "
-                                + "summary={} chars",
-                        process.getId(), node.getId(), event.sourceProcessId(), summaryChars);
-                runPostActions(process, node, artifacts);
-                emitNodeDoneStatus(process, node, summaryChars + " chars");
-            }
-            case BLOCKED, STARTED, SUMMARY -> {
-                // Mid-flight progress — keep humanSummary as a note on
-                // the node so the inspector can see what's happening.
-                if (event.humanSummary() != null) {
-                    @Nullable Map<String, Object> existing = node.getArtifacts();
-                    if (existing == null) existing = new LinkedHashMap<>();
-                    existing.merge("workerNotes",
-                            event.humanSummary(),
-                            (a, b) -> a + "\n---\n" + b);
-                    node.setArtifacts(existing);
-                    nodeService.save(node);
-                }
-            }
-        }
-    }
-
-    private static boolean isTerminalStatus(NodeStatus s) {
-        return s == NodeStatus.DONE || s == NodeStatus.FAILED || s == NodeStatus.SKIPPED;
-    }
-
-    /**
-     * Routes a parsed {@link MarvinWorkerOutput} onto the tree. Each
-     * outcome maps to a deterministic node-status transition; see
-     * {@code specification/marvin-engine.md} §5a.
-     */
-    private void routeWorkerOutput(
-            ThinkProcessDocument process,
-            MarvinNodeDocument node,
-            MarvinWorkerOutput output,
-            @Nullable String rawReply) {
-        Map<String, Object> artifacts = new LinkedHashMap<>();
-        if (output.getReason() != null) artifacts.put("reason", output.getReason());
-        if (rawReply != null) artifacts.put("workerRawReply", rawReply);
-
-        switch (output.getOutcome()) {
-            case DONE -> {
-                if (output.getResult() != null) {
-                    artifacts.put("result", output.getResult());
-                }
-                nodeService.markDone(node, artifacts);
-                int resultChars = output.getResult() == null ? 0 : output.getResult().length();
-                log.info("Marvin id='{}' worker DONE node='{}' result={} chars",
-                        process.getId(), node.getId(), resultChars);
-                runPostActions(process, node, artifacts);
-                emitNodeDoneStatus(process, node, resultChars + " chars");
-            }
-            case BLOCKED_BY_PROBLEM -> {
-                String reason = output.getProblem()
-                        + (output.getReason() == null ? "" : " — " + output.getReason());
-                nodeService.markFailed(node, reason);
-                log.info("Marvin id='{}' worker BLOCKED node='{}': {}",
-                        process.getId(), node.getId(), reason);
-            }
-            case NEEDS_SUBTASKS -> {
-                List<NodeSpec> children = toNodeSpecs(output.getNewTasks());
-                if (children.isEmpty()) {
-                    nodeService.markFailed(node,
-                            "NEEDS_SUBTASKS but newTasks is empty after parsing");
-                    log.warn("Marvin id='{}' worker NEEDS_SUBTASKS node='{}' — empty newTasks",
-                            process.getId(), node.getId());
-                    return;
-                }
-                // B2: reject self-recursive sub-task spawn. A worker
-                // running inside recipe X must not propose a sub-task
-                // with recipe X — that would spawn a fresh Marvin
-                // process re-entering the same plan, which we observed
-                // in the live 2026-05-24 Atomkraft run (deep-research's
-                // marvin-worker NEEDS_SUBTASKS'd back into
-                // _user/deep-research, doubling the budget without
-                // converging on the original goal's deliverable).
-                String currentRecipe = process.getRecipeName();
-                if (currentRecipe != null && !currentRecipe.isBlank()) {
-                    for (NodeSpec ns : children) {
-                        if (ns.taskSpec() == null) continue;
-                        Object recObj = ns.taskSpec().get("recipe");
-                        if (recObj instanceof String r
-                                && currentRecipe.equals(r.trim())) {
-                            String reason = "NEEDS_SUBTASKS would spawn a"
-                                    + " self-recursive sub-task with"
-                                    + " recipe '" + currentRecipe
-                                    + "' (same as the current process'"
-                                    + " recipe). Rejected to prevent"
-                                    + " runaway recursion — restructure"
-                                    + " the goal instead of delegating"
-                                    + " back into the same recipe.";
-                            nodeService.markFailed(node, reason);
-                            log.warn("Marvin id='{}' worker NEEDS_SUBTASKS"
-                                            + " node='{}' rejected — "
-                                            + "self-recursive recipe '{}'",
-                                    process.getId(), node.getId(),
-                                    currentRecipe);
-                            return;
-                        }
-                    }
-                }
-                nodeService.appendChildren(
-                        process.getTenantId(), process.getId(), node.getId(), children);
-                if (output.getResult() != null) {
-                    artifacts.put("partialResult", output.getResult());
-                }
-                artifacts.put("expanded", true);
-                artifacts.put("childCount", children.size());
-                // Mark DONE so the DFS descends into the new children
-                // on the next turn. v1: no auto-synthesis at this
-                // node — the parent's AGGREGATE (if any) sees the
-                // partialResult plus the children's outputs as it
-                // walks its own siblings.
-                nodeService.markDone(node, artifacts);
-                log.info("Marvin id='{}' worker NEEDS_SUBTASKS node='{}' added {} children",
-                        process.getId(), node.getId(), children.size());
-            }
-            case NEEDS_USER_INPUT -> {
-                UserInputSpec spec = output.getUserInput();
-                if (spec == null) {
-                    nodeService.markFailed(node,
-                            "NEEDS_USER_INPUT but userInput object missing");
-                    return;
-                }
-                MarvinNodeDocument inputNode = appendUserInputSibling(process, node, spec);
-                if (output.getResult() != null) {
-                    artifacts.put("partialResult", output.getResult());
-                }
-                artifacts.put("awaitingUserInputNode", inputNode.getId());
-                nodeService.markDone(node, artifacts);
-                log.info("Marvin id='{}' worker NEEDS_USER_INPUT node='{}' inserted USER_INPUT sibling='{}'",
-                        process.getId(), node.getId(), inputNode.getId());
-            }
-        }
-    }
-
-    /**
-     * Reads the latest assistant message for the worker process —
-     * that's where the structured JSON lives. Falls back to the
-     * full last entry if no ASSISTANT-role row is found.
-     */
-    private @Nullable String readLastAssistantText(
-            String tenantId, String sessionId, String workerProcessId) {
-        List<ChatMessageDocument> history = chatMessageService.history(
-                tenantId, sessionId, workerProcessId);
-        for (int i = history.size() - 1; i >= 0; i--) {
-            ChatMessageDocument m = history.get(i);
-            if (m.getRole() == ChatRole.ASSISTANT && m.getContent() != null
-                    && !m.getContent().isBlank()) {
-                return m.getContent();
-            }
-        }
-        return null;
-    }
-
-    private static List<NodeSpec> toNodeSpecs(List<NewTaskSpec> newTasks) {
-        List<NodeSpec> out = new ArrayList<>(newTasks.size());
-        for (NewTaskSpec t : newTasks) {
-            if (t == null || t.getGoal() == null || t.getGoal().isBlank()) continue;
-            out.add(new NodeSpec(
-                    t.getGoal(),
-                    t.getTaskKind() == null ? TaskKind.WORKER : t.getTaskKind(),
-                    t.getTaskSpec() == null
-                            ? new LinkedHashMap<>()
-                            : new LinkedHashMap<>(t.getTaskSpec())));
-        }
-        return out;
-    }
-
-    /**
-     * Inserts a synthetic USER_INPUT node directly after {@code afterNode}
-     * (same parent, position+1). The DFS will pick it up on the next
-     * turn and route it through the inbox.
-     */
-    private MarvinNodeDocument appendUserInputSibling(
-            ThinkProcessDocument process,
-            MarvinNodeDocument afterNode,
-            UserInputSpec spec) {
-        Map<String, Object> taskSpec = new LinkedHashMap<>();
-        taskSpec.put("type", spec.getType());
-        if (spec.getTitle() != null) taskSpec.put("title", spec.getTitle());
-        if (spec.getBody() != null) taskSpec.put("body", spec.getBody());
-        if (spec.getCriticality() != null) taskSpec.put("criticality", spec.getCriticality());
-        if (spec.getPayload() != null && !spec.getPayload().isEmpty()) {
-            taskSpec.put("payload", spec.getPayload());
-        }
-        NodeSpec ns = new NodeSpec(
-                spec.getTitle() == null || spec.getTitle().isBlank()
-                        ? "User input requested by worker" : spec.getTitle(),
-                TaskKind.USER_INPUT,
-                taskSpec);
-        return nodeService.insertSiblingAfter(process.getTenantId(), afterNode, ns);
+        // The POST_CHILDREN trigger is checked in runTurn rather than
+        // here — a child's DONE event is also queued, which means
+        // runTurn will see it and re-evaluate the parent.
     }
 
     private void handleInboxAnswer(
@@ -975,732 +501,871 @@ public class MarvinEngine implements ThinkEngine {
         }
     }
 
+    // ──────────────────── Node dispatch ────────────────────
+
     /**
-     * Drives one node's task-kind handler.
-     *
-     * @return {@code true} if the node parked (RUNNING/WAITING) and
-     *         the turn must yield; {@code false} if the node finished
-     *         synchronously and the turn can pick the next.
+     * Returns {@code true} if the node parked (RUNNING/WAITING)
+     * or completed fully; {@code false} if synchronous and the
+     * lane should pick the next node immediately.
      */
     private boolean executeNode(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             MarvinNodeDocument node) {
-        nodeService.markRunning(node);
         log.info("Marvin id='{}' executing node='{}' kind={} pos={} goal='{}'",
                 process.getId(), node.getId(), node.getTaskKind(),
                 node.getPosition(), abbrev(node.getGoal()));
         return switch (node.getTaskKind()) {
-            case PLAN -> { runPlan(process, ctx, node); yield false; }
-            case EXPAND_FROM_DOC -> { runExpandFromDoc(process, ctx, node); yield false; }
-            case AGGREGATE -> { runAggregate(process, ctx, node); yield false; }
-            case WORKER -> runWorker(process, ctx, node);
-            case USER_INPUT -> runUserInput(process, ctx, node);
+            case WORKER -> driveWorkerNode(process, ctx, node);
+            case EXPAND_FROM_DOC -> {
+                nodeService.markRunning(node);
+                runExpandFromDoc(process, ctx, node);
+                yield false;
+            }
+            case USER_INPUT -> {
+                nodeService.markRunning(node);
+                yield runUserInput(process, ctx, node);
+            }
         };
     }
 
-    // ──────────────────── PLAN ────────────────────
+    // ════════════════════════════════════════════════════════════
+    //                       WORKER STATE MACHINE
+    // ════════════════════════════════════════════════════════════
 
-    private void runPlan(
+    /**
+     * Drives a WORKER node through (a portion of) its phase cycle
+     * in one runTurn. Returns {@code true} if the node parked
+     * (CALL_RECIPE awaiting sync-completed reply not applicable —
+     * we await inline; NEEDS_SUBTASKS spawns children and parks;
+     * NEEDS_USER_INPUT spawns inbox-item and parks).
+     *
+     * <p>The phase cursor lives in {@code node.currentPhase} so a
+     * node can be resumed after process restart. The actual LLM
+     * call happens in {@code runPhase} below; the dispatch here
+     * is just bookkeeping + transition routing.
+     */
+    private boolean driveWorkerNode(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
             MarvinNodeDocument node) {
+        // Resume or initialise the phase cursor. A fresh PENDING node
+        // without phase starts at SCOPE; a reactivated node (set to
+        // PENDING by reactivatePostChildrenParents) already carries
+        // its target phase and must NOT be reset to SCOPE.
+        if (node.getCurrentPhase() == null) {
+            nodeService.setCurrentPhase(node, WorkerPhase.SCOPE);
+            node.setCurrentPhase(WorkerPhase.SCOPE);
+        }
+        nodeService.markRunning(node);
+
+        MarvinNodeStateMachine.Caps caps = readCaps(process);
+        MarvinNodeStateMachine.Counters counters = new MarvinNodeStateMachine.Counters(
+                node.getReflectIter(), node.getValidateIter(), node.getConcludeRetries());
+
         try {
-            de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle planBundle =
-                    engineChatFactory.forProcess(process, ctx, NAME);
-            AiChat ai = planBundle.chat();
-            AiChatConfig config = planBundle.primaryConfig();
+            // Loop drives the worker through as many synchronous
+            // phases as possible. Yields when a phase result requires
+            // an external wait (NEEDS_SUBTASKS, NEEDS_USER_INPUT).
+            while (true) {
+                WorkerPhase phase = node.getCurrentPhase();
+                if (phase == null) phase = WorkerPhase.SCOPE;
+                log.info("Marvin id='{}' node='{}' phase={} iter(reflect={}/val={}/conc={})",
+                        process.getId(), node.getId(), phase,
+                        counters.reflectIter(), counters.validateIter(), counters.concludeRetries());
 
-            int maxChildren = paramInt(node, "maxChildren", properties.getPlanMaxChildren());
-            // Resolve the PLAN instruction in priority order:
-            //   1) the node's own taskSpec.prompt (set by parent PLAN
-            //      when this node was emitted), so recursive PLANs
-            //      can carry parent-supplied steering;
-            //   2) the recipe's top-level `promptPrefix`, persisted
-            //      on the process as promptOverride and optionally
-            //      extended by promptOverrideAppend. This is the
-            //      path Slart's MarvinArchitect uses to inject its
-            //      rendered template instruction into the root
-            //      PLAN — without this fallback, recipe.promptPrefix
-            //      would be dead-letter for Marvin's own PLAN-LLM
-            //      (the runtime would only see marvin-plan.md +
-            //      the process goal, ignoring the template entirely
-            //      — live 2026-05-24 Artensterben observation).
-            String customPrompt = paramString(node, "prompt", null);
-            if (customPrompt == null || customPrompt.isBlank()) {
-                String recipePrompt = process.getPromptOverride();
-                String recipePromptAppend = process.getPromptOverrideAppend();
-                StringBuilder composed = new StringBuilder();
-                if (recipePrompt != null && !recipePrompt.isBlank()) {
-                    composed.append(recipePrompt.trim());
+                MarvinNodeStateMachine.Transition trans =
+                        runPhase(process, ctx, node, phase, caps, counters);
+
+                if (trans instanceof MarvinNodeStateMachine.ContinueWithPhase cont) {
+                    counters = cont.newCounters();
+                    persistCounters(node, counters);
+                    nodeService.setCurrentPhase(node, cont.nextPhase());
+                    node.setCurrentPhase(cont.nextPhase());
+                    // Pass the hint into the next phase via a transient
+                    // taskSpec field — the runPhase reader picks it up
+                    // and clears it after rendering.
+                    if (cont.hintForNextPhase() != null) {
+                        Map<String, Object> spec = node.getTaskSpec() == null
+                                ? new LinkedHashMap<>() : new LinkedHashMap<>(node.getTaskSpec());
+                        spec.put("_phaseHint", cont.hintForNextPhase());
+                        node.setTaskSpec(spec);
+                        nodeService.save(node);
+                    }
+                    continue;
                 }
-                if (recipePromptAppend != null && !recipePromptAppend.isBlank()) {
-                    if (composed.length() > 0) composed.append("\n\n");
-                    composed.append(recipePromptAppend.trim());
+                if (trans instanceof MarvinNodeStateMachine.CallRecipe cr) {
+                    counters = cr.newCounters();
+                    persistCounters(node, counters);
+                    runCallRecipe(process, ctx, node, cr.call());
+                    // After the recipe reply lands in chat history,
+                    // the next phase is REFLECT.
+                    nodeService.setCurrentPhase(node, WorkerPhase.REFLECT);
+                    node.setCurrentPhase(WorkerPhase.REFLECT);
+                    continue;
                 }
-                if (composed.length() > 0) {
-                    customPrompt = composed.toString();
+                if (trans instanceof MarvinNodeStateMachine.SpawnChildren sc) {
+                    counters = sc.newCounters();
+                    persistCounters(node, counters);
+                    spawnChildren(process, node, sc.children());
+                    // Mark DONE (not WAITING) so the DFS treats this
+                    // node as transparent and descends into the freshly
+                    // spawned children. The awaitingPostChildren flag
+                    // tells the next runTurn's reactivation-sweeper to
+                    // resurrect this node with phase=POST_CHILDREN once
+                    // all children terminate.
+                    node.setAwaitingPostChildren(true);
+                    Map<String, Object> art = node.getArtifacts() == null
+                            ? new LinkedHashMap<>()
+                            : new LinkedHashMap<>(node.getArtifacts());
+                    art.put("spawnedChildren", sc.children().size());
+                    nodeService.markDone(node, art);
+                    return true;
                 }
+                if (trans instanceof MarvinNodeStateMachine.AskUserInput aui) {
+                    counters = aui.newCounters();
+                    persistCounters(node, counters);
+                    boolean parked = spawnUserInputSibling(process, ctx, node, aui.spec());
+                    return parked;
+                }
+                if (trans instanceof MarvinNodeStateMachine.FinishDone done) {
+                    persistCounters(node, counters);
+                    Map<String, Object> artifacts = new LinkedHashMap<>();
+                    artifacts.put("result", done.result());
+                    if (done.validatorForced()) {
+                        artifacts.put("validatorAuditWarning",
+                                "validator not satisfied after caps — accepted last candidate");
+                    }
+                    nodeService.markDone(node, artifacts);
+                    // Engine-side draft: persist this node's CONCLUDE
+                    // result to _marvin-drafts/<processId>/... for
+                    // human inspection. Failure is non-fatal.
+                    writeNodeDraft(process, node, done.result());
+                    // Engine-side postActions.
+                    if (done.postActions() != null && !done.postActions().isEmpty()) {
+                        runPostActions(process, node, done.postActions(), artifacts);
+                    }
+                    log.info("Marvin id='{}' node='{}' DONE ({} chars){}",
+                            process.getId(), node.getId(),
+                            done.result() == null ? 0 : done.result().length(),
+                            done.validatorForced() ? " [forced]" : "");
+                    emitNodeDoneStatus(process, node,
+                            (done.result() == null ? 0 : done.result().length()) + " chars");
+                    return false;
+                }
+                if (trans instanceof MarvinNodeStateMachine.FinishFailed ff) {
+                    persistCounters(node, counters);
+                    nodeService.markFailed(node, ff.reason());
+                    log.info("Marvin id='{}' node='{}' FAILED — {}",
+                            process.getId(), node.getId(), ff.reason());
+                    return false;
+                }
+                // Fall-through guard.
+                nodeService.markFailed(node, "unknown transition class: " + trans.getClass());
+                return false;
             }
-            // Phase H/L: Recipe-deklarierte Constraints für PLAN-Children.
-            // - allowedSubTaskRecipes: Whitelist erlaubter Recipe-Namen
-            //   für WORKER-Children.
-            // - recipesOnlyViaExpand: Recipes die NUR im EXPAND_FROM_DOC
-            //   childTemplate auftauchen dürfen, nicht als direct WORKER.
-            // - requiredParamsPerRecipe: pro Recipe Pflicht-Param-Keys
-            //   in taskSpec.params (wenn als direct WORKER gespawnt).
-            // Verstöße triggern den Re-Prompt-Loop.
-            List<String> allowedSubTaskRecipes = readAllowedSubTaskRecipes(process);
-            List<String> recipesOnlyViaExpand = readRecipesOnlyViaExpand(process);
-            Map<String, List<String>> requiredParamsPerRecipe =
-                    readRequiredParamsPerRecipe(process);
-            List<String> allowedExpandDocumentRefPaths =
-                    readAllowedExpandDocumentRefPaths(process);
-            Map<String, List<String>> requiredChildTemplateRecipeParams =
-                    readRequiredChildTemplateRecipeParams(process);
-            Set<TaskKind> disallowedTaskKinds = readDisallowedTaskKinds(process);
-            log.info("Marvin id='{}' PLAN constraints: allowedSubTaskRecipes={}, recipesOnlyViaExpand={}, allowedExpandDocumentRefPaths={}, requiredChildTemplateRecipeParams={}, disallowedTaskKinds={}",
-                    process.getId(), allowedSubTaskRecipes,
-                    recipesOnlyViaExpand, allowedExpandDocumentRefPaths,
-                    requiredChildTemplateRecipeParams, disallowedTaskKinds);
-            boolean anyConstraint = allowedSubTaskRecipes != null
-                    || recipesOnlyViaExpand != null
-                    || requiredParamsPerRecipe != null
-                    || allowedExpandDocumentRefPaths != null
-                    || requiredChildTemplateRecipeParams != null
-                    || disallowedTaskKinds != null;
-            int maxPlanCorrections = paramInt(
-                    node, "maxPlanCorrections",
-                    anyConstraint ? 2 : 0);
-
-            List<ChatMessage> messages = new ArrayList<>();
-            String planTpl = enginePromptResolver.resolve(
-                    process, PLAN_PROMPT_PATH, PLAN_SYSTEM_PROMPT);
-            java.util.Map<String, Object> planCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
-                    .forProcess(process, null)
-                    .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
-                    .engine(NAME)
-                    .withRootDirTypes(workspaceService.getRootDirTypes(
-                            process.getTenantId(), process.getProjectId()))
-                    .build();
-            messages.add(SystemMessage.from(promptTemplateRenderer.render(planTpl, planCtx)));
-            String body = "ROOT goal of the Marvin process:\n"
-                    + nullSafe(process.getGoal()) + "\n\n"
-                    + "PARENT goal of the node you are decomposing:\n"
-                    + node.getGoal() + "\n\n"
-                    + "maxChildren: " + maxChildren + "\n\n"
-                    + (allowedSubTaskRecipes == null
-                            ? buildRecipeCatalog(process)
-                            : buildAllowedRecipesPrompt(allowedSubTaskRecipes))
-                    + (allowedExpandDocumentRefPaths == null
-                            ? ""
-                            : buildAllowedExpandPathsPrompt(allowedExpandDocumentRefPaths))
-                    // The recipe's promptPrefix is passed as LITERAL
-                    // text: it contains JSON skeletons with
-                    // `{{ process.goal }}` / `{{ node.summary }}`
-                    // placeholders the PLAN-LLM must copy verbatim
-                    // into emitted children. The postAction renderer
-                    // resolves those at execution time, the
-                    // PLAN-LLM should resolve {{ process.goal }} in
-                    // KIND-block goal strings via its own context
-                    // (it has the ROOT goal earlier in the same body).
-                    + (customPrompt == null
-                            ? ""
-                            : "\n\nAdditional instruction:\n" + customPrompt);
-            messages.add(UserMessage.from(body));
-
-            String modelAlias = config.provider() + ":" + config.modelName();
-
-            // PLAN call + (optional) content-validation re-prompt loop.
-            String text = null;
-            List<NodeSpec> children = null;
-            String validationError = null;
-            for (int attempt = 0; attempt <= maxPlanCorrections; attempt++) {
-                long startMs = System.currentTimeMillis();
-                ChatRequest request = ChatRequest.builder().messages(messages).build();
-                ChatResponse response = ai.chatModel().chat(request);
-                llmCallTracker.record(
-                        process, request, response, System.currentTimeMillis() - startMs, modelAlias);
-                AiMessage reply = response.aiMessage();
-                text = reply == null ? "" : reply.text();
-                if (text == null) text = "";
-
-                children = parsePlanChildren(text, maxChildren);
-                for (NodeSpec ns : children) {
-                    log.info("Marvin id='{}' PLAN attempt {} child kind={} taskSpec={}",
-                            process.getId(), attempt, ns.taskKind(), ns.taskSpec());
-                }
-                if (children.isEmpty()) {
-                    validationError = "PLAN produced 0 children";
-                } else if (anyConstraint) {
-                    validationError = validatePlanChildren(
-                            children, allowedSubTaskRecipes,
-                            recipesOnlyViaExpand, requiredParamsPerRecipe,
-                            allowedExpandDocumentRefPaths,
-                            requiredChildTemplateRecipeParams,
-                            disallowedTaskKinds);
-                } else {
-                    validationError = null;
-                }
-                if (validationError == null) break;
-
-                if (attempt < maxPlanCorrections) {
-                    log.info("Marvin id='{}' PLAN correction {}/{}: {}",
-                            process.getId(), attempt + 1, maxPlanCorrections, validationError);
-                    // Append model's bad output and a corrective user message —
-                    // standard format-correction shape.
-                    messages.add(AiMessage.from(text));
-                    StringBuilder hint = new StringBuilder();
-                    hint.append("Your last plan was rejected: ").append(validationError)
-                            .append("\n\nRe-emit the plan JSON respecting these rules:\n");
-                    if (allowedSubTaskRecipes != null) {
-                        hint.append("- WORKER children MUST use ONLY these recipes ")
-                                .append("(verbatim names): ")
-                                .append(String.join(", ", allowedSubTaskRecipes))
-                                .append(".\n");
-                    }
-                    if (recipesOnlyViaExpand != null && !recipesOnlyViaExpand.isEmpty()) {
-                        hint.append("- These recipes MUST appear ONLY inside an ")
-                                .append("EXPAND_FROM_DOC childTemplate, never as a ")
-                                .append("direct top-level WORKER child: ")
-                                .append(String.join(", ", recipesOnlyViaExpand))
-                                .append(". (Your last plan placed at least one of them ")
-                                .append("at the top level. Move it into an EXPAND_FROM_DOC ")
-                                .append("with the appropriate documentRef + childTemplate.)\n");
-                    }
-                    hint.append("- Every EXPAND_FROM_DOC child MUST declare ")
-                            .append("taskSpec.documentRef as a MAP with one of ")
-                            .append("name|path|id (NOT a bare string), AND ")
-                            .append("taskSpec.childTemplate (with at least ")
-                            .append("`taskKind: WORKER` and `recipe: <name>`).\n");
-                    if (allowedExpandDocumentRefPaths != null
-                            && !allowedExpandDocumentRefPaths.isEmpty()) {
-                        hint.append("- documentRef.path MUST be ONE of these ")
-                                .append("verbatim strings (no other paths are ")
-                                .append("acceptable, no fabrications): ")
-                                .append(String.join(", ", allowedExpandDocumentRefPaths))
-                                .append(".\n");
-                    }
-                    hint.append("Example EXPAND_FROM_DOC child shape:\n")
-                            .append("  {\n")
-                            .append("    \"taskKind\": \"EXPAND_FROM_DOC\",\n")
-                            .append("    \"goal\": \"...\",\n")
-                            .append("    \"taskSpec\": {\n")
-                            .append("      \"documentRef\": { \"path\": \"essay/outline.md\" },\n")
-                            .append("      \"treeMode\": \"FLAT\",\n")
-                            .append("      \"childTemplate\": {\n")
-                            .append("        \"taskKind\": \"WORKER\",\n")
-                            .append("        \"recipe\": \"<allowed-recipe-here>\",\n")
-                            .append("        \"goal\": \"...\",\n")
-                            .append("        \"recipeParams\": { ... }\n")
-                            .append("      }\n")
-                            .append("    }\n")
-                            .append("  }\n");
-                    if (requiredParamsPerRecipe != null && !requiredParamsPerRecipe.isEmpty()) {
-                        hint.append("- For these recipes, taskSpec.params MUST contain ")
-                                .append("the listed keys when used as a direct WORKER:\n");
-                        for (Map.Entry<String, List<String>> e
-                                : requiredParamsPerRecipe.entrySet()) {
-                            hint.append("    ").append(e.getKey()).append(" → ")
-                                    .append(String.join(", ", e.getValue())).append("\n");
-                        }
-                    }
-                    if (requiredChildTemplateRecipeParams != null
-                            && !requiredChildTemplateRecipeParams.isEmpty()) {
-                        hint.append("- For EXPAND_FROM_DOC childTemplate.recipeParams, ")
-                                .append("these keys are MANDATORY per child-recipe ")
-                                .append("(use the {{index1}} / {{item.text}} placeholders ")
-                                .append("so the expander substitutes them per item):\n");
-                        for (Map.Entry<String, List<String>> e
-                                : requiredChildTemplateRecipeParams.entrySet()) {
-                            hint.append("    ").append(e.getKey()).append(" → ")
-                                    .append(String.join(", ", e.getValue())).append("\n");
-                        }
-                    }
-                    if (disallowedTaskKinds != null && !disallowedTaskKinds.isEmpty()) {
-                        hint.append("- These taskKinds are FORBIDDEN on top-level PLAN ")
-                                .append("children: ");
-                        boolean first = true;
-                        for (TaskKind k : disallowedTaskKinds) {
-                            if (!first) hint.append(", ");
-                            hint.append(k.name());
-                            first = false;
-                        }
-                        hint.append(". (For aggregation, spawn a WORKER with the ")
-                                .append("aggregator recipe instead of the built-in ")
-                                .append("AGGREGATE summary.)\n");
-                    }
-                    hint.append("Other taskKinds (PLAN / EXPAND_FROM_DOC / USER_INPUT / ")
-                            .append("AGGREGATE) don't need a recipe and stay free.");
-                    messages.add(UserMessage.from(hint.toString()));
-                }
-            }
-
-            if (validationError != null) {
-                nodeService.markFailed(node,
-                        "PLAN failed after " + maxPlanCorrections
-                                + " corrections — last error: " + validationError
-                                + "; model output: " + abbrev(text));
-                return;
-            }
-            nodeService.appendChildren(
-                    process.getTenantId(), process.getId(), node.getId(), children);
-            Map<String, Object> artifacts = new LinkedHashMap<>();
-            artifacts.put("planRaw", text);
-            artifacts.put("childrenAdded", children.size());
-            nodeService.markDone(node, artifacts);
-            log.info("Marvin id='{}' PLAN node='{}' produced {} children",
-                    process.getId(), node.getId(), children.size());
-            emitNodeDoneStatus(process, node, children.size() + " children");
         } catch (RuntimeException e) {
-            nodeService.markFailed(node, "PLAN failed: " + e.getMessage());
-            log.warn("Marvin id='{}' PLAN node='{}' failed: {}",
-                    process.getId(), node.getId(), e.toString());
+            log.warn("Marvin id='{}' node='{}' phase loop crashed: {}",
+                    process.getId(), node.getId(), e.toString(), e);
+            nodeService.markFailed(node, "phase loop crashed: " + e.getMessage());
+            return false;
         }
     }
 
-    /**
-     * Reads the optional {@code allowedSubTaskRecipes} param from the
-     * Marvin process's engineParams. When set, the PLAN-stage validates
-     * that every WORKER child's {@code taskSpec.recipe} is in this list
-     * and re-prompts on violation. Returns {@code null} when the param
-     * is absent — in that case classic free-form planning applies (full
-     * recipe catalog in the prompt, no content validation).
-     */
-    private static @Nullable List<String> readAllowedSubTaskRecipes(ThinkProcessDocument process) {
-        Object raw = processParam(process, "allowedSubTaskRecipes");
-        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
-        List<String> out = new ArrayList<>(list.size());
-        for (Object o : list) {
-            if (o instanceof String s && !s.isBlank()) out.add(s.trim());
-        }
-        return out.isEmpty() ? null : out;
+    private void persistCounters(
+            MarvinNodeDocument node, MarvinNodeStateMachine.Counters c) {
+        node.setReflectIter(c.reflectIter());
+        node.setValidateIter(c.validateIter());
+        node.setConcludeRetries(c.concludeRetries());
+        nodeService.save(node);
+    }
+
+    private MarvinNodeStateMachine.Caps readCaps(ThinkProcessDocument process) {
+        int reflectMax = paramInt(process, "reflectMaxIterations",
+                properties.getReflectMaxIterations());
+        int validateMax = paramInt(process, "validateMaxIterations",
+                properties.getValidateMaxIterations());
+        int concludeRetries = paramInt(process, "concludeMaxRetries",
+                properties.getConcludeMaxRetries());
+        int treeDepth = paramInt(process, "maxTreeDepth",
+                properties.getMaxTreeDepth());
+        return new MarvinNodeStateMachine.Caps(
+                reflectMax, validateMax, concludeRetries, treeDepth);
     }
 
     /**
-     * Read the optional {@code recipesOnlyViaExpand} engineParam.
-     * Recipes in this list must appear only inside an
-     * {@code EXPAND_FROM_DOC} childTemplate, never as a direct
-     * top-level WORKER child. Re-prompt when violated.
+     * Executes a single phase: builds the chat messages, sends to
+     * the LLM, parses the output, persists a {@link PhaseIteration}
+     * record, and asks {@link MarvinNodeStateMachine} for the next
+     * transition.
      */
-    private static @Nullable List<String> readRecipesOnlyViaExpand(ThinkProcessDocument process) {
-        Object raw = processParam(process, "recipesOnlyViaExpand");
-        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
-        List<String> out = new ArrayList<>(list.size());
-        for (Object o : list) {
-            if (o instanceof String s && !s.isBlank()) out.add(s.trim());
+    private MarvinNodeStateMachine.Transition runPhase(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            MarvinNodeDocument node,
+            WorkerPhase phase,
+            MarvinNodeStateMachine.Caps caps,
+            MarvinNodeStateMachine.Counters counters) {
+        if (phase == WorkerPhase.VALIDATE
+                && counters.validateIter() >= caps.validateMax()) {
+            // Hit the validate cap — force DONE on the last candidate.
+            String candidate = nullSafe(node.getCandidateResult());
+            return MarvinNodeStateMachine.validateCapExhausted(
+                    candidate, lastPostActionsFromHistory(node));
         }
-        return out.isEmpty() ? null : out;
+
+        // Read the optional one-shot hint stored by the previous phase.
+        @Nullable String hint = paramString(node, "_phaseHint", null);
+        clearPhaseHint(node);
+
+        de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle bundle =
+                engineChatFactory.forProcess(process, ctx, NAME);
+        AiChat ai = bundle.chat();
+        AiChatConfig config = bundle.primaryConfig();
+
+        String systemPrompt = enginePromptResolver.resolve(
+                process, WORKER_SYSTEM_PROMPT_PATH, FALLBACK_WORKER_SYSTEM_PROMPT);
+        Map<String, Object> sysCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
+                .forProcess(process, null)
+                .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
+                .engine(NAME)
+                .withRootDirTypes(workspaceService.getRootDirTypes(
+                        process.getTenantId(), process.getProjectId()))
+                .build();
+        String renderedSystem = promptTemplateRenderer.render(systemPrompt, sysCtx);
+
+        String planSnapshot = planSnapshotRenderer.render(
+                nodeService.listAll(process.getId()), node.getId());
+
+        String userBody = buildPhaseUserMessage(
+                process, node, phase, counters, caps, planSnapshot, hint);
+
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(SystemMessage.from(renderedSystem));
+        messages.add(UserMessage.from(userBody));
+
+        String modelAlias = config.provider() + ":" + config.modelName();
+        long startMs = System.currentTimeMillis();
+        ChatRequest request = ChatRequest.builder().messages(messages).build();
+        ChatResponse response = ai.chatModel().chat(request);
+        llmCallTracker.record(
+                process, request, response, System.currentTimeMillis() - startMs, modelAlias);
+        AiMessage reply = response.aiMessage();
+        String text = reply == null ? "" : nullSafe(reply.text());
+
+        // Parse the output per phase.
+        return parseAndRoute(process, node, phase, text, counters, caps, modelAlias);
     }
 
-    /**
-     * Read the optional {@code requiredParamsPerRecipe} engineParam.
-     * Map of {@code recipe-name → [paramKey, …]}. When a direct
-     * top-level WORKER child uses a recipe in this map, its
-     * {@code taskSpec.params} MUST contain every listed key.
-     */
-    @SuppressWarnings("unchecked")
-    private static @Nullable Map<String, List<String>> readRequiredParamsPerRecipe(
-            ThinkProcessDocument process) {
-        Object raw = processParam(process, "requiredParamsPerRecipe");
-        if (!(raw instanceof Map<?, ?> m) || m.isEmpty()) return null;
-        Map<String, List<String>> out = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : m.entrySet()) {
-            if (!(e.getKey() instanceof String recipe) || recipe.isBlank()) continue;
-            List<String> required = new ArrayList<>();
-            if (e.getValue() instanceof List<?> reqs) {
-                for (Object r : reqs) {
-                    if (r instanceof String s && !s.isBlank()) required.add(s.trim());
+    private MarvinNodeStateMachine.Transition parseAndRoute(
+            ThinkProcessDocument process,
+            MarvinNodeDocument node,
+            WorkerPhase phase,
+            String llmText,
+            MarvinNodeStateMachine.Counters counters,
+            MarvinNodeStateMachine.Caps caps,
+            String modelAlias) {
+        Instant now = Instant.now();
+        switch (phase) {
+            case SCOPE -> {
+                PhaseOutputParser.Result<ScopeOutput> r = phaseParser.parseScope(llmText);
+                if (!r.ok()) {
+                    return new MarvinNodeStateMachine.FinishFailed(
+                            "SCOPE parse failed: " + r.error());
                 }
+                recordPhaseIteration(node, WorkerPhase.SCOPE, 0, r.output(), modelAlias, now);
+                return MarvinNodeStateMachine.afterScope(r.output(), counters, caps);
             }
-            if (!required.isEmpty()) out.put(recipe.trim(), required);
-        }
-        return out.isEmpty() ? null : out;
-    }
-
-    /**
-     * Read the optional {@code allowedExpandDocumentRefPaths} engineParam.
-     * When set, every EXPAND_FROM_DOC child's
-     * {@code taskSpec.documentRef.path} MUST be one of the listed
-     * verbatim strings — closes the documentRef-fabrication loop in
-     * the same way {@code allowedSubTaskRecipes} closed it for
-     * recipe names.
-     */
-    private static @Nullable List<String> readAllowedExpandDocumentRefPaths(
-            ThinkProcessDocument process) {
-        Object raw = processParam(process, "allowedExpandDocumentRefPaths");
-        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
-        List<String> out = new ArrayList<>(list.size());
-        for (Object o : list) {
-            if (o instanceof String s && !s.isBlank()) out.add(s.trim());
-        }
-        return out.isEmpty() ? null : out;
-    }
-
-    /**
-     * Read the optional {@code requiredChildTemplateRecipeParams}
-     * engineParam. Map of {@code child-recipe → [paramKey, …]}. When
-     * an EXPAND_FROM_DOC child's {@code childTemplate.recipe} matches
-     * a key, its {@code childTemplate.recipeParams} MUST contain
-     * every listed key (non-null, non-blank). Closes the
-     * "LLM omits recipeParams" loop the essay-pipeline saw in Phase N.
-     */
-    @SuppressWarnings("unchecked")
-    private static @Nullable Map<String, List<String>>
-            readRequiredChildTemplateRecipeParams(ThinkProcessDocument process) {
-        Object raw = processParam(process, "requiredChildTemplateRecipeParams");
-        if (!(raw instanceof Map<?, ?> m) || m.isEmpty()) return null;
-        Map<String, List<String>> out = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : m.entrySet()) {
-            if (!(e.getKey() instanceof String recipe) || recipe.isBlank()) continue;
-            List<String> required = new ArrayList<>();
-            if (e.getValue() instanceof List<?> reqs) {
-                for (Object r : reqs) {
-                    if (r instanceof String s && !s.isBlank()) required.add(s.trim());
+            case REFLECT -> {
+                PhaseOutputParser.Result<ReflectOutput> r = phaseParser.parseReflect(llmText);
+                if (!r.ok()) {
+                    return new MarvinNodeStateMachine.FinishFailed(
+                            "REFLECT parse failed: " + r.error());
                 }
+                recordPhaseIteration(node, WorkerPhase.REFLECT,
+                        counters.reflectIter(), r.output(), modelAlias, now);
+                return MarvinNodeStateMachine.afterReflect(r.output(), counters, caps);
             }
-            if (!required.isEmpty()) out.put(recipe.trim(), required);
-        }
-        return out.isEmpty() ? null : out;
-    }
-
-    /**
-     * Read the optional {@code disallowedTaskKinds} engineParam — a
-     * list of taskKind names ({@code AGGREGATE}, {@code USER_INPUT},
-     * etc.) that the recipe forbids on top-level PLAN children.
-     * Forces the LLM into the prescribed shape (e.g. essay-pipeline:
-     * use WORKER aggregator_run, not the built-in AGGREGATE summary).
-     */
-    private static @Nullable Set<TaskKind> readDisallowedTaskKinds(
-            ThinkProcessDocument process) {
-        Object raw = processParam(process, "disallowedTaskKinds");
-        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
-        Set<TaskKind> out = new java.util.LinkedHashSet<>();
-        for (Object o : list) {
-            if (!(o instanceof String s) || s.isBlank()) continue;
-            try {
-                out.add(TaskKind.valueOf(s.trim().toUpperCase()));
-            } catch (IllegalArgumentException ignored) {
-                // unknown kind — skip silently rather than fail recipe load
-            }
-        }
-        return out.isEmpty() ? null : out;
-    }
-
-    /**
-     * Validate the PLAN's children against the configured constraints.
-     * Returns null when all constraints hold, an error string listing
-     * every violation otherwise.
-     *
-     * <p>Always-on checks (independent of recipe-supplied constraints):
-     * EXPAND_FROM_DOC children must declare {@code taskSpec.documentRef}
-     * and a {@code taskSpec.childTemplate} with a {@code recipe} —
-     * the empty form is structurally useless and the LLM occasionally
-     * emits it after a "move chapter_loop into EXPAND" correction.
-     */
-    @SuppressWarnings("unchecked")
-    private static @Nullable String validatePlanChildren(
-            List<NodeSpec> children,
-            @Nullable List<String> allowed,
-            @Nullable List<String> onlyViaExpand,
-            @Nullable Map<String, List<String>> requiredParams,
-            @Nullable List<String> allowedExpandPaths,
-            @Nullable Map<String, List<String>> requiredChildTemplateParams,
-            @Nullable Set<TaskKind> disallowedTaskKinds) {
-        List<String> violations = new ArrayList<>();
-        for (NodeSpec ns : children) {
-            // Always-on check: EXPAND_FROM_DOC must be fully formed.
-            // documentRef is a MAP {name|path|id: …}, not a String —
-            // Marvin's runExpandFromDoc reads it via paramMap.
-            if (ns.taskKind() == TaskKind.EXPAND_FROM_DOC) {
-                Map<String, Object> spec = ns.taskSpec() == null
-                        ? Map.of() : ns.taskSpec();
-                Object docRef = spec.get("documentRef");
-                if (!(docRef instanceof Map<?, ?> drm) || drm.isEmpty()) {
-                    violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                            + "' is missing taskSpec.documentRef "
-                            + "(must be a map with `path` or `id`)");
-                } else {
-                    Map<String, Object> drMap = (Map<String, Object>) drm;
-                    boolean hasPath = drMap.get("path") instanceof String p
-                            && !p.isBlank();
-                    boolean hasId = drMap.get("id") instanceof String i
-                            && !i.isBlank();
-                    if (!hasPath && !hasId) {
-                        // `name`-only is ambiguous (LLMs love to put
-                        // hallucinated short labels there). Require
-                        // path or id explicitly to anchor the lookup.
-                        violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                                + "' must declare taskSpec.documentRef.path "
-                                + "(or .id) — `name` alone is rejected to "
-                                + "avoid lookup ambiguity");
-                    } else if (hasPath && allowedExpandPaths != null) {
-                        // Path-whitelist: even when path is set, reject
-                        // fabricated paths the LLM made up. Forces the
-                        // model to copy the verbatim recipe string.
-                        String path = ((String) drMap.get("path")).trim();
-                        if (!allowedExpandPaths.contains(path)) {
-                            violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                                    + "' uses documentRef.path '" + path
-                                    + "' which is not in the allowed list "
-                                    + allowedExpandPaths
-                                    + " — copy the path verbatim from the recipe, "
-                                    + "do not invent new ones");
-                        }
-                    }
+            case POST_CHILDREN -> {
+                PhaseOutputParser.Result<PostChildrenOutput> r = phaseParser.parsePostChildren(llmText);
+                if (!r.ok()) {
+                    return new MarvinNodeStateMachine.FinishFailed(
+                            "POST_CHILDREN parse failed: " + r.error());
                 }
-                Object tmpl = spec.get("childTemplate");
-                if (!(tmpl instanceof Map<?, ?> tm) || tm.isEmpty()) {
-                    violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                            + "' is missing taskSpec.childTemplate");
-                } else {
-                    Map<String, Object> tmplMap = (Map<String, Object>) tm;
-                    Object tmplRecipe = tmplMap.get("recipe");
-                    String tmplRecipeName = null;
-                    if (!(tmplRecipe instanceof String rs) || rs.isBlank()) {
-                        // childTemplate.recipe is now required —
-                        // recipe-less expansion routed through the
-                        // selector was retired with the recipe-routing
-                        // rework (specification/recipe-routing.md).
-                        violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                                + "' childTemplate is missing `recipe` — "
-                                + "set it explicitly (recipe-less "
-                                + "selector-routed expansion was retired)");
-                    } else {
-                        tmplRecipeName = rs.trim();
-                        if (allowed != null && !allowed.contains(tmplRecipeName)) {
-                            violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                                    + "' uses childTemplate.recipe '" + tmplRecipeName
-                                    + "' which is not in the allowed list");
-                            tmplRecipeName = null;
-                        }
-                    }
-                    if (tmplRecipeName != null
-                            && requiredChildTemplateParams != null) {
-                        List<String> req = requiredChildTemplateParams.get(tmplRecipeName);
-                        if (req != null && !req.isEmpty()) {
-                            Object rpRaw = tmplMap.get("recipeParams");
-                            Map<String, Object> rp = rpRaw instanceof Map<?, ?> rpm
-                                    ? (Map<String, Object>) rpm : Map.of();
-                            for (String key : req) {
-                                Object v = rp.get(key);
-                                if (v == null
-                                        || (v instanceof String vs && vs.isBlank())) {
-                                    violations.add("EXPAND_FROM_DOC child '" + ns.goal()
-                                            + "' childTemplate (recipe '" + tmplRecipeName
-                                            + "') missing required recipeParams['"
-                                            + key + "']");
-                                }
-                            }
-                        }
-                    }
+                recordPhaseIteration(node, WorkerPhase.POST_CHILDREN, 0,
+                        r.output(), modelAlias, now);
+                int depth = nodeService.depthOf(node);
+                return MarvinNodeStateMachine.afterPostChildren(
+                        r.output(), counters, caps, depth);
+            }
+            case CONCLUDE -> {
+                PhaseOutputParser.Result<ConcludeOutput> r = phaseParser.parseConclude(llmText);
+                if (!r.ok()) {
+                    return new MarvinNodeStateMachine.FinishFailed(
+                            "CONCLUDE parse failed: " + r.error());
                 }
-                continue;
+                recordPhaseIteration(node, WorkerPhase.CONCLUDE,
+                        counters.concludeRetries(), r.output(), modelAlias, now);
+                node.setCandidateResult(r.output().result());
+                stashPostActions(node, r.output().postActions());
+                nodeService.save(node);
+                return MarvinNodeStateMachine.afterConclude(r.output(), counters);
             }
-            if (disallowedTaskKinds != null
-                    && disallowedTaskKinds.contains(ns.taskKind())) {
-                violations.add("child '" + ns.goal()
-                        + "' uses disallowed taskKind '" + ns.taskKind()
-                        + "' — recipe forbids this kind on top-level PLAN children");
-                continue;
-            }
-            if (ns.taskKind() != TaskKind.WORKER) continue;
-            Object recipeRaw = ns.taskSpec() == null ? null : ns.taskSpec().get("recipe");
-            String recipe = recipeRaw instanceof String s ? s.trim() : null;
-            if (recipe == null || recipe.isBlank()) {
-                // WORKER children now require an explicit recipe —
-                // selector-routed recipe-less worker spawn was
-                // retired with the recipe-routing rework
-                // (specification/recipe-routing.md). The PLAN-LLM
-                // must pick from the catalog or `allowedSubTaskRecipes`.
-                violations.add("WORKER child '" + ns.goal()
-                        + "' is missing taskSpec.recipe — pick one "
-                        + "from the catalog (or from allowedSubTaskRecipes "
-                        + "if the recipe constrains workers)");
-                continue;
-            }
-            if (allowed != null && !allowed.contains(recipe)) {
-                violations.add("WORKER child '" + ns.goal()
-                        + "' uses recipe '" + recipe
-                        + "' which is not in the allowed list");
-                continue;
-            }
-            if (onlyViaExpand != null && onlyViaExpand.contains(recipe)) {
-                violations.add("WORKER child '" + ns.goal()
-                        + "' uses recipe '" + recipe
-                        + "' which may appear only inside an EXPAND_FROM_DOC "
-                        + "childTemplate, not as a direct top-level WORKER");
-                continue;
-            }
-            if (requiredParams != null) {
-                List<String> req = requiredParams.get(recipe);
-                if (req != null && !req.isEmpty()) {
-                    Object paramsRaw = ns.taskSpec().get("params");
-                    Map<String, Object> params = paramsRaw instanceof Map<?, ?> mm
-                            ? (Map<String, Object>) mm : Map.of();
-                    for (String key : req) {
-                        Object v = params.get(key);
-                        if (v == null
-                                || (v instanceof String vs && vs.isBlank())) {
-                            violations.add("WORKER child '" + ns.goal()
-                                    + "' (recipe '" + recipe
-                                    + "') missing required taskSpec.params['"
-                                    + key + "']");
-                        }
-                    }
+            case VALIDATE -> {
+                PhaseOutputParser.Result<ValidateOutput> r = phaseParser.parseValidate(llmText);
+                if (!r.ok()) {
+                    return new MarvinNodeStateMachine.FinishFailed(
+                            "VALIDATE parse failed: " + r.error());
                 }
+                recordPhaseIteration(node, WorkerPhase.VALIDATE,
+                        counters.validateIter(), r.output(), modelAlias, now);
+                // Always increment validate iter — it's consumed once
+                // a verdict is rendered.
+                counters = counters.incValidate();
+                persistCounters(node, counters);
+                String candidate = nullSafe(node.getCandidateResult());
+                List<PostActionSpec> pa = lastPostActionsFromHistory(node);
+                return MarvinNodeStateMachine.afterValidate(
+                        r.output(), counters, caps, candidate, pa);
             }
         }
-        // No coverage / count enforcement here — Marvin's PLAN-LLM
-        // is meant to decide tree breadth dynamically. The recipe
-        // declares ALLOWED recipes (a whitelist), not REQUIRED ones.
-        // File persistence is handled by postActions (see
-        // runPostActions), so we no longer need to force a specific
-        // file-writing worker into the plan.
-        return violations.isEmpty() ? null : String.join("; ", violations);
+        return new MarvinNodeStateMachine.FinishFailed(
+                "unknown phase: " + phase);
     }
 
-    /** Build the prompt section that lists the allow-listed recipes —
-     *  replaces the full catalog when the recipe constrains the plan. */
-    private static String buildAllowedRecipesPrompt(List<String> allowed) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("WORKER recipes you MAY use for `taskSpec.recipe` "
-                + "(these are the ONLY allowed values; nothing else "
-                + "will be accepted):\n");
-        for (String name : allowed) {
-            sb.append("  - ").append(name).append("\n");
-        }
-        sb.append("\nOther taskKinds (PLAN, EXPAND_FROM_DOC, USER_INPUT, "
-                + "AGGREGATE) do not need a recipe and remain free-form.\n");
-        return sb.toString();
-    }
-
-    /** Build the prompt section that lists the allow-listed
-     *  EXPAND_FROM_DOC documentRef.path values. Forces the LLM to
-     *  copy the recipe-prescribed path verbatim instead of inventing
-     *  one. */
-    private static String buildAllowedExpandPathsPrompt(List<String> paths) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("\nFor any EXPAND_FROM_DOC child, "
-                + "`taskSpec.documentRef.path` MUST be ONE of these "
-                + "verbatim strings — do NOT invent other paths, do "
-                + "NOT shorten or rename them, do NOT prefix them with "
-                + "`tasks/` or similar:\n");
-        for (String p : paths) {
-            sb.append("  - ").append(p).append("\n");
-        }
-        return sb.toString();
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<NodeSpec> parsePlanChildren(String raw, int maxChildren) {
-        String json = extractJsonObject(raw);
-        if (json == null) {
-            log.warn("Marvin PLAN: no JSON object found in model output: {}", abbrev(raw));
-            return List.of();
-        }
-        Map<String, Object> root;
+    private void recordPhaseIteration(
+            MarvinNodeDocument node,
+            WorkerPhase phase,
+            int iter,
+            Object output,
+            String modelAlias,
+            Instant timestamp) {
         try {
-            root = objectMapper.readValue(json, Map.class);
+            String json = objectMapper.writeValueAsString(output);
+            nodeService.appendPhaseHistory(
+                    node,
+                    new PhaseIteration(phase, iter, json, modelAlias, null, null, timestamp));
         } catch (RuntimeException e) {
-            log.warn("Marvin PLAN: invalid JSON ({}) raw='{}'",
-                    e.getMessage(), abbrev(raw));
-            return List.of();
+            log.debug("Marvin phaseHistory serialise failed node='{}' phase={}: {}",
+                    node.getId(), phase, e.toString());
         }
-        Object childrenRaw = root.get("children");
-        if (!(childrenRaw instanceof List<?> list)) {
-            log.warn("Marvin PLAN: missing 'children' array; raw='{}'", abbrev(raw));
-            return List.of();
-        }
-        List<NodeSpec> out = new ArrayList<>();
-        for (int i = 0; i < list.size() && out.size() < maxChildren; i++) {
-            Object entry = list.get(i);
-            if (!(entry instanceof Map<?, ?> spec)) continue;
-            Object goalRaw = spec.get("goal");
-            Object kindRaw = spec.get("taskKind");
-            if (!(goalRaw instanceof String goalStr) || goalStr.isBlank()) continue;
-            if (!(kindRaw instanceof String kindStr) || kindStr.isBlank()) continue;
-            TaskKind kind;
-            try {
-                kind = TaskKind.valueOf(kindStr.trim().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                log.warn("Marvin PLAN: skipping child with unknown taskKind '{}'", kindStr);
-                continue;
-            }
-            Map<String, Object> taskSpec = new LinkedHashMap<>();
-            Object specRaw = spec.get("taskSpec");
-            if (specRaw instanceof Map<?, ?> ms) {
-                for (Map.Entry<?, ?> e : ms.entrySet()) {
-                    taskSpec.put(String.valueOf(e.getKey()), e.getValue());
-                }
-            }
-            out.add(new NodeSpec(goalStr, kind, taskSpec));
-        }
-        return out;
     }
 
-    /**
-     * Lists the recipes available to the planner so it picks real
-     * names instead of inventing {@code RESEARCH_AND_SUMMARIZE}-style
-     * fictions. Reads through the project cascade so tenant- and
-     * project-overrides are visible alongside bundled defaults.
-     */
-    private String buildRecipeCatalog(ThinkProcessDocument process) {
-        // ThinkProcessDocument has no projectId — RecipeLoader falls
-        // back to the _vance system project (tenant-wide + bundled).
-        // Project-scoped recipes are still discoverable through the
-        // recipe_list tool at runtime.
-        java.util.List<ResolvedRecipe> recipes = recipeLoader.listAll(
-                process.getTenantId(), null);
-        if (recipes.isEmpty()) return "";
+    private void clearPhaseHint(MarvinNodeDocument node) {
+        if (node.getTaskSpec() == null) return;
+        if (!node.getTaskSpec().containsKey("_phaseHint")) return;
+        Map<String, Object> spec = new LinkedHashMap<>(node.getTaskSpec());
+        spec.remove("_phaseHint");
+        node.setTaskSpec(spec);
+        nodeService.save(node);
+    }
+
+    /** Persists postActions emitted by CONCLUDE so VALIDATE retries
+     *  / cap-forced exits can still find them. */
+    private void stashPostActions(MarvinNodeDocument node, @Nullable List<PostActionSpec> pa) {
+        if (pa == null || pa.isEmpty()) return;
+        Map<String, Object> spec = node.getTaskSpec() == null
+                ? new LinkedHashMap<>() : new LinkedHashMap<>(node.getTaskSpec());
+        // Store as raw maps so Jackson roundtrip works without custom
+        // (de)serialisers.
+        List<Map<String, Object>> raw = new ArrayList<>(pa.size());
+        for (PostActionSpec p : pa) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("tool", p.tool());
+            m.put("args", p.args());
+            raw.add(m);
+        }
+        spec.put("_pendingPostActions", raw);
+        node.setTaskSpec(spec);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static @Nullable List<PostActionSpec> lastPostActionsFromHistory(
+            MarvinNodeDocument node) {
+        if (node.getTaskSpec() == null) return null;
+        Object raw = node.getTaskSpec().get("_pendingPostActions");
+        if (!(raw instanceof List<?> list)) return null;
+        List<PostActionSpec> out = new ArrayList<>();
+        for (Object e : list) {
+            if (!(e instanceof Map<?, ?> m)) continue;
+            Object tool = m.get("tool");
+            Object args = m.get("args");
+            if (tool instanceof String t && args instanceof Map<?, ?> argMap) {
+                Map<String, Object> cleanArgs = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> en : argMap.entrySet()) {
+                    cleanArgs.put(String.valueOf(en.getKey()), en.getValue());
+                }
+                out.add(new PostActionSpec(t, cleanArgs));
+            }
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    // ──────────────────── Phase prompt builder ────────────────────
+
+    private String buildPhaseUserMessage(
+            ThinkProcessDocument process,
+            MarvinNodeDocument node,
+            WorkerPhase phase,
+            MarvinNodeStateMachine.Counters counters,
+            MarvinNodeStateMachine.Caps caps,
+            String planSnapshot,
+            @Nullable String hint) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Available WORKER recipes (use one of these for "
-                + "every WORKER child's `taskSpec.recipe`; never invent "
-                + "recipe names):\n");
-        for (ResolvedRecipe r : recipes) {
-            // Skip Marvin / Arthur themselves — they aren't sensible
-            // workers for a Marvin-spawned child.
-            if (r.name().equals(NAME) || r.name().equals("arthur")) continue;
-            sb.append("- `").append(r.name()).append("` — ");
-            String desc = r.description();
-            sb.append(desc == null ? "" : desc.trim().replace('\n', ' '));
+        sb.append("Goal: ").append(nullSafe(node.getGoal())).append("\n\n");
+
+        List<String> available = readAvailableRecipes(process);
+        if (!available.isEmpty()) {
+            sb.append("Available recipes for CALL_RECIPE:\n");
+            for (String r : available) {
+                String desc = describeRecipe(process, r);
+                sb.append("  - ").append(r);
+                if (desc != null) sb.append(": ").append(desc);
+                sb.append('\n');
+            }
             sb.append('\n');
+        } else {
+            sb.append("(no recipes available for CALL_RECIPE — answer directly via PROCEED_TO_CONCLUDE or decompose via NEEDS_SUBTASKS)\n\n");
+        }
+
+        sb.append(planSnapshot).append("\n\n");
+
+        if (phase == WorkerPhase.POST_CHILDREN) {
+            String childBlock = renderChildrenResultsBlock(process, node);
+            if (!childBlock.isBlank()) {
+                sb.append(childBlock).append("\n");
+            }
+        }
+        if (phase == WorkerPhase.VALIDATE) {
+            String candidate = nullSafe(node.getCandidateResult());
+            sb.append("Candidate result:\n");
+            sb.append(candidate).append("\n\n");
+        }
+        if (hint != null && !hint.isBlank()) {
+            sb.append("Hint from previous phase: ").append(hint).append("\n\n");
+        }
+
+        sb.append("Phase: ").append(phase.name());
+        if (phase == WorkerPhase.REFLECT) {
+            sb.append(" (iteration ").append(counters.reflectIter())
+                    .append("/").append(caps.reflectMax()).append(")");
+        }
+        if (phase == WorkerPhase.VALIDATE) {
+            sb.append(" (iteration ").append(counters.validateIter())
+                    .append("/").append(caps.validateMax()).append(")");
         }
         sb.append('\n');
+        sb.append(phaseInstruction(phase));
         return sb.toString();
     }
 
-    /** Strips any wrapping markdown / prose around the JSON object. */
-    private static @Nullable String extractJsonObject(String raw) {
-        if (raw == null) return null;
-        int start = raw.indexOf('{');
-        int end = raw.lastIndexOf('}');
-        if (start < 0 || end <= start) return null;
-        return raw.substring(start, end + 1);
+    private static String phaseInstruction(WorkerPhase phase) {
+        return switch (phase) {
+            case SCOPE -> """
+                    Decide your next action. Check the PLAN first — if your
+                    goal is already covered, do not duplicate work.
+                    Respond with a single JSON object:
+                    {"action":"CALL_RECIPE"|"PROCEED_TO_CONCLUDE"|"NEEDS_SUBTASKS"|"NEEDS_USER_INPUT"|"BLOCKED_BY_PROBLEM",
+                     "recipeCall":{"recipe":"<name>","steerContent":"<initial steer>"},
+                     "newTasks":[{"goal":"...","taskKind":"WORKER","taskSpec":{}}],
+                     "userInput":{"type":"DECISION|FEEDBACK|APPROVAL","title":"...","body":"..."},
+                     "problem":"<short>",
+                     "reason":"<one-line>"}
+                    Only include fields relevant to your chosen action.
+                    """;
+            case REFLECT -> """
+                    The latest CALL_RECIPE result is above. Decide:
+                    - PROCEED_TO_CONCLUDE if sufficient material gathered
+                    - CALL_RECIPE for another targeted sub-call (capped)
+                    - NEEDS_SUBTASKS if the goal must be split (rare)
+                    - NEEDS_USER_INPUT if the user must clarify
+                    - BLOCKED_BY_PROBLEM if no path forward exists
+                    Respond with a single JSON object:
+                    {"action":"CALL_RECIPE"|"PROCEED_TO_CONCLUDE"|"NEEDS_SUBTASKS"|"NEEDS_USER_INPUT"|"BLOCKED_BY_PROBLEM",
+                     "recipeCall":{"recipe":"<name>","steerContent":"<initial steer>"},
+                     "newTasks":[{"goal":"...","taskKind":"WORKER","taskSpec":{}}],
+                     "userInput":{"type":"DECISION|FEEDBACK|APPROVAL","title":"...","body":"..."},
+                     "problem":"<short>",
+                     "reason":"<one-line>"}
+                    Only include fields relevant to your chosen action.
+                    For CALL_RECIPE the nested `recipeCall` object is REQUIRED — do not
+                    flatten `recipe` and `steerContent` onto the top level.
+                    """;
+            case POST_CHILDREN -> """
+                    Your children have finished. Decide:
+                    - PROCEED_TO_CONCLUDE to synthesise their results
+                    - NEEDS_SUBTASKS for further decomposition (tree-depth-bounded)
+                    - BLOCKED_BY_PROBLEM if children failed irrecoverably
+                    Respond with JSON: {"action":"...","newTasks":[...],
+                                       "problem":"...","reason":"..."}.
+                    """;
+            case CONCLUDE -> """
+                    Synthesise the gathered material into a final Markdown
+                    answer that fully addresses the goal. Be concrete; cite
+                    facts from the recipe replies / child results.
+                    Optionally include engine-side postActions to persist
+                    the result deterministically.
+                    Respond with JSON:
+                    {"result":"<markdown final answer>",
+                     "postActions":[{"tool":"doc_write_text",
+                                     "args":{"path":"...","content":"{{ node.result }}"}}],
+                     "reason":"<one-line>"}
+                    """;
+            case VALIDATE -> """
+                    Critically evaluate the candidate result above against
+                    the goal. Check: completeness, structure, factual
+                    coherence, length appropriateness.
+                    Respond with JSON:
+                    {"verdict":"PASS"|"RETRY_CONCLUDE"|"NEED_MORE_DATA"|"HARD_FAIL",
+                     "issues":["concrete problem 1","problem 2"],
+                     "hint":"<what to improve on re-run>",
+                     "reason":"<one-line>"}
+                    """;
+        };
+    }
+
+    private String renderChildrenResultsBlock(
+            ThinkProcessDocument process, MarvinNodeDocument parent) {
+        List<MarvinNodeDocument> kids = nodeService.findChildren(
+                process.getId(), parent.getId());
+        if (kids.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        sb.append("Children results:\n");
+        int i = 1;
+        for (MarvinNodeDocument k : kids) {
+            sb.append("\n<<< Child #").append(i).append(" '")
+                    .append(abbrev(k.getGoal())).append("' (")
+                    .append(k.getStatus()).append(")");
+            if (k.getStatus() == NodeStatus.FAILED && k.getFailureReason() != null) {
+                sb.append("\n    failureReason: ").append(k.getFailureReason());
+            } else {
+                Object res = k.getArtifacts() == null ? null
+                        : k.getArtifacts().get("result");
+                if (res instanceof String s && !s.isBlank()) {
+                    sb.append("\n    result: ")
+                            .append(truncate(s, 4000));
+                }
+            }
+            sb.append("\n>>>\n");
+            i++;
+        }
+        return sb.toString();
+    }
+
+    private static String truncate(String s, int max) {
+        if (s.length() <= max) return s;
+        return s.substring(0, max) + "\n[truncated]";
+    }
+
+    // ──────────────────── CALL_RECIPE ────────────────────
+
+    /**
+     * Synchronously spawns a sub-process with the given recipe,
+     * drives it to a reply, captures the assistant text and
+     * appends it as a USER message into the marvin-worker's chat
+     * history. Specialist recipes run in their native mode — the
+     * Marvin phase contract is NOT layered on top of them.
+     *
+     * <p>Marvin-engine recipes are blocked as CALL_RECIPE targets
+     * in v1 to prevent unbounded cross-Marvin nesting.
+     */
+    private void runCallRecipe(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            MarvinNodeDocument node,
+            RecipeCall call) {
+        String recipe = call.recipe();
+        AppliedRecipe applied;
+        try {
+            applied = recipeResolver.apply(
+                    process.getTenantId(), ctx.projectId(), recipe,
+                    process.getConnectionProfile(),
+                    /* params */ null);
+        } catch (RecipeResolver.UnknownRecipeException ure) {
+            appendCallReply(process, node, recipe,
+                    "[CALL_RECIPE failed: unknown recipe '" + recipe + "']");
+            log.warn("Marvin id='{}' CALL_RECIPE unknown recipe='{}'",
+                    process.getId(), recipe);
+            return;
+        } catch (RecipeResolver.UnknownEngineException uee) {
+            appendCallReply(process, node, recipe,
+                    "[CALL_RECIPE failed: " + uee.getMessage() + "]");
+            log.warn("Marvin id='{}' CALL_RECIPE unknown engine for '{}': {}",
+                    process.getId(), recipe, uee.getMessage());
+            return;
+        } catch (RuntimeException e) {
+            appendCallReply(process, node, recipe,
+                    "[CALL_RECIPE resolve failed: " + e.getMessage() + "]");
+            log.warn("Marvin id='{}' CALL_RECIPE resolve failed: {}",
+                    process.getId(), e.toString());
+            return;
+        }
+        // Block Marvin-via-CALL_RECIPE (v1 hard rule).
+        if (NAME.equalsIgnoreCase(applied.engine())) {
+            appendCallReply(process, node, recipe,
+                    "[CALL_RECIPE rejected: recipe '" + recipe
+                            + "' uses engine marvin — calling another Marvin "
+                            + "via CALL_RECIPE is blocked in v1. Use NEEDS_SUBTASKS "
+                            + "to decompose within the current Marvin tree.]");
+            log.info("Marvin id='{}' CALL_RECIPE rejected — marvin-on-marvin '{}'",
+                    process.getId(), recipe);
+            return;
+        }
+        // Self-recursion block: same recipe as the calling Marvin
+        // process's recipe is not useful here.
+        String currentRecipe = process.getRecipeName();
+        if (currentRecipe != null && currentRecipe.equalsIgnoreCase(applied.name())) {
+            appendCallReply(process, node, recipe,
+                    "[CALL_RECIPE rejected: cannot call own recipe '" + recipe + "']");
+            log.info("Marvin id='{}' CALL_RECIPE self-recursion blocked '{}'",
+                    process.getId(), recipe);
+            return;
+        }
+
+        ThinkProcessDocument child;
+        try {
+            String childName = "marvin-call-" + node.getId() + "-"
+                    + (node.getCalledSubProcessIds() == null
+                            ? 0 : node.getCalledSubProcessIds().size());
+            ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
+                    .resolve(applied.engine())
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Recipe '" + applied.name() + "' references unknown engine '"
+                                    + applied.engine() + "'"));
+            child = thinkProcessService.create(
+                    process.getTenantId(),
+                    process.getProjectId(),
+                    process.getSessionId(),
+                    childName,
+                    targetEngine.name(),
+                    targetEngine.version(),
+                    "Marvin CALL_RECIPE sub-process for node " + node.getId(),
+                    /* goal */ call.steerContent(),
+                    process.getId(),
+                    applied.params(),
+                    applied.name(),
+                    applied.promptOverride(),
+                    applied.promptOverrideAppend(),
+                    applied.promptMode(),
+                    applied.dataRelayCorrection(),
+                    applied.effectiveAllowedTools(),
+                    applied.connectionProfile(),
+                    applied.defaultActiveSkills(),
+                    applied.allowedSkills() == null
+                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
+            nodeService.addCalledSubProcessId(node, child.getId());
+            thinkEngineServiceProvider.getObject().start(child);
+            log.info("Marvin id='{}' CALL_RECIPE spawn child='{}' recipe='{}' async={}",
+                    process.getId(), child.getId(), applied.name(),
+                    targetEngine.asyncSteer());
+            try {
+                progressEmitter.emitStatus(process,
+                        de.mhus.vance.api.progress.StatusTag.DELEGATING,
+                        "CALL_RECIPE → " + applied.name());
+            } catch (RuntimeException pe) {
+                log.debug("Marvin id='{}' DELEGATING progress emit failed: {}",
+                        process.getId(), pe.toString());
+            }
+        } catch (RuntimeException e) {
+            appendCallReply(process, node, recipe,
+                    "[CALL_RECIPE spawn failed: " + e.getMessage() + "]");
+            log.warn("Marvin id='{}' CALL_RECIPE spawn failed: {}",
+                    process.getId(), e.toString(), e);
+            return;
+        }
+
+        // Drive the sub-process. For sync engines (Ford) we send the
+        // steer and wait inline; for async engines we'd have to await
+        // the DONE event, which we don't currently expose to a sync
+        // CALL_RECIPE — those engines are blocked above (marvin) or
+        // simply uncommon in practice (Vogon).
+        String reply;
+        try {
+            driveSubProcessOnce(child, process.getId(), call.steerContent());
+            reply = readLastAssistantText(
+                    process.getTenantId(), process.getSessionId(), child.getId());
+            if (reply == null || reply.isBlank()) {
+                reply = "[CALL_RECIPE returned no assistant text]";
+            }
+        } catch (RuntimeException e) {
+            reply = "[CALL_RECIPE drive failed: " + e.getMessage() + "]";
+            log.warn("Marvin id='{}' CALL_RECIPE drive failed child='{}': {}",
+                    process.getId(), child.getId(), e.toString());
+        } finally {
+            try {
+                thinkEngineServiceProvider.getObject().stop(child);
+            } catch (RuntimeException e) {
+                log.warn("Marvin id='{}' CALL_RECIPE stop failed child='{}': {}",
+                        process.getId(), child.getId(), e.toString());
+            }
+        }
+        appendCallReply(process, node, recipe, reply);
+    }
+
+    private void driveSubProcessOnce(
+            ThinkProcessDocument child, String marvinProcessId, String content) {
+        SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
+                java.time.Instant.now(),
+                /*idempotencyKey*/ null,
+                "marvin:" + marvinProcessId,
+                content);
+        try {
+            laneScheduler.submit(child.getId(),
+                    () -> thinkEngineServiceProvider.getObject().steer(child, message)).get();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new AiChatException(
+                    "Marvin CALL_RECIPE interrupted child='" + child.getId() + "'", ie);
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
+            throw new AiChatException(
+                    "Marvin CALL_RECIPE turn failed child='" + child.getId()
+                            + "': " + cause.getMessage(), cause);
+        }
+    }
+
+    private @Nullable String readLastAssistantText(
+            String tenantId, String sessionId, String workerProcessId) {
+        List<ChatMessageDocument> history = chatMessageService.history(
+                tenantId, sessionId, workerProcessId);
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessageDocument m = history.get(i);
+            if (m.getRole() == ChatRole.ASSISTANT && m.getContent() != null
+                    && !m.getContent().isBlank()) {
+                return m.getContent();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Appends the recipe reply as a USER message into the
+     * marvin-worker's chat history (i.e. the Marvin process's
+     * own chat log). That history is consumed by the next phase
+     * call via the {@code ChatMessageService}-fed memory builder
+     * — but the current implementation rebuilds the LLM message
+     * list inline per call ({@code buildPhaseUserMessage} only
+     * passes the latest phase user msg), so we ALSO persist the
+     * reply onto the node so the next REFLECT phase can read it.
+     */
+    private void appendCallReply(
+            ThinkProcessDocument process,
+            MarvinNodeDocument node,
+            String recipe,
+            String reply) {
+        String marker = "<<< Result of CALL_RECIPE('" + recipe + "'):\n";
+        String capped = reply;
+        int cap = properties.getRecipeReplyTruncateChars();
+        if (capped.length() > cap) {
+            capped = capped.substring(0, cap)
+                    + "\n[truncated; full reply persisted in sub-process history]";
+        }
+        String block = marker + capped + "\n>>>";
+
+        // Persist on the node as a structured artifact for later
+        // phases to access via the user-message builder.
+        Map<String, Object> art = node.getArtifacts() == null
+                ? new LinkedHashMap<>() : node.getArtifacts();
+        @SuppressWarnings("unchecked")
+        List<String> calls = (List<String>) art.get("recipeReplies");
+        if (calls == null) {
+            calls = new ArrayList<>();
+            art.put("recipeReplies", calls);
+        }
+        calls.add(block);
+        node.setArtifacts(art);
+        nodeService.save(node);
+
+        // Best-effort: also persist to the Marvin process's chat
+        // history so the inspector / Web UI can show the recipe
+        // round-trips. Failures don't break the phase loop —
+        // the reply is already on the node's artifacts.
+        try {
+            ChatMessageDocument msg = ChatMessageDocument.builder()
+                    .tenantId(process.getTenantId())
+                    .sessionId(process.getSessionId())
+                    .thinkProcessId(process.getId())
+                    .role(ChatRole.USER)
+                    .content(block)
+                    .build();
+            chatMessageService.append(msg);
+        } catch (RuntimeException e) {
+            log.debug("Marvin id='{}' chat-history append for CALL_RECIPE reply failed: {}",
+                    process.getId(), e.toString());
+        }
+    }
+
+    // ──────────────────── NEEDS_SUBTASKS ────────────────────
+
+    /**
+     * Appends the proposed children as WORKER nodes under the
+     * current node. EXPAND_FROM_DOC is honored when the spec
+     * carries the required {@code documentRef}+{@code childTemplate};
+     * other TaskKinds are rejected by the spec parser.
+     */
+    private void spawnChildren(
+            ThinkProcessDocument process,
+            MarvinNodeDocument parent,
+            List<NewTaskSpec> children) {
+        if (children == null || children.isEmpty()) return;
+        List<NodeSpec> specs = new ArrayList<>(children.size());
+        for (NewTaskSpec c : children) {
+            TaskKind kind = c.taskKind() == null ? TaskKind.WORKER : c.taskKind();
+            Map<String, Object> spec = c.taskSpec() == null
+                    ? new LinkedHashMap<>() : new LinkedHashMap<>(c.taskSpec());
+            specs.add(new NodeSpec(c.goal(), kind, spec));
+        }
+        nodeService.appendChildren(
+                process.getTenantId(), process.getId(),
+                parent.getId() == null ? "" : parent.getId(), specs);
+        log.info("Marvin id='{}' node='{}' spawned {} children (NEEDS_SUBTASKS)",
+                process.getId(), parent.getId(), specs.size());
+    }
+
+    // ──────────────────── NEEDS_USER_INPUT ────────────────────
+
+    /**
+     * Inserts a USER_INPUT sibling AFTER the worker node and marks
+     * the worker DONE with awaitingUserInputNode pointer. Mirrors
+     * v1's pattern so the inbox-answer router still finds the node
+     * via the inbox-item id.
+     */
+    private boolean spawnUserInputSibling(
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            MarvinNodeDocument node,
+            UserInputSpec spec) {
+        if (ctx.userId() == null) {
+            nodeService.markFailed(node,
+                    "NEEDS_USER_INPUT requires session-owner userId; none resolved");
+            return false;
+        }
+        Map<String, Object> taskSpec = new LinkedHashMap<>();
+        taskSpec.put("type", spec.type());
+        if (spec.title() != null) taskSpec.put("title", spec.title());
+        if (spec.body() != null) taskSpec.put("body", spec.body());
+        if (spec.criticality() != null) taskSpec.put("criticality", spec.criticality());
+        if (spec.payload() != null && !spec.payload().isEmpty()) {
+            taskSpec.put("payload", spec.payload());
+        }
+        NodeSpec ns = new NodeSpec(
+                spec.title() == null || spec.title().isBlank()
+                        ? "User input requested by worker" : spec.title(),
+                TaskKind.USER_INPUT,
+                taskSpec);
+        MarvinNodeDocument inputNode = nodeService.insertSiblingAfter(
+                process.getTenantId(), node, ns);
+
+        Map<String, Object> artifacts = new LinkedHashMap<>();
+        artifacts.put("awaitingUserInputNode", inputNode.getId());
+        nodeService.markDone(node, artifacts);
+        log.info("Marvin id='{}' NEEDS_USER_INPUT node='{}' inserted USER_INPUT sibling='{}'",
+                process.getId(), node.getId(), inputNode.getId());
+        return false;
     }
 
     // ──────────────────── EXPAND_FROM_DOC ────────────────────
 
-    /**
-     * Document-driven decomposition — see
-     * {@code specification/marvin-engine.md} §7a. Reads the referenced
-     * list/tree/records document via {@link DocumentExpander}, applies
-     * the {@code childTemplate} per item and appends the resulting
-     * children under this node. No LLM call.
-     *
-     * <p>Empty document is not a failure (returns 0 children, marks
-     * DONE) unless {@code taskSpec.failOnEmpty=true}. Missing template
-     * variables resolve to {@code ""} unless
-     * {@code taskSpec.failOnMissingField=true}.
-     *
-     * <p>{@code expandPolicy=PAUSE_BEFORE_EXPAND} (read from the node's
-     * {@code taskSpec} or the process's engine-params) injects a
-     * USER_INPUT approval sibling <em>before</em> this node, marks
-     * the node back to PENDING and yields. The DFS hits the inbox
-     * sibling first; once the user approves the EXPAND runs through
-     * normally on the next visit (an {@code _approved} flag on the
-     * taskSpec stops the policy from re-triggering).
-     */
     private void runExpandFromDoc(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
@@ -1710,8 +1375,6 @@ public class MarvinEngine implements ThinkEngine {
         if (documentRef == null || documentRef.isEmpty()) {
             nodeService.markFailed(node,
                     "EXPAND_FROM_DOC missing taskSpec.documentRef");
-            log.warn("Marvin id='{}' EXPAND node='{}' missing documentRef — failing",
-                    process.getId(), node.getId());
             return;
         }
         @SuppressWarnings("unchecked")
@@ -1719,25 +1382,11 @@ public class MarvinEngine implements ThinkEngine {
         if (childTemplate == null || childTemplate.isEmpty()) {
             nodeService.markFailed(node,
                     "EXPAND_FROM_DOC missing taskSpec.childTemplate");
-            log.warn("Marvin id='{}' EXPAND node='{}' missing childTemplate — failing",
-                    process.getId(), node.getId());
             return;
         }
-
-        if (shouldPauseForApproval(process, node)) {
-            insertApprovalGate(process, node);
-            return;
-        }
-
         String treeMode = paramString(node, "treeMode", "RECURSIVE");
         boolean failOnEmpty = paramBool(node, "failOnEmpty", false);
         boolean strictMissing = paramBool(node, "failOnMissingField", false);
-
-        // childTemplate must pin a recipe — recipe-less EXPAND
-        // children no longer route through the selector (that path
-        // was retired with the recipe-routing rework; see
-        // specification/recipe-routing.md). The validator below
-        // catches missing recipes via the standard runWorker check.
         DocumentExpander.ExpansionPlan plan;
         try {
             plan = documentExpander.expand(
@@ -1746,16 +1395,11 @@ public class MarvinEngine implements ThinkEngine {
                     node.getGoal(), strictMissing);
         } catch (DocumentExpander.ExpandError ee) {
             nodeService.markFailed(node, ee.getMessage());
-            log.warn("Marvin id='{}' EXPAND node='{}' failed: {}",
-                    process.getId(), node.getId(), ee.getMessage());
             return;
         } catch (RuntimeException e) {
             nodeService.markFailed(node, "EXPAND_FROM_DOC failed: " + e.getMessage());
-            log.warn("Marvin id='{}' EXPAND node='{}' unexpected error: {}",
-                    process.getId(), node.getId(), e.toString(), e);
             return;
         }
-
         if (plan.nodes().isEmpty()) {
             if (failOnEmpty) {
                 nodeService.markFailed(node,
@@ -1766,11 +1410,8 @@ public class MarvinEngine implements ThinkEngine {
             artifacts.put("expanded", true);
             artifacts.put("childCount", 0);
             nodeService.markDone(node, artifacts);
-            log.info("Marvin id='{}' EXPAND node='{}' empty document — DONE without children",
-                    process.getId(), node.getId());
             return;
         }
-
         int total = appendExpansionPlan(process, node.getId(), plan.nodes());
         Map<String, Object> artifacts = new LinkedHashMap<>();
         artifacts.put("expanded", true);
@@ -1780,17 +1421,11 @@ public class MarvinEngine implements ThinkEngine {
                 process.getId(), node.getId(), total);
     }
 
-    /**
-     * Walks the {@link DocumentExpander.ExpansionPlan} pre-order,
-     * appending direct children under each parent and recursing into
-     * nested children. Returns the total number of nodes inserted.
-     */
     private int appendExpansionPlan(
             ThinkProcessDocument process, String parentId,
             List<DocumentExpander.TemplatedNode> templated) {
         if (templated.isEmpty()) return 0;
-        List<de.mhus.vance.shared.marvin.MarvinNodeService.NodeSpec> directSpecs =
-                new ArrayList<>(templated.size());
+        List<NodeSpec> directSpecs = new ArrayList<>(templated.size());
         for (DocumentExpander.TemplatedNode tn : templated) {
             directSpecs.add(tn.spec());
         }
@@ -1806,270 +1441,8 @@ public class MarvinEngine implements ThinkEngine {
         return total;
     }
 
-    /**
-     * @return {@code true} when the {@code expandPolicy} resolves to
-     *         {@code PAUSE_BEFORE_EXPAND} <em>and</em> this node has
-     *         not been approved yet (no {@code _approved} marker on
-     *         the taskSpec).
-     */
-    private static boolean shouldPauseForApproval(
-            ThinkProcessDocument process, MarvinNodeDocument node) {
-        if (paramBool(node, "_approved", false)) return false;
-        // Node-level overrides process-level; explicit AUTO wins.
-        String policy = paramString(node, "expandPolicy", null);
-        if (policy == null) policy = paramString(process, "expandPolicy", null);
-        return "PAUSE_BEFORE_EXPAND".equalsIgnoreCase(policy);
-    }
-
-    /**
-     * Inserts an APPROVAL inbox-item sibling immediately before this
-     * EXPAND node, flips the EXPAND back to PENDING and tags it as
-     * {@code _approved=true} so the next visit (after the approval
-     * lands) runs through to materialization without re-prompting.
-     */
-    private void insertApprovalGate(
-            ThinkProcessDocument process, MarvinNodeDocument expandNode) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> docRef = paramMap(expandNode, "documentRef");
-        String docDescriptor = describeDocRef(docRef);
-        Map<String, Object> taskSpec = new LinkedHashMap<>();
-        taskSpec.put("type", "APPROVAL");
-        taskSpec.put("title", "Approve outline before expansion");
-        taskSpec.put("body", "Marvin is about to expand the document "
-                + docDescriptor + " into "
-                + (expandNode.getGoal() == null ? "child tasks" : expandNode.getGoal())
-                + ". Edit the document now if needed, then approve.");
-        de.mhus.vance.shared.marvin.MarvinNodeService.NodeSpec gate =
-                new de.mhus.vance.shared.marvin.MarvinNodeService.NodeSpec(
-                        "Approve expansion of " + docDescriptor,
-                        TaskKind.USER_INPUT,
-                        taskSpec);
-        nodeService.insertSiblingBefore(process.getTenantId(), expandNode, gate);
-
-        Map<String, Object> updatedSpec = expandNode.getTaskSpec() == null
-                ? new LinkedHashMap<>()
-                : new LinkedHashMap<>(expandNode.getTaskSpec());
-        updatedSpec.put("_approved", Boolean.TRUE);
-        expandNode.setTaskSpec(updatedSpec);
-        expandNode.setStatus(NodeStatus.PENDING);
-        expandNode.setStartedAt(null);
-        nodeService.save(expandNode);
-        log.info("Marvin id='{}' EXPAND node='{}' paused for approval gate (doc={})",
-                process.getId(), expandNode.getId(), docDescriptor);
-    }
-
-    private static String describeDocRef(@Nullable Map<String, Object> ref) {
-        if (ref == null) return "<unknown>";
-        Object n = ref.get("name");
-        if (n instanceof String s && !s.isBlank()) return "'" + s + "'";
-        Object p = ref.get("path");
-        if (p instanceof String s && !s.isBlank()) return "'" + s + "'";
-        Object id = ref.get("id");
-        if (id instanceof String s && !s.isBlank()) return "id=" + s;
-        return "<unknown>";
-    }
-
-    // ──────────────────── WORKER ────────────────────
-
-    /**
-     * Synchronous worker pattern: spawn the worker, drive one turn,
-     * read the structured reply, parse, route, stop the worker.
-     * Marvin's lane is held for the worker's full duration — that's
-     * intentional, because v1 sequential-children require it and
-     * because the worker engines (Ford) don't reach a terminal
-     * status on their own (they go RUNNING → READY after each turn,
-     * which {@code ParentNotificationListener} silences). Driving
-     * the worker explicitly removes the dependency on a DONE event.
-     *
-     * <p>Always returns {@code false} (synchronously completed) so
-     * {@code runTurn} schedules the next iteration on Marvin's lane.
-     * The node is marked DONE/FAILED before this method returns.
-     */
-    private boolean runWorker(
-            ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            MarvinNodeDocument node) {
-        String recipeName = paramString(node, "recipe", null);
-        if (recipeName == null) {
-            // Recipe-less WORKER children no longer route through
-            // the selector — that path was retired with the recipe-
-            // routing rework (specification/recipe-routing.md).
-            // PLAN-LLMs must pick a recipe per child, ideally via
-            // the recipe's allowedSubTaskRecipes constraint.
-            nodeService.markFailed(node,
-                    "WORKER node has no recipe — PLAN-LLM must pick "
-                            + "one (set taskSpec.recipe, or constrain via "
-                            + "allowedSubTaskRecipes). Recipe-less worker "
-                            + "spawn is no longer routed automatically.");
-            log.warn("Marvin id='{}' WORKER node='{}' recipe-less spawn — "
-                            + "failing (selector-routed worker spawn retired)",
-                    process.getId(), node.getId());
-            return false;
-        }
-        String steerContent = paramString(node, "steerContent", node.getGoal());
-        Map<String, Object> recipeParams = paramMap(node, "params");
-
-        ThinkProcessDocument child;
-        boolean asyncWorker;
-        try {
-            AppliedRecipe applied = recipeResolver.apply(
-                    process.getTenantId(), ctx.projectId(), recipeName,
-                    process.getConnectionProfile(), recipeParams);
-            ThinkEngine targetEngine = thinkEngineServiceProvider.getObject()
-                    .resolve(applied.engine())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Recipe '" + applied.name() + "' references unknown engine '"
-                                    + applied.engine() + "'"));
-            // Phase I: engines whose `asyncSteer()` is true (Vogon,
-            // Marvin, …) don't produce a synchronous LLM reply. Spawn
-            // them as long-running children and finalise the WORKER
-            // node when their ProcessEvent type=DONE arrives in our
-            // pending queue. Synchronous LLM-engines (Ford, …) go
-            // through the heritage drive-and-parse path below.
-            asyncWorker = targetEngine.asyncSteer();
-            String childName = "marvin-" + node.getId();
-            child = thinkProcessService.create(
-                    process.getTenantId(),
-                    process.getProjectId(),
-                    process.getSessionId(),
-                    childName,
-                    targetEngine.name(),
-                    targetEngine.version(),
-                    "Marvin worker for node " + node.getId(),
-                    node.getGoal(),
-                    process.getId(),
-                    applied.params(),
-                    applied.name(),
-                    applied.promptOverride(),
-                    applied.promptOverrideAppend(),
-                    applied.promptMode(),
-                    applied.dataRelayCorrection(),
-                    applied.effectiveAllowedTools(),
-                    applied.connectionProfile(),
-                    applied.defaultActiveSkills(),
-                    applied.allowedSkills() == null
-                            ? null : java.util.Set.copyOf(applied.allowedSkills()));
-            nodeService.setSpawnedProcessId(node, child.getId());
-            thinkEngineServiceProvider.getObject().start(child);
-            log.info("Marvin id='{}' WORKER node='{}' spawned child='{}' recipe='{}' async={}",
-                    process.getId(), node.getId(), child.getId(), applied.name(), asyncWorker);
-            try {
-                progressEmitter.emitStatus(process,
-                        de.mhus.vance.api.progress.StatusTag.DELEGATING,
-                        "Node '" + abbrev(node.getGoal())
-                                + "' → worker '" + applied.name() + "'");
-            } catch (RuntimeException pe) {
-                log.debug("Marvin id='{}' WORKER DELEGATING progress emit failed: {}",
-                        process.getId(), pe.toString());
-            }
-        } catch (RecipeResolver.UnknownRecipeException ure) {
-            nodeService.markFailed(node, "Unknown recipe: " + recipeName);
-            log.warn("Marvin id='{}' WORKER node='{}' unknown recipe '{}' — failing",
-                    process.getId(), node.getId(), recipeName);
-            return false;
-        } catch (RecipeResolver.UnknownEngineException uee) {
-            nodeService.markFailed(node, uee.getMessage());
-            log.warn("Marvin id='{}' WORKER node='{}' unknown engine — {}",
-                    process.getId(), node.getId(), uee.getMessage());
-            return false;
-        } catch (RuntimeException e) {
-            nodeService.markFailed(node, "WORKER spawn failed: " + e.getMessage());
-            log.warn("Marvin id='{}' WORKER node='{}' spawn failed: {}",
-                    process.getId(), node.getId(), e.toString());
-            return false;
-        }
-
-        // Async worker (Vogon / nested Marvin / Trillian / …): start
-        // and yield. Node stays RUNNING; handleProcessEvent finalises
-        // it when the child's DONE/FAILED/STOPPED event lands in our
-        // pending queue.
-        if (asyncWorker) {
-            return false;
-        }
-
-        // Synchronous LLM worker (Ford / chat-style): drive the worker
-        // — including up to MAX_OUTPUT_CORRECTIONS schema-correction
-        // round-trips — and route the final output.
-        try {
-            String steer = steerContent + WORKER_SCHEMA_POSTFIX;
-            String workerReply = null;
-            MarvinWorkerOutputParser.Result parsed = null;
-            for (int attempt = 0; attempt <= MAX_OUTPUT_CORRECTIONS; attempt++) {
-                driveWorkerTurn(child, process.getId(), steer);
-                workerReply = readLastAssistantText(
-                        process.getTenantId(), process.getSessionId(), child.getId());
-                parsed = workerOutputParser.parse(workerReply);
-                if (parsed.ok()) break;
-                if (attempt == MAX_OUTPUT_CORRECTIONS) {
-                    String reason = "worker output schema invalid after "
-                            + attempt + " correction(s): " + parsed.error();
-                    nodeService.markFailed(node, reason);
-                    log.warn("Marvin id='{}' WORKER node='{}' giving up — {}",
-                            process.getId(), node.getId(), reason);
-                    return false;
-                }
-                log.info("Marvin id='{}' WORKER node='{}' schema-correction {}/{}: {}",
-                        process.getId(), node.getId(), attempt + 1,
-                        MAX_OUTPUT_CORRECTIONS, parsed.error());
-                steer = "VALIDATION CHECK (correction " + (attempt + 1)
-                        + "/" + MAX_OUTPUT_CORRECTIONS + "): "
-                        + parsed.error()
-                        + "\n\nRe-emit your reply ending with the correct JSON object."
-                        + WORKER_SCHEMA_POSTFIX;
-            }
-            routeWorkerOutput(process, node, parsed.output(), workerReply);
-        } finally {
-            // One-shot synchronous worker: stop it now, regardless of
-            // outcome, so it doesn't linger as a READY process
-            // consuming a session slot. The STOPPED-event will arrive
-            // in Marvin's pending queue and be ignored (node is now
-            // terminal). Async workers manage their own lifecycle —
-            // we let them drive themselves to DONE.
-            try {
-                thinkEngineServiceProvider.getObject().stop(child);
-            } catch (RuntimeException e) {
-                log.warn("Marvin id='{}' worker stop failed for child='{}': {}",
-                        process.getId(), child.getId(), e.toString());
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Sends one user-input message to the worker and waits for its
-     * lane-turn to complete. Errors are converted to AiChatException
-     * so {@link #runWorker} can react / mark the node failed.
-     */
-    private void driveWorkerTurn(
-            ThinkProcessDocument child, String marvinProcessId, String content) {
-        SteerMessage.UserChatInput message = new SteerMessage.UserChatInput(
-                java.time.Instant.now(),
-                /*idempotencyKey*/ null,
-                "marvin:" + marvinProcessId,
-                content);
-        try {
-            laneScheduler.submit(child.getId(),
-                    () -> thinkEngineServiceProvider.getObject().steer(child, message)).get();
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new AiChatException(
-                    "Marvin worker interrupted child='" + child.getId() + "'", ie);
-        } catch (ExecutionException ee) {
-            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-            throw new AiChatException(
-                    "Marvin worker turn failed child='" + child.getId()
-                            + "': " + cause.getMessage(), cause);
-        }
-    }
-
     // ──────────────────── USER_INPUT ────────────────────
 
-    /**
-     * Creates an inbox item for a USER_INPUT node and parks it in
-     * WAITING. Returns {@code false} only when the item couldn't be
-     * created at all — in that case the node is FAILED and runTurn
-     * should advance to the next sibling.
-     */
     private boolean runUserInput(
             ThinkProcessDocument process,
             ThinkEngineContext ctx,
@@ -2078,8 +1451,6 @@ public class MarvinEngine implements ThinkEngine {
         if (targetUserId == null) {
             nodeService.markFailed(node,
                     "USER_INPUT requires session-owner userId; none resolved");
-            log.warn("Marvin id='{}' USER_INPUT node='{}' — no session userId, failing",
-                    process.getId(), node.getId());
             return false;
         }
         InboxItemType type = parseInboxItemType(
@@ -2090,15 +1461,6 @@ public class MarvinEngine implements ThinkEngine {
         String body = paramString(node, "body", null);
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = paramMap(node, "payload");
-        @SuppressWarnings("unchecked")
-        List<Object> tagsRaw = (List<Object>) (Object) paramList(node, "tags");
-        List<String> tags = new ArrayList<>();
-        if (tagsRaw != null) {
-            for (Object o : tagsRaw) {
-                if (o instanceof String s && !s.isBlank()) tags.add(s);
-            }
-        }
-
         try {
             InboxItemDocument toCreate = InboxItemDocument.builder()
                     .tenantId(process.getTenantId())
@@ -2108,7 +1470,7 @@ public class MarvinEngine implements ThinkEngine {
                     .originSessionId(process.getSessionId())
                     .type(type)
                     .criticality(crit)
-                    .tags(tags)
+                    .tags(List.of("marvin"))
                     .title(title == null ? "Marvin asks" : title)
                     .body(body)
                     .payload(payload == null ? new LinkedHashMap<>() : payload)
@@ -2116,136 +1478,292 @@ public class MarvinEngine implements ThinkEngine {
                     .build();
             InboxItemDocument saved = inboxItemService.create(toCreate);
             nodeService.setInboxItemId(node, saved.getId());
-            // If the inbox auto-answered (LOW + default), the steer-router
-            // already pushed the answer back; just park as WAITING and let
-            // the next turn drain it from the pending queue.
             nodeService.markWaiting(node);
             log.info("Marvin id='{}' USER_INPUT node='{}' item='{}' type={} crit={}",
                     process.getId(), node.getId(), saved.getId(), type, crit);
             return true;
         } catch (RuntimeException e) {
             nodeService.markFailed(node, "USER_INPUT failed: " + e.getMessage());
-            log.warn("Marvin id='{}' USER_INPUT node='{}' failed: {}",
-                    process.getId(), node.getId(), e.toString());
             return false;
         }
     }
 
-    // ──────────────────── AGGREGATE ────────────────────
+    // ──────────────────── Draft persistence ────────────────────
 
-    private void runAggregate(
+    /**
+     * Persist a node's CONCLUDE-result as a Markdown draft under
+     * {@code _marvin-drafts/<processId>/<position-path>__<slug>.md}.
+     * Deterministic, engine-side; no LLM involvement. Drafts are a
+     * debug / audit aid — they let a human inspect what each
+     * sub-worker produced, including the intermediate synthesis a
+     * parent did over its children before its own postActions ran.
+     *
+     * <p>The file body carries a small YAML-front-matter header
+     * (node id, goal, phase counters, timestamp) followed by the
+     * raw result Markdown. Failures are logged at WARN and
+     * swallowed — drafts must never break the engine.
+     */
+    private void writeNodeDraft(
             ThinkProcessDocument process,
-            ThinkEngineContext ctx,
-            MarvinNodeDocument node) {
+            MarvinNodeDocument node,
+            @Nullable String result) {
+        if (result == null || result.isBlank()) return;
         try {
-            // Aggregate the artifacts of this node's siblings (nodes
-            // with the same parentId, smaller position) — the spec'ed
-            // pattern is "AGGREGATE is the LAST sibling under a PLAN
-            // parent". v1: collect every prior sibling regardless of
-            // status, drop SKIPPED, surface FAILED reasons too.
-            List<MarvinNodeDocument> siblings = nodeService.findChildren(
-                    process.getId(), node.getParentId());
-            List<MarvinNodeDocument> priors = new ArrayList<>();
-            for (MarvinNodeDocument s : siblings) {
-                if (s.getId() != null && s.getId().equals(node.getId())) continue;
-                if (s.getPosition() >= node.getPosition()) continue;
-                if (s.getStatus() == NodeStatus.SKIPPED) continue;
-                priors.add(s);
+            String positionPath = buildPositionPath(node);
+            String slug = slugify(node.getGoal(), 60);
+            String filename = positionPath + "__" + slug + ".md";
+            String path = "_marvin-drafts/" + process.getId() + "/" + filename;
+            String body = renderDraftBody(node, result);
+            String title = "Marvin draft — " + abbrev(node.getGoal());
+            String tenantId = process.getTenantId();
+            String projectId = process.getProjectId();
+            var existing = documentService.findByPath(tenantId, projectId, path);
+            if (existing.isPresent()) {
+                documentService.update(
+                        existing.get().getId(), title, /*tags*/ null, body, /*newPath*/ null);
+            } else {
+                documentService.createText(
+                        tenantId, projectId, path, title,
+                        List.of("marvin", "draft", "process-" + process.getId()),
+                        body,
+                        "marvin:" + process.getId());
             }
-            int maxChars = paramInt(node, "maxOutputChars",
-                    properties.getAggregateMaxOutputChars());
-            String customPrompt = paramString(node, "prompt", null);
-
-            de.mhus.vance.brain.ai.EngineChatFactory.EngineChatBundle aggregateBundle =
-                    engineChatFactory.forProcess(process, ctx, NAME);
-            AiChat ai = aggregateBundle.chat();
-            AiChatConfig config = aggregateBundle.primaryConfig();
-
-            List<ChatMessage> messages = new ArrayList<>();
-            String aggrTpl = enginePromptResolver.resolve(
-                    process, AGGREGATE_PROMPT_PATH, AGGREGATE_SYSTEM_PROMPT);
-            java.util.Map<String, Object> aggrCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
-                    .forProcess(process, null)
-                    .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
-                    .engine(NAME)
-                    .withRootDirTypes(workspaceService.getRootDirTypes(
-                            process.getTenantId(), process.getProjectId()))
-                    .build();
-            messages.add(SystemMessage.from(promptTemplateRenderer.render(aggrTpl, aggrCtx)));
-            StringBuilder body = new StringBuilder();
-            body.append("Goal of this AGGREGATE node:\n").append(node.getGoal()).append("\n\n");
-            if (customPrompt != null) {
-                body.append("Synthesis instruction:\n").append(customPrompt).append("\n\n");
-            }
-            body.append("maxOutputChars: ").append(maxChars).append("\n\n");
-            body.append("Sibling artifacts:\n");
-            for (MarvinNodeDocument s : priors) {
-                body.append("\n--- node ").append(s.getId())
-                        .append(" status=").append(s.getStatus())
-                        .append(" goal=\"").append(abbrev(s.getGoal())).append("\" ---\n");
-                if (s.getStatus() == NodeStatus.FAILED) {
-                    body.append("FAILED reason: ").append(s.getFailureReason()).append("\n");
-                } else {
-                    body.append(renderArtifacts(s.getArtifacts())).append("\n");
-                }
-            }
-
-            messages.add(UserMessage.from(body.toString()));
-            String modelAlias = config.provider() + ":" + config.modelName();
-            long startMs = System.currentTimeMillis();
-            ChatRequest request = ChatRequest.builder().messages(messages).build();
-            ChatResponse response = ai.chatModel().chat(request);
-            llmCallTracker.record(
-                    process, request, response, System.currentTimeMillis() - startMs, modelAlias);
-            String summary = response.aiMessage() == null
-                    ? "" : nullSafe(response.aiMessage().text()).trim();
-            if (summary.length() > maxChars) {
-                summary = summary.substring(0, maxChars);
-            }
-
-            Map<String, Object> artifacts = new LinkedHashMap<>();
-            artifacts.put("summary", summary);
-            artifacts.put("aggregatedNodeIds",
-                    priors.stream().map(MarvinNodeDocument::getId).toList());
-            nodeService.markDone(node, artifacts);
-            log.info("Marvin id='{}' AGGREGATE node='{}' summarized {} siblings ({} chars)",
-                    process.getId(), node.getId(), priors.size(), summary.length());
-            runPostActions(process, node, artifacts);
-            emitNodeDoneStatus(process, node, summary.length() + " chars (aggregate)");
+            log.info("Marvin id='{}' wrote draft node='{}' path='{}' ({} chars)",
+                    process.getId(), node.getId(), path, result.length());
         } catch (RuntimeException e) {
-            nodeService.markFailed(node, "AGGREGATE failed: " + e.getMessage());
-            log.warn("Marvin id='{}' AGGREGATE node='{}' failed: {}",
+            log.warn("Marvin id='{}' draft persistence failed node='{}': {}",
                     process.getId(), node.getId(), e.toString());
         }
     }
 
-    private static String renderArtifacts(@Nullable Map<String, Object> artifacts) {
-        if (artifacts == null || artifacts.isEmpty()) return "(no artifacts)";
-        StringBuilder sb = new StringBuilder();
-        for (Map.Entry<String, Object> e : artifacts.entrySet()) {
-            sb.append(e.getKey()).append(": ");
-            String val = String.valueOf(e.getValue());
-            if (val.length() > 1500) val = val.substring(0, 1500) + "...";
-            sb.append(val).append('\n');
+    private String buildPositionPath(MarvinNodeDocument node) {
+        java.util.Deque<Integer> positions = new java.util.ArrayDeque<>();
+        MarvinNodeDocument cur = node;
+        int guard = 32; // prevent runaway in cyclic data
+        while (cur != null && guard-- > 0) {
+            positions.push(cur.getPosition());
+            String pid = cur.getParentId();
+            if (pid == null) break;
+            cur = nodeService.findById(pid).orElse(null);
         }
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Integer p : positions) {
+            if (!first) sb.append('-');
+            first = false;
+            sb.append(p);
+        }
+        return sb.length() == 0 ? "x" : sb.toString();
+    }
+
+    private String renderDraftBody(MarvinNodeDocument node, String result) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("---\n");
+        sb.append("nodeId: ").append(node.getId()).append('\n');
+        sb.append("taskKind: ").append(node.getTaskKind()).append('\n');
+        sb.append("status: ").append(node.getStatus()).append('\n');
+        if (node.getCurrentPhase() != null) {
+            sb.append("currentPhase: ").append(node.getCurrentPhase()).append('\n');
+        }
+        sb.append("reflectIter: ").append(node.getReflectIter()).append('\n');
+        sb.append("validateIter: ").append(node.getValidateIter()).append('\n');
+        sb.append("concludeRetries: ").append(node.getConcludeRetries()).append('\n');
+        if (node.getCompletedAt() != null) {
+            sb.append("completedAt: ").append(node.getCompletedAt()).append('\n');
+        }
+        if (node.getPhaseHistory() != null && !node.getPhaseHistory().isEmpty()) {
+            sb.append("phaseHistory:\n");
+            for (var ph : node.getPhaseHistory()) {
+                sb.append("  - ").append(ph.phase())
+                        .append(" iter=").append(ph.iterationIndex())
+                        .append(" at ").append(ph.timestamp())
+                        .append('\n');
+            }
+        }
+        sb.append("---\n\n");
+        sb.append("# ").append(nullSafe(node.getGoal())).append("\n\n");
+        sb.append(result);
         return sb.toString();
     }
 
-    // ──────────────────── Idle / done ────────────────────
+    /** URL-safe slug: lowercase, non-alnum runs → "-", trim edge
+     *  hyphens, truncate to {@code maxLen}. Mirrors the Pebble
+     *  {@code | slug} filter for engine-side use. */
+    private static String slugify(@Nullable String input, int maxLen) {
+        if (input == null) return "untitled";
+        String s = input.toLowerCase(java.util.Locale.ROOT);
+        s = s.replaceAll("[^a-z0-9]+", "-");
+        s = s.replaceAll("(^-+|-+$)", "");
+        if (s.isBlank()) return "untitled";
+        if (s.length() > maxLen) s = s.substring(0, maxLen);
+        s = s.replaceAll("-+$", "");
+        return s.isBlank() ? "untitled" : s;
+    }
 
-    /**
-     * Decides the process status when {@code runTurn} has nothing
-     * synchronous left to do. See spec §8 (status aggregation):
-     * <ul>
-     *   <li>All nodes terminal → {@code DONE}.</li>
-     *   <li>At least one node {@code WAITING} on user input
-     *       AND no node still {@code RUNNING} → {@code BLOCKED}.
-     *       Important: a tree with both RUNNING and WAITING is
-     *       <em>not</em> BLOCKED — workers are still going. Going
-     *       BLOCKED there would falsely wake the parent (Arthur).</li>
-     *   <li>Otherwise → {@code READY} (waiting for child events).</li>
-     * </ul>
-     */
+    // ──────────────────── postActions ────────────────────
+
+    private void runPostActions(
+            ThinkProcessDocument process,
+            MarvinNodeDocument node,
+            List<PostActionSpec> actions,
+            Map<String, Object> nodeArtifacts) {
+        if (actions == null || actions.isEmpty()) return;
+        Map<String, Object> renderContext = buildPostActionContext(process, node, nodeArtifacts);
+        for (PostActionSpec a : actions) {
+            String tool = a.tool();
+            if (tool == null || tool.isBlank()) {
+                log.warn("Marvin id='{}' postAction skipped — missing tool", process.getId());
+                continue;
+            }
+            try {
+                switch (tool.trim()) {
+                    case "doc_write_text", "doc_create_text" ->
+                            execDocWriteText(process, node, a.args(), renderContext);
+                    default -> log.warn("Marvin id='{}' postAction tool='{}' unknown — skipping",
+                            process.getId(), tool);
+                }
+            } catch (RuntimeException e) {
+                log.warn("Marvin id='{}' postAction tool='{}' node='{}' failed: {}",
+                        process.getId(), tool, node.getId(), e.toString());
+            }
+        }
+    }
+
+    private void execDocWriteText(
+            ThinkProcessDocument process,
+            MarvinNodeDocument node,
+            Map<String, Object> args,
+            Map<String, Object> renderContext) {
+        String rawPath = optString(args, "path");
+        if (rawPath == null || rawPath.isBlank()) {
+            throw new IllegalArgumentException(
+                    "doc_write_text postAction requires non-blank args.path");
+        }
+        Object contentObj = args == null ? null : args.get("content");
+        String rawContent = contentObj instanceof String cs ? cs : null;
+        if (rawContent == null) {
+            throw new IllegalArgumentException(
+                    "doc_write_text postAction requires args.content (string)");
+        }
+        String path = renderPostActionTemplate(rawPath, renderContext);
+        String content = renderPostActionTemplate(rawContent, renderContext);
+        String rawTitle = optString(args, "title");
+        String title = rawTitle == null
+                ? null : renderPostActionTemplate(rawTitle, renderContext);
+
+        String tenantId = process.getTenantId();
+        String projectId = process.getProjectId();
+        var existing = documentService.findByPath(tenantId, projectId, path);
+        if (existing.isPresent()) {
+            documentService.update(
+                    existing.get().getId(), title, /*tags*/ null, content, /*newPath*/ null);
+            log.info("Marvin id='{}' postAction doc_write_text node='{}' updated path='{}' ({} chars)",
+                    process.getId(), node.getId(), path, content.length());
+        } else {
+            documentService.createText(
+                    tenantId, projectId, path, title,
+                    List.of("marvin", "post-action"), content,
+                    "marvin:" + process.getId());
+            log.info("Marvin id='{}' postAction doc_write_text node='{}' created path='{}' ({} chars)",
+                    process.getId(), node.getId(), path, content.length());
+        }
+    }
+
+    private Map<String, Object> buildPostActionContext(
+            ThinkProcessDocument process,
+            MarvinNodeDocument node,
+            Map<String, Object> nodeArtifacts) {
+        Map<String, Object> nodeCtx = new LinkedHashMap<>();
+        Object nodeResult = nodeArtifacts.get("result");
+        nodeCtx.put("result", nodeResult == null ? "" : nodeResult);
+        nodeCtx.put("goal", nullSafe(node.getGoal()));
+        nodeCtx.put("summary", nullSafe(
+                (String) nodeArtifacts.getOrDefault("summary", "")));
+        Map<String, Object> processParams = new LinkedHashMap<>();
+        String goalStr = nullSafe(process.getGoal());
+        processParams.put("topic", goalStr);
+        processParams.put("goal", goalStr);
+        processParams.put("input", goalStr);
+        processParams.put("query", goalStr);
+        Map<String, Object> processCtx = new LinkedHashMap<>();
+        processCtx.put("goal", goalStr);
+        processCtx.put("id", nullSafe(process.getId()));
+        processCtx.put("params", processParams);
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("node", nodeCtx);
+        root.put("process", processCtx);
+        root.put("result", nodeCtx);
+        return root;
+    }
+
+    private String renderPostActionTemplate(
+            String template, Map<String, Object> ctx) {
+        try {
+            String rendered = promptTemplateRenderer.render(template, ctx);
+            return rendered == null ? "" : rendered;
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException(
+                    "postAction template render failed for '" + template
+                            + "': " + e.getMessage(), e);
+        }
+    }
+
+    // ──────────────────── plan snapshot to progress channel ────────────────────
+
+    private void emitPlanSnapshot(ThinkProcessDocument process) {
+        if (process.getId() == null) return;
+        List<MarvinNodeDocument> all = nodeService.listAll(process.getId());
+        if (all.isEmpty()) return;
+        Map<String, List<MarvinNodeDocument>> byParent = new LinkedHashMap<>();
+        MarvinNodeDocument root = null;
+        for (MarvinNodeDocument n : all) {
+            if (n.getParentId() == null) {
+                root = n;
+            } else {
+                byParent.computeIfAbsent(n.getParentId(),
+                        k -> new ArrayList<>()).add(n);
+            }
+        }
+        if (root == null) return;
+        for (List<MarvinNodeDocument> kids : byParent.values()) {
+            kids.sort((a, b) -> Integer.compare(a.getPosition(), b.getPosition()));
+        }
+        de.mhus.vance.api.progress.PlanNode rootPlanNode = toPlanNode(root, byParent);
+        progressEmitter.emitPlan(
+                process,
+                de.mhus.vance.api.progress.PlanPayload.builder()
+                        .rootNode(rootPlanNode)
+                        .build());
+    }
+
+    private de.mhus.vance.api.progress.PlanNode toPlanNode(
+            MarvinNodeDocument node,
+            Map<String, List<MarvinNodeDocument>> byParent) {
+        List<MarvinNodeDocument> kids = byParent.getOrDefault(node.getId(), List.of());
+        List<de.mhus.vance.api.progress.PlanNode> childPlans = kids.isEmpty()
+                ? null
+                : kids.stream().map(k -> toPlanNode(k, byParent)).toList();
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("position", node.getPosition());
+        if (node.getCurrentPhase() != null) meta.put("phase", node.getCurrentPhase().name());
+        if (node.getFailureReason() != null) {
+            meta.put("failureReason", node.getFailureReason());
+        }
+        if (node.getInboxItemId() != null) {
+            meta.put("inboxItemId", node.getInboxItemId());
+        }
+        return de.mhus.vance.api.progress.PlanNode.builder()
+                .id(node.getId() == null ? "" : node.getId())
+                .kind(node.getTaskKind().name().toLowerCase())
+                .title(node.getGoal())
+                .status(node.getStatus().name().toLowerCase())
+                .children(childPlans)
+                .meta(meta)
+                .build();
+    }
+
+    // ──────────────────── idle / done ────────────────────
+
     private void finalizeIdle(ThinkProcessDocument process) {
         if (nodeService.isTreeTerminal(process.getId())) {
             log.info("Marvin id='{}' tree terminal — DONE", process.getId());
@@ -2265,40 +1783,25 @@ public class MarvinEngine implements ThinkEngine {
         return nodeService.listAll(process.getId()).size() > properties.getMaxTreeNodes();
     }
 
-    // ──────────────────── Config resolve (mirrors Ford) ────────────────────
-
-    private static AiChatConfig resolveAiConfig(
-            ThinkProcessDocument process,
-            SettingService settings,
-            AiModelResolver modelResolver) {
-        String tenantId = process.getTenantId();
-        String paramModel = paramString(process, "model", null);
-        String paramProvider = paramString(process, "provider", null);
-        String spec;
-        if (paramModel != null && paramModel.contains(":")) {
-            spec = paramModel;
-        } else if (paramModel != null && paramProvider != null) {
-            spec = paramProvider + ":" + paramModel;
-        } else if (paramModel != null) {
-            spec = "default:" + paramModel;
-        } else {
-            spec = null;
+    private void emitNodeDoneStatus(
+            ThinkProcessDocument process, MarvinNodeDocument node, String detail) {
+        try {
+            progressEmitter.emitStatus(process,
+                    de.mhus.vance.api.progress.StatusTag.NODE_DONE,
+                    "Node '" + abbrev(node.getGoal()) + "' done — " + detail);
+        } catch (RuntimeException pe) {
+            log.debug("Marvin id='{}' NODE_DONE progress emit failed: {}",
+                    process.getId(), pe.toString());
         }
-        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
-                spec, tenantId, process.getProjectId(), process.getId());
-        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
-        String apiKey = settings.getDecryptedPasswordCascade(
-                tenantId, process.getProjectId(), process.getId(), apiKeySetting);
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "No API key configured for provider '" + resolved.provider()
-                            + "' (tenant='" + tenantId
-                            + "', setting='" + apiKeySetting + "')");
-        }
-        return new AiChatConfig(resolved.provider(), resolved.modelName(), apiKey);
     }
 
-    // ──────────────────── engineParams + node-spec helpers ────────────────────
+    // ──────────────────── helpers ────────────────────
+
+    private static @Nullable String optString(@Nullable Map<String, Object> m, String key) {
+        if (m == null) return null;
+        Object v = m.get(key);
+        return v instanceof String s && !s.isBlank() ? s : null;
+    }
 
     private static @Nullable Object processParam(
             ThinkProcessDocument process, String key) {
@@ -2306,12 +1809,16 @@ public class MarvinEngine implements ThinkEngine {
         return p == null ? null : p.get(key);
     }
 
-    private static @Nullable String paramString(
-            ThinkProcessDocument process, String key, @Nullable String fallback) {
+    private static int paramInt(
+            ThinkProcessDocument process, String key, int fallback) {
         Object v = processParam(process, key);
-        return v instanceof String s && !s.isBlank() ? s : fallback;
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof String s) {
+            try { return Integer.parseInt(s.trim()); }
+            catch (NumberFormatException e) { return fallback; }
+        }
+        return fallback;
     }
-
 
     private static @Nullable Object nodeSpecParam(
             MarvinNodeDocument node, String key) {
@@ -2323,16 +1830,6 @@ public class MarvinEngine implements ThinkEngine {
             MarvinNodeDocument node, String key, @Nullable String fallback) {
         Object v = nodeSpecParam(node, key);
         return v instanceof String s && !s.isBlank() ? s : fallback;
-    }
-
-    private static int paramInt(MarvinNodeDocument node, String key, int fallback) {
-        Object v = nodeSpecParam(node, key);
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s) {
-            try { return Integer.parseInt(s.trim()); }
-            catch (NumberFormatException e) { return fallback; }
-        }
-        return fallback;
     }
 
     private static boolean paramBool(MarvinNodeDocument node, String key, boolean fallback) {
@@ -2356,62 +1853,27 @@ public class MarvinEngine implements ThinkEngine {
         return null;
     }
 
-    private static @Nullable List<?> paramList(MarvinNodeDocument node, String key) {
-        Object v = nodeSpecParam(node, key);
-        return v instanceof List<?> list ? list : null;
-    }
-
-    private static TaskKind parseTaskKind(@Nullable String raw, TaskKind fallback) {
-        if (raw == null || raw.isBlank()) return fallback;
-        try {
-            return TaskKind.valueOf(raw.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return fallback;
-        }
-    }
-
-    /**
-     * Builds the root node's {@code taskSpec} from process-level
-     * engine-params. For {@code EXPAND_FROM_DOC} we lift
-     * {@code rootDocumentRef} → {@code documentRef},
-     * {@code rootChildTemplate} → {@code childTemplate} and
-     * {@code rootTreeMode} → {@code treeMode} so a recipe can spawn
-     * a doc-driven Marvin via params alone (see spec §7a.3 (c)).
-     * Other root kinds get an empty spec — their handlers carry no
-     * required fields beyond {@code goal} for the root.
-     */
     @SuppressWarnings("unchecked")
-    private static @Nullable Map<String, Object> buildRootTaskSpec(
-            ThinkProcessDocument process, TaskKind kind) {
-        if (kind != TaskKind.EXPAND_FROM_DOC) return null;
-        Map<String, Object> p = process.getEngineParams();
-        if (p == null) return null;
-        Map<String, Object> spec = new LinkedHashMap<>();
-        Object docRef = p.get("rootDocumentRef");
-        if (docRef instanceof Map<?, ?> m) {
-            Map<String, Object> copy = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : m.entrySet()) {
-                if (e.getKey() instanceof String k) copy.put(k, e.getValue());
-            }
-            spec.put("documentRef", copy);
-        } else if (docRef instanceof String s && !s.isBlank()) {
-            // Convenience shorthand: a bare string is treated as the
-            // document name within the current project.
-            Map<String, Object> ref = new LinkedHashMap<>();
-            ref.put("name", s);
-            spec.put("documentRef", ref);
+    private List<String> readAvailableRecipes(ThinkProcessDocument process) {
+        Object raw = processParam(process, "availableRecipes");
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object o : list) {
+            if (o instanceof String s && !s.isBlank()) out.add(s.trim());
         }
-        Object tmpl = p.get("rootChildTemplate");
-        if (tmpl instanceof Map<?, ?> m) {
-            Map<String, Object> copy = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : m.entrySet()) {
-                if (e.getKey() instanceof String k) copy.put(k, e.getValue());
-            }
-            spec.put("childTemplate", copy);
+        return out;
+    }
+
+    private @Nullable String describeRecipe(ThinkProcessDocument process, String name) {
+        try {
+            var resolved = recipeLoader.load(
+                    process.getTenantId(), process.getProjectId(), name);
+            if (resolved.isEmpty()) return null;
+            String desc = resolved.get().description();
+            return desc == null ? null : desc.lines().findFirst().orElse(desc);
+        } catch (RuntimeException e) {
+            return null;
         }
-        Object treeMode = p.get("rootTreeMode");
-        if (treeMode instanceof String s && !s.isBlank()) spec.put("treeMode", s);
-        return spec.isEmpty() ? null : spec;
     }
 
     private static InboxItemType parseInboxItemType(
@@ -2441,232 +1903,5 @@ public class MarvinEngine implements ThinkEngine {
     private static String abbrev(@Nullable String s) {
         if (s == null) return "";
         return s.length() <= 80 ? s : s.substring(0, 77) + "...";
-    }
-
-    /**
-     * Executes the {@code postActions} list declared on a node's
-     * {@code taskSpec} (if any) after the node reaches DONE. Pure
-     * deterministic deliver — no LLM call. Lets recipes declare
-     * file persistence as a programmatic post-step, freeing worker
-     * LLMs from having to issue {@code doc_write_text} tool calls
-     * inline (which led to halluzinated success messages in the
-     * live 2026-05-24 Atomkraft / Kernfusion runs).
-     *
-     * <p>Supported tools (v1):
-     * <ul>
-     *   <li>{@code doc_write_text} — upsert (find-by-path → update,
-     *       else create). Args: {@code path}, {@code content},
-     *       optional {@code title}.</li>
-     *   <li>{@code doc_create_text} — alias for {@code doc_write_text}
-     *       to match the existing tool catalog name.</li>
-     * </ul>
-     *
-     * <p>String arg values (path/content/title) are rendered with
-     * the same Pebble engine the recipe templates use. Available
-     * context:
-     * <ul>
-     *   <li>{@code {{ node.result }}} — WORKER artifact {@code result},
-     *       falling back to AGGREGATE {@code summary} or
-     *       {@code partialResult} if missing.</li>
-     *   <li>{@code {{ node.goal }}} — node's goal text.</li>
-     *   <li>{@code {{ process.goal }}} — root process goal.</li>
-     *   <li>{@code | slug} filter — URL-safe slug (lowercase
-     *       a-z0-9 + hyphen). Use as {@code {{ process.goal | slug }}}.</li>
-     * </ul>
-     *
-     * <p>Key tolerance: accepts both {@code tool}/{@code toolName} and
-     * {@code args}/{@code params} as LLM-friendly aliases — recipes
-     * generated by Slart's Marvin-Architect sometimes pick the
-     * Vogon-flavoured names.
-     *
-     * <p>Failures are isolated per-action: a thrown exception marks
-     * the postAction as failed but the node stays DONE (the
-     * artifacts are already persisted). The next runTurn picks up
-     * any side effects.
-     */
-    private void runPostActions(
-            ThinkProcessDocument process,
-            MarvinNodeDocument node,
-            Map<String, Object> nodeArtifacts) {
-        if (node.getTaskSpec() == null) return;
-        Object raw = node.getTaskSpec().get("postActions");
-        if (!(raw instanceof List<?> list) || list.isEmpty()) return;
-
-        Map<String, Object> renderContext = buildPostActionContext(
-                process, node, nodeArtifacts);
-
-        for (Object actionRaw : list) {
-            if (!(actionRaw instanceof Map<?, ?> actionMap)) {
-                log.warn("Marvin id='{}' postAction skipped — not a map: {}",
-                        process.getId(), actionRaw);
-                continue;
-            }
-            // Tolerant key lookup: 'tool' is the canonical, 'toolName'
-            // is an LLM-friendly synonym we accept (recipes generated
-            // by Slart's Marvin-Architect emit it sometimes).
-            String tool = readStringTolerant(actionMap, "tool", "toolName");
-            if (tool == null || tool.isBlank()) {
-                log.warn("Marvin id='{}' postAction skipped — "
-                                + "missing 'tool' / 'toolName' field",
-                        process.getId());
-                continue;
-            }
-            Map<String, Object> args = readMapTolerant(actionMap, "args", "params");
-            try {
-                switch (tool.trim()) {
-                    case "doc_write_text", "doc_create_text" ->
-                            execDocWriteText(process, node, args, renderContext);
-                    default -> log.warn("Marvin id='{}' postAction tool='{}' unknown — "
-                                    + "skipping (supported: doc_write_text, doc_create_text)",
-                            process.getId(), tool);
-                }
-            } catch (RuntimeException e) {
-                log.warn("Marvin id='{}' postAction tool='{}' node='{}' failed: {}",
-                        process.getId(), tool, node.getId(), e.toString());
-            }
-        }
-    }
-
-    private void execDocWriteText(
-            ThinkProcessDocument process,
-            MarvinNodeDocument node,
-            Map<String, Object> args,
-            Map<String, Object> renderContext) {
-        String rawPath = readStringTolerant(args, "path");
-        if (rawPath == null || rawPath.isBlank()) {
-            throw new IllegalArgumentException(
-                    "doc_write_text postAction requires non-blank args.path");
-        }
-        Object contentObj = args.get("content");
-        String rawContent = contentObj instanceof String cs ? cs : null;
-        if (rawContent == null) {
-            throw new IllegalArgumentException(
-                    "doc_write_text postAction requires args.content (string)");
-        }
-        String path = renderPostActionTemplate(rawPath, renderContext);
-        String content = renderPostActionTemplate(rawContent, renderContext);
-        String rawTitle = readStringTolerant(args, "title");
-        String title = rawTitle == null
-                ? null : renderPostActionTemplate(rawTitle, renderContext);
-
-        String tenantId = process.getTenantId();
-        String projectId = process.getProjectId();
-        var existing = documentService.findByPath(tenantId, projectId, path);
-        if (existing.isPresent()) {
-            documentService.update(
-                    existing.get().getId(), title, /*tags*/ null, content, /*newPath*/ null);
-            log.info("Marvin id='{}' postAction doc_write_text node='{}' updated path='{}' ({} chars)",
-                    process.getId(), node.getId(), path, content.length());
-        } else {
-            documentService.createText(
-                    tenantId, projectId, path, title,
-                    List.of("marvin", "post-action"), content,
-                    "marvin:" + process.getId());
-            log.info("Marvin id='{}' postAction doc_write_text node='{}' created path='{}' ({} chars)",
-                    process.getId(), node.getId(), path, content.length());
-        }
-    }
-
-    private Map<String, Object> buildPostActionContext(
-            ThinkProcessDocument process,
-            MarvinNodeDocument node,
-            Map<String, Object> nodeArtifacts) {
-        Map<String, Object> nodeCtx = new LinkedHashMap<>();
-        Object nodeResult = pickFirstString(
-                nodeArtifacts, "result", "summary", "partialResult");
-        nodeCtx.put("result", nodeResult == null ? "" : nodeResult);
-        nodeCtx.put("goal", nullSafe(node.getGoal()));
-        nodeCtx.put("summary", nullSafe(
-                (String) nodeArtifacts.getOrDefault("summary", "")));
-        nodeCtx.put("partialResult", nullSafe(
-                (String) nodeArtifacts.getOrDefault("partialResult", "")));
-
-        // Synthetic `process.params` map: LLMs natively prefer
-        // `process.params.topic` over `process.goal` when the
-        // recipe took a topic-shaped input. Mirror process.goal
-        // under common parameter names so the template renders
-        // cleanly without surprising the recipe author.
-        Map<String, Object> processParams = new LinkedHashMap<>();
-        String goalStr = nullSafe(process.getGoal());
-        processParams.put("topic", goalStr);
-        processParams.put("goal", goalStr);
-        processParams.put("input", goalStr);
-        processParams.put("query", goalStr);
-
-        Map<String, Object> processCtx = new LinkedHashMap<>();
-        processCtx.put("goal", goalStr);
-        processCtx.put("id", nullSafe(process.getId()));
-        processCtx.put("params", processParams);
-
-        Map<String, Object> root = new LinkedHashMap<>();
-        root.put("node", nodeCtx);
-        root.put("process", processCtx);
-        // `result` is a top-level alias for `node` because the LLM
-        // writes `{{ result.summary }}` instinctively (it reads as
-        // "the result's summary" not "the node's result.summary").
-        // Both forms work, SHAPE.md teaches the canonical `node.X`.
-        root.put("result", nodeCtx);
-        return root;
-    }
-
-    private String renderPostActionTemplate(
-            String template, Map<String, Object> ctx) {
-        try {
-            String rendered = promptTemplateRenderer.render(template, ctx);
-            return rendered == null ? "" : rendered;
-        } catch (RuntimeException e) {
-            throw new IllegalArgumentException(
-                    "postAction template render failed for '" + template
-                            + "': " + e.getMessage(), e);
-        }
-    }
-
-    private static @Nullable String readStringTolerant(
-            Map<?, ?> map, String... keys) {
-        if (map == null) return null;
-        for (String k : keys) {
-            Object v = map.get(k);
-            if (v instanceof String s && !s.isBlank()) return s;
-        }
-        return null;
-    }
-
-    private static Map<String, Object> readMapTolerant(
-            Map<?, ?> map, String... keys) {
-        if (map == null) return Map.of();
-        for (String k : keys) {
-            Object v = map.get(k);
-            if (v instanceof Map<?, ?> m) return (Map<String, Object>) m;
-        }
-        return Map.of();
-    }
-
-    private static @Nullable Object pickFirstString(
-            Map<String, Object> map, String... keys) {
-        if (map == null) return null;
-        for (String k : keys) {
-            Object v = map.get(k);
-            if (v instanceof String s && !s.isBlank()) return s;
-        }
-        return null;
-    }
-
-    /**
-     * Pushes a {@link de.mhus.vance.api.progress.StatusTag#NODE_DONE}
-     * ping to the user-progress side-channel. Caller-tolerant: any
-     * exception from the emitter is downgraded to a debug log so
-     * progress emit never blocks the lane. Same pattern as the
-     * Vogon phase-done emit and Slartibartfast phase-done emit.
-     */
-    private void emitNodeDoneStatus(
-            ThinkProcessDocument process, MarvinNodeDocument node, String detail) {
-        try {
-            progressEmitter.emitStatus(process,
-                    de.mhus.vance.api.progress.StatusTag.NODE_DONE,
-                    "Node '" + abbrev(node.getGoal()) + "' done — " + detail);
-        } catch (RuntimeException pe) {
-            log.debug("Marvin id='{}' NODE_DONE progress emit failed: {}",
-                    process.getId(), pe.toString());
-        }
     }
 }

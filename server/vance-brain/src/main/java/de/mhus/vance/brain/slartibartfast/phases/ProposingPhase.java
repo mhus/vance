@@ -361,16 +361,17 @@ public class ProposingPhase {
                     "JSON parse error: " + e.getMessage());
         }
 
-        Object n = root.get("name");
-        if (!(n instanceof String name) || name.isBlank()) {
-            throw new ProposeValidationException(
-                    "required field 'name' missing or blank");
+        // Delegate name + YAML extraction to the architect. Vogon /
+        // Zaphod read both off the JSON root; Marvin reads name from
+        // root.params.name and renders the YAML from a bundled
+        // template (see MarvinArchitect).
+        String name;
+        try {
+            name = architect.extractRecipeName(root);
+        } catch (RuntimeException e) {
+            throw new ProposeValidationException(e.getMessage());
         }
 
-        // Delegate YAML extraction to the architect: Vogon and
-        // Zaphod read root.yaml directly; Marvin renders a
-        // bundled template from root.params (see
-        // MarvinArchitect.extractRecipeYaml).
         String yaml;
         try {
             yaml = architect.extractRecipeYaml(root);

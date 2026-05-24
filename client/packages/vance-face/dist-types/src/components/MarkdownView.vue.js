@@ -186,6 +186,36 @@ export default defineComponent({
                 console.warn('MarkdownView: invalid vance: URI on click', href, e);
                 return;
             }
+            // Wizard-suggestion path: links emitted by the wizard render
+            // pipeline ({@code FollowUpRenderer}) carry {@code kind=wizard}
+            // plus an opaque prefill query. We dispatch a window event the
+            // chat editor picks up to switch the side tab and seed the form
+            // — see {@code chat/WizardPanel.vue} and {@code chat/ChatView.vue}.
+            if (embedRef.kindHint === 'wizard') {
+                try {
+                    const url = new URL(href);
+                    const segments = url.pathname.split('/').filter(Boolean);
+                    // Path shape: `/wizards/<name>` (after stripping the scheme).
+                    const wizardName = segments[segments.length - 1];
+                    if (!wizardName) {
+                        console.warn('MarkdownView: wizard vance: URI missing name', href);
+                        return;
+                    }
+                    const prefill = {};
+                    url.searchParams.forEach((value, key) => {
+                        if (key === 'kind')
+                            return; // discriminator, not a form value
+                        prefill[key] = value;
+                    });
+                    window.dispatchEvent(new CustomEvent('vance-open-wizard', {
+                        detail: { name: decodeURIComponent(wizardName), prefill },
+                    }));
+                }
+                catch (e) {
+                    console.warn('MarkdownView: failed to parse wizard vance: URI', href, e);
+                }
+                return;
+            }
             let doc;
             try {
                 doc = await documentRefStore.resolve(embedRef);

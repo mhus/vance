@@ -1,0 +1,47 @@
+title:
+  de: "Aufsatz schreiben (mit Recipe)"
+  en: "Write an essay (with recipe)"
+description:
+  de: "Aufsatz auf Basis eines bereits angelegten Slart-Recipes generieren."
+  en: "Generate an essay using an existing slart recipe."
+icon: pencil-square
+category: schreiben
+
+fields:
+  - name: recipe
+    type: string
+    required: true
+    label:
+      de: "Recipe-Name"
+      en: "Recipe name"
+    help:
+      de: "Name eines bestehenden Recipes — z.B. das vom 'Aufsatz-Recipe anlegen'-Wizard erzeugte."
+      en: "Name of an existing recipe — e.g. the one from the 'Create essay recipe' wizard."
+
+  - name: topic
+    type: textarea
+    rows: 3
+    required: true
+    label:
+      de: "Thema"
+      en: "Topic"
+
+  - name: keyPoints
+    type: textarea
+    rows: 4
+    required: false
+    label:
+      de: "Kernaussagen (optional)"
+      en: "Key points (optional)"
+    help:
+      de: "Stichpunkte, die der Aufsatz unbedingt abdecken soll."
+      en: "Bullet points the essay must cover."
+
+promptTemplate: |
+  Schreibe einen Aufsatz mit dem Recipe '{{ recipe }}'.
+
+  **Thema:** {{ topic }}
+  {% if keyPoints %}
+  **Kernaussagen:**
+  {{ keyPoints }}
+  {% endif %}

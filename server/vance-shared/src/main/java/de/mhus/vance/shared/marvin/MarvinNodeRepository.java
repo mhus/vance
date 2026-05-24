@@ -22,6 +22,11 @@ interface MarvinNodeRepository extends MongoRepository<MarvinNodeDocument, Strin
 
     Optional<MarvinNodeDocument> findBySpawnedProcessId(String spawnedProcessId);
 
+    /** Reverse-lookup for CALL_RECIPE sub-processes — Marvin uses
+     *  this to route a sub-process's ProcessEvent back to the
+     *  worker node that spawned it. */
+    Optional<MarvinNodeDocument> findByCalledSubProcessIdsContaining(String subProcessId);
+
     Optional<MarvinNodeDocument> findByInboxItemId(String inboxItemId);
 
     long countByProcessIdAndStatus(String processId, NodeStatus status);

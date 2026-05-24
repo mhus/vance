@@ -10,6 +10,7 @@ import { SessionHeader, VAlert, VButton, VSelect, VTextarea } from '@components/
 import MessageBubble from './MessageBubble.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
 import ProgressFeed from './ProgressFeed.vue';
+import WizardPanel from './WizardPanel.vue';
 const props = defineProps();
 const { t } = useI18n();
 const emit = defineEmits();
@@ -51,6 +52,32 @@ const modeBadge = computed(() => {
 const composerText = ref('');
 const sending = ref(false);
 const sendError = ref(null);
+/** Right-aside tab selector — toggles between the live progress
+ *  feed and the prompt-wizards panel. Default 'progress' preserves
+ *  the pre-wizards behaviour for users that haven't engaged the
+ *  feature yet. */
+const rightTab = ref('progress');
+/** Imperative handle to {@link WizardPanel} — used by the wizard
+ *  deep-link handler below to open a wizard with prefill. */
+const wizardPanelRef = ref(null);
+/** Receive a rendered prompt from {@link WizardPanel}: drop it into
+ *  the composer, leave it to the user to inspect/edit and click Send. */
+function onWizardPromptReady(prompt) {
+    composerText.value = prompt;
+}
+/** Listener for {@code vance:/wizards/<name>?kind=wizard&...} link
+ *  clicks dispatched by {@code MarkdownView}. Switches the side panel
+ *  to the wizards tab and opens the named wizard with the URL prefill. */
+function onWizardDeepLink(ev) {
+    const detail = ev.detail;
+    if (!detail || !detail.name)
+        return;
+    rightTab.value = 'wizards';
+    // Wait one tick so WizardPanel mounts before we call into it.
+    void Promise.resolve().then(() => {
+        wizardPanelRef.value?.openWizard(detail.name, detail.prefill ?? {});
+    });
+}
 /** Files the user dragged onto the composer or picked via the
  *  paperclip button. Cleared on successful send; entries are
  *  uploaded to {@code _chatbox/...} just before the steer call. */
@@ -965,8 +992,10 @@ onMounted(async () => {
     if (readTalkModeStored()) {
         enableTalkMode();
     }
+    window.addEventListener('vance-open-wizard', onWizardDeepLink);
 });
 onBeforeUnmount(() => {
+    window.removeEventListener('vance-open-wizard', onWizardDeepLink);
     for (const off of subscriptions)
         off();
     // Tear down Talk-Mode timers but keep the persisted flag — a
@@ -1695,16 +1724,68 @@ if (__VLS_ctx.sending) {
     var __VLS_148;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
-    ...{ class: "w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto" },
+    ...{ class: "w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto flex flex-col" },
 });
-/** @type {[typeof ProgressFeed, ]} */ ;
-// @ts-ignore
-const __VLS_153 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
-    events: (__VLS_ctx.progressEvents),
-}));
-const __VLS_154 = __VLS_153({
-    events: (__VLS_ctx.progressEvents),
-}, ...__VLS_functionalComponentArgsRest(__VLS_153));
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "flex border-b border-base-300 text-xs uppercase tracking-wide font-semibold" },
+});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.rightTab = 'progress';
+        } },
+    type: "button",
+    ...{ class: (['flex-1 py-2 transition-colors',
+            __VLS_ctx.rightTab === 'progress'
+                ? 'bg-base-100 border-b-2 border-primary'
+                : 'bg-base-200 opacity-70 hover:opacity-100']) },
+});
+(__VLS_ctx.$t('chat.wizards.progressTabLabel'));
+__VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+    ...{ onClick: (...[$event]) => {
+            __VLS_ctx.rightTab = 'wizards';
+        } },
+    type: "button",
+    ...{ class: (['flex-1 py-2 transition-colors',
+            __VLS_ctx.rightTab === 'wizards'
+                ? 'bg-base-100 border-b-2 border-primary'
+                : 'bg-base-200 opacity-70 hover:opacity-100']) },
+});
+(__VLS_ctx.$t('chat.wizards.tabLabel'));
+if (__VLS_ctx.rightTab === 'progress') {
+    /** @type {[typeof ProgressFeed, ]} */ ;
+    // @ts-ignore
+    const __VLS_153 = __VLS_asFunctionalComponent(ProgressFeed, new ProgressFeed({
+        events: (__VLS_ctx.progressEvents),
+    }));
+    const __VLS_154 = __VLS_153({
+        events: (__VLS_ctx.progressEvents),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_153));
+}
+else {
+    /** @type {[typeof WizardPanel, ]} */ ;
+    // @ts-ignore
+    const __VLS_156 = __VLS_asFunctionalComponent(WizardPanel, new WizardPanel({
+        ...{ 'onPromptReady': {} },
+        ref: "wizardPanelRef",
+        projectId: (__VLS_ctx.chatProjectId || undefined),
+        sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
+    }));
+    const __VLS_157 = __VLS_156({
+        ...{ 'onPromptReady': {} },
+        ref: "wizardPanelRef",
+        projectId: (__VLS_ctx.chatProjectId || undefined),
+        sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_156));
+    let __VLS_159;
+    let __VLS_160;
+    let __VLS_161;
+    const __VLS_162 = {
+        onPromptReady: (__VLS_ctx.onWizardPromptReady)
+    };
+    /** @type {typeof __VLS_ctx.wizardPanelRef} */ ;
+    var __VLS_163 = {};
+    var __VLS_158;
+}
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
@@ -1882,6 +1963,23 @@ const __VLS_154 = __VLS_153({
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-b']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['tracking-wide']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['transition-colors']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['transition-colors']} */ ;
+// @ts-ignore
+var __VLS_164 = __VLS_163;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -1898,6 +1996,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             MessageBubble: MessageBubble,
             PlanModeIndicator: PlanModeIndicator,
             ProgressFeed: ProgressFeed,
+            WizardPanel: WizardPanel,
             emit: emit,
             historyLoading: historyLoading,
             historyError: historyError,
@@ -1910,6 +2009,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             composerText: composerText,
             sending: sending,
             sendError: sendError,
+            rightTab: rightTab,
+            wizardPanelRef: wizardPanelRef,
+            onWizardPromptReady: onWizardPromptReady,
             selectedFiles: selectedFiles,
             uploading: uploading,
             dragActive: dragActive,

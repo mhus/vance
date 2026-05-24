@@ -386,7 +386,7 @@ class ValidatingPhaseTest {
     @Test
     void marvinRecipe_unknownRecipeName_rejected() {
         ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - web-research\n    - real-recipe", ""),
+                        "    - web-research\n    - real-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
         when(recipeLoader.listAll("acme", "test-project"))
@@ -408,7 +408,7 @@ class ValidatingPhaseTest {
         // The existence check must reject it just like any other
         // hallucinated name — no special-case engine list.
         ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - marvin-worker\n    - real-recipe", ""),
+                        "    - marvin-worker\n    - real-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
         when(recipeLoader.listAll("acme", "test-project"))
@@ -428,7 +428,7 @@ class ValidatingPhaseTest {
     @Test
     void marvinRecipe_duplicateRecipeName_rejected() {
         ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - real-recipe\n    - real-recipe", ""),
+                        "    - real-recipe\n    - real-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
         when(recipeLoader.listAll("acme", "test-project"))
@@ -463,8 +463,7 @@ class ValidatingPhaseTest {
     @Test
     void marvinRecipe_allRecipesPresent_passes() {
         ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - real-recipe\n    - other-recipe",
-                        "    - other-recipe"),
+                        "    - real-recipe\n    - other-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
         when(recipeLoader.listAll("acme", "test-project"))
@@ -483,7 +482,7 @@ class ValidatingPhaseTest {
     @Test
     void marvinRecipe_recoveryHintListsAvailableRecipes() {
         ArchitectState state = marvinState(MARVIN_YAML_WITH_RECIPES_TEMPLATE.formatted(
-                        "    - bogus-recipe", ""),
+                        "    - bogus-recipe"),
                 Map.of("name", "sg1", "promptPrefix", "sg1"),
                 List.of(subgoal("sg1")));
         when(recipeLoader.listAll("acme", "test-project"))
@@ -519,15 +518,15 @@ class ValidatingPhaseTest {
      * {@code %s} #2 = body of {@code recipesOnlyViaExpand} list (may
      * be empty string for no entries).
      */
+    // Marvin v2: availableRecipes replaces v1's allowedSubTaskRecipes
+    // + recipesOnlyViaExpand. The validator only checks the single
+    // availableRecipes list now.
     private static final String MARVIN_YAML_WITH_RECIPES_TEMPLATE = """
             name: m
             description: m
             engine: marvin
             params:
-              rootTaskKind: PLAN
-              allowedSubTaskRecipes:
-            %s
-              recipesOnlyViaExpand:
+              availableRecipes:
             %s
             promptPrefix: |
               Drive the plan.
@@ -537,8 +536,7 @@ class ValidatingPhaseTest {
             name: m
             description: m
             engine: marvin
-            params:
-              rootTaskKind: PLAN
+            params: {}
             promptPrefix: |
               Drive the plan.
             """;

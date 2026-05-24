@@ -57,6 +57,7 @@ import { SessionHeader, VAlert, VButton, VSelect, VTextarea } from '@components/
 import MessageBubble from './MessageBubble.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
 import ProgressFeed from './ProgressFeed.vue';
+import WizardPanel from './WizardPanel.vue';
 
 // Wire form of {@code ProcessMode} (Jackson serialises by enum name).
 // The generated TS enum is numeric so a runtime equality check would
@@ -134,6 +135,35 @@ const modeBadge = computed<string | null>(() => {
 const composerText = ref('');
 const sending = ref(false);
 const sendError = ref<string | null>(null);
+
+/** Right-aside tab selector — toggles between the live progress
+ *  feed and the prompt-wizards panel. Default 'progress' preserves
+ *  the pre-wizards behaviour for users that haven't engaged the
+ *  feature yet. */
+const rightTab = ref<'progress' | 'wizards'>('progress');
+
+/** Imperative handle to {@link WizardPanel} — used by the wizard
+ *  deep-link handler below to open a wizard with prefill. */
+const wizardPanelRef = ref<InstanceType<typeof WizardPanel> | null>(null);
+
+/** Receive a rendered prompt from {@link WizardPanel}: drop it into
+ *  the composer, leave it to the user to inspect/edit and click Send. */
+function onWizardPromptReady(prompt: string): void {
+  composerText.value = prompt;
+}
+
+/** Listener for {@code vance:/wizards/<name>?kind=wizard&...} link
+ *  clicks dispatched by {@code MarkdownView}. Switches the side panel
+ *  to the wizards tab and opens the named wizard with the URL prefill. */
+function onWizardDeepLink(ev: Event): void {
+  const detail = (ev as CustomEvent<{ name?: string; prefill?: Record<string, string> }>).detail;
+  if (!detail || !detail.name) return;
+  rightTab.value = 'wizards';
+  // Wait one tick so WizardPanel mounts before we call into it.
+  void Promise.resolve().then(() => {
+    wizardPanelRef.value?.openWizard(detail.name!, detail.prefill ?? {});
+  });
+}
 
 /** Files the user dragged onto the composer or picked via the
  *  paperclip button. Cleared on successful send; entries are
@@ -1101,9 +1131,11 @@ onMounted(async () => {
   if (readTalkModeStored()) {
     enableTalkMode();
   }
+  window.addEventListener('vance-open-wizard', onWizardDeepLink);
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('vance-open-wizard', onWizardDeepLink);
   for (const off of subscriptions) off();
   // Tear down Talk-Mode timers but keep the persisted flag — a
   // session switch (component remount) is expected to resurrect it
@@ -1437,9 +1469,39 @@ watch(() => props.sessionId, async (newId, oldId) => {
       </footer>
     </section>
 
-    <!-- Right panel: live progress feed -->
-    <aside class="w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto">
-      <ProgressFeed :events="progressEvents" />
+    <!-- Right panel: tabbed live progress + wizards -->
+    <aside class="w-80 shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto flex flex-col">
+      <div class="flex border-b border-base-300 text-xs uppercase tracking-wide font-semibold">
+        <button
+          type="button"
+          :class="['flex-1 py-2 transition-colors',
+                   rightTab === 'progress'
+                     ? 'bg-base-100 border-b-2 border-primary'
+                     : 'bg-base-200 opacity-70 hover:opacity-100']"
+          @click="rightTab = 'progress'"
+        >
+          {{ $t('chat.wizards.progressTabLabel') }}
+        </button>
+        <button
+          type="button"
+          :class="['flex-1 py-2 transition-colors',
+                   rightTab === 'wizards'
+                     ? 'bg-base-100 border-b-2 border-primary'
+                     : 'bg-base-200 opacity-70 hover:opacity-100']"
+          @click="rightTab = 'wizards'"
+        >
+          {{ $t('chat.wizards.tabLabel') }}
+        </button>
+      </div>
+
+      <ProgressFeed v-if="rightTab === 'progress'" :events="progressEvents" />
+      <WizardPanel
+        v-else
+        ref="wizardPanelRef"
+        :project-id="chatProjectId || undefined"
+        :session-key="chatProcessName ?? undefined"
+        @prompt-ready="onWizardPromptReady"
+      />
     </aside>
   </div>
 </template>

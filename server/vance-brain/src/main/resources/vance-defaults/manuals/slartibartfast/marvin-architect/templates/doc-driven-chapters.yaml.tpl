@@ -1,68 +1,48 @@
 name: {{ params.name }}
 description: |
-  {{ params.description }}
+  {{ params.description | yamlIndent(2) }}
 engine: marvin
 params:
-  rootTaskKind: PLAN
-  maxPlanCorrections: 2
-  defaultExecutionMode: SEQUENTIAL
-  allowedSubTaskRecipes:
-    - marvin-worker
-  recipesOnlyViaExpand:
-    - marvin-worker
-  allowedExpandDocumentRefPaths:
-    - {{ params.outlinePath }}
+  model: default:analyze
+  availableRecipes:
+{%- for r in params.availableRecipes %}
+    - {{ r }}
+{%- endfor %}
+  language: {{ params.language }}
 promptPrefix: |
-  You are the {{ params.name }} PLAN node.{% if params.processGoalLabel %} The {{ params.processGoalLabel }} comes from the process goal.{% endif %}
+  Du sollst zum Thema {% verbatim %}{{ process.goal }}{% endverbatim %} eine strukturierte
+  Ausarbeitung produzieren.
 
-  Emit EXACTLY {% if params.consolidate %}3{% else %}2{% endif %} children in this order. Use only WORKER and EXPAND_FROM_DOC; no other kinds.
+  Vorgehen:
+  - Schritt 1: Erstelle in deiner CONCLUDE-Antwort als ersten
+    Output eine Outline (Gliederung) als Markdown-Document mit
+    folgender Anweisung: {{ params.outlinePrompt | yamlIndent(4) }}. Persistiere
+    sie über postActions nach `{{ params.outlinePath }}`.
+  - Schritt 2: Sobald die Outline existiert, spawnst du via
+    NEEDS_SUBTASKS einen EXPAND_FROM_DOC-Knoten, der die Outline
+    liest und pro Eintrag ein WORKER-Kind erzeugt. Jedes
+    WORKER-Kind schreibt sein Kapitel nach `{{ params.chaptersDir }}/<slug>.md`.
+{%- if params.consolidate %}
+  - Schritt 3 (POST_CHILDREN): Wenn alle Kapitel fertig sind,
+    konsolidiere sie in deiner CONCLUDE-Antwort zu einem
+    Gesamtdokument: {{ params.consolidatePrompt | yamlIndent(4) }}. Persistiere
+    es über postActions nach `{{ params.finalPath }}`.
+{%- endif %}
+  - Sprache: {{ params.language }}.
 
-  KIND 1 — WORKER marvin-worker (writes the outline document):
-  {"taskKind":"WORKER",
-   "goal":"{{ params.outlinePrompt | replace({'\"':'\\\"'}) }}",
-   "taskSpec":{
-     "recipe":"marvin-worker",
-     "postActions":[
-       {"tool":"doc_write_text",
-        "args":{
-          "path":"{{ params.outlinePath }}",
-          "content":"{% verbatim %}{{ node.result }}{% endverbatim %}"}}
-     ]}}
-
-  KIND 2 — EXPAND_FROM_DOC (one chapter per outline item):
-  {"taskKind":"EXPAND_FROM_DOC",
-   "goal":"Write one chapter per outline item.",
-   "taskSpec":{
-     "documentRef":{"path":"{{ params.outlinePath }}"},
-     "treeMode":"FLAT",
-     "childTemplate":{
-       "taskKind":"WORKER",
-       "recipe":"marvin-worker",
-       "goal":"{{ params.chapterPromptTpl | replace({'\"':'\\\"'}) }}",
-       "postActions":[
-         {"tool":"doc_write_text",
-          "args":{
-            "path":"{{ params.chaptersDir }}/{% verbatim %}{{ node.goal | slug }}{% endverbatim %}.md",
-            "content":"{% verbatim %}{{ node.result }}{% endverbatim %}"}}
-       ]}}}
-{% if params.consolidate %}
-
-  KIND 3 — AGGREGATE (consolidates chapters into the final document):
-  {"taskKind":"AGGREGATE",
-   "goal":"Consolidate the chapters into the final document.",
-   "taskSpec":{
-     "prompt":"{{ params.consolidatePrompt | replace({'\"':'\\\"'}) }} Language: {{ params.language }}.",
-     "maxOutputChars":{{ params.maxOutputChars | default(20000) }},
-     "postActions":[
-       {"tool":"doc_write_text",
-        "args":{
-          "path":"{{ params.finalPath }}",
-          "content":"{% verbatim %}{{ node.summary }}{% endverbatim %}"{% if params.outputTitleTpl %},
-          "title":"{{ params.outputTitleTpl }}"{% endif %}}}
-     ]}}
-{% endif %}
-
-  Output contract — EXACTLY {% if params.consolidate %}3{% else %}2{% endif %} children:
-      {"children":[<KIND 1>,<KIND 2>{% if params.consolidate %},<KIND 3>{% endif %}]}
-
-  Do not omit any KIND. The number of children MUST be {% if params.consolidate %}3{% else %}2{% endif %}.
+  Hinweis: Spawn-Anweisungen für EXPAND_FROM_DOC haben die Form:
+    {"goal":"<kurz>",
+     "taskKind":"EXPAND_FROM_DOC",
+     "taskSpec":{
+       "documentRef":{"path":"{{ params.outlinePath }}"},
+       "treeMode":"FLAT",
+       "childTemplate":{
+         "taskKind":"WORKER",
+         "goal":"{{ params.chapterPromptTpl }}",
+         "taskSpec":{
+           "postActions":[
+             {"tool":"doc_write_text",
+              "args":{
+                "path":"{{ params.chaptersDir }}/{% verbatim %}{{ node.goal | slug }}{% endverbatim %}.md",
+                "content":"{% verbatim %}{{ node.result }}{% endverbatim %}"}}
+           ]}}}}

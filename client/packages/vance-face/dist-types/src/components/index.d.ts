@@ -19,4 +19,6 @@ export { default as VPagination } from './VPagination.vue';
 export { default as VSelect } from './VSelect.vue';
 export { default as VTagEditor } from './VTagEditor.vue';
 export { default as VTextarea } from './VTextarea.vue';
+export { default as FormFields } from './FormFields.vue';
+export type { FormValue, FormValueObject } from './FormFields.vue';
 //# sourceMappingURL=index.d.ts.map

@@ -42,7 +42,9 @@ public final class JinjaCompatExtension extends AbstractExtension {
 
     @Override
     public Map<String, Filter> getFilters() {
-        return Map.of("slug", new SlugFilter());
+        return Map.of(
+                "slug", new SlugFilter(),
+                "yamlIndent", new YamlIndentFilter());
     }
 
     /**
@@ -74,6 +76,49 @@ public final class JinjaCompatExtension extends AbstractExtension {
             s = NON_ALNUM.matcher(s).replaceAll("-");
             s = EDGE_HYPHENS.matcher(s).replaceAll("");
             return s;
+        }
+    }
+
+    /**
+     * Indents every newline in the input with {@code level} spaces.
+     * Used when a Pebble template renders a free-text user input
+     * into a YAML block-scalar ({@code |}-block) — without this
+     * filter, embedded newlines drop to column 1 and break the
+     * YAML structure. Usage:
+     *
+     * <pre>{@code
+     * promptPrefix: |
+     *   - {{ params.synthesisPrompt | yamlIndent(4) }}
+     * }</pre>
+     *
+     * <p>Default {@code level} is 2.
+     */
+    private static final class YamlIndentFilter implements Filter {
+
+        @Override
+        public List<String> getArgumentNames() {
+            return List.of("level");
+        }
+
+        @Override
+        public @Nullable Object apply(
+                @Nullable Object input,
+                Map<String, Object> args,
+                PebbleTemplate self,
+                EvaluationContext context,
+                int lineNumber) {
+            if (input == null) return "";
+            int level = 2;
+            Object lvl = args == null ? null : args.get("level");
+            if (lvl instanceof Number n) {
+                level = n.intValue();
+            } else if (lvl instanceof String s) {
+                try { level = Integer.parseInt(s.trim()); }
+                catch (NumberFormatException ignored) { /* fall back to 2 */ }
+            }
+            if (level < 0) level = 0;
+            String pad = " ".repeat(level);
+            return input.toString().replace("\n", "\n" + pad);
         }
     }
 

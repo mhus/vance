@@ -1,0 +1,79 @@
+title:
+  de: "Aufsatz-Recipe anlegen"
+  en: "Create an essay recipe"
+description:
+  de: "Slart-Recipe für eine bestimmte Aufsatz-Sorte (Stil, Länge, Struktur) — danach kannst du es wiederverwenden."
+  en: "Slart recipe for a specific essay style (tone, length, structure) — reusable afterwards."
+icon: document-text
+category: schreiben
+
+fields:
+  - name: recipeName
+    type: string
+    required: true
+    label:
+      de: "Recipe-Name (Dateiname, ohne Leerzeichen)"
+      en: "Recipe name (filename, no spaces)"
+
+  - name: audience
+    type: textarea
+    rows: 2
+    required: true
+    label:
+      de: "Zielgruppe"
+      en: "Audience"
+
+  - name: tone
+    type: select
+    required: true
+    defaultValue: "neutral"
+    label:
+      de: "Tonalität"
+      en: "Tone"
+    choices:
+      - value: formal
+        label: { de: "Formell", en: "Formal" }
+      - value: neutral
+        label: { de: "Neutral", en: "Neutral" }
+      - value: casual
+        label: { de: "Locker", en: "Casual" }
+      - value: provocative
+        label: { de: "Provokant", en: "Provocative" }
+
+  - name: targetLength
+    type: integer
+    required: true
+    integerMin: 200
+    integerMax: 5000
+    label:
+      de: "Ziel-Wortzahl"
+      en: "Target word count"
+
+  - name: structureHints
+    type: textarea
+    rows: 4
+    required: false
+    label:
+      de: "Struktur-Hinweise (optional)"
+      en: "Structure hints (optional)"
+    help:
+      de: "Z.B. 'Einleitung, drei Argumente, Fazit' oder 'Pro/Contra mit Synthese'."
+      en: "E.g. 'intro, three arguments, conclusion' or 'pro/contra with synthesis'."
+
+promptTemplate: |
+  Erstelle mit slart ein Recipe für Aufsätze.
+
+  **Zielgruppe:** {{ audience }}
+  **Tonalität:** {{ tone }}
+  **Ziel-Wortzahl:** {{ targetLength }}
+  {% if structureHints %}**Struktur:** {{ structureHints }}{% endif %}
+
+  Speicher das Recipe unter '{{ recipeName }}'.
+
+suggestedFollowUps:
+  - wizard: essay-mit-recipe
+    label:
+      de: "Aufsatz mit '{{ recipeName }}' schreiben"
+      en: "Write an essay using '{{ recipeName }}'"
+    prefill:
+      recipe: "{{ recipeName }}"

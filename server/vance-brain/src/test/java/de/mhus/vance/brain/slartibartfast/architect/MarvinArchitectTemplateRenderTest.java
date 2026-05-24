@@ -13,12 +13,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Pins the template-driven YAML rendering in {@link MarvinArchitect}.
- * Constructs a realistic {@code research-aggregate-write} params
- * payload and checks the rendered YAML carries the expected
- * structural anchors. Catches template syntax regressions and
- * verifies the inner {@code {% verbatim %}} blocks preserve
- * Marvin-runtime Pebble references.
+ * Pins the template-driven YAML rendering in {@link MarvinArchitect}
+ * for the Marvin v2 model. The architect emits short recipes:
+ * engine=marvin, params.availableRecipes, narrative promptPrefix —
+ * no KIND blocks, no PLAN/AGGREGATE TaskKinds.
  */
 class MarvinArchitectTemplateRenderTest {
 
@@ -32,17 +30,17 @@ class MarvinArchitectTemplateRenderTest {
     }
 
     @Test
-    void researchAggregateWrite_rendersValidYamlWithExpectedAnchors() {
+    void researchAggregateWrite_rendersMarvinV2Recipe() {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", "deep-research");
         params.put("description",
                 "Systematic web research with synthesized report.");
-        params.put("gathererRecipe", "web-research");
+        params.put("language", "de");
+        params.put("availableRecipes", List.of("web-research"));
         params.put("aspects", List.of(
                 Map.of("role", "history", "goal", "History and political context."),
                 Map.of("role", "tech",    "goal", "Technology and current state of the art.")));
         params.put("synthesisPrompt", "Verdichte zu einem Bericht.");
-        params.put("language", "de");
         params.put("reportLengthWords", "1500-2000");
         params.put("outputPathTpl",
                 "research/{{ process.goal | slug }}/report.md");
@@ -53,42 +51,29 @@ class MarvinArchitectTemplateRenderTest {
 
         String yaml = architect.extractRecipeYaml(jsonRoot);
 
-        // Structural anchors — guarantees the rendered YAML is
-        // shaped like a Marvin recipe with the template's contract.
         assertThat(yaml)
                 .contains("engine: marvin")
                 .contains("name: deep-research")
-                .contains("rootTaskKind: PLAN")
-                .contains("- web-research");
+                .contains("availableRecipes:")
+                .contains("- web-research")
+                .doesNotContain("rootTaskKind")
+                .doesNotContain("AGGREGATE")
+                .doesNotContain("allowedSubTaskRecipes")
+                .doesNotContain("KIND ");
 
-        // promptPrefix carries the literal Marvin-runtime Pebble
-        // (preserved through {% verbatim %}). The outer render
-        // MUST NOT consume these.
+        // Marvin-runtime Pebble preserved through {% verbatim %}.
         assertThat(yaml)
                 .contains("{{ process.goal }}")
-                .contains("{{ node.summary }}")
-                // and the outputPathTpl value, which itself contains
-                // Pebble, is emitted verbatim
-                .contains("research/{{ process.goal | slug }}/report.md");
+                .contains("research/{{ process.goal | slug }}/report.md")
+                .contains("{{ node.result }}");
 
-        // 2 aspects + 1 AGGREGATE = 3 children declared
-        assertThat(yaml).contains("EXACTLY 3 children");
-        assertThat(yaml).contains("KIND 1 — WORKER web-research");
-        assertThat(yaml).contains("KIND 2 — WORKER web-research");
-        assertThat(yaml).contains("KIND 3 — AGGREGATE");
-
-        // postAction is the engine-side write — uses canonical
-        // tool/args keys.
+        // Aspects mentioned in the narrative.
         assertThat(yaml)
-                .contains("\"tool\":\"doc_write_text\"")
-                .contains("\"path\":\"research/{{ process.goal | slug }}/report.md\"");
+                .contains("history: History and political context.")
+                .contains("tech: Technology and current state of the art.");
 
-        // No misplaced postActions at YAML level — only inside the
-        // promptPrefix's embedded KIND-block JSON.
-        long yamlLevelPostActions = yaml.lines()
-                .filter(l -> l.matches("\\s*postActions\\s*:.*"))
-                .count();
-        assertThat(yamlLevelPostActions).isZero();
+        // postAction is engine-side write.
+        assertThat(yaml).contains("doc_write_text");
     }
 
     @Test
@@ -115,11 +100,11 @@ class MarvinArchitectTemplateRenderTest {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", "x");
         params.put("description", "d");
-        params.put("gathererRecipe", "web-research");
+        params.put("language", "de");
+        params.put("availableRecipes", List.of("web-research"));
         params.put("aspects", List.of(Map.of("role", "r", "goal", "g")));
         params.put("synthesisPrompt", "s");
-        params.put("language", "de");
-        params.put("outputPathTpl", "_user/x.md"); // reserved bucket
+        params.put("outputPathTpl", "_user/x.md");
         Map<String, Object> jsonRoot = Map.of(
                 "templateId", "research-aggregate-write",
                 "params", params);
@@ -133,6 +118,8 @@ class MarvinArchitectTemplateRenderTest {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", "essay-pipeline");
         params.put("description", "Outline + chapters + final essay.");
+        params.put("language", "de");
+        params.put("availableRecipes", List.of());
         params.put("outlinePrompt", "Erstelle eine Gliederung in 4 Kapiteln.");
         params.put("outlinePath",
                 "essays/{{ process.goal | slug }}/outline.md");
@@ -140,7 +127,6 @@ class MarvinArchitectTemplateRenderTest {
                 "essays/{{ process.goal | slug }}/chapters");
         params.put("chapterPromptTpl",
                 "Schreibe Kapitel: {{ item.text }}");
-        params.put("language", "de");
         params.put("consolidate", true);
         params.put("consolidatePrompt",
                 "Konsolidiere die Kapitel zu einem Essay.");
@@ -156,34 +142,33 @@ class MarvinArchitectTemplateRenderTest {
                 .contains("name: essay-pipeline")
                 .contains("engine: marvin")
                 .contains("EXPAND_FROM_DOC")
-                .contains("EXACTLY 3 children")          // with consolidate
-                .contains("KIND 1 — WORKER marvin-worker")
-                .contains("KIND 2 — EXPAND_FROM_DOC")
-                .contains("KIND 3 — AGGREGATE")
-                .contains("{{ process.goal | slug }}")    // path-template preserved
-                .contains("{{ item.text }}")              // EXPAND iteration var preserved
-                .contains("{{ node.result }}")            // postAction content preserved
-                .contains("{{ node.summary }}");          // AGGREGATE postAction content
+                .contains("Schritt 1")
+                .contains("Schritt 2")
+                .contains("Schritt 3")
+                .contains("{{ process.goal }}")
+                .contains("{{ node.result }}");
     }
 
     @Test
-    void docDrivenChapters_withoutConsolidation_omitsAggregate() {
+    void docDrivenChapters_withoutConsolidation_omitsStep3() {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", "essay-noconsolidate");
         params.put("description", "Outline + chapters only.");
+        params.put("language", "de");
+        params.put("availableRecipes", List.of());
         params.put("outlinePrompt", "Erstelle eine Gliederung.");
         params.put("outlinePath", "essays/o.md");
         params.put("chaptersDir", "essays/chapters");
         params.put("chapterPromptTpl", "Schreibe: {{ item.text }}");
-        params.put("language", "de");
         params.put("consolidate", false);
         Map<String, Object> jsonRoot = Map.of(
                 "templateId", "doc-driven-chapters",
                 "params", params);
         String yaml = architect.extractRecipeYaml(jsonRoot);
         assertThat(yaml)
-                .contains("EXACTLY 2 children")
-                .doesNotContain("AGGREGATE");
+                .contains("Schritt 1")
+                .contains("Schritt 2")
+                .doesNotContain("Schritt 3");
     }
 
     @Test
@@ -191,13 +176,13 @@ class MarvinArchitectTemplateRenderTest {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", "x");
         params.put("description", "d");
+        params.put("language", "de");
+        params.put("availableRecipes", List.of());
         params.put("outlinePrompt", "o");
         params.put("outlinePath", "essays/o.md");
         params.put("chaptersDir", "essays/chapters");
         params.put("chapterPromptTpl", "Schreibe: {{ item.text }}");
-        params.put("language", "de");
         params.put("consolidate", true);
-        // missing consolidatePrompt + finalPath
         Map<String, Object> jsonRoot = Map.of(
                 "templateId", "doc-driven-chapters",
                 "params", params);
@@ -211,6 +196,8 @@ class MarvinArchitectTemplateRenderTest {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", "wochenend-projekt");
         params.put("description", "Plan a weekend project after clarifications.");
+        params.put("language", "de");
+        params.put("availableRecipes", List.of());
         params.put("questions", List.of(
                 Map.of("role", "skill", "title", "Skill?",
                         "body", "Anfänger or fortgeschritten?",
@@ -223,7 +210,6 @@ class MarvinArchitectTemplateRenderTest {
                 "Basierend auf den Antworten, plane in 5 Schritten.");
         params.put("outputPathTpl",
                 "decisions/{{ process.goal | slug }}/plan.md");
-        params.put("language", "de");
 
         Map<String, Object> jsonRoot = Map.of(
                 "templateId", "decide-with-user-input",
@@ -232,12 +218,11 @@ class MarvinArchitectTemplateRenderTest {
 
         assertThat(yaml)
                 .contains("name: wochenend-projekt")
-                .contains("EXACTLY 3 children")          // 2 USER_INPUT + 1 WORKER
-                .contains("KIND 1 — USER_INPUT")
-                .contains("KIND 2 — USER_INPUT")
-                .contains("KIND 3 — WORKER marvin-worker")
-                .contains("\"type\":\"DECISION\"")
-                .contains("\"type\":\"FEEDBACK\"")
+                .contains("engine: marvin")
+                .contains("Skill?")
+                .contains("Budget?")
+                .contains("DECISION")
+                .contains("FEEDBACK")
                 .contains("{{ process.goal | slug }}")
                 .contains("{{ node.result }}");
     }
@@ -247,10 +232,11 @@ class MarvinArchitectTemplateRenderTest {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", "x");
         params.put("description", "d");
+        params.put("language", "de");
+        params.put("availableRecipes", List.of());
         params.put("questions", List.of());
         params.put("decisionPrompt", "p");
         params.put("outputPathTpl", "decisions/x.md");
-        params.put("language", "de");
         Map<String, Object> jsonRoot = Map.of(
                 "templateId", "decide-with-user-input",
                 "params", params);
@@ -264,11 +250,12 @@ class MarvinArchitectTemplateRenderTest {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", "x");
         params.put("description", "d");
+        params.put("language", "de");
+        params.put("availableRecipes", List.of());
         params.put("questions", List.of(
                 Map.of("title", "T", "body", "B", "type", "BOGUS_TYPE")));
         params.put("decisionPrompt", "p");
         params.put("outputPathTpl", "decisions/x.md");
-        params.put("language", "de");
         Map<String, Object> jsonRoot = Map.of(
                 "templateId", "decide-with-user-input",
                 "params", params);
@@ -282,10 +269,10 @@ class MarvinArchitectTemplateRenderTest {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("name", "x");
         params.put("description", "d");
-        params.put("gathererRecipe", "web-research");
+        params.put("language", "de");
+        params.put("availableRecipes", List.of("web-research"));
         params.put("aspects", List.of());
         params.put("synthesisPrompt", "s");
-        params.put("language", "de");
         params.put("outputPathTpl", "research/x.md");
         Map<String, Object> jsonRoot = Map.of(
                 "templateId", "research-aggregate-write",
@@ -293,5 +280,22 @@ class MarvinArchitectTemplateRenderTest {
         assertThatThrownBy(() -> architect.extractRecipeYaml(jsonRoot))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("non-empty list");
+    }
+
+    @Test
+    void missingLanguage_throws() {
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("name", "x");
+        params.put("description", "d");
+        params.put("availableRecipes", List.of());
+        params.put("aspects", List.of(Map.of("role", "r", "goal", "g")));
+        params.put("synthesisPrompt", "s");
+        params.put("outputPathTpl", "research/x.md");
+        Map<String, Object> jsonRoot = Map.of(
+                "templateId", "research-aggregate-write",
+                "params", params);
+        assertThatThrownBy(() -> architect.extractRecipeYaml(jsonRoot))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("language");
     }
 }

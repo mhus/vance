@@ -83,6 +83,15 @@ export * from './kit/ToolTemplateInputDto';
 export * from './kit/ToolTemplatePostInstallDto';
 export * from './kit/ToolTemplatesScanRequestDto';
 
+export * from './form/FormChoiceDto';
+export * from './form/FormFieldDto';
+
+export * from './wizard/WizardDto';
+export * from './wizard/WizardListResponseDto';
+export * from './wizard/WizardRenderRequestDto';
+export * from './wizard/WizardRenderResponseDto';
+export * from './wizard/WizardSummaryDto';
+
 export * from './execution/ExecEvent';
 export * from './execution/ExecListSnapshot';
 export * from './execution/ExecutionInsightsDto';

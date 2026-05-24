@@ -148,4 +148,27 @@ public interface SchemaArchitect {
         }
         return yaml;
     }
+
+    /** Extracts the recipe name from the PROPOSING JSON.
+     *
+     *  <p>Default implementation reads a top-level {@code name}
+     *  field — used by Vogon and Zaphod whose LLMs emit
+     *  {@code {name, yaml, justifications, shapeRationale}} at the
+     *  root.
+     *
+     *  <p>{@link MarvinArchitect} overrides this because its LLM
+     *  emits {@code {templateId, params: {name, ...}}} — the name
+     *  lives inside {@code params} where the template renderer
+     *  reads it.
+     *
+     *  @throws RuntimeException on missing / invalid input — same
+     *          error-handling contract as {@link #extractRecipeYaml}. */
+    default String extractRecipeName(java.util.Map<String, Object> jsonRoot) {
+        Object n = jsonRoot.get("name");
+        if (!(n instanceof String name) || name.isBlank()) {
+            throw new IllegalArgumentException(
+                    "required field 'name' missing or blank");
+        }
+        return name;
+    }
 }

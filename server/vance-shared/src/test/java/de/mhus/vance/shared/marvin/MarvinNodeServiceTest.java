@@ -250,8 +250,8 @@ class MarvinNodeServiceTest {
 
     @Test
     void findNextActionable_perKindOverride_winsOverGlobalDefault() {
-        // defaultExecutionModePerKind: { PLAN: SEQUENTIAL } overrides
-        // a global defaultExecutionMode: PARALLEL for PLAN parents.
+        // defaultExecutionModePerKind: { WORKER: SEQUENTIAL } overrides
+        // a global defaultExecutionMode: PARALLEL for WORKER parents.
         MarvinNodeDocument root = planNode("root", null, 0, NodeStatus.DONE);
         MarvinNodeDocument a = node("a", "root", 0, NodeStatus.RUNNING);
         MarvinNodeDocument b = node("b", "root", 1, NodeStatus.PENDING);
@@ -259,7 +259,7 @@ class MarvinNodeServiceTest {
 
         Map<String, Object> engineParams = Map.of(
                 "defaultExecutionMode", "PARALLEL",
-                "defaultExecutionModePerKind", Map.of("PLAN", "SEQUENTIAL"));
+                "defaultExecutionModePerKind", Map.of("WORKER", "SEQUENTIAL"));
         assertThat(service.findNextActionableNode("p", engineParams)).isEmpty();
     }
 
@@ -480,7 +480,7 @@ class MarvinNodeServiceTest {
                 .parentId(parentId)
                 .position(position)
                 .goal("test goal " + id)
-                .taskKind(TaskKind.PLAN)
+                .taskKind(TaskKind.WORKER)
                 .status(status)
                 .build();
     }
@@ -509,7 +509,7 @@ class MarvinNodeServiceTest {
                 .parentId(parentId)
                 .position(position)
                 .goal("test goal " + id)
-                .taskKind(TaskKind.PLAN)
+                .taskKind(TaskKind.WORKER)
                 .taskSpec(spec)
                 .status(status)
                 .build();

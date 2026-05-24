@@ -1,7 +1,7 @@
 description: |
-  Slartibartfast variant that generates a Marvin recipe
-  (engine: marvin, dynamic task-tree with PLAN/WORKER/USER_INPUT/
-  AGGREGATE nodes) from a free-text request. Same Slart lifecycle
+  Slartibartfast variant that generates a Marvin v2 recipe
+  (engine: marvin, autonomous-worker tree with the 5-phase
+  state-machine) from a free-text request. Same Slart lifecycle
   (FRAMING → … → PERSISTING → EXECUTING → EXECUTION_VALIDATING),
   only the PROPOSING and VALIDATING phases produce/check a
   Marvin-recipe shape instead of a Vogon strategy.
@@ -11,8 +11,9 @@ description: |
   and write a report", "analyse this codebase and produce an
   architecture document", "help me decide between A and B, ask
   me what you need to know first". The hallmark is dynamic
-  task-tree growth: Marvin can spawn additional sub-tasks or
-  USER_INPUT nodes as it discovers what's needed.
+  task-tree growth: Marvin's autonomous workers spawn additional
+  sub-tasks (NEEDS_SUBTASKS) or USER_INPUT nodes as they discover
+  what's needed.
 
   For linear pipelines with a fixed shape ("write the document
   with these phases") use plain `slartibartfast` (vogon-strategy).

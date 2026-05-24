@@ -76,6 +76,7 @@ declare const _default: {
     chat: {
         pageTitle: string;
         backToSessions: string;
+        projectTooltip: string;
         connecting: string;
         confirmLeave: string;
         pickAnotherSession: string;
@@ -121,6 +122,9 @@ declare const _default: {
             savedLocally: string;
             microphoneError: string;
             recordStartFailed: string;
+            talkModeStart: string;
+            talkModeStop: string;
+            talkModeIdleOff: string;
         };
         sessionHeader: {
             untitled: string;

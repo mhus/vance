@@ -97,6 +97,7 @@ export default {
   chat: {
     pageTitle: 'Chat',
     backToSessions: '← Sessions',
+    projectTooltip: 'Project: {name}',
     connecting: 'Connecting to brain…',
     confirmLeave:
       'Leave this chat session? The connection will be released and any unsent draft is lost.',
@@ -145,6 +146,9 @@ export default {
         'Saved locally. Used by the chat speaker now and any future read-aloud feature.',
       microphoneError: 'Microphone error: {error}',
       recordStartFailed: 'Failed to start recording.',
+      talkModeStart: 'Start talk mode (hands-free — mic + read-aloud automatic)',
+      talkModeStop: 'Stop talk mode',
+      talkModeIdleOff: 'Talk mode stopped due to inactivity.',
     },
     sessionHeader: {
       untitled: 'Untitled',

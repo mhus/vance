@@ -28,8 +28,8 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
     "onUpdate:doc"?: ((doc: TreeDocument) => any) | undefined;
 }>, {
-    mode: "editor" | "inline" | "embedded";
     meta: FenceMeta;
+    mode: "editor" | "inline" | "embedded";
     doc: TreeDocument | null;
     items: TreeItem[];
     pathPrefix: number[];

@@ -40,6 +40,32 @@ const emit = defineEmits<{
 const { groups, projects, loading: projectsLoading, error: projectsError, reload: loadProjects } =
   useTenantProjects();
 
+// Persists the picker's project selection across reloads of this
+// chat tab. sessionStorage (not localStorage) by design: it scopes the
+// memory to the current browser tab — closing the tab resets the
+// pick. Long-term cross-tab persistence isn't wanted here; users
+// switching projects across tabs would otherwise be confusing.
+const PICKER_PROJECT_STORAGE_KEY = 'vance.chat.picker.projectName';
+
+function readStoredProjectName(): string | null {
+  try {
+    const v = window.sessionStorage.getItem(PICKER_PROJECT_STORAGE_KEY);
+    return v && v.length > 0 ? v : null;
+  } catch {
+    // Private-mode / disabled storage — fall back to in-memory default.
+    return null;
+  }
+}
+
+function writeStoredProjectName(name: string | null): void {
+  try {
+    if (name) window.sessionStorage.setItem(PICKER_PROJECT_STORAGE_KEY, name);
+    else window.sessionStorage.removeItem(PICKER_PROJECT_STORAGE_KEY);
+  } catch {
+    // Same fallback as the read side — silently ignore.
+  }
+}
+
 const sessions = ref<SessionSummaryRichDto[]>([]);
 const selectedProjectName = ref<string | null>(null);
 const sessionsLoading = ref(false);
@@ -98,6 +124,7 @@ async function loadSessions(projectName: string): Promise<void> {
 
 function selectProject(projectName: string): void {
   selectedProjectName.value = projectName;
+  writeStoredProjectName(projectName);
 }
 
 function pickSession(session: SessionSummaryRichDto): void {
@@ -211,7 +238,16 @@ function onSearchPick(sessionId: string): void {
 onMounted(async () => {
   await loadProjects();
   if (!selectedProjectName.value && projects.value.length > 0) {
-    selectedProjectName.value = projects.value[0].name;
+    // Prefer the project remembered from a previous picker visit in
+    // this tab, but only when it still exists in the tenant's project
+    // list. Otherwise fall back to the first project so the picker
+    // always lands on something selectable.
+    const stored = readStoredProjectName();
+    const restored = stored && projects.value.some((p) => p.name === stored)
+      ? stored
+      : projects.value[0].name;
+    selectedProjectName.value = restored;
+    if (restored !== stored) writeStoredProjectName(restored);
   }
 });
 

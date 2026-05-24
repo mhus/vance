@@ -47,6 +47,7 @@ import type {
   TodosUpdatedNotification,
 } from '@vance/generated';
 import { useChatHistory } from '@composables/useChatHistory';
+import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import {
   uploadChatboxAttachments,
@@ -151,6 +152,21 @@ const dragActive = ref(false);
  *  project-scoped. */
 const chatProjectId = ref<string>('');
 
+// Tenant project list — used to resolve the chat project's display
+// title (falls back to the technical name). The composable issues a
+// single GET /projects; cheap enough to call on every chat open.
+const { projects: tenantProjects, reload: loadTenantProjects } = useTenantProjects();
+
+/** Display label for the chat's project: title when set, otherwise the
+ *  technical name. Empty until {@code resolveSessionAndProcess} has run. */
+const chatProjectLabel = computed<string>(() => {
+  const id = chatProjectId.value;
+  if (!id) return '';
+  const p = tenantProjects.value.find((x) => x.name === id);
+  const title = p?.title?.trim();
+  return title && title.length > 0 ? title : id;
+});
+
 // Keep the embedded-document resolver and the save-as-document promote
 // path informed about the chat's current project — both fall back to
 // this store value when a vance:/-link or a kindbox action omits the
@@ -229,6 +245,7 @@ function initSpeechRecognition(): void {
   instance.interimResults = false;
   instance.lang = resolveSpeechLanguage();
   instance.onresult = (event) => {
+    let gotFinal = false;
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const r = event.results[i];
       if (!r.isFinal) continue;
@@ -237,6 +254,14 @@ function initSpeechRecognition(): void {
       composerText.value = composerText.value
         ? `${composerText.value} ${text}`
         : text;
+      gotFinal = true;
+    }
+    // Talk-Mode: each final phrase counts as activity and re-arms the
+    // auto-send debouncer. A long-enough pause (no further finals)
+    // commits the composer just like the user hit ↵.
+    if (gotFinal && talkMode.value) {
+      noteTalkActivity();
+      scheduleTalkAutoSend();
     }
   };
   instance.onerror = (event) => {
@@ -248,28 +273,59 @@ function initSpeechRecognition(): void {
   };
   instance.onend = () => {
     speechRecording.value = false;
+    // In talk mode the browser sometimes auto-stops the recognizer
+    // after long silence even with continuous=true. Rearm it — but
+    // not while the speaker is currently speaking (that path rearms
+    // via utter.onend) and not mid-send (the assistant is about to
+    // speak; mic restart belongs after the read-aloud).
+    if (talkMode.value && !speakerSpeaking.value && !sending.value) {
+      window.setTimeout(() => {
+        if (talkMode.value && !speakerSpeaking.value && !sending.value
+            && !speechRecording.value) {
+          startMic();
+        }
+      }, 50);
+    }
   };
   recognition = instance;
 }
 
-function toggleSpeech(): void {
+/** Idempotent mic start — used by manual toggle and by talk mode's
+ *  auto-rearm. Tolerates start() throwing when the recognizer is
+ *  already running (sometimes happens during quick stop→start cycles). */
+function startMic(): void {
   if (!recognition) return;
-  if (speechRecording.value) {
-    recognition.stop();
-    return;
-  }
+  if (speechRecording.value) return;
   speechError.value = null;
-  // Pick up any language change applied since the last start().
   recognition.lang = resolveSpeechLanguage();
   try {
     recognition.start();
     speechRecording.value = true;
   } catch (e) {
-    // start() throws if the recognizer is already running — usually
-    // a desync with our own state. Reset and surface.
     speechRecording.value = false;
     speechError.value = e instanceof Error ? e.message : t('chat.speech.recordStartFailed');
   }
+}
+
+/** Idempotent mic stop. Triggers instance.onend (which may re-arm in
+ *  talk mode — caller's responsibility to guard against that if the
+ *  stop is intentional and final). */
+function stopMic(): void {
+  if (!recognition) return;
+  if (!speechRecording.value) return;
+  try { recognition.stop(); } catch { /* already stopped */ }
+}
+
+function toggleSpeech(): void {
+  if (!recognition) return;
+  // Manual toggle while talk mode is on means "I'm taking back
+  // control" — kill the whole orchestrator, both subsystems off.
+  if (talkMode.value) {
+    disableTalkMode();
+    return;
+  }
+  if (speechRecording.value) stopMic();
+  else startMic();
 }
 
 function onLanguageChanged(code: string | null): void {
@@ -359,20 +415,47 @@ function speakMessage(content: string): void {
   if (!text) return;
   const utter = buildUtterance(text, resolveSpeechLanguage());
   if (!utter) return;
-  utter.onstart = () => { speakerSpeaking.value = true; };
+  utter.onstart = () => {
+    speakerSpeaking.value = true;
+    // Talk-Mode: pause the mic while Vance is talking, otherwise the
+    // browser STT picks up our own output and feeds garbage back into
+    // the composer. Restarts in this utter's onend once the queue drains.
+    if (talkMode.value && speechRecording.value) {
+      stopMic();
+    }
+  };
   utter.onend = () => {
     // Stays true until the queue actually drains — the browser fires
     // `end` per utterance, so re-check whether more are queued.
     if (window.speechSynthesis && !window.speechSynthesis.speaking) {
       speakerSpeaking.value = false;
+      // Speaker queue drained — rearm the mic for the next user turn
+      // and count that as activity so the idle-timer slides forward.
+      if (talkMode.value) {
+        noteTalkActivity();
+        if (!speechRecording.value && !sending.value) startMic();
+      }
     }
   };
-  utter.onerror = () => { speakerSpeaking.value = false; };
+  utter.onerror = () => {
+    speakerSpeaking.value = false;
+    // Same rearm path as onend — a TTS error shouldn't strand the
+    // user without a mic in talk mode.
+    if (talkMode.value && !speechRecording.value && !sending.value) {
+      startMic();
+    }
+  };
   window.speechSynthesis.speak(utter);
 }
 
 function toggleSpeaker(): void {
   if (!speakerSupported.value) return;
+  // Manual speaker toggle while talk mode is on tears down the whole
+  // orchestrator — same contract as toggling the mic manually.
+  if (talkMode.value) {
+    disableTalkMode();
+    return;
+  }
   const next = !speakerEnabled.value;
   speakerEnabled.value = next;
   setSpeakerEnabled(next);
@@ -403,6 +486,136 @@ function onVolumeInput(event: Event): void {
   if (!Number.isFinite(value)) return;
   speechVolume.value = value;
   setSpeechVolume(value);
+}
+
+// ──────────────── Talk-Mode (hands-free phone-call UX) ────────────────
+//
+// Übermode that orchestrates mic + speaker:
+//   • on activation: speaker forced on, mic started, idle-timer armed.
+//   • each final STT phrase appends to the composer; a 2s pause without
+//     follow-up commits via auto-send (no Enter / no click needed).
+//   • while the speaker is reading the reply, the mic is paused — we
+//     don't want STT to chew on Vance's own output. Mic re-arms in
+//     utter.onend once the queue drains.
+//   • idle-timeout (120s without mic input AND without assistant
+//     output) hard-disables the whole stack — mic off, speaker off.
+//   • manually clicking 🎤 or 🔊 while talk mode is on also hard-
+//     disables — that's the user taking back control.
+//
+// Persisted in sessionStorage so a session switch (ChatView remount
+// via :key="activeSessionId") keeps the mode active. Tab-scoped on
+// purpose: opening a new tab shouldn't inherit hands-free.
+
+const TALK_MODE_STORAGE_KEY = 'vance.chat.talkMode';
+/** Idle-off threshold. Activity = STT result, speaker start/end, send. */
+const TALK_MODE_IDLE_MS = 120_000;
+/** Pause length after the last STT final result that commits the
+ *  composer. Tuned to feel natural for spoken sentences — long enough
+ *  that mid-thought pauses don't auto-send, short enough that intended
+ *  full-stops don't make the user wait. */
+const TALK_MODE_AUTO_SEND_MS = 2_000;
+
+const talkMode = ref<boolean>(false);
+let talkIdleTimer: number | null = null;
+let talkAutoSendTimer: number | null = null;
+
+function readTalkModeStored(): boolean {
+  try {
+    return window.sessionStorage.getItem(TALK_MODE_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeTalkModeStored(on: boolean): void {
+  try {
+    if (on) window.sessionStorage.setItem(TALK_MODE_STORAGE_KEY, '1');
+    else window.sessionStorage.removeItem(TALK_MODE_STORAGE_KEY);
+  } catch { /* ignore */ }
+}
+
+function clearTalkIdle(): void {
+  if (talkIdleTimer !== null) {
+    window.clearTimeout(talkIdleTimer);
+    talkIdleTimer = null;
+  }
+}
+
+function clearTalkAutoSend(): void {
+  if (talkAutoSendTimer !== null) {
+    window.clearTimeout(talkAutoSendTimer);
+    talkAutoSendTimer = null;
+  }
+}
+
+function noteTalkActivity(): void {
+  if (!talkMode.value) return;
+  clearTalkIdle();
+  talkIdleTimer = window.setTimeout(() => {
+    speechError.value = t('chat.speech.talkModeIdleOff');
+    disableTalkMode();
+  }, TALK_MODE_IDLE_MS);
+}
+
+function scheduleTalkAutoSend(): void {
+  clearTalkAutoSend();
+  talkAutoSendTimer = window.setTimeout(() => {
+    talkAutoSendTimer = null;
+    if (!talkMode.value) return;
+    if (!composerText.value.trim()) return;
+    if (sending.value || uploading.value) return;
+    // Stop the mic before sending — assistant is about to speak and
+    // the mic is gated on speaker anyway. Avoids one extra onend cycle.
+    stopMic();
+    void send();
+  }, TALK_MODE_AUTO_SEND_MS);
+}
+
+const talkModeSupported = computed<boolean>(
+  () => speechSupported.value && speakerSupported.value);
+
+function enableTalkMode(): void {
+  if (talkMode.value) return;
+  if (!talkModeSupported.value) return;
+  talkMode.value = true;
+  writeTalkModeStored(true);
+  speechError.value = null;
+  // Speaker on (force, even if user had it off).
+  if (!speakerEnabled.value) {
+    speakerEnabled.value = true;
+    setSpeakerEnabled(true);
+  }
+  // Mic on (unless the speaker happens to be mid-utterance, which is
+  // rare at toggle time — the speaker only fires on incoming messages).
+  if (!speakerSpeaking.value && !speechRecording.value) {
+    startMic();
+  }
+  noteTalkActivity();
+}
+
+function disableTalkMode(): void {
+  if (!talkMode.value) return;
+  talkMode.value = false;
+  writeTalkModeStored(false);
+  clearTalkIdle();
+  clearTalkAutoSend();
+  // Hard off: both subsystems. Per the user's contract: when talk
+  // mode goes off — idle-timeout, manual toggle, anything — neither
+  // mic nor speaker should keep running.
+  stopMic();
+  if (window.speechSynthesis && window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+  }
+  speakerSpeaking.value = false;
+  if (speakerEnabled.value) {
+    speakerEnabled.value = false;
+    setSpeakerEnabled(false);
+  }
+}
+
+function toggleTalkMode(): void {
+  if (talkMode.value) disableTalkMode();
+  else enableTalkMode();
 }
 
 /** Resolved chat-process name — needed to address `process-steer`. */
@@ -559,6 +772,10 @@ function appendMessageBubble(data: ChatMessageAppendedData): void {
   if (String(data.role) !== 'USER' && !isWorkerProcess(data.processName)) {
     speakMessage(data.content);
   }
+  // Talk mode counts assistant frames (and the canonical user echo)
+  // as activity — keeps the idle-timer from firing during a normal
+  // back-and-forth.
+  noteTalkActivity();
   scrollToBottom();
 }
 
@@ -651,6 +868,11 @@ async function send(): Promise<void> {
   if (!text && filesSnapshot.length === 0) return;
   sending.value = true;
   sendError.value = null;
+  // A pending auto-send fires through this path too — once we're here
+  // it has done its job, so cancel any leftover timer that would
+  // otherwise no-op on the empty composer a moment later.
+  clearTalkAutoSend();
+  noteTalkActivity();
 
   // Stage 1 — upload attachments (if any). All-or-nothing: any
   // failure aborts the send so the user doesn't end up with a
@@ -865,15 +1087,29 @@ onMounted(async () => {
   await Promise.all([
     load(props.sessionId),
     resolveSessionAndProcess(),
+    loadTenantProjects(),
   ]);
   scrollToBottom();
   // From here on, any chat-message-appended frame is by definition a
   // fresh server-side event, not a history backfill — open the gate.
   speakerLiveReady.value = true;
+  // Restore Talk-Mode from sessionStorage. Tab-scoped: survives a
+  // session switch (ChatView remounts via :key="activeSessionId"),
+  // but not a tab restart. {@link enableTalkMode} no-ops if the
+  // platform doesn't support both mic and speaker, so the flag
+  // gracefully degrades on browsers that lack STT or TTS.
+  if (readTalkModeStored()) {
+    enableTalkMode();
+  }
 });
 
 onBeforeUnmount(() => {
   for (const off of subscriptions) off();
+  // Tear down Talk-Mode timers but keep the persisted flag — a
+  // session switch (component remount) is expected to resurrect it
+  // from sessionStorage on the next ChatView mount.
+  clearTalkIdle();
+  clearTalkAutoSend();
   if (recognition && speechRecording.value) {
     try { recognition.stop(); } catch { /* already stopped */ }
   }
@@ -905,6 +1141,15 @@ watch(() => props.sessionId, async (newId, oldId) => {
         <VButton variant="ghost" size="sm" @click="emit('leave')">
           {{ $t('chat.backToSessions') }}
         </VButton>
+        <div
+          v-if="chatProjectLabel"
+          class="flex items-center gap-1 text-xs px-2 py-1 rounded
+                 bg-base-200 text-base-content/80 max-w-[14rem] shrink-0"
+          :title="$t('chat.projectTooltip', { name: chatProjectId })"
+        >
+          <span aria-hidden="true">📁</span>
+          <span class="truncate font-medium">{{ chatProjectLabel }}</span>
+        </div>
         <SessionHeader
           :session-id="sessionId"
           @archived="emit('leave')"
@@ -935,7 +1180,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
       </div>
 
       <div ref="messageContainer" class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
-        <div class="max-w-3xl mx-auto flex flex-col gap-3">
+        <div class="max-w-5xl mx-auto flex flex-col gap-3">
           <div v-if="historyLoading" class="text-sm opacity-60">
             {{ $t('chat.historyLoading') }}
           </div>
@@ -1008,7 +1253,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
              user clicks ✕; otherwise cleared by send() on success. -->
         <div
           v-if="selectedFiles.length > 0"
-          class="max-w-3xl mx-auto mb-2 flex flex-wrap gap-2"
+          class="max-w-5xl mx-auto mb-2 flex flex-wrap gap-2"
         >
           <div
             v-for="(file, idx) in selectedFiles"
@@ -1029,7 +1274,7 @@ watch(() => props.sessionId, async (newId, oldId) => {
           </div>
         </div>
 
-        <div class="max-w-3xl mx-auto flex gap-2 items-end">
+        <div class="max-w-5xl mx-auto flex gap-2 items-end">
           <VButton
             variant="ghost"
             size="sm"
@@ -1040,6 +1285,16 @@ watch(() => props.sessionId, async (newId, oldId) => {
           </VButton>
           <div v-if="speechSupported || speakerSupported" class="relative">
             <div class="flex gap-1">
+              <VButton
+                v-if="talkModeSupported"
+                variant="ghost"
+                size="sm"
+                :class="talkMode ? 'text-success animate-pulse' : ''"
+                :title="talkMode ? $t('chat.speech.talkModeStop') : $t('chat.speech.talkModeStart')"
+                @click="toggleTalkMode"
+              >
+                📞
+              </VButton>
               <VButton
                 v-if="speechSupported"
                 variant="ghost"

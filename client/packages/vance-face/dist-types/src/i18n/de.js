@@ -80,6 +80,7 @@ export default {
     chat: {
         pageTitle: 'Chat',
         backToSessions: '← Sessions',
+        projectTooltip: 'Projekt: {name}',
         connecting: 'Verbindung zum Brain wird aufgebaut…',
         confirmLeave: 'Diese Chat-Session verlassen? Die Verbindung wird freigegeben und ein nicht gesendeter Entwurf geht verloren.',
         pickAnotherSession: 'Andere Session wählen',
@@ -125,6 +126,9 @@ export default {
             savedLocally: 'Lokal gespeichert. Wird vom Chat-Vorleser und allen künftigen Vorlese-Funktionen genutzt.',
             microphoneError: 'Mikrofonfehler: {error}',
             recordStartFailed: 'Aufnahme konnte nicht gestartet werden.',
+            talkModeStart: 'Talk-Modus starten (Hände frei — Mic + Vorlesen automatisch)',
+            talkModeStop: 'Talk-Modus beenden',
+            talkModeIdleOff: 'Talk-Modus wegen Inaktivität beendet.',
         },
         sessionHeader: {
             untitled: 'Ohne Titel',

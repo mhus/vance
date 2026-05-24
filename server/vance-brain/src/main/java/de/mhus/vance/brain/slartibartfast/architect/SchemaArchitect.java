@@ -123,4 +123,29 @@ public interface SchemaArchitect {
     default boolean wantsPathPersistenceCheck() {
         return true;
     }
+
+    /** Extracts the final recipe YAML from the LLM's PROPOSING
+     *  JSON response.
+     *
+     *  <p>Default implementation reads a top-level {@code yaml}
+     *  string field — used by Vogon and Zaphod, which let the
+     *  LLM emit YAML directly.
+     *
+     *  <p>{@link MarvinArchitect} overrides this to read template
+     *  parameters from a {@code params} object and render a
+     *  bundled YAML template, eliminating LLM creativity on the
+     *  recipe-structural level. Hard-fails (throws) when required
+     *  fields are missing.
+     *
+     *  @throws RuntimeException on missing / invalid input — the
+     *          ProposingPhase converts this into a re-prompt with
+     *          the exception message as the correction hint. */
+    default String extractRecipeYaml(java.util.Map<String, Object> jsonRoot) {
+        Object y = jsonRoot.get("yaml");
+        if (!(y instanceof String yaml) || yaml.isBlank()) {
+            throw new IllegalArgumentException(
+                    "required field 'yaml' missing or blank");
+        }
+        return yaml;
+    }
 }

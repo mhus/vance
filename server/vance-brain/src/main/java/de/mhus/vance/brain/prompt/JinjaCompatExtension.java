@@ -2,10 +2,12 @@ package de.mhus.vance.brain.prompt;
 
 import io.pebbletemplates.pebble.error.PebbleException;
 import io.pebbletemplates.pebble.extension.AbstractExtension;
+import io.pebbletemplates.pebble.extension.Filter;
 import io.pebbletemplates.pebble.extension.Test;
 import io.pebbletemplates.pebble.template.EvaluationContext;
 import io.pebbletemplates.pebble.template.PebbleTemplate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -31,11 +33,48 @@ import org.jspecify.annotations.Nullable;
  * {@link PebbleException} with the bad pattern in the message — better
  * to fail loud than to silently never match.
  */
-final class JinjaCompatExtension extends AbstractExtension {
+public final class JinjaCompatExtension extends AbstractExtension {
 
     @Override
     public Map<String, Test> getTests() {
         return Map.of("matching", new MatchingTest());
+    }
+
+    @Override
+    public Map<String, Filter> getFilters() {
+        return Map.of("slug", new SlugFilter());
+    }
+
+    /**
+     * URL- and filesystem-safe slug filter: lowercase the input,
+     * replace every non-alphanumeric ASCII run with a single
+     * hyphen, strip leading/trailing hyphens. {@code null} → empty
+     * string. Used in Marvin postAction path templates to derive
+     * a stable filename segment from a free-text goal.
+     */
+    private static final class SlugFilter implements Filter {
+
+        private static final Pattern NON_ALNUM = Pattern.compile("[^a-z0-9]+");
+        private static final Pattern EDGE_HYPHENS = Pattern.compile("(^-+|-+$)");
+
+        @Override
+        public List<String> getArgumentNames() {
+            return List.of();
+        }
+
+        @Override
+        public @Nullable Object apply(
+                @Nullable Object input,
+                Map<String, Object> args,
+                PebbleTemplate self,
+                EvaluationContext context,
+                int lineNumber) {
+            if (input == null) return "";
+            String s = input.toString().toLowerCase(Locale.ROOT);
+            s = NON_ALNUM.matcher(s).replaceAll("-");
+            s = EDGE_HYPHENS.matcher(s).replaceAll("");
+            return s;
+        }
     }
 
     private static final class MatchingTest implements Test {

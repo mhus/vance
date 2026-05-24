@@ -180,7 +180,7 @@ public class ProposingPhase {
             }
 
             try {
-                parsed = parseAndValidate(text);
+                parsed = parseAndValidate(text, architect);
                 validationError = null;
                 break;
             } catch (ProposeValidationException ve) {
@@ -346,7 +346,8 @@ public class ProposingPhase {
     // ──────────────────── Parse + light validate ────────────────────
 
     @SuppressWarnings("unchecked")
-    private ProposeResult parseAndValidate(String text) {
+    private ProposeResult parseAndValidate(
+            String text, SchemaArchitect architect) {
         String jsonOnly = extractJsonObject(text);
         if (jsonOnly == null) {
             throw new ProposeValidationException(
@@ -366,10 +367,15 @@ public class ProposingPhase {
                     "required field 'name' missing or blank");
         }
 
-        Object y = root.get("yaml");
-        if (!(y instanceof String yaml) || yaml.isBlank()) {
-            throw new ProposeValidationException(
-                    "required field 'yaml' missing or blank");
+        // Delegate YAML extraction to the architect: Vogon and
+        // Zaphod read root.yaml directly; Marvin renders a
+        // bundled template from root.params (see
+        // MarvinArchitect.extractRecipeYaml).
+        String yaml;
+        try {
+            yaml = architect.extractRecipeYaml(root);
+        } catch (RuntimeException e) {
+            throw new ProposeValidationException(e.getMessage());
         }
 
         Object j = root.get("justifications");

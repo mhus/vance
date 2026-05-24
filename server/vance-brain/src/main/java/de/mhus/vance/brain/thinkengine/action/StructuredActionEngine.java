@@ -323,6 +323,24 @@ public abstract class StructuredActionEngine implements ThinkEngine {
                     corrections++;
                     continue;
                 }
+                // Recovery: the LLM sometimes refuses the tool-call
+                // contract and emits the JSON payload as plain content
+                // text instead. Without recovery this leaks raw
+                // {"type":"…","reason":"…"} into the chat as the
+                // assistant's "reply" — confusing and broken UX.
+                // Parse the free text as if it were the tool call
+                // arguments; if it produces a valid action, dispatch
+                // that instead of falling through. Conservative parse
+                // (must be a single JSON object, must have a known
+                // type) so prose text doesn't get hijacked.
+                EngineAction recovered = tryParseActionFromFreeText(bestFreeText);
+                if (recovered != null) {
+                    log.info(
+                            "{} id='{}' action-loop: recovered '{}' action from free-text JSON "
+                                    + "after exhausting corrections",
+                            name(), process.getId(), recovered.type());
+                    return ActionLoopResult.action(recovered, toolInvocations);
+                }
                 log.warn(
                         "{} id='{}' action-loop: out of corrections, falling back to free-text",
                         name(), process.getId());
@@ -559,6 +577,67 @@ public abstract class StructuredActionEngine implements ThinkEngine {
         static ParseResult ok(EngineAction a) { return new ParseResult(a, null); }
         static ParseResult error(String e) { return new ParseResult(null, e); }
         boolean valid() { return action != null; }
+    }
+
+    /**
+     * Recovery path for LLMs that, after correction attempts, still
+     * emit the structured action as plain content text instead of as
+     * a tool call — typically a bare JSON object like
+     * {@code {"type":"WAIT","reason":"…"}}. Returns the parsed action
+     * when the free text is exactly such a payload (optionally wrapped
+     * in a ```json fence); returns {@code null} otherwise.
+     *
+     * <p>Conservative on purpose: only triggers when the trimmed text
+     * starts with {@code {} and ends with {@code }}, has a valid
+     * {@code type} from {@link #supportedActionTypes()}, and parses as
+     * JSON. Prose with an embedded JSON snippet is left alone so we
+     * don't hijack legitimate free-text answers.
+     */
+    private @Nullable EngineAction tryParseActionFromFreeText(@Nullable String text) {
+        if (text == null) return null;
+        String stripped = stripJsonCodeFence(text).trim();
+        if (stripped.isEmpty()) return null;
+        if (!stripped.startsWith("{") || !stripped.endsWith("}")) return null;
+        Map<String, Object> json;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed = objectMapper.readValue(stripped, Map.class);
+            json = parsed;
+        } catch (RuntimeException e) {
+            return null;
+        }
+        Object typeVal = json.get("type");
+        if (!(typeVal instanceof String typeStr) || typeStr.isBlank()) return null;
+        if (!supportedActionTypes().contains(typeStr)) return null;
+        Object reasonVal = json.get("reason");
+        // The reason is required for tool calls but we're already in
+        // recovery; synthesise a placeholder rather than refuse and
+        // leak the JSON to chat.
+        String reasonStr = (reasonVal instanceof String rs && !rs.isBlank())
+                ? rs
+                : "recovered from free-text emission";
+        Map<String, Object> params = new LinkedHashMap<>(json);
+        params.remove("type");
+        params.remove("reason");
+        return new EngineAction(typeStr, reasonStr, params);
+    }
+
+    /**
+     * Strip a leading/trailing markdown code fence (```json … ``` or
+     * ``` … ```) from a free-text reply. Returns the original string
+     * when no fence is present. Single pass — nested fences not
+     * unwrapped (they wouldn't be valid JSON anyway).
+     */
+    private static String stripJsonCodeFence(String text) {
+        String t = text.trim();
+        if (!t.startsWith("```")) return t;
+        int firstNl = t.indexOf('\n');
+        if (firstNl < 0) return t;
+        String body = t.substring(firstNl + 1);
+        if (body.endsWith("```")) {
+            body = body.substring(0, body.length() - 3);
+        }
+        return body.trim();
     }
 
     private String invalidActionToolResult(@Nullable String error) {

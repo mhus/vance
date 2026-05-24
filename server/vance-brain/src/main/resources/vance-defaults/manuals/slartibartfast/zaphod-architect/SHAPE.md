@@ -74,10 +74,11 @@ NOT ask the synthesizer to "create a document", "save the answer",
 instructions cause the LLM to emit hallucinated tool-call text
 inside the markdown body, which the engine then has to filter.
 
-If a specific output path is required, set the recipe-level
-`params.outputPathTemplate` instead. Default:
-`councils/{recipeName}/{runId}.md` — placeholders
-`{recipeName}`, `{runId}`, `{timestamp}`.
+Output paths are NOT configurable. The engine persists head
+replies and the final synthesis to
+`_zaphod-drafts/<processId>/<head>.md` and
+`_zaphod-drafts/<processId>/synthesis.md` respectively; the
+recipe does NOT carry an `outputPathTemplate` field.
 
 ## When a Council fits
 

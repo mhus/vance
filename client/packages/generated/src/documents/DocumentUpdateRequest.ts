@@ -7,6 +7,7 @@ export interface DocumentUpdateRequest {
   title?: string;
   tags?: string[];
   inlineText?: string;
+  mimeType?: string;
   newPath?: string;
   autoSummary?: boolean;
   summaryDirty?: boolean;

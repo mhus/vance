@@ -2,7 +2,7 @@
 
 **Plattform für hybrides KI-Denken.** Deterministische Strukturen führen, KI-Agenten arbeiten darin. Persistente Projekte, Memory in MongoDB, Tenants und Rechte.
 
-Vance ist kein Chatbot und kein Coding-Assistent. Es ist ein Server, auf dem KI-Denkprozesse über Tage laufen, persistent bleiben und sich vom Nutzer steuern lassen.
+Vance ist mehr als ein Chatbot oder Code-Assistent. Es ist ein Server, auf dem KI-Denkprozesse über Tage laufen, persistent bleiben und sich vom Nutzer steuern lassen.
 
 ## Was Vance konkret macht
 

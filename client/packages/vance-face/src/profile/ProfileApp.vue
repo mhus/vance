@@ -14,19 +14,22 @@ import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@component
 import { useProfile } from '@composables/useProfile';
 
 const { t } = useI18n();
-const { profile, loading, error, load, saveIdentity, saveSetting } = useProfile();
+const { profile, loading, error, load, saveIdentity, saveSetting, deleteSetting } = useProfile();
 
 const titleDraft = ref('');
 const emailDraft = ref('');
 const languageDraft = ref<string>('');
+const chatLanguageDraft = ref<string>('');
 const themeDraft = ref<WebUiTheme>('auto');
 const uiLevelDraft = ref<WebUiLevel>('standard');
 const identitySaved = ref<string | null>(null);
 const languageSaved = ref<string | null>(null);
+const chatLanguageSaved = ref<string | null>(null);
 const themeSaved = ref<string | null>(null);
 const uiLevelSaved = ref<string | null>(null);
 
 const LANGUAGE_KEY = 'webui.language';
+const CHAT_LANGUAGE_KEY = 'chat.language';
 const THEME_KEY = 'webui.theme';
 const UI_LEVEL_KEY = 'webui.uiLevel';
 
@@ -46,6 +49,19 @@ function asUiLevel(value: string | undefined | null): WebUiLevel {
 // UI language.
 const languageOptions = computed(() => [
   { value: '', label: t('profile.preferences.languageBrowserDefault') },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'en', label: 'English' },
+  { value: 'fr', label: 'Français' },
+  { value: 'es', label: 'Español' },
+  { value: 'it', label: 'Italiano' },
+]);
+
+// Chat language ("not set" → no user-level value → cascade falls
+// through to the tenant or to LanguageResolver.DEFAULT_LANGUAGE).
+// The native language names match the webui.language dropdown so
+// users get the same picker pattern across both fields.
+const chatLanguageOptions = computed(() => [
+  { value: '', label: t('profile.preferences.chatLanguageNotSet') },
   { value: 'de', label: 'Deutsch' },
   { value: 'en', label: 'English' },
   { value: 'fr', label: 'Français' },
@@ -75,6 +91,7 @@ watch(profile, (current) => {
   titleDraft.value = current.title ?? '';
   emailDraft.value = current.email ?? '';
   languageDraft.value = current.webUiSettings?.[LANGUAGE_KEY] ?? '';
+  chatLanguageDraft.value = current.webUiSettings?.[CHAT_LANGUAGE_KEY] ?? '';
   themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
   uiLevelDraft.value = asUiLevel(current.webUiSettings?.[UI_LEVEL_KEY]);
 }, { immediate: true });
@@ -105,6 +122,23 @@ async function onLanguageChanged(value: string | null): Promise<void> {
     // newly chosen language right away.
     setUiLocale(next === '' ? null : next);
     languageSaved.value = t('profile.preferences.languageSaved');
+  }
+}
+
+async function onChatLanguageChanged(value: string | null): Promise<void> {
+  chatLanguageSaved.value = null;
+  const next = value ?? '';
+  chatLanguageDraft.value = next;
+  // "Not set" → DELETE the user-scope setting so the cascade falls
+  // through to the tenant default (or LanguageResolver.DEFAULT_LANGUAGE).
+  // Any concrete code is a PUT — same path as the other prefs.
+  if (next === '') {
+    await deleteSetting(CHAT_LANGUAGE_KEY).catch(() => undefined);
+  } else {
+    await saveSetting(CHAT_LANGUAGE_KEY, next).catch(() => undefined);
+  }
+  if (!error.value) {
+    chatLanguageSaved.value = t('profile.preferences.chatLanguageSaved');
   }
 }
 
@@ -199,6 +233,19 @@ async function onUiLevelChanged(value: string | null): Promise<void> {
             />
             <span v-if="languageSaved" class="text-success text-sm">
               {{ languageSaved }}
+            </span>
+            <VSelect
+              :model-value="chatLanguageDraft"
+              :options="chatLanguageOptions"
+              :label="$t('profile.preferences.chatLanguage')"
+              :disabled="loading"
+              @update:model-value="onChatLanguageChanged"
+            />
+            <p class="text-xs opacity-60 -mt-2">
+              {{ $t('profile.preferences.chatLanguageDescription') }}
+            </p>
+            <span v-if="chatLanguageSaved" class="text-success text-sm">
+              {{ chatLanguageSaved }}
             </span>
             <VSelect
               :model-value="themeDraft"

@@ -180,22 +180,11 @@ public class MemoryContextLoader {
                     .map(SessionDocument::getUserId)
                     .orElse(null);
         }
-        @Nullable String chat = languageResolver.findChatLanguage(
+        String block = languageResolver.formatLanguageBlock(
                 process.getTenantId(), userId, projectId, process.getId());
-        @Nullable String content = languageResolver.findContentLanguage(
-                process.getTenantId(), projectId, process.getId());
-        if ((chat == null || chat.isBlank()) && (content == null || content.isBlank())) {
-            return;
-        }
+        if (block == null || block.isEmpty()) return;
         if (sb.length() > 0) sb.append('\n');
-        sb.append("## Languages\n");
-        if (chat != null && !chat.isBlank()) {
-            sb.append("- Chat: respond and listen in ").append(chat).append('\n');
-        }
-        if (content != null && !content.isBlank()) {
-            sb.append("- Content: write documents, insights, and memory entries in ")
-                    .append(content).append('\n');
-        }
+        sb.append(block);
     }
 
     private void appendMemorySettings(

@@ -335,6 +335,35 @@ public class MarvinEngine implements ThinkEngine {
         List<MarvinNodeDocument> rootChildren =
                 nodeService.findChildren(process.getId(), root.getId());
 
+        // Collect failures up-front — they get appended to every
+        // branch's text + a structured copy goes into the payload.
+        // Without this, FAILED children were silently dropped from
+        // the fallback branch and Arthur misread partial-success as
+        // full-success (live 2026-05-24: deep-research lost its
+        // EXPAND_FROM_DOC sibling but Arthur saw only the surviving
+        // web-research worker's reply and tried to manually
+        // compensate the missing report-write step).
+        List<MarvinNodeDocument> failedChildren = new ArrayList<>();
+        for (MarvinNodeDocument c : rootChildren) {
+            if (c.getStatus() == NodeStatus.FAILED) failedChildren.add(c);
+        }
+        if (!failedChildren.isEmpty()) {
+            List<Map<String, Object>> failedPayload = new ArrayList<>();
+            for (MarvinNodeDocument c : failedChildren) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("nodeId", c.getId());
+                entry.put("taskKind", c.getTaskKind() == null
+                        ? null : c.getTaskKind().name());
+                entry.put("goal", c.getGoal());
+                if (c.getFailureReason() != null) {
+                    entry.put("failureReason", c.getFailureReason());
+                }
+                failedPayload.add(entry);
+            }
+            payload.put("failedChildCount", failedChildren.size());
+            payload.put("failedChildren", failedPayload);
+        }
+
         // 1. Look for an AGGREGATE child with a synthesis.
         for (int i = rootChildren.size() - 1; i >= 0; i--) {
             MarvinNodeDocument c = rootChildren.get(i);
@@ -345,7 +374,8 @@ public class MarvinEngine implements ThinkEngine {
                     payload.put("aggregateNodeId", c.getId());
                     payload.put("nodeCount",
                             nodeService.listAll(process.getId()).size());
-                    return new ParentReport(s, payload);
+                    return new ParentReport(
+                            appendFailureBlock(s, failedChildren), payload);
                 }
             }
         }
@@ -358,15 +388,23 @@ public class MarvinEngine implements ThinkEngine {
                 payload.put("rootNodeId", root.getId());
                 payload.put("nodeCount",
                         nodeService.listAll(process.getId()).size());
-                return new ParentReport(s, payload);
+                return new ParentReport(
+                        appendFailureBlock(s, failedChildren), payload);
             }
         }
 
-        // 3. Concatenate child results as fallback.
+        // 3. Concatenate child results as fallback. Header now
+        // reports "N of M succeeded" so the partial-success case
+        // (some children FAILED) is impossible to miss.
+        int doneChildren = 0;
+        for (MarvinNodeDocument c : rootChildren) {
+            if (c.getStatus() == NodeStatus.DONE) doneChildren++;
+        }
         StringBuilder sb = new StringBuilder();
         sb.append("Marvin tree finished (").append(eventType.name().toLowerCase())
-                .append(") — combined output of ").append(rootChildren.size())
-                .append(" child(ren):\n");
+                .append(") — ").append(doneChildren).append(" of ")
+                .append(rootChildren.size())
+                .append(" child(ren) succeeded:\n");
         int included = 0;
         for (MarvinNodeDocument c : rootChildren) {
             if (c.getStatus() != NodeStatus.DONE) continue;
@@ -379,12 +417,41 @@ public class MarvinEngine implements ThinkEngine {
                 included++;
             }
         }
-        if (included == 0) {
+        if (included == 0 && failedChildren.size() < rootChildren.size()) {
             sb.append("\n(no child produced a textual result)");
         }
         payload.put("includedChildCount", included);
+        payload.put("doneChildCount", doneChildren);
         payload.put("nodeCount", nodeService.listAll(process.getId()).size());
-        return new ParentReport(sb.toString(), payload);
+        return new ParentReport(
+                appendFailureBlock(sb.toString(), failedChildren), payload);
+    }
+
+    /**
+     * Tacks a "Failed nodes" section onto the main summary text so
+     * downstream consumers (Arthur, Eddie, the user via process-event
+     * relay) see partial-success situations explicitly. No-op when
+     * {@code failures} is empty.
+     */
+    private static String appendFailureBlock(
+            String mainText, List<MarvinNodeDocument> failures) {
+        if (failures.isEmpty()) return mainText;
+        StringBuilder sb = new StringBuilder(mainText);
+        if (!mainText.endsWith("\n")) sb.append('\n');
+        sb.append("\n--- Failed nodes (")
+                .append(failures.size()).append(") ---\n");
+        for (MarvinNodeDocument c : failures) {
+            sb.append("- ");
+            if (c.getTaskKind() != null) {
+                sb.append(c.getTaskKind()).append(" / ");
+            }
+            sb.append(abbrev(c.getGoal()));
+            if (c.getFailureReason() != null && !c.getFailureReason().isBlank()) {
+                sb.append(" — ").append(c.getFailureReason());
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
     }
 
     // ──────────────────── Lifecycle ────────────────────
@@ -667,10 +734,11 @@ public class MarvinEngine implements ThinkEngine {
                     artifacts.put("payload", event.payload());
                 }
                 nodeService.markDone(node, artifacts);
+                int summaryChars = event.humanSummary() == null ? 0 : event.humanSummary().length();
                 log.info("Marvin id='{}' async worker DONE node='{}' worker='{}' "
                                 + "summary={} chars",
-                        process.getId(), node.getId(), event.sourceProcessId(),
-                        event.humanSummary() == null ? 0 : event.humanSummary().length());
+                        process.getId(), node.getId(), event.sourceProcessId(), summaryChars);
+                emitNodeDoneStatus(process, node, summaryChars + " chars");
             }
             case BLOCKED, STARTED, SUMMARY -> {
                 // Mid-flight progress — keep humanSummary as a note on
@@ -712,9 +780,10 @@ public class MarvinEngine implements ThinkEngine {
                     artifacts.put("result", output.getResult());
                 }
                 nodeService.markDone(node, artifacts);
+                int resultChars = output.getResult() == null ? 0 : output.getResult().length();
                 log.info("Marvin id='{}' worker DONE node='{}' result={} chars",
-                        process.getId(), node.getId(),
-                        output.getResult() == null ? 0 : output.getResult().length());
+                        process.getId(), node.getId(), resultChars);
+                emitNodeDoneStatus(process, node, resultChars + " chars");
             }
             case BLOCKED_BY_PROBLEM -> {
                 String reason = output.getProblem()
@@ -731,6 +800,39 @@ public class MarvinEngine implements ThinkEngine {
                     log.warn("Marvin id='{}' worker NEEDS_SUBTASKS node='{}' — empty newTasks",
                             process.getId(), node.getId());
                     return;
+                }
+                // B2: reject self-recursive sub-task spawn. A worker
+                // running inside recipe X must not propose a sub-task
+                // with recipe X — that would spawn a fresh Marvin
+                // process re-entering the same plan, which we observed
+                // in the live 2026-05-24 Atomkraft run (deep-research's
+                // marvin-worker NEEDS_SUBTASKS'd back into
+                // _user/deep-research, doubling the budget without
+                // converging on the original goal's deliverable).
+                String currentRecipe = process.getRecipeName();
+                if (currentRecipe != null && !currentRecipe.isBlank()) {
+                    for (NodeSpec ns : children) {
+                        if (ns.taskSpec() == null) continue;
+                        Object recObj = ns.taskSpec().get("recipe");
+                        if (recObj instanceof String r
+                                && currentRecipe.equals(r.trim())) {
+                            String reason = "NEEDS_SUBTASKS would spawn a"
+                                    + " self-recursive sub-task with"
+                                    + " recipe '" + currentRecipe
+                                    + "' (same as the current process'"
+                                    + " recipe). Rejected to prevent"
+                                    + " runaway recursion — restructure"
+                                    + " the goal instead of delegating"
+                                    + " back into the same recipe.";
+                            nodeService.markFailed(node, reason);
+                            log.warn("Marvin id='{}' worker NEEDS_SUBTASKS"
+                                            + " node='{}' rejected — "
+                                            + "self-recursive recipe '{}'",
+                                    process.getId(), node.getId(),
+                                    currentRecipe);
+                            return;
+                        }
+                    }
                 }
                 nodeService.appendChildren(
                         process.getTenantId(), process.getId(), node.getId(), children);
@@ -1096,6 +1198,7 @@ public class MarvinEngine implements ThinkEngine {
             nodeService.markDone(node, artifacts);
             log.info("Marvin id='{}' PLAN node='{}' produced {} children",
                     process.getId(), node.getId(), children.size());
+            emitNodeDoneStatus(process, node, children.size() + " children");
         } catch (RuntimeException e) {
             nodeService.markFailed(node, "PLAN failed: " + e.getMessage());
             log.warn("Marvin id='{}' PLAN node='{}' failed: {}",
@@ -1395,6 +1498,66 @@ public class MarvinEngine implements ThinkEngine {
                 }
             }
         }
+
+        // B1: coverage check. Every recipe in `allowedSubTaskRecipes`
+        // must appear at least once in the plan — either as a direct
+        // top-level WORKER taskSpec.recipe, or (for recipes listed in
+        // `recipesOnlyViaExpand`) inside an EXPAND_FROM_DOC
+        // childTemplate.recipe. Without this, the PLAN-LLM could (and
+        // did, live 2026-05-24) silently drop entire pipeline stages
+        // — e.g. emit only KIND 2 (marvin-worker) of a 2-stage
+        // research recipe and skip KIND 1 (web-research), leaving the
+        // surviving worker without inputs.
+        if (allowed != null && !allowed.isEmpty()) {
+            java.util.Set<String> directRecipes = new java.util.HashSet<>();
+            java.util.Set<String> expandTemplateRecipes = new java.util.HashSet<>();
+            for (NodeSpec ns : children) {
+                if (ns.taskKind() == TaskKind.WORKER
+                        && ns.taskSpec() != null) {
+                    Object r = ns.taskSpec().get("recipe");
+                    if (r instanceof String rs && !rs.isBlank()) {
+                        directRecipes.add(rs.trim());
+                    }
+                } else if (ns.taskKind() == TaskKind.EXPAND_FROM_DOC
+                        && ns.taskSpec() != null) {
+                    Object tmpl = ns.taskSpec().get("childTemplate");
+                    if (tmpl instanceof Map<?, ?> tm) {
+                        Object r = ((Map<String, Object>) tm).get("recipe");
+                        if (r instanceof String rs && !rs.isBlank()) {
+                            expandTemplateRecipes.add(rs.trim());
+                        }
+                    }
+                }
+            }
+            for (String expected : allowed) {
+                boolean mustExpand = onlyViaExpand != null
+                        && onlyViaExpand.contains(expected);
+                boolean present = mustExpand
+                        ? expandTemplateRecipes.contains(expected)
+                        : directRecipes.contains(expected)
+                                || expandTemplateRecipes.contains(expected);
+                if (!present) {
+                    if (mustExpand) {
+                        violations.add("recipe '" + expected
+                                + "' is in allowedSubTaskRecipes (and "
+                                + "recipesOnlyViaExpand) but no "
+                                + "EXPAND_FROM_DOC child uses it as "
+                                + "childTemplate.recipe — add the "
+                                + "missing expansion stage");
+                    } else {
+                        violations.add("recipe '" + expected
+                                + "' is in allowedSubTaskRecipes but "
+                                + "no child references it — every "
+                                + "declared recipe MUST appear at "
+                                + "least once (as a top-level WORKER "
+                                + "or inside an EXPAND_FROM_DOC "
+                                + "childTemplate); the LLM dropped a "
+                                + "pipeline stage");
+                    }
+                }
+            }
+        }
+
         return violations.isEmpty() ? null : String.join("; ", violations);
     }
 
@@ -1791,6 +1954,15 @@ public class MarvinEngine implements ThinkEngine {
             thinkEngineServiceProvider.getObject().start(child);
             log.info("Marvin id='{}' WORKER node='{}' spawned child='{}' recipe='{}' async={}",
                     process.getId(), node.getId(), child.getId(), applied.name(), asyncWorker);
+            try {
+                progressEmitter.emitStatus(process,
+                        de.mhus.vance.api.progress.StatusTag.DELEGATING,
+                        "Node '" + abbrev(node.getGoal())
+                                + "' → worker '" + applied.name() + "'");
+            } catch (RuntimeException pe) {
+                log.debug("Marvin id='{}' WORKER DELEGATING progress emit failed: {}",
+                        process.getId(), pe.toString());
+            }
         } catch (RecipeResolver.UnknownRecipeException ure) {
             nodeService.markFailed(node, "Unknown recipe: " + recipeName);
             log.warn("Marvin id='{}' WORKER node='{}' unknown recipe '{}' — failing",
@@ -2267,5 +2439,24 @@ public class MarvinEngine implements ThinkEngine {
     private static String abbrev(@Nullable String s) {
         if (s == null) return "";
         return s.length() <= 80 ? s : s.substring(0, 77) + "...";
+    }
+
+    /**
+     * Pushes a {@link de.mhus.vance.api.progress.StatusTag#NODE_DONE}
+     * ping to the user-progress side-channel. Caller-tolerant: any
+     * exception from the emitter is downgraded to a debug log so
+     * progress emit never blocks the lane. Same pattern as the
+     * Vogon phase-done emit and Slartibartfast phase-done emit.
+     */
+    private void emitNodeDoneStatus(
+            ThinkProcessDocument process, MarvinNodeDocument node, String detail) {
+        try {
+            progressEmitter.emitStatus(process,
+                    de.mhus.vance.api.progress.StatusTag.NODE_DONE,
+                    "Node '" + abbrev(node.getGoal()) + "' done — " + detail);
+        } catch (RuntimeException pe) {
+            log.debug("Marvin id='{}' NODE_DONE progress emit failed: {}",
+                    process.getId(), pe.toString());
+        }
     }
 }

@@ -92,6 +92,7 @@ const selectedProjectId = ref<string | null>(null);
 
 const editTitle = ref('');
 const editPath = ref('');
+const editMimeType = ref('');
 const editInlineText = ref('');
 const editAutoSummary = ref(false);
 const editSummaryDirty = ref(false);
@@ -171,6 +172,21 @@ const createMimeOptions = computed(() => {
     { value: 'text/html', label: 'HTML', group: webGroup },
     { value: 'text/css', label: 'CSS', group: webGroup },
   ];
+});
+
+// Mime-type options used by the editor's "change mime type" dropdown.
+// Same list as the create form plus a sticky entry for the current
+// value when it falls outside the canonical set (e.g. application/pdf
+// for an upload, or a custom mime someone set via the API). Without
+// this fall-back the dropdown would silently swap the value to the
+// first option on render — a footgun for binary docs.
+const editMimeOptions = computed(() => {
+  const base = createMimeOptions.value;
+  const current = editMimeType.value;
+  if (!current) return base;
+  if (base.some(o => o.value === current)) return base;
+  const otherGroup = t('documents.mime.groupOther');
+  return [...base, { value: current, label: current, group: otherGroup }];
 });
 
 /** Default landing scope: every new project opens inside the
@@ -359,6 +375,7 @@ function fillEditor(): void {
   const sel = docsState.selected.value;
   editTitle.value = sel?.title ?? '';
   editPath.value = sel?.path ?? '';
+  editMimeType.value = sel?.mimeType ?? '';
   editInlineText.value = sel?.inlineText ?? '';
   editAutoSummary.value = sel?.autoSummary ?? false;
   editSummaryDirty.value = sel?.summaryDirty ?? false;
@@ -374,6 +391,9 @@ function fillEditor(): void {
   else if (isListDocument.value) contentTab.value = 'list';
   else if (isMindmapDocument.value) contentTab.value = 'mindmap';
   else if (isTreeDocument.value) contentTab.value = 'tree';
+  // Markdown lands on Preview first — the user opened a doc to read
+  // it, editing is one click away on the Raw tab.
+  else if (isMarkdownDocument.value) contentTab.value = 'preview';
   else contentTab.value = 'raw';
 }
 
@@ -385,7 +405,16 @@ function fillEditor(): void {
 // raw editor. The tab is in-memory only — switching does not hit the
 // server, the body just gets reparsed each time.
 
-type ContentTab = 'raw' | 'list' | 'tree' | 'mindmap' | 'records' | 'graph' | 'chart' | 'sheet';
+type ContentTab =
+  | 'raw'
+  | 'preview'
+  | 'list'
+  | 'tree'
+  | 'mindmap'
+  | 'records'
+  | 'graph'
+  | 'chart'
+  | 'sheet';
 const contentTab = ref<ContentTab>('raw');
 
 const isListDocument = computed<boolean>(() => {
@@ -444,6 +473,29 @@ const isSheetDocument = computed<boolean>(() => {
   if (!sel?.inline) return false;
   if ((sel.kind ?? '').toLowerCase() !== 'sheet') return false;
   return isSheetMime(sel.mimeType);
+});
+
+// Markdown documents get a Preview / Raw tab pair. Preview goes
+// through {@code MarkdownView} (same renderer as chat bubbles,
+// inbox previews, help drawer) so all the inline-kind-box dispatch
+// and `vance:` link handling come along for free. Raw stays the
+// {@code CodeEditor} fallback. Other kinded markdown docs (list,
+// tree, mindmap, …) are caught by their own branches above; this
+// covers everything else with a markdown mime type.
+const isMarkdownDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  const mime = (sel.mimeType ?? '').toLowerCase();
+  if (mime !== 'text/markdown' && mime !== 'text/x-markdown') return false;
+  // Don't claim the doc when a kind-specific branch will handle it —
+  // those have their own tab pairs and shouldn't double up.
+  return !isListDocument.value
+    && !isTreeDocument.value
+    && !isMindmapDocument.value
+    && !isRecordsDocument.value
+    && !isGraphDocument.value
+    && !isChartDocument.value
+    && !isSheetDocument.value;
 });
 
 // Trash convention: documents under `_bin/` are already in the
@@ -976,6 +1028,15 @@ async function apply(): Promise<boolean> {
     if (newPath && newPath !== sel.path) {
       body.newPath = newPath;
     }
+    // Mime-type change — only send when actually different. Blank
+    // drafts are treated as "no change" rather than "clear", because
+    // the schema doesn't allow null mime types and the user can't
+    // pick the empty option anyway (the dropdown's first entry is
+    // always a concrete type).
+    const newMime = editMimeType.value.trim();
+    if (newMime && newMime !== (sel.mimeType ?? '')) {
+      body.mimeType = newMime;
+    }
     // Auto-summary toggles — only send when changed so we don't
     // churn the document on every save.
     if (editAutoSummary.value !== (sel.autoSummary ?? false)) {
@@ -1326,6 +1387,13 @@ const formatBytes = (n: number): string => {
               :disabled="saving"
               :help="$t('documents.detail.pathHelp')"
             />
+            <VSelect
+              v-model="editMimeType"
+              :options="editMimeOptions"
+              :label="$t('documents.detail.mimeTypeLabel')"
+              :disabled="saving"
+              :help="$t('documents.detail.mimeTypeHelp')"
+            />
             <template v-if="docsState.selected.value.inline">
               <!-- Tab bar appears for list/tree-kind documents in a
                    supported mime type. Other docs jump straight to
@@ -1434,6 +1502,20 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isMarkdownDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'preview' }"
+                  @click="contentTab = 'preview'"
+                >{{ $t('documents.detail.tabPreview') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
 
               <template v-if="isListDocument && contentTab === 'list'">
                 <VAlert v-if="parsedList.error" variant="warning">
@@ -1506,6 +1588,12 @@ const formatBytes = (n: number): string => {
                   :doc="parsedTree.doc"
                   @update:doc="onTreeChanged"
                 />
+              </template>
+
+              <template v-else-if="isMarkdownDocument && contentTab === 'preview'">
+                <div class="markdown-preview-pane">
+                  <MarkdownView :source="editInlineText" />
+                </div>
               </template>
 
               <CodeEditor
@@ -1935,5 +2023,17 @@ const formatBytes = (n: number): string => {
   background: hsl(var(--p) / 0.12);
   border-color: hsl(var(--p) / 0.3);
   font-weight: 600;
+}
+
+/* Markdown preview pane — visual frame that matches the CodeEditor's
+   bordered card, so swapping tabs doesn't shift the surrounding layout. */
+.markdown-preview-pane {
+  border: 1px solid hsl(var(--bc) / 0.18);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
+  background: hsl(var(--b1));
+  min-height: 16rem;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 </style>

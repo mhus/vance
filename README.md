@@ -2,7 +2,7 @@
 
 **Platform for hybrid AI reasoning.** Deterministic structures lead, AI agents work inside them. Persistent projects, memory in MongoDB, tenants and permissions.
 
-Vance is not a chatbot and not a coding assistant. It is a server on which AI reasoning processes run over days, stay persistent, and remain steerable by the user.
+Vance is more than a chatbot or code assistant. It is a server on which AI reasoning processes run over days, stay persistent, and remain steerable by the user.
 
 ## What Vance actually does
 

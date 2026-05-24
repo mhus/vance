@@ -18,6 +18,7 @@ import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.ChatBehavior;
 import de.mhus.vance.brain.ai.EngineChatFactory;
+import de.mhus.vance.brain.context.LanguageContextResolver;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -61,8 +62,13 @@ class FramingPhaseTest {
                 new EngineChatFactory.EngineChatBundle(aiChat, behavior);
         when(engineChatFactory.forProcess(any(), any(), any())).thenReturn(bundle);
 
+        LanguageContextResolver languageContextResolver =
+                mock(LanguageContextResolver.class);
+        when(languageContextResolver.formatBlock(any())).thenReturn("");
+
         phase = new FramingPhase(
-                engineChatFactory, llmCallTracker, JsonMapper.builder().build());
+                engineChatFactory, llmCallTracker, JsonMapper.builder().build(),
+                languageContextResolver);
 
         process = new ThinkProcessDocument();
         process.setId("proc-1");

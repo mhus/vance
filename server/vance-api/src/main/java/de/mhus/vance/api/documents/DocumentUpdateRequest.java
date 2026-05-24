@@ -32,6 +32,18 @@ public class DocumentUpdateRequest {
     private @Nullable String inlineText;
 
     /**
+     * Change the document's MIME type. The original guess (from the
+     * upload or initial create) is sometimes wrong — e.g. a plain
+     * {@code text/plain} blob the user actually intended as Markdown —
+     * and the editor offers the same picker as the create form so the
+     * user can correct it. Server-side: validates that the value is
+     * non-blank and applies it verbatim; subsequent inline-text edits
+     * use the new type for the inline-vs-storage threshold check.
+     * Pass {@code null} to leave the current value unchanged.
+     */
+    private @Nullable String mimeType;
+
+    /**
      * New path (move/rename) for this document. Optional. The server
      * normalizes (trims, strips leading/trailing slashes) and rejects
      * with HTTP 409 if a sibling document already lives under the

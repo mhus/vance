@@ -100,8 +100,7 @@ export default {
     tryAgain: 'Erneut versuchen',
     backToPicker: 'Zurück zur Auswahl',
     historyLoading: 'Verlauf wird geladen…',
-    composerPlaceholderSingle:
-      'Nachricht schreiben — Eingabe zum Senden, Umschalt+Eingabe für Zeilenumbruch',
+    composerPlaceholderSingle: 'Nachricht schreiben — Eingabe zum Senden',
     composerPlaceholderMulti:
       'Nachricht schreiben — Strg/Cmd+Eingabe zum Senden, Eingabe für Zeilenumbruch',
     send: 'Senden',
@@ -269,8 +268,12 @@ export default {
       pathLabel: 'Pfad',
       pathHelp:
         'Dieses Dokument verschieben oder umbenennen. Der Pfad ist projektweit eindeutig; Konflikte werden abgelehnt.',
+      mimeTypeLabel: 'MIME-Type',
+      mimeTypeHelp:
+        'Inhaltstyp dieses Dokuments. Wenn der ursprüngliche Type falsch geraten war (z.B. Markdown als text/plain importiert), hier korrigieren.',
       contentLabel: 'Inhalt',
       tabRaw: 'Roh',
+      tabPreview: 'Vorschau',
       tabList: 'Liste',
       tabTree: 'Baum',
       tabMindmap: 'Mindmap',
@@ -441,6 +444,7 @@ export default {
       groupDoc: 'Dokumente & Konfig',
       groupCode: 'Code',
       groupWeb: 'Web',
+      groupOther: 'Sonstige',
     },
   },
 
@@ -1111,6 +1115,16 @@ export default {
       createdWithKitError: 'Projekt „{name}" angelegt, aber Kit „{kit}" konnte nicht installiert werden: {error}',
       archived: 'Projekt archiviert.',
       confirmArchive: 'Projekt „{name}" archivieren? Es wird in die Gruppe „archived" verschoben.',
+      languagesCardTitle: 'Sprachen',
+      languagesDescription:
+        'Per-Projekt-Sprachen. Sind sie nicht gesetzt, fällt die Auflösung auf User- bzw. Tenant-Default zurück.',
+      languageNotSet: 'Nicht gesetzt',
+      chatLanguageLabel: 'Assistenten-Sprache (Chat)',
+      chatLanguageHelp:
+        'Überschreibt die Profil-Einstellung des Nutzers. Beispiel: englisches Code-Review-Projekt eines deutschsprachigen Users.',
+      contentLanguageLabel: 'Inhaltssprache (Dokumente, Insights, Memory)',
+      contentLanguageHelp:
+        'Sprache der vom Assistenten geschriebenen Inhalte. Bewusst ohne User-Ebene — Inhalte gehören dem Projekt.',
     },
     kit: {
       cardTitle: 'Kit',
@@ -1291,6 +1305,11 @@ export default {
       language: 'Sprache',
       languageBrowserDefault: 'Browser-Vorgabe',
       languageSaved: 'Sprache aktualisiert.',
+      chatLanguage: 'Assistenten-Sprache (Chat)',
+      chatLanguageNotSet: 'Nicht gesetzt (Tenant-Standard nutzen)',
+      chatLanguageDescription:
+        'In welcher Sprache der Assistent antwortet und zuhört. Wird vom Projekt überschrieben, wenn dort etwas gesetzt ist.',
+      chatLanguageSaved: 'Assistenten-Sprache aktualisiert.',
       theme: 'Farbschema',
       themeAuto: 'System (automatisch)',
       themeLight: 'Hell',

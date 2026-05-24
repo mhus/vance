@@ -173,6 +173,41 @@ class SlartibartfastEngineSummarizeForParentTest {
     }
 
     @Test
+    void done_executionSkipped_doesNotClaimCompletion() {
+        // Regression guard: when EXECUTION_PLANNING decided SKIP
+        // (recipe is a reusable template without a concrete mission),
+        // the parent must hear that execution was deliberately
+        // skipped — NOT "ran it to completion" + "result lives in
+        // child chat history". Arthur previously misread the latter
+        // as a missing-file failure and tried to re-delegate.
+        ThinkProcessDocument process = process(state(s -> {
+            s.setProposedRecipe(RecipeDraft.builder()
+                    .name("deep-research").build());
+            s.setPersistedRecipePath(
+                    "recipes/_user/deep-research.yaml");
+            s.setExecutionDecision(
+                    de.mhus.vance.api.slartibartfast.ExecutionDecision.SKIP);
+            s.setExecutionDecisionReason(
+                    "The user described a reusable recipe but did "
+                            + "not supply a concrete topic.");
+            s.setStatus(ArchitectStatus.DONE);
+        }));
+
+        ParentReport report = engine.summarizeForParent(
+                process, ProcessEventType.DONE);
+
+        assertThat(report.humanSummary())
+                .contains("deep-research")
+                .contains("recipes/_user/deep-research.yaml")
+                .contains("execution was skipped deliberately")
+                .contains("did not supply a concrete topic")
+                .contains("spawn it with a concrete topic")
+                .doesNotContain("ran it to completion")
+                .doesNotContain("declared no path-output criteria")
+                .doesNotContain("result lives in the child");
+    }
+
+    @Test
     void failed_propagatesFailureReason() {
         ThinkProcessDocument process = process(state(s -> {
             s.setProposedRecipe(RecipeDraft.builder().name("broken-recipe").build());

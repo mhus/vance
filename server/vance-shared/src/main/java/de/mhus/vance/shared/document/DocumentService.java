@@ -304,7 +304,11 @@ public class DocumentService {
         return saved;
     }
 
-    /** Convenience for text payloads that are known to be in-memory. */
+    /** Convenience for text payloads that are known to be in-memory.
+     *  MIME is derived from the path extension (.md → text/markdown,
+     *  .yaml/.yml → application/yaml, .json → application/json,
+     *  everything else → text/plain) so kind-codecs and header
+     *  strategies pick the right parser. */
     public DocumentDocument createText(
             String tenantId,
             String projectId,
@@ -315,9 +319,32 @@ public class DocumentService {
             @Nullable String createdBy) {
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         return create(tenantId, projectId, path, title, tags,
-                "text/plain",
+                mimeFromPath(path),
                 new ByteArrayInputStream(bytes),
                 createdBy);
+    }
+
+    /** Map file extension to a canonical text MIME. Falls back to
+     *  {@code text/plain} for unknown extensions or paths without
+     *  one — matches what kind-codecs / header strategies expect
+     *  (see {@link MarkdownHeaderStrategy}, {@link YamlHeaderStrategy},
+     *  {@link JsonHeaderStrategy}). */
+    static String mimeFromPath(String path) {
+        int slash = path.lastIndexOf('/');
+        String name = slash >= 0 ? path.substring(slash + 1) : path;
+        int dot = name.lastIndexOf('.');
+        if (dot < 0 || dot == name.length() - 1) return "text/plain";
+        String ext = name.substring(dot + 1).toLowerCase();
+        return switch (ext) {
+            case "md", "markdown" -> "text/markdown";
+            case "yaml", "yml" -> "application/yaml";
+            case "json" -> "application/json";
+            case "xml" -> "application/xml";
+            case "html", "htm" -> "text/html";
+            case "css" -> "text/css";
+            case "csv" -> "text/csv";
+            default -> "text/plain";
+        };
     }
 
     /**
@@ -615,6 +642,29 @@ public class DocumentService {
             @Nullable Boolean newAutoSummary,
             @Nullable Boolean newSummaryDirty,
             @Nullable Boolean newRagEnabled) {
+        return update(id, newTitle, newTags, newInlineText, newPath,
+                newAutoSummary, newSummaryDirty, newRagEnabled, null);
+    }
+
+    /**
+     * Overload that also accepts a {@code newMimeType} override. Use
+     * when the original guess from the upload was wrong (e.g. a doc
+     * that came in as {@code text/plain} but is actually Markdown).
+     * {@code null} leaves the current MIME type untouched. The new
+     * value is applied <b>before</b> the inline-text branch runs so the
+     * inline-vs-storage threshold uses the new mime type's textual
+     * status for the decision.
+     */
+    public DocumentDocument update(
+            String id,
+            @Nullable String newTitle,
+            @Nullable List<String> newTags,
+            @Nullable String newInlineText,
+            @Nullable String newPath,
+            @Nullable Boolean newAutoSummary,
+            @Nullable Boolean newSummaryDirty,
+            @Nullable Boolean newRagEnabled,
+            @Nullable String newMimeType) {
 
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
@@ -624,6 +674,13 @@ public class DocumentService {
         if (newAutoSummary != null) doc.setAutoSummary(newAutoSummary);
         if (newSummaryDirty != null) doc.setSummaryDirty(newSummaryDirty);
         if (newRagEnabled != null) doc.setRagEnabled(newRagEnabled);
+        // Apply the mime-type change first so the inline-vs-storage
+        // decision below uses the new textual flag (e.g. switching
+        // text/plain → application/octet-stream pushes a previously
+        // inline doc to storage on its next inlineText update).
+        if (newMimeType != null && !newMimeType.isBlank()) {
+            doc.setMimeType(newMimeType);
+        }
 
         if (newInlineText != null) {
             byte[] bytes = newInlineText.getBytes(StandardCharsets.UTF_8);
@@ -702,7 +759,7 @@ public class DocumentService {
         DocumentDocument saved = repository.save(doc);
         log.info("Updated document tenantId='{}' projectId='{}' id='{}' fields={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getId(),
-                describeChanges(newTitle, newTags, newInlineText, newPath));
+                describeChanges(newTitle, newTags, newInlineText, newPath, newMimeType));
         return saved;
     }
 
@@ -724,12 +781,14 @@ public class DocumentService {
             @Nullable String title,
             @Nullable List<String> tags,
             @Nullable String inlineText,
-            @Nullable String path) {
+            @Nullable String path,
+            @Nullable String mimeType) {
         StringBuilder sb = new StringBuilder("[");
         if (title != null) sb.append("title");
         if (tags != null) { if (sb.length() > 1) sb.append(','); sb.append("tags"); }
         if (inlineText != null) { if (sb.length() > 1) sb.append(','); sb.append("inlineText"); }
         if (path != null) { if (sb.length() > 1) sb.append(','); sb.append("path"); }
+        if (mimeType != null) { if (sb.length() > 1) sb.append(','); sb.append("mimeType"); }
         return sb.append(']').toString();
     }
 

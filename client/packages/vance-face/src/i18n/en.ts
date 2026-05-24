@@ -105,7 +105,7 @@ export default {
     tryAgain: 'Try again',
     backToPicker: 'Back to picker',
     historyLoading: 'Loading history…',
-    composerPlaceholderSingle: 'Type a message — Enter to send, Shift+Enter for newline',
+    composerPlaceholderSingle: 'Type a message — Enter to send',
     composerPlaceholderMulti:
       'Type a message — Ctrl/Cmd+Enter to send, Enter for newline',
     send: 'Send',
@@ -271,8 +271,12 @@ export default {
       pathLabel: 'Path',
       pathHelp:
         'Move or rename this document. Path is unique within the project; conflicts are rejected.',
+      mimeTypeLabel: 'MIME type',
+      mimeTypeHelp:
+        'Content type of this document. Fix it here if the original guess was wrong (e.g. Markdown imported as text/plain).',
       contentLabel: 'Content',
       tabRaw: 'Raw',
+      tabPreview: 'Preview',
       tabList: 'List',
       tabTree: 'Tree',
       tabMindmap: 'Mindmap',
@@ -443,6 +447,7 @@ export default {
       groupDoc: 'Doc & config',
       groupCode: 'Code',
       groupWeb: 'Web',
+      groupOther: 'Other',
     },
   },
 
@@ -1100,6 +1105,16 @@ export default {
       createdWithKitError: 'Project "{name}" created, but kit "{kit}" install failed: {error}',
       archived: 'Project archived.',
       confirmArchive: 'Archive project "{name}"? It will be moved to the "archived" group.',
+      languagesCardTitle: 'Languages',
+      languagesDescription:
+        'Per-project language overrides. When unset, resolution falls through to user / tenant defaults.',
+      languageNotSet: 'Not set',
+      chatLanguageLabel: 'Assistant language (chat)',
+      chatLanguageHelp:
+        'Overrides the user-profile setting. Example: an English code-review project owned by a German-speaking user.',
+      contentLanguageLabel: 'Content language (documents, insights, memory)',
+      contentLanguageHelp:
+        'Language the assistant writes content in. No user layer by design — content belongs to the project.',
     },
     kit: {
       cardTitle: 'Kit',
@@ -1279,6 +1294,11 @@ export default {
       language: 'Language',
       languageBrowserDefault: 'Browser default',
       languageSaved: 'Language updated.',
+      chatLanguage: 'Assistant language (chat)',
+      chatLanguageNotSet: 'Not set (use tenant default)',
+      chatLanguageDescription:
+        'Which language the assistant replies and listens in. Projects can override this.',
+      chatLanguageSaved: 'Assistant language updated.',
       theme: 'Theme',
       themeAuto: 'System (auto)',
       themeLight: 'Light',

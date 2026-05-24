@@ -116,4 +116,45 @@ public class LanguageResolver {
     public @Nullable String findWebuiLanguage(String tenantId, String userId) {
         return settingService.getUserStringValue(tenantId, userId, Keys.WEBUI_LANGUAGE);
     }
+
+    /**
+     * Builds a Markdown {@code ## Languages} block describing the
+     * resolved {@link Keys#CHAT_LANGUAGE} and {@link Keys#CONTENT_LANGUAGE}
+     * for the given scope. Returns an empty string when neither key
+     * is set anywhere in the cascade — callers concatenate
+     * unconditionally; an empty suffix means "no opinion".
+     *
+     * <p>Shape (chat-only example):
+     * <pre>
+     * ## Languages
+     * - Chat: respond and listen in de
+     * </pre>
+     *
+     * <p>Used by every engine that wants the LLM to know what
+     * language the user expects (Arthur/Eddie/Ford via the memory
+     * context; Slartibartfast and Zaphod-synthesis embed it
+     * directly into their phase system-prompts).
+     */
+    public String formatLanguageBlock(
+            String tenantId,
+            @Nullable String userId,
+            @Nullable String projectId,
+            @Nullable String thinkProcessId) {
+        @Nullable String chat = findChatLanguage(
+                tenantId, userId, projectId, thinkProcessId);
+        @Nullable String content = findContentLanguage(
+                tenantId, projectId, thinkProcessId);
+        boolean chatSet = chat != null && !chat.isBlank();
+        boolean contentSet = content != null && !content.isBlank();
+        if (!chatSet && !contentSet) return "";
+        StringBuilder sb = new StringBuilder("## Languages\n");
+        if (chatSet) {
+            sb.append("- Chat: respond and listen in ").append(chat).append('\n');
+        }
+        if (contentSet) {
+            sb.append("- Content: write documents, insights, and memory entries in ")
+                    .append(content).append('\n');
+        }
+        return sb.toString();
+    }
 }

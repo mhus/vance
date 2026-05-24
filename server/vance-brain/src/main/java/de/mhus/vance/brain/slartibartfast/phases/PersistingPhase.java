@@ -95,21 +95,19 @@ public class PersistingPhase {
             recipePath = USER_PREFIX + name + ".yaml";
             auditPath = USER_PREFIX + name + ".audit.json";
             isUserNamespace = true;
-            // Collision refusal: named CREATE must not silently
-            // overwrite an existing recipe. The user explicitly
-            // chose the name, so a collision is intent-ambiguous.
+            // Named CREATE upserts — when "speicher unter 'X'"
+            // hits an existing X, we treat the new run as the
+            // canonical version and overwrite. The previous
+            // versions are preserved by the DocumentService
+            // version layer (planned), or by manual deletion
+            // if the user wants a fresh slate. Log the
+            // overwrite so the operation is visible in audit.
             if (documentService.findByPath(
                     process.getTenantId(), process.getProjectId(), recipePath)
                     .isPresent()) {
-                state.setFailureReason("Recipe '" + name + "' already "
-                        + "exists at " + recipePath + ". To modify it, "
-                        + "use EDIT mode (\"Erweitere '" + name + "' um …\"). "
-                        + "To replace it, delete the existing document first.");
-                appendIteration(state,
-                        "draft '" + draft.getName() + "', target=" + recipePath,
-                        "FAILED — collision with existing recipe",
-                        PhaseIteration.IterationOutcome.FAILED);
-                return;
+                log.info("Slartibartfast id='{}' PERSISTING — overwriting "
+                                + "existing recipe at '{}' (named CREATE)",
+                        process.getId(), recipePath);
             }
         } else {
             recipePath = SLART_PREFIX + runId + "/" + draft.getName() + ".yaml";

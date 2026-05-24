@@ -147,6 +147,7 @@ public class ContentValidatingPhase {
     private final EngineChatFactory engineChatFactory;
     private final LlmCallTracker llmCallTracker;
     private final ObjectMapper objectMapper;
+    private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
 
     /**
      * Returns {@code true} when content validation actually ran
@@ -361,7 +362,10 @@ public class ContentValidatingPhase {
                 + bundle.primaryConfig().modelName();
 
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(SYSTEM_PROMPT));
+        String langBlock = languageContextResolver.formatBlock(process);
+        messages.add(SystemMessage.from(langBlock.isEmpty()
+                ? SYSTEM_PROMPT
+                : SYSTEM_PROMPT + "\n\n" + langBlock));
         messages.add(UserMessage.from(buildUserPrompt(userCriteria, artifacts)));
 
         for (int attempt = 0; attempt <= MAX_CORRECTIONS; attempt++) {

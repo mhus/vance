@@ -91,12 +91,11 @@ public class ZaphodEngine implements ThinkEngine {
      *  remains a separate concern (recipe param {@code synthesisPrompt}).
      *
      *  <p>HARD OUTPUT CONTRACT: structured JSON object. The engine
-     *  parses {@code synthesisMarkdown} and persists it as a project
-     *  document at the path resolved from
-     *  {@code params.outputPathTemplate} — the LLM does NOT call any
-     *  {@code doc_*} or {@code tool_*} pseudo-functions, those would
-     *  be hallucinated and silently fail. Worker generates content,
-     *  engine writes the file (see
+     *  parses {@code synthesisMarkdown} and persists it under
+     *  {@code _zaphod-drafts/<processId>/synthesis.md} — the LLM
+     *  does NOT call any {@code doc_*} or {@code tool_*} pseudo-
+     *  functions, those would be hallucinated and silently fail.
+     *  Worker generates content, engine writes the file (see
      *  {@code instructions/general/engines.md} §"Tool usage"). */
     private static final String SYNTHESIS_SYSTEM_PROMPT =
             """
@@ -135,16 +134,16 @@ public class ZaphodEngine implements ThinkEngine {
             Frage. Bei deutscher Frage → deutsche Synthese.
             """;
 
-    /** Default template for the synthesis-document path. Placeholders:
-     *  {@code {recipeName}}, {@code {runId}}, {@code {timestamp}}.
-     *  When the spawned recipe-name is absent (anonymous council),
-     *  falls back to {@code "zaphod-council"} for the slug. */
-    private static final String DEFAULT_OUTPUT_PATH_TEMPLATE =
-            "councils/{recipeName}/{runId}.md";
-
-    /** {@code engineParams[OUTPUT_PATH_TEMPLATE_KEY]} — recipe
-     *  override for {@link #DEFAULT_OUTPUT_PATH_TEMPLATE}. */
-    public static final String OUTPUT_PATH_TEMPLATE_KEY = "outputPathTemplate";
+    /** Engine-internal draft namespace — analog zu Vogon's
+     *  {@code _vogon-drafts/}. The engine persists one
+     *  {@code <head-name>.md} per council head right after the
+     *  head's reply is captured, plus a {@code synthesis.md} after
+     *  the synthesizer turn. Per-process subdirectory, overwritten
+     *  on re-run of the same Zaphod process. The drafts are the
+     *  audit / "let me re-read what X said" surface — the
+     *  user-visible synthesis lives in the chat (ASSISTANT
+     *  reply) and additionally in the synthesis.md draft. */
+    public static final String DRAFTS_PREFIX = "_zaphod-drafts/";
 
     /** Max structured-output retries when the synthesizer LLM
      *  emits invalid JSON. Same budget Slart uses for FRAMING /
@@ -172,13 +171,19 @@ public class ZaphodEngine implements ThinkEngine {
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
     private final ObjectMapper objectMapper;
-    /** Writes the synthesizer's structured-output markdown body
-     *  to a project document under the resolved
-     *  {@code outputPathTemplate}. The engine — not the LLM —
-     *  performs the persistence so the synthesis is guaranteed
-     *  to land. */
+    /** Writes head replies and the synthesizer's structured-output
+     *  markdown body to project documents under
+     *  {@code _zaphod-drafts/<processId>/}. The engine — not the
+     *  LLM — performs the persistence so the artefacts are
+     *  guaranteed to land. */
     private final de.mhus.vance.shared.document.DocumentService documentService;
     private final ObjectProvider<ThinkEngineService> thinkEngineServiceProvider;
+    /** Resolves {@code chat.language} + {@code content.language} from
+     *  the cascade and renders them as a "## Languages" block to
+     *  append to the synthesizer's system prompt — Arthur/Eddie pick
+     *  these up via MemoryContextLoader, but Zaphod's synthesizer
+     *  runs inline and would otherwise miss them. */
+    private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -389,6 +394,22 @@ public class ZaphodEngine implements ThinkEngine {
             if (head.getStatus() == HeadStatus.FAILED) {
                 head.setFailureReason("worker produced no assistant reply");
             }
+            // Persist the head reply as a draft document — same
+            // pattern as Vogon's _vogon-drafts/. Lets Arthur (or the
+            // user via the editor) re-read what each individual head
+            // said when the synthesized chat answer isn't enough.
+            // Overwrites on re-run of the same process.
+            if (reply != null && !reply.isBlank()) {
+                String draftPath = DRAFTS_PREFIX + process.getId()
+                        + "/" + head.getName() + ".md";
+                try {
+                    writeDraftDocument(process, draftPath, reply,
+                            "Council head '" + head.getName() + "' reply");
+                } catch (RuntimeException e) {
+                    log.warn("Zaphod id='{}' head '{}' draft persist failed: {}",
+                            process.getId(), head.getName(), e.toString());
+                }
+            }
             log.info("Zaphod id='{}' head '{}' {} — reply chars={}",
                     process.getId(), head.getName(), head.getStatus(),
                     reply == null ? 0 : reply.length());
@@ -497,7 +518,12 @@ public class ZaphodEngine implements ThinkEngine {
                     .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
                     .engine(NAME)
                     .build();
-            messages.add(SystemMessage.from(promptTemplateRenderer.render(synthTpl, synthCtx)));
+            String renderedSystem = promptTemplateRenderer.render(synthTpl, synthCtx);
+            String langBlock = languageContextResolver.formatBlock(process);
+            if (!langBlock.isEmpty()) {
+                renderedSystem = renderedSystem + "\n\n" + langBlock;
+            }
+            messages.add(SystemMessage.from(renderedSystem));
             messages.add(UserMessage.from(body.toString()));
             String modelAlias = config.provider() + ":" + config.modelName();
 
@@ -551,20 +577,17 @@ public class ZaphodEngine implements ThinkEngine {
                 return;
             }
 
-            // Resolve the output path + persist the markdown body
-            // as a project document. Engine writes the file —
-            // the LLM only produced content (see instructions/
-            // general/engines.md §"Tool usage").
-            String outputPath = resolveOutputPath(process, state);
+            // Persist the synthesis markdown as a draft document
+            // under the per-process drafts namespace. Same pattern
+            // as the head replies above — overwrite-on-rerun,
+            // engine-deterministic (worker generates content,
+            // engine writes the file). The chat ASSISTANT-reply
+            // (below) is the primary delivery; this draft is the
+            // audit / re-read surface.
+            String outputPath = DRAFTS_PREFIX + process.getId() + "/synthesis.md";
             try {
-                documentService.createText(
-                        process.getTenantId(),
-                        process.getProjectId(),
-                        outputPath,
-                        parsed.title(),
-                        java.util.List.of("council", "synthesis"),
-                        parsed.synthesisMarkdown(),
-                        "zaphod:" + process.getId());
+                writeDraftDocument(process, outputPath,
+                        parsed.synthesisMarkdown(), parsed.title());
             } catch (RuntimeException e) {
                 // Persist failure — keep the synthesis in-state so
                 // the user can still see it via the parent-summary,
@@ -695,36 +718,30 @@ public class ZaphodEngine implements ThinkEngine {
             String title, String summary, String synthesisMarkdown) {}
 
     /**
-     * Resolves the synthesis-document path from
-     * {@link #OUTPUT_PATH_TEMPLATE_KEY} (recipe override) or
-     * falls back to {@link #DEFAULT_OUTPUT_PATH_TEMPLATE}.
-     * Substitutes {@code {recipeName}}, {@code {runId}},
-     * {@code {timestamp}} placeholders. RecipeName falls back to
-     * {@code "zaphod-council"} for anonymous spawns.
+     * Persists one draft document under
+     * {@code _zaphod-drafts/<processId>/} via the
+     * {@link de.mhus.vance.shared.document.DocumentService}.
+     * Upserts — if the same process re-runs (recovery, restart),
+     * the draft is overwritten in place. Same find-or-update
+     * pattern Vogon uses for its phase drafts.
      */
-    private String resolveOutputPath(
-            ThinkProcessDocument process, ZaphodState state) {
-        String template = paramString(
-                process, OUTPUT_PATH_TEMPLATE_KEY,
-                DEFAULT_OUTPUT_PATH_TEMPLATE);
-        String recipeName = process.getRecipeName();
-        if (recipeName == null || recipeName.isBlank()) {
-            recipeName = "zaphod-council";
+    private void writeDraftDocument(
+            ThinkProcessDocument process, String path,
+            String content, String title) {
+        String tenantId = process.getTenantId();
+        String projectId = process.getProjectId();
+        java.util.Optional<de.mhus.vance.shared.document.DocumentDocument> existing =
+                documentService.findByPath(tenantId, projectId, path);
+        if (existing.isPresent()) {
+            documentService.update(
+                    existing.get().getId(),
+                    title, /*tags*/ null, content, /*newPath*/ null);
+        } else {
+            documentService.createText(
+                    tenantId, projectId, path, title,
+                    java.util.List.of("council", "draft"),
+                    content, "zaphod:" + process.getId());
         }
-        // Strip the _user/ prefix when the spawned recipe came
-        // from Slart's user-namespace — output documents are
-        // named after the council, not the namespace.
-        if (recipeName.startsWith("_user/")) {
-            recipeName = recipeName.substring("_user/".length());
-        }
-        String runId = process.getId() == null
-                ? "anon" : process.getId();
-        String timestamp = java.time.Instant.now().toString()
-                .replace(":", "-").replace(".", "-");
-        return template
-                .replace("{recipeName}", recipeName)
-                .replace("{runId}", runId)
-                .replace("{timestamp}", timestamp);
     }
 
     // ──────────────────── summarizeForParent ────────────────────

@@ -1,0 +1,47 @@
+description: |
+  Slartibartfast variant that generates a Marvin recipe
+  (engine: marvin, dynamic task-tree with PLAN/WORKER/USER_INPUT/
+  AGGREGATE nodes) from a free-text request. Same Slart lifecycle
+  (FRAMING → … → PERSISTING → EXECUTING → EXECUTION_VALIDATING),
+  only the PROPOSING and VALIDATING phases produce/check a
+  Marvin-recipe shape instead of a Vogon strategy.
+
+  Use this when the task needs **deep, recursive decomposition**
+  with possible user-input mid-flow — "research X systematically
+  and write a report", "analyse this codebase and produce an
+  architecture document", "help me decide between A and B, ask
+  me what you need to know first". The hallmark is dynamic
+  task-tree growth: Marvin can spawn additional sub-tasks or
+  USER_INPUT nodes as it discovers what's needed.
+
+  For linear pipelines with a fixed shape ("write the document
+  with these phases") use plain `slartibartfast` (vogon-strategy).
+  For multi-perspective debate use `zaphod-architect`.
+engine: slartibartfast
+params:
+  outputSchemaType: marvin-recipe
+  # Marvin recipe generation benefits from a larger context —
+  # Slart needs to reason about node hierarchy, worker recipes
+  # and aggregation strategy in one go.
+  model: default:analyze
+tags:
+  - architect
+  - deep-think
+  - engine-default
+# Trigger keywords for the deterministic recipe-router pre-check
+# (see specification/recipe-routing.md §5). Claims intents that
+# imply recursive decomposition, deep-research-style pipelines,
+# or user-in-the-loop dynamic planning.
+triggers:
+  keywords:
+    - marvin
+    - marvin-recipe
+    - deep-think
+    - deep-research
+    - tiefen-recherche
+    - tiefenanalyse
+    - task-tree
+    - subtasks
+    - dynamic-plan
+    - recursive
+    - decompose

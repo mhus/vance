@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 
 interface Props {
   /** Two-way bound visibility flag. */
@@ -26,6 +26,19 @@ watch(() => props.modelValue, (open) => {
   if (!el) return;
   if (open && !el.open) el.showModal();
   if (!open && el.open) el.close();
+});
+
+// Initial mount case: a watch without `immediate: true` doesn't fire
+// on the starting value, so if the modal is conditionally rendered
+// (v-if) and lands here with modelValue already `true`, the dialog
+// element exists in the DOM but nobody ever called showModal() on it —
+// it stays invisible. Cover that one path explicitly. We can't use
+// `immediate` on the watch above because the template ref is null
+// until after mount.
+onMounted(() => {
+  const el = dialog.value;
+  if (!el) return;
+  if (props.modelValue && !el.open) el.showModal();
 });
 
 function onClose(): void {

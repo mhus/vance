@@ -342,7 +342,9 @@ public class DocumentController {
                     request.getInlineText(),
                     request.getNewPath(),
                     request.getAutoSummary(),
-                    request.getSummaryDirty());
+                    request.getSummaryDirty(),
+                    /* ragEnabled handled atomically above */ null,
+                    request.getMimeType());
         } catch (DocumentService.DocumentAlreadyExistsException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
         } catch (IllegalArgumentException e) {

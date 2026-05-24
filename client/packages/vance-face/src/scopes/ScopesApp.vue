@@ -480,6 +480,71 @@ async function submitKitDialog(): Promise<void> {
   }
 }
 
+// ─── Project-level language pickers ───
+//
+// Two settings, both surfaced via dedicated dropdowns on the project
+// card so users don't have to know the key names (chat.language /
+// content.language) and don't have to bother with the type=STRING
+// row in the generic settings panel. Behaviour:
+//
+//   "Not set" (empty value) → DELETE the setting → cascade falls
+//     through to the tenant (then LanguageResolver.DEFAULT_LANGUAGE).
+//   Any concrete code → upsert as STRING.
+//
+// Cascade scopes (see LanguageResolver):
+//   chat.language    : project → user → tenant
+//   content.language : project → tenant
+//
+// The user-level chat.language lives on the profile page; this is
+// the project override on top of it.
+
+const LANGUAGE_OPTIONS_KEYS: readonly string[] = ['de', 'en', 'fr', 'es', 'it'] as const;
+const LANGUAGE_OPTIONS_LABELS: Record<string, string> = {
+  de: 'Deutsch',
+  en: 'English',
+  fr: 'Français',
+  es: 'Español',
+  it: 'Italiano',
+};
+
+const projectLanguageOptions = computed(() => [
+  { value: '', label: t('scopes.project.languageNotSet') },
+  ...LANGUAGE_OPTIONS_KEYS.map(k => ({ value: k, label: LANGUAGE_OPTIONS_LABELS[k] })),
+]);
+
+function settingValueByKey(key: string): string {
+  const hit = settingsState.settings.value.find(s => s.key === key);
+  return hit?.value ?? '';
+}
+
+const projectChatLanguage = computed<string>(() => settingValueByKey('chat.language'));
+const projectContentLanguage = computed<string>(() => settingValueByKey('content.language'));
+
+async function setProjectLanguageSetting(key: string, value: string | null): Promise<void> {
+  const scope = settingsScope.value;
+  if (!scope || scope.type !== 'project') return;
+  try {
+    if (value === null || value === '') {
+      // No-op when there's nothing to delete — saves a 404 round-trip
+      // and a spurious error in {@link useScopeSettings.remove}.
+      if (!settingsState.settings.value.some(s => s.key === key)) return;
+      await settingsState.remove(scope.type, scope.id, key);
+    } else {
+      await settingsState.upsert(scope.type, scope.id, key, value, SettingType.STRING, null);
+    }
+  } catch {
+    /* settingsState.error already surfaces via the panel error banner */
+  }
+}
+
+function onProjectChatLanguageChanged(value: string | null): void {
+  void setProjectLanguageSetting('chat.language', value);
+}
+
+function onProjectContentLanguageChanged(value: string | null): void {
+  void setProjectLanguageSetting('content.language', value);
+}
+
 // ─── Settings actions ───
 
 async function addSetting(): Promise<void> {
@@ -757,6 +822,38 @@ const combinedError = computed<string | null>(() =>
               {{ $t('scopes.common.save') }}
             </VButton>
           </div>
+        </div>
+      </VCard>
+
+      <!-- Languages -->
+      <VCard
+        v-if="selection.kind === 'project' && selectedProject"
+        :title="$t('scopes.project.languagesCardTitle')"
+      >
+        <p class="text-sm opacity-70 mb-3">
+          {{ $t('scopes.project.languagesDescription') }}
+        </p>
+        <div class="flex flex-col gap-3">
+          <VSelect
+            :model-value="projectChatLanguage"
+            :options="projectLanguageOptions"
+            :label="$t('scopes.project.chatLanguageLabel')"
+            :disabled="settingsState.busy.value || isArchivedProject"
+            @update:model-value="onProjectChatLanguageChanged"
+          />
+          <p class="text-xs opacity-60 -mt-2">
+            {{ $t('scopes.project.chatLanguageHelp') }}
+          </p>
+          <VSelect
+            :model-value="projectContentLanguage"
+            :options="projectLanguageOptions"
+            :label="$t('scopes.project.contentLanguageLabel')"
+            :disabled="settingsState.busy.value || isArchivedProject"
+            @update:model-value="onProjectContentLanguageChanged"
+          />
+          <p class="text-xs opacity-60 -mt-2">
+            {{ $t('scopes.project.contentLanguageHelp') }}
+          </p>
         </div>
       </VCard>
 

@@ -5,17 +5,20 @@ import { setUiLocale } from '@/i18n';
 import { EditorShell, VAlert, VButton, VCard, VInput, VSelect } from '@components/index';
 import { useProfile } from '@composables/useProfile';
 const { t } = useI18n();
-const { profile, loading, error, load, saveIdentity, saveSetting } = useProfile();
+const { profile, loading, error, load, saveIdentity, saveSetting, deleteSetting } = useProfile();
 const titleDraft = ref('');
 const emailDraft = ref('');
 const languageDraft = ref('');
+const chatLanguageDraft = ref('');
 const themeDraft = ref('auto');
 const uiLevelDraft = ref('standard');
 const identitySaved = ref(null);
 const languageSaved = ref(null);
+const chatLanguageSaved = ref(null);
 const themeSaved = ref(null);
 const uiLevelSaved = ref(null);
 const LANGUAGE_KEY = 'webui.language';
+const CHAT_LANGUAGE_KEY = 'chat.language';
 const THEME_KEY = 'webui.theme';
 const UI_LEVEL_KEY = 'webui.uiLevel';
 function asTheme(value) {
@@ -32,6 +35,18 @@ function asUiLevel(value) {
 // UI language.
 const languageOptions = computed(() => [
     { value: '', label: t('profile.preferences.languageBrowserDefault') },
+    { value: 'de', label: 'Deutsch' },
+    { value: 'en', label: 'English' },
+    { value: 'fr', label: 'Français' },
+    { value: 'es', label: 'Español' },
+    { value: 'it', label: 'Italiano' },
+]);
+// Chat language ("not set" → no user-level value → cascade falls
+// through to the tenant or to LanguageResolver.DEFAULT_LANGUAGE).
+// The native language names match the webui.language dropdown so
+// users get the same picker pattern across both fields.
+const chatLanguageOptions = computed(() => [
+    { value: '', label: t('profile.preferences.chatLanguageNotSet') },
     { value: 'de', label: 'Deutsch' },
     { value: 'en', label: 'English' },
     { value: 'fr', label: 'Français' },
@@ -58,6 +73,7 @@ watch(profile, (current) => {
     titleDraft.value = current.title ?? '';
     emailDraft.value = current.email ?? '';
     languageDraft.value = current.webUiSettings?.[LANGUAGE_KEY] ?? '';
+    chatLanguageDraft.value = current.webUiSettings?.[CHAT_LANGUAGE_KEY] ?? '';
     themeDraft.value = asTheme(current.webUiSettings?.[THEME_KEY]);
     uiLevelDraft.value = asUiLevel(current.webUiSettings?.[UI_LEVEL_KEY]);
 }, { immediate: true });
@@ -86,6 +102,23 @@ async function onLanguageChanged(value) {
         // newly chosen language right away.
         setUiLocale(next === '' ? null : next);
         languageSaved.value = t('profile.preferences.languageSaved');
+    }
+}
+async function onChatLanguageChanged(value) {
+    chatLanguageSaved.value = null;
+    const next = value ?? '';
+    chatLanguageDraft.value = next;
+    // "Not set" → DELETE the user-scope setting so the cascade falls
+    // through to the tenant default (or LanguageResolver.DEFAULT_LANGUAGE).
+    // Any concrete code is a PUT — same path as the other prefs.
+    if (next === '') {
+        await deleteSetting(CHAT_LANGUAGE_KEY).catch(() => undefined);
+    }
+    else {
+        await saveSetting(CHAT_LANGUAGE_KEY, next).catch(() => undefined);
+    }
+    if (!error.value) {
+        chatLanguageSaved.value = t('profile.preferences.chatLanguageSaved');
     }
 }
 async function onThemeChanged(value) {
@@ -295,55 +328,89 @@ else if (__VLS_ctx.profile) {
     // @ts-ignore
     const __VLS_42 = __VLS_asFunctionalComponent(__VLS_41, new __VLS_41({
         ...{ 'onUpdate:modelValue': {} },
-        modelValue: (__VLS_ctx.themeDraft),
-        options: (__VLS_ctx.themeOptions),
-        label: (__VLS_ctx.$t('profile.preferences.theme')),
+        modelValue: (__VLS_ctx.chatLanguageDraft),
+        options: (__VLS_ctx.chatLanguageOptions),
+        label: (__VLS_ctx.$t('profile.preferences.chatLanguage')),
         disabled: (__VLS_ctx.loading),
     }));
     const __VLS_43 = __VLS_42({
         ...{ 'onUpdate:modelValue': {} },
-        modelValue: (__VLS_ctx.themeDraft),
-        options: (__VLS_ctx.themeOptions),
-        label: (__VLS_ctx.$t('profile.preferences.theme')),
+        modelValue: (__VLS_ctx.chatLanguageDraft),
+        options: (__VLS_ctx.chatLanguageOptions),
+        label: (__VLS_ctx.$t('profile.preferences.chatLanguage')),
         disabled: (__VLS_ctx.loading),
     }, ...__VLS_functionalComponentArgsRest(__VLS_42));
     let __VLS_45;
     let __VLS_46;
     let __VLS_47;
     const __VLS_48 = {
-        'onUpdate:modelValue': (__VLS_ctx.onThemeChanged)
+        'onUpdate:modelValue': (__VLS_ctx.onChatLanguageChanged)
     };
     var __VLS_44;
-    if (__VLS_ctx.themeSaved) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-xs opacity-60 -mt-2" },
+    });
+    (__VLS_ctx.$t('profile.preferences.chatLanguageDescription'));
+    if (__VLS_ctx.chatLanguageSaved) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
             ...{ class: "text-success text-sm" },
         });
-        (__VLS_ctx.themeSaved);
+        (__VLS_ctx.chatLanguageSaved);
     }
     const __VLS_49 = {}.VSelect;
     /** @type {[typeof __VLS_components.VSelect, ]} */ ;
     // @ts-ignore
     const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
         ...{ 'onUpdate:modelValue': {} },
-        modelValue: (__VLS_ctx.uiLevelDraft),
-        options: (__VLS_ctx.uiLevelOptions),
-        label: (__VLS_ctx.$t('profile.preferences.uiLevel')),
+        modelValue: (__VLS_ctx.themeDraft),
+        options: (__VLS_ctx.themeOptions),
+        label: (__VLS_ctx.$t('profile.preferences.theme')),
         disabled: (__VLS_ctx.loading),
     }));
     const __VLS_51 = __VLS_50({
         ...{ 'onUpdate:modelValue': {} },
-        modelValue: (__VLS_ctx.uiLevelDraft),
-        options: (__VLS_ctx.uiLevelOptions),
-        label: (__VLS_ctx.$t('profile.preferences.uiLevel')),
+        modelValue: (__VLS_ctx.themeDraft),
+        options: (__VLS_ctx.themeOptions),
+        label: (__VLS_ctx.$t('profile.preferences.theme')),
         disabled: (__VLS_ctx.loading),
     }, ...__VLS_functionalComponentArgsRest(__VLS_50));
     let __VLS_53;
     let __VLS_54;
     let __VLS_55;
     const __VLS_56 = {
-        'onUpdate:modelValue': (__VLS_ctx.onUiLevelChanged)
+        'onUpdate:modelValue': (__VLS_ctx.onThemeChanged)
     };
     var __VLS_52;
+    if (__VLS_ctx.themeSaved) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "text-success text-sm" },
+        });
+        (__VLS_ctx.themeSaved);
+    }
+    const __VLS_57 = {}.VSelect;
+    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+    // @ts-ignore
+    const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({
+        ...{ 'onUpdate:modelValue': {} },
+        modelValue: (__VLS_ctx.uiLevelDraft),
+        options: (__VLS_ctx.uiLevelOptions),
+        label: (__VLS_ctx.$t('profile.preferences.uiLevel')),
+        disabled: (__VLS_ctx.loading),
+    }));
+    const __VLS_59 = __VLS_58({
+        ...{ 'onUpdate:modelValue': {} },
+        modelValue: (__VLS_ctx.uiLevelDraft),
+        options: (__VLS_ctx.uiLevelOptions),
+        label: (__VLS_ctx.$t('profile.preferences.uiLevel')),
+        disabled: (__VLS_ctx.loading),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_58));
+    let __VLS_61;
+    let __VLS_62;
+    let __VLS_63;
+    const __VLS_64 = {
+        'onUpdate:modelValue': (__VLS_ctx.onUiLevelChanged)
+    };
+    var __VLS_60;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
         ...{ class: "text-xs opacity-60 -mt-2" },
     });
@@ -355,12 +422,12 @@ else if (__VLS_ctx.profile) {
         (__VLS_ctx.uiLevelSaved);
     }
     var __VLS_32;
-    const __VLS_57 = {}.VCard;
+    const __VLS_65 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({}));
-    const __VLS_59 = __VLS_58({}, ...__VLS_functionalComponentArgsRest(__VLS_58));
-    __VLS_60.slots.default;
+    const __VLS_66 = __VLS_asFunctionalComponent(__VLS_65, new __VLS_65({}));
+    const __VLS_67 = __VLS_66({}, ...__VLS_functionalComponentArgsRest(__VLS_66));
+    __VLS_68.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.h2, __VLS_intrinsicElements.h2)({
         ...{ class: "text-lg font-semibold mb-3" },
     });
@@ -407,7 +474,7 @@ else if (__VLS_ctx.profile) {
             }
         }
     }
-    var __VLS_60;
+    var __VLS_68;
 }
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['container']} */ ;
@@ -445,6 +512,11 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-success']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['-mt-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-success']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-success']} */ ;
@@ -493,17 +565,21 @@ const __VLS_self = (await import('vue')).defineComponent({
             titleDraft: titleDraft,
             emailDraft: emailDraft,
             languageDraft: languageDraft,
+            chatLanguageDraft: chatLanguageDraft,
             themeDraft: themeDraft,
             uiLevelDraft: uiLevelDraft,
             identitySaved: identitySaved,
             languageSaved: languageSaved,
+            chatLanguageSaved: chatLanguageSaved,
             themeSaved: themeSaved,
             uiLevelSaved: uiLevelSaved,
             languageOptions: languageOptions,
+            chatLanguageOptions: chatLanguageOptions,
             themeOptions: themeOptions,
             uiLevelOptions: uiLevelOptions,
             onSaveIdentity: onSaveIdentity,
             onLanguageChanged: onLanguageChanged,
+            onChatLanguageChanged: onChatLanguageChanged,
             onThemeChanged: onThemeChanged,
             onUiLevelChanged: onUiLevelChanged,
         };

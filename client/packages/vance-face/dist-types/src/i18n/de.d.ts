@@ -239,8 +239,11 @@ declare const _default: {
             titleLabel: string;
             pathLabel: string;
             pathHelp: string;
+            mimeTypeLabel: string;
+            mimeTypeHelp: string;
             contentLabel: string;
             tabRaw: string;
+            tabPreview: string;
             tabList: string;
             tabTree: string;
             tabMindmap: string;
@@ -405,6 +408,7 @@ declare const _default: {
             groupDoc: string;
             groupCode: string;
             groupWeb: string;
+            groupOther: string;
         };
     };
     insights: {
@@ -1016,6 +1020,13 @@ declare const _default: {
             createdWithKitError: string;
             archived: string;
             confirmArchive: string;
+            languagesCardTitle: string;
+            languagesDescription: string;
+            languageNotSet: string;
+            chatLanguageLabel: string;
+            chatLanguageHelp: string;
+            contentLanguageLabel: string;
+            contentLanguageHelp: string;
         };
         kit: {
             cardTitle: string;
@@ -1187,6 +1198,10 @@ declare const _default: {
             language: string;
             languageBrowserDefault: string;
             languageSaved: string;
+            chatLanguage: string;
+            chatLanguageNotSet: string;
+            chatLanguageDescription: string;
+            chatLanguageSaved: string;
             theme: string;
             themeAuto: string;
             themeLight: string;

@@ -82,9 +82,6 @@ public class ZaphodArchitect implements SchemaArchitect {
                     <instruction for the synthesizer turn — describes
                     the content/shape of the consolidated synthesis,
                     NOT how to persist it (that is engine business)>
-                  outputPathTemplate: "councils/{recipeName}/{runId}.md"
-                    # optional; default is exactly this. Placeholders:
-                    # {recipeName}, {runId}, {timestamp}.
 
             ── HEADS-SHAPE rules ──
 
@@ -136,10 +133,9 @@ public class ZaphodArchitect implements SchemaArchitect {
 
             DO write a synthesisPrompt that describes the CONTENT
             and SHAPE of the synthesis text itself. Persistence is
-            an engine concern. If the user requested a specific
-            output path, set the recipe-level
-            `params.outputPathTemplate` field instead (placeholders
-            `{recipeName}`, `{runId}`, `{timestamp}`).
+            an engine concern — head replies AND the final synthesis
+            are written to `_zaphod-drafts/<processId>/` by the
+            engine; you do NOT configure output paths.
 
             ── EXAMPLE ──
 

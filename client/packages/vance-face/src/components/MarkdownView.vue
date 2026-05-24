@@ -23,11 +23,31 @@ import EmbeddedKindBox from './EmbeddedKindBox.vue';
 import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
 import { isVanceUri, parseVanceUri } from '@/kindRenderers/parseVanceUri';
+import { useDocumentRefStore } from '@/document/documentRefStore';
 
 marked.setOptions({
   gfm: true,
   breaks: true,
 });
+
+// DOMPurify's default URI allowlist (http/https/mailto/tel/cid/xmpp/…)
+// strips the href off any other scheme. Inline `vance:` links — Markdown
+// like `… see [Doc title](vance:/documents/foo.md?kind=document) …` —
+// would render as anchors without an href and be unclickable. We extend
+// the regex with `vance:` so the attribute survives sanitisation, then
+// the click delegation below intercepts navigation client-side and
+// routes through the document store / documents editor.
+//
+// The leading `(?:f|ht)tps?|mailto|…|vance` block mirrors DOMPurify's
+// own default — keep it in sync if upstream changes (no programmatic
+// way to "append a scheme to the default allowlist").
+const ALLOWED_URI_REGEXP =
+  /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|vance):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+
+const SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  ALLOWED_URI_REGEXP,
+} as const;
 
 function renderHtmlForTokens(tokens: Tokens.Generic[]): string {
   if (tokens.length === 0) return '';
@@ -35,7 +55,7 @@ function renderHtmlForTokens(tokens: Tokens.Generic[]): string {
   const list = tokens as any;
   if (!list.links) list.links = {};
   const raw = marked.parser(list) as string;
-  return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+  return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
 }
 
 function flushHtmlBuffer(buffer: Tokens.Generic[], out: VNode[]): void {
@@ -147,11 +167,13 @@ export default defineComponent({
     inline: { type: Boolean, default: false },
   },
   setup(props) {
+    const documentRefStore = useDocumentRefStore();
+
     const inlineHtml = computed<string>(() => {
       const src = props.source ?? '';
       if (!src) return '';
       const raw = marked.parseInline(src) as string;
-      return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+      return DOMPurify.sanitize(raw, SANITIZE_CONFIG);
     });
 
     const blockNodes = computed<VNode[]>(() => {
@@ -161,14 +183,73 @@ export default defineComponent({
       return vnodesForTokens(tokens as Tokens.Generic[]);
     });
 
+    // Click delegation for inline `vance:` links inside the rendered
+    // Markdown. The browser doesn't know the scheme — left to itself
+    // it would either no-op (modern browsers) or try a protocol
+    // handler that doesn't exist. We resolve through the document
+    // store to get a concrete documentId, then jump to the documents
+    // editor with deep-link params.
+    //
+    // Whole-paragraph vance: links go through {@code EmbeddedKindBox}
+    // higher up (inline preview, no <a> to click) — this path is for
+    // links mixed with other inline text or images.
+    async function onMarkdownClick(event: MouseEvent): Promise<void> {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const anchor = target.closest('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute('href') ?? '';
+      if (!isVanceUri(href)) return;
+
+      // We're committing to handling this — anything below shouldn't
+      // let the browser fall through to its native (broken) handling.
+      event.preventDefault();
+      const newTab = event.metaKey || event.ctrlKey || event.shiftKey;
+
+      const imageStyle = !!anchor.querySelector('img');
+      const text = (anchor.textContent ?? '').trim();
+      let embedRef;
+      try {
+        embedRef = parseVanceUri(href, { text, imageStyle });
+      } catch (e) {
+        console.warn('MarkdownView: invalid vance: URI on click', href, e);
+        return;
+      }
+      let doc;
+      try {
+        doc = await documentRefStore.resolve(embedRef);
+      } catch (e) {
+        console.warn('MarkdownView: failed to resolve vance: URI', href, e);
+        return;
+      }
+      const projectId = embedRef.project ?? documentRefStore.currentProject;
+      const documentId = doc.id ?? '';
+      if (!projectId || !documentId) {
+        console.warn('MarkdownView: resolved vance: URI is missing projectId/id', href);
+        return;
+      }
+      const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
+        + `&documentId=${encodeURIComponent(documentId)}`;
+      if (newTab) {
+        window.open(url, '_blank', 'noopener');
+      } else {
+        window.location.href = url;
+      }
+    }
+
     return () => {
       if (props.inline) {
         return h('div', {
           class: ['markdown-view', 'markdown-view--inline'],
           innerHTML: inlineHtml.value,
+          onClick: onMarkdownClick,
         });
       }
-      return h('div', { class: 'markdown-view' }, blockNodes.value);
+      return h(
+        'div',
+        { class: 'markdown-view', onClick: onMarkdownClick },
+        blockNodes.value,
+      );
     };
   },
 });

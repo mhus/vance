@@ -8,6 +8,7 @@ import de.mhus.vance.api.teams.TeamSummary;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
 import de.mhus.vance.shared.home.HomeBootstrapService;
+import de.mhus.vance.shared.settings.LanguageResolver;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.team.TeamDocument;
 import de.mhus.vance.shared.team.TeamService;
@@ -16,8 +17,10 @@ import de.mhus.vance.shared.user.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -44,16 +47,29 @@ import org.springframework.web.server.ResponseStatusException;
  * another user. Cross-user user-management goes through
  * {@code /brain/{tenant}/admin/users} (which requires {@code ADMIN}).
  *
- * <p>Settings writes are restricted to the {@code webui.*} prefix to
- * keep the profile from becoming a backdoor into arbitrary user-scope
- * settings (which {@code AdminSettingsController} guards with admin
- * permission). Anything outside the prefix → 400.
+ * <p>Settings writes are restricted to the {@code webui.*} prefix
+ * plus an explicit allowlist of self-service keys (currently just
+ * {@link LanguageResolver.Keys#CHAT_LANGUAGE}). The prefix-plus-allow
+ * model keeps the profile from becoming a backdoor into arbitrary
+ * user-scope settings (which {@code AdminSettingsController} guards
+ * with admin permission), while still letting users pick a personal
+ * default assistant language without going through an admin. Anything
+ * outside the allowed set → 400.
  */
 @RestController
 @RequestMapping("/brain/{tenant}/profile")
 @RequiredArgsConstructor
 @Slf4j
 public class ProfileController {
+
+    /**
+     * Extra keys (outside the {@code webui.*} prefix) that the profile
+     * endpoint accepts as self-service writes. Keep this small and
+     * deliberate — every entry here is something the user is trusted
+     * to set without admin involvement.
+     */
+    static final Set<String> ALLOWED_EXTRA_KEYS = Set.of(
+            LanguageResolver.Keys.CHAT_LANGUAGE);
 
     private final UserService userService;
     private final SettingService settingService;
@@ -97,7 +113,7 @@ public class ProfileController {
             @Valid @RequestBody ProfileSettingWriteRequest request,
             HttpServletRequest httpRequest) {
         String username = currentUser(httpRequest);
-        requireWebUiKey(key);
+        requireSelfServiceKey(key);
         // Stored on the per-user `_user_<login>` project — the same
         // location AdminSettingsController writes to for the {@code
         // user/<login>} wire scope.
@@ -122,7 +138,7 @@ public class ProfileController {
             @PathVariable("key") String key,
             HttpServletRequest httpRequest) {
         String username = currentUser(httpRequest);
-        requireWebUiKey(key);
+        requireSelfServiceKey(key);
         settingService.delete(tenant,
                 SettingService.SCOPE_PROJECT,
                 HomeBootstrapService.HUB_PROJECT_NAME_PREFIX + username,
@@ -143,12 +159,17 @@ public class ProfileController {
         return s;
     }
 
-    private static void requireWebUiKey(String key) {
-        if (key == null || !key.startsWith(WebUiCookies.SETTINGS_PREFIX)) {
+    private static void requireSelfServiceKey(String key) {
+        if (key == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Profile settings keys must start with '"
-                            + WebUiCookies.SETTINGS_PREFIX + "'");
+                    "Profile settings key required");
         }
+        if (key.startsWith(WebUiCookies.SETTINGS_PREFIX)) return;
+        if (ALLOWED_EXTRA_KEYS.contains(key)) return;
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Profile settings keys must start with '"
+                        + WebUiCookies.SETTINGS_PREFIX + "' or be in the "
+                        + "self-service allowlist (" + ALLOWED_EXTRA_KEYS + ")");
     }
 
     private List<TeamSummary> loadTeams(String tenant, String username) {
@@ -169,8 +190,18 @@ public class ProfileController {
     }
 
     private Map<String, String> loadSettings(String tenant, String username) {
-        return settingService.findUserSettingsByPrefix(
-                tenant, username, WebUiCookies.SETTINGS_PREFIX);
+        Map<String, String> merged = new LinkedHashMap<>(
+                settingService.findUserSettingsByPrefix(
+                        tenant, username, WebUiCookies.SETTINGS_PREFIX));
+        // Pull each allowlisted self-service key from the user scope
+        // explicitly. They live outside the webui.* prefix so the
+        // prefix query above misses them; we still want them in the
+        // profile DTO so the UI can render the current value.
+        for (String key : ALLOWED_EXTRA_KEYS) {
+            String v = settingService.getUserStringValue(tenant, username, key);
+            if (v != null) merged.put(key, v);
+        }
+        return merged;
     }
 
     private static ProfileDto toDto(UserDocument user,

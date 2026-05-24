@@ -128,6 +128,7 @@ public class ClassifyingPhase {
     private final EngineChatFactory engineChatFactory;
     private final LlmCallTracker llmCallTracker;
     private final ObjectMapper objectMapper;
+    private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
 
     public void execute(
             ArchitectState state,
@@ -233,7 +234,10 @@ public class ClassifyingPhase {
             String modelAlias) {
 
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(SYSTEM_PROMPT));
+        String langBlock = languageContextResolver.formatBlock(process);
+        messages.add(SystemMessage.from(langBlock.isEmpty()
+                ? SYSTEM_PROMPT
+                : SYSTEM_PROMPT + "\n\n" + langBlock));
         messages.add(UserMessage.from(buildInitialUserPrompt(state, source)));
 
         String validationError = null;

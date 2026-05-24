@@ -63,6 +63,7 @@ public class ProposingPhase {
     private final LlmCallTracker llmCallTracker;
     private final ObjectMapper objectMapper;
     private final RecipeLoader recipeLoader;
+    private final de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver;
     /** Resolved at construction from the {@link SchemaArchitect}
      *  beans Spring discovered. One entry per
      *  {@link OutputSchemaType}; missing entries cause a clear
@@ -74,11 +75,13 @@ public class ProposingPhase {
             LlmCallTracker llmCallTracker,
             ObjectMapper objectMapper,
             RecipeLoader recipeLoader,
+            de.mhus.vance.brain.context.LanguageContextResolver languageContextResolver,
             List<SchemaArchitect> schemaArchitects) {
         this.engineChatFactory = engineChatFactory;
         this.llmCallTracker = llmCallTracker;
         this.objectMapper = objectMapper;
         this.recipeLoader = recipeLoader;
+        this.languageContextResolver = languageContextResolver;
         Map<OutputSchemaType, SchemaArchitect> map = new EnumMap<>(OutputSchemaType.class);
         for (SchemaArchitect a : schemaArchitects) {
             SchemaArchitect existing = map.put(a.type(), a);
@@ -151,7 +154,10 @@ public class ProposingPhase {
                 : List.of();
 
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(systemPrompt));
+        String langBlock = languageContextResolver.formatBlock(process);
+        messages.add(SystemMessage.from(langBlock.isEmpty()
+                ? systemPrompt
+                : systemPrompt + "\n\n" + langBlock));
         messages.add(UserMessage.from(
                 buildInitialUserPrompt(state, recoveryHint,
                         architect, availableRecipes)));

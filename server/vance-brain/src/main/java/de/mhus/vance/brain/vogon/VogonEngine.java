@@ -585,6 +585,14 @@ public class VogonEngine implements ThinkEngine {
             thinkEngineServiceProvider.getObject().start(child);
             log.info("Vogon id='{}' phase '{}' spawned worker child='{}' recipe='{}'",
                     process.getId(), phase.getName(), child.getId(), applied.name());
+            try {
+                progressEmitter.emitStatus(process,
+                        de.mhus.vance.api.progress.StatusTag.DELEGATING,
+                        "Phase '" + phase.getName() + "' → worker '" + applied.name() + "'");
+            } catch (RuntimeException pe) {
+                log.debug("Vogon id='{}' phase '{}' DELEGATING progress emit failed: {}",
+                        process.getId(), phase.getName(), pe.toString());
+            }
         } catch (RuntimeException e) {
             log.warn("Vogon id='{}' phase '{}' spawn failed: {}",
                     process.getId(), phase.getName(), e.toString());
@@ -636,9 +644,17 @@ public class VogonEngine implements ThinkEngine {
             state.getPhaseArtifacts().put(phaseKey, artifact);
             state.getFlags().put(phaseFlag(phase.getName(), "completed"), true);
             persistState(process, state);
+            int replyChars = reply == null ? 0 : reply.length();
             log.info("Vogon id='{}' phase '{}' worker DONE — {} chars captured",
-                    process.getId(), phase.getName(),
-                    reply == null ? 0 : reply.length());
+                    process.getId(), phase.getName(), replyChars);
+            try {
+                progressEmitter.emitStatus(process,
+                        de.mhus.vance.api.progress.StatusTag.PHASE_DONE,
+                        "Phase '" + phase.getName() + "' done — " + replyChars + " chars");
+            } catch (RuntimeException pe) {
+                log.debug("Vogon id='{}' phase '{}' PHASE_DONE progress emit failed: {}",
+                        process.getId(), phase.getName(), pe.toString());
+            }
 
             // After-DONE hook: scorer (§2.5) or decider (§2.6) extracts
             // a structured verdict from the reply and may force a branch

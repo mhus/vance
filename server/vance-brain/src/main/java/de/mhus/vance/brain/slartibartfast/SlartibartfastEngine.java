@@ -292,13 +292,31 @@ public class SlartibartfastEngine implements ThinkEngine {
 
         switch (eventType) {
             case DONE -> {
+                // Three terminal flavours — be specific so the parent
+                // doesn't misread a deliberately-skipped execution as
+                // a failed file-output.
+                boolean skipped = state.getExecutionDecision()
+                        == de.mhus.vance.api.slartibartfast.ExecutionDecision.SKIP;
                 sb.append("Slartibartfast finished")
                         .append(recipeName == null
-                                ? "" : " — recipe '" + recipeName + "'")
-                        .append(state.isPlanOnly()
-                                ? " (plan-only; the recipe was generated and "
-                                        + "persisted but not executed)."
-                                : " and ran it to completion.");
+                                ? "" : " — recipe '" + recipeName + "'");
+                if (state.isPlanOnly()) {
+                    sb.append(" (plan-only; the recipe was generated "
+                            + "and persisted but not executed).");
+                } else if (skipped) {
+                    sb.append(". The recipe was generated and "
+                            + "persisted, but execution was skipped "
+                            + "deliberately — the user's request "
+                            + "described a reusable recipe without "
+                            + "a concrete mission to run.");
+                    if (state.getExecutionDecisionReason() != null
+                            && !state.getExecutionDecisionReason().isBlank()) {
+                        sb.append("\nReason: ")
+                                .append(state.getExecutionDecisionReason());
+                    }
+                } else {
+                    sb.append(" and ran it to completion.");
+                }
                 if (state.getPersistedRecipePath() != null) {
                     sb.append("\nRecipe persisted at `")
                             .append(state.getPersistedRecipePath())
@@ -310,10 +328,26 @@ public class SlartibartfastEngine implements ThinkEngine {
                         sb.append("\n- `").append(p).append("`");
                     }
                 }
-                if (outputPaths.isEmpty() && !state.isPlanOnly()) {
+                // The "no path-output" hint is only meaningful when
+                // the recipe actually ran — plan-only and skipped
+                // runs have no child process whose chat history
+                // could hold the result.
+                if (outputPaths.isEmpty()
+                        && !state.isPlanOnly() && !skipped) {
                     sb.append("\nThe recipe declared no path-output "
                             + "criteria — the result lives in the child "
                             + "process's chat history, not as a file.");
+                }
+                // Skipped runs typically want a follow-up: spawn the
+                // recipe with a concrete topic. Tell the parent so
+                // the LLM doesn't infer a phantom failure.
+                if (skipped) {
+                    sb.append("\nTo run the recipe, spawn it with a "
+                            + "concrete topic — e.g. `process_create"
+                            + "(recipe=\"")
+                            .append(recipeName == null
+                                    ? "<recipe>" : recipeName)
+                            .append("\", goal=\"<concrete topic>\")`.");
                 }
             }
             case FAILED -> {

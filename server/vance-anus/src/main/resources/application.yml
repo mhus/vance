@@ -27,6 +27,11 @@ vance:
       password-hash: ${VANCE_ANUS_PASSWORD_HASH:}
       # Sliding-window timeout. Each authorised command resets the clock.
       timeout: 10m
+    dev-mode:
+      # LOCAL DEBUGGING ONLY. When true, exposes 'setting show-password'
+      # which prints decrypted PASSWORD plaintext to stdout. Refuses to
+      # start when a 'prod' / 'production' Spring profile is also active.
+      enabled: ${VANCE_ANUS_DEV_MODE:false}
 
 logging:
   level:

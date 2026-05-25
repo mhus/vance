@@ -18,3 +18,7 @@ target/
 # OS
 .DS_Store
 Thumbs.db
+
+# Per-developer Spring profile overrides — never committed.
+**/application-default.yml
+**/application-local.yml

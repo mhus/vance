@@ -2,6 +2,7 @@ package de.mhus.vance.anus;
 
 import de.mhus.vance.anus.access.AccessProperties;
 import de.mhus.vance.anus.brain.AnusBrainProperties;
+import de.mhus.vance.anus.devmode.DevModeProperties;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
@@ -28,7 +29,8 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 // bean — Brain enables it explicitly, Anus has to do the same so the
 // WorkspaceService picked up by component scan can be wired. AccessProperties
 // is Anus's own; AnusExceptionResolver and AuthAspect rely on it being a bean.
-@EnableConfigurationProperties({WorkspaceProperties.class, AccessProperties.class, AnusBrainProperties.class})
+@EnableConfigurationProperties({WorkspaceProperties.class, AccessProperties.class,
+        AnusBrainProperties.class, DevModeProperties.class})
 @EnableAspectJAutoProxy
 public class VanceAnusApplication {
 

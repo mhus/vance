@@ -65,9 +65,37 @@ public class DocumentService {
     private final MongoTemplate mongoTemplate;
     private final ResourcePatternResolver resourcePatternResolver;
     private final DocumentHeaderParser headerParser;
+    private final DocumentArchiveService archiveService;
+    private final de.mhus.vance.shared.settings.SettingService settingService;
 
     @Value("${vance.document.inline-threshold:40960}")
     private int inlineThreshold;
+
+    /**
+     * Operator-level kill-switch for document versioning. When {@code false},
+     * archives are never created regardless of the per-project / tenant
+     * setting cascade. The per-project {@code documents.archive.enabled}
+     * cascade setting (default {@code true}) layers on top.
+     */
+    @Value("${vance.documents.archive.enabled:true}")
+    private boolean archiveEnabledDefault;
+
+    /**
+     * Minimum interval between two archive entries for the same document.
+     * Saves within this window collapse — the running edit-burst becomes
+     * a single archived version timestamped at the first save. Configured
+     * in {@code application.yml}, overridable per project via the
+     * {@value #SETTING_ARCHIVE_MIN_INTERVAL_SECONDS} cascade setting.
+     */
+    @Value("${vance.documents.archive.minVersionIntervalSeconds:600}")
+    private long archiveMinIntervalSecondsDefault;
+
+    /** Per-project cascade setting: opt-out for the archive feature. */
+    public static final String SETTING_ARCHIVE_ENABLED = "documents.archive.enabled";
+
+    /** Per-project cascade setting: minimum seconds between archive entries. */
+    public static final String SETTING_ARCHIVE_MIN_INTERVAL_SECONDS =
+            "documents.archive.minVersionIntervalSeconds";
 
     public Optional<DocumentDocument> findById(String id) {
         return repository.findById(id);
@@ -291,6 +319,7 @@ public class DocumentService {
                 .createdBy(createdBy)
                 .status(DocumentStatus.ACTIVE)
                 .autoSummary(isAutoSummaryEligible(mimeType))
+                .lineageId(java.util.UUID.randomUUID().toString())
                 .build();
         applyHeader(doc);
         // Mark for RAG indexing if the document is eligible — the
@@ -669,6 +698,14 @@ public class DocumentService {
         DocumentDocument doc = repository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document id='" + id + "'"));
 
+        // Lazy backfill for documents created before lineage-tracking
+        // landed — a blank lineageId would prevent archiving forever
+        // otherwise. Cheap: one UUID assignment, in-place; the save
+        // call further down persists it.
+        if (doc.getLineageId() == null || doc.getLineageId().isBlank()) {
+            doc.setLineageId(java.util.UUID.randomUUID().toString());
+        }
+
         if (newTitle != null) doc.setTitle(newTitle);
         if (newTags != null) doc.setTags(new ArrayList<>(newTags));
         if (newAutoSummary != null) doc.setAutoSummary(newAutoSummary);
@@ -687,16 +724,43 @@ public class DocumentService {
             boolean contentChanged = !newInlineText.equals(doc.getInlineText());
             boolean fitsInline = isTextual(doc.getMimeType())
                     && bytes.length <= inlineThreshold;
+
+            // Archive the *current* version before overwriting — but only
+            // when (a) the content is actually changing, (b) archiving is
+            // enabled in the cascade, and (c) the previous archive (if any)
+            // is older than the min-version-interval. archiveCurrent()
+            // moves the storage pointer; afterwards doc.storageId is null
+            // and the old blob lives on under the archive entry — so the
+            // storage-cleanup branches below must NOT try to delete it
+            // again.
+            boolean archived = false;
+            if (contentChanged && shouldArchiveOnSave(doc)) {
+                try {
+                    archiveService.archiveCurrent(doc);
+                    doc.setLastArchivedAt(Instant.now());
+                    archived = true;
+                } catch (RuntimeException e) {
+                    // Archive failure must not lose the user's save —
+                    // log and proceed with the regular update path
+                    // (the old version is then lost, which is the same
+                    // behaviour we had before versioning landed).
+                    log.warn("Failed to archive document id='{}' before update — "
+                                    + "proceeding without version snapshot",
+                            id, e);
+                }
+            }
             String oldStorageId = doc.getStorageId();
 
             if (fitsInline) {
                 // Target: inline. If the previous backing was
                 // storage, write-the-inline + delete the old blob
-                // (storage→inline transition).
+                // (storage→inline transition) — unless we just moved
+                // that blob to the archive, in which case it's owned
+                // by the archive entry now and must NOT be deleted.
                 doc.setInlineText(newInlineText);
                 doc.setStorageId(null);
                 doc.setSize(bytes.length);
-                if (oldStorageId != null) {
+                if (oldStorageId != null && !archived) {
                     deleteStorageBlobQuietly(oldStorageId, id);
                 }
             } else {
@@ -719,7 +783,8 @@ public class DocumentService {
                 doc.setStorageId(info.id());
                 doc.setSize(info.size());
                 if (oldStorageId != null
-                        && !oldStorageId.equals(info.id())) {
+                        && !oldStorageId.equals(info.id())
+                        && !archived) {
                     deleteStorageBlobQuietly(oldStorageId, id);
                 }
             }
@@ -760,6 +825,186 @@ public class DocumentService {
         log.info("Updated document tenantId='{}' projectId='{}' id='{}' fields={}",
                 saved.getTenantId(), saved.getProjectId(), saved.getId(),
                 describeChanges(newTitle, newTags, newInlineText, newPath, newMimeType));
+        return saved;
+    }
+
+    /**
+     * Decision: should the next save archive the current version first?
+     * Cascade order, first hit wins:
+     *
+     * <ol>
+     *   <li>operator kill-switch {@code vance.documents.archive.enabled}
+     *       (application.yml) — when {@code false}, never archive;</li>
+     *   <li>per-project / tenant setting {@value #SETTING_ARCHIVE_ENABLED}
+     *       (default {@code true});</li>
+     *   <li>min-version-interval: archive only when
+     *       {@code lastArchivedAt} is either {@code null} (first save
+     *       after create) is treated as "do not archive" — first version
+     *       only materialises on the second save after the interval
+     *       elapsed, or when the previous archive is older than the
+     *       project's configured min-interval.</li>
+     * </ol>
+     *
+     * <p>Visibility-relaxed (package-private) so unit tests can stub
+     * the cascade reads cheaply.
+     */
+    boolean shouldArchiveOnSave(DocumentDocument doc) {
+        if (!archiveEnabledDefault) return false;
+        boolean projectEnabled = settingService.getBooleanValueCascade(
+                doc.getTenantId(), doc.getProjectId(), /*thinkProcessId*/ null,
+                SETTING_ARCHIVE_ENABLED, /*default*/ true);
+        if (!projectEnabled) return false;
+        Instant last = doc.getLastArchivedAt();
+        if (last == null) {
+            // First save after create — no version yet. The implicit
+            // "create" is the version-zero, so we only archive on the
+            // *next* save once enough time has passed since create.
+            // Treat the document's createdAt as the reference timestamp.
+            last = doc.getCreatedAt();
+        }
+        if (last == null) return true; // no reference — be safe, archive.
+        long minSeconds = resolveMinIntervalSeconds(
+                doc.getTenantId(), doc.getProjectId());
+        return Instant.now().isAfter(last.plusSeconds(minSeconds));
+    }
+
+    private long resolveMinIntervalSeconds(String tenantId, String projectId) {
+        String raw = settingService.getStringValueCascade(
+                tenantId, projectId, /*thinkProcessId*/ null,
+                SETTING_ARCHIVE_MIN_INTERVAL_SECONDS);
+        if (raw == null || raw.isBlank()) {
+            return archiveMinIntervalSecondsDefault;
+        }
+        try {
+            long parsed = Long.parseLong(raw.trim());
+            if (parsed < 0) return archiveMinIntervalSecondsDefault;
+            return parsed;
+        } catch (NumberFormatException e) {
+            log.warn("Invalid {} setting for tenantId='{}' projectId='{}': '{}' — falling back to default {}",
+                    SETTING_ARCHIVE_MIN_INTERVAL_SECONDS, tenantId, projectId,
+                    raw, archiveMinIntervalSecondsDefault);
+            return archiveMinIntervalSecondsDefault;
+        }
+    }
+
+    // ──────────────────── Archive read API ────────────────────
+
+    /**
+     * Number of archive entries for {@code doc}. UI badge.
+     */
+    public long countArchives(DocumentDocument doc) {
+        return archiveService.countForLineage(
+                doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
+    }
+
+    /**
+     * All archive entries for {@code doc}'s lineage, newest first.
+     */
+    public List<DocumentArchiveDocument> listArchives(DocumentDocument doc) {
+        return archiveService.listForLineage(
+                doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
+    }
+
+    public Optional<DocumentArchiveDocument> findArchive(String archiveId) {
+        return archiveService.findById(archiveId);
+    }
+
+    /** Read the archive's body as a UTF-8 string. */
+    public String readArchiveContent(DocumentArchiveDocument archive) {
+        return archiveService.readContentAsString(archive);
+    }
+
+    /** Streaming read over the archive's body — caller closes. */
+    public InputStream loadArchiveContent(DocumentArchiveDocument archive) {
+        return archiveService.loadContent(archive);
+    }
+
+    /**
+     * Delete a single archive entry. Lineage check is the caller's
+     * responsibility (REST layer matches {@code archiveId} against the
+     * lineage of the addressed document).
+     */
+    public void deleteArchive(String archiveId) {
+        archiveService.deleteArchive(archiveId);
+    }
+
+    /**
+     * Restore {@code archive} into the live document {@code liveDocId}.
+     * The current live content is archived first (so the restore is
+     * itself a versioned save) and then overwritten with a fresh copy
+     * of the archive's body. The archive entry is left untouched —
+     * appears in the version list as before.
+     *
+     * <p>Storage-backed archives are restored via
+     * {@link DocumentArchiveService.RestorePayload} which carries a
+     * freshly duplicated blob id; no blob sharing between archive and
+     * live document at any point.
+     *
+     * @throws IllegalArgumentException if the archive does not belong
+     *         to the live document's lineage.
+     */
+    public DocumentDocument restoreArchive(String liveDocId, String archiveId) {
+        DocumentDocument live = repository.findById(liveDocId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown document id='" + liveDocId + "'"));
+        DocumentArchiveDocument archive = archiveService.findById(archiveId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown archive id='" + archiveId + "'"));
+        if (!archive.getLineageId().equals(live.getLineageId())) {
+            throw new IllegalArgumentException(
+                    "Archive id='" + archiveId + "' does not belong to "
+                            + "document id='" + liveDocId
+                            + "' (lineage mismatch)");
+        }
+
+        // 1. Archive the current live content (unconditional — restoring
+        //    is itself a meaningful version event, regardless of the
+        //    min-version-interval setting; otherwise an undo immediately
+        //    after a save would silently lose data).
+        try {
+            archiveService.archiveCurrent(live);
+            live.setLastArchivedAt(Instant.now());
+        } catch (RuntimeException e) {
+            log.warn("Failed to archive document id='{}' before restore — "
+                            + "proceeding without snapshot of current version", liveDocId, e);
+            // Continue: an explicit restore takes priority over preserving
+            // the current version. The user asked for the older version
+            // back.
+        }
+        String oldStorageId = live.getStorageId();
+
+        // 2. Apply restored content. archiveService.restore() handed us a
+        //    fresh blob (or inline text); the live row swaps in. The old
+        //    storage pointer (if any) was moved to the archive entry in
+        //    step 1 — but defensive: if archive failed and oldStorageId
+        //    is still live, we'd still need to clean it up afterwards.
+        DocumentArchiveService.RestorePayload payload = archiveService.restore(archive);
+        if (payload.inlineText() != null) {
+            live.setInlineText(payload.inlineText());
+            live.setStorageId(null);
+        } else {
+            live.setInlineText(null);
+            live.setStorageId(payload.storageId());
+        }
+        live.setSize(payload.size());
+        if (payload.mimeType() != null) live.setMimeType(payload.mimeType());
+        if (payload.title() != null) live.setTitle(payload.title());
+        live.setTags(new ArrayList<>(payload.tags()));
+        live.setSummaryDirty(true);
+        live.setRagDirty(true);
+        applyHeader(live);
+
+        DocumentDocument saved = repository.save(live);
+
+        // 3. If the archive step failed and the live's old storage pointer
+        //    was kept around, it's orphaned now — delete it. (When the
+        //    archive succeeded, storageId was already cleared before we
+        //    got here, so this is a no-op then.)
+        if (oldStorageId != null && !oldStorageId.equals(saved.getStorageId())) {
+            deleteStorageBlobQuietly(oldStorageId, liveDocId);
+        }
+        log.info("Restored document id='{}' from archive id='{}' lineageId='{}' archivedAt='{}'",
+                liveDocId, archiveId, archive.getLineageId(), archive.getArchivedAt());
         return saved;
     }
 
@@ -1076,6 +1321,16 @@ public class DocumentService {
                 }
             }
             repository.delete(doc);
+            // Wipe the version history along with the live row — keeps
+            // archive entries (and their exclusively owned storage blobs)
+            // from outliving the document they belong to.
+            try {
+                archiveService.deleteAllForLineage(
+                        doc.getTenantId(), doc.getProjectId(), doc.getLineageId());
+            } catch (Exception e) {
+                log.warn("Failed to delete archive entries for document id='{}' lineageId='{}'",
+                        id, doc.getLineageId(), e);
+            }
             log.info("Deleted document id='{}' path='{}'", id, doc.getPath());
         });
     }

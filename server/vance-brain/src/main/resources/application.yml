@@ -88,6 +88,19 @@ vance:
     batchSize: 10               # max documents claimed per project per tick
     claimTtlMinutes: 10         # stale-claim recovery window
     maxContentBytes: 200000     # prompt-content cap (head + tail truncation)
+  documents:
+    archive:
+      # Document versioning — DocumentService archives the previous
+      # version of a document before overwriting it. Cascade:
+      # operator switch here → per-project `documents.archive.enabled`
+      # cascade setting (default true).
+      enabled: true
+      # Minimum seconds between two archive entries for the same
+      # document. Saves within this window are collapsed onto the
+      # previous version — keeps edit-bursts from producing dozens of
+      # near-identical archives. Per-project override via the cascade
+      # setting `documents.archive.minVersionIntervalSeconds`.
+      minVersionIntervalSeconds: 600   # 10 min
 
 management:
   endpoint:

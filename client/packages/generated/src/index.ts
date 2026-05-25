@@ -30,6 +30,9 @@ export * from './scripts/ScriptValidateResponse';
 export * from './eddie/ChannelMode';
 export * from './eddie/SwitchToNotification';
 
+export * from './documents/DocumentArchiveDto';
+export * from './documents/DocumentArchiveListResponse';
+export * from './documents/DocumentArchiveSummary';
 export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';
 export * from './documents/DocumentFoldersResponse';

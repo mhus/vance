@@ -25,6 +25,7 @@ import { documentContentUrl } from '@vance/shared';
 import { consumeDocumentDraft } from '@/platform';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
+import DocumentArchives from './DocumentArchives.vue';
 import ListView from './ListView.vue';
 import TreeView from './TreeView.vue';
 import MindmapView from './MindmapView.vue';
@@ -77,6 +78,7 @@ import {
   type SheetDocument,
 } from './sheetCodec';
 import type {
+  DocumentDto,
   DocumentSummary,
   DocumentUpdateRequest,
   ProjectSummary,
@@ -395,6 +397,22 @@ function fillEditor(): void {
   // it, editing is one click away on the Raw tab.
   else if (isMarkdownDocument.value) contentTab.value = 'preview';
   else contentTab.value = 'raw';
+}
+
+function onArchiveRestored(restored: DocumentDto): void {
+  docsState.selected.value = restored;
+  const idx = docsState.items.value.findIndex((d) => d.id === restored.id);
+  if (idx >= 0) {
+    docsState.items.value[idx] = {
+      ...docsState.items.value[idx],
+      title: restored.title,
+      tags: restored.tags,
+      size: restored.size,
+      path: restored.path,
+      name: restored.name,
+    };
+  }
+  fillEditor();
 }
 
 // ─── List-document tab toggle ───────────────────────────────────────
@@ -1370,6 +1388,11 @@ const formatBytes = (n: number): string => {
               </div>
             </div>
           </div>
+
+          <DocumentArchives
+            :document="docsState.selected.value"
+            @restored="onArchiveRestored"
+          />
 
           <VAlert v-if="!docsState.selected.value.inline" variant="info" class="mt-3">
             <span>{{ $t('documents.detail.readOnlyNote') }}</span>

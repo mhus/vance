@@ -1,5 +1,8 @@
 package de.mhus.vance.brain.documents;
 
+import de.mhus.vance.api.documents.DocumentArchiveDto;
+import de.mhus.vance.api.documents.DocumentArchiveListResponse;
+import de.mhus.vance.api.documents.DocumentArchiveSummary;
 import de.mhus.vance.api.documents.DocumentCreateRequest;
 import de.mhus.vance.api.documents.DocumentDto;
 import de.mhus.vance.api.documents.DocumentFoldersResponse;
@@ -9,6 +12,7 @@ import de.mhus.vance.api.documents.DocumentSummary;
 import de.mhus.vance.api.documents.DocumentUpdateRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.document.DocumentArchiveDocument;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.permission.Action;
@@ -384,6 +388,189 @@ public class DocumentController {
             documentService.trash(id);
         }
         return ResponseEntity.noContent().build();
+    }
+
+    // ──────────────────── Archive endpoints ────────────────────
+
+    /**
+     * List archived versions of {@code id}, newest first. The body also
+     * carries {@code totalCount} so the UI can render the version-count
+     * badge without scanning {@code items}.
+     */
+    @GetMapping("/brain/{tenant}/documents/{id}/archives")
+    public DocumentArchiveListResponse listArchives(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            HttpServletRequest httpRequest) {
+        DocumentDocument doc = loadDocumentForTenant(tenant, id);
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        List<DocumentArchiveDocument> archives = documentService.listArchives(doc);
+        List<DocumentArchiveSummary> items = archives.stream()
+                .map(DocumentController::toArchiveSummary)
+                .toList();
+        return DocumentArchiveListResponse.builder()
+                .totalCount(items.size())
+                .items(items)
+                .build();
+    }
+
+    /**
+     * Read one archived version including its inline snapshot text (for
+     * inline-stored versions). Storage-backed versions return
+     * {@code inlineText == null} — the UI then streams the body via
+     * {@link #archiveContent}.
+     */
+    @GetMapping("/brain/{tenant}/documents/{id}/archives/{archiveId}")
+    public DocumentArchiveDto findArchive(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @PathVariable("archiveId") String archiveId,
+            HttpServletRequest httpRequest) {
+        DocumentDocument doc = loadDocumentForTenant(tenant, id);
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        DocumentArchiveDocument archive = loadArchiveForLineage(doc, archiveId);
+        return toArchiveDto(archive, documentService.readArchiveContent(archive));
+    }
+
+    /**
+     * Stream the body of one archived version — mirrors {@link #content}
+     * for live documents so the web UI can render previews / downloads
+     * of historical versions consistently.
+     */
+    @GetMapping("/brain/{tenant}/documents/{id}/archives/{archiveId}/content")
+    public ResponseEntity<InputStreamResource> archiveContent(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @PathVariable("archiveId") String archiveId,
+            @RequestParam(value = "download", defaultValue = "false") boolean download,
+            HttpServletRequest httpRequest) {
+        DocumentDocument doc = loadDocumentForTenant(tenant, id);
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.READ);
+        DocumentArchiveDocument archive = loadArchiveForLineage(doc, archiveId);
+        InputStream stream = documentService.loadArchiveContent(archive);
+        MediaType contentType = parseMimeType(archive.getMimeType());
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(contentType);
+        if (archive.getSize() > 0) headers.setContentLength(archive.getSize());
+        String filename = archive.getName() == null || archive.getName().isBlank()
+                ? "document" : archive.getName();
+        String dispositionType = download ? "attachment" : "inline";
+        headers.set(HttpHeaders.CONTENT_DISPOSITION,
+                dispositionType + "; filename*=UTF-8''" + urlEncode(filename));
+        headers.setCacheControl("private, max-age=300");
+        return ResponseEntity.ok().headers(headers).body(new InputStreamResource(stream));
+    }
+
+    /**
+     * Restore an archived version into the live document. The current
+     * live content is itself archived first (so the restore appears as
+     * a new version event in the list), then overwritten with a copy
+     * of the chosen archive's body.
+     */
+    @PostMapping("/brain/{tenant}/documents/{id}/archives/{archiveId}/restore")
+    public DocumentDto restoreArchive(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @PathVariable("archiveId") String archiveId,
+            HttpServletRequest httpRequest) {
+        DocumentDocument doc = loadDocumentForTenant(tenant, id);
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.WRITE);
+        // Lineage check (also performed by DocumentService.restoreArchive)
+        // — fail fast with 404 if the archive id does not belong to this doc.
+        loadArchiveForLineage(doc, archiveId);
+        DocumentDocument restored;
+        try {
+            restored = documentService.restoreArchive(id, archiveId);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+        return toDto(restored);
+    }
+
+    /**
+     * Delete one archived version permanently. The live document is
+     * untouched. Idempotent against unknown archive ids — returns 404
+     * the second time.
+     */
+    @DeleteMapping("/brain/{tenant}/documents/{id}/archives/{archiveId}")
+    public ResponseEntity<Void> deleteArchive(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @PathVariable("archiveId") String archiveId,
+            HttpServletRequest httpRequest) {
+        DocumentDocument doc = loadDocumentForTenant(tenant, id);
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, doc.getProjectId(), doc.getPath()), Action.DELETE);
+        loadArchiveForLineage(doc, archiveId);
+        documentService.deleteArchive(archiveId);
+        return ResponseEntity.noContent().build();
+    }
+
+    private DocumentDocument loadDocumentForTenant(String tenant, String id) {
+        DocumentDocument doc = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(doc.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return doc;
+    }
+
+    private DocumentArchiveDocument loadArchiveForLineage(DocumentDocument doc, String archiveId) {
+        DocumentArchiveDocument archive = documentService.findArchive(archiveId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!archive.getLineageId().equals(doc.getLineageId())
+                || !archive.getTenantId().equals(doc.getTenantId())) {
+            // Treat lineage mismatch as 404 — the archive exists, but not
+            // for the document the caller addressed. Avoids leaking
+            // cross-lineage existence through a 400/403.
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return archive;
+    }
+
+    private static DocumentArchiveSummary toArchiveSummary(DocumentArchiveDocument archive) {
+        return DocumentArchiveSummary.builder()
+                .id(archive.getId())
+                .lineageId(archive.getLineageId())
+                .path(archive.getPath())
+                .name(archive.getName())
+                .title(archive.getTitle())
+                .mimeType(archive.getMimeType())
+                .size(archive.getSize())
+                .tags(archive.getTags())
+                .inline(archive.getInlineText() != null)
+                .kind(archive.getKind())
+                .createdBy(archive.getCreatedBy())
+                .archivedAtMs(archive.getArchivedAt() == null
+                        ? 0L
+                        : archive.getArchivedAt().toEpochMilli())
+                .build();
+    }
+
+    private static DocumentArchiveDto toArchiveDto(
+            DocumentArchiveDocument archive, @Nullable String inlineBody) {
+        boolean inline = archive.getInlineText() != null;
+        return DocumentArchiveDto.builder()
+                .id(archive.getId())
+                .lineageId(archive.getLineageId())
+                .path(archive.getPath())
+                .name(archive.getName())
+                .title(archive.getTitle())
+                .mimeType(archive.getMimeType())
+                .size(archive.getSize())
+                .tags(archive.getTags())
+                .inline(inline)
+                .inlineText(inline ? inlineBody : null)
+                .kind(archive.getKind())
+                .createdBy(archive.getCreatedBy())
+                .archivedAtMs(archive.getArchivedAt() == null
+                        ? 0L
+                        : archive.getArchivedAt().toEpochMilli())
+                .build();
     }
 
     private static DocumentSummary toSummary(DocumentDocument doc) {

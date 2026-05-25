@@ -284,6 +284,21 @@ declare const _default: {
                 summaryDirtyHelp: string;
             };
         };
+        archives: {
+            heading: string;
+            empty: string;
+            restore: string;
+            delete: string;
+            cancel: string;
+            close: string;
+            storageBacked: string;
+            previewTitle: string;
+            previewBinary: string;
+            confirmRestoreTitle: string;
+            confirmRestoreBody: string;
+            confirmDeleteTitle: string;
+            confirmDeleteBody: string;
+        };
         listEditor: {
             addItem: string;
             deleteItem: string;

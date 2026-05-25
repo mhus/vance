@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.index.Indexed;
@@ -102,6 +103,31 @@ public class DocumentDocument {
 
     /** Username of the creator ({@code UserDocument.name}). */
     private @Nullable String createdBy;
+
+    /**
+     * Stable identifier shared by the live document and every archived
+     * version of it. Survives renames, restores, and inline⇄storage
+     * transitions. Assigned at create-time and never overwritten.
+     */
+    @Indexed
+    private String lineageId = "";
+
+    /**
+     * Wall-clock at which the last archive entry was written from this
+     * document. {@code null} on a fresh document (no archives yet);
+     * compared against {@code documents.archive.minVersionInterval} on
+     * the next save to decide whether to archive again.
+     */
+    private @Nullable Instant lastArchivedAt;
+
+    /**
+     * Optimistic-locking guard — used by Spring Data MongoDB to reject
+     * concurrent overwrites. Prevents the archive-then-overwrite
+     * sequence in {@link DocumentService#update} from racing with a
+     * parallel save and producing a torn version chain.
+     */
+    @Version
+    private @Nullable Long version;
 
     @Builder.Default
     private DocumentStatus status = DocumentStatus.ACTIVE;

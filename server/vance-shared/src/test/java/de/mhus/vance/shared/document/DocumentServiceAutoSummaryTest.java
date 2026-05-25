@@ -37,6 +37,8 @@ class DocumentServiceAutoSummaryTest {
     private MongoTemplate mongoTemplate;
     private ResourcePatternResolver resourcePatternResolver;
     private DocumentHeaderParser headerParser;
+    private DocumentArchiveService archiveService;
+    private de.mhus.vance.shared.settings.SettingService settingService;
     private DocumentService service;
 
     @BeforeEach
@@ -46,11 +48,16 @@ class DocumentServiceAutoSummaryTest {
         mongoTemplate = mock(MongoTemplate.class);
         resourcePatternResolver = mock(ResourcePatternResolver.class);
         headerParser = mock(DocumentHeaderParser.class);
+        archiveService = mock(DocumentArchiveService.class);
+        settingService = mock(de.mhus.vance.shared.settings.SettingService.class);
         when(headerParser.parse(any(), any())).thenReturn(Optional.empty());
         service = new DocumentService(
                 repository, storageService, mongoTemplate,
-                resourcePatternResolver, headerParser);
+                resourcePatternResolver, headerParser,
+                archiveService, settingService);
         ReflectionTestUtils.setField(service, "inlineThreshold", 40960);
+        ReflectionTestUtils.setField(service, "archiveEnabledDefault", true);
+        ReflectionTestUtils.setField(service, "archiveMinIntervalSecondsDefault", 600L);
     }
 
     // ──── create() — autoSummary default ────────────────────────────────

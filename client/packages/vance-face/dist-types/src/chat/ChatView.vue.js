@@ -1,6 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { WebSocketRequestError, AUTO_LANGUAGE, SUPPORTED_SPEECH_LANGUAGES, getSpeechLanguage, resolveSpeechLanguage, setSpeechLanguage, getSpeakerEnabled, getSpeechRate, getSpeechVoiceURI, getSpeechVolume, setSpeakerEnabled, setSpeechRate, setSpeechVoiceURI, setSpeechVolume, stripMarkdown, MIN_RATE, MAX_RATE, MIN_VOLUME, MAX_VOLUME, } from '@vance/shared';
+import { WebSocketRequestError, AUTO_LANGUAGE, SUPPORTED_SPEECH_LANGUAGES, getSpeechLanguage, resolveSpeechLanguage, setSpeechLanguage, getSpeakerEnabled, getSpeechRate, getSpeechVoiceURI, getSpeechVolume, setSpeakerEnabled, setSpeechRate, setSpeechVoiceURI, setSpeechVolume, markdownToSpeech, MIN_RATE, MAX_RATE, MIN_VOLUME, MAX_VOLUME, } from '@vance/shared';
 import { buildUtterance, isSpeechSynthesisSupported, listVoices, onVoicesChanged, } from '../platform/speechWeb';
 import { useChatHistory } from '@composables/useChatHistory';
 import { useTenantProjects } from '@composables/useTenantProjects';
@@ -318,7 +318,13 @@ function speakMessage(content) {
     // has loaded count as "new from the WebSocket".
     if (!speakerLiveReady.value)
         return;
-    const text = stripMarkdown(content);
+    // markdownToSpeech (TS port of MarkdownToSpeech.java) — reduces
+    // fenced code blocks + tables to a short hint ("Code-Block mit
+    // N Zeilen") so the LLM can use them as "speak-but-show" containers
+    // in voice mode. The older `stripMarkdown` only stripped the
+    // backtick markers and read the body aloud — that's the bug
+    // we just fixed. See specification/voice-mode.md §5.
+    const text = markdownToSpeech(content);
     if (!text)
         return;
     const utter = buildUtterance(text, resolveSpeechLanguage());
@@ -825,10 +831,17 @@ async function send() {
     selectedFiles.value = [];
     scrollToBottom();
     try {
+        // Per-turn voice-mode signal — see specification/voice-mode.md.
+        // Single boolean to the brain, even though the UI has separate
+        // Speaker / Talk-Mode toggles. Mic-only (STT without TTS) does
+        // NOT trigger voice mode — the user reads the answer visually
+        // in that case and doesn't want it shortened.
+        const voiceMode = speakerEnabled.value || talkMode.value;
         await props.socket.send('process-steer', {
             processName: chatProcessName.value,
             content: text,
             attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
+            voiceMode: voiceMode ? true : undefined,
         });
     }
     catch (e) {

@@ -334,82 +334,16 @@ A `<process-event>` is **not** a question from the user. It's
 context for your decision. Almost every event with substantive
 child-reply content turns into a `RELAY`.
 
-## Where to put a file — three storage surfaces
+## Saving files and running scripts
 
-Vance has three distinct stores. Picking the wrong one is a
-common, hard-to-undo mistake — file ends up where the user can't
-find it, or where it can't be processed. Choose by *who reads it
-next* and *how long it should live*:
+When you're about to save a file or run code, read the relevant
+manual first — the wrong storage surface or the wrong runner
+costs time you don't have to spend:
 
-- **Document** (`doc_create_text`, `doc_edit`, `doc_*`) — the
-  project's long-lived knowledge base. Indexed, searchable,
-  auto-summarised, tagged. Use for **anything the user will want
-  to find again**: research results, summaries, comparisons,
-  decisions, specs, notes. Default for "write me a markdown
-  table / report / list of …" requests.
-- **Scratch** (`scratch_write`, `scratch_read`,
-  `scratch_grep`, `python_run`, `exec_run` …) — the project's
-  on-disk sandbox. Short-lived work files: scripts, CSV/JSON
-  fixtures, intermediate artefacts you want to process with
-  python or bash next. Not searchable, not part of the user's
-  knowledge base, may be discarded on suspend. Promote a
-  scratch file to a doc with `scratch_to_doc` once it's
-  worth keeping.
-- **Client file** (`client_file_write`, `client_file_read`,
-  `client_file_*`) — the user's OWN machine's filesystem (the
-  foot host). Only when the user explicitly asks for a local
-  file — a code project they edit outside Vance, a lab notebook,
-  a download. Vance neither indexes nor searches these.
-
-Default for "speichere die Top 5 Aktien als Markdown-Tabelle":
-**document**, not scratch. The user wants to read this back
-later — that's exactly what documents are for.
-
-## Scripting — JavaScript or Python?
-
-Default to JS unless you actually need a Python library.
-
-- **`execute_javascript`** — in-process GraalVM JS, zero setup,
-  sub-second startup. The script receives a host object `vance`
-  with three bindings:
-  - `vance.tools.call("<tool>", { …params… })` invokes **any**
-    tool you can also call yourself — including API tools like
-    `gmail_rest__gmail_users_messages_batchModify`,
-    `jira_rest__searchAndReconsileIssuesUsingJqlPost`,
-    `doc_create_text`, etc. Return value is the tool result as a
-    JS object. So the script reaches anything network / API /
-    filesystem that your tool surface reaches — the script itself
-    has no direct socket.
-  - `vance.context` — read-only scope (tenant/project/session).
-  - `vance.log("…")` — trace log.
-
-  This is your **first reach when the user says "write a script
-  and run it"** — whether the body is "compute X" or "loop over
-  a paginated API and mutate each item". Value of the last
-  expression is returned.
-- **`execute_scratch_javascript`** — same engine plus read/write
-  access to the project scratch area. For short scripts that need
-  scratch files but no library.
-- **`script_run_doc`** / **`script_run_workspace`** — run a
-  **persisted** script (from a doc, or a workspace RootDir). Same
-  `vance.tools` surface as above. Use these when the script should
-  be re-runnable later (hooks, scheduler, multiple invocations) —
-  then `doc_create_text` first, then `script_run_doc`. For
-  **one-shot inline**: `execute_javascript`, no doc detour.
-- **`python_run`** (+ `python_create` / `python_install`) —
-  full Python in a venv inside the scratch area. Use when you need
-  a library (pandas, requests, beautifulsoup, numpy …), or for
-  longer scripts where Python's ecosystem actually buys
-  something. Cost: first call spends 5-30s on venv + pip install.
-  Reuse the venv across calls; don't recreate per script. **No
-  `vance.tools` surface** — Python is isolated.
-
-Rule of thumb: if you'd reach for `import pandas` or
-`import requests`, that's Python. If it's `arr.filter(x => …)` or
-you want to call other tools from the script → JS. When in doubt,
-JS — switching to Python later is cheaper than paying the
-venv-install upfront for something that turned out to be a
-three-line transform.
+- `manual_read('storage-surfaces')` — Document vs. Scratch vs.
+  client-file: where to put a file the user (or you) just produced
+- `manual_read('scripting')` — JavaScript vs. Python, the four
+  runners, when to persist a script vs. one-shot inline
 
 ## Inbox vs. chat — when to use `inbox_post`
 

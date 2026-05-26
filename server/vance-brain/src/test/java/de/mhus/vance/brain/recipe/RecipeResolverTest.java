@@ -213,6 +213,7 @@ class RecipeResolverTest {
                 null,
                 List.of(),
                 locked,
+                false, // internal
                 List.of(),
                 RecipeSource.RESOURCE);
     }

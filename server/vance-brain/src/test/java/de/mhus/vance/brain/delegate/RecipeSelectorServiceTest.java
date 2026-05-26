@@ -324,6 +324,7 @@ class RecipeSelectorServiceTest {
                 null,
                 triggerKeywords,
                 false,
+                false, // internal
                 java.util.List.of(),
                 RecipeSource.PROJECT);
     }

@@ -264,6 +264,11 @@ public class RecipeSelectorService {
             for (ResolvedRecipe r : all) {
                 if (r.name().startsWith("_slart/")) continue;
                 if (r.name().startsWith("_")) continue;
+                // Internal config-profile recipes (e.g. how-do-i for the
+                // DiscoveryService via LightLlmService) are never offered
+                // to the DELEGATE selector — they are only loaded by name
+                // through the service that owns them.
+                if (r.internal()) continue;
                 visible.add(r);
             }
             return visible;

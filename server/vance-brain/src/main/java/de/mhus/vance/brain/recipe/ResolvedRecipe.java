@@ -62,6 +62,15 @@ public record ResolvedRecipe(
          */
         List<String> triggerKeywords,
         boolean locked,
+        /**
+         * Marks the recipe as an internal config profile, e.g. for
+         * {@code LightLlmService} consumers (discovery, title-gen, …).
+         * The {@code RecipeSelectorService} skips internal recipes when
+         * listing candidates for the LLM-driven {@code DELEGATE}
+         * selector — they can only be loaded by explicit name via the
+         * service that owns them. Default {@code false}.
+         */
+        boolean internal,
         List<String> tags,
         RecipeSource source) {
 }

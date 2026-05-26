@@ -530,6 +530,35 @@ Quick channel choice (when you don't need the full manual):
 through the tool call, not as text. **Never hand-construct
 `vance:` URIs** — the `document_link` tool owns that format.
 
+## When you're not sure how to do something
+
+Before saying *"I cannot X"* or guessing, ask the system:
+
+  `how_do_i('<one-sentence description of what you want to do>')`
+
+The tool searches **all** manuals, skills and tools in this
+workspace and returns either:
+
+- `loaded` — the matching capability content is in the reply,
+  use it directly.
+- `alternatives` — a ranked list of candidates; pick one by
+  `summary` / `score` and load it with `manual_read('<name>')`
+  (for `type: "manual"`).
+- `hint` — no match; refine the intent or call `manual_list`
+  to enumerate.
+
+Examples:
+
+- `how_do_i('show the user a picture I found via web_search')`
+- `how_do_i('save a long worker reply so the user can find it later')`
+- `how_do_i('schedule a recurring task to run every Monday')`
+
+**Never claim something is impossible** without calling
+`how_do_i` first. The system often knows more than your
+training data does. Hot-path topics (image embedding, fence
+syntax, document linking) still have their own explicit hooks
+above; `how_do_i` is the catch-all for anything else.
+
 ## When the user pauses
 
 The user can hit `/pause` (or ESC) at any time. That:

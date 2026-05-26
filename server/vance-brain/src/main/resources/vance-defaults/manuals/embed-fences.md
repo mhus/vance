@@ -118,6 +118,38 @@ privacy-friendly `youtube-nocookie.com` iframe. Optional fence-meta:
 YouTube is **inline-only** — there is no `vance:` document path
 for external videos.
 
+**Finding videos:** call `video_search(query=...)` instead of
+`web_search` when the user asks for a video, tutorial, ride-along,
+or "show me how X looks". The tool pre-validates each result via
+YouTube oEmbed and drops anything that can't actually embed
+(uploader-disabled, private, geo-blocked). Each surviving result
+carries an `embedFence` field — drop that string **verbatim** into
+your reply.
+
+The fence body is exactly the YouTube URL, nothing else:
+
+```
+\`\`\`youtube
+https://youtu.be/dQw4w9WgXcQ
+\`\`\`
+```
+
+**Do NOT rewrite the body as YAML** (`id: <id>`, `title: ...`,
+`channel: ...`) — only `chart` fences carry YAML. The `youtube`
+fence wants a single line: a URL or bare 11-char ID. Title and
+channel from the search result go into prose **around** the
+fence, not inside it. Example reply:
+
+```
+Hier zwei Treffer:
+
+*Lisbon Walking Tour 4K — by Wander Lisbon (12:34)*
+
+\`\`\`youtube
+https://youtu.be/dQw4w9WgXcQ
+\`\`\`
+```
+
 ## What is NOT a Vance fence
 
 Plain language fences like `\`\`\`java`, `\`\`\`json`, `\`\`\`yaml`,

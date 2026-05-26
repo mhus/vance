@@ -1,13 +1,32 @@
-import { computed, onMounted, onBeforeUnmount } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { getTenantId, getUsername } from '@vance/shared';
 import { getSessionData, isAccessAlive, isRefreshAlive, logout as serverLogout, refreshAccessCookie, setActiveLanguage, } from '@/platform';
 import { setUiLocale } from '@/i18n';
+import { useHelp } from '@/composables/useHelp';
+import MarkdownView from './MarkdownView.vue';
 const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     wideRightPanel: false,
     fullHeight: false,
+    helpOpen: false,
 });
+const showHelp = ref(false);
+const help = useHelp();
+watch(() => props.helpPath, (path) => {
+    showHelp.value = props.helpOpen && !!path;
+    if (path && showHelp.value && help.content.value == null) {
+        void help.load(path);
+    }
+}, { immediate: true });
+function toggleHelp() {
+    if (!props.helpPath)
+        return;
+    showHelp.value = !showHelp.value;
+    if (showHelp.value && help.content.value == null && !help.loading.value) {
+        void help.load(props.helpPath);
+    }
+}
 function crumbText(c) {
     return typeof c === 'string' ? c : c.text;
 }
@@ -88,6 +107,7 @@ const __VLS_withDefaultsArg = (function (t) { return t; })({
     breadcrumbs: () => [],
     wideRightPanel: false,
     fullHeight: false,
+    helpOpen: false,
 });
 const __VLS_ctx = {};
 let __VLS_components;
@@ -165,6 +185,16 @@ if (__VLS_ctx.connectionState) {
         title: (__VLS_ctx.connectionTooltip ?? __VLS_ctx.defaultConnectionTooltip),
     });
 }
+if (__VLS_ctx.helpPath) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.toggleHelp) },
+        type: "button",
+        ...{ class: "btn btn-ghost btn-sm btn-circle" },
+        ...{ class: (__VLS_ctx.showHelp ? 'btn-active' : '') },
+        title: (__VLS_ctx.$t('header.help.toggle')),
+        'aria-pressed': (__VLS_ctx.showHelp),
+    });
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "dropdown dropdown-end" },
 });
@@ -235,14 +265,65 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.main, __VLS_intrinsicElements.
     ...{ class: (['flex-1 min-w-0 min-h-0', __VLS_ctx.fullHeight ? 'overflow-hidden' : 'overflow-y-auto']) },
 });
 var __VLS_4 = {};
-if (__VLS_ctx.$slots['right-panel']) {
+if (__VLS_ctx.showHelp || __VLS_ctx.$slots['right-panel']) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
         ...{ class: ([
                 'shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto',
                 __VLS_ctx.wideRightPanel ? 'w-[40rem]' : 'w-80',
             ]) },
     });
-    var __VLS_6 = {};
+    if (__VLS_ctx.showHelp) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "p-4 flex flex-col gap-3 h-full" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+            ...{ class: "flex items-center justify-between" },
+        });
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.h3, __VLS_intrinsicElements.h3)({
+            ...{ class: "text-xs uppercase opacity-60" },
+        });
+        (__VLS_ctx.$t('header.help.title'));
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+            ...{ onClick: (__VLS_ctx.toggleHelp) },
+            type: "button",
+            ...{ class: "btn btn-ghost btn-xs btn-circle" },
+            title: (__VLS_ctx.$t('header.help.close')),
+        });
+        if (__VLS_ctx.help.loading.value) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs opacity-60" },
+            });
+            (__VLS_ctx.$t('header.help.loading'));
+        }
+        else if (__VLS_ctx.help.error.value) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs opacity-60" },
+            });
+            (__VLS_ctx.$t('header.help.unavailable', { error: __VLS_ctx.help.error.value }));
+        }
+        else if (!__VLS_ctx.help.content.value) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "text-xs opacity-60" },
+            });
+            (__VLS_ctx.$t('header.help.empty'));
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "overflow-y-auto pr-2" },
+            });
+            /** @type {[typeof MarkdownView, ]} */ ;
+            // @ts-ignore
+            const __VLS_6 = __VLS_asFunctionalComponent(MarkdownView, new MarkdownView({
+                source: (__VLS_ctx.help.content.value),
+            }));
+            const __VLS_7 = __VLS_6({
+                source: (__VLS_ctx.help.content.value),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_6));
+        }
+    }
+    else {
+        var __VLS_9 = {};
+    }
 }
 /** @type {__VLS_StyleScopedClasses['h-screen']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-hidden']} */ ;
@@ -284,6 +365,10 @@ if (__VLS_ctx.$slots['right-panel']) {
 /** @type {__VLS_StyleScopedClasses['w-2.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-2.5']} */ ;
 /** @type {__VLS_StyleScopedClasses['rounded-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-ghost']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-circle']} */ ;
 /** @type {__VLS_StyleScopedClasses['dropdown']} */ ;
 /** @type {__VLS_StyleScopedClasses['dropdown-end']} */ ;
 /** @type {__VLS_StyleScopedClasses['btn']} */ ;
@@ -327,12 +412,39 @@ if (__VLS_ctx.$slots['right-panel']) {
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['h-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-ghost']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['btn-circle']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
+/** @type {__VLS_StyleScopedClasses['pr-2']} */ ;
 // @ts-ignore
-var __VLS_1 = __VLS_0, __VLS_3 = __VLS_2, __VLS_5 = __VLS_4, __VLS_7 = __VLS_6;
+var __VLS_1 = __VLS_0, __VLS_3 = __VLS_2, __VLS_5 = __VLS_4, __VLS_10 = __VLS_9;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
+            MarkdownView: MarkdownView,
+            showHelp: showHelp,
+            help: help,
+            toggleHelp: toggleHelp,
             crumbText: crumbText,
             crumbOnClick: crumbOnClick,
             tenantId: tenantId,

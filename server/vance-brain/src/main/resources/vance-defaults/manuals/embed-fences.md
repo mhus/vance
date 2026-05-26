@@ -158,6 +158,12 @@ Markdown code blocks (syntax-highlighted `<pre>`). Use them for
 code/config excerpts — that is correct, not a missed opportunity.
 Do not force them into a Vance kind.
 
+**Slides are also not a fence kind.** A `\`\`\`slides` fence renders
+as plain `<pre>`; slide decks live as Documents only. When the user
+asks for a presentation, deck, or slide show, create a Document via
+`doc_create_kind(kind="slides", ...)` and link it — see
+`manual_read('embed-documents')`.
+
 ## When to graduate to a Document
 
 Use a Document (`manual_read('embed-documents')`) instead of an

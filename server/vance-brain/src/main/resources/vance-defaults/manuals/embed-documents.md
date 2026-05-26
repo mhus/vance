@@ -57,6 +57,32 @@ I drafted a mindmap of the onboarding plan:
 
 The `markdownLink` field already contains that string.
 
+### Slide decks via `doc_create_kind(kind="slides")`
+
+When the user asks for a presentation, slide deck, or "slides about X",
+create a `kind: slides` Document. The body is Markdown — slides are
+separated by a `---` thematic break on its own line. Front-matter is
+optional but useful for theme / aspect / pagination.
+
+```
+doc_create_kind(
+  kind="slides",
+  path="decks/q1-review",
+  title="Q1 Review",
+  body="---\nkind: slides\nslides:\n  paginate: true\n---\n\n# Q1 Review\n\n2026\n\n---\n\n## Headline numbers\n\n- Revenue +12%\n- Active users +8%\n\n---\n\n## What slipped\n\n- Mobile launch (rescheduled to Q2)\n"
+)
+```
+
+Then link the result verbatim from the tool's `markdownLink`:
+
+```
+Here is the Q1 review deck:
+[Q1 Review](vance:/decks/q1-review?kind=slides)
+```
+
+Slides are **embedded-only** — never wrap them in a `\`\`\`slides` fence,
+that just renders as raw `<pre>`.
+
 ### Path 2: link to an existing Document — use `document_link`
 
 For a Document the user mentioned or that came up earlier, call

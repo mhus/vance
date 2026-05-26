@@ -34,10 +34,10 @@ public class DocCreateKindTool implements Tool {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
         p.remove("id");
         p.put("kind", Map.of("type", "string",
-                "description", "One of: list, tree, mindmap, records, sheet, graph, chart, data, text, schema."));
+                "description", "One of: list, tree, mindmap, records, sheet, graph, chart, slides, data, text, schema."));
         p.put("mimeType", Map.of("type", "string",
                 "description", "Mime type for the new body. Defaults to a kind-appropriate value: "
-                        + "text/markdown for list/tree/mindmap/records, application/json for sheet/graph/chart/data."));
+                        + "text/markdown for list/tree/mindmap/records/slides, application/json for sheet/graph/chart/data."));
         p.put("title", Map.of("type", "string", "description", "Optional display title."));
         p.put("tags", Map.of("type", "array", "items", Map.of("type", "string"),
                 "description", "Optional tag list."));
@@ -89,6 +89,18 @@ public class DocCreateKindTool implements Tool {
             throw new ToolException(e.getMessage(), e);
         }
 
+        // The user explicitly asked for this `kind`. The body's
+        // front-matter parsing (via applyHeader) is the usual path,
+        // but the LLM occasionally writes a body without the
+        // `---kind: <name>---` front-matter — particularly for kinds
+        // like `slides` where the `---` separators serve a second
+        // purpose. Stamp the kind directly so the editor always
+        // recognises the document regardless of body shape.
+        if (!kind.equalsIgnoreCase(created.getKind())) {
+            support.documentService().setKind(created.getId(), kind);
+            created.setKind(kind);
+        }
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", created.getId());
         out.put("projectId", created.getProjectId());
@@ -104,7 +116,7 @@ public class DocCreateKindTool implements Tool {
 
     private static String defaultMimeFor(String kind) {
         return switch (kind) {
-            case "list", "tree", "mindmap", "records", "text" -> "text/markdown";
+            case "list", "tree", "mindmap", "records", "slides", "text" -> "text/markdown";
             case "sheet", "graph", "chart", "data" -> "application/json";
             case "schema" -> "application/json";
             default -> "text/markdown";
@@ -141,6 +153,10 @@ public class DocCreateKindTool implements Tool {
             case "chart" -> json
                     ? "{\n  \"$meta\": { \"kind\": \"chart\" },\n  \"chart\": { \"chartType\": \"line\", \"title\": \"New Chart\" },\n  \"xAxis\": { \"type\": \"category\" },\n  \"yAxis\": { \"type\": \"value\" },\n  \"series\": [\n    { \"name\": \"Series 1\", \"data\": [\n      { \"x\": \"A\", \"y\": 10 },\n      { \"x\": \"B\", \"y\": 20 },\n      { \"x\": \"C\", \"y\": 15 }\n    ] }\n  ]\n}\n"
                     : "$meta:\n  kind: chart\nchart:\n  chartType: line\n  title: New Chart\nxAxis:\n  type: category\nyAxis:\n  type: value\nseries:\n  - name: Series 1\n    data:\n      - { x: A, y: 10 }\n      - { x: B, y: 20 }\n      - { x: C, y: 15 }\n";
+            case "slides" -> md
+                    ? "---\nkind: slides\nslides:\n  theme: default\n  aspect: \"16:9\"\n  paginate: true\n---\n\n# First slide\n\nWelcome to your deck.\n\n---\n\n## Second slide\n\n- bullet one\n- bullet two\n"
+                    : json ? "{\n  \"$meta\": { \"kind\": \"slides\" },\n  \"slides\": { \"theme\": \"default\", \"aspect\": \"16:9\", \"paginate\": true },\n  \"items\": [\n    \"# First slide\\n\\nWelcome to your deck.\",\n    \"## Second slide\\n\\n- bullet one\\n- bullet two\"\n  ]\n}\n"
+                    : "$meta:\n  kind: slides\nslides:\n  theme: default\n  aspect: \"16:9\"\n  paginate: true\nitems:\n  - |\n    # First slide\n\n    Welcome to your deck.\n  - |\n    ## Second slide\n\n    - bullet one\n    - bullet two\n";
             case "data" -> json
                     ? "{\n  \"$meta\": { \"kind\": \"data\" }\n}\n"
                     : "$meta:\n  kind: data\n";

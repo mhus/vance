@@ -11,6 +11,7 @@ function iconForKind(kind) {
         case 'mindmap': return '🧠';
         case 'graph': return '🕸️';
         case 'sheet': return '📊';
+        case 'slides': return '📽️';
         case 'data': return '🗃️';
         case 'records': return '📇';
         case 'schema': return '🧬';

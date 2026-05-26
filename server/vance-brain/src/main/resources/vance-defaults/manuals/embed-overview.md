@@ -26,6 +26,7 @@ The Web-UI parses your reply as Markdown and goes beyond text:
 |---|---|
 | To see a picture / photo / screenshot — external URL, project image, or `image_search` result | `manual_read('embed-images')` |
 | A mindmap, chart, YouTube video, tree, table, list, records — anything you generate **right now** in chat | `manual_read('embed-fences')` |
+| A slide deck / presentation — multi-slide artefact that lives as a Document | `manual_read('embed-documents')` |
 | To open / reference an existing project Document (PDF, audio, big image, generated artifact) | `manual_read('embed-documents')` |
 | A rounded mixed view of a topic, or unsure which search tool fits | `manual_read('search-tools')` |
 

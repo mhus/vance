@@ -57,11 +57,15 @@ function onCopy(): void {
 }
 
 function onOpen(): void {
-  const projectSegment = props.embedRef.project ?? doc.value?.projectId ?? '';
-  const path = encodeURIComponent(props.embedRef.path);
-  const url = projectSegment
-    ? `/document/?project=${encodeURIComponent(projectSegment)}&path=${path}`
-    : `/document/?path=${path}`;
+  // Mirror the inline-link path in MarkdownView: deep-link into the
+  // documents editor via the resolved document id. Without an id
+  // (resolve failed) we can't navigate — keep the user where they are.
+  const documentId = doc.value?.id;
+  if (!documentId) return;
+  const projectId = props.embedRef.project ?? doc.value?.projectId;
+  if (!projectId) return;
+  const url = `/documents.html?projectId=${encodeURIComponent(projectId)}`
+    + `&documentId=${encodeURIComponent(documentId)}`;
   window.open(url, '_blank', 'noopener');
 }
 

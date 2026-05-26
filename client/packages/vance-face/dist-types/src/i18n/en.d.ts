@@ -259,6 +259,7 @@ declare const _default: {
             tabGraph: string;
             tabSheet: string;
             tabChart: string;
+            tabSlides: string;
             listParseError: string;
             treeParseError: string;
             mindmapParseError: string;
@@ -266,6 +267,7 @@ declare const _default: {
             graphParseError: string;
             sheetParseError: string;
             chartParseError: string;
+            slidesParseError: string;
             delete: string;
             deletePermanent: string;
             download: string;
@@ -322,6 +324,18 @@ declare const _default: {
         };
         mindmapView: {
             panZoomHint: string;
+        };
+        slidesView: {
+            prev: string;
+            next: string;
+            toggleStream: string;
+            toggleSingle: string;
+            modeSingle: string;
+            modeStream: string;
+            present: string;
+            presentLabel: string;
+            exit: string;
+            empty: string;
         };
         sheetView: {
             addRow: string;

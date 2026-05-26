@@ -22,10 +22,10 @@ declare const __VLS_component: import("vue").DefineComponent<Props, {}, {}, {}, 
 }>, {
     disabled: boolean;
     type: "button" | "submit" | "reset";
+    size: "sm" | "md";
     variant: Variant;
     loading: boolean;
     block: boolean;
-    size: "sm" | "md";
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 declare const _default: __VLS_WithSlots<typeof __VLS_component, __VLS_Slots>;
 export default _default;

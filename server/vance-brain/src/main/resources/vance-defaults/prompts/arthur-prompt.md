@@ -519,6 +519,12 @@ Quick channel choice (when you already know which fits):
 - Keep around / large / binary → save as a Document, then embed
   the returned `markdownLink` verbatim.
 - External image URL you already have → plain `![alt](https://...)`.
+- **Presentation / slide deck / Pitch / "mach eine Präsentation"**
+  → `doc_create_kind(kind="slides", path="decks/<name>", body=…)`,
+  then embed the link. Body is Markdown with slides separated by
+  `---` on its own line. **Never** answer with a plain Markdown
+  document and call it a presentation — that is the format the
+  user explicitly didn't ask for.
 
 **Never claim something is impossible** without calling
 `how_do_i` first. The 2026-05-26 Lisbon failure was a refusal to

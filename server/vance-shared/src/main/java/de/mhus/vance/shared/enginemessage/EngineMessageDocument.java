@@ -7,6 +7,7 @@ import de.mhus.vance.api.thinkprocess.ProcessEventType;
 import de.mhus.vance.api.thinkprocess.ToolCallStatus;
 import de.mhus.vance.shared.thinkprocess.PendingMessageType;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -106,6 +107,21 @@ public class EngineMessageDocument {
     // ─── USER_CHAT_INPUT ─────────────────────────────────────────
     private @Nullable String fromUser;
     private @Nullable String content;
+    /**
+     * Per-message voice-mode flag — {@code true} when the originating
+     * client expected a TTS-friendly reply (speaker / talk-mode on).
+     * Engines pull this through to the Pebble render context as
+     * {@code voiceMode}. {@code null} on pre-voice-mode rows and
+     * non-USER_CHAT_INPUT entries; consumers coerce null → false.
+     * See {@code specification/voice-mode.md}.
+     */
+    private @Nullable Boolean voiceMode;
+    /**
+     * Document ids of multimodal attachments riding with the
+     * USER_CHAT_INPUT — image/PDF/text the user uploaded with the
+     * turn. {@code null} or empty when the turn is text-only.
+     */
+    private @Nullable List<String> attachmentDocumentIds;
 
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /**

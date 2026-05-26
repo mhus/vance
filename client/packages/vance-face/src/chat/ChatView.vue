@@ -17,7 +17,7 @@ import {
   setSpeechRate,
   setSpeechVoiceURI,
   setSpeechVolume,
-  stripMarkdown,
+  markdownToSpeech,
   MIN_RATE,
   MAX_RATE,
   MIN_VOLUME,
@@ -441,7 +441,13 @@ function speakMessage(content: string): void {
   // history backfill — only frames that arrive after the REST snapshot
   // has loaded count as "new from the WebSocket".
   if (!speakerLiveReady.value) return;
-  const text = stripMarkdown(content);
+  // markdownToSpeech (TS port of MarkdownToSpeech.java) — reduces
+  // fenced code blocks + tables to a short hint ("Code-Block mit
+  // N Zeilen") so the LLM can use them as "speak-but-show" containers
+  // in voice mode. The older `stripMarkdown` only stripped the
+  // backtick markers and read the body aloud — that's the bug
+  // we just fixed. See specification/voice-mode.md §5.
+  const text = markdownToSpeech(content);
   if (!text) return;
   const utter = buildUtterance(text, resolveSpeechLanguage());
   if (!utter) return;
@@ -955,10 +961,17 @@ async function send(): Promise<void> {
   scrollToBottom();
 
   try {
+    // Per-turn voice-mode signal — see specification/voice-mode.md.
+    // Single boolean to the brain, even though the UI has separate
+    // Speaker / Talk-Mode toggles. Mic-only (STT without TTS) does
+    // NOT trigger voice mode — the user reads the answer visually
+    // in that case and doesn't want it shortened.
+    const voiceMode = speakerEnabled.value || talkMode.value;
     await props.socket.send<ProcessSteerRequest, ProcessSteerResponse>('process-steer', {
       processName: chatProcessName.value,
       content: text,
       attachments: attachmentRefs.length > 0 ? attachmentRefs : undefined,
+      voiceMode: voiceMode ? true : undefined,
     });
   } catch (e) {
     // Roll back the optimistic bubble — the server didn't accept the

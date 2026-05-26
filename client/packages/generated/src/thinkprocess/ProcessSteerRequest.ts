@@ -12,4 +12,5 @@ export interface ProcessSteerRequest {
   idempotencyKey?: string;
   ideContext?: IdeContext;
   attachments?: AttachmentRef[];
+  voiceMode?: boolean;
 }

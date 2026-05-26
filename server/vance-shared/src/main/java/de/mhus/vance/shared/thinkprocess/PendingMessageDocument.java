@@ -61,6 +61,23 @@ public class PendingMessageDocument {
      */
     private @Nullable List<String> attachmentDocumentIds;
 
+    /**
+     * Per-message voice-mode flag — {@code true} when the originating
+     * client expected a TTS-friendly reply for this single turn
+     * (speaker / talk-mode active). The engine reaches this through
+     * to the Pebble render context as {@code voiceMode}; engines
+     * render a voice-block in their system prompt accordingly.
+     *
+     * <p>Per-message, not session state. {@code null} or absent on
+     * pre-voice-mode rows and non-USER_CHAT_INPUT entries — the
+     * Codec coerces null to {@code false}. Wrapper type instead of
+     * primitive so Spring Data MongoDB persists the field even when
+     * the value is {@code false} (primitive defaults are otherwise
+     * skipped by some mapping paths).
+     * See {@code specification/voice-mode.md}.
+     */
+    private @Nullable Boolean voiceMode;
+
     // ─── PROCESS_EVENT ───────────────────────────────────────────
     /** {@code ThinkProcessDocument.id} of the emitter. */
     private @Nullable String sourceProcessId;

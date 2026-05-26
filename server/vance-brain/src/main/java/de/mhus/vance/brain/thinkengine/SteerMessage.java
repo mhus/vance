@@ -49,13 +49,20 @@ public sealed interface SteerMessage
      *                        empty list when text-only. Resolution
      *                        happens at engine-drain time
      *                        (cross-project access blocked there).
+     * @param voiceMode       {@code true} when the client expects a
+     *                        TTS-friendly reply for this single turn
+     *                        (speaker or talk-mode on). Engines render
+     *                        a voice-block in their system prompt
+     *                        when this is set. See
+     *                        {@code specification/voice-mode.md}.
      */
     record UserChatInput(
             Instant at,
             @Nullable String idempotencyKey,
             String fromUser,
             String content,
-            List<AttachmentRef> attachments) implements SteerMessage {
+            List<AttachmentRef> attachments,
+            boolean voiceMode) implements SteerMessage {
 
         /**
          * Compact-form null-safety: {@code attachments == null} is
@@ -71,14 +78,29 @@ public sealed interface SteerMessage
         /**
          * Backward-compatible constructor for the many call sites that
          * predate multimodal attachments. Equivalent to passing
-         * {@link List#of()} for {@code attachments}.
+         * {@link List#of()} for {@code attachments} and {@code false}
+         * for {@code voiceMode}.
          */
         public UserChatInput(
                 Instant at,
                 @Nullable String idempotencyKey,
                 String fromUser,
                 String content) {
-            this(at, idempotencyKey, fromUser, content, List.of());
+            this(at, idempotencyKey, fromUser, content, List.of(), false);
+        }
+
+        /**
+         * Backward-compatible constructor for callers that already
+         * carry attachments but predate voice mode. Equivalent to
+         * passing {@code false} for {@code voiceMode}.
+         */
+        public UserChatInput(
+                Instant at,
+                @Nullable String idempotencyKey,
+                String fromUser,
+                String content,
+                List<AttachmentRef> attachments) {
+            this(at, idempotencyKey, fromUser, content, attachments, false);
         }
     }
 

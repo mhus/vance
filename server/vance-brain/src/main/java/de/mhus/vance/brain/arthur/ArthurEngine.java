@@ -1627,10 +1627,21 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         // below ride outside the cache hash. See
         // specification/prompt-caching.md §5 and
         // planning/tool-schema-deferral.md §4.5 / §7.
+        // Voice-mode flag: last UserChatInput in this drain batch
+        // wins. Per-turn signal — never persisted on the process. See
+        // specification/voice-mode.md §6.
+        boolean voiceMode = false;
+        for (SteerMessage m : inbox) {
+            if (m instanceof SteerMessage.UserChatInput uci) {
+                voiceMode = uci.voiceMode();
+            }
+        }
+
         java.util.Map<String, Object> promptCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
                 .forProcess(process, modelInfo)
                 .tier(modelSize)
                 .engine(NAME)
+                .voiceMode(voiceMode)
                 .withRootDirTypes(workspaceService.getRootDirTypes(
                         process.getTenantId(), process.getProjectId()))
                 .build();

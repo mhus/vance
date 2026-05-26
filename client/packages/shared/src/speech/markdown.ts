@@ -1,13 +1,16 @@
 /**
- * Strip the obvious Markdown tokens before reading a string aloud —
- * code fences, inline code marks, emphasis markers, link syntax,
- * headings. Reading raw asterisks and brackets is jarring; we don't
- * try to preserve every nuance. For richer rendering, plug in a
- * proper markdown-to-text strip later.
+ * @deprecated Use {@code markdownToSpeech} from
+ * {@code ./markdownToSpeech} instead. The old stripper here keeps
+ * fenced-code-block bodies in the output and the TTS engine reads
+ * them out loud — which defeats the "speak-but-show" pattern voice
+ * mode relies on (see specification/voice-mode.md §5). The new
+ * `markdownToSpeech` is a faithful TS port of the Java
+ * {@code MarkdownToSpeech} and replaces fences / tables with short
+ * hints ("Code-Block mit N Zeilen").
  *
- * Pure string transformation — no DOM, no storage, no platform
- * dependency. Safe to call from any client (Web TTS, Mobile
- * `expo-speech`, future server-side preview).
+ * Kept as a thin wrapper around the new implementation so older
+ * tests / call-sites don't break. Will be removed once nothing
+ * imports this name.
  */
 export function stripMarkdown(text: string): string {
   return text

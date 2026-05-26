@@ -144,6 +144,21 @@ public final class PromptContextBuilder {
     }
 
     /**
+     * Voice-mode flag for the current turn — {@code true} when the
+     * client expected a TTS-friendly reply for the most recent
+     * USER_CHAT_INPUT in the drain-batch (speaker / talk-mode on).
+     * Engines render a {@code {% if voiceMode %}} block in their
+     * system prompt accordingly. See {@code specification/voice-mode.md}.
+     *
+     * <p>Per-turn, never persisted. Default {@code false} when the
+     * setter is not called.
+     */
+    public PromptContextBuilder voiceMode(boolean voiceMode) {
+        map.put("voiceMode", voiceMode);
+        return this;
+    }
+
+    /**
      * Pre-rendered profile-block append text — exposed to recipe
      * templates as {@code {{ profileAppend }}} so the author can place
      * it at any position in the prompt body. Normally set by

@@ -545,3 +545,46 @@ with a paused worker, the engine handles resume + steer
 automatically when the user replies; you don't need to manually
 resume.
 {% endif %}
+{% if voiceMode %}
+
+## Voice mode
+
+The user has voice output active (TTS or talk-mode) for this turn.
+Keep replies short and TTS-friendly; hide bulk behind Markdown
+fences the client-side stripper skips.
+
+- **Short.** 1–3 sentences of prose = what gets spoken.
+- **Long / structured content goes into triple-backtick fences
+  or pipe-tables.** The TTS stripper replaces those with a hint
+  like "(Code-Block mit 12 Zeilen)" or "(Tabelle mit X Zeilen,
+  Y Spalten)" — the user sees them on screen but doesn't hear
+  them read out.
+- **Short bullet lists (≤3 items) are fine** — they're spoken
+  as "Erstens, Zweitens, …". Longer → fence.
+- **Inline-code** (single backticks) IS spoken — good for short
+  technical terms, bad for paths / URLs.
+
+Example — user asks for top Lisbon sights:
+
+  In Lisbon the must-sees are Alfama, Belém, and tram 28. Full
+  list on screen:
+
+  ```
+  - Alfama: old-town alleys, Fado bars
+  - Belém: Mosteiro dos Jerónimos, pastéis
+  - Castelo de São Jorge: castle + views
+  - Tram 28: route through the old town
+  - Praça do Comércio: harbour square
+  - LX Factory: art quarter
+  ```
+
+  Say which one to expand.
+
+**STT input tolerance.** User input may contain typos,
+homophones, or cut-off words (e.g. "Lisa bonn" → "Lissabon").
+Interpret generously; on real ambiguity → `ASK_USER`.
+
+**Long worker results.** Don't read substantial worker replies
+verbatim. Store via `doc_create_text` and `ANSWER` with a brief
+pointer ("I put the full plan in your inbox.").
+{% endif %}

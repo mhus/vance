@@ -60,4 +60,21 @@ public class ProcessSteerRequest {
      * attachments. The user must re-attach to refer back to them.
      */
     private @Nullable List<AttachmentRef> attachments;
+
+    /**
+     * Voice-mode flag for this single turn. {@code true} when the
+     * client expects a TTS-friendly reply (speaker on, talk-mode on,
+     * or any future voice-output mode). The brain reaches this flag
+     * through to the engine prompt via the Pebble variable
+     * {@code voiceMode} — engines render a separate voice-block when
+     * the flag is set (kürzere Outputs, Markdown-Konvention für
+     * Speak-vs-show-Trennung, STT-Input-Tolerance).
+     *
+     * <p>Per-message, not session state — the user may toggle voice
+     * mode mid-conversation; each turn carries its own flag.
+     *
+     * <p>{@code null} from old clients is treated as {@code false}.
+     * See {@code specification/voice-mode.md}.
+     */
+    private @Nullable Boolean voiceMode;
 }

@@ -3,7 +3,7 @@ import {
   getSpeakerEnabled,
   getSpeechRate,
   resolveSpeechLanguage,
-  stripMarkdown,
+  markdownToSpeech,
 } from '@vance/shared';
 
 /**
@@ -18,7 +18,7 @@ import {
  */
 export function speakAloud(text: string): void {
   if (!getSpeakerEnabled()) return;
-  const cleaned = stripMarkdown(text);
+  const cleaned = markdownToSpeech(text);
   if (cleaned === '') return;
   Speech.speak(cleaned, {
     language: resolveSpeechLanguage(),

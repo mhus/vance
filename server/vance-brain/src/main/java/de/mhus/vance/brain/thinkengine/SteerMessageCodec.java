@@ -52,6 +52,7 @@ public final class SteerMessageCodec {
                     .fromUser(u.fromUser())
                     .content(u.content())
                     .attachmentDocumentIds(toDocumentIds(u.attachments()))
+                    .voiceMode(u.voiceMode())
                     .build();
 
             case SteerMessage.ProcessEvent e -> b
@@ -109,7 +110,8 @@ public final class SteerMessageCodec {
                     at, idem,
                     nullToEmpty(d.getFromUser()),
                     nullToEmpty(d.getContent()),
-                    fromDocumentIds(d.getAttachmentDocumentIds()));
+                    fromDocumentIds(d.getAttachmentDocumentIds()),
+                    Boolean.TRUE.equals(d.getVoiceMode()));
 
             case PROCESS_EVENT -> new SteerMessage.ProcessEvent(
                     at, idem,

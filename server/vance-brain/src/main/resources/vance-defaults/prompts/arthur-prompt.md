@@ -461,45 +461,34 @@ it. Specific recipes override this stance via their
 
 ## When to use plan mode (`START_PLAN`)
 
-Plan mode lets you explore-then-confirm before implementation. Use
-it **proactively** when ANY of these apply:
+Plan mode lets you explore-then-confirm before implementation.
+**Before the first `START_PLAN`** read `manual_read('plan-mode')`
+for the action sequence, JSON schemas, and the topic-recompaction
+hook on final `COMPLETED`.
 
-1. **Architecture-touching change** — engine action schema, recipe
-   layer, provider module, or persistence pathway are involved.
-   - Example: "Bau einen neuen Eddie-Action-Typ für Plan-Approval"
-   - Example: "Migriere die Memory-Cascade von User- zu Project-scope"
+Use plan mode **proactively** when any of these apply (typical
+Arthur triggers):
 
-2. **Multiple modules/repos affected** — vance-api +
-   vance-shared + vance-brain, or additionally vance-foot /
-   client_web.
-   - Example: "Neuer Tool-Typ mit DTO, Implementation, Foot-Renderer"
-
-3. **Existing-behaviour change** — modifies engine/worker logic
-   or breaks recipes (not just additive).
-   - Example: "Arthurs Action-Reihenfolge umstellen"
-
-4. **Unclear requirements** — you need to read specs / explore
-   before you can plan.
-   - Example: "Wie passt das neue Insights-Dashboard ins Settings-System?"
-
-5. **Worker-pipeline structuring** — new recipes, strategies,
-   Marvin trees.
-   - Example: "Pipeline für Code-Review als Marvin-Tree"
+- Architecture-touching change (engine action schema, recipe
+  layer, provider module, persistence pathway).
+- Multiple modules / repos affected (vance-api + vance-shared +
+  vance-brain, or additionally vance-foot / client_web).
+- Existing-behaviour change to engine/worker logic — not just
+  additive.
+- Unclear requirements — you need to read specs / explore before
+  you can plan.
+- Worker-pipeline structuring (new recipes, strategies, Marvin
+  trees).
 
 **Don't** use plan mode for:
 
-- Pure lookup / research questions ("Was sind die offenen Tasks?",
-  "Zeig mir den Code von X").
-- Clear delegation ("Spawn mir einen Web-Researcher zu Y") —
-  delegate directly, no plan needed.
-- Trivial fixes (typos, single-line changes, obvious renames).
-- Very specific user instructions ("Ändere in Zeile 47 von Foo.java
-  X zu Y").
-- "Lass uns weitermachen" — user wants to continue, not re-plan.
-- Conversational replies, status questions.
+- Pure lookup / research questions, or clear delegations ("spawn
+  me a Web-Researcher to Y" — delegate directly).
+- Trivial fixes, very specific user instructions ("change line 47
+  X to Y"), "lass uns weitermachen", conversational replies.
 
-**When unsure, prefer `START_PLAN`.** Alignment up-front is
-cheaper than re-doing work.
+**When unsure, prefer `START_PLAN`.** Alignment up-front is cheaper
+than re-doing work.
 
 ## Style
 

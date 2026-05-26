@@ -388,6 +388,90 @@ public class SessionLifecycleService {
     }
 
     /**
+     * Session-level resume cascade — the symmetric counterpart to
+     * {@link #suspendCascade(String, SuspendCause)}. For every
+     * {@code SUSPENDED} engine on the session, calls
+     * {@code engine.resume(process, ctx)} on its lane; once the lanes
+     * land, the session document flips back from {@code SUSPENDED} to
+     * {@code IDLE} and the runtime-suspend fields are cleared. Pending
+     * messages that accumulated while suspended get drained via
+     * {@link ProcessEventEmitter#scheduleTurn(String)} on each
+     * non-closed process.
+     *
+     * <p>Idempotent: a no-op when the session is {@code CLOSED} or
+     * {@code ARCHIVED}, and skips engines that aren't actually
+     * {@code SUSPENDED} (so calling on a fully-IDLE session is safe).
+     *
+     * <p>Generic over the suspend cause — handles {@code IDLE},
+     * {@code DISCONNECT}, and {@code FORCED} suspends from a single
+     * code path, per {@code specification/session-lifecycle.md} §10.2.
+     *
+     * <p>Callers — the WS {@code session-resume} handler (on
+     * reconnect) and the REST {@code POST /sessions/{id}/resume}
+     * endpoint — pass in their own {@link ProcessEventEmitter}
+     * because the bean graph wouldn't let the lifecycle service take
+     * a direct dependency on the emitter without a cycle.
+     */
+    public void resumeSessionCascade(String sessionId,
+                                     ProcessEventEmitter eventEmitter) {
+        SessionDocument session = sessionService.findBySessionId(sessionId).orElse(null);
+        if (session == null) return;
+        if (session.getStatus() == SessionStatus.CLOSED
+                || session.getStatus() == SessionStatus.ARCHIVED) {
+            return;
+        }
+        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(
+                session.getTenantId(), sessionId);
+        boolean anySuspended = false;
+        for (ThinkProcessDocument p : processes) {
+            if (p.getStatus() == ThinkProcessStatus.SUSPENDED) {
+                anySuspended = true;
+                break;
+            }
+        }
+        if (!anySuspended && session.getStatus() != SessionStatus.SUSPENDED) {
+            // Nothing to resume — neither session nor any engine is
+            // suspended. Skip the noise.
+            return;
+        }
+        log.info("Resume cascade sessionId='{}' (sessionStatus={})",
+                sessionId, session.getStatus());
+        ThinkEngineService engines = thinkEngineServiceProvider.getObject();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        for (ThinkProcessDocument p : processes) {
+            if (p.getStatus() != ThinkProcessStatus.SUSPENDED) continue;
+            futures.add(laneScheduler.submit(p.getId(), () -> {
+                try {
+                    engines.resume(p);
+                } catch (RuntimeException e) {
+                    log.warn("engine.resume failed during cascade id='{}': {}",
+                            p.getId(), e.toString());
+                    // Best-effort fallback: at least lift the status
+                    // off SUSPENDED so the lane can run again.
+                    thinkProcessService.updateStatus(
+                            p.getId(), ThinkProcessStatus.IDLE);
+                }
+                return null;
+            }));
+        }
+        joinAll(futures);
+        // Session document: SUSPENDED → IDLE, clear runtime fields.
+        // {@link SessionService#resume} is itself idempotent — a no-op
+        // when the session wasn't SUSPENDED to begin with (e.g. only
+        // a single FORCED-suspended engine without session-level
+        // suspend, possible at pod-shutdown per spec §10).
+        sessionService.resume(sessionId);
+        // Drain any pending that piled up while the engines were down.
+        // Scheduling a turn on a CLOSED process is a no-op inside
+        // ProcessEventEmitter; iterate over the original list to keep
+        // the call set deterministic.
+        for (ThinkProcessDocument p : processes) {
+            if (p.getStatus() == ThinkProcessStatus.CLOSED) continue;
+            eventEmitter.scheduleTurn(p.getId());
+        }
+    }
+
+    /**
      * Resume a previously paused process: status PAUSED → IDLE on the
      * lane, then a {@code runTurn} is scheduled so any pending
      * messages that piled up while paused get drained.

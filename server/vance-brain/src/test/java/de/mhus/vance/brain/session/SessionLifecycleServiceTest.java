@@ -17,6 +17,7 @@ import de.mhus.vance.api.session.SuspendCause;
 import de.mhus.vance.api.thinkprocess.CloseReason;
 import de.mhus.vance.api.thinkprocess.ThinkProcessStatus;
 import de.mhus.vance.brain.scheduling.LaneScheduler;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -219,6 +220,123 @@ class SessionLifecycleServiceTest {
         // a SUSPENDED session must not retain in-memory state. See
         // specification/session-lifecycle.md §7.
         assertThat(laneScheduler.laneCount()).isZero();
+    }
+
+    // ─── resumeSessionCascade ───────────────────────────────────────────
+
+    @Test
+    void resumeSessionCascade_resumesSuspendedEngines_thenSession() {
+        stubSession("s-1", SessionStatus.SUSPENDED, DisconnectPolicy.SUSPEND);
+        ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.SUSPENDED);
+        ThinkProcessDocument p2 = process("p-2", ThinkProcessStatus.SUSPENDED);
+        ThinkProcessDocument p3Closed = process("p-3", ThinkProcessStatus.CLOSED);
+        ThinkProcessDocument p4Running = process("p-4", ThinkProcessStatus.RUNNING);
+        when(thinkProcessService.findBySession(any(), eq("s-1")))
+                .thenReturn(List.of(p1, p2, p3Closed, p4Running));
+        ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
+
+        lifecycle.resumeSessionCascade("s-1", emitter);
+
+        // Only SUSPENDED engines run through engine.resume.
+        verify(engineService, times(1)).resume(p1);
+        verify(engineService, times(1)).resume(p2);
+        verify(engineService, never()).resume(p3Closed);
+        verify(engineService, never()).resume(p4Running);
+        // Session flips off SUSPENDED.
+        verify(sessionService).resume("s-1");
+        // Pending drain on every non-closed process — fresh signal to
+        // the lane scheduler so messages queued during the freeze get
+        // picked up.
+        verify(emitter).scheduleTurn("p-1");
+        verify(emitter).scheduleTurn("p-2");
+        verify(emitter, never()).scheduleTurn("p-3");
+        verify(emitter).scheduleTurn("p-4");
+    }
+
+    @Test
+    void resumeSessionCascade_engineFailure_fallsBackToServiceUpdate() {
+        stubSession("s-1", SessionStatus.SUSPENDED, DisconnectPolicy.SUSPEND);
+        ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.SUSPENDED);
+        when(thinkProcessService.findBySession(any(), eq("s-1")))
+                .thenReturn(List.of(p1));
+        org.mockito.Mockito.doThrow(new RuntimeException("boom"))
+                .when(engineService).resume(p1);
+        ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
+
+        lifecycle.resumeSessionCascade("s-1", emitter);
+
+        // engine.resume blew up — fall back so the process at least
+        // gets unstuck rather than sitting in SUSPENDED forever.
+        verify(thinkProcessService).updateStatus("p-1", ThinkProcessStatus.IDLE);
+        verify(sessionService).resume("s-1");
+    }
+
+    @Test
+    void resumeSessionCascade_closedSession_isNoop() {
+        stubSession("s-1", SessionStatus.CLOSED, DisconnectPolicy.SUSPEND);
+        ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
+
+        lifecycle.resumeSessionCascade("s-1", emitter);
+
+        verify(thinkProcessService, never()).findBySession(any(), any());
+        verify(sessionService, never()).resume(any());
+    }
+
+    @Test
+    void resumeSessionCascade_archivedSession_isNoop() {
+        stubSession("s-1", SessionStatus.ARCHIVED, DisconnectPolicy.SUSPEND);
+        ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
+
+        lifecycle.resumeSessionCascade("s-1", emitter);
+
+        verify(thinkProcessService, never()).findBySession(any(), any());
+        verify(sessionService, never()).resume(any());
+    }
+
+    @Test
+    void resumeSessionCascade_noSuspendedProcesses_isNoop() {
+        // Session is in RUNNING/IDLE and no engine is suspended — there's
+        // genuinely nothing to do. Skip the cascade to keep the WS
+        // reconnect path cheap on the common case.
+        stubSession("s-1", SessionStatus.IDLE, DisconnectPolicy.SUSPEND);
+        ThinkProcessDocument p1 = process("p-1", ThinkProcessStatus.IDLE);
+        when(thinkProcessService.findBySession(any(), eq("s-1")))
+                .thenReturn(List.of(p1));
+        ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
+
+        lifecycle.resumeSessionCascade("s-1", emitter);
+
+        verify(engineService, never()).resume(any());
+        verify(sessionService, never()).resume(any());
+        verify(emitter, never()).scheduleTurn(any());
+    }
+
+    @Test
+    void resumeSessionCascade_unknownSession_isNoop() {
+        when(sessionService.findBySessionId("ghost")).thenReturn(Optional.empty());
+        ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
+
+        lifecycle.resumeSessionCascade("ghost", emitter);
+
+        verify(engineService, never()).resume(any());
+        verify(sessionService, never()).resume(any());
+    }
+
+    @Test
+    void resumeSessionCascade_sessionSuspendedButProcessesAlreadyIdle_stillFlipsSession() {
+        // Edge case: process statuses got reconciled out-of-band but
+        // the session document still says SUSPENDED. The cascade must
+        // still bring the session back to IDLE so subsequent /resume
+        // calls aren't blocked on a stale flag.
+        stubSession("s-1", SessionStatus.SUSPENDED, DisconnectPolicy.SUSPEND);
+        when(thinkProcessService.findBySession(any(), eq("s-1")))
+                .thenReturn(List.of(process("p-1", ThinkProcessStatus.IDLE)));
+        ProcessEventEmitter emitter = mock(ProcessEventEmitter.class);
+
+        lifecycle.resumeSessionCascade("s-1", emitter);
+
+        verify(engineService, never()).resume(any());
+        verify(sessionService).resume("s-1");
     }
 
     // ─── closeWithCascade ───────────────────────────────────────────────

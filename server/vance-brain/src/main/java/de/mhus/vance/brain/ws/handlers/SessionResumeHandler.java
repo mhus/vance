@@ -9,6 +9,8 @@ import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
+import de.mhus.vance.brain.session.SessionLifecycleService;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.brain.ws.ConnectionContext;
 import de.mhus.vance.brain.ws.WebSocketSender;
 import de.mhus.vance.brain.ws.WsHandler;
@@ -21,6 +23,7 @@ import de.mhus.vance.api.session.SessionStatus;
 import java.io.IOException;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 import tools.jackson.databind.ObjectMapper;
@@ -32,6 +35,7 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class SessionResumeHandler implements WsHandler {
 
     private final ObjectMapper objectMapper;
@@ -42,6 +46,8 @@ public class SessionResumeHandler implements WsHandler {
     private final InboxPendingSummaryPusher inboxSummaryPusher;
     private final RequestAuthority authority;
     private final ThinkProcessService thinkProcessService;
+    private final SessionLifecycleService sessionLifecycle;
+    private final ProcessEventEmitter processEventEmitter;
 
     @Override
     public String type() {
@@ -110,6 +116,23 @@ public class SessionResumeHandler implements WsHandler {
         // §4.1.1.
         thinkProcessService.updateBoundProfileForSession(
                 doc.getSessionId(), ctx.getProfile());
+        // Resume any engines that were left in SUSPENDED — idle-suspended
+        // from before this reconnect, or FORCED-suspended at pod shutdown.
+        // Without this, the user's first chat message after reconnect
+        // would be appended to the pending queue and ignored (Lisbon
+        // bug, 2026-05-26 — see planning/session-resume-cascade-bug.md).
+        // sessionLifecycle.resumeSessionCascade is idempotent: a no-op
+        // when nothing is suspended.
+        try {
+            sessionLifecycle.resumeSessionCascade(doc.getSessionId(), processEventEmitter);
+        } catch (RuntimeException e) {
+            // Resume failures must not block the bind reply — the
+            // session is still usable for new turns, only the
+            // pre-suspend pending may sit one more turn. Log and
+            // continue.
+            log.warn("Resume cascade failed during session-resume sessionId='{}': {}",
+                    doc.getSessionId(), e.toString());
+        }
         inboxSummaryPusher.pushIfAny(wsSession, ctx.getTenantId(), ctx.getUserId());
         // Look up the chat-process name (typically "chat") so the
         // client can set its active-process pointer in the same round

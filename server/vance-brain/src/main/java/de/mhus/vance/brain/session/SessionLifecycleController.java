@@ -5,6 +5,7 @@ import de.mhus.vance.api.session.SessionMetadataDto;
 import de.mhus.vance.api.session.SessionMetadataPatchRequest;
 import de.mhus.vance.api.session.SessionStatus;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.thinkengine.ProcessEventEmitter;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
@@ -47,6 +48,7 @@ public class SessionLifecycleController {
     private final SessionService sessionService;
     private final SessionLifecycleService lifecycleService;
     private final RequestAuthority authority;
+    private final ProcessEventEmitter processEventEmitter;
 
     @PostMapping("/{sessionId}/archive")
     public ResponseEntity<Void> archive(
@@ -63,6 +65,38 @@ public class SessionLifecycleController {
             return ResponseEntity.noContent().build();
         }
         lifecycleService.archiveWithCascade(sessionId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Resume a SUSPENDED session — generic over all suspend causes
+     * (IDLE, DISCONNECT, FORCED). Engines transition back to
+     * {@code IDLE}, runtime-suspend fields are cleared, pending
+     * messages get drained. See {@code specification/session-lifecycle.md}
+     * §10.2.
+     *
+     * <p>Idempotent: 204 for an already-active session too. Use
+     * {@code /reactivate} (separate endpoint) for {@code ARCHIVED}
+     * sessions — those need their engines re-spawned, not resumed.
+     */
+    @PostMapping("/{sessionId}/resume")
+    public ResponseEntity<Void> resume(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("sessionId") String sessionId,
+            HttpServletRequest request) {
+        SessionDocument session = requireOwnedSession(tenant, sessionId, request);
+        authority.enforce(request,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
+                Action.START);
+        if (session.getStatus() == SessionStatus.CLOSED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Session is CLOSED and cannot be resumed");
+        }
+        if (session.getStatus() == SessionStatus.ARCHIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Session is ARCHIVED — use /reactivate instead");
+        }
+        lifecycleService.resumeSessionCascade(sessionId, processEventEmitter);
         return ResponseEntity.noContent().build();
     }
 

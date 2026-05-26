@@ -3,6 +3,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import InlineKindBox from './InlineKindBox.vue';
 import EmbeddedKindBox from './EmbeddedKindBox.vue';
+import LinkCard from './LinkCard.vue';
 import { hasRenderer } from '@/kindRenderers/registry';
 import { parseFenceLang } from '@/kindRenderers/parseFenceLang';
 import { isVanceUri, parseVanceUri } from '@/kindRenderers/parseVanceUri';
@@ -70,6 +71,80 @@ function isVanceLinkParagraph(token) {
 function tokensToText(tokens) {
     return tokens.map((t) => t.text ?? '').join('');
 }
+/**
+ * Collects unique external http(s) URLs referenced as Markdown
+ * links anywhere inside {@code token}. Used to render Slack-style
+ * preview cards underneath the block that produced them — the
+ * inline link itself stays clickable, the card is supplementary
+ * context.
+ *
+ * Walks the full token subtree, so links inside list items,
+ * blockquotes, or table cells are picked up the same as links
+ * directly in a paragraph. (Common pattern: LLMs render link
+ * roundups as bullet lists, which marked parses as a top-level
+ * {@code list} token with the links nested under
+ * {@code items[].tokens}.)
+ *
+ * Skips:
+ * - image-typed tokens — the image renders inline, no card needed
+ * - {@code vance:} URIs — handled by the embedded-kind path
+ * - non-http schemes (mailto, tel, …)
+ * - duplicate URLs inside the same block
+ */
+function extractExternalUrls(token) {
+    const urls = [];
+    const seen = new Set();
+    const CAP = 3;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const walk = (ts) => {
+        if (!ts || urls.length >= CAP)
+            return;
+        for (const t of ts) {
+            if (urls.length >= CAP)
+                return;
+            if (t.type === 'link') {
+                const href = t.href;
+                if (href && /^https?:\/\//i.test(href) && !seen.has(href)) {
+                    seen.add(href);
+                    urls.push(href);
+                    continue;
+                }
+            }
+            // Recurse into children. `paragraph`, `blockquote`, `heading`,
+            // `list_item`, `link` all carry a `tokens` array; `list`
+            // carries `items[]`, each item with its own `tokens`. Tables
+            // hang their cells off `header[].tokens` and `rows[][].tokens`.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const anyT = t;
+            if (anyT.tokens)
+                walk(anyT.tokens);
+            if (Array.isArray(anyT.items)) {
+                for (const item of anyT.items) {
+                    if (item && item.tokens)
+                        walk(item.tokens);
+                }
+            }
+            if (Array.isArray(anyT.header)) {
+                for (const cell of anyT.header) {
+                    if (cell && cell.tokens)
+                        walk(cell.tokens);
+                }
+            }
+            if (Array.isArray(anyT.rows)) {
+                for (const row of anyT.rows) {
+                    if (!Array.isArray(row))
+                        continue;
+                    for (const cell of row) {
+                        if (cell && cell.tokens)
+                            walk(cell.tokens);
+                    }
+                }
+            }
+        }
+    };
+    walk([token]);
+    return urls;
+}
 function vnodesForTokens(tokens) {
     const out = [];
     const buffer = [];
@@ -114,6 +189,20 @@ function vnodesForTokens(tokens) {
                 }
             }
             buffer.push(token);
+            continue;
+        }
+        // External http(s) links in a paragraph get Slack-style preview
+        // cards rendered underneath. The paragraph itself still renders
+        // as normal Markdown (so the inline link stays clickable); the
+        // cards are appended after the paragraph as separate VNodes.
+        const externalUrls = extractExternalUrls(token);
+        if (externalUrls.length > 0) {
+            flushHtmlBuffer(buffer, out);
+            buffer.push(token);
+            flushHtmlBuffer(buffer, out);
+            for (const url of externalUrls) {
+                out.push(h(LinkCard, { url, key: `lc:${url}` }));
+            }
             continue;
         }
         buffer.push(token);

@@ -24,9 +24,10 @@ The Web-UI parses your reply as Markdown and goes beyond text:
 
 | User wants … | Read |
 |---|---|
-| To see a picture / photo / screenshot — external URL, project image, or `web_search` result | `manual_read('embed-images')` |
+| To see a picture / photo / screenshot — external URL, project image, or `image_search` result | `manual_read('embed-images')` |
 | A mindmap, chart, YouTube video, tree, table, list, records — anything you generate **right now** in chat | `manual_read('embed-fences')` |
 | To open / reference an existing project Document (PDF, audio, big image, generated artifact) | `manual_read('embed-documents')` |
+| A rounded mixed view of a topic, or unsure which search tool fits | `manual_read('search-tools')` |
 
 ## Hard rule — never claim it's impossible
 

@@ -82,7 +82,13 @@ class MemoryCompactionServiceRangeTest {
         service = new MemoryCompactionService(
                 chatMessageService, memoryService, aiModelService,
                 sessionService, settingService, properties,
-                llmCallTracker, progressEmitter, metricService);
+                llmCallTracker, progressEmitter, metricService,
+                mock(de.mhus.vance.brain.memory.evaluation.MemoryAnalyzerService.class),
+                new de.mhus.vance.brain.memory.evaluation.CheapPathFilter(
+                        new de.mhus.vance.brain.memory.evaluation.HotPathMarkerDetector()),
+                new de.mhus.vance.brain.memory.evaluation.MemoryEvaluationSanitizer(
+                        new de.mhus.vance.brain.memory.evaluation.MemoryEvaluationProperties()),
+                new de.mhus.vance.brain.memory.evaluation.MemoryEvaluationProperties());
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);

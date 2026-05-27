@@ -68,4 +68,16 @@ public class MemoryEvaluationProperties {
      * substantial parts of the span. §4c.4.
      */
     private double coverageLowThreshold = 0.2;
+
+    /**
+     * Master switch for the compaction-side-channel — when {@code true},
+     * {@code MemoryCompactionService} runs the {@code MemoryAnalyzerService}
+     * over the same span it summarises, then hands the sanitized output
+     * to downstream consumers (strength derivation, memory promotion).
+     *
+     * <p>Defaults to {@code false} until phases 6+7 of §12 are wired in —
+     * running the analyzer without a consumer just burns tokens. Flip to
+     * {@code true} per tenant once promotion + strength tagging are live.
+     */
+    private boolean sideChannelEnabled = false;
 }

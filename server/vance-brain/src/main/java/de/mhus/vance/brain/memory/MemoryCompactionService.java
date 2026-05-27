@@ -7,11 +7,20 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ford.FordProperties;
+import de.mhus.vance.brain.memory.evaluation.CheapPathFilter;
+import de.mhus.vance.brain.memory.evaluation.MemoryAnalyzerService;
+import de.mhus.vance.brain.memory.evaluation.MemoryEvaluationProperties;
+import de.mhus.vance.brain.memory.evaluation.MemoryEvaluationSanitizer;
+import de.mhus.vance.brain.memory.evaluation.SanitizeContext;
+import de.mhus.vance.brain.memory.evaluation.SanitizeResult;
+import de.mhus.vance.brain.memory.evaluation.SpanMessage;
+import de.mhus.vance.brain.memory.evaluation.SpanProfile;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryKind;
 import de.mhus.vance.shared.memory.MemoryService;
+import de.mhus.vance.shared.memory.evaluation.EvaluationOutput;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -24,9 +33,11 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -91,6 +102,10 @@ public class MemoryCompactionService {
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final MetricService metricService;
+    private final MemoryAnalyzerService memoryAnalyzerService;
+    private final CheapPathFilter cheapPathFilter;
+    private final MemoryEvaluationSanitizer evaluationSanitizer;
+    private final MemoryEvaluationProperties evaluationProperties;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -187,6 +202,8 @@ public class MemoryCompactionService {
         metricService.counter("vance.memory.compaction", "mode", "sliding").increment();
         metricService.summary("vance.memory.compaction.messages", "mode", "sliding")
                 .record(olderIds.size());
+
+        runSideChannel(process, older, projectId, "compaction-side-channel: sliding");
 
         return CompactionResult.success(
                 olderIds.size(), summary.length(), saved.getId(), supersededId);
@@ -316,6 +333,9 @@ public class MemoryCompactionService {
         metricService.summary("vance.memory.compaction.messages", "mode", "range")
                 .record(rangeIds.size());
 
+        runSideChannel(process, range, projectId,
+                "compaction-side-channel: range " + topicLabel);
+
         return CompactionResult.success(
                 rangeIds.size(), summary.length(), saved.getId(), /*supersededMemoryId*/ null);
     }
@@ -364,6 +384,100 @@ public class MemoryCompactionService {
                 process, request, response, System.currentTimeMillis() - startMs, modelAlias);
         String text = response.aiMessage() == null ? null : response.aiMessage().text();
         return text == null ? "" : text.trim();
+    }
+
+    /**
+     * Side-channel pass: hands the same span the summarizer just
+     * compacted to the {@link MemoryAnalyzerService}, runs the result
+     * through the {@link MemoryEvaluationSanitizer}, and records
+     * metrics. Items are not yet routed to downstream consumers
+     * (strength tagging + promotion arrive in later phases) — for now
+     * the side-channel proves the pipeline end-to-end and produces
+     * the data for calibration.
+     *
+     * <p>Bails early when {@link MemoryEvaluationProperties#isSideChannelEnabled()}
+     * is false (the current default) or when the cheap-path pre-filter
+     * judges the span too thin to be worth an analyzer call. Any
+     * RuntimeException is caught and warn-logged — compaction itself
+     * has already succeeded by the time we reach here.
+     */
+    private void runSideChannel(
+            ThinkProcessDocument process,
+            List<ChatMessageDocument> spanDocs,
+            String projectId,
+            String windowHint) {
+        if (!evaluationProperties.isSideChannelEnabled()) {
+            return;
+        }
+        if (spanDocs == null || spanDocs.isEmpty()) {
+            return;
+        }
+        try {
+            List<SpanMessage> span = projectToSpan(spanDocs);
+            SpanProfile profile = cheapPathFilter.profile(span);
+            if (profile.isSkippable()) {
+                log.debug("Side-channel skipped for process='{}' reason='{}'",
+                        process.getId(), profile.skipReason());
+                metricService.counter("vance.memeval.sideChannel",
+                        "outcome", "skipped",
+                        "reason", profile.skipReason() == null
+                                ? "unknown" : profile.skipReason()).increment();
+                return;
+            }
+
+            EvaluationOutput raw = memoryAnalyzerService.analyze(
+                    process.getTenantId(),
+                    projectId == null || projectId.isBlank() ? null : projectId,
+                    process.getId(),
+                    span,
+                    windowHint,
+                    profile.expectation());
+
+            Set<String> existingTurnIds = new HashSet<>();
+            for (ChatMessageDocument m : spanDocs) {
+                if (m.getId() != null) {
+                    existingTurnIds.add(m.getId());
+                }
+            }
+            int substantialCount = profile.substantialUserTurnCount()
+                    + profile.markerHits();
+            SanitizeContext ctx = new SanitizeContext(
+                    existingTurnIds, substantialCount, profile.expectation());
+
+            SanitizeResult sanitized = evaluationSanitizer.sanitize(raw, ctx);
+            log.info("Side-channel process='{}' raw={} final={} dropped(noEvidence={}, lowConf={}, supersede={}) merged={} hardCap={} coverage={}",
+                    process.getId(),
+                    sanitized.metrics().rawItemCount(),
+                    sanitized.metrics().finalItemCount(),
+                    sanitized.metrics().droppedNoEvidence(),
+                    sanitized.metrics().droppedLowConfidence(),
+                    sanitized.metrics().droppedBySupersedeWithinBatch(),
+                    sanitized.metrics().duplicatesMerged(),
+                    sanitized.metrics().hardCapTriggered(),
+                    String.format("%.2f", sanitized.metrics().evidenceCoverage()));
+
+            metricService.counter("vance.memeval.sideChannel",
+                    "outcome", "success").increment();
+            metricService.summary("vance.memeval.items.final")
+                    .record(sanitized.metrics().finalItemCount());
+        } catch (RuntimeException e) {
+            log.warn("Side-channel failed for process='{}': {}",
+                    process.getId(), e.toString());
+            metricService.counter("vance.memeval.sideChannel",
+                    "outcome", "error").increment();
+        }
+    }
+
+    private static List<SpanMessage> projectToSpan(List<ChatMessageDocument> docs) {
+        List<SpanMessage> out = new ArrayList<>(docs.size());
+        for (ChatMessageDocument doc : docs) {
+            if (doc.getRole() == null) {
+                continue;
+            }
+            String content = doc.getContent() == null ? "" : doc.getContent();
+            out.add(new SpanMessage(doc.getId(), doc.getRole(), content));
+        }
+        return out;
     }
 
     private AiChatConfig resolveAiConfig(ThinkProcessDocument process) {

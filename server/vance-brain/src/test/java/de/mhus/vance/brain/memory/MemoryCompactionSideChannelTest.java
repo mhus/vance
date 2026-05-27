@@ -77,6 +77,7 @@ class MemoryCompactionSideChannelTest {
     private PrakProperties evaluationProperties;
     private de.mhus.vance.brain.prak.SpanStrengthDeriver strengthDeriver;
     private de.mhus.vance.brain.prak.PrakPromotionService promotionService;
+    private de.mhus.vance.shared.prak.audit.PrakRunService runService;
     private MemoryCompactionService service;
 
     private AiChat aiChat;
@@ -110,13 +111,14 @@ class MemoryCompactionSideChannelTest {
         // Same defensive default — wiring reads .persistedMemoryIds().size().
         when(promotionService.promote(any(), any()))
                 .thenReturn(de.mhus.vance.brain.prak.PromotionResult.empty());
+        runService = mock(de.mhus.vance.shared.prak.audit.PrakRunService.class);
 
         service = new MemoryCompactionService(
                 chatMessageService, memoryService, aiModelService,
                 sessionService, settingService, properties,
                 llmCallTracker, progressEmitter, metricService,
                 analyzer, cheapPath, sanitizer, evaluationProperties,
-                strengthDeriver, promotionService);
+                strengthDeriver, promotionService, runService);
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);
@@ -273,6 +275,46 @@ class MemoryCompactionSideChannelTest {
                 Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
 
         verify(promotionService, never()).promote(any(), any());
+    }
+
+    @Test
+    void sideChannel_writesAuditRunRecordOnSuccess() {
+        evaluationProperties.setSideChannelEnabled(true);
+
+        primeRange(longUserSpan());
+        primeSummarizer("Summary text");
+        when(analyzer.analyze(any(), any(), any(), any(), any(), any()))
+                .thenReturn(EvaluationOutput.empty(
+                        new WindowSpan("m1", "m2", 2)));
+
+        service.compactRange(
+                process(), Instant.parse("2026-05-11T14:00:00Z"),
+                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
+
+        org.mockito.ArgumentCaptor<de.mhus.vance.shared.prak.audit.PrakRunRecord> cap =
+                org.mockito.ArgumentCaptor.forClass(
+                        de.mhus.vance.shared.prak.audit.PrakRunRecord.class);
+        verify(runService).save(cap.capture());
+        var record = cap.getValue();
+        assertThat(record.getTenantId()).isEqualTo("t");
+        assertThat(record.getProcessId()).isEqualTo("p-1");
+        assertThat(record.getRunId()).startsWith("compaction-p-1-");
+        assertThat(record.getTrigger()).contains("auth-setup");
+        assertThat(record.getWindowFromTurnId()).isEqualTo("m1");
+        assertThat(record.getWindowToTurnId()).isEqualTo("m2");
+        assertThat(record.getDurationMs()).isGreaterThanOrEqualTo(0L);
+    }
+
+    @Test
+    void sideChannel_disabled_doesNotWriteAuditRecord() {
+        primeRange(longUserSpan());
+        primeSummarizer("Summary text");
+
+        service.compactRange(
+                process(), Instant.parse("2026-05-11T14:00:00Z"),
+                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
+
+        verify(runService, never()).save(any());
     }
 
     @Test

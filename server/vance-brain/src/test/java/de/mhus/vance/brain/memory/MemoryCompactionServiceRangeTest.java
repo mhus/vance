@@ -90,7 +90,8 @@ class MemoryCompactionServiceRangeTest {
                         new de.mhus.vance.brain.prak.PrakProperties()),
                 new de.mhus.vance.brain.prak.PrakProperties(),
                 mock(de.mhus.vance.brain.prak.SpanStrengthDeriver.class),
-                mock(de.mhus.vance.brain.prak.PrakPromotionService.class));
+                mock(de.mhus.vance.brain.prak.PrakPromotionService.class),
+                mock(de.mhus.vance.shared.prak.audit.PrakRunService.class));
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);

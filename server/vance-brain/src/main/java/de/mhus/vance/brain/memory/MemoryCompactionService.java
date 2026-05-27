@@ -108,6 +108,7 @@ public class MemoryCompactionService {
     private final PrakProperties prakProperties;
     private final de.mhus.vance.brain.prak.SpanStrengthDeriver spanStrengthDeriver;
     private final de.mhus.vance.brain.prak.PrakPromotionService prakPromotionService;
+    private final de.mhus.vance.shared.prak.audit.PrakRunService prakRunService;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -424,6 +425,8 @@ public class MemoryCompactionService {
         if (spanDocs == null || spanDocs.isEmpty()) {
             return;
         }
+        long startMs = System.currentTimeMillis();
+        String runId = "compaction-" + process.getId() + "-" + Instant.now();
         try {
             List<SpanMessage> span = projectToSpan(spanDocs);
             SpanProfile profile = cheapPathFilter.profile(span);
@@ -474,10 +477,6 @@ public class MemoryCompactionService {
                     .record(sanitized.metrics().finalItemCount());
 
             // Derive + persist span-strength tags from the sanitised output.
-            // Re-uses the same span — the deriver pulls hot-path markers
-            // (m1 is "ab jetzt …") + high-importance evidence (m2 was cited
-            // by a promote-action item) and rewrites STRENGTH:* tags on the
-            // ChatMessageDocuments. Failures are caught by the outer try.
             var derivation = spanStrengthDeriver.derive(span, sanitized.output());
             long strengthModified = spanStrengthDeriver.persist(span, derivation);
             metricService.summary("vance.prak.strength.overrides")
@@ -487,17 +486,16 @@ public class MemoryCompactionService {
                         process.getId(), strengthModified, derivation.overrides().size());
             }
 
-            // Final consumer: persist promotable items as INSIGHT
-            // memories, surface instructions through the inbox (deferred
-            // until the inbox-subsystem wires in). runId derived from the
-            // compaction run timestamp + process id for audit correlation.
+            // Final consumer: persist promotable items as INSIGHT memories,
+            // surface instructions through inbox-offer telemetry. runId
+            // matches the audit record so operators can join the two.
             de.mhus.vance.brain.prak.PromotionContext promoteCtx =
                     new de.mhus.vance.brain.prak.PromotionContext(
                             process.getTenantId(),
                             projectId == null ? "" : projectId,
                             process.getSessionId(),
                             process.getId(),
-                            "compaction-" + process.getId() + "-" + java.time.Instant.now());
+                            runId);
             de.mhus.vance.brain.prak.PromotionResult promotionResult =
                     prakPromotionService.promote(sanitized.output(), promoteCtx);
             metricService.summary("vance.prak.promotion.persisted")
@@ -510,11 +508,72 @@ public class MemoryCompactionService {
                         promotionResult.skipped(),
                         promotionResult.affectsDeferred());
             }
+
+            // Audit row — one PrakRunRecord per successful pass. Failures
+            // before this point only emit the {outcome=error} counter.
+            persistRunRecord(
+                    process, projectId, runId, windowHint,
+                    raw.windowSpan(), span.size(),
+                    sanitized.metrics(), derivation.overrides().size(),
+                    strengthModified, promotionResult,
+                    System.currentTimeMillis() - startMs);
         } catch (RuntimeException e) {
             log.warn("Side-channel failed for process='{}': {}",
                     process.getId(), e.toString());
             metricService.counter("vance.prak.sideChannel",
                     "outcome", "error").increment();
+        }
+    }
+
+    private void persistRunRecord(
+            ThinkProcessDocument process,
+            String projectId,
+            String runId,
+            String trigger,
+            de.mhus.vance.shared.prak.WindowSpan window,
+            int spanSize,
+            de.mhus.vance.brain.prak.SanitizeMetrics metrics,
+            int strengthOverrides,
+            long strengthTagsModified,
+            de.mhus.vance.brain.prak.PromotionResult promotionResult,
+            long durationMs) {
+        try {
+            de.mhus.vance.shared.prak.audit.PrakRunRecord record =
+                    de.mhus.vance.shared.prak.audit.PrakRunRecord.builder()
+                            .tenantId(process.getTenantId())
+                            .projectId(projectId == null ? "" : projectId)
+                            .sessionId(process.getSessionId())
+                            .processId(process.getId())
+                            .runId(runId)
+                            .trigger(trigger)
+                            .windowFromTurnId(window == null ? null : window.fromTurnId())
+                            .windowToTurnId(window == null ? null : window.toTurnId())
+                            .windowMessages(spanSize)
+                            .rawItemCount(metrics.rawItemCount())
+                            .finalItemCount(metrics.finalItemCount())
+                            .droppedNoEvidence(metrics.droppedNoEvidence())
+                            .droppedLowConfidence(metrics.droppedLowConfidence())
+                            .droppedBySupersedeWithinBatch(metrics.droppedBySupersedeWithinBatch())
+                            .duplicatesMerged(metrics.duplicatesMerged())
+                            .confidencePenalised(metrics.confidencePenalised())
+                            .hardCapTriggered(metrics.hardCapTriggered())
+                            .evidenceCoverage(metrics.evidenceCoverage())
+                            .lowCoverage(metrics.lowCoverage())
+                            .strengthOverrides(strengthOverrides)
+                            .strengthTagsModified(strengthTagsModified)
+                            .promoted(promotionResult.promoted())
+                            .inboxOffered(promotionResult.inboxOffered())
+                            .skipped(promotionResult.skipped())
+                            .refreshed(promotionResult.refreshed())
+                            .affectsResolved(promotionResult.affectsResolved())
+                            .affectsDeferred(promotionResult.affectsDeferred())
+                            .persistedMemoryIds(new ArrayList<>(promotionResult.persistedMemoryIds()))
+                            .durationMs(durationMs)
+                            .build();
+            prakRunService.save(record);
+        } catch (RuntimeException e) {
+            // Audit-write failure must not poison the pipeline.
+            log.warn("PrakRun persist failed runId='{}': {}", runId, e.toString());
         }
     }
 

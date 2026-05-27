@@ -1,5 +1,5 @@
 import { type Ref } from 'vue';
-import type { ChatMessageInsightsDto, MarvinNodeInsightsDto, MemoryInsightsDto, SessionClientToolsDto, SessionInsightsDto, ThinkProcessInsightsDto } from '@vance/generated';
+import type { ChatMessageInsightsDto, MarvinNodeInsightsDto, MemoryInsightsDto, PrakRunInsightsDto, SessionClientToolsDto, SessionInsightsDto, ThinkProcessInsightsDto } from '@vance/generated';
 interface SessionFilter {
     projectId?: string | null;
     userId?: string | null;
@@ -39,6 +39,13 @@ export declare function useProcessChat(): {
 };
 export declare function useProcessMemory(): {
     entries: Ref<MemoryInsightsDto[]>;
+    loading: Ref<boolean>;
+    error: Ref<string | null>;
+    load: (processId: string) => Promise<void>;
+    clear: () => void;
+};
+export declare function useProcessPrakRuns(): {
+    runs: Ref<PrakRunInsightsDto[]>;
     loading: Ref<boolean>;
     error: Ref<string | null>;
     load: (processId: string) => Promise<void>;

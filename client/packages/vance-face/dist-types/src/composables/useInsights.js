@@ -117,6 +117,27 @@ export function useProcessMemory() {
     }
     return { entries, loading, error, load, clear };
 }
+export function useProcessPrakRuns() {
+    const runs = ref([]);
+    const loading = ref(false);
+    const error = ref(null);
+    function clear() { runs.value = []; error.value = null; }
+    async function load(processId) {
+        loading.value = true;
+        error.value = null;
+        try {
+            runs.value = await brainFetch('GET', `admin/processes/${encodeURIComponent(processId)}/prak-runs`);
+        }
+        catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to load Prak runs.';
+            runs.value = [];
+        }
+        finally {
+            loading.value = false;
+        }
+    }
+    return { runs, loading, error, load, clear };
+}
 export function useSessionClientTools() {
     const data = ref(null);
     const loading = ref(false);

@@ -3,6 +3,7 @@ import type {
   ChatMessageInsightsDto,
   MarvinNodeInsightsDto,
   MemoryInsightsDto,
+  PrakRunInsightsDto,
   SessionClientToolsDto,
   SessionInsightsDto,
   ThinkProcessInsightsDto,
@@ -169,6 +170,36 @@ export function useProcessMemory(): {
   }
 
   return { entries, loading, error, load, clear };
+}
+
+export function useProcessPrakRuns(): {
+  runs: Ref<PrakRunInsightsDto[]>;
+  loading: Ref<boolean>;
+  error: Ref<string | null>;
+  load: (processId: string) => Promise<void>;
+  clear: () => void;
+} {
+  const runs = ref<PrakRunInsightsDto[]>([]);
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+
+  function clear(): void { runs.value = []; error.value = null; }
+
+  async function load(processId: string): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      runs.value = await brainFetch<PrakRunInsightsDto[]>(
+        'GET', `admin/processes/${encodeURIComponent(processId)}/prak-runs`);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : 'Failed to load Prak runs.';
+      runs.value = [];
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  return { runs, loading, error, load, clear };
 }
 
 export function useSessionClientTools(): {

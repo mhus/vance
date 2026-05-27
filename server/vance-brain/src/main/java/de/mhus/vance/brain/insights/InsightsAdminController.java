@@ -9,6 +9,7 @@ import de.mhus.vance.api.insights.EffectiveToolDto;
 import de.mhus.vance.api.insights.MarvinNodeInsightsDto;
 import de.mhus.vance.api.insights.MemoryInsightsDto;
 import de.mhus.vance.api.insights.PendingMessageInsightsDto;
+import de.mhus.vance.api.insights.PrakRunInsightsDto;
 import de.mhus.vance.api.insights.SessionClientToolsDto;
 import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
@@ -36,6 +37,8 @@ import de.mhus.vance.shared.enginemessage.EngineMessageDocument;
 import de.mhus.vance.shared.enginemessage.EngineMessageService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.prak.audit.PrakRunRecord;
+import de.mhus.vance.shared.prak.audit.PrakRunService;
 import de.mhus.vance.shared.llmtrace.LlmTraceDocument;
 import de.mhus.vance.shared.llmtrace.LlmTraceService;
 import de.mhus.vance.shared.marvin.MarvinNodeDocument;
@@ -98,6 +101,7 @@ public class InsightsAdminController {
     private final PodForwarder podForwarder;
     private final WorkspaceAccessProperties workspaceAccessProperties;
     private final ClusterService clusterService;
+    private final PrakRunService prakRunService;
     private final RequestAuthority authority;
 
     // ─── Sessions ──────────────────────────────────────────────────────────
@@ -206,6 +210,24 @@ public class InsightsAdminController {
                 .sorted(Comparator
                         .comparing(MemoryDocument::getCreatedAt,
                                 Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(InsightsAdminController::toDto)
+                .toList();
+    }
+
+    /**
+     * Prak-run audit-trail for one process — drives the Insights
+     * "Prak Runs" tab. Empty list when {@code vance.prak.sideChannelEnabled}
+     * is off (no runs ever written) or the process never compacted.
+     * Newest first, capped at 100 rows.
+     */
+    @GetMapping("/processes/{processId}/prak-runs")
+    public List<PrakRunInsightsDto> listPrakRuns(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("processId") String processId,
+            HttpServletRequest httpRequest) {
+        ThinkProcessDocument process = loadProcess(tenant, processId);
+        authority.enforce(httpRequest, processResource(process), Action.ADMIN);
+        return prakRunService.listByProcess(tenant, process.getId(), 100).stream()
                 .map(InsightsAdminController::toDto)
                 .toList();
     }
@@ -408,6 +430,7 @@ public class InsightsAdminController {
                 .role(c.getRole())
                 .content(c.getContent())
                 .archivedInMemoryId(c.getArchivedInMemoryId())
+                .tags(c.getTags() == null ? new ArrayList<>() : new ArrayList<>(c.getTags()))
                 .createdAt(c.getCreatedAt())
                 .build();
     }
@@ -423,6 +446,39 @@ public class InsightsAdminController {
                 .supersededByMemoryId(m.getSupersededByMemoryId())
                 .supersededAt(m.getSupersededAt())
                 .createdAt(m.getCreatedAt())
+                .build();
+    }
+
+    private static PrakRunInsightsDto toDto(PrakRunRecord r) {
+        return PrakRunInsightsDto.builder()
+                .id(r.getId())
+                .runId(r.getRunId())
+                .trigger(r.getTrigger())
+                .windowFromTurnId(r.getWindowFromTurnId())
+                .windowToTurnId(r.getWindowToTurnId())
+                .windowMessages(r.getWindowMessages())
+                .rawItemCount(r.getRawItemCount())
+                .finalItemCount(r.getFinalItemCount())
+                .droppedNoEvidence(r.getDroppedNoEvidence())
+                .droppedLowConfidence(r.getDroppedLowConfidence())
+                .droppedBySupersedeWithinBatch(r.getDroppedBySupersedeWithinBatch())
+                .duplicatesMerged(r.getDuplicatesMerged())
+                .confidencePenalised(r.getConfidencePenalised())
+                .hardCapTriggered(r.isHardCapTriggered())
+                .evidenceCoverage(r.getEvidenceCoverage())
+                .lowCoverage(r.isLowCoverage())
+                .strengthOverrides(r.getStrengthOverrides())
+                .strengthTagsModified(r.getStrengthTagsModified())
+                .promoted(r.getPromoted())
+                .inboxOffered(r.getInboxOffered())
+                .skipped(r.getSkipped())
+                .refreshed(r.getRefreshed())
+                .affectsResolved(r.getAffectsResolved())
+                .affectsDeferred(r.getAffectsDeferred())
+                .persistedMemoryIds(new ArrayList<>(r.getPersistedMemoryIds()))
+                .model(r.getModel())
+                .durationMs(r.getDurationMs())
+                .createdAt(r.getCreatedAt())
                 .build();
     }
 

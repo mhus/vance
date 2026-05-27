@@ -45,6 +45,16 @@ public class PrakRunService {
                 tenantId, projectId, PageRequest.of(0, effective));
     }
 
+    /**
+     * Lists the most recent runs for a specific think-process, newest
+     * first. {@code limit} is clamped to {@link #MAX_LIST_LIMIT}.
+     */
+    public List<PrakRunRecord> listByProcess(String tenantId, String processId, int limit) {
+        int effective = Math.min(Math.max(1, limit), MAX_LIST_LIMIT);
+        return repository.findByTenantIdAndProcessIdOrderByCreatedAtDesc(
+                tenantId, processId, PageRequest.of(0, effective));
+    }
+
     /** Lookup by correlation runId — typically 0 or 1 records. */
     public List<PrakRunRecord> findByRunId(String runId) {
         return repository.findByRunId(runId);

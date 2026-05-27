@@ -2,7 +2,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { EditorShell, MarkdownView, VAlert, VCard, VEmptyState, VInput, VSelect, } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
-import { useInsightsSessions, useSessionProcesses, useProcessDetail, useProcessChat, useProcessMemory, useMarvinTree, } from '@/composables/useInsights';
+import { useInsightsSessions, useSessionProcesses, useProcessDetail, useProcessChat, useProcessMemory, useMarvinTree, useProcessPrakRuns, } from '@/composables/useInsights';
 import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem from './MarvinTreeItem.vue';
 import SessionTimelineTab from './SessionTimelineTab.vue';
@@ -26,6 +26,10 @@ const processDetailState = useProcessDetail();
 const chatState = useProcessChat();
 const memoryState = useProcessMemory();
 const treeState = useMarvinTree();
+const prakRunsState = useProcessPrakRuns();
+// Client-side filter for the Memory tab: when true, hide everything
+// that doesn't carry metadata.generatedBy === 'prak'.
+const memoryPrakOnly = ref(false);
 const help = useHelp();
 // ─── Filter state ───────────────────────────────────────────────────────
 const filterProjectId = ref(null);
@@ -77,6 +81,7 @@ watch(selection, async (sel) => {
         chatState.clear();
         memoryState.clear();
         treeState.clear();
+        prakRunsState.clear();
     }
 });
 watch(activeTab, (tab) => {
@@ -91,6 +96,9 @@ watch(activeTab, (tab) => {
     }
     else if (tab === 'tree' && treeState.nodes.value.length === 0) {
         void treeState.load(id);
+    }
+    else if (tab === 'prak-runs' && prakRunsState.runs.value.length === 0) {
+        void prakRunsState.load(id);
     }
 });
 async function reloadSessions() {
@@ -226,7 +234,46 @@ const combinedError = computed(() => sessionsState.error.value
     || processDetailState.error.value
     || chatState.error.value
     || memoryState.error.value
-    || treeState.error.value);
+    || treeState.error.value
+    || prakRunsState.error.value);
+// ─── Memory tab — Prak-aware helpers ───────────────────────────────────
+function isPrakMemory(meta) {
+    return meta?.['generatedBy'] === 'prak';
+}
+function extractPrakMeta(meta) {
+    const labels = meta['prakLabels'];
+    return {
+        type: typeof meta['prakType'] === 'string' ? meta['prakType'] : undefined,
+        importance: typeof meta['prakImportance'] === 'number' ? meta['prakImportance'] : undefined,
+        confidence: typeof meta['prakConfidence'] === 'number' ? meta['prakConfidence'] : undefined,
+        labels: Array.isArray(labels) ? labels.filter((x) => typeof x === 'string') : undefined,
+        decay: typeof meta['prakDecay'] === 'string' ? meta['prakDecay'] : undefined,
+        why: typeof meta['prakWhy'] === 'string' ? meta['prakWhy'] : undefined,
+        runId: typeof meta['prakRunId'] === 'string' ? meta['prakRunId'] : undefined,
+    };
+}
+const filteredMemoryEntries = computed(() => {
+    const all = memoryState.entries.value;
+    if (!memoryPrakOnly.value)
+        return all;
+    return all.filter(m => isPrakMemory(m.metadata));
+});
+// ─── Chat tab — STRENGTH:* tag helpers ────────────────────────────────
+const STRENGTH_PREFIX = 'STRENGTH:';
+function strengthTag(tags) {
+    if (!tags)
+        return null;
+    for (const t of tags) {
+        if (t.startsWith(STRENGTH_PREFIX))
+            return t.substring(STRENGTH_PREFIX.length);
+    }
+    return null;
+}
+function otherTags(tags) {
+    if (!tags)
+        return [];
+    return tags.filter(t => !t.startsWith(STRENGTH_PREFIX));
+}
 // ─── Marvin tree → nested rendering ─────────────────────────────────────
 const marvinTree = computed(() => {
     const all = treeState.nodes.value;
@@ -1298,6 +1345,40 @@ else if (__VLS_ctx.topTab === 'sessions') {
                 ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'cache-stats' }) },
             });
             (__VLS_ctx.$t('insights.tabs.cacheStats'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.topTab === 'recipes'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'tools'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'workspace'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'executions'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'workflows'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'events'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'rag'))
+                            return;
+                        if (!!(__VLS_ctx.topTab === 'cluster'))
+                            return;
+                        if (!(__VLS_ctx.topTab === 'sessions'))
+                            return;
+                        if (!!(!__VLS_ctx.selection))
+                            return;
+                        if (!!(__VLS_ctx.selection.kind === 'session'))
+                            return;
+                        if (!(__VLS_ctx.selection.kind === 'process'))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProcess))
+                            return;
+                        __VLS_ctx.activeTab = 'prak-runs';
+                    } },
+                ...{ class: "tab" },
+                ...{ class: ({ 'tab--active': __VLS_ctx.activeTab === 'prak-runs' }) },
+            });
+            (__VLS_ctx.$t('insights.tabs.prakRuns'));
             if (__VLS_ctx.activeTab === 'overview') {
                 const __VLS_79 = {}.VCard;
                 /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
@@ -1550,15 +1631,26 @@ else if (__VLS_ctx.topTab === 'sessions') {
                                     'chat-msg--assistant': m.role === __VLS_ctx.ChatRole.ASSISTANT,
                                     'chat-msg--system': m.role === __VLS_ctx.ChatRole.SYSTEM,
                                     'chat-msg--archived': m.archivedInMemoryId,
+                                    [`chat-msg--strength-${__VLS_ctx.strengthTag(m.tags) ?? 'none'}`]: true,
                                 }) },
                         });
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                             ...{ class: "flex items-center justify-between gap-2 text-xs opacity-60 mb-1" },
                         });
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "flex items-center gap-2" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                             ...{ class: "font-mono" },
                         });
                         (m.role);
+                        if (__VLS_ctx.strengthTag(m.tags)) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                                ...{ class: "badge" },
+                                ...{ class: (`badge--strength-${__VLS_ctx.strengthTag(m.tags)}`) },
+                            });
+                            (__VLS_ctx.strengthTag(m.tags));
+                        }
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
                         (__VLS_ctx.fmt(m.createdAt));
                         if (m.archivedInMemoryId) {
@@ -1576,6 +1668,18 @@ else if (__VLS_ctx.topTab === 'sessions') {
                         const __VLS_101 = __VLS_100({
                             source: (m.content),
                         }, ...__VLS_functionalComponentArgsRest(__VLS_100));
+                        if (__VLS_ctx.otherTags(m.tags).length > 0) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                                ...{ class: "mt-2 flex flex-wrap gap-1 text-xs opacity-70" },
+                            });
+                            for (const [t] of __VLS_getVForSourceType((__VLS_ctx.otherTags(m.tags)))) {
+                                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                                    key: (t),
+                                    ...{ class: "badge badge--secondary font-mono" },
+                                });
+                                (t);
+                            }
+                        }
                     }
                 }
             }
@@ -1603,7 +1707,15 @@ else if (__VLS_ctx.topTab === 'sessions') {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "flex flex-col gap-3" },
                     });
-                    for (const [m] of __VLS_getVForSourceType((__VLS_ctx.memoryState.entries.value))) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
+                        ...{ class: "flex items-center gap-2 text-sm opacity-80" },
+                    });
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+                        type: "checkbox",
+                    });
+                    (__VLS_ctx.memoryPrakOnly);
+                    (__VLS_ctx.$t('insights.process.prakOnlyToggle'));
+                    for (const [m] of __VLS_getVForSourceType((__VLS_ctx.filteredMemoryEntries))) {
                         const __VLS_107 = {}.VCard;
                         /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
                         // @ts-ignore
@@ -1617,12 +1729,18 @@ else if (__VLS_ctx.topTab === 'sessions') {
                         }, ...__VLS_functionalComponentArgsRest(__VLS_108));
                         __VLS_110.slots.default;
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                            ...{ class: "text-xs opacity-60 mb-2 flex flex-wrap gap-x-3 gap-y-1" },
+                            ...{ class: "text-xs opacity-60 mb-2 flex flex-wrap gap-x-3 gap-y-1 items-center" },
                         });
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                             ...{ class: "font-mono" },
                         });
                         (m.kind);
+                        if (__VLS_ctx.isPrakMemory(m.metadata)) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                                ...{ class: "badge badge--prak" },
+                            });
+                            (__VLS_ctx.$t('insights.process.prakBadge'));
+                        }
                         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
                         (__VLS_ctx.fmt(m.createdAt));
                         if (m.supersededByMemoryId) {
@@ -1632,6 +1750,48 @@ else if (__VLS_ctx.topTab === 'sessions') {
                         if (m.sourceRefs.length > 0) {
                             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
                             (__VLS_ctx.$t('insights.process.sources', { count: m.sourceRefs.length }));
+                        }
+                        if (__VLS_ctx.isPrakMemory(m.metadata)) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                                ...{ class: "prak-meta-row text-xs flex flex-wrap gap-x-3 gap-y-1 mb-2" },
+                            });
+                            for (const [v, k] of __VLS_getVForSourceType(([__VLS_ctx.extractPrakMeta(m.metadata)]))) {
+                                (k);
+                                if (v.type) {
+                                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                                        ...{ class: "badge badge--secondary font-mono" },
+                                    });
+                                    (v.type);
+                                }
+                                if (v.importance != null) {
+                                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                                    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+                                    (v.importance);
+                                }
+                                if (v.confidence != null) {
+                                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                                    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+                                    (Math.round(v.confidence * 100));
+                                }
+                                if (v.decay) {
+                                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                                    __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+                                    (v.decay);
+                                }
+                                for (const [label] of __VLS_getVForSourceType(((v.labels || [])))) {
+                                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                                        key: (`lbl-${label}`),
+                                        ...{ class: "badge badge--secondary" },
+                                    });
+                                    (label);
+                                }
+                            }
+                        }
+                        if (__VLS_ctx.isPrakMemory(m.metadata) && __VLS_ctx.extractPrakMeta(m.metadata).why) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+                                ...{ class: "text-xs opacity-70 italic mb-2" },
+                            });
+                            (__VLS_ctx.extractPrakMeta(m.metadata).why);
                         }
                         const __VLS_111 = {}.MarkdownView;
                         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
@@ -1738,6 +1898,196 @@ else if (__VLS_ctx.topTab === 'sessions') {
                     processId: (__VLS_ctx.selectedProcess.id),
                 }, ...__VLS_functionalComponentArgsRest(__VLS_133));
             }
+            else if (__VLS_ctx.activeTab === 'prak-runs') {
+                if (__VLS_ctx.prakRunsState.loading.value) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "opacity-70" },
+                    });
+                    (__VLS_ctx.$t('insights.process.prakRunsLoading'));
+                }
+                else if (__VLS_ctx.prakRunsState.runs.value.length === 0) {
+                    const __VLS_136 = {}.VEmptyState;
+                    /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+                    // @ts-ignore
+                    const __VLS_137 = __VLS_asFunctionalComponent(__VLS_136, new __VLS_136({
+                        headline: (__VLS_ctx.$t('insights.process.prakRunsEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.prakRunsEmptyBody')),
+                    }));
+                    const __VLS_138 = __VLS_137({
+                        headline: (__VLS_ctx.$t('insights.process.prakRunsEmptyHeadline')),
+                        body: (__VLS_ctx.$t('insights.process.prakRunsEmptyBody')),
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_137));
+                }
+                else {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "flex flex-col gap-3" },
+                    });
+                    for (const [r] of __VLS_getVForSourceType((__VLS_ctx.prakRunsState.runs.value))) {
+                        const __VLS_140 = {}.VCard;
+                        /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+                        // @ts-ignore
+                        const __VLS_141 = __VLS_asFunctionalComponent(__VLS_140, new __VLS_140({
+                            key: (r.id),
+                            title: (r.trigger),
+                        }));
+                        const __VLS_142 = __VLS_141({
+                            key: (r.id),
+                            title: (r.trigger),
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_141));
+                        __VLS_143.slots.default;
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                            ...{ class: "text-xs opacity-60 mb-3 flex flex-wrap gap-x-3 gap-y-1" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                        (__VLS_ctx.fmt(r.createdAt));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                        (__VLS_ctx.$t('insights.process.prakRunDuration', { ms: r.durationMs }));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                        (__VLS_ctx.$t('insights.process.prakRunSpan', { count: r.windowMessages }));
+                        if (r.model) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                                ...{ class: "font-mono" },
+                            });
+                            (r.model);
+                        }
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            ...{ class: "font-mono opacity-50" },
+                        });
+                        (r.runId);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                            ...{ class: "grid grid-cols-1 md:grid-cols-3 gap-3 text-sm" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.h4, __VLS_intrinsicElements.h4)({
+                            ...{ class: "text-xs uppercase opacity-60 mb-1" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunSanitize'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
+                            ...{ class: "grid grid-cols-2 gap-x-3 gap-y-0.5" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunRaw'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.rawItemCount);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunFinal'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+                        (r.finalItemCount);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunDropped'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.droppedNoEvidence);
+                        (r.droppedLowConfidence);
+                        (r.droppedBySupersedeWithinBatch);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunDedup'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.duplicatesMerged);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunHardCap'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.hardCapTriggered ? '⚠ yes' : 'no');
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunCoverage'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({
+                            ...{ class: ({ 'text-warning': r.lowCoverage }) },
+                        });
+                        (Math.round(r.evidenceCoverage * 100));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.h4, __VLS_intrinsicElements.h4)({
+                            ...{ class: "text-xs uppercase opacity-60 mb-1" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunStrength'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
+                            ...{ class: "grid grid-cols-2 gap-x-3 gap-y-0.5" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunOverrides'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.strengthOverrides);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunTagsModified'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.strengthTagsModified);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.h4, __VLS_intrinsicElements.h4)({
+                            ...{ class: "text-xs uppercase opacity-60 mb-1" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunPromotion'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
+                            ...{ class: "grid grid-cols-2 gap-x-3 gap-y-0.5" },
+                        });
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunPromoted'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.strong, __VLS_intrinsicElements.strong)({});
+                        (r.promoted);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunInboxOffered'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.inboxOffered);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunSkipped'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.skipped);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunRefreshed'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.refreshed);
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dt, __VLS_intrinsicElements.dt)({
+                            ...{ class: "opacity-60" },
+                        });
+                        (__VLS_ctx.$t('insights.process.prakRunAffectsDeferred'));
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.dd, __VLS_intrinsicElements.dd)({});
+                        (r.affectsDeferred);
+                        if (r.persistedMemoryIds.length > 0) {
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.details, __VLS_intrinsicElements.details)({
+                                ...{ class: "mt-3" },
+                            });
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.summary, __VLS_intrinsicElements.summary)({
+                                ...{ class: "text-xs opacity-70 cursor-pointer" },
+                            });
+                            (__VLS_ctx.$t('insights.process.prakRunPersistedMemories'));
+                            (r.persistedMemoryIds.length);
+                            __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+                                ...{ class: "mt-1 text-xs font-mono opacity-80 list-disc list-inside" },
+                            });
+                            for (const [mid] of __VLS_getVForSourceType((r.persistedMemoryIds))) {
+                                __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                                    key: (mid),
+                                });
+                                (mid);
+                            }
+                        }
+                        var __VLS_143;
+                    }
+                }
+            }
         }
     }
 }
@@ -1769,15 +2119,15 @@ else if (__VLS_ctx.topTab === 'sessions') {
         (__VLS_ctx.$t('insights.help.empty'));
     }
     else {
-        const __VLS_136 = {}.MarkdownView;
+        const __VLS_144 = {}.MarkdownView;
         /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
         // @ts-ignore
-        const __VLS_137 = __VLS_asFunctionalComponent(__VLS_136, new __VLS_136({
+        const __VLS_145 = __VLS_asFunctionalComponent(__VLS_144, new __VLS_144({
             source: (__VLS_ctx.help.content.value),
         }));
-        const __VLS_138 = __VLS_137({
+        const __VLS_146 = __VLS_145({
             source: (__VLS_ctx.help.content.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_137));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_145));
     }
 }
 var __VLS_3;
@@ -1950,6 +2300,8 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-x-4']} */ ;
@@ -2014,13 +2366,31 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge']} */ ;
 /** @type {__VLS_StyleScopedClasses['ml-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge--secondary']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
@@ -2028,7 +2398,26 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-x-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-y-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge--prak']} */ ;
+/** @type {__VLS_StyleScopedClasses['prak-meta-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-x-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge--secondary']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge--secondary']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['italic']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
@@ -2036,6 +2425,73 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['json-block']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
 /** @type {__VLS_StyleScopedClasses['marvin-tree']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-x-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid-cols-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['md:grid-cols-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-x-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-warning']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-x-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid']} */ ;
+/** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-x-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-y-0.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['cursor-pointer']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-80']} */ ;
+/** @type {__VLS_StyleScopedClasses['list-disc']} */ ;
+/** @type {__VLS_StyleScopedClasses['list-inside']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -2079,6 +2535,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             chatState: chatState,
             memoryState: memoryState,
             treeState: treeState,
+            prakRunsState: prakRunsState,
+            memoryPrakOnly: memoryPrakOnly,
             help: help,
             filterProjectId: filterProjectId,
             filterUserId: filterUserId,
@@ -2103,6 +2561,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             projectContextSource: projectContextSource,
             breadcrumbs: breadcrumbs,
             combinedError: combinedError,
+            isPrakMemory: isPrakMemory,
+            extractPrakMeta: extractPrakMeta,
+            filteredMemoryEntries: filteredMemoryEntries,
+            strengthTag: strengthTag,
+            otherTags: otherTags,
             marvinTree: marvinTree,
             fmt: fmt,
             asJson: asJson,

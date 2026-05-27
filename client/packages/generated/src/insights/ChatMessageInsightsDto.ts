@@ -10,5 +10,6 @@ export interface ChatMessageInsightsDto {
   role: ChatRole;
   content: string;
   archivedInMemoryId?: string;
+  tags: string[];
   createdAt?: Date;
 }

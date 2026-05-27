@@ -19,6 +19,7 @@ import {
   useProcessChat,
   useProcessMemory,
   useMarvinTree,
+  useProcessPrakRuns,
 } from '@/composables/useInsights';
 import { useHelp } from '@/composables/useHelp';
 import MarvinTreeItem, { type MarvinTreeNode } from './MarvinTreeItem.vue';
@@ -49,6 +50,10 @@ const processDetailState = useProcessDetail();
 const chatState = useProcessChat();
 const memoryState = useProcessMemory();
 const treeState = useMarvinTree();
+const prakRunsState = useProcessPrakRuns();
+// Client-side filter for the Memory tab: when true, hide everything
+// that doesn't carry metadata.generatedBy === 'prak'.
+const memoryPrakOnly = ref(false);
 const help = useHelp();
 
 // ─── Filter state ───────────────────────────────────────────────────────
@@ -120,6 +125,7 @@ watch(selection, async (sel) => {
     chatState.clear();
     memoryState.clear();
     treeState.clear();
+    prakRunsState.clear();
   }
 });
 
@@ -132,6 +138,8 @@ watch(activeTab, (tab) => {
     void memoryState.load(id);
   } else if (tab === 'tree' && treeState.nodes.value.length === 0) {
     void treeState.load(id);
+  } else if (tab === 'prak-runs' && prakRunsState.runs.value.length === 0) {
+    void prakRunsState.load(id);
   }
 });
 
@@ -276,7 +284,60 @@ const combinedError = computed<string | null>(() =>
   || processDetailState.error.value
   || chatState.error.value
   || memoryState.error.value
-  || treeState.error.value);
+  || treeState.error.value
+  || prakRunsState.error.value);
+
+// ─── Memory tab — Prak-aware helpers ───────────────────────────────────
+
+function isPrakMemory(meta: Record<string, unknown> | undefined): boolean {
+  return meta?.['generatedBy'] === 'prak';
+}
+
+interface PrakMemoryMeta {
+  type?: string;
+  importance?: number;
+  confidence?: number;
+  labels?: string[];
+  decay?: string;
+  why?: string;
+  runId?: string;
+}
+
+function extractPrakMeta(meta: Record<string, unknown>): PrakMemoryMeta {
+  const labels = meta['prakLabels'];
+  return {
+    type: typeof meta['prakType'] === 'string' ? meta['prakType'] as string : undefined,
+    importance: typeof meta['prakImportance'] === 'number' ? meta['prakImportance'] as number : undefined,
+    confidence: typeof meta['prakConfidence'] === 'number' ? meta['prakConfidence'] as number : undefined,
+    labels: Array.isArray(labels) ? labels.filter((x): x is string => typeof x === 'string') : undefined,
+    decay: typeof meta['prakDecay'] === 'string' ? meta['prakDecay'] as string : undefined,
+    why: typeof meta['prakWhy'] === 'string' ? meta['prakWhy'] as string : undefined,
+    runId: typeof meta['prakRunId'] === 'string' ? meta['prakRunId'] as string : undefined,
+  };
+}
+
+const filteredMemoryEntries = computed(() => {
+  const all = memoryState.entries.value;
+  if (!memoryPrakOnly.value) return all;
+  return all.filter(m => isPrakMemory(m.metadata as Record<string, unknown> | undefined));
+});
+
+// ─── Chat tab — STRENGTH:* tag helpers ────────────────────────────────
+
+const STRENGTH_PREFIX = 'STRENGTH:';
+
+function strengthTag(tags: string[] | undefined): string | null {
+  if (!tags) return null;
+  for (const t of tags) {
+    if (t.startsWith(STRENGTH_PREFIX)) return t.substring(STRENGTH_PREFIX.length);
+  }
+  return null;
+}
+
+function otherTags(tags: string[] | undefined): string[] {
+  if (!tags) return [];
+  return tags.filter(t => !t.startsWith(STRENGTH_PREFIX));
+}
 
 // ─── Marvin tree → nested rendering ─────────────────────────────────────
 
@@ -664,6 +725,11 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               :class="{ 'tab--active': activeTab === 'cache-stats' }"
               @click="activeTab = 'cache-stats'"
             >{{ $t('insights.tabs.cacheStats') }}</button>
+            <button
+              class="tab"
+              :class="{ 'tab--active': activeTab === 'prak-runs' }"
+              @click="activeTab = 'prak-runs'"
+            >{{ $t('insights.tabs.prakRuns') }}</button>
           </div>
 
           <!-- Overview -->
@@ -762,10 +828,18 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   'chat-msg--assistant': m.role === ChatRole.ASSISTANT,
                   'chat-msg--system': m.role === ChatRole.SYSTEM,
                   'chat-msg--archived': m.archivedInMemoryId,
+                  [`chat-msg--strength-${strengthTag(m.tags) ?? 'none'}`]: true,
                 }"
               >
                 <div class="flex items-center justify-between gap-2 text-xs opacity-60 mb-1">
-                  <span class="font-mono">{{ m.role }}</span>
+                  <span class="flex items-center gap-2">
+                    <span class="font-mono">{{ m.role }}</span>
+                    <span
+                      v-if="strengthTag(m.tags)"
+                      class="badge"
+                      :class="`badge--strength-${strengthTag(m.tags)}`"
+                    >{{ strengthTag(m.tags) }}</span>
+                  </span>
                   <span>
                     {{ fmt(m.createdAt) }}
                     <span v-if="m.archivedInMemoryId" class="ml-2 opacity-80">
@@ -774,6 +848,16 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                   </span>
                 </div>
                 <MarkdownView :source="m.content" />
+                <div
+                  v-if="otherTags(m.tags).length > 0"
+                  class="mt-2 flex flex-wrap gap-1 text-xs opacity-70"
+                >
+                  <span
+                    v-for="t in otherTags(m.tags)"
+                    :key="t"
+                    class="badge badge--secondary font-mono"
+                  >{{ t }}</span>
+                </div>
               </li>
             </ul>
           </template>
@@ -789,13 +873,21 @@ function clickProcessByMongoId(id: string | undefined | null): void {
               :body="$t('insights.process.memoryEmptyBody')"
             />
             <div v-else class="flex flex-col gap-3">
+              <label class="flex items-center gap-2 text-sm opacity-80">
+                <input v-model="memoryPrakOnly" type="checkbox" />
+                {{ $t('insights.process.prakOnlyToggle') }}
+              </label>
               <VCard
-                v-for="m in memoryState.entries.value"
+                v-for="m in filteredMemoryEntries"
                 :key="m.id"
                 :title="m.title || m.kind"
               >
-                <div class="text-xs opacity-60 mb-2 flex flex-wrap gap-x-3 gap-y-1">
+                <div class="text-xs opacity-60 mb-2 flex flex-wrap gap-x-3 gap-y-1 items-center">
                   <span class="font-mono">{{ m.kind }}</span>
+                  <span
+                    v-if="isPrakMemory(m.metadata)"
+                    class="badge badge--prak"
+                  >{{ $t('insights.process.prakBadge') }}</span>
                   <span>{{ fmt(m.createdAt) }}</span>
                   <span v-if="m.supersededByMemoryId">
                     {{ $t('insights.process.supersededBy', { id: m.supersededByMemoryId }) }}
@@ -804,6 +896,31 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                     {{ $t('insights.process.sources', { count: m.sourceRefs.length }) }}
                   </span>
                 </div>
+                <!-- Prak-structured meta row (importance / confidence / labels / decay) -->
+                <div
+                  v-if="isPrakMemory(m.metadata)"
+                  class="prak-meta-row text-xs flex flex-wrap gap-x-3 gap-y-1 mb-2"
+                >
+                  <template v-for="(v, k) in [extractPrakMeta(m.metadata)]" :key="k">
+                    <span v-if="v.type" class="badge badge--secondary font-mono">{{ v.type }}</span>
+                    <span v-if="v.importance != null">
+                      importance: <strong>{{ v.importance }}</strong>/5
+                    </span>
+                    <span v-if="v.confidence != null">
+                      confidence: <strong>{{ Math.round(v.confidence * 100) }}%</strong>
+                    </span>
+                    <span v-if="v.decay">decay: <strong>{{ v.decay }}</strong></span>
+                    <span
+                      v-for="label in (v.labels || [])"
+                      :key="`lbl-${label}`"
+                      class="badge badge--secondary"
+                    >{{ label }}</span>
+                  </template>
+                </div>
+                <p
+                  v-if="isPrakMemory(m.metadata) && extractPrakMeta(m.metadata).why"
+                  class="text-xs opacity-70 italic mb-2"
+                >“{{ extractPrakMeta(m.metadata).why }}”</p>
                 <MarkdownView :source="m.content" />
                 <details v-if="Object.keys(m.metadata).length > 0" class="mt-3">
                   <summary class="text-xs opacity-70 cursor-pointer">
@@ -847,6 +964,98 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                Driving question: "is prompt caching paying off here?". -->
           <template v-else-if="activeTab === 'cache-stats'">
             <CacheStatsTab :process-id="selectedProcess.id" />
+          </template>
+
+          <!-- Prak Runs — one row per successful side-channel pass with
+               sanitize/strength/promotion breakdown + duration.
+               Empty when vance.prak.sideChannelEnabled is off. -->
+          <template v-else-if="activeTab === 'prak-runs'">
+            <div v-if="prakRunsState.loading.value" class="opacity-70">
+              {{ $t('insights.process.prakRunsLoading') }}
+            </div>
+            <VEmptyState
+              v-else-if="prakRunsState.runs.value.length === 0"
+              :headline="$t('insights.process.prakRunsEmptyHeadline')"
+              :body="$t('insights.process.prakRunsEmptyBody')"
+            />
+            <div v-else class="flex flex-col gap-3">
+              <VCard
+                v-for="r in prakRunsState.runs.value"
+                :key="r.id"
+                :title="r.trigger"
+              >
+                <div class="text-xs opacity-60 mb-3 flex flex-wrap gap-x-3 gap-y-1">
+                  <span>{{ fmt(r.createdAt) }}</span>
+                  <span>{{ $t('insights.process.prakRunDuration', { ms: r.durationMs }) }}</span>
+                  <span>{{ $t('insights.process.prakRunSpan', { count: r.windowMessages }) }}</span>
+                  <span v-if="r.model" class="font-mono">{{ r.model }}</span>
+                  <span class="font-mono opacity-50">{{ r.runId }}</span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                  <!-- Sanitize -->
+                  <div>
+                    <h4 class="text-xs uppercase opacity-60 mb-1">{{ $t('insights.process.prakRunSanitize') }}</h4>
+                    <dl class="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunRaw') }}</dt>
+                      <dd>{{ r.rawItemCount }}</dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunFinal') }}</dt>
+                      <dd><strong>{{ r.finalItemCount }}</strong></dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunDropped') }}</dt>
+                      <dd>
+                        ev:{{ r.droppedNoEvidence }} ·
+                        conf:{{ r.droppedLowConfidence }} ·
+                        sup:{{ r.droppedBySupersedeWithinBatch }}
+                      </dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunDedup') }}</dt>
+                      <dd>{{ r.duplicatesMerged }}</dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunHardCap') }}</dt>
+                      <dd>{{ r.hardCapTriggered ? '⚠ yes' : 'no' }}</dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunCoverage') }}</dt>
+                      <dd :class="{ 'text-warning': r.lowCoverage }">
+                        {{ Math.round(r.evidenceCoverage * 100) }}%
+                      </dd>
+                    </dl>
+                  </div>
+                  <!-- Strength -->
+                  <div>
+                    <h4 class="text-xs uppercase opacity-60 mb-1">{{ $t('insights.process.prakRunStrength') }}</h4>
+                    <dl class="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunOverrides') }}</dt>
+                      <dd>{{ r.strengthOverrides }}</dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunTagsModified') }}</dt>
+                      <dd>{{ r.strengthTagsModified }}</dd>
+                    </dl>
+                  </div>
+                  <!-- Promotion -->
+                  <div>
+                    <h4 class="text-xs uppercase opacity-60 mb-1">{{ $t('insights.process.prakRunPromotion') }}</h4>
+                    <dl class="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunPromoted') }}</dt>
+                      <dd><strong>{{ r.promoted }}</strong></dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunInboxOffered') }}</dt>
+                      <dd>{{ r.inboxOffered }}</dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunSkipped') }}</dt>
+                      <dd>{{ r.skipped }}</dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunRefreshed') }}</dt>
+                      <dd>{{ r.refreshed }}</dd>
+                      <dt class="opacity-60">{{ $t('insights.process.prakRunAffectsDeferred') }}</dt>
+                      <dd>{{ r.affectsDeferred }}</dd>
+                    </dl>
+                  </div>
+                </div>
+
+                <details v-if="r.persistedMemoryIds.length > 0" class="mt-3">
+                  <summary class="text-xs opacity-70 cursor-pointer">
+                    {{ $t('insights.process.prakRunPersistedMemories') }}
+                    ({{ r.persistedMemoryIds.length }})
+                  </summary>
+                  <ul class="mt-1 text-xs font-mono opacity-80 list-disc list-inside">
+                    <li v-for="mid in r.persistedMemoryIds" :key="mid">{{ mid }}</li>
+                  </ul>
+                </details>
+              </VCard>
+            </div>
           </template>
         </template>
       </template>
@@ -1002,6 +1211,27 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 .chat-msg--assistant { border-left-color: hsl(var(--su)); }
 .chat-msg--system    { border-left-color: hsl(var(--wa)); }
 .chat-msg--archived  { opacity: 0.55; }
+.chat-msg--strength-weak { background: hsl(var(--bc) / 0.02); opacity: 0.7; }
+.chat-msg--strength-strong { box-shadow: inset 0 0 0 1px hsl(var(--in) / 0.4); }
+.chat-msg--strength-pinned { box-shadow: inset 0 0 0 1px hsl(var(--p) / 0.6); }
+
+.badge {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.25rem;
+  font-size: 0.7rem;
+  line-height: 1.25;
+  background: hsl(var(--bc) / 0.08);
+  border: 1px solid hsl(var(--bc) / 0.12);
+}
+.badge--secondary  { opacity: 0.75; }
+.badge--prak       { background: hsl(var(--in) / 0.18); border-color: hsl(var(--in) / 0.4); }
+.badge--strength-weak   { background: hsl(var(--bc) / 0.10); opacity: 0.7; }
+.badge--strength-normal { background: hsl(var(--bc) / 0.12); }
+.badge--strength-strong { background: hsl(var(--in) / 0.20); border-color: hsl(var(--in) / 0.5); font-weight: 600; }
+.badge--strength-pinned { background: hsl(var(--p) / 0.20); border-color: hsl(var(--p) / 0.6); font-weight: 600; }
+
+.prak-meta-row { padding: 0.25rem 0; opacity: 0.85; }
 
 .marvin-tree { list-style: none; padding-left: 0; }
 .marvin-children { list-style: none; padding-left: 1.25rem; border-left: 1px dashed hsl(var(--bc) / 0.2); }

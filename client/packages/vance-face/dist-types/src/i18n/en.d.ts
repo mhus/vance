@@ -482,6 +482,7 @@ declare const _default: {
             tree: string;
             llmTrace: string;
             cacheStats: string;
+            prakRuns: string;
         };
         session: {
             detailsTitle: string;
@@ -530,6 +531,30 @@ declare const _default: {
             treeEmptyHeadline: string;
             treeEmptyBody: string;
             marvinTreeTitle: string;
+            prakOnlyToggle: string;
+            prakBadge: string;
+            prakRunsLoading: string;
+            prakRunsEmptyHeadline: string;
+            prakRunsEmptyBody: string;
+            prakRunDuration: string;
+            prakRunSpan: string;
+            prakRunSanitize: string;
+            prakRunStrength: string;
+            prakRunPromotion: string;
+            prakRunRaw: string;
+            prakRunFinal: string;
+            prakRunDropped: string;
+            prakRunDedup: string;
+            prakRunHardCap: string;
+            prakRunCoverage: string;
+            prakRunOverrides: string;
+            prakRunTagsModified: string;
+            prakRunPromoted: string;
+            prakRunInboxOffered: string;
+            prakRunSkipped: string;
+            prakRunRefreshed: string;
+            prakRunAffectsDeferred: string;
+            prakRunPersistedMemories: string;
         };
         help: {
             title: string;

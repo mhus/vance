@@ -7,20 +7,20 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ford.FordProperties;
-import de.mhus.vance.brain.memory.evaluation.CheapPathFilter;
-import de.mhus.vance.brain.memory.evaluation.MemoryAnalyzerService;
-import de.mhus.vance.brain.memory.evaluation.MemoryEvaluationProperties;
-import de.mhus.vance.brain.memory.evaluation.MemoryEvaluationSanitizer;
-import de.mhus.vance.brain.memory.evaluation.SanitizeContext;
-import de.mhus.vance.brain.memory.evaluation.SanitizeResult;
-import de.mhus.vance.brain.memory.evaluation.SpanMessage;
-import de.mhus.vance.brain.memory.evaluation.SpanProfile;
+import de.mhus.vance.brain.prak.CheapPathFilter;
+import de.mhus.vance.brain.prak.PrakService;
+import de.mhus.vance.brain.prak.PrakProperties;
+import de.mhus.vance.brain.prak.PrakSanitizer;
+import de.mhus.vance.brain.prak.SanitizeContext;
+import de.mhus.vance.brain.prak.SanitizeResult;
+import de.mhus.vance.brain.prak.SpanMessage;
+import de.mhus.vance.brain.prak.SpanProfile;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryKind;
 import de.mhus.vance.shared.memory.MemoryService;
-import de.mhus.vance.shared.memory.evaluation.EvaluationOutput;
+import de.mhus.vance.shared.prak.EvaluationOutput;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -102,10 +102,10 @@ public class MemoryCompactionService {
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final MetricService metricService;
-    private final MemoryAnalyzerService memoryAnalyzerService;
+    private final PrakService prakService;
     private final CheapPathFilter cheapPathFilter;
-    private final MemoryEvaluationSanitizer evaluationSanitizer;
-    private final MemoryEvaluationProperties evaluationProperties;
+    private final PrakSanitizer prakSanitizer;
+    private final PrakProperties prakProperties;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -388,14 +388,14 @@ public class MemoryCompactionService {
 
     /**
      * Side-channel pass: hands the same span the summarizer just
-     * compacted to the {@link MemoryAnalyzerService}, runs the result
-     * through the {@link MemoryEvaluationSanitizer}, and records
+     * compacted to the {@link PrakService}, runs the result
+     * through the {@link PrakSanitizer}, and records
      * metrics. Items are not yet routed to downstream consumers
      * (strength tagging + promotion arrive in later phases) — for now
      * the side-channel proves the pipeline end-to-end and produces
      * the data for calibration.
      *
-     * <p>Bails early when {@link MemoryEvaluationProperties#isSideChannelEnabled()}
+     * <p>Bails early when {@link PrakProperties#isSideChannelEnabled()}
      * is false (the current default) or when the cheap-path pre-filter
      * judges the span too thin to be worth an analyzer call. Any
      * RuntimeException is caught and warn-logged — compaction itself
@@ -406,7 +406,7 @@ public class MemoryCompactionService {
             List<ChatMessageDocument> spanDocs,
             String projectId,
             String windowHint) {
-        if (!evaluationProperties.isSideChannelEnabled()) {
+        if (!prakProperties.isSideChannelEnabled()) {
             return;
         }
         if (spanDocs == null || spanDocs.isEmpty()) {
@@ -418,14 +418,14 @@ public class MemoryCompactionService {
             if (profile.isSkippable()) {
                 log.debug("Side-channel skipped for process='{}' reason='{}'",
                         process.getId(), profile.skipReason());
-                metricService.counter("vance.memeval.sideChannel",
+                metricService.counter("vance.prak.sideChannel",
                         "outcome", "skipped",
                         "reason", profile.skipReason() == null
                                 ? "unknown" : profile.skipReason()).increment();
                 return;
             }
 
-            EvaluationOutput raw = memoryAnalyzerService.analyze(
+            EvaluationOutput raw = prakService.analyze(
                     process.getTenantId(),
                     projectId == null || projectId.isBlank() ? null : projectId,
                     process.getId(),
@@ -444,7 +444,7 @@ public class MemoryCompactionService {
             SanitizeContext ctx = new SanitizeContext(
                     existingTurnIds, substantialCount, profile.expectation());
 
-            SanitizeResult sanitized = evaluationSanitizer.sanitize(raw, ctx);
+            SanitizeResult sanitized = prakSanitizer.sanitize(raw, ctx);
             log.info("Side-channel process='{}' raw={} final={} dropped(noEvidence={}, lowConf={}, supersede={}) merged={} hardCap={} coverage={}",
                     process.getId(),
                     sanitized.metrics().rawItemCount(),
@@ -456,14 +456,14 @@ public class MemoryCompactionService {
                     sanitized.metrics().hardCapTriggered(),
                     String.format("%.2f", sanitized.metrics().evidenceCoverage()));
 
-            metricService.counter("vance.memeval.sideChannel",
+            metricService.counter("vance.prak.sideChannel",
                     "outcome", "success").increment();
-            metricService.summary("vance.memeval.items.final")
+            metricService.summary("vance.prak.items.final")
                     .record(sanitized.metrics().finalItemCount());
         } catch (RuntimeException e) {
             log.warn("Side-channel failed for process='{}': {}",
                     process.getId(), e.toString());
-            metricService.counter("vance.memeval.sideChannel",
+            metricService.counter("vance.prak.sideChannel",
                     "outcome", "error").increment();
         }
     }

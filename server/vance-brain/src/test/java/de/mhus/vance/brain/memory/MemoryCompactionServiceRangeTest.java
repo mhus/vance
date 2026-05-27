@@ -83,12 +83,12 @@ class MemoryCompactionServiceRangeTest {
                 chatMessageService, memoryService, aiModelService,
                 sessionService, settingService, properties,
                 llmCallTracker, progressEmitter, metricService,
-                mock(de.mhus.vance.brain.memory.evaluation.MemoryAnalyzerService.class),
-                new de.mhus.vance.brain.memory.evaluation.CheapPathFilter(
-                        new de.mhus.vance.brain.memory.evaluation.HotPathMarkerDetector()),
-                new de.mhus.vance.brain.memory.evaluation.MemoryEvaluationSanitizer(
-                        new de.mhus.vance.brain.memory.evaluation.MemoryEvaluationProperties()),
-                new de.mhus.vance.brain.memory.evaluation.MemoryEvaluationProperties());
+                mock(de.mhus.vance.brain.prak.PrakService.class),
+                new de.mhus.vance.brain.prak.CheapPathFilter(
+                        new de.mhus.vance.brain.prak.HotPathMarkerDetector()),
+                new de.mhus.vance.brain.prak.PrakSanitizer(
+                        new de.mhus.vance.brain.prak.PrakProperties()),
+                new de.mhus.vance.brain.prak.PrakProperties());
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);

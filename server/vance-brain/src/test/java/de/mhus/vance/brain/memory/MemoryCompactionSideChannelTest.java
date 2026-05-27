@@ -15,21 +15,21 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ford.FordProperties;
-import de.mhus.vance.brain.memory.evaluation.CheapPathFilter;
-import de.mhus.vance.brain.memory.evaluation.HotPathMarkerDetector;
-import de.mhus.vance.brain.memory.evaluation.MemoryAnalyzerService;
-import de.mhus.vance.brain.memory.evaluation.MemoryEvaluationProperties;
-import de.mhus.vance.brain.memory.evaluation.MemoryEvaluationSanitizer;
-import de.mhus.vance.brain.memory.evaluation.SpanMessage;
+import de.mhus.vance.brain.prak.CheapPathFilter;
+import de.mhus.vance.brain.prak.HotPathMarkerDetector;
+import de.mhus.vance.brain.prak.PrakService;
+import de.mhus.vance.brain.prak.PrakProperties;
+import de.mhus.vance.brain.prak.PrakSanitizer;
+import de.mhus.vance.brain.prak.SpanMessage;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryService;
-import de.mhus.vance.shared.memory.evaluation.EvaluationOutput;
-import de.mhus.vance.shared.memory.evaluation.ItemCountExpectation;
-import de.mhus.vance.shared.memory.evaluation.WindowSpan;
+import de.mhus.vance.shared.prak.EvaluationOutput;
+import de.mhus.vance.shared.prak.ItemCountExpectation;
+import de.mhus.vance.shared.prak.WindowSpan;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -48,8 +48,8 @@ import org.mockito.ArgumentCaptor;
 
 /**
  * Behaviour of the {@code MemoryCompactionService} → {@code
- * MemoryAnalyzerService} side-channel wiring. The side-channel is
- * opt-in via {@code vance.memeval.sideChannelEnabled}; this test drives
+ * PrakService} side-channel wiring. The side-channel is
+ * opt-in via {@code vance.prak.sideChannelEnabled}; this test drives
  * it through the range-compaction path (cheapest to set up) and
  * verifies:
  *
@@ -73,8 +73,8 @@ class MemoryCompactionSideChannelTest {
     private LlmCallTracker llmCallTracker;
     private ProgressEmitter progressEmitter;
     private MetricService metricService;
-    private MemoryAnalyzerService analyzer;
-    private MemoryEvaluationProperties evaluationProperties;
+    private PrakService analyzer;
+    private PrakProperties evaluationProperties;
     private MemoryCompactionService service;
 
     private AiChat aiChat;
@@ -94,11 +94,11 @@ class MemoryCompactionSideChannelTest {
         llmCallTracker = mock(LlmCallTracker.class);
         progressEmitter = mock(ProgressEmitter.class);
         metricService = new MetricService(new SimpleMeterRegistry());
-        analyzer = mock(MemoryAnalyzerService.class);
-        evaluationProperties = new MemoryEvaluationProperties();
+        analyzer = mock(PrakService.class);
+        evaluationProperties = new PrakProperties();
         CheapPathFilter cheapPath = new CheapPathFilter(new HotPathMarkerDetector());
-        MemoryEvaluationSanitizer sanitizer =
-                new MemoryEvaluationSanitizer(evaluationProperties);
+        PrakSanitizer sanitizer =
+                new PrakSanitizer(evaluationProperties);
 
         service = new MemoryCompactionService(
                 chatMessageService, memoryService, aiModelService,

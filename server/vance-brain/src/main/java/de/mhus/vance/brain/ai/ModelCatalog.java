@@ -43,10 +43,13 @@ import org.yaml.snakeyaml.Yaml;
  * that don't care about overrides; production code that has a process
  * in hand should always thread its {@code (tenantId, projectId)} down.
  *
- * <p>Resolution parses YAML on every call — the file is small (a few
- * KB) and the cost is dominated by Mongo I/O on the document side.
- * Match {@code RecipeLoader}'s no-cache choice; profile-driven caching
- * can land later if it ever matters.
+ * <p>The bundled YAML is parsed once at startup (eager init via
+ * {@link jakarta.annotation.PostConstruct}) and cached for the lifetime
+ * of the JVM — its contents are immutable, and a per-call
+ * {@link ClassPathResource} read had an intermittent miss under
+ * virtual-thread contention with Spring Boot's nested-JAR loader. The
+ * tenant/project layers are still read on every call (they live in
+ * Mongo and change over time).
  *
  * <p>Unknown combinations resolve via {@link #lookupOrDefault} to a
  * conservative fallback (8K context, 4K output) and a WARN log line so
@@ -70,6 +73,26 @@ public class ModelCatalog {
             ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS);
 
     private final DocumentService documentService;
+
+    /**
+     * Cached parse of {@link #BUNDLED_RESOURCE}. Populated once at
+     * startup via {@link #init()}; subsequent {@link #readBundled()}
+     * calls return the cached map without touching the classpath. A
+     * {@code null} value means the resource was missing at startup —
+     * {@link #readBundled()} retries once per call so a late-arriving
+     * classloader (e.g. dev-mode reload) recovers without a restart.
+     */
+    private volatile @Nullable Map<String, Object> bundledCache;
+    private volatile boolean bundledCacheLoaded;
+
+    @jakarta.annotation.PostConstruct
+    void init() {
+        // Eager load on the boot thread — the failure mode we're guarding
+        // against is virtual-thread / Langchain4j-worker contention on
+        // ClassPathResource lookups. The main thread reading the resource
+        // once at startup sidesteps that path.
+        loadBundledIntoCache();
+    }
 
     // ──────────────────── Scoped lookups (preferred) ────────────────────
 
@@ -189,6 +212,18 @@ public class ModelCatalog {
     }
 
     private @Nullable Map<String, Object> readBundled() {
+        if (bundledCacheLoaded) {
+            return bundledCache;
+        }
+        // Startup load missed; retry once. Common case is a single hot
+        // path that triggers the miss — the next call gets the cache.
+        return loadBundledIntoCache();
+    }
+
+    private synchronized @Nullable Map<String, Object> loadBundledIntoCache() {
+        if (bundledCacheLoaded) {
+            return bundledCache;
+        }
         ClassPathResource resource = new ClassPathResource(BUNDLED_RESOURCE);
         if (!resource.exists()) {
             log.warn("ModelCatalog: bundled '{}' not found on classpath — catalog will be empty",
@@ -197,7 +232,10 @@ public class ModelCatalog {
         }
         try (InputStream in = resource.getInputStream()) {
             String content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            return parseYaml(content, "classpath:" + BUNDLED_RESOURCE);
+            Map<String, Object> parsed = parseYaml(content, "classpath:" + BUNDLED_RESOURCE);
+            bundledCache = parsed;
+            bundledCacheLoaded = true;
+            return parsed;
         } catch (IOException e) {
             log.warn("ModelCatalog: failed to read bundled '{}': {}",
                     BUNDLED_RESOURCE, e.toString());

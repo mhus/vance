@@ -246,6 +246,171 @@ class WizardLoaderTest {
     }
 
     @Test
+    void availableIn_defaultsTo_visibleEverywhere() {
+        when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
+        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
+                new LookupResult("wizards/gremium.yaml", GREMIUM_YAML,
+                        LookupResult.Source.VANCE, null)));
+
+        ResolvedWizard w = loader.load(TENANT, null, null, "gremium").orElseThrow();
+
+        assertThat(w.availableIn()).containsExactly("*");
+    }
+
+    @Test
+    void parses_availableIn_list() {
+        String yaml = """
+                title:       { en: "Test" }
+                description: { en: "Test" }
+                availableIn: [ "_user_*", "_tenant" ]
+                fields:
+                  - name: x
+                    type: string
+                    label: { en: "X" }
+                promptTemplate: "."
+                """;
+        when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
+        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
+                new LookupResult("wizards/eddie-only.yaml", yaml,
+                        LookupResult.Source.RESOURCE, null)));
+
+        ResolvedWizard w = loader.load(TENANT, null, null, "eddie-only").orElseThrow();
+
+        assertThat(w.availableIn()).containsExactly("_user_*", "_tenant");
+    }
+
+    @Test
+    void rejects_availableIn_with_blank_entry() {
+        String yaml = """
+                title:       { en: "Test" }
+                description: { en: "Test" }
+                availableIn: [ "_user_*", "" ]
+                fields:
+                  - name: x
+                    type: string
+                    label: { en: "X" }
+                promptTemplate: "."
+                """;
+        when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
+        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
+                new LookupResult("wizards/broken.yaml", yaml,
+                        LookupResult.Source.VANCE, null)));
+
+        assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
+                .isInstanceOf(WizardParseException.class)
+                .hasMessageContaining("availableIn[1]");
+    }
+
+    @Test
+    void rejects_availableIn_when_not_a_list() {
+        String yaml = """
+                title:       { en: "Test" }
+                description: { en: "Test" }
+                availableIn: "_user_*"
+                fields:
+                  - name: x
+                    type: string
+                    label: { en: "X" }
+                promptTemplate: "."
+                """;
+        when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
+        when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
+                new LookupResult("wizards/broken.yaml", yaml,
+                        LookupResult.Source.VANCE, null)));
+
+        assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
+                .isInstanceOf(WizardParseException.class)
+                .hasMessageContaining("availableIn");
+    }
+
+    @Test
+    void isAvailableIn_matches_glob_patterns() {
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("*"), "_tenant")).isTrue();
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of("*"), "research")).isTrue();
+
+        // Pure include match.
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("_user_*"), "_user_alice")).isTrue();
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("_user_*"), "_tenant")).isFalse();
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("_user_*", "_tenant"), "_tenant")).isTrue();
+
+        // Exact name.
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("research-2026"), "research-2026")).isTrue();
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("research-2026"), "research")).isFalse();
+
+        // Exclude-only list implies "*" as include.
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("!_*"), "research")).isTrue();
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("!_*"), "_user_alice")).isFalse();
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("!_*"), "_tenant")).isFalse();
+
+        // Mixed include + exclude: exclude trumps a positive match.
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("*", "!_user_*"), "_user_alice")).isFalse();
+        assertThat(WizardLoader.isAvailableIn(
+                java.util.List.of("*", "!_user_*"), "research")).isTrue();
+
+        // Empty patterns degenerate to visible.
+        assertThat(WizardLoader.isAvailableIn(java.util.List.of(), "anywhere")).isTrue();
+    }
+
+    @Test
+    void listAll_filters_outBundledWizardsThatDoNotMatchProjectGlob() {
+        String eddieOnlyYaml = """
+                title:       { en: "Create project" }
+                description: { en: "Setup wizard" }
+                availableIn: [ "_user_*", "_tenant" ]
+                fields:
+                  - name: name
+                    type: string
+                    label: { en: "Name" }
+                promptTemplate: "create '{{ name }}'."
+                """;
+        String everywhereYaml = """
+                title:       { en: "Council" }
+                description: { en: "Reusable group" }
+                fields:
+                  - name: title
+                    type: string
+                    label: { en: "Title" }
+                promptTemplate: "build '{{ title }}'."
+                """;
+
+        // The tenant tier returns both, the user and project tiers are empty.
+        when(documentService.listByPrefixCascade(
+                eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("wizards/")))
+                .thenReturn(Map.of(
+                        "wizards/create-project.yaml", new LookupResult(
+                                "wizards/create-project.yaml", eddieOnlyYaml,
+                                LookupResult.Source.RESOURCE, null),
+                        "wizards/gremium.yaml", new LookupResult(
+                                "wizards/gremium.yaml", everywhereYaml,
+                                LookupResult.Source.RESOURCE, null)));
+        when(documentService.listByPrefixCascade(
+                eq(TENANT), eq("_user_" + USER), eq("wizards/")))
+                .thenReturn(Map.of());
+        when(documentService.listByPrefixCascade(
+                eq(TENANT), eq(PROJECT), eq("wizards/")))
+                .thenReturn(Map.of());
+
+        // In a real Arthur project: create-project is filtered out, gremium remains.
+        var inArthur = loader.listAll(TENANT, PROJECT, USER);
+        assertThat(inArthur).extracting(ResolvedWizard::name)
+                .containsExactly("gremium");
+
+        // In Eddie (projectId blank → treated as _tenant): both are visible.
+        var inEddie = loader.listAll(TENANT, null, USER);
+        assertThat(inEddie).extracting(ResolvedWizard::name)
+                .containsExactlyInAnyOrder("create-project", "gremium");
+    }
+
+    @Test
     void listAll_dedups_acrossTiers_innermostWins() {
         when(documentService.listByPrefixCascade(
                 eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("wizards/")))

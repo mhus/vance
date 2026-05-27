@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -136,7 +137,78 @@ public class WizardLoader {
             applyTier(byName, projectTier, /*onlyProjectSource=*/true, WizardSource.PROJECT);
         }
 
-        return new ArrayList<>(byName.values());
+        // Apply the availableIn glob filter against the requested projectId.
+        // Listing without a project context is treated as the tenant project.
+        String effectiveProjectId =
+                (projectId == null || projectId.isBlank())
+                        ? HomeBootstrapService.TENANT_PROJECT_NAME
+                        : projectId;
+        List<ResolvedWizard> filtered = new ArrayList<>(byName.size());
+        for (ResolvedWizard w : byName.values()) {
+            if (isAvailableIn(w.availableIn(), effectiveProjectId)) {
+                filtered.add(w);
+            }
+        }
+        return filtered;
+    }
+
+    /**
+     * Decides whether a wizard's {@code availableIn} patterns match the
+     * given project id. Patterns starting with {@code "!"} are excludes;
+     * a single exclude match removes the wizard. If the list contains
+     * only excludes, a missing positive match is treated as implicit
+     * {@code "*"} (include-all).
+     *
+     * <p>Package-private to allow unit testing without going through
+     * {@link DocumentService} stubs.
+     */
+    static boolean isAvailableIn(List<String> patterns, String projectId) {
+        if (patterns == null || patterns.isEmpty()) {
+            return true;
+        }
+        boolean hasInclude = false;
+        boolean anyIncludeMatched = false;
+        for (String pattern : patterns) {
+            if (pattern.startsWith("!")) {
+                if (globMatch(pattern.substring(1), projectId)) {
+                    return false;
+                }
+            } else {
+                hasInclude = true;
+                if (globMatch(pattern, projectId)) {
+                    anyIncludeMatched = true;
+                }
+            }
+        }
+        return !hasInclude || anyIncludeMatched;
+    }
+
+    /**
+     * Tiny glob matcher: {@code *} matches any run of non-{@code /}
+     * characters; all other characters match literally. Used by
+     * {@link #isAvailableIn}.
+     */
+    private static boolean globMatch(String pattern, String value) {
+        StringBuilder regex = new StringBuilder(pattern.length() + 4);
+        regex.append('^');
+        StringBuilder literal = new StringBuilder();
+        for (int i = 0; i < pattern.length(); i++) {
+            char c = pattern.charAt(i);
+            if (c == '*') {
+                if (literal.length() > 0) {
+                    regex.append(Pattern.quote(literal.toString()));
+                    literal.setLength(0);
+                }
+                regex.append("[^/]*");
+            } else {
+                literal.append(c);
+            }
+        }
+        if (literal.length() > 0) {
+            regex.append(Pattern.quote(literal.toString()));
+        }
+        regex.append('$');
+        return Pattern.matches(regex.toString(), value);
     }
 
     private void applyTier(
@@ -238,10 +310,46 @@ public class WizardLoader {
         }
 
         List<WizardFollowUp> followUps = parseFollowUps(spec.get("suggestedFollowUps"));
+        List<String> availableIn = parseAvailableIn(spec.get("availableIn"));
 
         return new ResolvedWizard(
                 name, title, description, icon, category, fields,
-                promptTemplate, validatorPrompt, followUps, source);
+                promptTemplate, validatorPrompt, followUps, availableIn, source);
+    }
+
+    /**
+     * Parses the {@code availableIn} top-level field — list of project-id
+     * glob patterns used by {@link #listAll} to filter visibility. Empty
+     * or missing → {@code ["*"]} (visible everywhere).
+     *
+     * <p>Each entry is normalized as a non-blank string; a {@code "!"} prefix
+     * is preserved (it's the exclude marker — see spec §2a). Leading and
+     * trailing whitespace is trimmed.
+     */
+    private static List<String> parseAvailableIn(@Nullable Object raw) {
+        if (raw == null) {
+            return List.of("*");
+        }
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalStateException("'availableIn' must be a list of glob patterns");
+        }
+        if (list.isEmpty()) {
+            return List.of("*");
+        }
+        List<String> out = new ArrayList<>(list.size());
+        for (int i = 0; i < list.size(); i++) {
+            Object entry = list.get(i);
+            if (!(entry instanceof String s)) {
+                throw new IllegalStateException(
+                        "'availableIn[" + i + "]' must be a string");
+            }
+            String trimmed = s.trim();
+            if (trimmed.isEmpty()) {
+                throw new IllegalStateException("'availableIn[" + i + "]' is blank");
+            }
+            out.add(trimmed);
+        }
+        return List.copyOf(out);
     }
 
     @SuppressWarnings("unchecked")

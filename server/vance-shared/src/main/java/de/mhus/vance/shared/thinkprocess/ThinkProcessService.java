@@ -768,16 +768,16 @@ public class ThinkProcessService {
             throw new IllegalArgumentException(
                     "WorkerLinkSnapshot.workerProcessId must be set");
         }
-        // pull + push ride in the same update document — atomic at the
-        // Mongo level, so two upserts to different worker ids on the
-        // same process can never lose entries.
         Query query = new Query(Criteria.where("_id").is(processId));
-        Update update = new Update()
-                .pull("workerLinks", new org.bson.Document(
-                        "workerProcessId", snapshot.getWorkerProcessId()))
-                .push("workerLinks", snapshot);
+        mongoTemplate.updateFirst(
+                query,
+                new Update().pull("workerLinks", new org.bson.Document(
+                        "workerProcessId", snapshot.getWorkerProcessId())),
+                ThinkProcessDocument.class);
         UpdateResult result = mongoTemplate.updateFirst(
-                query, update, ThinkProcessDocument.class);
+                query,
+                new Update().push("workerLinks", snapshot),
+                ThinkProcessDocument.class);
         return result.getModifiedCount() > 0;
     }
 

@@ -356,7 +356,7 @@ class ThinkProcessServiceTest {
     // ─── workerLinks (Eddie's per-worker mirror) ─────────────────────────
 
     @Test
-    void upsertWorkerLink_pullsByIdThenPushesNewSnapshot_atomic() {
+    void upsertWorkerLink_pullsByIdThenPushesNewSnapshot() {
         UpdateResult ok = mock(UpdateResult.class);
         when(ok.getModifiedCount()).thenReturn(1L);
         when(mongoTemplate.updateFirst(any(Query.class), any(Update.class),
@@ -374,13 +374,17 @@ class ThinkProcessServiceTest {
         assertThat(changed).isTrue();
 
         var captor = org.mockito.ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).updateFirst(any(Query.class), captor.capture(),
-                eq(ThinkProcessDocument.class));
-        org.bson.Document raw = captor.getValue().getUpdateObject();
-        // pull + push ride in the same update document — atomic at the
-        // Mongo level, so two upserts to different worker ids on the
-        // same process can never lose entries.
-        assertThat(raw).containsKeys("$pull", "$push");
+        verify(mongoTemplate, org.mockito.Mockito.times(2))
+                .updateFirst(any(Query.class), captor.capture(),
+                        eq(ThinkProcessDocument.class));
+        java.util.List<Update> updates = captor.getAllValues();
+        // First call pulls the existing entry (if any), second pushes the
+        // fresh snapshot. Combining pull+push into one update document is
+        // rejected by Mongo 5+ with ConflictingUpdateOperators.
+        assertThat(updates.get(0).getUpdateObject()).containsKey("$pull")
+                .doesNotContainKey("$push");
+        assertThat(updates.get(1).getUpdateObject()).containsKey("$push")
+                .doesNotContainKey("$pull");
     }
 
     @Test

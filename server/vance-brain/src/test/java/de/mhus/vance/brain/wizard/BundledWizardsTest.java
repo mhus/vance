@@ -87,6 +87,25 @@ class BundledWizardsTest {
                 .containsExactly("recipe", "topic", "keyPoints");
     }
 
+    @Test
+    void createProject_isEddieOnly_byAvailableIn() throws IOException {
+        ResolvedWizard w = loadBundled("create-project");
+        assertThat(w.fields())
+                .extracting(f -> f.getName())
+                .containsExactly("projectName", "kit");
+        // Kit must remain optional — the YAML omits required, so it defaults to false.
+        var kit = w.fields().stream()
+                .filter(f -> f.getName().equals("kit"))
+                .findFirst().orElseThrow();
+        assertThat(kit.isRequired()).isFalse();
+
+        // Listing filter: only user-namespace + tenant project.
+        assertThat(w.availableIn()).containsExactly("_user_*", "_tenant");
+        assertThat(WizardLoader.isAvailableIn(w.availableIn(), "_user_alice")).isTrue();
+        assertThat(WizardLoader.isAvailableIn(w.availableIn(), "_tenant")).isTrue();
+        assertThat(WizardLoader.isAvailableIn(w.availableIn(), "research-2026")).isFalse();
+    }
+
     private ResolvedWizard loadBundled(String name) throws IOException {
         String resourcePath = "vance-defaults/wizards/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);

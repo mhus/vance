@@ -123,6 +123,16 @@ public class EddieEngine extends StructuredActionEngine {
     private static final String PROMPT_RESOURCE = "vance-defaults/prompts/eddie-prompt.md";
 
     /**
+     * Cached bytes of the bundled Eddie prompt. Populated once on first
+     * successful {@link #loadResource(String)} read and reused for every
+     * turn thereafter. The classpath lookup itself has been observed to
+     * fail intermittently under virtual-thread contention with Spring
+     * Boot's nested-JAR loader; caching the contents removes the per-
+     * turn hit on that path entirely.
+     */
+    private static volatile @Nullable String cachedPromptResource;
+
+    /**
      * Aligned with Arthur's recipe (6) — Eddie's "self-work" path
      * (web_search → web_fetch → doc_create_text → ANSWER) already
      * eats 4 iterations; with Plan-Mode actions now in her schema
@@ -338,12 +348,39 @@ public class EddieEngine extends StructuredActionEngine {
     }
 
     private static String loadResource(String path) {
+        String cached = cachedPromptResource;
+        if (cached != null) {
+            return cached;
+        }
+        return loadResourceIntoCache(path);
+    }
+
+    private static synchronized String loadResourceIntoCache(String path) {
+        String cached = cachedPromptResource;
+        if (cached != null) {
+            return cached;
+        }
         ClassPathResource resource = new ClassPathResource(path);
         try (InputStream in = resource.getInputStream()) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            String content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            cachedPromptResource = content;
+            return content;
         } catch (IOException e) {
             throw new UncheckedIOException(
                     "Failed to load Eddie prompt resource: " + path, e);
+        }
+    }
+
+    @jakarta.annotation.PostConstruct
+    void warmPromptResourceCache() {
+        // Eager load on the boot thread — sidesteps the intermittent
+        // ClassPathResource miss observed when virtual threads /
+        // Langchain4j workers race the nested-JAR loader at first hit.
+        try {
+            loadResource(PROMPT_RESOURCE);
+        } catch (RuntimeException e) {
+            log.warn("EddieEngine: prompt-resource warmup failed — first turn will retry: {}",
+                    e.toString());
         }
     }
 

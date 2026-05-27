@@ -1,0 +1,32 @@
+title:
+  de: "Projekt anlegen"
+  en: "Create a project"
+description:
+  de: "Neues Projekt erstellen und direkt hineinwechseln — optional auf Basis eines Project-Kits."
+  en: "Create a new project and switch into it — optionally based on a project kit."
+icon: folder-plus
+category: setup
+availableIn: [ "_user_*", "_tenant" ]
+
+fields:
+  - name: projectName
+    type: string
+    required: true
+    label:
+      de: "Projekt-Name"
+      en: "Project name"
+    help:
+      de: "Technischer Name (ohne Leerzeichen) — wird auch als Identifier verwendet."
+      en: "Technical name (no spaces) — also used as identifier."
+
+  - name: kit
+    type: string
+    label:
+      de: "Project Kit (optional)"
+      en: "Project kit (optional)"
+    help:
+      de: "Name eines Kits aus dem Tenant-Catalog. Leer lassen für ein leeres Projekt."
+      en: "Name of a kit from the tenant catalog. Leave empty for a blank project."
+
+promptTemplate: |
+  Erstelle ein neues Projekt '{{ projectName }}'{% if kit %} mit dem Kit '{{ kit }}'{% endif %} und verbinde mich danach. Frage nicht nach, mache es sofort.

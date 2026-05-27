@@ -25,5 +25,6 @@ public record ResolvedWizard(
         String promptTemplate,
         @Nullable String validatorPrompt,
         List<WizardFollowUp> followUps,
+        List<String> availableIn,
         WizardSource source) {
 }

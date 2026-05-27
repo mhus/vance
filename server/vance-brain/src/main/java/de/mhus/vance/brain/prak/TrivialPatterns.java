@@ -13,7 +13,7 @@ import org.apache.commons.lang3.StringUtils;
  *
  * <p>Stateless and thread-safe; the compiled patterns are reused.
  */
-final class TrivialPatterns {
+public final class TrivialPatterns {
 
     private static final int FLAGS =
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS;
@@ -36,13 +36,13 @@ final class TrivialPatterns {
     }
 
     /** Short acknowledgement ("ok", "ja", "thanks", "👍") with no further content. */
-    static boolean isAck(String text) {
+    public static boolean isAck(String text) {
         if (StringUtils.isBlank(text)) return false;
         return ACK.matcher(text).matches();
     }
 
     /** Assistant self-narration ("Ich werde jetzt …", "Let me check …"). */
-    static boolean isSelfNarration(String text) {
+    public static boolean isSelfNarration(String text) {
         if (StringUtils.isBlank(text)) return false;
         return SELF_NARRATION.matcher(text).find();
     }

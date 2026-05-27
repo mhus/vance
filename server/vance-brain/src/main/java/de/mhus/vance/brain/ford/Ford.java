@@ -311,39 +311,22 @@ public class Ford implements ThinkEngine {
                     paramString(process, "modelSize", null), modelInfo.size());
             List<ChatMessage> messages = buildPromptMessages(
                     process, chatLog, modelInfo, effectiveSize, activeSkills, tools);
-            int estimatedTokens = estimateTokens(messages);
-            int triggerTokens = modelInfo.compactionTriggerTokens(
-                    fordProperties.getCompactionTriggerRatio());
-            log.debug("Ford.turn id='{}' model={}/{} ctx={} trigger={} est={}",
-                    process.getId(),
-                    modelInfo.provider(), modelInfo.modelName(),
-                    modelInfo.contextWindowTokens(),
-                    triggerTokens,
-                    estimatedTokens);
-            if (estimatedTokens >= triggerTokens) {
-                log.info("Ford.turn id='{}' triggering compaction (est {} >= trigger {})",
-                        process.getId(), estimatedTokens, triggerTokens);
-                try {
-                    CompactionResult result = memoryCompactionService.compact(process, config);
-                    if (result.compacted()) {
-                        log.info("Ford.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
-                                process.getId(),
-                                result.messagesCompacted(),
-                                result.summaryChars(),
-                                result.memoryId());
-                        // Rebuild the prompt: the active-history shrunk and a
-                        // new ARCHIVED_CHAT memory pinned the summary at top.
-                        messages = buildPromptMessages(
-                                process, chatLog, modelInfo, effectiveSize, activeSkills, tools);
-                    } else {
-                        log.info("Ford.turn id='{}' compaction skipped: {}",
-                                process.getId(), result.reason());
-                    }
-                } catch (RuntimeException e) {
-                    // Best-effort: don't crash the user's turn if compaction fails.
-                    log.warn("Ford.turn id='{}' compaction failed: {}",
-                            process.getId(), e.toString());
-                }
+            // Shared trigger: SOFT / HARD / EMERGENCY based on
+            // estimated-tokens-vs-context-window thresholds in
+            // vance.prak.*. Compacts via the strength-aware selector
+            // when fired; no-op when under the soft threshold.
+            CompactionResult compactResult =
+                    memoryCompactionService.compactIfNeeded(process, config, messages, modelInfo);
+            if (compactResult.compacted()) {
+                log.info("Ford.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
+                        process.getId(),
+                        compactResult.messagesCompacted(),
+                        compactResult.summaryChars(),
+                        compactResult.memoryId());
+                // Rebuild the prompt: the active-history shrunk and a
+                // new ARCHIVED_CHAT memory pinned the summary at top.
+                messages = buildPromptMessages(
+                        process, chatLog, modelInfo, effectiveSize, activeSkills, tools);
             }
 
             int maxIters = paramInt(process, "maxIterations", MAX_TOOL_ITERATIONS);

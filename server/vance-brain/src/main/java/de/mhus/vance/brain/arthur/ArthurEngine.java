@@ -218,6 +218,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      */
     private final de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
+    private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
 
     /**
      * Per-process flag tracking whether the in-flight turn was triggered
@@ -269,7 +270,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
             de.mhus.vance.shared.chat.ChatMessageService chatMessageService,
-            de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter) {
+            de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter,
+            de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -287,6 +289,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.workspaceService = workspaceService;
         this.chatMessageService = chatMessageService;
         this.historyStrengthFilter = historyStrengthFilter;
+        this.memoryCompactionService = memoryCompactionService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -665,6 +668,18 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
             List<ChatMessage> messages = buildPromptMessages(
                     process, chatLog, inbox, effectiveSize, ctx, config, modelInfo);
+            // Strength-aware compaction trigger: SOFT/HARD/EMERGENCY
+            // based on est-tokens vs context window. Compacts via
+            // MemoryCompactionService and rebuilds the prompt if so.
+            de.mhus.vance.brain.memory.CompactionResult cr =
+                    memoryCompactionService.compactIfNeeded(process, config, messages, modelInfo);
+            if (cr.compacted()) {
+                log.info("Arthur.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
+                        process.getId(), cr.messagesCompacted(),
+                        cr.summaryChars(), cr.memoryId());
+                messages = buildPromptMessages(
+                        process, chatLog, inbox, effectiveSize, ctx, config, modelInfo);
+            }
             int maxIters = paramInt(process, "maxIterations",
                     arthurProperties.getMaxToolIterations());
             // Plan-Mode turns chain multiple read/write tool calls

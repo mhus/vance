@@ -121,4 +121,44 @@ public class PrakProperties {
      * {@code 0} disables the token-budget trigger.
      */
     private int periodicTriggerTokenBudget = 5000;
+
+    /**
+     * Compaction trigger thresholds — fractions of the model's
+     * context window. Picked by {@code CompactionTriggerService} to
+     * select a {@code CompactionMode}:
+     *
+     * <ul>
+     *   <li>est-tokens / context-window ≥ emergency → EMERGENCY</li>
+     *   <li>≥ hard → HARD</li>
+     *   <li>≥ soft → SOFT</li>
+     *   <li>otherwise → NONE</li>
+     * </ul>
+     *
+     * <p>Defaults: SOFT at 50% (compaction starts early, gently),
+     * HARD at 85% (context getting tight, drop normal too), EMERGENCY
+     * at 95% (last resort, keep only pinned + last 3).
+     */
+    private double compactionSoftThreshold = 0.50;
+    private double compactionHardThreshold = 0.85;
+    private double compactionEmergencyThreshold = 0.95;
+
+    /**
+     * Anchor sizes per mode — the {@code last K} messages always stay
+     * verbatim regardless of strength. The smaller the anchor, the
+     * deeper the compaction reaches.
+     */
+    private int softAnchor = 10;
+    private int hardAnchor = 5;
+    private int emergencyAnchor = 3;
+
+    /**
+     * When {@code true}, {@code MemoryCompactionService} runs Prak
+     * ad-hoc over any messages that are still unrated <em>before</em>
+     * the strength-aware selection picks who to compact. Pays the
+     * extra Prak-call latency (a few seconds) in exchange for guaranteed
+     * Strength-tagged input to the selector. Default {@code false} —
+     * the optimistic fallback (TrivialPatterns + age heuristic for
+     * unrated) is fast and usually enough.
+     */
+    private boolean inlineOnCompaction = false;
 }

@@ -220,6 +220,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
+    private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
 
     /**
      * Per-process flag tracking whether the in-flight turn was
@@ -252,7 +253,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
-            de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter) {
+            de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter,
+            de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -271,6 +273,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.promptTemplateRenderer = promptTemplateRenderer;
         this.workspaceService = workspaceService;
         this.historyStrengthFilter = historyStrengthFilter;
+        this.memoryCompactionService = memoryCompactionService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -774,6 +777,18 @@ public class EddieEngine extends StructuredActionEngine {
 
             List<ChatMessage> messages = buildPromptMessages(
                     process, chatLog, inbox, modelInfo, effectiveSize, ctx);
+            // Strength-aware compaction trigger: SOFT/HARD/EMERGENCY
+            // based on est-tokens vs context window. Compacts via
+            // MemoryCompactionService and rebuilds the prompt if so.
+            de.mhus.vance.brain.memory.CompactionResult cr =
+                    memoryCompactionService.compactIfNeeded(process, config, messages, modelInfo);
+            if (cr.compacted()) {
+                log.info("Eddie.turn id='{}' compaction ok: {} msgs → {} chars (memory='{}')",
+                        process.getId(), cr.messagesCompacted(),
+                        cr.summaryChars(), cr.memoryId());
+                messages = buildPromptMessages(
+                        process, chatLog, inbox, modelInfo, effectiveSize, ctx);
+            }
             int maxIters = paramInt(process, "maxIterations",
                     DEFAULT_MAX_ITERATIONS);
             log.debug("Eddie.turn id='{}' inbox={} historyMsgs={} model={} maxIters={}",

@@ -79,10 +79,16 @@ class MemoryCompactionSideChannelTest {
         metricService = new MetricService(new SimpleMeterRegistry());
         runner = mock(PrakSideChannelRunner.class);
 
+        de.mhus.vance.brain.prak.PrakProperties prakProps =
+                new de.mhus.vance.brain.prak.PrakProperties();
         service = new MemoryCompactionService(
                 chatMessageService, memoryService, aiModelService,
                 sessionService, settingService, properties,
-                llmCallTracker, progressEmitter, metricService, runner);
+                llmCallTracker, progressEmitter, metricService, runner,
+                new de.mhus.vance.brain.memory.StrengthAwareSelector(prakProps),
+                new de.mhus.vance.brain.memory.CompactionTriggerService(prakProps),
+                prakProps,
+                mock(de.mhus.vance.brain.prak.PrakPeriodicTrigger.class));
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);

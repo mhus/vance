@@ -93,6 +93,10 @@ public class MemoryCompactionService {
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final MetricService metricService;
     private final PrakSideChannelRunner prakSideChannelRunner;
+    private final StrengthAwareSelector strengthAwareSelector;
+    private final CompactionTriggerService compactionTriggerService;
+    private final de.mhus.vance.brain.prak.PrakProperties prakProperties;
+    private final de.mhus.vance.brain.prak.PrakPeriodicTrigger prakPeriodicTrigger;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -107,10 +111,26 @@ public class MemoryCompactionService {
 
     /**
      * Same as {@link #compact(ThinkProcessDocument)} but with a
-     * pre-resolved {@link AiChatConfig}. Useful when the caller has
-     * already resolved the config for another LLM call this turn.
+     * pre-resolved {@link AiChatConfig}. Default mode {@link
+     * CompactionMode#SOFT}.
      */
     public CompactionResult compact(ThinkProcessDocument process, AiChatConfig config) {
+        return compact(process, config, CompactionMode.SOFT);
+    }
+
+    /**
+     * Mode-aware compaction entry point. Uses {@link
+     * StrengthAwareSelector} to pick which messages get folded into
+     * the {@code ARCHIVED_CHAT} summary based on their
+     * {@code STRENGTH:*} tags + the active mode. When
+     * {@code vance.prak.inlineOnCompaction} is true, Prak runs ad-hoc
+     * over any still-unrated messages first.
+     */
+    public CompactionResult compact(
+            ThinkProcessDocument process, AiChatConfig config, CompactionMode mode) {
+        if (mode == CompactionMode.NONE) {
+            return CompactionResult.noop("mode=NONE — no compaction requested");
+        }
         String tenantId = process.getTenantId();
         String sessionId = process.getSessionId();
         String processId = process.getId();
@@ -125,8 +145,31 @@ public class MemoryCompactionService {
                             + " — nothing to compact");
         }
 
-        int splitAt = active.size() - keepRecent;
-        List<ChatMessageDocument> older = active.subList(0, splitAt);
+        // Optional inline Prak: pay the Prak-call latency to get all
+        // messages strength-tagged before the selector picks who to
+        // compact. Without this, unrated messages get the optimistic-
+        // fallback heuristic (TrivialPatterns) in the selector.
+        if (prakProperties.isInlineOnCompaction() && prakProperties.isSideChannelEnabled()) {
+            try {
+                String projectIdForPrak = sessionService.findBySessionId(sessionId)
+                        .map(SessionDocument::getProjectId).orElse("");
+                prakPeriodicTrigger.maybeFire(process, projectIdForPrak);
+                // Re-read tags — periodic trigger wrote STRENGTH:* on
+                // the chat-message documents.
+                active = chatMessageService.activeHistory(tenantId, sessionId, processId);
+            } catch (RuntimeException e) {
+                log.warn("Inline Prak on compaction failed for process='{}': {}",
+                        processId, e.toString());
+            }
+        }
+
+        List<ChatMessageDocument> older =
+                strengthAwareSelector.selectForCompaction(active, mode);
+        if (older.isEmpty()) {
+            return CompactionResult.noop(
+                    "mode=" + mode + " — no messages eligible for compaction "
+                            + "(everything in anchor or PINNED/STRONG)");
+        }
 
         List<MemoryDocument> priorActive = memoryService.activeByProcessAndKind(
                 tenantId, processId, MemoryKind.ARCHIVED_CHAT);
@@ -183,17 +226,54 @@ public class MemoryCompactionService {
             memoryService.supersede(priorSummary.getId(), saved.getId());
             supersededId = priorSummary.getId();
         }
-        log.info("Compaction process='{}' compacted={} archived={} memoryId='{}' superseded='{}' summaryChars={}",
-                processId, olderIds.size(), archived, saved.getId(), supersededId, summary.length());
+        log.info("Compaction process='{}' mode={} compacted={} archived={} memoryId='{}' superseded='{}' summaryChars={}",
+                processId, mode, olderIds.size(), archived, saved.getId(),
+                supersededId, summary.length());
 
-        metricService.counter("vance.memory.compaction", "mode", "sliding").increment();
-        metricService.summary("vance.memory.compaction.messages", "mode", "sliding")
+        String modeLabel = mode.name().toLowerCase(java.util.Locale.ROOT);
+        metricService.counter("vance.memory.compaction", "mode", modeLabel).increment();
+        metricService.summary("vance.memory.compaction.messages", "mode", modeLabel)
                 .record(olderIds.size());
 
-        runSideChannel(process, older, projectId, "compaction-side-channel: sliding");
+        runSideChannel(process, older, projectId,
+                "compaction-side-channel:" + modeLabel);
 
         return CompactionResult.success(
                 olderIds.size(), summary.length(), saved.getId(), supersededId);
+    }
+
+    /**
+     * One-shot helper for engines: evaluate the trigger against the
+     * outgoing prompt + model context-window, and compact if needed.
+     * Returns the {@link CompactionResult} so the caller can rebuild
+     * its prompt when {@code compacted()} is true.
+     *
+     * <p>Mode selection comes from
+     * {@link CompactionTriggerService#evaluate(List, de.mhus.vance.brain.ai.ModelInfo)};
+     * mode {@code NONE} short-circuits to a no-op. Failures are
+     * caught — the engine's turn isn't broken by a compaction error,
+     * just logged.
+     */
+    public CompactionResult compactIfNeeded(
+            ThinkProcessDocument process,
+            AiChatConfig config,
+            List<dev.langchain4j.data.message.ChatMessage> outgoingPrompt,
+            de.mhus.vance.brain.ai.ModelInfo modelInfo) {
+        try {
+            CompactionMode mode = compactionTriggerService.evaluate(outgoingPrompt, modelInfo);
+            if (mode == CompactionMode.NONE) {
+                return CompactionResult.noop("trigger=NONE");
+            }
+            log.info("Compaction trigger fired process='{}' mode={} est={} ctx={}",
+                    process.getId(), mode,
+                    compactionTriggerService.estimateTokens(outgoingPrompt),
+                    modelInfo.contextWindowTokens());
+            return compact(process, config, mode);
+        } catch (RuntimeException e) {
+            log.warn("compactIfNeeded failed process='{}': {}",
+                    process.getId(), e.toString());
+            return CompactionResult.noop("compactIfNeeded threw: " + e.getMessage());
+        }
     }
 
     /**

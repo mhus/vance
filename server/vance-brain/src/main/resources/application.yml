@@ -101,6 +101,14 @@ vance:
       # near-identical archives. Per-project override via the cascade
       # setting `documents.archive.minVersionIntervalSeconds`.
       minVersionIntervalSeconds: 600   # 10 min
+  prak:
+    # Side-channel an: Compaction → Prak-Analyzer → Sanitizer → Strength → Promotion → Audit
+    sideChannelEnabled: true
+    # Strength-Tags beim LLM-Replay anwenden (dropt STRENGTH:weak Messages)
+    contextFilterEnabled: true
+    # Schwelle: WEAK=alles behalten, NORMAL=WEAK dropen (default),
+    # STRONG=alles unter STRONG dropen
+    contextFilterMinStrength: NORMAL
 
 management:
   endpoint:

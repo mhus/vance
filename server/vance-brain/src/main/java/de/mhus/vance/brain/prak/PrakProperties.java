@@ -111,7 +111,7 @@ public class PrakProperties {
      * {@code 0} disables the count-based trigger; the token-budget
      * trigger ({@link #periodicTriggerTokenBudget}) still applies.
      */
-    private int periodicTriggerTurns = 20;
+    private int periodicTriggerTurns = 25;
 
     /**
      * Periodic Prak trigger: absolute floor on the token-budget trigger.
@@ -151,11 +151,12 @@ public class PrakProperties {
      *   <li>otherwise → NONE</li>
      * </ul>
      *
-     * <p>Defaults: SOFT at 50% (compaction starts early, gently),
-     * HARD at 85% (context getting tight, drop normal too), EMERGENCY
-     * at 95% (last resort, keep only pinned + last 3).
+     * <p>Defaults: SOFT at 40% (compaction starts early, gently —
+     * the periodic Prak runs in front of it have rated most messages
+     * by then), HARD at 85% (context getting tight, drop normal
+     * too), EMERGENCY at 95% (last resort, keep only pinned + last 3).
      */
-    private double compactionSoftThreshold = 0.50;
+    private double compactionSoftThreshold = 0.40;
     private double compactionHardThreshold = 0.85;
     private double compactionEmergencyThreshold = 0.95;
 

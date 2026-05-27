@@ -14,7 +14,11 @@ description: |
 engine: jeltz
 internal: true
 params:
-  model: default:large
+  # default:fast (Haiku/Flash) keeps the periodic-Prak pass cheap
+  # enough that running every ~25 turns is barely noticeable. Lift to
+  # default:large only if tenants need finer-grained classification —
+  # the strength tagging + INSIGHT extraction works well at fast tier.
+  model: default:fast
   maxAttempts: 3
   temperature: 0.0
 promptPrefix: |

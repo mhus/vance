@@ -45,7 +45,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         MarvinProperties.class,
         BrainTransferProperties.class,
         WorkspaceAccessProperties.class,
-        de.mhus.vance.brain.script.ScriptEngineProperties.class})
+        de.mhus.vance.brain.script.ScriptEngineProperties.class,
+        de.mhus.vance.brain.memory.evaluation.MemoryEvaluationProperties.class})
 @EnableScheduling
 @EnableAsync
 public class VanceBrainApplication {

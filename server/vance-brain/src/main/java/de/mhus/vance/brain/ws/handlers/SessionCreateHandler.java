@@ -8,6 +8,7 @@ import de.mhus.vance.api.ws.WebSocketEnvelope;
 import de.mhus.vance.brain.events.SessionConnectionRegistry;
 import de.mhus.vance.brain.inbox.InboxPendingSummaryPusher;
 import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.project.ProjectLifecycleService;
 import de.mhus.vance.brain.project.ProjectManagerService;
 import de.mhus.vance.brain.project.ProjectManagerService.ClaimResult;
 import de.mhus.vance.brain.session.SessionChatBootstrapper;
@@ -48,6 +49,7 @@ public class SessionCreateHandler implements WsHandler {
     private final SessionService sessionService;
     private final ProjectService projectService;
     private final ProjectManagerService projectManager;
+    private final ProjectLifecycleService lifecycleService;
     private final SessionConnectionRegistry connectionRegistry;
     private final SessionChatBootstrapper chatBootstrapper;
     private final ChatMessageService chatMessageService;
@@ -104,6 +106,15 @@ public class SessionCreateHandler implements WsHandler {
             return;
         }
         ProjectDocument claimed = ((ClaimResult.Local) claim).doc();
+
+        // Promote the claimed row from "pinned to me in Mongo" to actually
+        // running on this pod: workspace recovery + RECOVERING → RUNNING +
+        // engine bootstrap. Without this, the project sits half-claimed
+        // and the session attaches to a project whose Prak side-channel,
+        // compaction, scheduler etc. never see it.
+        // Idempotent on already-RUNNING and short-circuits to a no-op for
+        // podless (_user_*, _vance) projects.
+        claimed = lifecycleService.bring(claimed.getTenantId(), claimed.getName());
 
         SessionDocument created = sessionService.create(
                 ctx.getTenantId(),

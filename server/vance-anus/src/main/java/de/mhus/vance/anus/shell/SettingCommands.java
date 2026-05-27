@@ -5,7 +5,14 @@ import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingDocument;
 import de.mhus.vance.shared.settings.SettingService;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
@@ -15,6 +22,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.shell.standard.ShellComponent;
 import org.springframework.shell.standard.ShellMethod;
 import org.springframework.shell.standard.ShellOption;
+import org.yaml.snakeyaml.Yaml;
 
 /**
  * CRUD over {@link SettingDocument} via {@link SettingService}. The wire-format
@@ -164,6 +172,189 @@ public class SettingCommands {
         SettingDocument saved = settingService.setEncryptedPassword(
                 tenant, storage.type(), storage.id(), key, plain);
         return "Set (encrypted):\n" + renderOne(saved);
+    }
+
+    @ShellMethod(key = "setting import",
+            value = "Bulk-import settings from a YAML file (init-settings.yaml format). "
+                    + "Top-level YAML key is the tenant; CLI --scope/--ref decide where the "
+                    + "settings land. Idempotent upsert; PASSWORD entries are encrypted.")
+    public String importYaml(
+            @ShellOption(value = {"--file", "-f"},
+                    help = "Path to the YAML file. Relative paths walk parent directories.")
+            String fileArg,
+            @ShellOption(value = {"--tenant", "-T"}, defaultValue = ShellOption.NULL,
+                    help = "Tenant to import into. When set, must match the YAML top-level "
+                            + "key (single-tenant files); when omitted, every tenant entry "
+                            + "in the YAML is applied to its own tenant.")
+            @Nullable String tenantFilter,
+            @ShellOption(value = {"--scope", "-s"}, defaultValue = "tenant",
+                    help = "tenant | user | project | think-process. Default 'tenant' lands "
+                            + "in the tenant-wide _vance system project.")
+            String scope,
+            @ShellOption(value = {"--ref", "-r"}, defaultValue = ShellOption.NULL,
+                    help = "user login / project name / think-process id; auto-filled for scope=tenant.")
+            @Nullable String ref,
+            @ShellOption(value = {"--dry-run"}, defaultValue = "false",
+                    help = "Print what would happen, without writing.")
+            boolean dryRun) {
+
+        // 1. Resolve scope/ref to storage early so a bad combination
+        //    fails before we read the file.
+        StorageRef storage;
+        try {
+            storage = mapToStorage(scope, ref);
+        } catch (IllegalArgumentException e) {
+            return e.getMessage();
+        }
+
+        // 2. Locate the file — try the given path, walk up parents
+        //    (so this works from any sub-directory of the workbench).
+        Optional<Path> located = locateFile(fileArg);
+        if (located.isEmpty()) {
+            return "File not found: '" + fileArg + "' (looked in cwd and parents).";
+        }
+        Path path = located.get();
+
+        // 3. Parse YAML; top-level must be a tenant→settings map.
+        Map<String, Object> root;
+        try {
+            root = parseYaml(path);
+        } catch (RuntimeException e) {
+            return "YAML parse FAILED for '" + path + "': " + e.getMessage();
+        }
+        if (root == null || root.isEmpty()) {
+            return "File '" + path + "' is empty — nothing to import.";
+        }
+
+        // 4. Walk tenants → settings, apply each.
+        List<String> report = new ArrayList<>();
+        int applied = 0;
+        int skipped = 0;
+        int failed = 0;
+        for (Map.Entry<String, Object> tenantEntry : root.entrySet()) {
+            String tenant = tenantEntry.getKey();
+            if (tenantFilter != null && !tenantFilter.equals(tenant)) {
+                report.add("[skip-tenant] " + tenant + " (filter='" + tenantFilter + "')");
+                skipped++;
+                continue;
+            }
+            if (!(tenantEntry.getValue() instanceof Map<?, ?> entries)) {
+                report.add("[skip-tenant] " + tenant + " (value is not a settings map)");
+                skipped++;
+                continue;
+            }
+            for (Map.Entry<?, ?> e : entries.entrySet()) {
+                String key = e.getKey() == null ? null : e.getKey().toString();
+                if (StringUtils.isBlank(key)) {
+                    report.add("[skip] " + tenant + " <blank-key>");
+                    skipped++;
+                    continue;
+                }
+                if (!(e.getValue() instanceof Map<?, ?> spec)) {
+                    report.add("[skip] " + tenant + "/" + key + " (not a {type,value} map)");
+                    skipped++;
+                    continue;
+                }
+                try {
+                    Outcome outcome = applyOne(
+                            tenant, storage, key, spec, dryRun);
+                    report.add(outcome.line());
+                    if (outcome.applied()) applied++;
+                    else skipped++;
+                } catch (RuntimeException ex) {
+                    report.add("[fail] " + tenant + "/" + key + ": " + ex.getMessage());
+                    failed++;
+                }
+            }
+        }
+        String header = String.format(
+                "%s from '%s'%nScope: %s%s%nTenants in file: %d%nApplied: %d, skipped: %d, failed: %d%n",
+                dryRun ? "DRY-RUN — no writes" : "Imported settings",
+                path,
+                scope,
+                ref == null || ref.isBlank() ? "" : " (ref=" + ref + ")",
+                root.size(),
+                applied, skipped, failed);
+        return header + "\n" + String.join("\n", report);
+    }
+
+    /**
+     * Applies a single {@code key: {type, value, description?}} block.
+     * Returns a one-line report ({@code [ok]} / {@code [skip-empty]} /
+     * {@code [dry]}); throws on hard errors so the caller increments
+     * the failure counter.
+     */
+    private Outcome applyOne(
+            String tenant, StorageRef storage,
+            String key, Map<?, ?> spec, boolean dryRun) {
+        String typeStr = spec.get("type") == null ? "STRING" : spec.get("type").toString();
+        SettingType type;
+        try {
+            type = SettingType.valueOf(typeStr.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Unknown setting type '" + typeStr + "'");
+        }
+        Object rawValue = spec.get("value");
+        String value = rawValue == null ? null : rawValue.toString();
+        if (StringUtils.isBlank(value)) {
+            return new Outcome(false,
+                    "[skip-empty] " + tenant + "/" + key + " (" + type + ")");
+        }
+        String description = spec.get("description") == null
+                ? null : spec.get("description").toString();
+        if (dryRun) {
+            String valueRender = type == SettingType.PASSWORD
+                    ? "<encrypted>" : value;
+            return new Outcome(true,
+                    "[dry] " + tenant + "/" + key + " (" + type + ") = " + valueRender);
+        }
+        if (type == SettingType.PASSWORD) {
+            settingService.setEncryptedPassword(
+                    tenant, storage.type(), storage.id(), key, value);
+            return new Outcome(true, "[ok] " + tenant + "/" + key + " (PASSWORD, encrypted)");
+        }
+        settingService.set(
+                tenant, storage.type(), storage.id(), key, value, type, description);
+        return new Outcome(true, "[ok] " + tenant + "/" + key + " (" + type + ")");
+    }
+
+    private record Outcome(boolean applied, String line) {}
+
+    /**
+     * Locates {@code fileArg} as an absolute path, then as a path
+     * relative to cwd, then walks parent directories trying the same
+     * relative path. Mirrors {@code InitSettingsLoader.locateFile} so
+     * the same conventions work from anywhere in the workbench tree.
+     */
+    private static Optional<Path> locateFile(String fileArg) {
+        if (StringUtils.isBlank(fileArg)) return Optional.empty();
+        Path abs = Paths.get(fileArg).toAbsolutePath().normalize();
+        if (Files.isRegularFile(abs)) return Optional.of(abs);
+        Path rel = Paths.get(fileArg);
+        if (rel.isAbsolute()) return Optional.empty();
+        Path cwd = Paths.get("").toAbsolutePath().normalize();
+        while (cwd != null) {
+            Path candidate = cwd.resolve(rel);
+            if (Files.isRegularFile(candidate)) return Optional.of(candidate);
+            cwd = cwd.getParent();
+        }
+        return Optional.empty();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parseYaml(Path path) {
+        Yaml yaml = new Yaml();
+        try (InputStream in = Files.newInputStream(path)) {
+            Object loaded = yaml.load(in);
+            if (loaded instanceof Map<?, ?> m) {
+                return (Map<String, Object>) m;
+            }
+            throw new IllegalStateException(
+                    "Top level is not a map; got "
+                            + (loaded == null ? "null" : loaded.getClass().getSimpleName()));
+        } catch (IOException e) {
+            throw new IllegalStateException("Read failed: " + e.getMessage(), e);
+        }
     }
 
     @ShellMethod(key = "setting delete", value = "Delete a setting.")

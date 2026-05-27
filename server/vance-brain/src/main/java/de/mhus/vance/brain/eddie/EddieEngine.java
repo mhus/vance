@@ -219,6 +219,7 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.shared.access.ProfileRegistry profileRegistry;
     private final de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
+    private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
 
     /**
      * Per-process flag tracking whether the in-flight turn was
@@ -250,7 +251,8 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.shared.access.ProfileRegistry profileRegistry,
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
-            de.mhus.vance.shared.workspace.WorkspaceService workspaceService) {
+            de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
+            de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -268,6 +270,7 @@ public class EddieEngine extends StructuredActionEngine {
         this.planModeService = planModeService;
         this.promptTemplateRenderer = promptTemplateRenderer;
         this.workspaceService = workspaceService;
+        this.historyStrengthFilter = historyStrengthFilter;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -2346,8 +2349,11 @@ public class EddieEngine extends StructuredActionEngine {
             messages.add(VanceSystemMessage.dynamic(todoBlock));
         }
 
-        List<ChatMessageDocument> history = chatLog.activeHistory(
-                process.getTenantId(), process.getSessionId(), process.getId());
+        // HistoryStrengthFilter drops STRENGTH:weak rows when
+        // `vance.prak.contextFilterEnabled=true`; otherwise pass-through.
+        List<ChatMessageDocument> history = historyStrengthFilter.filter(
+                chatLog.activeHistory(
+                        process.getTenantId(), process.getSessionId(), process.getId()));
         for (ChatMessageDocument msg : history) {
             messages.add(toLangchain(msg));
         }

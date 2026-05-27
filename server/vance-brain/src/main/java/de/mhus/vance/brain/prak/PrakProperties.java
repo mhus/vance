@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.prak;
 
+import de.mhus.vance.shared.prak.SpanStrength;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -80,4 +81,27 @@ public class PrakProperties {
      * {@code true} per tenant once promotion + strength tagging are live.
      */
     private boolean sideChannelEnabled = false;
+
+    /**
+     * When {@code true}, {@link HistoryStrengthFilter} drops chat messages
+     * tagged below {@link #contextFilterMinStrength} from the LLM-replay
+     * history. The persisted {@code ChatMessageDocument} is unchanged —
+     * only the working-buffer projection handed to the engine call
+     * shrinks. §6.1.
+     *
+     * <p>Defaults to {@code false}: even with strength tags present we
+     * keep the full replay until the tenant explicitly enables the
+     * filter (decoupled from {@link #sideChannelEnabled} so the two can
+     * be toggled independently).
+     */
+    private boolean contextFilterEnabled = false;
+
+    /**
+     * Minimum strength a message must carry to survive
+     * {@link HistoryStrengthFilter}. Anything <em>below</em> this
+     * threshold is dropped. Default {@link SpanStrength#NORMAL} drops
+     * only {@link SpanStrength#WEAK} messages — the conservative
+     * starting point.
+     */
+    private SpanStrength contextFilterMinStrength = SpanStrength.NORMAL;
 }

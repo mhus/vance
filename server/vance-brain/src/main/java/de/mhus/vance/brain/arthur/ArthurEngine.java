@@ -217,6 +217,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * specification/eddie-engine.md §5.8).
      */
     private final de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
+    private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
 
     /**
      * Per-process flag tracking whether the in-flight turn was triggered
@@ -267,7 +268,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
             de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
-            de.mhus.vance.shared.chat.ChatMessageService chatMessageService) {
+            de.mhus.vance.shared.chat.ChatMessageService chatMessageService,
+            de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -284,6 +286,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.promptTemplateRenderer = promptTemplateRenderer;
         this.workspaceService = workspaceService;
         this.chatMessageService = chatMessageService;
+        this.historyStrengthFilter = historyStrengthFilter;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1700,8 +1703,12 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
 
         // Active history (ARCHIVED_CHAT compaction-aware once we wire
         // memoryService — for v1 just use full active history).
-        List<ChatMessageDocument> history = chatLog.activeHistory(
-                process.getTenantId(), process.getSessionId(), process.getId());
+        // HistoryStrengthFilter drops STRENGTH:weak rows when
+        // `vance.prak.contextFilterEnabled=true`; otherwise it's a pass-
+        // through that returns the input list as-is.
+        List<ChatMessageDocument> history = historyStrengthFilter.filter(
+                chatLog.activeHistory(
+                        process.getTenantId(), process.getSessionId(), process.getId()));
 
         // The inbox messages we just persisted (UserChatInput) are
         // already in `history`. Render the rest separately so the LLM

@@ -191,6 +191,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final SessionService sessionService;
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
+    private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
 
     // ──────────────────── Metadata ────────────────────
 
@@ -1001,8 +1002,8 @@ public class Ford implements ThinkEngine {
             messages.add(SystemMessage.from(
                     "[Conversation summary from earlier turns]\n" + m.getContent()));
         }
-        for (ChatMessageDocument msg : chatLog.activeHistory(
-                process.getTenantId(), process.getSessionId(), process.getId())) {
+        for (ChatMessageDocument msg : historyStrengthFilter.filter(chatLog.activeHistory(
+                process.getTenantId(), process.getSessionId(), process.getId()))) {
             messages.add(toLangchain(msg));
         }
         return messages;

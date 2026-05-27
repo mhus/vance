@@ -106,6 +106,7 @@ public class MemoryCompactionService {
     private final CheapPathFilter cheapPathFilter;
     private final PrakSanitizer prakSanitizer;
     private final PrakProperties prakProperties;
+    private final de.mhus.vance.brain.prak.SpanStrengthDeriver spanStrengthDeriver;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -388,12 +389,13 @@ public class MemoryCompactionService {
 
     /**
      * Side-channel pass: hands the same span the summarizer just
-     * compacted to the {@link PrakService}, runs the result
-     * through the {@link PrakSanitizer}, and records
-     * metrics. Items are not yet routed to downstream consumers
-     * (strength tagging + promotion arrive in later phases) — for now
-     * the side-channel proves the pipeline end-to-end and produces
-     * the data for calibration.
+     * compacted to the {@link PrakService}, runs the result through
+     * the {@link PrakSanitizer}, derives + persists per-message
+     * {@code STRENGTH:*} tags via the {@link
+     * de.mhus.vance.brain.prak.SpanStrengthDeriver}, and records
+     * telemetry. Item-promotion (Mongo writes for {@code promote} and
+     * inbox-offers for {@code instruction}s) is the next consumer to
+     * land — until then the items only feed strength tagging.
      *
      * <p>Bails early when {@link PrakProperties#isSideChannelEnabled()}
      * is false (the current default) or when the cheap-path pre-filter
@@ -460,6 +462,20 @@ public class MemoryCompactionService {
                     "outcome", "success").increment();
             metricService.summary("vance.prak.items.final")
                     .record(sanitized.metrics().finalItemCount());
+
+            // Derive + persist span-strength tags from the sanitised output.
+            // Re-uses the same span — the deriver pulls hot-path markers
+            // (m1 is "ab jetzt …") + high-importance evidence (m2 was cited
+            // by a promote-action item) and rewrites STRENGTH:* tags on the
+            // ChatMessageDocuments. Failures are caught by the outer try.
+            var derivation = spanStrengthDeriver.derive(span, sanitized.output());
+            long strengthModified = spanStrengthDeriver.persist(span, derivation);
+            metricService.summary("vance.prak.strength.overrides")
+                    .record(derivation.overrides().size());
+            if (strengthModified > 0) {
+                log.debug("Side-channel process='{}' strength-tags-written: {} (overrides={})",
+                        process.getId(), strengthModified, derivation.overrides().size());
+            }
         } catch (RuntimeException e) {
             log.warn("Side-channel failed for process='{}': {}",
                     process.getId(), e.toString());

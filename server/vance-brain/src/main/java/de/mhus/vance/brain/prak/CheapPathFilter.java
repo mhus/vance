@@ -2,7 +2,6 @@ package de.mhus.vance.brain.prak;
 
 import de.mhus.vance.api.chat.ChatRole;
 import java.util.List;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -35,19 +34,6 @@ public class CheapPathFilter {
 
     /** Acks max length in tokens — anything longer is not an ack. */
     static final int ACK_MAX_TOKENS = 10;
-
-    private static final Pattern ACK_PATTERN = Pattern.compile(
-            "^\\s*(ok|okay|ja|nein|danke|gut|alles klar|verstanden|"
-                    + "yes|no|sure|got it|thanks|thank you|cool|nice|"
-                    + "👍|👌|✅)\\s*[.!]*\\s*$",
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS);
-
-    private static final Pattern SELF_NARRATION_PATTERN = Pattern.compile(
-            "^\\s*(ich werde (jetzt|nun|gleich|als nächstes)|"
-                    + "ich lese|ich öffne|ich schaue mir|lass mich|"
-                    + "let me|i('| wi)ll (now|just|first)|i'm going to|"
-                    + "i am going to|i will now)\\b",
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS);
 
     private final HotPathMarkerDetector markerDetector;
 
@@ -137,10 +123,10 @@ public class CheapPathFilter {
     }
 
     static boolean isTrivialAck(String text) {
-        return ACK_PATTERN.matcher(text).matches();
+        return TrivialPatterns.isAck(text);
     }
 
     static boolean isSelfNarration(String text) {
-        return SELF_NARRATION_PATTERN.matcher(text).find();
+        return TrivialPatterns.isSelfNarration(text);
     }
 }

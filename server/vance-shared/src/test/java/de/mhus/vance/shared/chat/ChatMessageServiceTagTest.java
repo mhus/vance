@@ -6,9 +6,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.mongodb.client.result.UpdateResult;
 import de.mhus.vance.shared.session.SessionService;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
@@ -104,6 +107,89 @@ class ChatMessageServiceTagTest {
 
         Document queryDoc = queryCap.getValue().getQueryObject();
         assertThat(queryDoc.get("_id")).isEqualTo("m-42");
+    }
+
+    // ──────────────── tagAll (bulk addToSet of one tag) ────────────────
+
+    @Test
+    void tagAll_emptyIds_skipsMongo() {
+        long result = service.tagAll(List.of(), "STRENGTH:strong");
+        assertThat(result).isZero();
+        verify(mongoTemplate, never()).updateMulti(
+                any(Query.class), any(Update.class), eq(ChatMessageDocument.class));
+    }
+
+    @Test
+    void tagAll_blankTag_skipsMongo() {
+        long result = service.tagAll(List.of("m-1"), "  ");
+        assertThat(result).isZero();
+        verify(mongoTemplate, never()).updateMulti(
+                any(Query.class), any(Update.class), eq(ChatMessageDocument.class));
+    }
+
+    @Test
+    void tagAll_issuesAddToSetWithSingleTag() {
+        UpdateResult result = mock(UpdateResult.class);
+        when(result.getModifiedCount()).thenReturn(2L);
+        when(mongoTemplate.updateMulti(any(Query.class), any(Update.class),
+                eq(ChatMessageDocument.class))).thenReturn(result);
+
+        long modified = service.tagAll(List.of("m-1", "m-2"), "STRENGTH:strong");
+
+        assertThat(modified).isEqualTo(2L);
+        ArgumentCaptor<Update> updCap = ArgumentCaptor.forClass(Update.class);
+        ArgumentCaptor<Query> qCap = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).updateMulti(qCap.capture(), updCap.capture(),
+                eq(ChatMessageDocument.class));
+        assertThat(updCap.getValue().toString())
+                .contains("$addToSet")
+                .contains("tags")
+                .contains("STRENGTH:strong");
+        Document inOp = (Document) qCap.getValue().getQueryObject().get("_id");
+        assertThat(inOp.get("$in")).asList().containsExactly("m-1", "m-2");
+    }
+
+    // ──────────────── removeTagsWithPrefix ────────────────
+
+    @Test
+    void removeTagsWithPrefix_emptyIds_skipsMongo() {
+        long result = service.removeTagsWithPrefix(List.of(), "STRENGTH:");
+        assertThat(result).isZero();
+        verify(mongoTemplate, never()).updateMulti(
+                any(Query.class), any(Update.class), eq(ChatMessageDocument.class));
+    }
+
+    @Test
+    void removeTagsWithPrefix_blankPrefix_skipsMongo() {
+        long result = service.removeTagsWithPrefix(List.of("m-1"), "");
+        assertThat(result).isZero();
+        verify(mongoTemplate, never()).updateMulti(
+                any(Query.class), any(Update.class), eq(ChatMessageDocument.class));
+    }
+
+    @Test
+    void removeTagsWithPrefix_issuesPullWithAnchoredRegex() {
+        UpdateResult result = mock(UpdateResult.class);
+        when(result.getModifiedCount()).thenReturn(3L);
+        when(mongoTemplate.updateMulti(any(Query.class), any(Update.class),
+                eq(ChatMessageDocument.class))).thenReturn(result);
+
+        long modified = service.removeTagsWithPrefix(
+                List.of("m-1", "m-2", "m-3"), "STRENGTH:");
+
+        assertThat(modified).isEqualTo(3L);
+        ArgumentCaptor<Update> updCap = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateMulti(any(Query.class), updCap.capture(),
+                eq(ChatMessageDocument.class));
+        // Spring Data renders a Pattern argument to $pull as a regex literal.
+        // The exact toString form is "^\QSTRENGTH:\E" — verify the anchor
+        // and the literal prefix are both there.
+        String dbg = updCap.getValue().toString();
+        assertThat(dbg)
+                .contains("$pull")
+                .contains("tags")
+                .contains("STRENGTH:")
+                .contains("^");
     }
 
     /**

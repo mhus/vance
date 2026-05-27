@@ -75,6 +75,7 @@ class MemoryCompactionSideChannelTest {
     private MetricService metricService;
     private PrakService analyzer;
     private PrakProperties evaluationProperties;
+    private de.mhus.vance.brain.prak.SpanStrengthDeriver strengthDeriver;
     private MemoryCompactionService service;
 
     private AiChat aiChat;
@@ -99,12 +100,18 @@ class MemoryCompactionSideChannelTest {
         CheapPathFilter cheapPath = new CheapPathFilter(new HotPathMarkerDetector());
         PrakSanitizer sanitizer =
                 new PrakSanitizer(evaluationProperties);
+        strengthDeriver = mock(de.mhus.vance.brain.prak.SpanStrengthDeriver.class);
+        // Default to an empty derivation so .overrides().size() in the
+        // wiring code doesn't NPE on the mock's default null return.
+        when(strengthDeriver.derive(any(), any()))
+                .thenReturn(de.mhus.vance.brain.prak.StrengthDerivation.empty());
 
         service = new MemoryCompactionService(
                 chatMessageService, memoryService, aiModelService,
                 sessionService, settingService, properties,
                 llmCallTracker, progressEmitter, metricService,
-                analyzer, cheapPath, sanitizer, evaluationProperties);
+                analyzer, cheapPath, sanitizer, evaluationProperties,
+                strengthDeriver);
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);
@@ -203,6 +210,39 @@ class MemoryCompactionSideChannelTest {
         assertThat(result.compacted()).isTrue();
         // analyzer was attempted, exception swallowed
         verify(analyzer).analyze(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void sideChannel_runsStrengthDeriverAfterSuccessfulAnalyse() {
+        evaluationProperties.setSideChannelEnabled(true);
+
+        primeRange(longUserSpan());
+        primeSummarizer("Summary text");
+        when(analyzer.analyze(any(), any(), any(), any(), any(), any()))
+                .thenReturn(EvaluationOutput.empty(
+                        new WindowSpan("m1", "m2", 2)));
+
+        CompactionResult result = service.compactRange(
+                process(), Instant.parse("2026-05-11T14:00:00Z"),
+                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
+
+        assertThat(result.compacted()).isTrue();
+        verify(strengthDeriver).derive(any(), any());
+        verify(strengthDeriver).persist(any(), any());
+    }
+
+    @Test
+    void sideChannel_disabled_doesNotCallDeriver() {
+        // sanity: disabled side-channel must not invoke the deriver either
+        primeRange(longUserSpan());
+        primeSummarizer("Summary text");
+
+        service.compactRange(
+                process(), Instant.parse("2026-05-11T14:00:00Z"),
+                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
+
+        verify(strengthDeriver, never()).derive(any(), any());
+        verify(strengthDeriver, never()).persist(any(), any());
     }
 
     // ─── helpers ───

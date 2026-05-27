@@ -88,7 +88,8 @@ class MemoryCompactionServiceRangeTest {
                         new de.mhus.vance.brain.prak.HotPathMarkerDetector()),
                 new de.mhus.vance.brain.prak.PrakSanitizer(
                         new de.mhus.vance.brain.prak.PrakProperties()),
-                new de.mhus.vance.brain.prak.PrakProperties());
+                new de.mhus.vance.brain.prak.PrakProperties(),
+                mock(de.mhus.vance.brain.prak.SpanStrengthDeriver.class));
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);

@@ -138,6 +138,42 @@ public class ChatMessageService {
     }
 
     /**
+     * Bulk variant of {@link #tag(String, Set)} — atomically adds a
+     * single {@code tag} to every message in {@code messageIds}.
+     * Idempotent on already-tagged messages ({@code $addToSet}).
+     * Returns the number of rows actually modified.
+     *
+     * <p>Empty or {@code null} inputs are no-ops returning {@code 0}.
+     */
+    public long tagAll(java.util.Collection<String> messageIds, String tag) {
+        if (messageIds == null || messageIds.isEmpty()) return 0;
+        if (tag == null || tag.isBlank()) return 0;
+        Query q = new Query(Criteria.where("_id").in(messageIds));
+        Update u = new Update().addToSet("tags", tag);
+        return mongoTemplate.updateMulti(q, u, ChatMessageDocument.class).getModifiedCount();
+    }
+
+    /**
+     * Atomically removes every tag whose value starts with {@code prefix}
+     * from the listed messages. Used together with {@link #tagAll} to
+     * implement "replace single-value tag" semantics (e.g. swap the
+     * current {@code STRENGTH:*} tag — there must be at most one per
+     * message). Returns the number of rows modified.
+     */
+    public long removeTagsWithPrefix(
+            java.util.Collection<String> messageIds, String prefix) {
+        if (messageIds == null || messageIds.isEmpty()) return 0;
+        if (prefix == null || prefix.isEmpty()) return 0;
+        // Anchor with ^ so the prefix is a true left-anchor rather than
+        // a contains-anywhere match.
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "^" + java.util.regex.Pattern.quote(prefix));
+        Query q = new Query(Criteria.where("_id").in(messageIds));
+        Update u = new Update().pull("tags", p);
+        return mongoTemplate.updateMulti(q, u, ChatMessageDocument.class).getModifiedCount();
+    }
+
+    /**
      * Process-local search — equivalent to
      * {@link #search(ChatMessageSearchQuery, java.util.Set)} with the
      * scope set to just {@code q.thinkProcessId()}. Kept as the default

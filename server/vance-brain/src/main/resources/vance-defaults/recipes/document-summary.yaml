@@ -1,0 +1,58 @@
+description: |
+  Internal config profile for the LightLlmService consumed by
+  DocumentSummaryDriver. Generates a 1-3 sentence summary plus 3-8
+  topical tags per dirty document so the project-RAG indexer has a
+  searchable kind=summary chunk per file. NOT spawnable — marked
+  `internal: true` so the standard recipe selector skips it.
+
+  Tenants override this recipe to swap the summariser model, change
+  the tag policy ("German tags only", "single-word only"), or relax
+  the JSON contract — no Java change required.
+engine: jeltz
+internal: true
+params:
+  # Small model is enough — the task is bounded extraction, not
+  # open-ended reasoning. Tenants pick a stronger model here when
+  # their content needs deeper synthesis (legal, medical, …).
+  model: default:fast
+  # LightLlm retries on schema-validation miss; 2 attempts is enough
+  # for a tight structured-summary contract — beyond that the model
+  # is not going to converge.
+  maxAttempts: 2
+  temperature: 0.2
+promptPrefix: |
+  You summarize a single project document for downstream RAG search.
+  Reply with ONE single JSON object — no markdown fences, no prose
+  before or after.
+
+  ## DOCUMENT
+
+  Path: {{ path }}
+  {%- if title %}
+  Title: {{ title }}
+  {%- endif %}
+
+  ---
+
+  {{ content }}
+
+  ## REPLY FORMAT
+
+  Schema:
+
+      {
+        "summary": "<1-3 sentences summarising the document>",
+        "tags":    ["<topical tag>", "..."]
+      }
+
+  Rules:
+  - `summary` is 1-3 sentences, plain text, no markdown.
+  - `tags` is an array of 3-8 lowercase strings. Single-word or
+    hyphenated only — no spaces, no punctuation.
+  - Tags describe the document's topic, not its format. Prefer
+    domain terms (e.g. `auth`, `migration`, `mongodb`) over
+    structural words (e.g. `note`, `readme`).
+tags:
+  - summary
+  - system
+  - internal

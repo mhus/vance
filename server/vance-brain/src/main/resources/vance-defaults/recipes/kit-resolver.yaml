@@ -1,27 +1,77 @@
 description: |
-  System recipe — maps a free-text kit wish (typed by a user or
-  emitted by Eddie) to a canonical entry name in the tenant's
-  project-kits catalog. Single-shot Jeltz call; the caller
-  (ProjectKitInstaller) builds the `prompt` and `schema` engineParams
-  with the catalog inlined and validates the structured reply.
+  Internal config profile for the LightLlmService consumed by
+  KitNameResolverService. Maps a free-text kit wish (typed by a user
+  or emitted by Eddie) to a canonical entry name in the tenant's
+  project-kits catalog. NOT spawnable — marked `internal: true` so
+  the standard recipe selector skips it.
 
-  Tenants override this recipe to swap the matching model, tighten the
-  prompt rules ("our 'creative-essay' kit handles all Aufsatz wishes,
-  prefer it over the bundled school-essay"), or relax the JSON contract
-  when their catalog grows complex enough to need explanations.
-
+  Tenants override this recipe to swap the matching model, tighten
+  the prompt rules ("our 'creative-essay' kit handles all Aufsatz
+  wishes, prefer it over the bundled school-essay"), or relax the
+  JSON contract when their catalog grows complex enough to need
+  explanations.
 engine: jeltz
+internal: true
 params:
   # Small model is enough — the task is closed-set matching against
   # a list of ~5-30 catalog entries, not open-ended reasoning.
   model: default:fast
-  # Jeltz retries on schema-validation miss; 2 attempts is enough for a
-  # tight closed-vocab decision contract — beyond that the model is not
-  # going to converge.
+  # LightLlm retries on schema-validation miss; 2 attempts is enough
+  # for a tight closed-vocab decision contract — beyond that the
+  # model is not going to converge.
   maxAttempts: 2
-  # Jeltz validates the JSON contract itself; the generic engine-level
-  # validation gate would only double-fire.
-  validation: false
+  temperature: 0.0
+promptPrefix: |
+  You are the Vance project-kits resolver. Map a free-text kit wish
+  to one entry in the tenant catalog below, or report no match.
+
+  ## USER WISH
+
+  {{ wish }}
+
+  ## CATALOG ENTRIES
+
+  Closed vocabulary — `kitName` in your reply MUST be one of these
+  `name` values verbatim when decision=MATCH.
+
+  {% for e in entries %}
+  - name: {{ e.name }}
+  {%- if e.title %}
+    title: {{ e.title }}
+  {%- endif %}
+  {%- if e.description %}
+    description: {{ e.description }}
+  {%- endif %}
+  {% endfor %}
+
+  ## MATCHING RULES
+
+  - Match on INTENT, not surface keywords. "Schul-Aufsatz" /
+    "essay kit" / "Pro/Contra" all intend a school-essay-shaped
+    output even when the wording differs from the catalog description.
+  - Be conservative: prefer NONE when no entry clearly fits. A forced
+    MATCH installs a wrong kit, which is worse than letting the user
+    clarify.
+  - A URL is NOT a catalog name. If the wish looks like a git URL
+    (`https://…`, `git@…`) or a file URL (`file:///…`) — return NONE
+    with rationale "wish is a URL, install directly via kit_install".
+  - The wish may be in any language; the catalog `name` and
+    `description` are the source of truth.
+
+  ## REPLY FORMAT
+
+  Respond with ONE single JSON object — no markdown fences, no prose
+  before or after. Schema:
+
+      {
+        "decision":  "MATCH" | "NONE",
+        "kitName":   "<catalog name verbatim>" | null,
+        "rationale": "<1-2 sentences>"
+      }
+
+  `kitName` must be a verbatim catalog `name` when MATCH, `null` when
+  NONE. `rationale` is shown to the user on NONE.
 tags:
   - resolver
   - system
+  - internal

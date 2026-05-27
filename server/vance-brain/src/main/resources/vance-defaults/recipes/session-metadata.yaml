@@ -1,0 +1,52 @@
+description: |
+  Internal config profile for the LightLlmService consumed by
+  SessionMetadataSuggester. Proposes a short {title}, a single-emoji
+  {icon} and one of twelve named {color}s for a freshly-opened chat
+  session, based on its first user/assistant exchange. NOT spawnable —
+  marked `internal: true` so the standard recipe selector skips it.
+
+  Tenants override this recipe to change the colour palette, switch
+  to a stronger model, or relax the icon rules — no Java change
+  required.
+engine: jeltz
+internal: true
+params:
+  # Small model is enough — the input is at most a handful of opening
+  # messages, the output is one tiny JSON object.
+  model: default:fast
+  # Schema is small and well-defined; 2 attempts is enough headroom.
+  maxAttempts: 2
+  temperature: 0.3
+promptPrefix: |
+  You write very short labels for a chat session based on its first
+  few messages. Reply with ONE single JSON object — no markdown
+  fences, no preamble.
+
+  ## OPENING MESSAGES
+
+  {{ opening }}
+
+  ## REPLY FORMAT
+
+  Schema:
+
+      {
+        "title": "<max 60 chars, specific, no quotes>",
+        "icon":  "<SINGLE emoji codepoint or ZWJ sequence>",
+        "color": "<ONE of SLATE | RED | ORANGE | AMBER | GREEN | TEAL | CYAN | BLUE | INDIGO | PURPLE | PINK | ROSE>"
+      }
+
+  Match the color to the topic mood:
+  - debugging → AMBER
+  - architecture → INDIGO
+  - research → TEAL
+  - refactor → BLUE
+  - discussion → PURPLE
+  - bugfix → RED
+
+  If unsure, pick a neutral color (SLATE / BLUE). Never leave a field
+  empty.
+tags:
+  - session
+  - system
+  - internal

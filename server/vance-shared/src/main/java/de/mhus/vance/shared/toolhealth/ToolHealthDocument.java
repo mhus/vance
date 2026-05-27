@@ -108,4 +108,24 @@ public class ToolHealthDocument {
 
     private Instant createdAt = Instant.EPOCH;
     private Instant updatedAt = Instant.EPOCH;
+
+    // Spring Data MongoDB writes fields via reflection and can leave the
+    // collection slots at null when the BSON document is missing the key
+    // or stores an explicit null (legacy docs persisted before the field
+    // existed). Lazy-init in the getter so callers can always iterate and
+    // mutate without a defensive null-check.
+
+    public List<ToolHealthCooldown> getCooldowns() {
+        if (cooldowns == null) {
+            cooldowns = new ArrayList<>();
+        }
+        return cooldowns;
+    }
+
+    public List<ToolHealthHistoryEntry> getHistory() {
+        if (history == null) {
+            history = new ArrayList<>();
+        }
+        return history;
+    }
 }

@@ -1,29 +1,21 @@
 package de.mhus.vance.brain.delegate;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import de.mhus.vance.brain.ai.AiChat;
-import de.mhus.vance.brain.ai.AiChatOptions;
-import de.mhus.vance.brain.ai.AiModelResolver;
-import de.mhus.vance.brain.ai.AiModelService;
-import de.mhus.vance.brain.ai.ChatBehavior;
-import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
+import de.mhus.vance.brain.ai.light.LightLlmException;
+import de.mhus.vance.brain.ai.light.LightLlmRequest;
+import de.mhus.vance.brain.ai.light.LightLlmService;
+import de.mhus.vance.brain.ai.light.SchemaValidationException;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
-import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.request.ChatRequest;
-import dev.langchain4j.model.chat.response.ChatResponse;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * Picks a project recipe for a free-text task description. Trigger-
@@ -59,70 +51,58 @@ import tools.jackson.databind.ObjectMapper;
  * the opposite. Forcing the user to <em>opt in</em> by naming the
  * engine / recipe / category keyword turns the selector into a clear
  * escalation gate.
+ *
+ * <h2>LLM disambiguation</h2>
+ *
+ * When the deterministic pre-check finds multiple candidates, the
+ * tie-break runs through {@link LightLlmService} using the bundled
+ * {@code recipe-selector} recipe (config profile,
+ * {@code internal: true}). Tenants override the recipe to bias the
+ * disambiguation prompt or swap the model — no Java change required.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class RecipeSelectorService {
 
-    /** Selector identity used for tracing / model-alias namespacing. */
-    private static final String SELECTOR_NAME = "recipe-selector";
+    /** Recipe name resolved out of the bundled cascade. */
+    public static final String RECIPE_NAME = "recipe-selector";
 
-    private static final String SYSTEM_PROMPT = """
-            You are the recipe selector for the Vance multi-engine
-            think-system. The caller has already determined — via a
-            deterministic keyword pre-check — that the user's goal
-            triggers one of several candidate recipes. Your job is to
-            pick the single best fit from the short candidate list,
-            or report that none of them actually fits.
+    /** Reply field names — match the schema enforced below. */
+    static final String FIELD_DECISION = "decision";
+    static final String FIELD_RECIPE = "recipe";
+    static final String FIELD_RATIONALE = "rationale";
 
-            HARD OUTPUT CONTRACT:
-            - End your reply with EXACTLY one JSON object.
-            - NO markdown code fence (no ```json … ```).
-            - NO prose before or after the JSON.
+    /** Closed-vocabulary schema for the disambiguation reply. */
+    static final Map<String, Object> SELECTOR_SCHEMA = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                    FIELD_DECISION, Map.of(
+                            "type", "string",
+                            "enum", List.of("MATCH", "NONE"),
+                            "description", "MATCH when one candidate fits; "
+                                    + "NONE when none does."),
+                    // recipe intentionally has no `type` constraint —
+                    // JsonSchemaLight does not support string-or-null
+                    // unions, and a post-call candidate cross-check is
+                    // authoritative anyway.
+                    FIELD_RECIPE, Map.of(
+                            "description", "Recipe name verbatim from the "
+                                    + "candidate list on MATCH; null on NONE."),
+                    FIELD_RATIONALE, Map.of(
+                            "type", "string",
+                            "description", "1-2 sentences explaining the "
+                                    + "choice; surfaced to caller logs.")),
+            "required", List.of(FIELD_DECISION, FIELD_RATIONALE));
 
-            Schema (every field mandatory, even when null):
-                {
-                  "decision":  "MATCH" | "NONE",
-                  "recipe":    "<recipe-name from the candidates>" | null,
-                  "rationale": "<1-2 sentences: why this recipe, or
-                                why nothing matched>"
-                }
-
-            Decision rules:
-            - "MATCH" when one of the listed candidates fits the
-              user's intent. The recipe-name MUST appear VERBATIM in
-              the candidate list — no inventing names.
-            - "NONE" when the keyword-matched candidates all turn out
-              to be wrong fits on closer inspection. The caller will
-              fall back to a configured fallback recipe
-              (routing.fallback.recipe — typically Hactar, which can
-              generate a script to handle arbitrary goals).
-
-            Selection guidance:
-            - Match on the user's INTENT, not surface words. The
-              keyword that triggered the candidates is a hint, not a
-              decision.
-            - Prefer specific recipes over generic orchestrators when
-              both are candidates. A purpose-built recipe is almost
-              always a better fit than a bare Marvin/Vogon shell
-              with no sub-recipes.
-            - "NONE" is a respectable answer when none of the
-              candidates is a real fit — the fallback recipe is built
-              for that case.
-            """;
-
-    private final ObjectMapper objectMapper;
     private final RecipeLoader recipeLoader;
-    private final SettingService settingService;
-    private final AiModelResolver aiModelResolver;
-    private final AiModelService aiModelService;
+    private final LightLlmService lightLlm;
 
     /**
      * Runs the selector. Returns a {@link Result} describing what to
      * do — never throws on a bad LLM response (returns
-     * {@link Result#none(String)} with a diagnostic instead) so the
-     * caller can decide how to fall back.
+     * {@link Result#noneAfterTrigger(String)} with a diagnostic instead)
+     * so the caller can decide how to fall back.
      */
     public Result select(ThinkProcessDocument caller, String taskDescription) {
         if (taskDescription == null || taskDescription.isBlank()) {
@@ -282,141 +262,104 @@ public class RecipeSelectorService {
     // ──────────────────── LLM disambiguation ────────────────────
 
     /**
-     * Runs the LLM only over the trigger-matched candidates. Same
-     * structured-output contract as before, just with a tighter
-     * candidate list so the LLM can't wander into unrelated recipes.
+     * Runs the LightLlm-backed disambiguation only over the trigger-
+     * matched candidates. The {@code recipe-selector} recipe handles
+     * the system prompt, schema-retry budget, and model alias; we
+     * supply only the candidates and the task description as Pebble
+     * vars and cross-check the returned name against the candidate
+     * list afterwards.
      */
     private Result runLlmDisambiguation(
             ThinkProcessDocument caller,
             List<ResolvedRecipe> candidates,
             String taskDescription) {
-        AiChat chat = buildChat(caller);
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(SystemMessage.from(SYSTEM_PROMPT));
-        messages.add(UserMessage.from(buildUserPrompt(candidates, taskDescription)));
-
-        String text;
+        Map<String, Object> raw;
         try {
-            ChatResponse response = chat.chatModel().chat(
-                    ChatRequest.builder().messages(messages).build());
-            text = response.aiMessage() == null
-                    ? "" : response.aiMessage().text();
-        } catch (RuntimeException e) {
+            raw = lightLlm.callForJson(LightLlmRequest.builder()
+                    .recipeName(RECIPE_NAME)
+                    .userPrompt(taskDescription)
+                    .pebbleVars(Map.of(
+                            "candidates", renderCandidates(candidates),
+                            "task", taskDescription))
+                    .schema(SELECTOR_SCHEMA)
+                    .tenantId(caller.getTenantId())
+                    .projectId(caller.getProjectId())
+                    .processId(caller.getId())
+                    .build());
+        } catch (SchemaValidationException e) {
+            log.warn("RecipeSelector: schema budget exhausted attempts={} last='{}'",
+                    e.getAttempts(), e.getLastError());
+            return Result.noneAfterTrigger(
+                    "LLM could not produce a valid reply within "
+                            + e.getAttempts() + " attempts");
+        } catch (LightLlmException e) {
             log.warn("RecipeSelector: LLM call failed: {}", e.toString());
             return Result.noneAfterTrigger("LLM call failed: " + e.getMessage());
         }
-        return parseResult(text, candidates);
+
+        return parseResult(raw, candidates);
     }
 
-    private String buildUserPrompt(List<ResolvedRecipe> candidates, String task) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("== Trigger-matched recipe candidates ==\n");
+    /**
+     * Flattens candidates to plain maps for the Pebble
+     * {@code {% for c in candidates %}} loop. Stable inventory order
+     * keeps the prompt cache warm across selectors against the same
+     * project snapshot.
+     */
+    static List<Map<String, String>> renderCandidates(List<ResolvedRecipe> candidates) {
+        List<Map<String, String>> out = new ArrayList<>(candidates.size());
         for (ResolvedRecipe r : candidates) {
-            sb.append("- **").append(r.name()).append("** [engine: ")
-                    .append(r.engine()).append("]");
+            Map<String, String> m = new LinkedHashMap<>();
+            m.put("name", r.name());
+            m.put("engine", r.engine() == null ? "" : r.engine());
             String desc = r.description();
             if (desc != null && !desc.isBlank()) {
-                sb.append(" — ").append(desc.trim().replaceAll("\\s+", " "));
+                m.put("description", desc.trim().replaceAll("\\s+", " "));
             }
-            sb.append('\n');
+            out.add(m);
         }
-        sb.append('\n');
-
-        sb.append("== Task description ==\n");
-        sb.append(task.trim()).append("\n\n");
-
-        sb.append("Pick the matching candidate (or NONE) and emit a "
-                + "single JSON object now.");
-        return sb.toString();
+        return out;
     }
 
     // ──────────────────── response parsing ────────────────────
 
-    private Result parseResult(String text, List<ResolvedRecipe> candidates) {
-        // All NONE / failure paths here come from the LLM-
-        // disambiguation stage, which only runs when the trigger
-        // pre-check matched ≥1 candidate. They are therefore
-        // {@link Result#noneAfterTrigger} cases — caller should
-        // consult {@code routing.fallback.recipe}, not the default
-        // recipe.
-        if (text == null || text.isBlank()) {
-            return Result.noneAfterTrigger("LLM returned empty reply");
-        }
-        String json = extractJsonObject(text);
-        if (json == null) {
-            return Result.noneAfterTrigger("LLM reply has no JSON object");
-        }
-        ParsedResult parsed;
-        try {
-            parsed = objectMapper.readValue(json, ParsedResult.class);
-        } catch (RuntimeException e) {
-            return Result.noneAfterTrigger("JSON parse error: " + e.getMessage());
-        }
-        if (parsed.decision() == null) {
+    /**
+     * All NONE / failure paths here come from the LLM-disambiguation
+     * stage, which only runs when the trigger pre-check matched ≥1
+     * candidate. They are therefore {@link Result#noneAfterTrigger}
+     * cases — caller should consult {@code routing.fallback.recipe},
+     * not the default recipe.
+     */
+    private Result parseResult(Map<String, Object> raw, List<ResolvedRecipe> candidates) {
+        Object decisionRaw = raw.get(FIELD_DECISION);
+        if (!(decisionRaw instanceof String decision)) {
             return Result.noneAfterTrigger("LLM reply missing 'decision' field");
         }
-        if ("NONE".equalsIgnoreCase(parsed.decision())) {
-            return Result.noneAfterTrigger(orFallback(parsed.rationale(),
+        String rationale = raw.get(FIELD_RATIONALE) instanceof String s ? s : "";
+        if ("NONE".equalsIgnoreCase(decision)) {
+            return Result.noneAfterTrigger(orFallback(rationale,
                     "LLM returned NONE without rationale"));
         }
-        if (!"MATCH".equalsIgnoreCase(parsed.decision())) {
+        if (!"MATCH".equalsIgnoreCase(decision)) {
             return Result.noneAfterTrigger(
-                    "LLM returned unrecognised decision: " + parsed.decision());
+                    "LLM returned unrecognised decision: " + decision);
         }
-        if (parsed.recipe() == null || parsed.recipe().isBlank()) {
+        Object pickedRaw = raw.get(FIELD_RECIPE);
+        if (!(pickedRaw instanceof String picked) || picked.isBlank()) {
             return Result.noneAfterTrigger("LLM returned MATCH without a recipe name");
         }
-        String picked = parsed.recipe().trim();
+        String pickedTrim = picked.trim();
         for (ResolvedRecipe r : candidates) {
-            if (r.name().equals(picked)) {
-                return Result.match(picked, r.engine(),
-                        orFallback(parsed.rationale(), ""));
+            if (r.name().equals(pickedTrim)) {
+                return Result.match(pickedTrim, r.engine(), orFallback(rationale, ""));
             }
         }
         return Result.noneAfterTrigger(
-                "LLM returned unknown recipe '" + picked + "' — not in candidate list");
-    }
-
-    private static @Nullable String extractJsonObject(String raw) {
-        int start = raw.indexOf('{');
-        if (start < 0) return null;
-        int depth = 0;
-        boolean inString = false;
-        boolean escape = false;
-        for (int i = start; i < raw.length(); i++) {
-            char c = raw.charAt(i);
-            if (escape) { escape = false; continue; }
-            if (inString) {
-                if (c == '\\') escape = true;
-                else if (c == '"') inString = false;
-                continue;
-            }
-            if (c == '"') { inString = true; continue; }
-            if (c == '{') depth++;
-            else if (c == '}') {
-                depth--;
-                if (depth == 0) return raw.substring(start, i + 1);
-            }
-        }
-        return null;
+                "LLM returned unknown recipe '" + pickedTrim + "' — not in candidate list");
     }
 
     private static String orFallback(@Nullable String s, String fallback) {
         return s == null || s.isBlank() ? fallback : s;
-    }
-
-    // ──────────────────── chat construction ────────────────────
-
-    /**
-     * Package-protected to allow tests to substitute a scripted chat.
-     * Production callers always go through the bean-wired path which
-     * resolves model + credentials via the project cascade.
-     */
-    AiChat buildChat(ThinkProcessDocument caller) {
-        ChatBehavior behavior = ChatBehaviorBuilder.fromProcess(
-                caller, settingService, aiModelResolver);
-        AiChatOptions options = AiChatOptions.builder().build();
-        return aiModelService.createChat(behavior, options);
     }
 
     // ──────────────────── result types ────────────────────
@@ -457,13 +400,4 @@ public class RecipeSelectorService {
             return new Result(Decision.NONE, null, null, true, rationale);
         }
     }
-
-    /** Wire-format mirror of the structured-output JSON. */
-    private record ParsedResult(
-            @JsonProperty("decision") @Nullable String decision,
-            @JsonProperty("recipe") @Nullable String recipe,
-            @JsonProperty("rationale") @Nullable String rationale,
-            // Tolerate extra keys gracefully — we don't want to
-            // bounce the whole result if the model adds debug fields.
-            @JsonProperty("notes") @Nullable Object notes) {}
 }

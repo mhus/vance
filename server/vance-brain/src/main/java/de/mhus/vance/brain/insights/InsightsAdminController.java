@@ -51,7 +51,10 @@ import de.mhus.vance.shared.skill.ActiveSkillRefEmbedded;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.OutputStream;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -63,10 +66,14 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Read-only inspection of sessions, think-processes, chat history,
@@ -103,6 +110,7 @@ public class InsightsAdminController {
     private final ClusterService clusterService;
     private final PrakRunService prakRunService;
     private final RequestAuthority authority;
+    private final ObjectMapper objectMapper;
 
     // ─── Sessions ──────────────────────────────────────────────────────────
 
@@ -170,6 +178,87 @@ public class InsightsAdminController {
                                 Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(this::toDto)
                 .toList();
+    }
+
+    /**
+     * Stream every Mongo record that belongs to this session as a single
+     * JSON-lines (NDJSON) file. One header line ({@code session_meta})
+     * followed by every {@code process}, {@code message}, {@code memory},
+     * {@code llm_trace}, {@code marvin_node} and {@code prak_run} row
+     * sorted by timestamp ascending. Used by ops / users to ship a
+     * self-contained snapshot for external problem analysis.
+     *
+     * <p>Allowed for running sessions too — Mongo reads are non-locking
+     * and a sub-second snapshot drift is acceptable for diagnostics.
+     */
+    @GetMapping(value = "/sessions/{sessionId}/export.jsonl",
+            produces = "application/x-ndjson")
+    public ResponseEntity<StreamingResponseBody> exportSession(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("sessionId") String sessionId,
+            HttpServletRequest httpRequest) {
+
+        SessionDocument session = sessionService.findBySessionId(sessionId)
+                .filter(s -> tenant.equals(s.getTenantId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Session '" + sessionId + "' not found"));
+        authority.enforce(httpRequest,
+                new Resource.Session(tenant, session.getProjectId(), session.getSessionId()),
+                Action.ADMIN);
+
+        // Collect every process in the session, then everything keyed by
+        // those process ids. Each per-process service call is bounded —
+        // even a long-running session is at most a few processes.
+        List<ThinkProcessDocument> processes = thinkProcessService.findBySession(tenant, sessionId);
+
+        List<ChatMessageDocument> chat = new ArrayList<>();
+        List<MemoryDocument> memory = new ArrayList<>();
+        List<LlmTraceDocument> traces = new ArrayList<>();
+        List<MarvinNodeDocument> marvinNodes = new ArrayList<>();
+        List<PrakRunRecord> prakRuns = new ArrayList<>();
+        for (ThinkProcessDocument p : processes) {
+            String pid = p.getId();
+            if (pid == null) continue;
+            chat.addAll(chatMessageService.history(tenant, sessionId, pid));
+            memory.addAll(memoryService.listByProcess(tenant, pid));
+            // listByProcess is paginated (cap 200/page); walk pages until
+            // exhausted so we don't silently truncate a chatty session.
+            int page = 0;
+            while (true) {
+                org.springframework.data.domain.Page<LlmTraceDocument> chunk =
+                        llmTraceService.listByProcess(tenant, pid, page, 200);
+                traces.addAll(chunk.getContent());
+                if (chunk.getNumber() + 1 >= chunk.getTotalPages() || chunk.isEmpty()) break;
+                page++;
+            }
+            if ("marvin".equalsIgnoreCase(p.getThinkEngine())) {
+                marvinNodes.addAll(marvinNodeService.listAll(pid));
+            }
+            prakRuns.addAll(prakRunService.listByProcess(tenant, pid, PrakRunService.MAX_LIST_LIMIT));
+        }
+
+        SessionExportEmitter.ExportData data = new SessionExportEmitter.ExportData(
+                session, processes, chat, memory, traces, marvinNodes, prakRuns);
+
+        String filename = buildExportFilename(sessionId, Instant.now());
+        StreamingResponseBody body = (OutputStream out) -> SessionExportEmitter.write(out, objectMapper, data);
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/x-ndjson"))
+                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                .body(body);
+    }
+
+    /** Build {@code session-{id}-{utc-ts-with-dashes}.jsonl}. */
+    static String buildExportFilename(String sessionId, Instant now) {
+        // ISO-8601 UTC with colons replaced by dashes so the filename is
+        // safe on every platform (Windows in particular rejects ':' in
+        // filenames).
+        String ts = DateTimeFormatter.ISO_INSTANT
+                .format(now.atOffset(ZoneOffset.UTC))
+                .replace(':', '-');
+        String safeId = sessionId.replaceAll("[^A-Za-z0-9._-]", "_");
+        return "session-" + safeId + "-" + ts + ".jsonl";
     }
 
     // ─── Processes ─────────────────────────────────────────────────────────

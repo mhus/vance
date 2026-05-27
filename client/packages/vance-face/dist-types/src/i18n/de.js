@@ -502,6 +502,9 @@ export default {
             lastLabel: 'zuletzt',
             processesTitle: 'Prozesse in dieser Session',
             noProcesses: 'Noch keine Prozesse.',
+            exportButton: 'Export',
+            exportTooltip: 'JSON-Lines-Paket dieser Session für externe Diagnose herunterladen',
+            exportFailed: 'Export fehlgeschlagen.',
         },
         process: {
             titlePrefix: 'Prozess {name}',

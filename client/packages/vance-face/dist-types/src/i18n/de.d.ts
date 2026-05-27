@@ -498,6 +498,9 @@ declare const _default: {
             lastLabel: string;
             processesTitle: string;
             noProcesses: string;
+            exportButton: string;
+            exportTooltip: string;
+            exportFailed: string;
         };
         process: {
             titlePrefix: string;

@@ -152,6 +152,62 @@ export async function brainFetchWithMeta<T>(
 }
 
 /**
+ * GET a tenant-scoped resource as a binary blob. Same auth + 401-refresh
+ * behaviour as {@link brainFetch}, but returns the response body as a
+ * {@link Blob} together with the server-suggested filename parsed out
+ * of the {@code Content-Disposition} header (or `null` if absent).
+ *
+ * <p>Used by file-download UIs that cannot rely on a plain
+ * `<a download>` tag because the request must carry the bearer token
+ * on Mobile / cross-origin Web.
+ */
+export async function brainFetchBlob(
+  path: string,
+): Promise<{ blob: Blob; filename: string | null }> {
+  const tenant = getTenantId();
+  if (!tenant) throw new RestError(0, path, 'No tenant configured — user is not logged in.');
+
+  const url = `${brainBaseUrl()}/brain/${encodeURIComponent(tenant)}/${path.replace(/^\//, '')}`;
+  let response = await doFetch(url, 'GET', {});
+
+  if (response.status === 401) {
+    const refreshed = await getRestConfig().refreshAccess();
+    if (refreshed) {
+      response = await doFetch(url, 'GET', {});
+    } else {
+      redirectToLogin();
+      return new Promise<{ blob: Blob; filename: string | null }>(() => {});
+    }
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new RestError(response.status, path, text || response.statusText);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition');
+  return { blob, filename: parseContentDispositionFilename(disposition) };
+}
+
+/**
+ * Extract the filename from a `Content-Disposition: attachment; filename="…"`
+ * header. Returns `null` if the header is missing or malformed — callers
+ * fall back to their own default name in that case.
+ */
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  // Prefer RFC 5987's filename* (UTF-8) when present, otherwise the
+  // quoted plain `filename=`.
+  const star = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
+  if (star) return decodeURIComponent(star[1]);
+  const quoted = /filename\s*=\s*"([^"]+)"/i.exec(header);
+  if (quoted) return quoted[1];
+  const bare = /filename\s*=\s*([^;]+)/i.exec(header);
+  return bare ? bare[1].trim() : null;
+}
+
+/**
  * GET a tenant-scoped resource as plain text. Same auth + 401-refresh
  * behaviour as {@link brainFetch}, but returns the raw response body
  * as a string (e.g. for markdown / HTML help content). Returns

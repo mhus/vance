@@ -5,6 +5,7 @@ import {
   EditorShell,
   MarkdownView,
   VAlert,
+  VButton,
   VCard,
   VEmptyState,
   VInput,
@@ -13,6 +14,7 @@ import {
 } from '@/components';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 import {
+  downloadSessionExport,
   useInsightsSessions,
   useSessionProcesses,
   useProcessDetail,
@@ -54,6 +56,24 @@ const prakRunsState = useProcessPrakRuns();
 // Client-side filter for the Memory tab: when true, hide everything
 // that doesn't carry metadata.generatedBy === 'prak'.
 const memoryPrakOnly = ref(false);
+
+// Session-export download state — the request streams the JSONL file
+// from the server, so the button stays in a loading state until the
+// browser has the blob.
+const exportLoading = ref(false);
+const exportError = ref<string | null>(null);
+
+async function onExportSession(sessionId: string): Promise<void> {
+  exportLoading.value = true;
+  exportError.value = null;
+  try {
+    await downloadSessionExport(sessionId);
+  } catch (e) {
+    exportError.value = e instanceof Error ? e.message : t('insights.session.exportFailed');
+  } finally {
+    exportLoading.value = false;
+  }
+}
 const help = useHelp();
 
 // ─── Filter state ───────────────────────────────────────────────────────
@@ -572,16 +592,31 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                Timeline tabs so the user keeps the "what session am I in"
                context after switching. -->
           <header class="session-header">
-            <div class="flex items-baseline gap-2 flex-wrap">
-              <span class="font-mono text-sm opacity-70">{{ selectedSession.sessionId }}</span>
-              <span
-                class="text-xs px-1.5 py-0.5 rounded"
-                :class="selectedSession.status === 'OPEN' ? 'badge-open' : 'badge-closed'"
-              >{{ selectedSession.status?.toLowerCase() }}</span>
-              <span class="text-xs opacity-60">
-                {{ selectedSession.userId }} · {{ selectedSession.projectId }}
-              </span>
+            <div class="flex items-baseline gap-2 flex-wrap justify-between">
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <span class="font-mono text-sm opacity-70">{{ selectedSession.sessionId }}</span>
+                <span
+                  class="text-xs px-1.5 py-0.5 rounded"
+                  :class="selectedSession.status === 'OPEN' ? 'badge-open' : 'badge-closed'"
+                >{{ selectedSession.status?.toLowerCase() }}</span>
+                <span class="text-xs opacity-60">
+                  {{ selectedSession.userId }} · {{ selectedSession.projectId }}
+                </span>
+              </div>
+              <VButton
+                variant="ghost"
+                size="sm"
+                :loading="exportLoading"
+                :disabled="exportLoading"
+                :title="$t('insights.session.exportTooltip')"
+                @click="onExportSession(selectedSession.sessionId)"
+              >
+                {{ $t('insights.session.exportButton') }}
+              </VButton>
             </div>
+            <VAlert v-if="exportError" variant="error" class="mt-2">
+              <span>{{ exportError }}</span>
+            </VAlert>
             <h2 v-if="selectedSession.firstUserMessage" class="session-topic-title">
               {{ selectedSession.firstUserMessage }}
             </h2>

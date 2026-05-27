@@ -65,5 +65,12 @@ export declare function useMarvinTree(): {
     load: (processId: string) => Promise<void>;
     clear: () => void;
 };
+/**
+ * Download the session-scoped JSON-lines diagnostic bundle and trigger
+ * a browser save dialog. The server picks the filename
+ * (`session-{id}-{ts}.jsonl`) via `Content-Disposition`; the local
+ * default name is only used as a defensive fallback.
+ */
+export declare function downloadSessionExport(sessionId: string): Promise<void>;
 export {};
 //# sourceMappingURL=useInsights.d.ts.map

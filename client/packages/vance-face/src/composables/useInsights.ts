@@ -8,7 +8,7 @@ import type {
   SessionInsightsDto,
   ThinkProcessInsightsDto,
 } from '@vance/generated';
-import { brainFetch } from '@vance/shared';
+import { brainFetch, brainFetchBlob } from '@vance/shared';
 
 interface SessionFilter {
   projectId?: string | null;
@@ -260,4 +260,29 @@ export function useMarvinTree(): {
   }
 
   return { nodes, loading, error, load, clear };
+}
+
+/**
+ * Download the session-scoped JSON-lines diagnostic bundle and trigger
+ * a browser save dialog. The server picks the filename
+ * (`session-{id}-{ts}.jsonl`) via `Content-Disposition`; the local
+ * default name is only used as a defensive fallback.
+ */
+export async function downloadSessionExport(sessionId: string): Promise<void> {
+  const { blob, filename } = await brainFetchBlob(
+    `admin/sessions/${encodeURIComponent(sessionId)}/export.jsonl`);
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename ?? `session-${sessionId}.jsonl`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    // Revoke on the next tick so Chrome has time to start the download
+    // before we tear down the blob URL.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
 }

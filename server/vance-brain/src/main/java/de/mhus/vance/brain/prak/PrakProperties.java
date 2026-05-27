@@ -104,4 +104,21 @@ public class PrakProperties {
      * starting point.
      */
     private SpanStrength contextFilterMinStrength = SpanStrength.NORMAL;
+
+    /**
+     * Periodic Prak trigger: fire when at least this many unrated
+     * messages have accumulated since the last successful pass.
+     * {@code 0} disables the count-based trigger; the token-budget
+     * trigger ({@link #periodicTriggerTokenBudget}) still applies.
+     */
+    private int periodicTriggerTurns = 5;
+
+    /**
+     * Periodic Prak trigger: fire when the unrated messages since the
+     * last successful pass sum to at least this many approximate
+     * tokens, even if {@link #periodicTriggerTurns} is not yet reached.
+     * Catches single huge turns (code pastes, long tool results).
+     * {@code 0} disables the token-budget trigger.
+     */
+    private int periodicTriggerTokenBudget = 5000;
 }

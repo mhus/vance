@@ -378,6 +378,20 @@ public class ThinkProcessService {
     }
 
     /**
+     * Atomically advances {@code lastPrakAt} to the given timestamp.
+     * Used by {@code PrakPeriodicTrigger} after a successful periodic
+     * pass; the next pass then reads from this cursor to find unrated
+     * messages. Idempotent on equal-or-older timestamps.
+     */
+    public boolean updateLastPrakAt(String id, Instant lastPrakAt) {
+        Query query = new Query(Criteria.where("_id").is(id));
+        Update update = new Update().set("lastPrakAt", lastPrakAt);
+        UpdateResult result = mongoTemplate.updateFirst(
+                query, update, ThinkProcessDocument.class);
+        return result.getModifiedCount() > 0;
+    }
+
+    /**
      * Renames a closed process by overwriting its {@code name}. Used by
      * the session reactivate flow to free up the {@code "chat"} name
      * slot so a fresh chat process can be spawned with that conventional

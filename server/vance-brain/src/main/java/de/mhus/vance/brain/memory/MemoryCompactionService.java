@@ -7,20 +7,12 @@ import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ProviderType;
 import de.mhus.vance.brain.ford.FordProperties;
-import de.mhus.vance.brain.prak.CheapPathFilter;
-import de.mhus.vance.brain.prak.PrakService;
-import de.mhus.vance.brain.prak.PrakProperties;
-import de.mhus.vance.brain.prak.PrakSanitizer;
-import de.mhus.vance.brain.prak.SanitizeContext;
-import de.mhus.vance.brain.prak.SanitizeResult;
-import de.mhus.vance.brain.prak.SpanMessage;
-import de.mhus.vance.brain.prak.SpanProfile;
+import de.mhus.vance.brain.prak.PrakSideChannelRunner;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryKind;
 import de.mhus.vance.shared.memory.MemoryService;
-import de.mhus.vance.shared.prak.EvaluationOutput;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.session.SessionService;
@@ -33,11 +25,9 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -102,13 +92,7 @@ public class MemoryCompactionService {
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final MetricService metricService;
-    private final PrakService prakService;
-    private final CheapPathFilter cheapPathFilter;
-    private final PrakSanitizer prakSanitizer;
-    private final PrakProperties prakProperties;
-    private final de.mhus.vance.brain.prak.SpanStrengthDeriver spanStrengthDeriver;
-    private final de.mhus.vance.brain.prak.PrakPromotionService prakPromotionService;
-    private final de.mhus.vance.shared.prak.audit.PrakRunService prakRunService;
+    private final PrakSideChannelRunner prakSideChannelRunner;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -419,174 +403,14 @@ public class MemoryCompactionService {
             List<ChatMessageDocument> spanDocs,
             String projectId,
             String windowHint) {
-        if (!prakProperties.isSideChannelEnabled()) {
-            return;
-        }
-        if (spanDocs == null || spanDocs.isEmpty()) {
-            return;
-        }
-        long startMs = System.currentTimeMillis();
-        String runId = "compaction-" + process.getId() + "-" + Instant.now();
+        // The runner already catches internally — this is belt-and-suspenders
+        // so a bug in the runner can never poison a successful compaction.
         try {
-            List<SpanMessage> span = projectToSpan(spanDocs);
-            SpanProfile profile = cheapPathFilter.profile(span);
-            if (profile.isSkippable()) {
-                log.debug("Side-channel skipped for process='{}' reason='{}'",
-                        process.getId(), profile.skipReason());
-                metricService.counter("vance.prak.sideChannel",
-                        "outcome", "skipped",
-                        "reason", profile.skipReason() == null
-                                ? "unknown" : profile.skipReason()).increment();
-                return;
-            }
-
-            EvaluationOutput raw = prakService.analyze(
-                    process.getTenantId(),
-                    projectId == null || projectId.isBlank() ? null : projectId,
-                    process.getId(),
-                    span,
-                    windowHint,
-                    profile.expectation());
-
-            Set<String> existingTurnIds = new HashSet<>();
-            for (ChatMessageDocument m : spanDocs) {
-                if (m.getId() != null) {
-                    existingTurnIds.add(m.getId());
-                }
-            }
-            int substantialCount = profile.substantialUserTurnCount()
-                    + profile.markerHits();
-            SanitizeContext ctx = new SanitizeContext(
-                    existingTurnIds, substantialCount, profile.expectation());
-
-            SanitizeResult sanitized = prakSanitizer.sanitize(raw, ctx);
-            log.info("Side-channel process='{}' raw={} final={} dropped(noEvidence={}, lowConf={}, supersede={}) merged={} hardCap={} coverage={}",
-                    process.getId(),
-                    sanitized.metrics().rawItemCount(),
-                    sanitized.metrics().finalItemCount(),
-                    sanitized.metrics().droppedNoEvidence(),
-                    sanitized.metrics().droppedLowConfidence(),
-                    sanitized.metrics().droppedBySupersedeWithinBatch(),
-                    sanitized.metrics().duplicatesMerged(),
-                    sanitized.metrics().hardCapTriggered(),
-                    String.format("%.2f", sanitized.metrics().evidenceCoverage()));
-
-            metricService.counter("vance.prak.sideChannel",
-                    "outcome", "success").increment();
-            metricService.summary("vance.prak.items.final")
-                    .record(sanitized.metrics().finalItemCount());
-
-            // Derive + persist span-strength tags from the sanitised output.
-            var derivation = spanStrengthDeriver.derive(span, sanitized.output());
-            long strengthModified = spanStrengthDeriver.persist(span, derivation);
-            metricService.summary("vance.prak.strength.overrides")
-                    .record(derivation.overrides().size());
-            if (strengthModified > 0) {
-                log.debug("Side-channel process='{}' strength-tags-written: {} (overrides={})",
-                        process.getId(), strengthModified, derivation.overrides().size());
-            }
-
-            // Final consumer: persist promotable items as INSIGHT memories,
-            // surface instructions through inbox-offer telemetry. runId
-            // matches the audit record so operators can join the two.
-            de.mhus.vance.brain.prak.PromotionContext promoteCtx =
-                    new de.mhus.vance.brain.prak.PromotionContext(
-                            process.getTenantId(),
-                            projectId == null ? "" : projectId,
-                            process.getSessionId(),
-                            process.getId(),
-                            runId);
-            de.mhus.vance.brain.prak.PromotionResult promotionResult =
-                    prakPromotionService.promote(sanitized.output(), promoteCtx);
-            metricService.summary("vance.prak.promotion.persisted")
-                    .record(promotionResult.persistedMemoryIds().size());
-            if (promotionResult.promoted() > 0 || promotionResult.inboxOffered() > 0) {
-                log.info("Side-channel process='{}' promoted={} inboxOffered={} skipped={} affectsDeferred={}",
-                        process.getId(),
-                        promotionResult.promoted(),
-                        promotionResult.inboxOffered(),
-                        promotionResult.skipped(),
-                        promotionResult.affectsDeferred());
-            }
-
-            // Audit row — one PrakRunRecord per successful pass. Failures
-            // before this point only emit the {outcome=error} counter.
-            persistRunRecord(
-                    process, projectId, runId, windowHint,
-                    raw.windowSpan(), span.size(),
-                    sanitized.metrics(), derivation.overrides().size(),
-                    strengthModified, promotionResult,
-                    System.currentTimeMillis() - startMs);
+            prakSideChannelRunner.run(process, projectId, spanDocs, windowHint);
         } catch (RuntimeException e) {
-            log.warn("Side-channel failed for process='{}': {}",
+            log.warn("Prak side-channel from compaction failed process='{}': {}",
                     process.getId(), e.toString());
-            metricService.counter("vance.prak.sideChannel",
-                    "outcome", "error").increment();
         }
-    }
-
-    private void persistRunRecord(
-            ThinkProcessDocument process,
-            String projectId,
-            String runId,
-            String trigger,
-            de.mhus.vance.shared.prak.WindowSpan window,
-            int spanSize,
-            de.mhus.vance.brain.prak.SanitizeMetrics metrics,
-            int strengthOverrides,
-            long strengthTagsModified,
-            de.mhus.vance.brain.prak.PromotionResult promotionResult,
-            long durationMs) {
-        try {
-            de.mhus.vance.shared.prak.audit.PrakRunRecord record =
-                    de.mhus.vance.shared.prak.audit.PrakRunRecord.builder()
-                            .tenantId(process.getTenantId())
-                            .projectId(projectId == null ? "" : projectId)
-                            .sessionId(process.getSessionId())
-                            .processId(process.getId())
-                            .runId(runId)
-                            .trigger(trigger)
-                            .windowFromTurnId(window == null ? null : window.fromTurnId())
-                            .windowToTurnId(window == null ? null : window.toTurnId())
-                            .windowMessages(spanSize)
-                            .rawItemCount(metrics.rawItemCount())
-                            .finalItemCount(metrics.finalItemCount())
-                            .droppedNoEvidence(metrics.droppedNoEvidence())
-                            .droppedLowConfidence(metrics.droppedLowConfidence())
-                            .droppedBySupersedeWithinBatch(metrics.droppedBySupersedeWithinBatch())
-                            .duplicatesMerged(metrics.duplicatesMerged())
-                            .confidencePenalised(metrics.confidencePenalised())
-                            .hardCapTriggered(metrics.hardCapTriggered())
-                            .evidenceCoverage(metrics.evidenceCoverage())
-                            .lowCoverage(metrics.lowCoverage())
-                            .strengthOverrides(strengthOverrides)
-                            .strengthTagsModified(strengthTagsModified)
-                            .promoted(promotionResult.promoted())
-                            .inboxOffered(promotionResult.inboxOffered())
-                            .skipped(promotionResult.skipped())
-                            .refreshed(promotionResult.refreshed())
-                            .affectsResolved(promotionResult.affectsResolved())
-                            .affectsDeferred(promotionResult.affectsDeferred())
-                            .persistedMemoryIds(new ArrayList<>(promotionResult.persistedMemoryIds()))
-                            .durationMs(durationMs)
-                            .build();
-            prakRunService.save(record);
-        } catch (RuntimeException e) {
-            // Audit-write failure must not poison the pipeline.
-            log.warn("PrakRun persist failed runId='{}': {}", runId, e.toString());
-        }
-    }
-
-    private static List<SpanMessage> projectToSpan(List<ChatMessageDocument> docs) {
-        List<SpanMessage> out = new ArrayList<>(docs.size());
-        for (ChatMessageDocument doc : docs) {
-            if (doc.getRole() == null) {
-                continue;
-            }
-            String content = doc.getContent() == null ? "" : doc.getContent();
-            out.add(new SpanMessage(doc.getId(), doc.getRole(), content));
-        }
-        return out;
     }
 
     private AiChatConfig resolveAiConfig(ThinkProcessDocument process) {

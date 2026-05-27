@@ -15,21 +15,13 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ford.FordProperties;
-import de.mhus.vance.brain.prak.CheapPathFilter;
-import de.mhus.vance.brain.prak.HotPathMarkerDetector;
-import de.mhus.vance.brain.prak.PrakService;
-import de.mhus.vance.brain.prak.PrakProperties;
-import de.mhus.vance.brain.prak.PrakSanitizer;
-import de.mhus.vance.brain.prak.SpanMessage;
+import de.mhus.vance.brain.prak.PrakSideChannelRunner;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.memory.MemoryDocument;
 import de.mhus.vance.shared.memory.MemoryService;
-import de.mhus.vance.shared.prak.EvaluationOutput;
-import de.mhus.vance.shared.prak.ItemCountExpectation;
-import de.mhus.vance.shared.prak.WindowSpan;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionService;
 import de.mhus.vance.shared.settings.SettingService;
@@ -47,20 +39,12 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * Behaviour of the {@code MemoryCompactionService} → {@code
- * PrakService} side-channel wiring. The side-channel is
- * opt-in via {@code vance.prak.sideChannelEnabled}; this test drives
- * it through the range-compaction path (cheapest to set up) and
- * verifies:
- *
- * <ul>
- *   <li>Default-off — analyzer never invoked.</li>
- *   <li>Enabled + substantial span — analyzer invoked with the expected
- *       hint plus scope IDs; sanitizer ran (counter recorded).</li>
- *   <li>Enabled + cheap-path-skippable span — analyzer NOT invoked,
- *       skip counter recorded.</li>
- *   <li>Analyzer throwing does not fail the compaction.</li>
- * </ul>
+ * Compaction → side-channel <em>delegation</em> contract. The actual
+ * analyzer / sanitizer / strength / promotion / audit pipeline lives
+ * in {@link PrakSideChannelRunner} now; this test only verifies that
+ * {@code MemoryCompactionService} calls the runner with the right
+ * span + projectId + trigger label after a successful compaction.
+ * Pipeline behavior is covered by {@code PrakSideChannelRunnerTest}.
  */
 class MemoryCompactionSideChannelTest {
 
@@ -73,11 +57,7 @@ class MemoryCompactionSideChannelTest {
     private LlmCallTracker llmCallTracker;
     private ProgressEmitter progressEmitter;
     private MetricService metricService;
-    private PrakService analyzer;
-    private PrakProperties evaluationProperties;
-    private de.mhus.vance.brain.prak.SpanStrengthDeriver strengthDeriver;
-    private de.mhus.vance.brain.prak.PrakPromotionService promotionService;
-    private de.mhus.vance.shared.prak.audit.PrakRunService runService;
+    private PrakSideChannelRunner runner;
     private MemoryCompactionService service;
 
     private AiChat aiChat;
@@ -97,28 +77,12 @@ class MemoryCompactionSideChannelTest {
         llmCallTracker = mock(LlmCallTracker.class);
         progressEmitter = mock(ProgressEmitter.class);
         metricService = new MetricService(new SimpleMeterRegistry());
-        analyzer = mock(PrakService.class);
-        evaluationProperties = new PrakProperties();
-        CheapPathFilter cheapPath = new CheapPathFilter(new HotPathMarkerDetector());
-        PrakSanitizer sanitizer =
-                new PrakSanitizer(evaluationProperties);
-        strengthDeriver = mock(de.mhus.vance.brain.prak.SpanStrengthDeriver.class);
-        // Default to an empty derivation so .overrides().size() in the
-        // wiring code doesn't NPE on the mock's default null return.
-        when(strengthDeriver.derive(any(), any()))
-                .thenReturn(de.mhus.vance.brain.prak.StrengthDerivation.empty());
-        promotionService = mock(de.mhus.vance.brain.prak.PrakPromotionService.class);
-        // Same defensive default — wiring reads .persistedMemoryIds().size().
-        when(promotionService.promote(any(), any()))
-                .thenReturn(de.mhus.vance.brain.prak.PromotionResult.empty());
-        runService = mock(de.mhus.vance.shared.prak.audit.PrakRunService.class);
+        runner = mock(PrakSideChannelRunner.class);
 
         service = new MemoryCompactionService(
                 chatMessageService, memoryService, aiModelService,
                 sessionService, settingService, properties,
-                llmCallTracker, progressEmitter, metricService,
-                analyzer, cheapPath, sanitizer, evaluationProperties,
-                strengthDeriver, promotionService, runService);
+                llmCallTracker, progressEmitter, metricService, runner);
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);
@@ -127,7 +91,6 @@ class MemoryCompactionSideChannelTest {
                 .thenReturn(aiChat);
         when(sessionService.findBySessionId(anyString())).thenReturn(Optional.empty());
 
-        // Persist always returns the saved doc with a generated id.
         when(memoryService.save(any())).thenAnswer(inv -> {
             MemoryDocument arg = inv.getArgument(0);
             arg.setId("mem-id");
@@ -137,10 +100,7 @@ class MemoryCompactionSideChannelTest {
     }
 
     @Test
-    void sideChannel_disabledByDefault_doesNotCallAnalyzer() {
-        // Sanity: default is false.
-        assertThat(evaluationProperties.isSideChannelEnabled()).isFalse();
-
+    void compactRange_invokesRunnerWithRangeAndLabel() {
         primeRange(longUserSpan());
         primeSummarizer("Summary text");
 
@@ -149,186 +109,33 @@ class MemoryCompactionSideChannelTest {
                 Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
 
         assertThat(result.compacted()).isTrue();
-        verify(analyzer, never()).analyze(any(), any(), any(), any(), any(), any());
-    }
 
-    @Test
-    void sideChannel_enabledAndSubstantialSpan_callsAnalyzer() {
-        evaluationProperties.setSideChannelEnabled(true);
-
-        primeRange(longUserSpan());
-        primeSummarizer("Summary text");
-        when(analyzer.analyze(any(), any(), any(), any(), any(), any()))
-                .thenReturn(EvaluationOutput.empty(
-                        new WindowSpan("m1", "m1", 1)));
-
-        CompactionResult result = service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
-
-        assertThat(result.compacted()).isTrue();
-
-        ArgumentCaptor<List<SpanMessage>> spanCap = listCaptor();
-        ArgumentCaptor<String> hintCap = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<ItemCountExpectation> exp =
-                ArgumentCaptor.forClass(ItemCountExpectation.class);
-        verify(analyzer).analyze(
-                eq("t"),
-                any(),
-                eq("p-1"),
-                spanCap.capture(),
-                hintCap.capture(),
-                exp.capture());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatMessageDocument>> spanCap =
+                ArgumentCaptor.forClass((Class<List<ChatMessageDocument>>) (Class<?>) List.class);
+        ArgumentCaptor<String> labelCap = ArgumentCaptor.forClass(String.class);
+        verify(runner).run(any(), any(), spanCap.capture(), labelCap.capture());
+        // The trigger label carries the compaction mode + topic so audit can group.
+        assertThat(labelCap.getValue()).contains("auth-setup");
         assertThat(spanCap.getValue()).hasSize(longUserSpan().size());
-        assertThat(hintCap.getValue()).contains("auth-setup");
     }
 
     @Test
-    void sideChannel_enabledButShortSpan_skipsAnalyzer() {
-        evaluationProperties.setSideChannelEnabled(true);
-
-        Instant t0 = Instant.parse("2026-05-11T14:00:00Z");
-        // Only acks → cheap-path "below-token-threshold" or "only-ack-or-narration".
-        primeRange(List.of(
-                msg("m1", ChatRole.USER, "ok", t0),
-                msg("m2", ChatRole.ASSISTANT, "ja", t0.plusSeconds(1))));
-        primeSummarizer("trivial summary");
-
-        CompactionResult result = service.compactRange(
-                process(), t0, t0.plusSeconds(60), "trivia", config);
-
-        assertThat(result.compacted()).isTrue();
-        verify(analyzer, never()).analyze(any(), any(), any(), any(), any(), any());
-    }
-
-    @Test
-    void sideChannel_analyzerThrowsButCompactionStillSucceeds() {
-        evaluationProperties.setSideChannelEnabled(true);
-
+    void compactRange_runnerExceptionDoesNotFailCompaction() {
         primeRange(longUserSpan());
         primeSummarizer("Summary text");
-        when(analyzer.analyze(any(), any(), any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("LLM provider exhausted"));
+        // Defensive — even if the runner itself throws (the runner is
+        // supposed to swallow internally, but we belt-and-suspenders),
+        // compaction must still succeed.
+        org.mockito.Mockito.doThrow(new RuntimeException("runner blew up"))
+                .when(runner).run(any(), any(), any(), any());
 
         CompactionResult result = service.compactRange(
                 process(), Instant.parse("2026-05-11T14:00:00Z"),
                 Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
 
+        // compaction itself succeeded; side-channel failure is logged.
         assertThat(result.compacted()).isTrue();
-        // analyzer was attempted, exception swallowed
-        verify(analyzer).analyze(any(), any(), any(), any(), any(), any());
-    }
-
-    @Test
-    void sideChannel_runsStrengthDeriverAfterSuccessfulAnalyse() {
-        evaluationProperties.setSideChannelEnabled(true);
-
-        primeRange(longUserSpan());
-        primeSummarizer("Summary text");
-        when(analyzer.analyze(any(), any(), any(), any(), any(), any()))
-                .thenReturn(EvaluationOutput.empty(
-                        new WindowSpan("m1", "m2", 2)));
-
-        CompactionResult result = service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
-
-        assertThat(result.compacted()).isTrue();
-        verify(strengthDeriver).derive(any(), any());
-        verify(strengthDeriver).persist(any(), any());
-    }
-
-    @Test
-    void sideChannel_runsPromotionServiceAfterStrengthDeriver() {
-        evaluationProperties.setSideChannelEnabled(true);
-
-        primeRange(longUserSpan());
-        primeSummarizer("Summary text");
-        when(analyzer.analyze(any(), any(), any(), any(), any(), any()))
-                .thenReturn(EvaluationOutput.empty(
-                        new WindowSpan("m1", "m2", 2)));
-
-        CompactionResult result = service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
-
-        assertThat(result.compacted()).isTrue();
-
-        org.mockito.ArgumentCaptor<de.mhus.vance.brain.prak.PromotionContext> ctxCap =
-                org.mockito.ArgumentCaptor.forClass(
-                        de.mhus.vance.brain.prak.PromotionContext.class);
-        verify(promotionService).promote(any(), ctxCap.capture());
-        // PromotionContext carries the process scope + a correlation runId.
-        var promoteCtx = ctxCap.getValue();
-        assertThat(promoteCtx.tenantId()).isEqualTo("t");
-        assertThat(promoteCtx.processId()).isEqualTo("p-1");
-        assertThat(promoteCtx.runId()).startsWith("compaction-p-1-");
-    }
-
-    @Test
-    void sideChannel_disabled_doesNotCallPromotionService() {
-        primeRange(longUserSpan());
-        primeSummarizer("Summary text");
-
-        service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
-
-        verify(promotionService, never()).promote(any(), any());
-    }
-
-    @Test
-    void sideChannel_writesAuditRunRecordOnSuccess() {
-        evaluationProperties.setSideChannelEnabled(true);
-
-        primeRange(longUserSpan());
-        primeSummarizer("Summary text");
-        when(analyzer.analyze(any(), any(), any(), any(), any(), any()))
-                .thenReturn(EvaluationOutput.empty(
-                        new WindowSpan("m1", "m2", 2)));
-
-        service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
-
-        org.mockito.ArgumentCaptor<de.mhus.vance.shared.prak.audit.PrakRunRecord> cap =
-                org.mockito.ArgumentCaptor.forClass(
-                        de.mhus.vance.shared.prak.audit.PrakRunRecord.class);
-        verify(runService).save(cap.capture());
-        var record = cap.getValue();
-        assertThat(record.getTenantId()).isEqualTo("t");
-        assertThat(record.getProcessId()).isEqualTo("p-1");
-        assertThat(record.getRunId()).startsWith("compaction-p-1-");
-        assertThat(record.getTrigger()).contains("auth-setup");
-        assertThat(record.getWindowFromTurnId()).isEqualTo("m1");
-        assertThat(record.getWindowToTurnId()).isEqualTo("m2");
-        assertThat(record.getDurationMs()).isGreaterThanOrEqualTo(0L);
-    }
-
-    @Test
-    void sideChannel_disabled_doesNotWriteAuditRecord() {
-        primeRange(longUserSpan());
-        primeSummarizer("Summary text");
-
-        service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
-
-        verify(runService, never()).save(any());
-    }
-
-    @Test
-    void sideChannel_disabled_doesNotCallDeriver() {
-        // sanity: disabled side-channel must not invoke the deriver either
-        primeRange(longUserSpan());
-        primeSummarizer("Summary text");
-
-        service.compactRange(
-                process(), Instant.parse("2026-05-11T14:00:00Z"),
-                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
-
-        verify(strengthDeriver, never()).derive(any(), any());
-        verify(strengthDeriver, never()).persist(any(), any());
     }
 
     // ─── helpers ───
@@ -353,17 +160,8 @@ class MemoryCompactionSideChannelTest {
     private List<ChatMessageDocument> longUserSpan() {
         Instant t = Instant.parse("2026-05-11T14:00:00Z");
         return List.of(
-                msg("m1", ChatRole.USER,
-                        "Ich habe gerade festgestellt dass unsere Codebase fast "
-                                + "überall JSpecify nutzt aber an drei Stellen im "
-                                + "Workflow-Code noch javax.annotation hängengeblieben "
-                                + "ist und das sollten wir aufräumen damit das "
-                                + "konsistent bleibt für alle die mal reinschauen",
-                        t),
-                msg("m2", ChatRole.ASSISTANT,
-                        "Verstanden ich räume das mit dir zusammen auf "
-                                + "und prüfe dann nochmal ob nichts vergessen wurde.",
-                        t.plusSeconds(30)));
+                msg("m1", ChatRole.USER, "Substantial user message about something important", t),
+                msg("m2", ChatRole.ASSISTANT, "Assistant reply", t.plusSeconds(30)));
     }
 
     private void primeRange(List<ChatMessageDocument> range) {
@@ -376,10 +174,5 @@ class MemoryCompactionSideChannelTest {
                 .aiMessage(AiMessage.from(text))
                 .build();
         when(chatModel.chat(any(ChatRequest.class))).thenReturn(response);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static ArgumentCaptor<List<SpanMessage>> listCaptor() {
-        return ArgumentCaptor.forClass((Class<List<SpanMessage>>) (Class<?>) List.class);
     }
 }

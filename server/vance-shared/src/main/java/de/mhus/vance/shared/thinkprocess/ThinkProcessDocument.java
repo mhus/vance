@@ -362,6 +362,20 @@ public class ThinkProcessDocument {
      */
     private boolean haltRequested = false;
 
+    /**
+     * Timestamp of the last successful Prak side-channel pass over this
+     * process. {@code null} means Prak has never seen any message yet —
+     * the periodic trigger then considers the entire active history as
+     * "unrated". Updated by
+     * {@code de.mhus.vance.brain.prak.PrakPeriodicTrigger} after each
+     * successful run.
+     *
+     * <p>Not part of the audit-trail of the process — this is just a
+     * cursor for the periodic trigger. The audit chain lives in
+     * {@code prak_runs}.
+     */
+    private @Nullable Instant lastPrakAt;
+
     @Version
     private @Nullable Long version;
 

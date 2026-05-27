@@ -107,6 +107,7 @@ public class MemoryCompactionService {
     private final PrakSanitizer prakSanitizer;
     private final PrakProperties prakProperties;
     private final de.mhus.vance.brain.prak.SpanStrengthDeriver spanStrengthDeriver;
+    private final de.mhus.vance.brain.prak.PrakPromotionService prakPromotionService;
 
     /**
      * Compacts older history of {@code process}. Resolves the
@@ -389,13 +390,22 @@ public class MemoryCompactionService {
 
     /**
      * Side-channel pass: hands the same span the summarizer just
-     * compacted to the {@link PrakService}, runs the result through
-     * the {@link PrakSanitizer}, derives + persists per-message
-     * {@code STRENGTH:*} tags via the {@link
-     * de.mhus.vance.brain.prak.SpanStrengthDeriver}, and records
-     * telemetry. Item-promotion (Mongo writes for {@code promote} and
-     * inbox-offers for {@code instruction}s) is the next consumer to
-     * land — until then the items only feed strength tagging.
+     * compacted to the {@link PrakService}, then routes the sanitised
+     * output through three deterministic consumers:
+     *
+     * <ol>
+     *   <li>{@link PrakSanitizer} — drops items with bad evidence /
+     *       low confidence / duplicates; downgrades item-floods to
+     *       inbox-offers.</li>
+     *   <li>{@link de.mhus.vance.brain.prak.SpanStrengthDeriver} —
+     *       writes {@code STRENGTH:*} tags onto the source chat
+     *       messages so the context-assembler can drop weak rows
+     *       later.</li>
+     *   <li>{@link de.mhus.vance.brain.prak.PrakPromotionService} —
+     *       persists {@code promote} items as {@code INSIGHT}
+     *       memories; surfaces {@code inboxOffer} items as telemetry
+     *       (Inbox-subsystem wiring lands in a later phase).</li>
+     * </ol>
      *
      * <p>Bails early when {@link PrakProperties#isSideChannelEnabled()}
      * is false (the current default) or when the cheap-path pre-filter
@@ -475,6 +485,30 @@ public class MemoryCompactionService {
             if (strengthModified > 0) {
                 log.debug("Side-channel process='{}' strength-tags-written: {} (overrides={})",
                         process.getId(), strengthModified, derivation.overrides().size());
+            }
+
+            // Final consumer: persist promotable items as INSIGHT
+            // memories, surface instructions through the inbox (deferred
+            // until the inbox-subsystem wires in). runId derived from the
+            // compaction run timestamp + process id for audit correlation.
+            de.mhus.vance.brain.prak.PromotionContext promoteCtx =
+                    new de.mhus.vance.brain.prak.PromotionContext(
+                            process.getTenantId(),
+                            projectId == null ? "" : projectId,
+                            process.getSessionId(),
+                            process.getId(),
+                            "compaction-" + process.getId() + "-" + java.time.Instant.now());
+            de.mhus.vance.brain.prak.PromotionResult promotionResult =
+                    prakPromotionService.promote(sanitized.output(), promoteCtx);
+            metricService.summary("vance.prak.promotion.persisted")
+                    .record(promotionResult.persistedMemoryIds().size());
+            if (promotionResult.promoted() > 0 || promotionResult.inboxOffered() > 0) {
+                log.info("Side-channel process='{}' promoted={} inboxOffered={} skipped={} affectsDeferred={}",
+                        process.getId(),
+                        promotionResult.promoted(),
+                        promotionResult.inboxOffered(),
+                        promotionResult.skipped(),
+                        promotionResult.affectsDeferred());
             }
         } catch (RuntimeException e) {
             log.warn("Side-channel failed for process='{}': {}",

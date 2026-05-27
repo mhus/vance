@@ -76,6 +76,7 @@ class MemoryCompactionSideChannelTest {
     private PrakService analyzer;
     private PrakProperties evaluationProperties;
     private de.mhus.vance.brain.prak.SpanStrengthDeriver strengthDeriver;
+    private de.mhus.vance.brain.prak.PrakPromotionService promotionService;
     private MemoryCompactionService service;
 
     private AiChat aiChat;
@@ -105,13 +106,17 @@ class MemoryCompactionSideChannelTest {
         // wiring code doesn't NPE on the mock's default null return.
         when(strengthDeriver.derive(any(), any()))
                 .thenReturn(de.mhus.vance.brain.prak.StrengthDerivation.empty());
+        promotionService = mock(de.mhus.vance.brain.prak.PrakPromotionService.class);
+        // Same defensive default — wiring reads .persistedMemoryIds().size().
+        when(promotionService.promote(any(), any()))
+                .thenReturn(de.mhus.vance.brain.prak.PromotionResult.empty());
 
         service = new MemoryCompactionService(
                 chatMessageService, memoryService, aiModelService,
                 sessionService, settingService, properties,
                 llmCallTracker, progressEmitter, metricService,
                 analyzer, cheapPath, sanitizer, evaluationProperties,
-                strengthDeriver);
+                strengthDeriver, promotionService);
 
         aiChat = mock(AiChat.class);
         chatModel = mock(ChatModel.class);
@@ -229,6 +234,45 @@ class MemoryCompactionSideChannelTest {
         assertThat(result.compacted()).isTrue();
         verify(strengthDeriver).derive(any(), any());
         verify(strengthDeriver).persist(any(), any());
+    }
+
+    @Test
+    void sideChannel_runsPromotionServiceAfterStrengthDeriver() {
+        evaluationProperties.setSideChannelEnabled(true);
+
+        primeRange(longUserSpan());
+        primeSummarizer("Summary text");
+        when(analyzer.analyze(any(), any(), any(), any(), any(), any()))
+                .thenReturn(EvaluationOutput.empty(
+                        new WindowSpan("m1", "m2", 2)));
+
+        CompactionResult result = service.compactRange(
+                process(), Instant.parse("2026-05-11T14:00:00Z"),
+                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
+
+        assertThat(result.compacted()).isTrue();
+
+        org.mockito.ArgumentCaptor<de.mhus.vance.brain.prak.PromotionContext> ctxCap =
+                org.mockito.ArgumentCaptor.forClass(
+                        de.mhus.vance.brain.prak.PromotionContext.class);
+        verify(promotionService).promote(any(), ctxCap.capture());
+        // PromotionContext carries the process scope + a correlation runId.
+        var promoteCtx = ctxCap.getValue();
+        assertThat(promoteCtx.tenantId()).isEqualTo("t");
+        assertThat(promoteCtx.processId()).isEqualTo("p-1");
+        assertThat(promoteCtx.runId()).startsWith("compaction-p-1-");
+    }
+
+    @Test
+    void sideChannel_disabled_doesNotCallPromotionService() {
+        primeRange(longUserSpan());
+        primeSummarizer("Summary text");
+
+        service.compactRange(
+                process(), Instant.parse("2026-05-11T14:00:00Z"),
+                Instant.parse("2026-05-11T15:00:00Z"), "auth-setup", config);
+
+        verify(promotionService, never()).promote(any(), any());
     }
 
     @Test

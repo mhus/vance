@@ -30,7 +30,8 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 // WorkspaceService picked up by component scan can be wired. AccessProperties
 // is Anus's own; AnusExceptionResolver and AuthAspect rely on it being a bean.
 @EnableConfigurationProperties({WorkspaceProperties.class, AccessProperties.class,
-        AnusBrainProperties.class, DevModeProperties.class})
+        AnusBrainProperties.class, DevModeProperties.class,
+        de.mhus.vance.shared.audit.AuditServiceProperties.class})
 @EnableAspectJAutoProxy
 public class VanceAnusApplication {
 

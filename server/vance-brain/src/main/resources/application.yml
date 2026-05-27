@@ -101,6 +101,20 @@ vance:
       # near-identical archives. Per-project override via the cascade
       # setting `documents.archive.minVersionIntervalSeconds`.
       minVersionIntervalSeconds: 600   # 10 min
+  audit:
+    # Delivery mode after @PostConstruct. Before @PostConstruct the
+    # service is always SYNC so events emitted during Spring wiring
+    # are not lost. `async` decouples producers from consumer cost via
+    # a bounded queue; `sync` dispatches inline on the caller thread.
+    mode: async
+    queueSize: 10000        # bounded — drops + counter when full
+    drainTimeoutMs: 5000    # @PreDestroy waits this long for the worker
+    consumers:
+      log:
+        # Activates LogAuditConsumer (every event as SLF4J INFO).
+        # Opt-in; keep off in production until the action vocabulary
+        # is stable, otherwise log volume balloons.
+        enabled: false
   prak:
     # Side-channel an: Compaction → Prak-Analyzer → Sanitizer → Strength → Promotion → Audit
     sideChannelEnabled: true

@@ -32,6 +32,17 @@ vance:
       # which prints decrypted PASSWORD plaintext to stdout. Refuses to
       # start when a 'prod' / 'production' Spring profile is also active.
       enabled: ${VANCE_ANUS_DEV_MODE:false}
+  audit:
+    # Delivery mode after @PostConstruct (SYNC before that). Anus runs
+    # short interactive shells, so SYNC is the safer default: no worker
+    # thread, no on-exit drain wait, every command's audit trail is
+    # flushed before the next prompt.
+    mode: sync
+    queueSize: 10000
+    drainTimeoutMs: 5000
+    consumers:
+      log:
+        enabled: false
 
 logging:
   level:

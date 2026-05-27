@@ -36,6 +36,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableMongoAuditing
 @EnableConfigurationProperties({
         WorkspaceProperties.class,
+        de.mhus.vance.shared.audit.AuditServiceProperties.class,
         ExecProperties.class,
         StreamingProperties.class,
         BootstrapProperties.class,

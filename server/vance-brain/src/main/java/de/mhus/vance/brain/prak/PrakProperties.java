@@ -111,16 +111,33 @@ public class PrakProperties {
      * {@code 0} disables the count-based trigger; the token-budget
      * trigger ({@link #periodicTriggerTokenBudget}) still applies.
      */
-    private int periodicTriggerTurns = 5;
+    private int periodicTriggerTurns = 20;
 
     /**
-     * Periodic Prak trigger: fire when the unrated messages since the
-     * last successful pass sum to at least this many approximate
-     * tokens, even if {@link #periodicTriggerTurns} is not yet reached.
-     * Catches single huge turns (code pastes, long tool results).
-     * {@code 0} disables the token-budget trigger.
+     * Periodic Prak trigger: absolute floor on the token-budget trigger.
+     * Used directly when {@link #periodicTriggerTokenFraction} is zero
+     * (no model-aware scaling) <em>or</em> as the minimum when the
+     * fraction-of-context-window yields a smaller number. Catches single
+     * huge turns (code pastes, long tool results). {@code 0} disables.
      */
-    private int periodicTriggerTokenBudget = 5000;
+    private int periodicTriggerTokenBudget = 20000;
+
+    /**
+     * Periodic Prak trigger: fraction of the outer engine's
+     * <em>context window</em> (from {@code ai-models.yaml}) at which
+     * the token-budget trigger fires. Default {@code 0.05} → on
+     * Sonnet 200k the budget is 10k tokens; on a 16k model it would
+     * be 800 tokens but the absolute floor
+     * {@link #periodicTriggerTokenBudget} dominates there.
+     *
+     * <p>Effective budget = {@code max(periodicTriggerTokenBudget,
+     * contextWindow * periodicTriggerTokenFraction)} when the model
+     * is known, otherwise just {@link #periodicTriggerTokenBudget}.
+     *
+     * <p>{@code 0.0} disables the fraction-based scaling — the
+     * trigger then uses the absolute budget regardless of model.
+     */
+    private double periodicTriggerTokenFraction = 0.05;
 
     /**
      * Compaction trigger thresholds — fractions of the model's

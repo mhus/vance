@@ -1,8 +1,11 @@
 package de.mhus.vance.brain.prak;
 
+import de.mhus.vance.brain.ai.ModelCatalog;
+import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
 import de.mhus.vance.shared.metric.MetricService;
+import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
 import java.time.Instant;
@@ -41,6 +44,11 @@ public class PrakPeriodicTrigger {
     private final ThinkProcessService thinkProcessService;
     private final PrakSideChannelRunner runner;
     private final MetricService metricService;
+    private final SettingService settingService;
+    private final ModelCatalog modelCatalog;
+
+    private static final String SETTING_AI_PROVIDER = "ai.default.provider";
+    private static final String SETTING_AI_MODEL = "ai.default.model";
 
     /**
      * Engine hook — call after every successful turn. Idempotent;
@@ -57,8 +65,8 @@ public class PrakPeriodicTrigger {
         if (!props.isSideChannelEnabled()) return;
 
         int turnsThreshold = props.getPeriodicTriggerTurns();
-        int tokenThreshold = props.getPeriodicTriggerTokenBudget();
-        if (turnsThreshold <= 0 && tokenThreshold <= 0) {
+        int absoluteTokenBudget = props.getPeriodicTriggerTokenBudget();
+        if (turnsThreshold <= 0 && absoluteTokenBudget <= 0) {
             // Both knobs disabled → periodic trigger is off; only
             // compaction-side-channel will fire Prak.
             return;
@@ -69,14 +77,17 @@ public class PrakPeriodicTrigger {
             if (unrated.isEmpty()) return;
 
             int approxTokens = countTokens(unrated);
+            int effectiveTokenBudget = computeEffectiveTokenBudget(
+                    process, projectId, absoluteTokenBudget);
             boolean countCrosses = turnsThreshold > 0 && unrated.size() >= turnsThreshold;
-            boolean tokensCross = tokenThreshold > 0 && approxTokens >= tokenThreshold;
+            boolean tokensCross = effectiveTokenBudget > 0 && approxTokens >= effectiveTokenBudget;
             if (!countCrosses && !tokensCross) {
                 return;
             }
 
-            log.debug("Periodic Prak fires for process='{}' unrated={} tokens~{} (countCrosses={}, tokensCross={})",
-                    process.getId(), unrated.size(), approxTokens, countCrosses, tokensCross);
+            log.debug("Periodic Prak fires for process='{}' unrated={} tokens~{} budget={} (countCrosses={}, tokensCross={})",
+                    process.getId(), unrated.size(), approxTokens,
+                    effectiveTokenBudget, countCrosses, tokensCross);
             metricService.counter("vance.prak.periodicTrigger",
                     "fire", "true").increment();
 
@@ -92,6 +103,38 @@ public class PrakPeriodicTrigger {
                     process.getId(), e.toString());
             metricService.counter("vance.prak.periodicTrigger",
                     "fire", "error").increment();
+        }
+    }
+
+    /**
+     * Effective token budget = max(absoluteBudget, contextWindow * fraction).
+     * Falls back to absoluteBudget when the model can't be resolved or
+     * the fraction is disabled (0). Looks up provider+model via the
+     * standard setting cascade, same path engines use to resolve the
+     * AI config.
+     */
+    int computeEffectiveTokenBudget(
+            ThinkProcessDocument process, @Nullable String projectId, int absoluteBudget) {
+        double fraction = props.getPeriodicTriggerTokenFraction();
+        if (fraction <= 0.0) return Math.max(0, absoluteBudget);
+        try {
+            String provider = settingService.getStringValueCascade(
+                    process.getTenantId(), projectId, process.getId(), SETTING_AI_PROVIDER);
+            String model = settingService.getStringValueCascade(
+                    process.getTenantId(), projectId, process.getId(), SETTING_AI_MODEL);
+            if (StringUtils.isBlank(provider) || StringUtils.isBlank(model)) {
+                return Math.max(0, absoluteBudget);
+            }
+            ModelInfo info = modelCatalog.lookupOrDefault(
+                    process.getTenantId(),
+                    projectId == null ? "" : projectId,
+                    provider, model);
+            int contextWindow = info.contextWindowTokens();
+            if (contextWindow <= 0) return Math.max(0, absoluteBudget);
+            int fractionBudget = (int) Math.round(contextWindow * fraction);
+            return Math.max(absoluteBudget, fractionBudget);
+        } catch (RuntimeException e) {
+            return Math.max(0, absoluteBudget);
         }
     }
 

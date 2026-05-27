@@ -77,6 +77,10 @@ public class PrakSideChannelRunner {
             if (profile.isSkippable()) {
                 log.debug("Side-channel skipped for process='{}' trigger='{}' reason='{}'",
                         process.getId(), triggerLabel, profile.skipReason());
+                // Tag set must be consistent across all increments of the
+                // same meter — Prometheus rejects mismatched key sets.
+                // Always emit (outcome, reason); reason="n/a" for the
+                // non-skip paths.
                 metricService.counter("vance.prak.sideChannel",
                         "outcome", "skipped",
                         "reason", profile.skipReason() == null
@@ -116,7 +120,8 @@ public class PrakSideChannelRunner {
                     String.format("%.2f", sanitized.metrics().evidenceCoverage()));
 
             metricService.counter("vance.prak.sideChannel",
-                    "outcome", "success").increment();
+                    "outcome", "success",
+                    "reason", "n/a").increment();
             metricService.summary("vance.prak.items.final")
                     .record(sanitized.metrics().finalItemCount());
 
@@ -161,7 +166,8 @@ public class PrakSideChannelRunner {
             log.warn("Side-channel failed for process='{}' trigger='{}': {}",
                     process.getId(), triggerLabel, e.toString());
             metricService.counter("vance.prak.sideChannel",
-                    "outcome", "error").increment();
+                    "outcome", "error",
+                    "reason", "n/a").increment();
             return false;
         }
     }

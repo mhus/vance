@@ -28,9 +28,11 @@ import de.mhus.vance.brain.thinkengine.SystemPrompts;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
+import de.mhus.vance.brain.usermemory.UserMemoryService;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.shared.chat.ChatMessageDocument;
 import de.mhus.vance.shared.chat.ChatMessageService;
+import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -219,6 +221,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.shared.chat.ChatMessageService chatMessageService;
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
+    private final UserMemoryService userMemoryService;
 
     /**
      * Per-process flag tracking whether the in-flight turn was triggered
@@ -271,7 +274,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
             de.mhus.vance.shared.chat.ChatMessageService chatMessageService,
             de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter,
-            de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService) {
+            de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService,
+            UserMemoryService userMemoryService) {
         super(streamingProperties, llmCallTracker, objectMapper);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -290,6 +294,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.chatMessageService = chatMessageService;
         this.historyStrengthFilter = historyStrengthFilter;
         this.memoryCompactionService = memoryCompactionService;
+        this.userMemoryService = userMemoryService;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -732,6 +737,14 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             if (loopResult.isAction()) {
                 actionType = loopResult.action().type();
                 outcome = handleAction(loopResult.action(), process, ctx);
+                // Post-LEARN consolidation: small LLM pass that resolves
+                // contradictions / trims the just-updated persona-or-
+                // facts file. Same pattern as Eddie; runs only after a
+                // successful LEARN so other actions stay cheap.
+                if (ArthurActionSchema.TYPE_LEARN.equals(loopResult.action().type())) {
+                    runLearnConsolidation(loopResult.action(), aiChat,
+                            process, ctx, modelAlias);
+                }
             } else if ("max-iters".equals(loopResult.fallbackReason())
                     && loopResult.madeProgress()
                     && (process.getMode() == de.mhus.vance.api.thinkprocess.ProcessMode.EXECUTING
@@ -1129,6 +1142,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             case ArthurActionSchema.TYPE_RELAY           -> handleRelay(action, process, ctx);
             case ArthurActionSchema.TYPE_WAIT            -> handleWait(action);
             case ArthurActionSchema.TYPE_REJECT          -> handleReject(action);
+            case ArthurActionSchema.TYPE_LEARN           -> handleLearn(action, process, ctx);
             default -> {
                 // Should never happen — the base class validates against
                 // supportedActionTypes() before reaching here. Surface as
@@ -1615,6 +1629,137 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         return new ActionTurnOutcome(message, /*awaitingUserInput*/ true);
     }
 
+    /**
+     * Persists user-related context into the cross-engine per-user
+     * memory store ({@link UserMemoryService}). Mirrors
+     * {@code EddieEngine.handleLearn} — same {@code scope} (persona |
+     * fact) + {@code mode} (replace | append) semantics, same
+     * underlying storage in the user's hub project. Arthur sits in a
+     * work project, so the user project is resolved explicitly via
+     * {@link #resolveUserProjectName(ThinkEngineContext)} — never via
+     * {@code process.projectId}, which would write the memory into the
+     * wrong project.
+     */
+    private ActionTurnOutcome handleLearn(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        String scope = action.stringParam(ArthurActionSchema.PARAM_SCOPE);
+        String content = action.stringParam(ArthurActionSchema.PARAM_CONTENT);
+        if (scope == null || scope.isBlank()
+                || content == null || content.isBlank()) {
+            log.warn("Arthur id='{}' LEARN missing scope/content — reason='{}'",
+                    process.getId(), action.reason());
+            return new ActionTurnOutcome(
+                    "Konnte das nicht speichern — scope oder content fehlte. ("
+                            + action.reason() + ")",
+                    true);
+        }
+        if (!ArthurActionSchema.LEARN_SCOPES.contains(scope)) {
+            log.warn("Arthur id='{}' LEARN unknown scope='{}' — reason='{}'",
+                    process.getId(), scope, action.reason());
+            return new ActionTurnOutcome(
+                    "Konnte das nicht speichern — unbekannter scope '" + scope
+                            + "'. Erlaubt: 'persona', 'fact'.",
+                    true);
+        }
+        String userProject = resolveUserProjectName(ctx);
+        if (userProject == null) {
+            log.warn("Arthur id='{}' LEARN cannot resolve user project — session/userId missing",
+                    process.getId());
+            return new ActionTurnOutcome(
+                    "Konnte das nicht speichern — kein User-Projekt verfügbar.",
+                    true);
+        }
+        String tenantId = process.getTenantId();
+        String authorTag = "arthur:" + process.getId();
+
+        try {
+            switch (scope) {
+                case ArthurActionSchema.LEARN_SCOPE_PERSONA -> {
+                    String mode = action.stringParamOr(
+                            ArthurActionSchema.PARAM_MODE,
+                            ArthurActionSchema.LEARN_MODE_REPLACE);
+                    int chars = userMemoryService.learnPersona(
+                            tenantId, userProject, content, mode, authorTag);
+                    log.info("Arthur id='{}' LEARN persona mode='{}' ({} chars total) reason='{}'",
+                            process.getId(), mode, chars,
+                            summariseReason(action.reason()));
+                }
+                case ArthurActionSchema.LEARN_SCOPE_FACT -> {
+                    int chars = userMemoryService.learnFact(
+                            tenantId, userProject, content, authorTag);
+                    log.info("Arthur id='{}' LEARN fact (journal now {} chars) reason='{}'",
+                            process.getId(), chars,
+                            summariseReason(action.reason()));
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("Arthur id='{}' LEARN persistence failed: {}",
+                    process.getId(), e.toString());
+            return new ActionTurnOutcome(
+                    "Konnte das gerade nicht merken — " + e.getMessage(),
+                    true);
+        }
+
+        // Optional spoken confirmation. Silent by default — the user
+        // sees the effect next turn when the persona/facts block
+        // reflects the new content.
+        String message = action.stringParam(ArthurActionSchema.PARAM_MESSAGE);
+        return new ActionTurnOutcome(
+                message == null || message.isBlank() ? null : message,
+                /*awaitingUserInput*/ message != null && !message.isBlank());
+    }
+
+    /**
+     * Post-LEARN consolidation. Delegates to {@link UserMemoryService}
+     * which runs a small LLM pass that resolves contradictions and
+     * trims the just-updated persona / facts file. The callback uses
+     * Arthur's lane LLM (same {@link AiChat}, same model alias) so
+     * the user sees consistent streaming behaviour with the turn that
+     * triggered LEARN. Failures are non-fatal — logged inside the
+     * service; raw content stays on disk.
+     */
+    private void runLearnConsolidation(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            AiChat aiChat,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx,
+            String modelAlias) {
+        String scope = action.stringParam(ArthurActionSchema.PARAM_SCOPE);
+        if (scope == null || scope.isBlank()) return;
+        String userProject = resolveUserProjectName(ctx);
+        if (userProject == null) return;
+        String authorTag = "arthur:" + process.getId();
+        userMemoryService.runConsolidation(
+                scope, process.getTenantId(), userProject, authorTag,
+                (systemPrompt, currentText) -> {
+                    List<ChatMessage> messages = List.of(
+                            SystemMessage.from(systemPrompt),
+                            UserMessage.from(currentText));
+                    dev.langchain4j.model.chat.request.ChatRequest req =
+                            dev.langchain4j.model.chat.request.ChatRequest.builder()
+                                    .messages(messages)
+                                    .build();
+                    AiMessage reply = streamOneIteration(
+                            aiChat, req, ctx, process, modelAlias);
+                    return reply.text();
+                });
+    }
+
+    /**
+     * Resolves the user's hub project name ({@code _user_<login>})
+     * from {@link ThinkEngineContext#userId()}. Arthur runs in a work
+     * project, so the user-memory store lives elsewhere — never read
+     * or written via {@code process.projectId}. Returns {@code null}
+     * when the session userId is missing.
+     */
+    private @Nullable String resolveUserProjectName(ThinkEngineContext ctx) {
+        String userId = ctx.userId();
+        if (userId == null || userId.isBlank()) return null;
+        return HomeBootstrapService.hubProjectName(userId);
+    }
+
     private static String summariseReason(String reason) {
         if (reason == null) return "";
         String oneLine = reason.replace("\n", " ").replaceAll("\\s+", " ").trim();
@@ -1690,6 +1835,25 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
                 process, latestUserInputText(inbox));
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             messages.add(VanceSystemMessage.dynamic(memoryBlock));
+        }
+        // Per-user memory — persona summary + facts journal from the
+        // user's hub project (_user_<login>), shared with Eddie via
+        // UserMemoryService. Each rides its own dynamic block so a
+        // LEARN that mutates one doesn't bust the cache marker for the
+        // other. Arthur sits in a work project, so we resolve the user
+        // project explicitly — never via process.projectId.
+        String userProject = resolveUserProjectName(ctx);
+        if (userProject != null) {
+            String personaBlock = userMemoryService.composePersonaBlock(
+                    process.getTenantId(), userProject);
+            if (personaBlock != null && !personaBlock.isBlank()) {
+                messages.add(VanceSystemMessage.dynamic(personaBlock));
+            }
+            String factsBlock = userMemoryService.composeFactsBlock(
+                    process.getTenantId(), userProject);
+            if (factsBlock != null && !factsBlock.isBlank()) {
+                messages.add(VanceSystemMessage.dynamic(factsBlock));
+            }
         }
         // Plan-Mode TodoList block — surfaces the live task list so the
         // LLM in EXECUTING / PLANNING knows which step is current

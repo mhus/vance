@@ -25,6 +25,8 @@ The vocabulary in this mode focuses on doing the work:
 - `ANSWER` — talk to the user (status, finish, clarification)
 - `ASK_USER` — clarification when truly blocked
 - `WAIT` — async work in flight, nothing to add right now
+- `LEARN` — persist a persona-trait or user-fact (side-effect on
+  user memory, not on the plan — stays allowed everywhere)
 - `START_PLAN` — **only** for genuine plan-architecture changes
   (see "Plan-drift" below), not for normal re-thinking
 

@@ -11,6 +11,8 @@ The vocabulary is restricted in this mode:
 
 - `PROPOSE_PLAN` — present plan + TodoList for approval
 - `ANSWER` — clarifying question to the user (mid-exploration)
+- `LEARN` — persist a persona-trait or user-fact (side-effect
+  on user memory, not on the project — stays allowed everywhere)
 - `START_PLAN` — recursive sub-exploration (rare)
 
 `DELEGATE`, `RELAY`, `WAIT`, `REJECT`, `START_EXECUTION`,

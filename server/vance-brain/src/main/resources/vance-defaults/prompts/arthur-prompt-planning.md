@@ -9,7 +9,8 @@ interpret their answer as one of:
 
 You are still read-only here: write/exec tools and delegation are
 removed. Available actions: `START_EXECUTION`, `PROPOSE_PLAN`
-(edited plan), `START_PLAN` (start over), `ANSWER` (clarification).
+(edited plan), `START_PLAN` (start over), `ANSWER` (clarification),
+`LEARN` (persist persona/fact — stays available across all modes).
 
 ## Recognising the user's intent
 

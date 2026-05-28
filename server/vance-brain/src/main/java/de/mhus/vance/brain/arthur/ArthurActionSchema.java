@@ -77,15 +77,33 @@ public final class ArthurActionSchema {
     public static final String TYPE_WAIT       = "WAIT";
     public static final String TYPE_REJECT     = "REJECT";
 
+    /**
+     * Persists something about the user into the cross-engine per-user
+     * memory store. Mirrors Eddie's {@code LEARN} — same {@code scope}
+     * (persona|fact) + {@code mode} (replace|append) semantics, same
+     * underlying {@code UserMemoryService}. Allowed in every mode so
+     * the model can capture a user fact whenever it surfaces, without
+     * waiting for a mode transition.
+     */
+    public static final String TYPE_LEARN      = "LEARN";
+
     // ── Plan-Mode action types ───────────────────────────────────
     public static final String TYPE_START_PLAN      = "START_PLAN";
     public static final String TYPE_PROPOSE_PLAN    = "PROPOSE_PLAN";
     public static final String TYPE_START_EXECUTION = "START_EXECUTION";
     public static final String TYPE_TODO_UPDATE     = "TODO_UPDATE";
 
+    // ── LEARN scope / mode (mirror EddieActionSchema) ────────────
+    public static final String LEARN_SCOPE_PERSONA = "persona";
+    public static final String LEARN_SCOPE_FACT    = "fact";
+    public static final Set<String> LEARN_SCOPES   = Set.of(
+            LEARN_SCOPE_PERSONA, LEARN_SCOPE_FACT);
+    public static final String LEARN_MODE_APPEND   = "append";
+    public static final String LEARN_MODE_REPLACE  = "replace";
+
     public static final Set<String> SUPPORTED_TYPES = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT,
+            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN,
             TYPE_START_PLAN, TYPE_PROPOSE_PLAN, TYPE_START_EXECUTION,
             TYPE_TODO_UPDATE);
 
@@ -94,26 +112,28 @@ public final class ArthurActionSchema {
      * minus the Plan-Mode-internal transitions ({@code PROPOSE_PLAN},
      * {@code START_EXECUTION}). {@code TODO_UPDATE} is technically
      * an EXECUTING-only concept but allowed in NORMAL too as a no-op
-     * tolerance.
+     * tolerance. {@code LEARN} is allowed everywhere so user-fact
+     * capture isn't gated by mode.
      */
     public static final Set<String> TYPES_FOR_NORMAL = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT, TYPE_START_PLAN);
+            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_START_PLAN);
 
     /**
      * Action types allowed in {@code EXPLORING} mode — read-only
      * exploration. Engine actions and write-style transitions are
-     * blocked.
+     * blocked. {@code LEARN} stays available — it's a side-effect on
+     * user memory, not on the project workspace.
      */
     public static final Set<String> TYPES_FOR_EXPLORING = Set.of(
-            TYPE_ANSWER, TYPE_PROPOSE_PLAN, TYPE_START_PLAN);
+            TYPE_ANSWER, TYPE_LEARN, TYPE_PROPOSE_PLAN, TYPE_START_PLAN);
 
     /**
      * Action types allowed in {@code PLANNING} mode — interpreting
      * the user's reply to the proposed plan.
      */
     public static final Set<String> TYPES_FOR_PLANNING = Set.of(
-            TYPE_ANSWER, TYPE_PROPOSE_PLAN, TYPE_START_EXECUTION,
+            TYPE_ANSWER, TYPE_LEARN, TYPE_PROPOSE_PLAN, TYPE_START_EXECUTION,
             TYPE_START_PLAN);
 
     /**
@@ -122,7 +142,7 @@ public final class ArthurActionSchema {
      */
     public static final Set<String> TYPES_FOR_EXECUTING = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT, TYPE_START_PLAN, TYPE_TODO_UPDATE);
+            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_START_PLAN, TYPE_TODO_UPDATE);
 
     public static Set<String> typesForMode(
             de.mhus.vance.api.thinkprocess.ProcessMode mode) {
@@ -140,6 +160,14 @@ public final class ArthurActionSchema {
     public static final String PARAM_PROMPT  = "prompt";
     public static final String PARAM_SOURCE  = "source";
     public static final String PARAM_PREFIX  = "prefix";
+
+    // LEARN params — mirror EddieActionSchema for symmetry.
+    /** LEARN scope discriminator: {@code persona} or {@code fact}. */
+    public static final String PARAM_SCOPE   = "scope";
+    /** LEARN persona-update mode: {@code append} or {@code replace}. */
+    public static final String PARAM_MODE    = "mode";
+    /** LEARN body — persona-update text or fact-journal entry. */
+    public static final String PARAM_CONTENT = "content";
 
     /**
      * Optional structured options for {@link #TYPE_ASK_USER}. Each
@@ -172,7 +200,7 @@ public final class ArthurActionSchema {
         typeProp.put("type", "string");
         typeProp.put("enum", List.of(
                 TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE,
-                TYPE_RELAY, TYPE_WAIT, TYPE_REJECT,
+                TYPE_RELAY, TYPE_WAIT, TYPE_REJECT, TYPE_LEARN,
                 TYPE_START_PLAN, TYPE_PROPOSE_PLAN,
                 TYPE_START_EXECUTION, TYPE_TODO_UPDATE));
         typeProp.put("description",
@@ -180,8 +208,10 @@ public final class ArthurActionSchema {
                         + "ASK_USER = clarification question. DELEGATE = spawn "
                         + "a worker. RELAY = pass through a worker's last "
                         + "reply as your own answer. WAIT = async work running. "
-                        + "REJECT = out of scope. START_PLAN = enter "
-                        + "EXPLORING mode for plan-then-confirm-then-execute. "
+                        + "REJECT = out of scope. LEARN = persist something "
+                        + "about the user (persona summary or specific fact) "
+                        + "into the cross-engine per-user memory. START_PLAN = "
+                        + "enter EXPLORING mode for plan-then-confirm-then-execute. "
                         + "PROPOSE_PLAN = submit plan + TodoList for user "
                         + "approval (EXPLORING/PLANNING). "
                         + "START_EXECUTION = begin work after user accepted "
@@ -200,7 +230,33 @@ public final class ArthurActionSchema {
         messageProp.put("type", "string");
         messageProp.put("description",
                 "User-facing text. Required for ANSWER, ASK_USER, REJECT. "
-                        + "Optional for DELEGATE, WAIT. Markdown allowed.");
+                        + "Optional for DELEGATE, WAIT, LEARN. Markdown allowed.");
+
+        Map<String, Object> scopeProp = new LinkedHashMap<>();
+        scopeProp.put("type", "string");
+        scopeProp.put("enum", List.of(LEARN_SCOPE_PERSONA, LEARN_SCOPE_FACT));
+        scopeProp.put("description",
+                "LEARN scope. 'persona' = how-to-talk-to-this-user summary, "
+                        + "always loaded into the prompt (use for persona "
+                        + "traits, communication style, preferences about the "
+                        + "assistant's behavior). 'fact' = a specific user "
+                        + "fact (birthday, favorite color, dislike, hobby) "
+                        + "appended to the journal. Required for LEARN.");
+
+        Map<String, Object> modeProp = new LinkedHashMap<>();
+        modeProp.put("type", "string");
+        modeProp.put("enum", List.of(LEARN_MODE_APPEND, LEARN_MODE_REPLACE));
+        modeProp.put("description",
+                "LEARN persona update mode. 'replace' (default) overwrites "
+                        + "the entire persona summary — use when you want a "
+                        + "clean rewrite. 'append' adds to the end. Ignored "
+                        + "for scope=fact (facts are always appended).");
+
+        Map<String, Object> learnContentProp = new LinkedHashMap<>();
+        learnContentProp.put("type", "string");
+        learnContentProp.put("description",
+                "LEARN body — persona-update text or factual journal entry. "
+                        + "Required for LEARN.");
 
         Map<String, Object> presetProp = new LinkedHashMap<>();
         presetProp.put("type", "string");
@@ -344,6 +400,9 @@ public final class ArthurActionSchema {
         properties.put(PARAM_PROMPT, promptProp);
         properties.put(PARAM_SOURCE, sourceProp);
         properties.put(PARAM_PREFIX, prefixProp);
+        properties.put(PARAM_SCOPE, scopeProp);
+        properties.put(PARAM_MODE, modeProp);
+        properties.put(PARAM_CONTENT, learnContentProp);
         properties.put(PARAM_GOAL, goalProp);
         properties.put(PARAM_PLAN, planProp);
         properties.put(PARAM_SUMMARY, summaryProp);

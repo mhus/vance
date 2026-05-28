@@ -1,0 +1,138 @@
+---
+triggers: graph, Graph, network, Netzwerk, dependency, Abhängigkeit, dependencies, Abhängigkeiten, relationships, Beziehungen, m:n, many-to-many, nodes and edges, knoten und kanten, concept map, Konzeptkarte, state machine, dependency graph, knowledge graph
+summary: Render a directed or undirected network graph (nodes + first-class edges) inline in chat, auto-laid-out by Dagre.
+---
+# Inline kind — `graph`
+
+Nodes connected by first-class edges, rendered as a network with
+arrows (directed) or plain lines (undirected). Auto-laid-out via
+Dagre when the LLM doesn't supply positions — which is the normal
+case. Vue-Flow as the renderer.
+
+## Syntax — YAML body
+
+````
+```graph
+$meta:
+  kind: graph
+graph:
+  directed: true
+nodes:
+  - id: auth
+    label: Auth Service
+  - id: api
+    label: API Gateway
+  - id: db
+    label: Database
+    color: "#fbbf24"
+edges:
+  - source: auth
+    target: api
+    label: validates
+  - source: api
+    target: db
+  - source: api
+    target: auth
+    label: refresh
+```
+````
+
+Top-level keys: `$meta`, `graph` (config), `nodes`, `edges`.
+
+**Node** — `id` is the only required field. `label` is the display
+text (falls back to `id`). `color` is optional, HTML hex.
+
+**Edge** — `source` and `target` are required, both pointing to node
+`id`s. `label` and `color` are optional. Edges between unknown ids
+are dropped silently at render time but preserved on disk for
+round-trip (useful when a node is briefly absent).
+
+**Config** — `graph.directed` defaults to `true` (arrows shown).
+Set `directed: false` for an undirected graph.
+
+## When to use this
+
+User wants to *see* relationships, dependencies, or a small
+network — "show the dependencies between X, Y, Z", "wie hängen
+diese Services zusammen", "draw the relationships". The graph is
+**m:n** (a node can connect to many, and be connected to from
+many) — that's what distinguishes it from `tree`/`mindmap`.
+
+## graph vs. tree vs. mindmap vs. diagram
+
+- **graph** — m:n relationships, layout computed (Dagre LR by
+  default). This kind.
+- **tree** / **mindmap** — strictly hierarchical (one parent per
+  node). Use when the structure is a single rooted hierarchy, not
+  a network with cross-links.
+- **diagram** (Mermaid `flowchart`) — text-driven flowchart with
+  custom shapes, swimlanes, subgraphs, conditional branches. Use
+  when you need control over visual style or special node shapes
+  (decision diamonds, cylinders, etc.).
+- **chart** — numerical data. Not for networks.
+
+Rule of thumb: if your nodes form a connected DAG and the user
+wants to *see* the connections, this is the right kind. If they
+need decision diamonds or swimlanes, switch to `diagram`.
+
+## Anti-patterns
+
+- **Mermaid flowchart syntax.** `graph TD`, `graph LR`, `A --> B`,
+  `A[Label]`, `A((Label))`, `subgraph X` — that's **Mermaid**, not
+  Vance graph. Wrong:
+  ````
+  ```graph
+  graph TD
+    root --> Bio[Biology]
+    Bio --> Wolves["Direwolves"]
+  ```
+  ````
+  Right:
+  ````
+  ```graph
+  $meta:
+    kind: graph
+  nodes:
+    - id: root
+      label: Science 2025/26
+    - id: bio
+      label: Biology
+    - id: wolves
+      label: Direwolves
+  edges:
+    - source: root
+      target: bio
+    - source: bio
+      target: wolves
+  ```
+  ````
+  If you really want Mermaid flowchart syntax — with custom node
+  shapes, subgraphs, decision diamonds — use ` ```mermaid` (kind
+  `diagram`) instead. Vance graph is a *data* structure rendered by
+  vue-flow, not a Mermaid DSL.
+- **Edge as a node field.** Don't write `nodes: [{ id, edges: [...] }]`
+  — edges live at the top level. (Legacy documents with that shape
+  are auto-migrated, but new output should be canonical.)
+- **String-only nodes.** `nodes: [a, b, c]` is not valid. Every
+  node must be an object with at least `id`. The codec drops
+  non-object entries silently.
+- **Duplicate node ids.** The codec throws — the user sees an
+  empty graph and a parse error in the console.
+- **Hand-set positions.** Don't include `position: { x, y }` on
+  nodes — Dagre will auto-layout. Positions only make sense in
+  the editor where the user explicitly drags.
+- **More than ~25 nodes / 40 edges inline.** Becomes a noodle
+  diagram in the chat viewport. Save as a Document
+  (`doc_create_kind(kind="graph", …)`).
+
+## When to graduate to a Document
+
+- Graph is meant to be edited later (the Editor tab lives on the
+  Document, not on the chat fence).
+- More than ~25 nodes or the user wants to drag-layout it.
+- Multiple graphs that belong together (architecture set,
+  state-machine collection).
+
+Then `doc_create_kind(kind="graph", path="graphs/<name>", …)` and
+embed the returned `markdownLink` — see
+`manual_read('embed-documents')`.

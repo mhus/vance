@@ -417,6 +417,7 @@ export default {
       deleteItem: 'Zeile löschen',
       clickToEdit: 'Klicken zum Bearbeiten',
       emptyCell: '—',
+      emptyTable: '(leer)',
       dragHandle: 'Ziehen zum Umsortieren · Cmd/Strg-Klick für Mehrfach-Auswahl',
       selectedCountSingular: '{count} Zeile ausgewählt',
       selectedCountPlural: '{count} Zeilen ausgewählt',

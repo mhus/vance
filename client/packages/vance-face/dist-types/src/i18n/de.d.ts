@@ -382,6 +382,7 @@ declare const _default: {
             deleteItem: string;
             clickToEdit: string;
             emptyCell: string;
+            emptyTable: string;
             dragHandle: string;
             selectedCountSingular: string;
             selectedCountPlural: string;

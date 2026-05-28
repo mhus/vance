@@ -29,18 +29,43 @@ User wants a *brainstorm-style* hierarchy visualised — "mach mir eine
 Mindmap zu X", "structure this as a radial map". Triggers:
 brainstorming, outlining, "give me the big picture".
 
-## mindmap vs. tree vs. diagram
+## mindmap vs. tree vs. graph vs. diagram
 
 - **mindmap** — radial visual, anschau-fokussiert. This kind.
+  Strict tree (one parent per node).
 - **tree** — same hierarchy, outliner UX (still indented bullets,
   no radial layout). Use ` ```tree` when the user wants a structured
   outline rather than a picture.
+- **graph** (`kind: graph`) — m:n relationships, cross-links between
+  nodes (a node can have multiple parents or feed back to ancestors).
+  Use ` ```graph` when the structure is a network, not a tree.
 - **diagram** (Mermaid) — supports `mindmap` as a diagram type, but
   prefer this `kind: mindmap` for actual mindmap documents; reserve
   Mermaid for flowcharts/sequence/ER/state/gantt/etc.
 
 ## Anti-patterns
 
+- **Mermaid-mindmap syntax.** `root((X))`, `root[X]`, `root(X)`, or
+  plain indent without bullets is **Mermaid mindmap grammar** — not
+  this kind. Use bullets with `-`. Wrong:
+  ````
+  ```mindmap
+  root((Vance))
+    Brain
+    Foot
+  ```
+  ````
+  Right:
+  ````
+  ```mindmap
+  - Vance
+    - Brain
+    - Foot
+  ```
+  ````
+  The renderer auto-recovers Mermaid-style input as a best-effort
+  fallback, but the canonical form is bullets — do not rely on the
+  fallback.
 - **Tab indents.** Use spaces (two per level). Tabs are treated as
   four spaces, which collides with the expected two-per-level depth.
 - **Markdown headings inside.** `#`/`##` lines aren't recognised —

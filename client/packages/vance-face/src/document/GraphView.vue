@@ -7,8 +7,11 @@ import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
 import { VButton } from '@/components';
-import type { GraphDocument, GraphEdge, GraphNode } from './graphCodec';
-import { edgeKey, emptyNode } from './graphCodec';
+import type { GraphDocument, GraphEdge, GraphNode, GraphPosition } from './graphCodec';
+import { edgeKey, emptyNode, parseGraph } from './graphCodec';
+import type { DocumentDto } from '@vance/generated';
+import type { EmbedRef } from '@/kindRenderers/parseVanceUri';
+import type { FenceMeta } from '@/kindRenderers/parseFenceLang';
 
 /** Approximate vue-flow default node dimensions, used as the
  *  layout-input box size when we hand the graph to dagre. The
@@ -18,20 +21,79 @@ const NODE_W = 160;
 const NODE_H = 44;
 
 /**
- * Editor for `kind: graph` documents. Top-level `nodes` and `edges`
- * arrays drive vue-flow directly — `source`/`target` matches its
- * native edge shape, no adapter layer.
+ * Renderer / editor for `kind: graph` documents. Top-level `nodes`
+ * and `edges` arrays drive vue-flow directly — `source`/`target`
+ * matches its native edge shape, no adapter layer.
+ *
+ * Three modes:
+ *   - `editor`   — full editor (toolbar, drag, connect, side panel).
+ *   - `inline`   — read-only view from a fence body (YAML/JSON).
+ *   - `embedded` — read-only view from a loaded {@link DocumentDto}.
+ *
+ * In the two read-only modes, nodes without an explicit `position`
+ * get a one-shot Dagre auto-layout — LLM-emitted graphs almost never
+ * carry positions, so we render a clean DAG rather than the grid
+ * fallback you'd get otherwise.
  *
  * Spec: `specification/doc-kind-graph.md`.
  */
 defineOptions({ name: 'GraphView' });
 
-const props = defineProps<{ doc: GraphDocument }>();
+const props = withDefaults(defineProps<{
+  mode?: 'editor' | 'inline' | 'embedded';
+  doc?: GraphDocument;
+  content?: string;
+  meta?: FenceMeta;
+  document?: DocumentDto;
+  embedRef?: EmbedRef;
+}>(), {
+  mode: 'editor',
+  meta: () => ({}),
+});
+
 const emit = defineEmits<{
   (event: 'update:doc', doc: GraphDocument): void;
 }>();
 
 const { t } = useI18n();
+
+const isEditor = computed(() => props.mode === 'editor');
+
+/** Read-only GraphDocument resolved for inline / embedded modes.
+ *  Editor mode passes the prop straight through. */
+const resolvedDoc = computed<GraphDocument>(() => {
+  if (props.mode === 'editor') {
+    return props.doc ?? emptyGraphDoc();
+  }
+  if (props.mode === 'inline') {
+    const body = props.content ?? '';
+    if (!body.trim()) return emptyGraphDoc();
+    // Inline fences are YAML by convention; fall back to JSON if the
+    // body starts with `{` so curly-brace-style bodies still parse.
+    const mime = body.trimStart().startsWith('{')
+      ? 'application/json'
+      : 'application/yaml';
+    try {
+      return parseGraph(body, mime);
+    } catch (e) {
+      console.warn('GraphView: failed to parse inline content', e);
+      return emptyGraphDoc();
+    }
+  }
+  const d = props.document;
+  if (!d || !d.inlineText) return emptyGraphDoc();
+  const mime = d.mimeType ?? 'application/json';
+  try {
+    return parseGraph(d.inlineText, mime);
+  } catch (e) {
+    console.warn('GraphView: failed to parse embedded document', e);
+    return emptyGraphDoc();
+  }
+});
+
+function emptyGraphDoc(): GraphDocument {
+  return { kind: 'graph', graph: { directed: true }, nodes: [], edges: [], extra: {} };
+}
 
 // ── Local source-of-truth ──────────────────────────────────────────
 //
@@ -41,16 +103,16 @@ const { t } = useI18n();
 // written on drag-end. That avoids round-trip-flicker that would
 // happen if every dragmove re-emitted and the parent re-serialised.
 
-const localNodes = ref<GraphNode[]>(cloneNodes(props.doc.nodes));
-const localEdges = ref<GraphEdge[]>(cloneEdges(props.doc.edges));
+const localNodes = ref<GraphNode[]>(cloneNodes(resolvedDoc.value.nodes));
+const localEdges = ref<GraphEdge[]>(cloneEdges(resolvedDoc.value.edges));
 
 watch(
-  () => props.doc.nodes,
+  () => resolvedDoc.value.nodes,
   (next) => { localNodes.value = cloneNodes(next); },
   { deep: true },
 );
 watch(
-  () => props.doc.edges,
+  () => resolvedDoc.value.edges,
   (next) => { localEdges.value = cloneEdges(next); },
   { deep: true },
 );
@@ -76,12 +138,14 @@ function cloneEdges(src: GraphEdge[]): GraphEdge[] {
 }
 
 function emitDoc(): void {
+  if (!isEditor.value) return;
+  const base = props.doc ?? resolvedDoc.value;
   emit('update:doc', {
-    kind: props.doc.kind || 'graph',
-    graph: { directed: props.doc.graph?.directed ?? true },
+    kind: base.kind || 'graph',
+    graph: { directed: base.graph?.directed ?? true },
     nodes: localNodes.value,
     edges: localEdges.value,
-    extra: props.doc.extra,
+    extra: base.extra,
   });
 }
 
@@ -89,11 +153,49 @@ function emitDoc(): void {
 
 const knownIds = computed(() => new Set(localNodes.value.map((n) => n.id)));
 
+/** One-shot Dagre layout for graphs that arrive without per-node
+ *  positions (LLM-emitted inline / embedded graphs). Skipped when
+ *  any node already has a `position` — that signals a user-fixed
+ *  layout (editor mode) we must respect. */
+const layoutPositions = computed<Map<string, GraphPosition>>(() => {
+  const out = new Map<string, GraphPosition>();
+  if (localNodes.value.length === 0) return out;
+  if (localNodes.value.some((n) => n.position)) return out;
+
+  const g = new DagreGraph();
+  g.setGraph({ rankdir: 'LR', nodesep: 50, ranksep: 90, marginx: 20, marginy: 20 });
+  g.setDefaultEdgeLabel(() => ({}));
+  for (const node of localNodes.value) {
+    g.setNode(node.id, { width: NODE_W, height: NODE_H });
+  }
+  const ids = knownIds.value;
+  for (const edge of localEdges.value) {
+    if (ids.has(edge.source) && ids.has(edge.target)) {
+      g.setEdge(edge.source, edge.target);
+    }
+  }
+  dagreLayout(g);
+  for (const node of localNodes.value) {
+    const laid = g.node(node.id);
+    if (!laid) continue;
+    const x = (laid as { x?: number }).x;
+    const y = (laid as { y?: number }).y;
+    if (typeof x !== 'number' || typeof y !== 'number') continue;
+    out.set(node.id, { x: x - NODE_W / 2, y: y - NODE_H / 2 });
+  }
+  return out;
+});
+
 const vfNodes = computed<Node[]>(() => localNodes.value.map((n, idx) => ({
   id: n.id,
-  position: n.position ?? { x: 60 + (idx % 4) * 200, y: 60 + Math.floor(idx / 4) * 120 },
+  position: n.position
+    ?? layoutPositions.value.get(n.id)
+    ?? { x: 60 + (idx % 4) * 200, y: 60 + Math.floor(idx / 4) * 120 },
   data: { label: n.label && n.label.length > 0 ? n.label : n.id },
   type: 'default',
+  draggable: isEditor.value,
+  selectable: isEditor.value,
+  connectable: isEditor.value,
   style: n.color
     ? { background: n.color, color: contrastText(n.color), border: '1px solid ' + n.color }
     : undefined,
@@ -101,7 +203,7 @@ const vfNodes = computed<Node[]>(() => localNodes.value.map((n, idx) => ({
 
 const vfEdges = computed<Edge[]>(() => {
   const out: Edge[] = [];
-  const directed = props.doc.graph?.directed ?? true;
+  const directed = resolvedDoc.value.graph?.directed ?? true;
   for (const e of localEdges.value) {
     if (!knownIds.value.has(e.source) || !knownIds.value.has(e.target)) continue;
     out.push({
@@ -150,6 +252,7 @@ function onPaneClick(): void {
 // ── Change handlers ────────────────────────────────────────────────
 
 function onNodesChange(changes: NodeChange[]): void {
+  if (!isEditor.value) return;
   let dirty = false;
   for (const c of changes) {
     if (c.type === 'position' && c.position && c.dragging === false) {
@@ -171,6 +274,7 @@ function onNodesChange(changes: NodeChange[]): void {
 }
 
 function onEdgesChange(changes: EdgeChange[]): void {
+  if (!isEditor.value) return;
   let dirty = false;
   for (const c of changes) {
     if (c.type === 'remove') {
@@ -185,6 +289,7 @@ function onEdgesChange(changes: EdgeChange[]): void {
 }
 
 function onConnect(connection: Connection): void {
+  if (!isEditor.value) return;
   if (!connection.source || !connection.target) return;
   if (connection.source === connection.target) return; // no self-loops in v1
   // Dedupe: skip if an edge with the same source+target already exists.
@@ -260,12 +365,14 @@ function runAutoLayout(): void {
 }
 
 function toggleDirected(): void {
+  if (!isEditor.value) return;
+  const base = props.doc ?? resolvedDoc.value;
   emit('update:doc', {
-    kind: props.doc.kind || 'graph',
-    graph: { directed: !(props.doc.graph?.directed ?? true) },
+    kind: base.kind || 'graph',
+    graph: { directed: !(base.graph?.directed ?? true) },
     nodes: localNodes.value,
     edges: localEdges.value,
-    extra: props.doc.extra,
+    extra: base.extra,
   });
 }
 
@@ -346,6 +453,7 @@ function deleteSelectedEdge(): void {
 // Keyboard delete on the canvas wrapper. Inputs in the side panel
 // keep their native Backspace handling.
 function onKeyDown(e: KeyboardEvent): void {
+  if (!isEditor.value) return;
   const target = e.target as HTMLElement | null;
   const inForm = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
   if (inForm) return;
@@ -376,8 +484,8 @@ function contrastText(bgColor: string): string {
 </script>
 
 <template>
-  <div class="graph-view" tabindex="0" @keydown="onKeyDown">
-    <div class="toolbar">
+  <div :class="['graph-view', `graph-view--${mode}`]" tabindex="0" @keydown="onKeyDown">
+    <div v-if="isEditor" class="toolbar">
       <VButton size="sm" variant="primary" @click="addNode">
         + {{ t('documents.graphView.addNode') }}
       </VButton>
@@ -393,7 +501,7 @@ function contrastText(bgColor: string): string {
       <label class="directed-toggle">
         <input
           type="checkbox"
-          :checked="props.doc.graph?.directed ?? true"
+          :checked="props.doc?.graph?.directed ?? true"
           @change="toggleDirected"
         />
         {{ t('documents.graphView.directed') }}
@@ -401,12 +509,16 @@ function contrastText(bgColor: string): string {
       <span class="hint">{{ t('documents.graphView.hint') }}</span>
     </div>
 
-    <div class="canvas-and-panel">
+    <div :class="['canvas-and-panel', { 'canvas-and-panel--readonly': !isEditor }]">
       <div class="canvas">
         <VueFlow
           :nodes="vfNodes"
           :edges="vfEdges"
           :fit-view-on-init="true"
+          :nodes-draggable="isEditor"
+          :nodes-connectable="isEditor"
+          :elements-selectable="isEditor"
+          :edges-updatable="isEditor"
           @nodes-change="onNodesChange"
           @edges-change="onEdgesChange"
           @connect="onConnect"
@@ -416,7 +528,7 @@ function contrastText(bgColor: string): string {
         />
       </div>
 
-      <aside v-if="selectedNode" class="panel">
+      <aside v-if="isEditor && selectedNode" class="panel">
         <h4>{{ t('documents.graphView.nodeProps') }}</h4>
         <label>
           ID
@@ -460,7 +572,7 @@ function contrastText(bgColor: string): string {
         </VButton>
       </aside>
 
-      <aside v-else-if="selectedEdge" class="panel">
+      <aside v-else-if="isEditor && selectedEdge" class="panel">
         <h4>{{ t('documents.graphView.edgeProps') }}</h4>
         <p class="edge-route">
           <span class="edge-endpoint">{{ selectedEdge.source }}</span>
@@ -498,7 +610,7 @@ function contrastText(bgColor: string): string {
         </VButton>
       </aside>
 
-      <aside v-else class="panel panel--empty">
+      <aside v-else-if="isEditor" class="panel panel--empty">
         <p class="panel-empty-hint">{{ t('documents.graphView.emptySelectionHint') }}</p>
       </aside>
     </div>
@@ -536,6 +648,10 @@ function contrastText(bgColor: string): string {
   gap: 0.75rem;
   height: 65vh;
   min-height: 420px;
+}
+.canvas-and-panel--readonly {
+  height: 22rem;
+  min-height: 16rem;
 }
 .canvas {
   flex: 1 1 auto;

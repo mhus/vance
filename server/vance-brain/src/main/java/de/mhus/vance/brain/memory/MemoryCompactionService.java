@@ -424,6 +424,16 @@ public class MemoryCompactionService {
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(SUMMARIZER_SYSTEM_PROMPT));
         StringBuilder body = new StringBuilder();
+        // Anchor the summary in time. We pass the date only (no clock time,
+        // no timezone): compaction runs server-side asynchronously without
+        // any client context, so we can't honestly emit a wall-clock that
+        // matches the tenant's locale. The day is what matters for
+        // memory-anchoring anyway. If a tenant ever wants timestamps in
+        // their timezone, add a `display.timezone` setting and feed it
+        // through here.
+        body.append("Today's date (UTC): ")
+                .append(java.time.LocalDate.now(java.time.ZoneOffset.UTC))
+                .append("\n\n");
         if (priorSummary != null && priorSummary.getContent() != null
                 && !priorSummary.getContent().isBlank()) {
             body.append("EXISTING SUMMARY (compact this further along with the new turns):\n");
@@ -451,7 +461,16 @@ public class MemoryCompactionService {
         llmCallTracker.record(
                 process, request, response, System.currentTimeMillis() - startMs, modelAlias);
         String text = response.aiMessage() == null ? null : response.aiMessage().text();
-        return text == null ? "" : text.trim();
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.isEmpty()) return "";
+        // Prepend a deterministic date-stamp so the persisted memory always
+        // carries the day the compaction happened — without depending on
+        // whether the LLM chose to mention it in its prose. UTC date only;
+        // see body-builder comment above for why we don't emit clock time.
+        // Re-compactions inherit this stamp via the priorSummary body;
+        // only the newest run's stamp lives at the top of the freshest doc.
+        String stamp = "[" + java.time.LocalDate.now(java.time.ZoneOffset.UTC) + "] ";
+        return stamp + trimmed;
     }
 
     /**

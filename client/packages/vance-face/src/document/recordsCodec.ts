@@ -7,6 +7,13 @@
 // See `specification/doc-kind-records.md` for the schema, the
 // schema-declaration semantics, the resilience rules (missing field
 // → empty), and the markdown CSV-light grammar.
+//
+// In addition to the document-form (front-matter + bullet rows), the
+// markdown parser also accepts a Markdown-table body — the form the
+// `embed-fences` engine manual teaches the LLM for inline `records`
+// fences. Header row becomes the schema (unless an explicit front-
+// matter `schema:` is present), the alignment-divider row is skipped,
+// and remaining pipe-rows become items.
 
 import {
   dumpYamlBody,
@@ -124,23 +131,127 @@ function parseRecordsMarkdown(body: string): RecordsDocument {
     if (cursor < lines.length && lines[cursor].trim() === MD_FENCE) cursor++;
   }
 
-  const schema = parseSchemaCsv(schemaRaw);
+  let schema = parseSchemaCsv(schemaRaw);
+
+  // Pick the body shape from the first non-blank content line. Bullet
+  // line → classic document form. Pipe line → Markdown table (inline
+  // fence form per `embed-fences` manual).
+  let bodyStart = cursor;
+  while (bodyStart < lines.length && lines[bodyStart].trim() === '') bodyStart++;
+  const firstBodyLine = lines[bodyStart]?.trim() ?? '';
+
+  const items: RecordsItem[] = firstBodyLine.startsWith('|')
+    ? parseTableBody(lines, bodyStart, schema, (headerSchema) => {
+        if (schema.length === 0) schema = headerSchema;
+      })
+    : parseBulletBody(lines, cursor, schema);
+
   if (schema.length === 0) {
     throw new RecordsCodecError(
-      'Missing or empty schema in front-matter — `kind: records` requires `schema: field1, field2, ...`',
+      'Missing or empty schema — `kind: records` requires either a front-matter `schema:` line or a Markdown-table header row.',
     );
   }
 
+  return { kind, schema, items, extra };
+}
+
+function parseBulletBody(
+  lines: string[],
+  start: number,
+  schema: string[],
+): RecordsItem[] {
   const items: RecordsItem[] = [];
-  for (let i = cursor; i < lines.length; i++) {
+  for (let i = start; i < lines.length; i++) {
     const raw = lines[i];
     if (raw.trim() === '') continue;
     const bullet = raw.match(/^\s*[-*]\s+(.*)$/);
     if (!bullet) continue;
     items.push(rowFromCsvValues(parseCsvLine(bullet[1]), schema));
   }
+  return items;
+}
 
-  return { kind, schema, items, extra };
+/** Parse a Markdown table starting at {@code start}. Header row →
+ *  schema (passed back via {@code onHeader} when the caller has no
+ *  schema yet), optional alignment-divider row skipped, remaining
+ *  pipe-rows become items. Non-pipe lines after the table end the
+ *  scan — keeps trailing prose (rare in fence bodies) from polluting
+ *  the records. */
+function parseTableBody(
+  lines: string[],
+  start: number,
+  schemaIn: string[],
+  onHeader: (headerSchema: string[]) => void,
+): RecordsItem[] {
+  const headerCells = splitTableRow(lines[start]);
+  const headerSchema = dedupeFields(headerCells.map((c) => c.trim()));
+  onHeader(headerSchema);
+  const effectiveSchema = schemaIn.length > 0 ? schemaIn : headerSchema;
+
+  let i = start + 1;
+  if (i < lines.length && isAlignmentDivider(lines[i])) i++;
+
+  const items: RecordsItem[] = [];
+  for (; i < lines.length; i++) {
+    const raw = lines[i];
+    if (raw.trim() === '') continue;
+    if (!raw.trim().startsWith('|')) break;
+    if (isAlignmentDivider(raw)) continue;
+    const cells = splitTableRow(raw).map((c) => c.trim());
+    items.push(rowFromCsvValues(cells, effectiveSchema));
+  }
+  return items;
+}
+
+/** Split a Markdown table row on unescaped `|`, stripping the
+ *  outer pipes if present. Cell contents are returned *untrimmed*
+ *  — callers trim where appropriate. `\|` inside a cell is
+ *  preserved as a literal `|`. */
+function splitTableRow(line: string): string[] {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|')) s = s.slice(0, -1);
+  const cells: string[] = [];
+  let buf = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '\\' && s[i + 1] === '|') {
+      buf += '|';
+      i++;
+      continue;
+    }
+    if (c === '|') {
+      cells.push(buf);
+      buf = '';
+      continue;
+    }
+    buf += c;
+  }
+  cells.push(buf);
+  return cells;
+}
+
+/** Alignment divider row: every cell is `:?-+:?` (e.g. `---`,
+ *  `:---`, `---:`, `:---:`). Whitespace around the colons/dashes
+ *  is tolerated. */
+function isAlignmentDivider(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('|') && !trimmed.includes('|')) return false;
+  const cells = splitTableRow(trimmed);
+  if (cells.length === 0) return false;
+  return cells.every((c) => /^\s*:?-+:?\s*$/.test(c));
+}
+
+function dedupeFields(fields: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const f of fields) {
+    if (!f) continue;
+    if (seen.has(f)) continue;
+    seen.add(f);
+    out.push(f);
+  }
+  return out;
 }
 
 function serializeRecordsMarkdown(doc: RecordsDocument): string {

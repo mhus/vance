@@ -16,8 +16,8 @@ The Web-UI parses your reply as Markdown and goes beyond text:
   `https://` images directly as `<img>` (e.g. results from
   `web_search`). No tool call needed for this.
 - Fenced code blocks with a Vance kind tag (`mermaid`, `mindmap`,
-  `chart`, `youtube`, `tree`, `list`, `items`, `records`) render
-  as interactive canvases.
+  `chart`, `graph`, `youtube`, `tree`, `list`, `items`, `records`)
+  render as interactive canvases.
 - Markdown links / image-links with a `vance:` URI render the
   referenced project Document inline (image, PDF, audio, video,
   mindmap, …).
@@ -32,6 +32,7 @@ The Web-UI parses your reply as Markdown and goes beyond text:
 | A flowchart / sequence / state / ER / gantt / gitGraph / C4 diagram | `manual_read('kind-diagram')` |
 | A numerical chart (line, bar, pie, scatter, candlestick, heatmap) | `manual_read('kind-chart')` |
 | A mindmap / radial brainstorm | `manual_read('kind-mindmap')` |
+| A network graph — nodes and edges, m:n relationships, dependencies | `manual_read('kind-graph')` |
 | A YouTube video — embed an existing URL or find one to play | `manual_read('kind-youtube')` |
 | A simple inline outline, bullet list, or sortable table | `manual_read('embed-fences')` |
 | A slide deck / presentation — multi-slide artefact that lives as a Document | `manual_read('embed-documents')` |

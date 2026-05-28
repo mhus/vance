@@ -5,7 +5,7 @@ import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
 import { VButton } from '@/components';
-import { edgeKey, emptyNode } from './graphCodec';
+import { edgeKey, emptyNode, parseGraph } from './graphCodec';
 /** Approximate vue-flow default node dimensions, used as the
  *  layout-input box size when we hand the graph to dagre. The
  *  layout positions are computed for centered boxes; vue-flow
@@ -13,16 +13,68 @@ import { edgeKey, emptyNode } from './graphCodec';
 const NODE_W = 160;
 const NODE_H = 44;
 /**
- * Editor for `kind: graph` documents. Top-level `nodes` and `edges`
- * arrays drive vue-flow directly — `source`/`target` matches its
- * native edge shape, no adapter layer.
+ * Renderer / editor for `kind: graph` documents. Top-level `nodes`
+ * and `edges` arrays drive vue-flow directly — `source`/`target`
+ * matches its native edge shape, no adapter layer.
+ *
+ * Three modes:
+ *   - `editor`   — full editor (toolbar, drag, connect, side panel).
+ *   - `inline`   — read-only view from a fence body (YAML/JSON).
+ *   - `embedded` — read-only view from a loaded {@link DocumentDto}.
+ *
+ * In the two read-only modes, nodes without an explicit `position`
+ * get a one-shot Dagre auto-layout — LLM-emitted graphs almost never
+ * carry positions, so we render a clean DAG rather than the grid
+ * fallback you'd get otherwise.
  *
  * Spec: `specification/doc-kind-graph.md`.
  */
 defineOptions({ name: 'GraphView' });
-const props = defineProps();
+const props = withDefaults(defineProps(), {
+    mode: 'editor',
+    meta: () => ({}),
+});
 const emit = defineEmits();
 const { t } = useI18n();
+const isEditor = computed(() => props.mode === 'editor');
+/** Read-only GraphDocument resolved for inline / embedded modes.
+ *  Editor mode passes the prop straight through. */
+const resolvedDoc = computed(() => {
+    if (props.mode === 'editor') {
+        return props.doc ?? emptyGraphDoc();
+    }
+    if (props.mode === 'inline') {
+        const body = props.content ?? '';
+        if (!body.trim())
+            return emptyGraphDoc();
+        // Inline fences are YAML by convention; fall back to JSON if the
+        // body starts with `{` so curly-brace-style bodies still parse.
+        const mime = body.trimStart().startsWith('{')
+            ? 'application/json'
+            : 'application/yaml';
+        try {
+            return parseGraph(body, mime);
+        }
+        catch (e) {
+            console.warn('GraphView: failed to parse inline content', e);
+            return emptyGraphDoc();
+        }
+    }
+    const d = props.document;
+    if (!d || !d.inlineText)
+        return emptyGraphDoc();
+    const mime = d.mimeType ?? 'application/json';
+    try {
+        return parseGraph(d.inlineText, mime);
+    }
+    catch (e) {
+        console.warn('GraphView: failed to parse embedded document', e);
+        return emptyGraphDoc();
+    }
+});
+function emptyGraphDoc() {
+    return { kind: 'graph', graph: { directed: true }, nodes: [], edges: [], extra: {} };
+}
 // ── Local source-of-truth ──────────────────────────────────────────
 //
 // `localNodes` / `localEdges` are the editor's mutable models. We
@@ -30,10 +82,10 @@ const { t } = useI18n();
 // internal store and animates smoothly); only the final position is
 // written on drag-end. That avoids round-trip-flicker that would
 // happen if every dragmove re-emitted and the parent re-serialised.
-const localNodes = ref(cloneNodes(props.doc.nodes));
-const localEdges = ref(cloneEdges(props.doc.edges));
-watch(() => props.doc.nodes, (next) => { localNodes.value = cloneNodes(next); }, { deep: true });
-watch(() => props.doc.edges, (next) => { localEdges.value = cloneEdges(next); }, { deep: true });
+const localNodes = ref(cloneNodes(resolvedDoc.value.nodes));
+const localEdges = ref(cloneEdges(resolvedDoc.value.edges));
+watch(() => resolvedDoc.value.nodes, (next) => { localNodes.value = cloneNodes(next); }, { deep: true });
+watch(() => resolvedDoc.value.edges, (next) => { localEdges.value = cloneEdges(next); }, { deep: true });
 function cloneNodes(src) {
     return src.map((n) => ({
         id: n.id,
@@ -54,28 +106,71 @@ function cloneEdges(src) {
     }));
 }
 function emitDoc() {
+    if (!isEditor.value)
+        return;
+    const base = props.doc ?? resolvedDoc.value;
     emit('update:doc', {
-        kind: props.doc.kind || 'graph',
-        graph: { directed: props.doc.graph?.directed ?? true },
+        kind: base.kind || 'graph',
+        graph: { directed: base.graph?.directed ?? true },
         nodes: localNodes.value,
         edges: localEdges.value,
-        extra: props.doc.extra,
+        extra: base.extra,
     });
 }
 // ── vue-flow projection ────────────────────────────────────────────
 const knownIds = computed(() => new Set(localNodes.value.map((n) => n.id)));
+/** One-shot Dagre layout for graphs that arrive without per-node
+ *  positions (LLM-emitted inline / embedded graphs). Skipped when
+ *  any node already has a `position` — that signals a user-fixed
+ *  layout (editor mode) we must respect. */
+const layoutPositions = computed(() => {
+    const out = new Map();
+    if (localNodes.value.length === 0)
+        return out;
+    if (localNodes.value.some((n) => n.position))
+        return out;
+    const g = new DagreGraph();
+    g.setGraph({ rankdir: 'LR', nodesep: 50, ranksep: 90, marginx: 20, marginy: 20 });
+    g.setDefaultEdgeLabel(() => ({}));
+    for (const node of localNodes.value) {
+        g.setNode(node.id, { width: NODE_W, height: NODE_H });
+    }
+    const ids = knownIds.value;
+    for (const edge of localEdges.value) {
+        if (ids.has(edge.source) && ids.has(edge.target)) {
+            g.setEdge(edge.source, edge.target);
+        }
+    }
+    dagreLayout(g);
+    for (const node of localNodes.value) {
+        const laid = g.node(node.id);
+        if (!laid)
+            continue;
+        const x = laid.x;
+        const y = laid.y;
+        if (typeof x !== 'number' || typeof y !== 'number')
+            continue;
+        out.set(node.id, { x: x - NODE_W / 2, y: y - NODE_H / 2 });
+    }
+    return out;
+});
 const vfNodes = computed(() => localNodes.value.map((n, idx) => ({
     id: n.id,
-    position: n.position ?? { x: 60 + (idx % 4) * 200, y: 60 + Math.floor(idx / 4) * 120 },
+    position: n.position
+        ?? layoutPositions.value.get(n.id)
+        ?? { x: 60 + (idx % 4) * 200, y: 60 + Math.floor(idx / 4) * 120 },
     data: { label: n.label && n.label.length > 0 ? n.label : n.id },
     type: 'default',
+    draggable: isEditor.value,
+    selectable: isEditor.value,
+    connectable: isEditor.value,
     style: n.color
         ? { background: n.color, color: contrastText(n.color), border: '1px solid ' + n.color }
         : undefined,
 })));
 const vfEdges = computed(() => {
     const out = [];
-    const directed = props.doc.graph?.directed ?? true;
+    const directed = resolvedDoc.value.graph?.directed ?? true;
     for (const e of localEdges.value) {
         if (!knownIds.value.has(e.source) || !knownIds.value.has(e.target))
             continue;
@@ -119,6 +214,8 @@ function onPaneClick() {
 }
 // ── Change handlers ────────────────────────────────────────────────
 function onNodesChange(changes) {
+    if (!isEditor.value)
+        return;
     let dirty = false;
     for (const c of changes) {
         if (c.type === 'position' && c.position && c.dragging === false) {
@@ -140,6 +237,8 @@ function onNodesChange(changes) {
     }
 }
 function onEdgesChange(changes) {
+    if (!isEditor.value)
+        return;
     let dirty = false;
     for (const c of changes) {
         if (c.type === 'remove') {
@@ -153,6 +252,8 @@ function onEdgesChange(changes) {
     }
 }
 function onConnect(connection) {
+    if (!isEditor.value)
+        return;
     if (!connection.source || !connection.target)
         return;
     if (connection.source === connection.target)
@@ -225,12 +326,15 @@ function runAutoLayout() {
     emitDoc();
 }
 function toggleDirected() {
+    if (!isEditor.value)
+        return;
+    const base = props.doc ?? resolvedDoc.value;
     emit('update:doc', {
-        kind: props.doc.kind || 'graph',
-        graph: { directed: !(props.doc.graph?.directed ?? true) },
+        kind: base.kind || 'graph',
+        graph: { directed: !(base.graph?.directed ?? true) },
         nodes: localNodes.value,
         edges: localEdges.value,
-        extra: props.doc.extra,
+        extra: base.extra,
     });
 }
 function renameNode(rawId, inputEl) {
@@ -315,6 +419,8 @@ function deleteSelectedEdge() {
 // Keyboard delete on the canvas wrapper. Inputs in the side panel
 // keep their native Backspace handling.
 function onKeyDown(e) {
+    if (!isEditor.value)
+        return;
     const target = e.target;
     const inForm = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
     if (inForm)
@@ -346,6 +452,10 @@ function contrastText(bgColor) {
     return lum > 0.55 ? '#0f172a' : '#ffffff';
 }
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
+const __VLS_withDefaultsArg = (function (t) { return t; })({
+    mode: 'editor',
+    meta: () => ({}),
+});
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
@@ -358,75 +468,77 @@ let __VLS_directives;
 // CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ onKeydown: (__VLS_ctx.onKeyDown) },
-    ...{ class: "graph-view" },
+    ...{ class: (['graph-view', `graph-view--${__VLS_ctx.mode}`]) },
     tabindex: "0",
 });
+if (__VLS_ctx.isEditor) {
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "toolbar" },
+    });
+    const __VLS_0 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+        ...{ 'onClick': {} },
+        size: "sm",
+        variant: "primary",
+    }));
+    const __VLS_2 = __VLS_1({
+        ...{ 'onClick': {} },
+        size: "sm",
+        variant: "primary",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+    let __VLS_4;
+    let __VLS_5;
+    let __VLS_6;
+    const __VLS_7 = {
+        onClick: (__VLS_ctx.addNode)
+    };
+    __VLS_3.slots.default;
+    (__VLS_ctx.t('documents.graphView.addNode'));
+    var __VLS_3;
+    const __VLS_8 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
+        ...{ 'onClick': {} },
+        size: "sm",
+        variant: "ghost",
+        disabled: (__VLS_ctx.localNodes.length === 0),
+        title: (__VLS_ctx.t('documents.graphView.autoLayoutHint')),
+    }));
+    const __VLS_10 = __VLS_9({
+        ...{ 'onClick': {} },
+        size: "sm",
+        variant: "ghost",
+        disabled: (__VLS_ctx.localNodes.length === 0),
+        title: (__VLS_ctx.t('documents.graphView.autoLayoutHint')),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_9));
+    let __VLS_12;
+    let __VLS_13;
+    let __VLS_14;
+    const __VLS_15 = {
+        onClick: (__VLS_ctx.runAutoLayout)
+    };
+    __VLS_11.slots.default;
+    (__VLS_ctx.t('documents.graphView.autoLayout'));
+    var __VLS_11;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
+        ...{ class: "directed-toggle" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
+        ...{ onChange: (__VLS_ctx.toggleDirected) },
+        type: "checkbox",
+        checked: (props.doc?.graph?.directed ?? true),
+    });
+    (__VLS_ctx.t('documents.graphView.directed'));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "hint" },
+    });
+    (__VLS_ctx.t('documents.graphView.hint'));
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "toolbar" },
-});
-const __VLS_0 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
-    ...{ 'onClick': {} },
-    size: "sm",
-    variant: "primary",
-}));
-const __VLS_2 = __VLS_1({
-    ...{ 'onClick': {} },
-    size: "sm",
-    variant: "primary",
-}, ...__VLS_functionalComponentArgsRest(__VLS_1));
-let __VLS_4;
-let __VLS_5;
-let __VLS_6;
-const __VLS_7 = {
-    onClick: (__VLS_ctx.addNode)
-};
-__VLS_3.slots.default;
-(__VLS_ctx.t('documents.graphView.addNode'));
-var __VLS_3;
-const __VLS_8 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
-    ...{ 'onClick': {} },
-    size: "sm",
-    variant: "ghost",
-    disabled: (__VLS_ctx.localNodes.length === 0),
-    title: (__VLS_ctx.t('documents.graphView.autoLayoutHint')),
-}));
-const __VLS_10 = __VLS_9({
-    ...{ 'onClick': {} },
-    size: "sm",
-    variant: "ghost",
-    disabled: (__VLS_ctx.localNodes.length === 0),
-    title: (__VLS_ctx.t('documents.graphView.autoLayoutHint')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_9));
-let __VLS_12;
-let __VLS_13;
-let __VLS_14;
-const __VLS_15 = {
-    onClick: (__VLS_ctx.runAutoLayout)
-};
-__VLS_11.slots.default;
-(__VLS_ctx.t('documents.graphView.autoLayout'));
-var __VLS_11;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.label, __VLS_intrinsicElements.label)({
-    ...{ class: "directed-toggle" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
-    ...{ onChange: (__VLS_ctx.toggleDirected) },
-    type: "checkbox",
-    checked: (props.doc.graph?.directed ?? true),
-});
-(__VLS_ctx.t('documents.graphView.directed'));
-__VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-    ...{ class: "hint" },
-});
-(__VLS_ctx.t('documents.graphView.hint'));
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "canvas-and-panel" },
+    ...{ class: (['canvas-and-panel', { 'canvas-and-panel--readonly': !__VLS_ctx.isEditor }]) },
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "canvas" },
@@ -444,6 +556,10 @@ const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
     nodes: (__VLS_ctx.vfNodes),
     edges: (__VLS_ctx.vfEdges),
     fitViewOnInit: (true),
+    nodesDraggable: (__VLS_ctx.isEditor),
+    nodesConnectable: (__VLS_ctx.isEditor),
+    elementsSelectable: (__VLS_ctx.isEditor),
+    edgesUpdatable: (__VLS_ctx.isEditor),
 }));
 const __VLS_18 = __VLS_17({
     ...{ 'onNodesChange': {} },
@@ -455,6 +571,10 @@ const __VLS_18 = __VLS_17({
     nodes: (__VLS_ctx.vfNodes),
     edges: (__VLS_ctx.vfEdges),
     fitViewOnInit: (true),
+    nodesDraggable: (__VLS_ctx.isEditor),
+    nodesConnectable: (__VLS_ctx.isEditor),
+    elementsSelectable: (__VLS_ctx.isEditor),
+    edgesUpdatable: (__VLS_ctx.isEditor),
 }, ...__VLS_functionalComponentArgsRest(__VLS_17));
 let __VLS_20;
 let __VLS_21;
@@ -478,7 +598,7 @@ const __VLS_28 = {
     onPaneClick: (__VLS_ctx.onPaneClick)
 };
 var __VLS_19;
-if (__VLS_ctx.selectedNode) {
+if (__VLS_ctx.isEditor && __VLS_ctx.selectedNode) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
         ...{ class: "panel" },
     });
@@ -488,7 +608,7 @@ if (__VLS_ctx.selectedNode) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
         ...{ onChange: ((e) => __VLS_ctx.renameNode(e.target.value, e.target)) },
         ...{ onKeydown: (...[$event]) => {
-                if (!(__VLS_ctx.selectedNode))
+                if (!(__VLS_ctx.isEditor && __VLS_ctx.selectedNode))
                     return;
                 $event.target.blur();
             } },
@@ -501,7 +621,7 @@ if (__VLS_ctx.selectedNode) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
         ...{ onChange: ((e) => __VLS_ctx.setLabel(e.target.value)) },
         ...{ onKeydown: (...[$event]) => {
-                if (!(__VLS_ctx.selectedNode))
+                if (!(__VLS_ctx.isEditor && __VLS_ctx.selectedNode))
                     return;
                 $event.target.blur();
             } },
@@ -521,7 +641,7 @@ if (__VLS_ctx.selectedNode) {
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
-                if (!(__VLS_ctx.selectedNode))
+                if (!(__VLS_ctx.isEditor && __VLS_ctx.selectedNode))
                     return;
                 __VLS_ctx.setColor('');
             } },
@@ -559,7 +679,7 @@ if (__VLS_ctx.selectedNode) {
     (__VLS_ctx.t('documents.graphView.deleteNode'));
     var __VLS_32;
 }
-else if (__VLS_ctx.selectedEdge) {
+else if (__VLS_ctx.isEditor && __VLS_ctx.selectedEdge) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
         ...{ class: "panel" },
     });
@@ -584,9 +704,9 @@ else if (__VLS_ctx.selectedEdge) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
         ...{ onChange: ((e) => __VLS_ctx.setEdgeLabel(e.target.value)) },
         ...{ onKeydown: (...[$event]) => {
-                if (!!(__VLS_ctx.selectedNode))
+                if (!!(__VLS_ctx.isEditor && __VLS_ctx.selectedNode))
                     return;
-                if (!(__VLS_ctx.selectedEdge))
+                if (!(__VLS_ctx.isEditor && __VLS_ctx.selectedEdge))
                     return;
                 $event.target.blur();
             } },
@@ -606,9 +726,9 @@ else if (__VLS_ctx.selectedEdge) {
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (...[$event]) => {
-                if (!!(__VLS_ctx.selectedNode))
+                if (!!(__VLS_ctx.isEditor && __VLS_ctx.selectedNode))
                     return;
-                if (!(__VLS_ctx.selectedEdge))
+                if (!(__VLS_ctx.isEditor && __VLS_ctx.selectedEdge))
                     return;
                 __VLS_ctx.setEdgeColor('');
             } },
@@ -640,7 +760,7 @@ else if (__VLS_ctx.selectedEdge) {
     (__VLS_ctx.t('documents.graphView.deleteEdge'));
     var __VLS_40;
 }
-else {
+else if (__VLS_ctx.isEditor) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.aside, __VLS_intrinsicElements.aside)({
         ...{ class: "panel panel--empty" },
     });
@@ -654,6 +774,7 @@ else {
 /** @type {__VLS_StyleScopedClasses['directed-toggle']} */ ;
 /** @type {__VLS_StyleScopedClasses['hint']} */ ;
 /** @type {__VLS_StyleScopedClasses['canvas-and-panel']} */ ;
+/** @type {__VLS_StyleScopedClasses['canvas-and-panel--readonly']} */ ;
 /** @type {__VLS_StyleScopedClasses['canvas']} */ ;
 /** @type {__VLS_StyleScopedClasses['panel']} */ ;
 /** @type {__VLS_StyleScopedClasses['panel-input']} */ ;
@@ -679,6 +800,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VueFlow: VueFlow,
             VButton: VButton,
             t: t,
+            isEditor: isEditor,
             localNodes: localNodes,
             vfNodes: vfNodes,
             vfEdges: vfEdges,
@@ -706,6 +828,7 @@ const __VLS_self = (await import('vue')).defineComponent({
     },
     __typeEmits: {},
     __typeProps: {},
+    props: {},
 });
 export default (await import('vue')).defineComponent({
     setup() {
@@ -713,6 +836,7 @@ export default (await import('vue')).defineComponent({
     },
     __typeEmits: {},
     __typeProps: {},
+    props: {},
 });
 ; /* PartiallyEnd: #4569/main.vue */
 //# sourceMappingURL=GraphView.vue.js.map

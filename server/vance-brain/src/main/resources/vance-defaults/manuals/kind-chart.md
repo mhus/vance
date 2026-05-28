@@ -55,8 +55,18 @@ a chart". The data is small enough to embed inline.
 - **Raw ECharts options.** `dataset.source`, bare `series[].type`
   without `name` and `data` — the codec rejects them. Use the Vance
   schema above. The codec error tells you the expected shape.
-- **Mismatched data shape.** A `pie` chart with `{ x, y }` points
-  renders empty. Check the table above; the renderer doesn't coerce.
+- **Mismatched data shape.** Points that don't match the per-
+  `chartType` shape are **silently dropped**, not coerced. Modes:
+  - *Some* points in a series wrong → series renders with the rest
+    (no warning).
+  - *All* points in a series wrong → the whole series is elided
+    (legend slot missing, no warning).
+  - *All* series end up empty → codec throws an explicit error.
+  So a chart that looks "missing half the data" or "missing a series
+  entirely" almost always means the data-point shape is off — check
+  the table above for the right keys (`{x,y}` vs `{name,value}` vs
+  `{t,o,h,l,c}` vs `{x,y,v}`). The codec is a structural gate; it
+  does not coerce string-numbers, swap keys, or guess intent.
 - **Charts for non-numerical data.** For categorical hierarchies use
   `kind: mindmap` or `kind: tree`. For node-and-edge data use
   `kind: graph`. For text-driven diagrams (flowchart, sequence) use

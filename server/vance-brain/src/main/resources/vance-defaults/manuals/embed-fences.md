@@ -23,6 +23,7 @@ Verteilung". The expectation is immediate visual output, not
 | Flowchart, sequence, state, ER, gantt, gitGraph, journey, C4, timeline | `diagram` | `manual_read('kind-diagram')` |
 | Numerical chart (line, bar, pie, scatter, candlestick, heatmap) | `chart` | `manual_read('kind-chart')` |
 | Brainstorm hierarchy (radial mindmap) | `mindmap` | `manual_read('kind-mindmap')` |
+| Network of nodes + edges (m:n, dependencies, concept map) | `graph` | `manual_read('kind-graph')` |
 | YouTube video | `youtube` | `manual_read('kind-youtube')` |
 | Outline (no radial layout) | `tree` | inline below |
 | Structured bullet list | `list` | inline below |

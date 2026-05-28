@@ -60,6 +60,14 @@ const MD_FENCE = '---';
  * spaces); each indent unit of 2 spaces is one nesting level. Items
  * deeper than {@code lastDepth + 1} are clamped to that — no
  * skip-level nodes.
+ *
+ * Tolerance for inline `mindmap` fences: LLMs sometimes drop the
+ * bullet markers and use pure indentation (Mermaid-mindmap style,
+ * including the `root((X))`/`root[X]`/`root(X)` wrappers). When the
+ * body has no bullets at all, the parser falls back to an
+ * indent-only path so the fence still renders. Bodies with a single
+ * bullet anywhere fall back to the strict bullet path — mixed bodies
+ * stay deterministic.
  */
 function parseTreeMarkdown(body) {
     const lines = body.split(/\r?\n/);
@@ -89,15 +97,23 @@ function parseTreeMarkdown(body) {
         if (cursor < lines.length && lines[cursor].trim() === MD_FENCE)
             cursor++;
     }
-    // Body — build tree via an open-levels stack. The stack always has
-    // at least one entry: the root list. Every bullet-line resolves to
-    // a depth and pushes its own children-array onto the stack.
+    const bodyLines = lines.slice(cursor);
+    const hasBullet = bodyLines.some((l) => /^\s*[-*]\s+/.test(l));
+    const items = hasBullet
+        ? parseBulletBody(bodyLines)
+        : parseIndentedBody(bodyLines);
+    return { kind, items, extra };
+}
+/** Strict bullet parser per spec §3.1. Indent depth from leading
+ *  whitespace (tabs = 4 spaces); 2 spaces per nesting level; deeper
+ *  items clamped to {@code lastDepth + 1}; non-bullet indented lines
+ *  attach as a continuation to the previous bullet's {@code text}. */
+function parseBulletBody(lines) {
     const root = [];
     const openLevels = [{ depth: -1, list: root }];
     let lastItem = null;
     let lastDepth = -1;
-    for (let i = cursor; i < lines.length; i++) {
-        const raw = lines[i];
+    for (const raw of lines) {
         if (raw.trim() === '') {
             lastItem = null;
             continue;
@@ -106,12 +122,10 @@ function parseTreeMarkdown(body) {
         if (bullet) {
             const indent = countIndent(bullet[1]);
             let depth = Math.floor(indent / 2);
-            // Spec §3.1: clamp to lastDepth + 1 — no skip-level nodes.
             if (depth > lastDepth + 1)
                 depth = lastDepth + 1;
             if (depth < 0)
                 depth = 0;
-            // Pop levels until we land at parent depth (depth-1).
             while (openLevels.length > 1
                 && openLevels[openLevels.length - 1].depth >= depth) {
                 openLevels.pop();
@@ -124,19 +138,60 @@ function parseTreeMarkdown(body) {
             lastDepth = depth;
             continue;
         }
-        // Continuation — line has leading whitespace and is not a bullet.
         if (lastItem && /^\s+\S/.test(raw)) {
             const indent = countIndent(raw.match(/^(\s*)/)?.[1] ?? '');
-            // Continuation requires indent > lastDepth*2 + 1 (i.e. at least
-            // 2 more spaces than the bullet line's indent).
             if (indent >= (lastDepth + 1) * 2) {
                 const stripped = raw.replace(/^\s+/, '');
                 lastItem.text += '\n' + stripped;
             }
         }
-        // Anything else (free-form text outside the list) is dropped.
     }
-    return { kind, items: root, extra };
+    return root;
+}
+/** Bullet-less indented-tree parser. Engaged only when the whole body
+ *  contains no bullet line — covers LLM Mermaid-mindmap-style output
+ *  where each line is the node text and depth comes from indent
+ *  alone. Strips Mermaid `root((X))` / `root[X]` / `root(X)` wrappers
+ *  on depth-0 lines. */
+function parseIndentedBody(lines) {
+    const root = [];
+    const openLevels = [{ depth: -1, list: root }];
+    let lastDepth = -1;
+    for (const raw of lines) {
+        if (raw.trim() === '')
+            continue;
+        const indentPrefix = raw.match(/^(\s*)/)?.[1] ?? '';
+        const indent = countIndent(indentPrefix);
+        let depth = Math.floor(indent / 2);
+        if (depth > lastDepth + 1)
+            depth = lastDepth + 1;
+        if (depth < 0)
+            depth = 0;
+        let text = raw.slice(indentPrefix.length).trimEnd();
+        if (depth === 0)
+            text = stripMermaidRoot(text);
+        if (text === '')
+            continue;
+        while (openLevels.length > 1
+            && openLevels[openLevels.length - 1].depth >= depth) {
+            openLevels.pop();
+        }
+        const parent = openLevels[openLevels.length - 1].list;
+        const item = { text, children: [], extra: {} };
+        parent.push(item);
+        openLevels.push({ depth, list: item.children });
+        lastDepth = depth;
+    }
+    return root;
+}
+/** Mermaid mindmap roots come in three shapes: {@code root((X))}
+ *  (cloud), {@code root[X]} (box), {@code root(X)} (rounded). Strip
+ *  the wrapper so the inner label is what we keep. */
+function stripMermaidRoot(text) {
+    const m = text.match(/^root\s*\(\((.+)\)\)\s*$/)
+        ?? text.match(/^root\s*\[(.+)\]\s*$/)
+        ?? text.match(/^root\s*\((.+)\)\s*$/);
+    return m ? m[1].trim() : text;
 }
 function serializeTreeMarkdown(doc) {
     const out = [];

@@ -188,7 +188,11 @@ class MemoryCompactionServiceRangeTest {
         // Memory payload — kind, content, sourceRefs, metadata recompaction flag.
         MemoryDocument saved = savedCap.getValue();
         assertThat(saved.getKind()).isEqualTo(MemoryKind.ARCHIVED_CHAT);
-        assertThat(saved.getContent()).isEqualTo("Auth setup completed in three steps.");
+        // Content carries a deterministic "[yyyy-MM-ddTHH:mm]" stamp prepended
+        // by the service (see callSummarizer) so summaries stay anchored in
+        // time even when the LLM doesn't mention the date in prose.
+        assertThat(saved.getContent())
+                .matches("\\[\\d{4}-\\d{2}-\\d{2}] Auth setup completed in three steps\\.");
         assertThat(saved.getSourceRefs()).containsExactly("m1", "m2", "m3");
         assertThat(saved.getMetadata())
                 .containsEntry("recompaction", true)
@@ -204,7 +208,8 @@ class MemoryCompactionServiceRangeTest {
         verify(chatMessageService).append(markerCap.capture());
         ChatMessageDocument marker = markerCap.getValue();
         assertThat(marker.getRole()).isEqualTo(ChatRole.SYSTEM);
-        assertThat(marker.getContent()).isEqualTo("Auth setup completed in three steps.");
+        assertThat(marker.getContent())
+                .matches("\\[\\d{4}-\\d{2}-\\d{2}] Auth setup completed in three steps\\.");
         assertThat(marker.getTags()).containsExactly("RECOMPACTION:auth-setup");
         assertThat(marker.getCreatedAt()).isEqualTo(t3.plusMillis(1));
         assertThat(marker.getThinkProcessId()).isEqualTo("p-1");

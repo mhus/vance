@@ -482,12 +482,14 @@ if (!__VLS_ctx.isEditor) {
                 colspan: (Math.max(__VLS_ctx.localSchema.length, 1)),
                 ...{ class: "records-read__empty" },
             });
+            (__VLS_ctx.t('documents.recordsEditor.emptyTable'));
         }
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "records-read__empty" },
         });
+        (__VLS_ctx.t('documents.recordsEditor.emptyTable'));
     }
 }
 else {

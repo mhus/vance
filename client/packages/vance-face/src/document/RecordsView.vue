@@ -499,12 +499,12 @@ const hasOverflow = computed(() =>
         </tr>
         <tr v-if="localItems.length === 0">
           <td :colspan="Math.max(localSchema.length, 1)" class="records-read__empty">
-            (leer)
+            {{ t('documents.recordsEditor.emptyTable') }}
           </td>
         </tr>
       </tbody>
     </table>
-    <div v-else class="records-read__empty">(leer)</div>
+    <div v-else class="records-read__empty">{{ t('documents.recordsEditor.emptyTable') }}</div>
   </div>
 
   <div v-else class="records-edit" :class="{ 'records-edit--schema': schemaMode }">

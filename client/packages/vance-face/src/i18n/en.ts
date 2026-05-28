@@ -420,6 +420,7 @@ export default {
       deleteItem: 'Delete row',
       clickToEdit: 'Click to edit',
       emptyCell: '—',
+      emptyTable: '(empty)',
       dragHandle: 'Drag to reorder · Cmd/Ctrl-Click to multi-select',
       selectedCountSingular: '{count} row selected',
       selectedCountPlural: '{count} rows selected',

@@ -13,6 +13,7 @@ const MindmapView = defineAsyncComponent(() => import('@/document/MindmapView.vu
 const ListView = defineAsyncComponent(() => import('@/document/ListView.vue'));
 const TreeView = defineAsyncComponent(() => import('@/document/TreeView.vue'));
 const RecordsView = defineAsyncComponent(() => import('@/document/RecordsView.vue'));
+const GraphView = defineAsyncComponent(() => import('@/document/GraphView.vue'));
 const ChartView = defineAsyncComponent(() => import('@/document/ChartView.vue'));
 const SlidesView = defineAsyncComponent(() => import('@/document/SlidesView.vue'));
 const ImageView = defineAsyncComponent(() => import('@/document/ImageView.vue'));
@@ -39,6 +40,7 @@ export const kindRegistry = {
     list: { inline: ListView, embedded: ListView, label: 'List', icon: '•' },
     items: { inline: ListView, embedded: ListView, label: 'Items', icon: '•' },
     records: { inline: RecordsView, embedded: RecordsView, label: 'Records', icon: '▤' },
+    graph: { inline: GraphView, embedded: GraphView, label: 'Graph', icon: '🕸' },
     chart: { inline: ChartView, embedded: ChartView, label: 'Chart', icon: '📊' },
     // Slides are embedded-only by design (spec inline-and-embedded-content
     // §8 + doc-kind-slides §1): presentation artefacts belong in the
@@ -53,10 +55,10 @@ export const kindRegistry = {
     // External-source embeds — inline-only (no Document load).
     // The fence body carries the URL or video ID.
     youtube: { inline: YouTubeView, label: 'YouTube', icon: '▶' },
-    // Graph + Sheet remain editor-only for now (drag-drop / cell-formula
-    // logic too intertwined with edit handlers to adapt cheaply). The
-    // fallback chain in §5 surfaces them as standard Markdown until
-    // their Views grow the `mode` prop.
+    // Sheet remains editor-only for now (cell-formula logic too
+    // intertwined with edit handlers to adapt cheaply). The fallback
+    // chain in §5 surfaces it as standard Markdown until SheetView
+    // grows the `mode` prop.
 };
 /**
  * Look up a renderer for the given kind + channel combination. Returns

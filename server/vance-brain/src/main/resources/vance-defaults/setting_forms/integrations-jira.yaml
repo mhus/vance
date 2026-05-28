@@ -1,0 +1,90 @@
+title:
+  de: "Jira-Anbindung"
+  en: "Jira Integration"
+description:
+  de: "Verbindet dieses Projekt mit einer Jira-Instanz für Ticket-Sync und Reports."
+  en: "Connects this project to a Jira instance for ticket sync and reports."
+icon: link
+category: integrations
+defaultScope: project
+availableIn: [ "!_*" ]
+
+fields:
+  - name: instanceUrl
+    type: string
+    required: true
+    label:
+      de: "Jira-URL"
+      en: "Jira URL"
+    help:
+      de: "Vollqualifiziert, z.B. https://acme.atlassian.net"
+      en: "Fully qualified, e.g. https://acme.atlassian.net"
+    bindsTo:
+      key: "credentials.jira.instance_url"
+
+  - name: authMode
+    type: select
+    required: true
+    defaultValue: "oauth2"
+    label:
+      de: "Auth-Verfahren"
+      en: "Auth method"
+    bindsTo:
+      key: "credentials.jira.type"
+    choices:
+      - value: "oauth2"
+        label: { de: "OAuth 2.0", en: "OAuth 2.0" }
+      - value: "api_token"
+        label: { de: "API-Token", en: "API token" }
+
+  - name: oauthAccessToken
+    type: password
+    label:
+      de: "OAuth Access Token"
+      en: "OAuth access token"
+    help:
+      de: "Leer lassen um einen bestehenden Token nicht zu überschreiben."
+      en: "Leave empty to keep an existing token unchanged."
+    showIf:  "authMode == 'oauth2'"
+    writeIf: "authMode == 'oauth2'"
+    bindsTo:
+      key: "credentials.jira.access_token"
+
+  - name: oauthRefreshToken
+    type: password
+    label:
+      de: "OAuth Refresh Token"
+      en: "OAuth refresh token"
+    showIf:  "authMode == 'oauth2'"
+    writeIf: "authMode == 'oauth2'"
+    bindsTo:
+      key: "credentials.jira.refresh_token"
+
+  - name: apiToken
+    type: password
+    label:
+      de: "API-Token"
+      en: "API token"
+    help:
+      de: "User-bezogener API-Token für die Jira-REST-API."
+      en: "User-bound API token for the Jira REST API."
+    showIf:  "authMode == 'api_token'"
+    writeIf: "authMode == 'api_token'"
+    bindsTo:
+      key: "credentials.jira.api_token"
+
+  - name: userEmail
+    type: string
+    label:
+      de: "E-Mail (für API-Token-Auth)"
+      en: "Email (for API-token auth)"
+    showIf:  "authMode == 'api_token'"
+    writeIf: "authMode == 'api_token'"
+    bindsTo:
+      key: "credentials.jira.user_email"
+
+settings:
+  # Marker key so the integration loader knows Jira is configured.
+  - key: "credentials.jira.configured"
+    settingType: BOOLEAN
+    value: "true"

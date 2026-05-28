@@ -39,7 +39,7 @@ import org.jspecify.annotations.Nullable;
  * irrelevant to the field-type are simply omitted.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -74,6 +74,26 @@ public class FormFieldDto {
     @Builder.Default
     private List<FormChoiceDto> choices = new ArrayList<>();
 
+    /**
+     * Marker for dynamic choices populated by the brain at response
+     * time. Mutually exclusive with {@link #choices} — when both are
+     * declared, the loader rejects the form.
+     *
+     * <p>Known sources:
+     * <ul>
+     *   <li>{@code ai-models} — every {@code (provider, modelName)} pair
+     *       visible in the cascade-merged {@code ai-models.yaml} as a
+     *       {@code value: "<provider>:<modelName>"} choice. Used by the
+     *       LLM-alias form to keep model lists in sync with the catalogue
+     *       (see {@code setting_forms/llm-setup.yaml}).</li>
+     * </ul>
+     *
+     * <p>Backend-only on inbound. On {@code GET /{name}} responses the
+     * brain has resolved the marker into a populated {@link #choices}
+     * list, so the UI never has to know about dynamic sources.
+     */
+    private @Nullable String choicesFrom;
+
     /** UI-hint for {@code textarea}: number of visible rows. {@code null} = renderer default. */
     private @Nullable Integer rows;
 
@@ -91,4 +111,55 @@ public class FormFieldDto {
 
     /** Nested-field schema for {@code repeat}. {@code null} for non-repeat types. */
     private @Nullable List<FormFieldDto> item;
+
+    // ──────────────── Setting-Form extensions ────────────────
+    // Optional fields used only by Setting Forms (see specification/setting-forms.md).
+    // Wizards and kit-tool-templates leave them null; with @JsonInclude(NON_NULL)
+    // they are omitted from the wire there.
+
+    /**
+     * Direct-mapping target: when set, the field's submitted value is
+     * written 1:1 to the named setting key. {@code null} means the
+     * field is UI-only (its value is still visible in Pebble contexts
+     * for {@code showIf}/{@code writeIf}/{@code settings:} but no
+     * setting is implicitly written from it).
+     */
+    private @Nullable BindsToDto bindsTo;
+
+    /**
+     * Pebble expression evaluated against the form values at apply
+     * time. When falsy, the field is hidden in the UI and treated as
+     * absent for required/bindsTo enforcement (its value remains in
+     * the Pebble context though). {@code null} = always visible.
+     */
+    private @Nullable String showIf;
+
+    /**
+     * Pebble expression evaluated against the form values at apply
+     * time. When falsy, the field's {@code bindsTo} target (and any
+     * settings derived from this field) is <em>deleted</em> instead of
+     * written — that is how Setting Forms do conditional reset.
+     * {@code null} = always written.
+     */
+    private @Nullable String writeIf;
+
+    /**
+     * Live cascade view for direct-mapped fields, populated by the
+     * brain when responding to {@code GET /setting-forms/{name}}. Tells
+     * the UI what the current effective value of {@code bindsTo.key}
+     * is and from which scope it comes. Always {@code null} on
+     * inbound requests; ignored if the field has no {@code bindsTo}.
+     *
+     * <p>For PASSWORD-typed fields, {@code currentValue} is always
+     * {@code "***"} or {@code "[set]"} — never plaintext.
+     */
+    private @Nullable String currentValue;
+
+    /**
+     * Cascade-source label paired with {@link #currentValue}: which
+     * scope provided the live value. Examples: {@code "project"},
+     * {@code "_tenant"}, {@code "_user_mike"}, or {@code null} when
+     * the key is not set anywhere.
+     */
+    private @Nullable String currentSource;
 }

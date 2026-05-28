@@ -36,8 +36,32 @@ public final class ChatBehaviorBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(ChatBehaviorBuilder.class);
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
+    /**
+     * Per-tenant/-project override for the OpenAI-shaped adapter's base URL.
+     * Lets a tenant route through cortecs.ai, OpenRouter, vLLM, or any other
+     * OpenAI-wire gateway without touching {@code application.yml}. Empty /
+     * missing → Spring boot-time default ({@code vance.ai.<provider>.base-url}).
+     */
+    private static final String SETTING_PROVIDER_BASE_URL_FMT = "ai.provider.%s.baseUrl";
 
     private ChatBehaviorBuilder() {}
+
+    /**
+     * Reads the optional per-tenant base-URL override for {@code provider}
+     * via the project cascade ({@code process → project → _vance}). Returns
+     * {@code null} when nothing is configured — the provider then keeps its
+     * Spring boot-time default.
+     */
+    public static @Nullable String resolveBaseUrl(
+            String provider,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            SettingService settings) {
+        String key = String.format(SETTING_PROVIDER_BASE_URL_FMT, provider);
+        String value = settings.getStringValueCascade(tenantId, projectId, processId, key);
+        return (value == null || value.isBlank()) ? null : value.trim();
+    }
 
     /**
      * Build a {@link ChatBehavior} for {@code process}. Always returns a
@@ -93,25 +117,86 @@ public final class ChatBehaviorBuilder {
             SettingService settings,
             AiModelResolver resolver) {
         AiModelResolver.Resolved resolved = resolver.resolveOrDefault(spec, tenantId, projectId, processId);
-        String apiKeySetting = String.format(
-                SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
+        String apiKey = resolveApiKey(
+                resolved.provider(), tenantId, projectId, processId, settings);
+        String baseUrl = resolveBaseUrl(
+                resolved.provider(), tenantId, projectId, processId, settings);
+        return new AiChatConfig(resolved.provider(), resolved.modelName(), apiKey, baseUrl);
+    }
+
+    /**
+     * Reads the API-key for {@code provider} via the project cascade,
+     * decrypts it, and returns the plaintext. For keyless providers
+     * (Ollama, LM Studio — see {@link ProviderType#requiresApiKey()})
+     * the setting lookup is skipped and a placeholder is returned —
+     * the providers don't read the field, but {@link AiChatConfig}'s
+     * record contract still requires a non-blank value.
+     *
+     * @throws IllegalStateException when the provider does require a
+     *         key and none is set in any cascade layer.
+     */
+    public static String resolveApiKey(
+            String provider,
+            String tenantId,
+            @Nullable String projectId,
+            @Nullable String processId,
+            SettingService settings) {
+        ProviderType type = ProviderType.fromWireName(provider).orElse(null);
+        if (type != null && !type.requiresApiKey()) {
+            return KEYLESS_PLACEHOLDER;
+        }
+        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
         String apiKey = settings.getDecryptedPasswordCascade(
                 tenantId, projectId, processId, apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
-                    "No API key configured for provider '" + resolved.provider()
+                    "No API key configured for provider '" + provider
                             + "' (tenant='" + tenantId
                             + "', setting='" + apiKeySetting + "')");
         }
-        return new AiChatConfig(resolved.provider(), resolved.modelName(), apiKey);
+        return apiKey;
     }
 
     /**
-     * Recreates the model-spec parsing each engine does today: prefers
-     * {@code params.model} (with its own colon-and-provider quirks), falls
-     * back to alias-default-namespace, otherwise null → tenant default.
+     * Placeholder string handed to {@link AiChatConfig} for providers
+     * that don't authenticate. Visible only inside the record; the
+     * adapters never pass it to the wire.
      */
-    private static @Nullable String readModelSpec(ThinkProcessDocument process) {
+    public static final String KEYLESS_PLACEHOLDER = "no-key-required";
+
+    /**
+     * Convenience wrapper that builds a single primary {@link AiChatConfig}
+     * straight from a process — handy for engines that don't need the
+     * fallback chain ({@link ChatBehavior}) but only one config (judge
+     * calls, side-channel summaries, compaction LLM).
+     *
+     * <p>Combines the model-spec parsing
+     * ({@link #readModelSpec(ThinkProcessDocument)}) with the per-config
+     * {@link #resolveOne} pipeline (alias → API-key + base-URL cascade
+     * via settings). Engines should prefer this over inlining the
+     * provider-key / base-URL / model-spec lookup themselves.
+     */
+    public static AiChatConfig resolveForProcess(
+            ThinkProcessDocument process,
+            SettingService settings,
+            AiModelResolver resolver) {
+        String spec = readModelSpec(process);
+        return resolveOne(spec,
+                process.getTenantId(),
+                process.getProjectId(),
+                process.getId(),
+                settings,
+                resolver);
+    }
+
+    /**
+     * Model-spec parsing each engine uses: prefers {@code params.model}
+     * (with its own colon-and-provider quirks), falls back to
+     * alias-default-namespace, otherwise null → tenant default.
+     * Public so engines can reuse the same parsing rules without
+     * duplicating the if-tree.
+     */
+    public static @Nullable String readModelSpec(ThinkProcessDocument process) {
         String paramModel = paramString(process, "model");
         String paramProvider = paramString(process, "provider");
         if (paramModel != null && paramModel.contains(":")) {

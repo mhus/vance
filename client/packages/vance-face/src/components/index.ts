@@ -29,3 +29,4 @@ export { default as VTextarea } from './VTextarea.vue';
 
 export { default as FormFields } from './FormFields.vue';
 export type { FormValue, FormValueObject } from './FormFields.vue';
+export { default as SettingFormView } from './SettingFormView.vue';

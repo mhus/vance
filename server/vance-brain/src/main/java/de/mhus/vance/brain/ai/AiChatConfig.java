@@ -1,5 +1,7 @@
 package de.mhus.vance.brain.ai;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Resolved configuration for an {@link AiChat}: which provider, which model,
  * and the credential to authenticate with. All lookups (which model is
@@ -13,8 +15,24 @@ package de.mhus.vance.brain.ai;
  *                 {@code "claude-sonnet-4-5"})
  * @param apiKey  provider credential (plaintext — the caller already
  *                 decrypted it via {@code SettingService.getDecryptedPassword})
+ * @param baseUrl  optional per-tenant/-project base-URL override (e.g. the
+ *                 {@code cortecs.ai} gateway URL on top of the OpenAI
+ *                 adapter). {@code null} means "use the provider's
+ *                 boot-time default" — the Spring {@code @Value} fallback.
+ *                 Resolved from setting key
+ *                 {@code ai.providers.<provider>.base_url} via the normal
+ *                 project cascade.
  */
-public record AiChatConfig(String provider, String modelName, String apiKey) {
+public record AiChatConfig(
+        String provider,
+        String modelName,
+        String apiKey,
+        @Nullable String baseUrl) {
+
+    /** Back-compat convenience for callers that don't override the base URL. */
+    public AiChatConfig(String provider, String modelName, String apiKey) {
+        this(provider, modelName, apiKey, null);
+    }
 
     public AiChatConfig {
         if (provider == null || provider.isBlank()) {
@@ -25,6 +43,11 @@ public record AiChatConfig(String provider, String modelName, String apiKey) {
         }
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalArgumentException("apiKey is blank");
+        }
+        // baseUrl normalisation: empty string → null (so the provider treats
+        // "unset" and "set to empty" the same way and falls back to its default).
+        if (baseUrl != null && baseUrl.isBlank()) {
+            baseUrl = null;
         }
     }
 

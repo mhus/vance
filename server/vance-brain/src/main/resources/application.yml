@@ -30,6 +30,14 @@ spring:
 
 server:
   port: 9990
+  error:
+    # Include the exception message in the JSON error response so the
+    # Web-UI (and curl) can show a useful message instead of the bare
+    # "Bad Request". Spring's default `never` keeps it out, which makes
+    # 400-class errors from `ResponseStatusException` (e.g. Setting-Form
+    # validation, scope-resolution failures) opaque on the client.
+    # Stacktraces stay off — internal exception types stay internal.
+    include-message: always
 
 vance:
   bootstrap:

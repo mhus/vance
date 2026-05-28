@@ -1037,6 +1037,36 @@ declare const _default: {
         refreshedHint: string;
         saveFailed: string;
     };
+    settingForms: {
+        title: string;
+        tenantWide: string;
+        projectLabel: string;
+        formsLabel: string;
+        emptyHeadline: string;
+        emptyBody: string;
+        pickFormHeadline: string;
+        pickFormBody: string;
+        currentValuesTitle: string;
+        computedTitle: string;
+        appliedTitle: string;
+        previewTitle: string;
+        resetTitle: string;
+        noChanges: string;
+        apply: string;
+        preview: string;
+        reset: string;
+        confirmReset: string;
+        unset: string;
+        conditional: string;
+        sourceTenant: string;
+        sourceUser: string;
+        sourceProject: string;
+        actions: {
+            write: string;
+            delete: string;
+            skip: string;
+        };
+    };
     scopes: {
         pageTitle: string;
         loading: string;
@@ -1163,6 +1193,8 @@ declare const _default: {
         };
         settingsPanel: {
             title: string;
+            tabRaw: string;
+            tabForms: string;
             noSettingsHeadline: string;
             noSettingsBody: string;
             valueLabel: string;
@@ -1187,6 +1219,12 @@ declare const _default: {
                 boolean: string;
                 password: string;
             };
+        };
+        settingFormsPanel: {
+            emptyHeadline: string;
+            emptyBodyProject: string;
+            emptyBodyTenant: string;
+            backToList: string;
         };
         createGroup: {
             title: string;

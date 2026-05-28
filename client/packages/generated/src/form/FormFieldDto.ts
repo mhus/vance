@@ -4,6 +4,7 @@
 */
 
 import { FormChoiceDto } from './FormChoiceDto';
+import { BindsToDto } from './BindsToDto';
 
 export interface FormFieldDto {
   name: string;
@@ -13,10 +14,16 @@ export interface FormFieldDto {
   required: boolean;
   defaultValue?: string;
   choices: FormChoiceDto[];
+  choicesFrom?: string;
   rows?: number;
   integerMin?: number;
   integerMax?: number;
   min?: number;
   max?: number;
   item?: FormFieldDto[];
+  bindsTo?: BindsToDto;
+  showIf?: string;
+  writeIf?: string;
+  currentValue?: string;
+  currentSource?: string;
 }

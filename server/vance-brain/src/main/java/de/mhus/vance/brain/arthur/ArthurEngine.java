@@ -8,6 +8,7 @@ import de.mhus.vance.api.ws.MessageType;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.AiChatException;
+import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.ai.ModelCatalog;
@@ -2277,42 +2278,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ThinkProcessDocument process,
             SettingService settings,
             AiModelResolver modelResolver) {
-        String tenantId = process.getTenantId();
-        // params.model wins (recipe alias or direct provider:model).
-        // params.provider is honoured for backward-compat: if it's
-        // set and params.model contains no colon, we synthesise
-        // "<provider>:<model>". Otherwise we fall through to the
-        // resolver's own default-handling.
-        String paramModel = paramString(process, "model", null);
-        String paramProvider = paramString(process, "provider", null);
-        String spec;
-        if (paramModel != null && paramModel.contains(":")) {
-            spec = paramModel;
-        } else if (paramModel != null && paramProvider != null) {
-            spec = paramProvider + ":" + paramModel;
-        } else if (paramModel != null) {
-            // Bare model name with no colon and no separate provider —
-            // assume it's an alias key in the default namespace, which
-            // also covers the legacy "claude-sonnet-4-5" style by
-            // routing through the alias map.
-            spec = "default:" + paramModel;
-        } else {
-            spec = null; // resolver picks tenant default
-        }
-        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
-                spec, tenantId, process.getProjectId(), process.getId());
-
-        String apiKeySetting = String.format(
-                SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
-        String apiKey = settings.getDecryptedPasswordCascade(
-                tenantId, process.getProjectId(), process.getId(), apiKeySetting);
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "No API key configured for provider '" + resolved.provider()
-                            + "' (tenant='" + tenantId
-                            + "', setting='" + apiKeySetting + "')");
-        }
-        return new AiChatConfig(resolved.provider(), resolved.modelName(), apiKey);
+        return ChatBehaviorBuilder.resolveForProcess(process, settings, modelResolver);
     }
 
     // ──────────────────── engineParams helpers ────────────────────

@@ -11,6 +11,7 @@ import de.mhus.vance.api.zaphod.ZaphodState;
 import de.mhus.vance.api.zaphod.ZaphodStatus;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
+import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelResolver;
 import de.mhus.vance.brain.recipe.AppliedRecipe;
@@ -907,31 +908,7 @@ public class ZaphodEngine implements ThinkEngine {
             ThinkProcessDocument process,
             SettingService settings,
             AiModelResolver modelResolver) {
-        String tenantId = process.getTenantId();
-        String paramModel = paramString(process, "model", null);
-        String paramProvider = paramString(process, "provider", null);
-        String spec;
-        if (paramModel != null && paramModel.contains(":")) {
-            spec = paramModel;
-        } else if (paramModel != null && paramProvider != null) {
-            spec = paramProvider + ":" + paramModel;
-        } else if (paramModel != null) {
-            spec = "default:" + paramModel;
-        } else {
-            spec = null;
-        }
-        AiModelResolver.Resolved resolved = modelResolver.resolveOrDefault(
-                spec, tenantId, process.getProjectId(), process.getId());
-        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, resolved.provider());
-        String apiKey = settings.getDecryptedPasswordCascade(
-                tenantId, process.getProjectId(), process.getId(), apiKeySetting);
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "No API key configured for provider '" + resolved.provider()
-                            + "' (tenant='" + tenantId
-                            + "', setting='" + apiKeySetting + "')");
-        }
-        return new AiChatConfig(resolved.provider(), resolved.modelName(), apiKey);
+        return ChatBehaviorBuilder.resolveForProcess(process, settings, modelResolver);
     }
 
     private static @Nullable String paramString(

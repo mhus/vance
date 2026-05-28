@@ -38,14 +38,14 @@ public class OllamaProvider implements AiModelProvider {
 
     public static final String NAME = ProviderType.OLLAMA.wireName();
 
-    private final String baseUrl;
+    private final String defaultBaseUrl;
     private final ModelCatalog modelCatalog;
 
     public OllamaProvider(
             ModelCatalog modelCatalog,
             @Value("${vance.ai.ollama.base-url:http://localhost:11434}") String baseUrl) {
         this.modelCatalog = modelCatalog;
-        this.baseUrl = baseUrl;
+        this.defaultBaseUrl = baseUrl;
     }
 
     @Override
@@ -71,6 +71,9 @@ public class OllamaProvider implements AiModelProvider {
         // catalog's contextWindowTokens so the model is loaded with
         // its real window; YAML overrides cap RAM cost.
         int numCtx = modelInfo.contextWindowTokens();
+        // Per-tenant override (custom Ollama host) wins over the Spring
+        // boot-time default. Empty / unset falls back to vance.ai.ollama.base-url.
+        String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
         try {
             OllamaChatModel sync = OllamaChatModel.builder()
                     .baseUrl(baseUrl)

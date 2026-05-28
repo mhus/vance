@@ -1,0 +1,85 @@
+title:
+  de: "Quota-Voreinstellung"
+  en: "Quota Preset"
+description:
+  de: "Token-Budget für dieses Projekt — Preset oder benutzerdefinierte Werte."
+  en: "Token budget for this project — preset or custom values."
+icon: chart-bar
+category: quotas
+defaultScope: project
+availableIn: [ "!_*" ]
+
+fields:
+  - name: budget
+    type: select
+    required: true
+    label:
+      de: "Budget-Größe"
+      en: "Budget size"
+    help:
+      de: "Voreinstellung für Tages- und Monats-Budget. 'Custom' erlaubt eigene Werte."
+      en: "Preset for daily and monthly budget. 'Custom' enables manual values."
+    choices:
+      - value: "small"
+        label: { de: "Klein (~100k/Tag)", en: "Small (~100k/day)" }
+      - value: "medium"
+        label: { de: "Mittel (~500k/Tag)", en: "Medium (~500k/day)" }
+      - value: "large"
+        label: { de: "Groß (~2M/Tag)", en: "Large (~2M/day)" }
+      - value: "custom"
+        label: { de: "Benutzerdefiniert", en: "Custom" }
+      - value: "off"
+        label: { de: "Kein Budget", en: "No budget" }
+
+  - name: customDailyTokens
+    type: integer
+    integerMin: 1000
+    label:
+      de: "Tages-Tokens (benutzerdefiniert)"
+      en: "Daily tokens (custom)"
+    showIf: "budget == 'custom'"
+    writeIf: "budget == 'custom'"
+    bindsTo:
+      key: "quota.daily_tokens"
+      settingType: LONG
+
+  - name: customMonthlyTokens
+    type: integer
+    integerMin: 10000
+    label:
+      de: "Monats-Tokens (benutzerdefiniert)"
+      en: "Monthly tokens (custom)"
+    showIf: "budget == 'custom'"
+    writeIf: "budget == 'custom'"
+    bindsTo:
+      key: "quota.monthly_tokens"
+      settingType: LONG
+
+  - name: warnAtPercent
+    type: integer
+    integerMin: 1
+    integerMax: 99
+    defaultValue: "80"
+    label:
+      de: "Warnung ab (% des Budgets)"
+      en: "Warn at (% of budget)"
+    bindsTo:
+      key: "quota.warn_at_percent"
+
+settings:
+  # Preset-driven daily tokens — only active when budget is one of the presets.
+  - key: "quota.daily_tokens"
+    settingType: LONG
+    writeIf: "budget == 'small' or budget == 'medium' or budget == 'large'"
+    value: |
+      {% if budget == 'small' %}100000
+      {% elseif budget == 'medium' %}500000
+      {% else %}2000000{% endif %}
+
+  - key: "quota.monthly_tokens"
+    settingType: LONG
+    writeIf: "budget == 'small' or budget == 'medium' or budget == 'large'"
+    value: |
+      {% if budget == 'small' %}3000000
+      {% elseif budget == 'medium' %}15000000
+      {% else %}60000000{% endif %}

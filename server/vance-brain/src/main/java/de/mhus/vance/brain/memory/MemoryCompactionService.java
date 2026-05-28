@@ -3,6 +3,7 @@ package de.mhus.vance.brain.memory;
 import de.mhus.vance.api.chat.ChatRole;
 import de.mhus.vance.brain.ai.AiChat;
 import de.mhus.vance.brain.ai.AiChatConfig;
+import de.mhus.vance.brain.ai.ChatBehaviorBuilder;
 import de.mhus.vance.brain.ai.AiChatOptions;
 import de.mhus.vance.brain.ai.AiModelService;
 import de.mhus.vance.brain.ai.ProviderType;
@@ -504,15 +505,10 @@ public class MemoryCompactionService {
                 tenantId, /*projectId*/ null, processId, SETTING_AI_MODEL);
         String model = (modelCascade == null || modelCascade.isBlank())
                 ? DEFAULT_MODEL : modelCascade;
-        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
-        String apiKey = settingService.getDecryptedPasswordCascade(
-                tenantId, /*projectId*/ null, processId, apiKeySetting);
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "No API key configured for provider '" + provider
-                            + "' (tenant='" + tenantId
-                            + "', setting='" + apiKeySetting + "')");
-        }
-        return new AiChatConfig(provider, model, apiKey);
+        String apiKey = ChatBehaviorBuilder.resolveApiKey(
+                provider, tenantId, /*projectId*/ null, processId, settingService);
+        String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
+                provider, tenantId, /*projectId*/ null, processId, settingService);
+        return new AiChatConfig(provider, model, apiKey, baseUrl);
     }
 }

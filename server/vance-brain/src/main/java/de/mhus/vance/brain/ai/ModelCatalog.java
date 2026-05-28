@@ -136,6 +136,34 @@ public class ModelCatalog {
         return lookupOrDefault(null, null, provider, modelName);
     }
 
+    /**
+     * Cascade-aware enumeration of every {@code (provider, modelName)}
+     * pair visible to the given scope. Used by the Setting-Form
+     * subsystem to populate model-picker dropdowns dynamically, and by
+     * future admin-views that want to inspect the merged catalogue.
+     *
+     * <p>Order follows the {@link #resolveMerged} iteration order:
+     * bundled entries first in classpath-YAML declaration order, then
+     * any tenant-/project-level additions appended in the order they
+     * were merged in. Stable across calls.
+     */
+    public List<ModelInfo> listAll(@Nullable String tenantId, @Nullable String projectId) {
+        Map<String, Map<String, Object>> merged = resolveMerged(tenantId, projectId);
+        List<ModelInfo> out = new java.util.ArrayList<>(merged.size());
+        for (Map.Entry<String, Map<String, Object>> entry : merged.entrySet()) {
+            String key = entry.getKey();
+            // {@link #key} joins (provider, modelName) with '/' — splitting on
+            // ':' would mangle ollama tags like "qwen3:8b". Split at the first
+            // '/' instead, which is reserved for the cascade-internal key.
+            int slash = key.indexOf('/');
+            if (slash <= 0) continue;
+            String provider = key.substring(0, slash);
+            String modelName = key.substring(slash + 1);
+            out.add(buildInfo(provider, modelName, entry.getValue()));
+        }
+        return out;
+    }
+
     // ──────────────────── Cascade resolution ────────────────────
 
     /**

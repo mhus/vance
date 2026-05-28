@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
+  SettingFormView,
   VAlert,
   VButton,
   VCard,
@@ -13,6 +14,7 @@ import {
   VSelect,
   VTextarea,
 } from '@/components';
+import { listSettingForms, RestError } from '@vance/shared';
 import { useAdminTenant } from '@/composables/useAdminTenant';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
 import { useAdminProjects } from '@/composables/useAdminProjects';
@@ -27,6 +29,7 @@ import {
   type ProjectDto,
   type ProjectGroupSummary,
   type SettingDto,
+  type SettingFormSummaryDto,
 } from '@vance/generated';
 
 type KitDialogMode = 'install' | 'update' | 'export';
@@ -96,6 +99,81 @@ const newSettingDescription = ref('');
 const editingKey = ref<string | null>(null);
 const editValue = ref('');
 const editDescription = ref('');
+
+// ─── Setting Forms tab state ───
+// Right-panel has two tabs for the selected scope: free-form raw settings
+// editor (default) and YAML-driven Setting Forms (see specification/setting-forms.md).
+type RightTab = 'settings' | 'forms';
+const rightTab = ref<RightTab>('settings');
+const settingFormsList = ref<SettingFormSummaryDto[]>([]);
+const settingFormsLoading = ref(false);
+const settingFormsError = ref<string | null>(null);
+const selectedSettingForm = ref<string | null>(null);
+const settingFormsReloadKey = ref<number>(0);
+
+/**
+ * Setting Forms only make sense in project-scoped views — the
+ * bundled forms carry {@code availableIn: ["!_*"]} so they're hidden
+ * from the tenant context anyway. We still load the listing when a
+ * tenant is selected so the empty-state can explain why it's empty.
+ */
+const settingFormsProjectId = computed<string | undefined>(() => {
+  if (settingsScope.value?.type === 'project') return settingsScope.value.id;
+  return undefined;
+});
+
+async function loadSettingForms(): Promise<void> {
+  if (!settingsScope.value) {
+    settingFormsList.value = [];
+    return;
+  }
+  settingFormsLoading.value = true;
+  settingFormsError.value = null;
+  try {
+    const res = await listSettingForms(settingFormsProjectId.value);
+    settingFormsList.value = res.forms ?? [];
+    // Drop a stale selection if the form is no longer in the listing
+    // (different project, scope-restricted, …).
+    if (selectedSettingForm.value
+        && !settingFormsList.value.some((f) => f.name === selectedSettingForm.value)) {
+      selectedSettingForm.value = null;
+    }
+  } catch (err) {
+    settingFormsError.value = err instanceof RestError ? err.message : String(err);
+    settingFormsList.value = [];
+  } finally {
+    settingFormsLoading.value = false;
+  }
+}
+
+function selectSettingForm(name: string): void {
+  selectedSettingForm.value = name;
+}
+
+function backToSettingFormsList(): void {
+  selectedSettingForm.value = null;
+}
+
+function onSettingFormApplied(): void {
+  // Re-fetch the listing so a fresh apply that touches `availableIn`-relevant
+  // settings (e.g. a kit install changing project metadata) re-resolves, and
+  // bump the key so the active form refreshes its currentValue display.
+  settingFormsReloadKey.value += 1;
+  void loadSettingForms();
+}
+
+const groupedSettingForms = computed(() => {
+  const groups = new Map<string, SettingFormSummaryDto[]>();
+  for (const f of settingFormsList.value) {
+    const cat = f.category ?? '';
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat)!.push(f);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => a.title.localeCompare(b.title));
+  }
+  return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+});
 
 const settingTypeOptions = computed(() => [
   { value: SettingType.STRING, label: t('scopes.settingsPanel.types.string') },
@@ -201,11 +279,16 @@ function applySelectionToForm(): void {
 function loadSettingsForSelection(): void {
   const scope = settingsScope.value;
   resetSettingEditor();
+  // Drop the active Setting-Form when the scope changes — the cascade
+  // context shifts, the live values would be misleading.
+  selectedSettingForm.value = null;
   if (!scope) {
     settingsState.clear();
+    settingFormsList.value = [];
     return;
   }
   void settingsState.load(scope.type, scope.id);
+  void loadSettingForms();
 }
 
 function loadKitForSelection(): void {
@@ -980,7 +1063,7 @@ const combinedError = computed<string | null>(() =>
       </VCard>
     </div>
 
-    <!-- ─── Right panel: settings ─── -->
+    <!-- ─── Right panel: settings + setting-forms tabs ─── -->
     <template v-if="settingsScope" #right-panel>
       <div class="p-4 flex flex-col gap-3">
         <h3 class="font-semibold text-sm uppercase opacity-60">
@@ -989,6 +1072,39 @@ const combinedError = computed<string | null>(() =>
             id: settingsScope.id,
           }) }}
         </h3>
+
+        <!-- Tab switcher -->
+        <div role="tablist" class="flex gap-1 border-b border-base-300 -mt-1">
+          <button
+            type="button"
+            role="tab"
+            class="px-3 py-1.5 text-sm font-semibold border-b-2 transition-colors"
+            :class="rightTab === 'settings'
+              ? 'border-primary text-primary'
+              : 'border-transparent opacity-60 hover:opacity-100'"
+            @click="rightTab = 'settings'"
+          >
+            {{ $t('scopes.settingsPanel.tabRaw') }}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            class="px-3 py-1.5 text-sm font-semibold border-b-2 transition-colors"
+            :class="rightTab === 'forms'
+              ? 'border-primary text-primary'
+              : 'border-transparent opacity-60 hover:opacity-100'"
+            @click="rightTab = 'forms'"
+          >
+            {{ $t('scopes.settingsPanel.tabForms') }}
+            <span
+              v-if="settingFormsList.length > 0"
+              class="ml-1 text-xs opacity-70"
+            >({{ settingFormsList.length }})</span>
+          </button>
+        </div>
+
+        <!-- ─── Tab: raw settings ─── -->
+        <template v-if="rightTab === 'settings'">
 
         <VEmptyState
           v-if="!settingsState.loading.value && settingsState.settings.value.length === 0"
@@ -1092,6 +1208,72 @@ const combinedError = computed<string | null>(() =>
             @click="addSetting"
           >{{ $t('scopes.settingsPanel.add') }}</VButton>
         </div>
+
+        </template>
+        <!-- ─── /Tab: raw settings ─── -->
+
+        <!-- ─── Tab: setting forms ─── -->
+        <template v-else-if="rightTab === 'forms'">
+          <VAlert v-if="settingFormsError" variant="error">
+            {{ settingFormsError }}
+          </VAlert>
+
+          <VEmptyState
+            v-if="!settingFormsLoading
+                  && settingFormsList.length === 0
+                  && !selectedSettingForm"
+            :headline="$t('scopes.settingFormsPanel.emptyHeadline')"
+            :body="settingFormsProjectId
+              ? $t('scopes.settingFormsPanel.emptyBodyProject')
+              : $t('scopes.settingFormsPanel.emptyBodyTenant')"
+          />
+
+          <!-- Form-Listing -->
+          <template v-if="!selectedSettingForm">
+            <div
+              v-for="[cat, group] in groupedSettingForms"
+              :key="cat"
+              class="flex flex-col gap-1"
+            >
+              <div
+                v-if="cat"
+                class="text-[10px] uppercase tracking-wide opacity-50 font-semibold px-1 mt-1"
+              >
+                {{ cat }}
+              </div>
+              <button
+                v-for="f in group"
+                :key="f.name"
+                type="button"
+                class="text-left px-2.5 py-2 text-sm rounded transition-colors bg-base-200 hover:bg-base-300"
+                @click="selectSettingForm(f.name)"
+              >
+                <div class="flex items-center gap-1.5">
+                  <span class="font-semibold truncate">{{ f.title }}</span>
+                </div>
+                <div class="text-xs opacity-70 mt-0.5 line-clamp-2">
+                  {{ f.description }}
+                </div>
+              </button>
+            </div>
+          </template>
+
+          <!-- Selected form -->
+          <template v-else>
+            <div class="flex items-center gap-2 -mt-1">
+              <VButton variant="ghost" size="sm" @click="backToSettingFormsList">
+                {{ $t('scopes.settingFormsPanel.backToList') }}
+              </VButton>
+            </div>
+            <SettingFormView
+              :name="selectedSettingForm"
+              :project-id="settingFormsProjectId"
+              :reload-key="settingFormsReloadKey"
+              @applied="onSettingFormApplied"
+            />
+          </template>
+        </template>
+        <!-- ─── /Tab: setting forms ─── -->
       </div>
     </template>
 

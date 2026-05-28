@@ -69,7 +69,7 @@ public class OpenAiProvider implements AiModelProvider {
 
     public static final String NAME = ProviderType.OPENAI.wireName();
 
-    private final String baseUrl;
+    private final String defaultBaseUrl;
     private final boolean cacheEnabled;
     private final ModelCatalog modelCatalog;
 
@@ -78,7 +78,7 @@ public class OpenAiProvider implements AiModelProvider {
             @Value("${vance.ai.openai.base-url:https://api.openai.com/v1}") String baseUrl,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
         this.modelCatalog = modelCatalog;
-        this.baseUrl = baseUrl;
+        this.defaultBaseUrl = baseUrl;
         this.cacheEnabled = cacheEnabled;
         if (!cacheEnabled) {
             log.info("OpenAI prompt-cache hints DISABLED via vance.ai.cache.enabled=false "
@@ -104,6 +104,9 @@ public class OpenAiProvider implements AiModelProvider {
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         Map<String, Object> cacheParams = buildCacheParameters(config, options, cacheEnabled);
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
+        // Per-tenant override (cortecs / OpenRouter / vLLM) wins over the Spring
+        // boot-time default. Empty / unset falls back to vance.ai.openai.base-url.
+        String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
         try {
             OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
                     .baseUrl(baseUrl)

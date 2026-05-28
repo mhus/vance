@@ -1125,6 +1125,38 @@ export default {
     saveFailed: 'Save failed.',
   },
 
+  settingForms: {
+    title: 'Setting Forms',
+    tenantWide: '_tenant (tenant-wide)',
+    projectLabel: 'Project',
+    formsLabel: 'Forms',
+    emptyHeadline: 'No forms available',
+    emptyBody:
+      'Setting Forms are YAML files under _vance/setting_forms/ that configure settings in a structured way.',
+    pickFormHeadline: 'Pick a form',
+    pickFormBody: 'Choose a form from the list on the left to edit it.',
+    currentValuesTitle: 'Current values (cascade)',
+    computedTitle: 'Additional computed settings',
+    appliedTitle: 'Applied',
+    previewTitle: 'Preview',
+    resetTitle: 'Reset',
+    noChanges: 'No changes.',
+    apply: 'Save',
+    preview: 'Preview',
+    reset: 'Reset',
+    confirmReset: 'Delete every key this form references on this layer?',
+    unset: '(not set)',
+    conditional: 'conditional',
+    sourceTenant: 'tenant',
+    sourceUser: 'user "{user}"',
+    sourceProject: 'project "{project}"',
+    actions: {
+      write: 'WRITE',
+      delete: 'DELETE',
+      skip: 'SKIP',
+    },
+  },
+
   scopes: {
     pageTitle: 'Scopes',
     loading: 'Loading…',
@@ -1258,6 +1290,8 @@ export default {
     },
     settingsPanel: {
       title: 'Settings · {type} / {id}',
+      tabRaw: 'Settings',
+      tabForms: 'Forms',
       noSettingsHeadline: 'No settings',
       noSettingsBody: 'Add a key/value below to configure this scope.',
       valueLabel: 'Value',
@@ -1282,6 +1316,14 @@ export default {
         boolean: 'Boolean',
         password: 'Password',
       },
+    },
+    settingFormsPanel: {
+      emptyHeadline: 'No forms available',
+      emptyBodyProject:
+        'Forms are YAML files under _vance/setting_forms/ — e.g. "LLM Settings", "Quota Preset", or "Jira Integration". Delivered via kits or tenant defaults.',
+      emptyBodyTenant:
+        'Forms typically apply at the project level. Pick a project on the left to see the forms available for it.',
+      backToList: '← Back to list',
     },
     createGroup: {
       title: 'New project group',

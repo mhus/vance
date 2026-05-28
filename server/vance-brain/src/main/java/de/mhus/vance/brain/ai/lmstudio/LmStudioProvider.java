@@ -36,14 +36,14 @@ public class LmStudioProvider implements AiModelProvider {
 
     public static final String NAME = ProviderType.LM_STUDIO.wireName();
 
-    private final String baseUrl;
+    private final String defaultBaseUrl;
     private final ModelCatalog modelCatalog;
 
     public LmStudioProvider(
             ModelCatalog modelCatalog,
             @Value("${vance.ai.lmstudio.base-url:http://localhost:1234/v1}") String baseUrl) {
         this.modelCatalog = modelCatalog;
-        this.baseUrl = baseUrl;
+        this.defaultBaseUrl = baseUrl;
     }
 
     @Override
@@ -63,6 +63,9 @@ public class LmStudioProvider implements AiModelProvider {
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
+        // Per-tenant override (custom LM Studio host) wins over the Spring
+        // boot-time default. Empty / unset falls back to vance.ai.lmstudio.base-url.
+        String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
         try {
             OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
                     .baseUrl(baseUrl)

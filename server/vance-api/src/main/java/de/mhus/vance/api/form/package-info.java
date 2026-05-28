@@ -14,6 +14,16 @@
  *
  * <p>See {@code specification/wizards.md §3} for the field-type
  * catalog and full schema.
+ *
+ * <p>Setting Forms (see {@code specification/setting-forms.md}) reuse
+ * {@link FormFieldDto} verbatim and pull in three optional extras —
+ * {@code bindsTo} (direct 1:1 mapping to a setting key, see
+ * {@link BindsToDto}), {@code showIf}/{@code writeIf} (Pebble
+ * expressions for conditional rendering and conditional write/clear),
+ * and the {@code currentValue}/{@code currentSource} live-cascade
+ * fields populated by the brain on read. Wizards and tool-templates
+ * leave these {@code null}; {@code @JsonInclude(NON_NULL)} keeps them
+ * off the wire there.
  */
 @NullMarked
 package de.mhus.vance.api.form;

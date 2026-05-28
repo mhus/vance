@@ -25,4 +25,5 @@ export { default as VSelect } from './VSelect.vue';
 export { default as VTagEditor } from './VTagEditor.vue';
 export { default as VTextarea } from './VTextarea.vue';
 export { default as FormFields } from './FormFields.vue';
+export { default as SettingFormView } from './SettingFormView.vue';
 //# sourceMappingURL=index.js.map

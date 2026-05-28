@@ -1,0 +1,181 @@
+title:
+  de: "LLM-Einstellungen"
+  en: "LLM Settings"
+description:
+  de: "Modell-Aliase pro Aufgaben-Typ, Default-Fallback, Provider-API-Keys und Gateway-URLs."
+  en: "Model aliases per task type, default fallback, provider API keys and gateway URLs."
+icon: cpu-chip
+category: llm
+defaultScope: project
+availableIn: [ "!_*" ]
+
+fields:
+  # ─── Aliases — referenced by recipes as `default:<key>` ────────────
+  # AiModelResolver looks each `default:<key>` up via this setting first;
+  # only when an alias is unset does it fall back to the default-pair below.
+  # See CLAUDE.md "Model-Aliase" and specification/llm-resource-management.md §3a.
+
+  - name: aliasAnalyze
+    type: select
+    label:
+      de: "Alias `default:analyze`"
+      en: "Alias `default:analyze`"
+    help:
+      de: "Strukturierte, sorgfältige Arbeit — Slartibartfast-Phasen, Planning-Schritte."
+      en: "Structured, careful work — Slartibartfast phases, planning steps."
+    choicesFrom: ai-models
+    bindsTo:
+      key: "ai.alias.default.analyze"
+
+  - name: aliasFast
+    type: select
+    label:
+      de: "Alias `default:fast`"
+      en: "Alias `default:fast`"
+    help:
+      de: "Schnelle, günstige Calls — Klassifikation, Title-Gen, Light-LLM-Service."
+      en: "Quick, cheap calls — classification, title-gen, Light-LLM-Service."
+    choicesFrom: ai-models
+    bindsTo:
+      key: "ai.alias.default.fast"
+
+  - name: aliasDeep
+    type: select
+    label:
+      de: "Alias `default:deep`"
+      en: "Alias `default:deep`"
+    help:
+      de: "Deep Reasoning — Marvin-Task-Tree, lange Tool-Ketten."
+      en: "Deep reasoning — Marvin task tree, long tool chains."
+    choicesFrom: ai-models
+    bindsTo:
+      key: "ai.alias.default.deep"
+
+  - name: aliasWeb
+    type: select
+    label:
+      de: "Alias `default:web`"
+      en: "Alias `default:web`"
+    help:
+      de: "Web-Search / Browsing — bevorzugt Modelle mit langem Kontextfenster."
+      en: "Web search / browsing — prefer models with a long context window."
+    choicesFrom: ai-models
+    bindsTo:
+      key: "ai.alias.default.web"
+
+  - name: aliasCode
+    type: select
+    label:
+      de: "Alias `default:code`"
+      en: "Alias `default:code`"
+    help:
+      de: "Code-lastige Arbeit — Refactoring, Codegen, Skript-Engine."
+      en: "Code-heavy work — refactoring, codegen, script engine."
+    choicesFrom: ai-models
+    bindsTo:
+      key: "ai.alias.default.code"
+
+  # ─── Default fallback — used when an alias is unset ────────────────
+
+  - name: provider
+    type: select
+    label:
+      de: "Default-Provider (Fallback)"
+      en: "Default provider (fallback)"
+    help:
+      de: "Nur relevant wenn ein Alias keinen Wert hat. Modell wird über `ai.default.model` (Raw-Settings-Tab) gesteuert."
+      en: "Only relevant when no alias is set. The model is configured via `ai.default.model` (raw-settings tab)."
+    bindsTo:
+      key: "ai.default.provider"
+    choices:
+      - { value: "anthropic", label: { de: "Anthropic", en: "Anthropic" } }
+      - { value: "openai",    label: { de: "OpenAI",    en: "OpenAI"    } }
+      - { value: "gemini",    label: { de: "Google Gemini", en: "Google Gemini" } }
+      - { value: "ollama",    label: { de: "Ollama (lokal)", en: "Ollama (local)" } }
+
+  # ─── Provider API keys ─────────────────────────────────────────────
+  # All providers may be relevant simultaneously: e.g. analyze=anthropic,
+  # fast=gemini → both keys need to be set. We therefore don't hide the
+  # key fields based on provider choice.
+
+  - name: anthropicKey
+    type: password
+    label:
+      de: "Anthropic API Key"
+      en: "Anthropic API Key"
+    help:
+      de: "Leer lassen um einen bereits gesetzten Key unverändert zu lassen."
+      en: "Leave empty to keep an already-set key unchanged."
+    bindsTo:
+      key: "ai.provider.anthropic.apiKey"
+
+  - name: openaiKey
+    type: password
+    label:
+      de: "OpenAI API Key"
+      en: "OpenAI API Key"
+    help:
+      de: "Auch für cortecs.ai / OpenRouter / vLLM — siehe Base-URL unten."
+      en: "Also for cortecs.ai / OpenRouter / vLLM — see Base-URL below."
+    bindsTo:
+      key: "ai.provider.openai.apiKey"
+
+  - name: geminiKey
+    type: password
+    label:
+      de: "Gemini API Key"
+      en: "Gemini API Key"
+    bindsTo:
+      key: "ai.provider.gemini.apiKey"
+
+  # ─── Provider gateway / base URLs ──────────────────────────────────
+  # Per-tenant overrides for the OpenAI / Ollama / LM Studio adapters.
+  # Leave empty to use the Spring boot-time default
+  # (`vance.ai.<provider>.base-url`).
+
+  - name: openaiBaseUrl
+    type: string
+    label:
+      de: "OpenAI Base-URL"
+      en: "OpenAI Base-URL"
+    help:
+      de: "Leer = api.openai.com. Beispiele: https://api.cortecs.ai/v1, https://openrouter.ai/api/v1, eigene vLLM-Instanz."
+      en: "Empty = api.openai.com. Examples: https://api.cortecs.ai/v1, https://openrouter.ai/api/v1, your own vLLM instance."
+    bindsTo:
+      key: "ai.provider.openai.baseUrl"
+
+  - name: ollamaBaseUrl
+    type: string
+    label:
+      de: "Ollama Base-URL"
+      en: "Ollama Base-URL"
+    help:
+      de: "Leer = http://localhost:11434. Z.B. http://gpu-host:11434 für einen geteilten Inferenz-Host."
+      en: "Empty = http://localhost:11434. E.g. http://gpu-host:11434 for a shared inference host."
+    bindsTo:
+      key: "ai.provider.ollama.baseUrl"
+
+  # ─── Tracing toggle ────────────────────────────────────────────────
+
+  - name: tracing
+    type: boolean
+    defaultValue: false
+    label:
+      de: "LLM-Tracing aktivieren"
+      en: "Enable LLM tracing"
+    help:
+      de: "Schreibt detaillierte Request-/Response-Logs für Debugging."
+      en: "Writes detailed request/response logs for debugging."
+
+settings:
+  - key: "tracing.llm.enabled"
+    settingType: BOOLEAN
+    value: "{{ tracing }}"
+
+  - key: "tracing.llm.sample_rate"
+    settingType: DOUBLE
+    writeIf: "tracing"
+    value: "1.0"
+    description:
+      de: "Trace-Sample-Rate (0.0 bis 1.0). Default voll-Trace bei aktivem Tracing."
+      en: "Trace sample rate (0.0 to 1.0). Defaults to full-trace when tracing is on."

@@ -20,24 +20,40 @@ import java.util.stream.Stream;
  * fails fast on unknown values.
  */
 public enum ProviderType {
-    ANTHROPIC("anthropic"),
-    OPENAI("openai"),
-    GEMINI("gemini"),
-    OLLAMA("ollama"),
-    OLLAMA_CLOUD("ollama-cloud"),
-    LM_STUDIO("lmstudio"),
-    AZURE_OPENAI("azure-openai"),
+    ANTHROPIC("anthropic",     true),
+    OPENAI("openai",           true),
+    GEMINI("gemini",           true),
+    /** Local Ollama daemon — no auth required by default. */
+    OLLAMA("ollama",           false),
+    /** Hosted Ollama Turbo — requires a JWT. */
+    OLLAMA_CLOUD("ollama-cloud", true),
+    /** Local LM Studio server — no auth required by default. */
+    LM_STUDIO("lmstudio",      false),
+    AZURE_OPENAI("azure-openai", true),
     /** Test-only deterministic stub provider (qa/ai-test). */
-    SCRIPTED("scripted");
+    SCRIPTED("scripted",       false);
 
     private final String wireName;
+    private final boolean requiresApiKey;
 
-    ProviderType(String wireName) {
+    ProviderType(String wireName, boolean requiresApiKey) {
         this.wireName = wireName;
+        this.requiresApiKey = requiresApiKey;
     }
 
     public String wireName() {
         return wireName;
+    }
+
+    /**
+     * Whether this provider demands an API-key setting. Local providers
+     * (Ollama, LM Studio) speak HTTP to a localhost daemon and don't
+     * authenticate; the resolver should skip the key-lookup for them
+     * and pass a placeholder into {@link AiChatConfig} (whose record
+     * contract still rejects blank keys).
+     */
+    public boolean requiresApiKey() {
+        return requiresApiKey;
     }
 
     private static final Map<String, ProviderType> BY_WIRE = Stream.of(values())

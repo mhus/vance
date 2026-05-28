@@ -1135,6 +1135,38 @@ export default {
     saveFailed: 'Speichern fehlgeschlagen.',
   },
 
+  settingForms: {
+    title: 'Settings-Formulare',
+    tenantWide: '_tenant (mandantenweit)',
+    projectLabel: 'Projekt',
+    formsLabel: 'Formulare',
+    emptyHeadline: 'Keine Formulare verfügbar',
+    emptyBody:
+      'Settings-Formulare sind YAML-Dateien unter _vance/setting_forms/, die strukturiert Settings setzen.',
+    pickFormHeadline: 'Formular auswählen',
+    pickFormBody: 'Links ein Formular aus der Liste wählen, um es zu bearbeiten.',
+    currentValuesTitle: 'Aktuelle Werte (Cascade)',
+    computedTitle: 'Zusätzlich berechnete Settings',
+    appliedTitle: 'Angewendet',
+    previewTitle: 'Vorschau',
+    resetTitle: 'Zurückgesetzt',
+    noChanges: 'Keine Änderungen.',
+    apply: 'Speichern',
+    preview: 'Vorschau',
+    reset: 'Zurücksetzen',
+    confirmReset: 'Alle vom Formular referenzierten Keys auf dieser Ebene löschen?',
+    unset: '(nicht gesetzt)',
+    conditional: 'bedingt',
+    sourceTenant: 'Mandant',
+    sourceUser: 'User „{user}"',
+    sourceProject: 'Projekt „{project}"',
+    actions: {
+      write: 'WRITE',
+      delete: 'DELETE',
+      skip: 'SKIP',
+    },
+  },
+
   scopes: {
     pageTitle: 'Bereiche',
     loading: 'Laden…',
@@ -1268,6 +1300,8 @@ export default {
     },
     settingsPanel: {
       title: 'Einstellungen · {type} / {id}',
+      tabRaw: 'Einstellungen',
+      tabForms: 'Formulare',
       noSettingsHeadline: 'Keine Einstellungen',
       noSettingsBody: 'Unten ein Schlüssel/Wert-Paar hinzufügen, um diesen Bereich zu konfigurieren.',
       valueLabel: 'Wert',
@@ -1292,6 +1326,14 @@ export default {
         boolean: 'Boolean',
         password: 'Passwort',
       },
+    },
+    settingFormsPanel: {
+      emptyHeadline: 'Keine Formulare verfügbar',
+      emptyBodyProject:
+        'Formulare sind YAML-Dateien unter _vance/setting_forms/ — z.B. „LLM-Einstellungen", „Quota-Voreinstellung" oder „Jira-Anbindung". Über Kits oder Tenant-Defaults bereitgestellt.',
+      emptyBodyTenant:
+        'Formulare sind typischerweise auf Projekt-Ebene anwendbar. Links ein Projekt auswählen, um die für dieses Projekt verfügbaren Formulare zu sehen.',
+      backToList: '← Zurück zur Liste',
     },
     createGroup: {
       title: 'Neue Projektgruppe',

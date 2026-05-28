@@ -164,6 +164,19 @@
             <version>0.4.0</version>
         </dependency>
 
+        <!-- REngine + Rserve client for RScriptTool: talks to an
+             Rserve daemon over localhost TCP, ships R expressions and
+             pulls typed REXP responses. The daemon itself runs as a
+             separate process (apt-get install + R install.packages or
+             brew + Rserve::Rserve on macOS) — see
+             readme/r-script-setup.md. LGPL-2.1, maintained by Simon
+             Urbanek (R-core). -->
+        <dependency>
+            <groupId>org.rosuda.REngine</groupId>
+            <artifactId>Rserve</artifactId>
+            <version>1.8.1</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

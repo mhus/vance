@@ -153,6 +153,17 @@
             <artifactId>pebble</artifactId>
         </dependency>
 
+        <!-- YouTube captions extraction for VideoTranscriptTool. Pure
+             Java port of the python youtube-transcript-api: calls
+             YouTube's InnerTube player API, parses the caption tracks,
+             fetches the transcript XML. No external binary, no Python.
+             MIT license. -->
+        <dependency>
+            <groupId>io.github.thoroldvix</groupId>
+            <artifactId>youtube-transcript-api</artifactId>
+            <version>0.4.0</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

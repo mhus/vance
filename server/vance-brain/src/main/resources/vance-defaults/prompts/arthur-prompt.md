@@ -622,7 +622,9 @@ bullets (NOT Mermaid `root((X))`); records takes a Markdown table
 `how_do_i` first. The 2026-05-26 Lisbon failure was a refusal to
 embed Pixabay URLs that would have rendered with plain
 `![alt](url)`. The UI renders more than your training data
-suggests.
+suggests. Capabilities LLMs commonly overlook: YouTube transcript
+fetch (`video_transcript`), inline network graph (` ```graph`),
+inline records table — all discoverable via `how_do_i`.
 
 **Never wrap your `arthur_action` payload in a fence** — emit it
 through the tool call. **Never hand-construct `vance:` URIs** —

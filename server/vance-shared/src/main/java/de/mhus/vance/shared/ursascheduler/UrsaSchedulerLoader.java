@@ -1,8 +1,8 @@
-package de.mhus.vance.shared.scheduler;
+package de.mhus.vance.shared.ursascheduler;
 
-import de.mhus.vance.api.scheduler.LockMode;
-import de.mhus.vance.api.scheduler.OverlapPolicy;
-import de.mhus.vance.api.scheduler.SchedulerSource;
+import de.mhus.vance.api.ursascheduler.LockMode;
+import de.mhus.vance.api.ursascheduler.OverlapPolicy;
+import de.mhus.vance.api.ursascheduler.SchedulerSource;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
@@ -43,7 +43,7 @@ import org.yaml.snakeyaml.Yaml;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class SchedulerLoader {
+public class UrsaSchedulerLoader {
 
     /** Path prefix used for scheduler documents in any cascade tier. */
     public static final String SCHEDULER_PATH_PREFIX = "_vance/scheduler/";
@@ -57,7 +57,7 @@ public class SchedulerLoader {
      * Resolve a single scheduler by name in the project/_vance cascade.
      * Returns empty if no tier carries it.
      */
-    public Optional<ResolvedScheduler> load(
+    public Optional<ResolvedUrsaScheduler> load(
             String tenantId, @Nullable String projectId, String name) {
         if (name == null || name.isBlank()) return Optional.empty();
         String path = pathFor(name);
@@ -67,7 +67,7 @@ public class SchedulerLoader {
         LookupResult result = hit.get();
         if (result.source() == LookupResult.Source.RESOURCE) {
             // Defensive: classpath shipping isn't part of the v1 scheduler design.
-            log.warn("SchedulerLoader: ignoring resource-layer scheduler at '{}'", result.path());
+            log.warn("UrsaSchedulerLoader: ignoring resource-layer scheduler at '{}'", result.path());
             return Optional.empty();
         }
         try {
@@ -85,10 +85,10 @@ public class SchedulerLoader {
      * {@code _vance/scheduler/} entries by name. Malformed entries are
      * logged and skipped — the rest of the bootstrap continues.
      */
-    public List<ResolvedScheduler> listAll(String tenantId, @Nullable String projectId) {
+    public List<ResolvedUrsaScheduler> listAll(String tenantId, @Nullable String projectId) {
         Map<String, LookupResult> hits = documentService.listByPrefixCascade(
                 tenantId, effectiveProjectId(projectId), SCHEDULER_PATH_PREFIX);
-        List<ResolvedScheduler> out = new ArrayList<>(hits.size());
+        List<ResolvedUrsaScheduler> out = new ArrayList<>(hits.size());
         for (Map.Entry<String, LookupResult> e : hits.entrySet()) {
             String path = e.getKey();
             String name = nameFromPath(path);
@@ -98,7 +98,7 @@ public class SchedulerLoader {
             try {
                 out.add(parse(name, hit));
             } catch (RuntimeException ex) {
-                log.warn("SchedulerLoader: skipping malformed scheduler path='{}' source={}: {}",
+                log.warn("UrsaSchedulerLoader: skipping malformed scheduler path='{}' source={}: {}",
                         path, hit.source(), ex.getMessage());
             }
         }
@@ -134,7 +134,7 @@ public class SchedulerLoader {
      *
      * @throws SchedulerParseException with a field-level error message
      */
-    public ResolvedScheduler validateYaml(String name, String yaml) {
+    public ResolvedUrsaScheduler validateYaml(String name, String yaml) {
         String norm = normalizedName(name);
         try {
             return parse(norm, syntheticHit(norm, yaml));
@@ -153,7 +153,7 @@ public class SchedulerLoader {
     }
 
     @SuppressWarnings("unchecked")
-    private static ResolvedScheduler parse(String name, LookupResult hit) {
+    private static ResolvedUrsaScheduler parse(String name, LookupResult hit) {
         Yaml yaml = new Yaml();
         Object parsed = yaml.load(hit.content());
         if (parsed == null) {
@@ -167,7 +167,7 @@ public class SchedulerLoader {
         String description = stringOrThrow(spec.get("description"), "description");
         String recipe = stringOrNull(spec.get("recipe"));
         String workflow = stringOrNull(spec.get("workflow"));
-        ResolvedScheduler.ScriptSpec script = parseScript(spec.get("script"));
+        ResolvedUrsaScheduler.ScriptSpec script = parseScript(spec.get("script"));
         // Exactly one of recipe / workflow / script must be set.
         int targetCount = (recipe != null ? 1 : 0)
                 + (workflow != null ? 1 : 0)
@@ -217,7 +217,7 @@ public class SchedulerLoader {
         List<String> tags = stringList(spec.get("tags"), "tags");
 
         DocumentDocument doc = hit.document();
-        return new ResolvedScheduler(
+        return new ResolvedUrsaScheduler(
                 name,
                 hit.content(),
                 mapSource(hit.source()),
@@ -229,7 +229,7 @@ public class SchedulerLoader {
     }
 
     /** Parses the {@code script:} block when present; returns {@code null} when absent. */
-    private static ResolvedScheduler.@Nullable ScriptSpec parseScript(@Nullable Object raw) {
+    private static ResolvedUrsaScheduler.@Nullable ScriptSpec parseScript(@Nullable Object raw) {
         if (raw == null) return null;
         if (!(raw instanceof Map<?, ?> sm)) {
             throw new IllegalStateException(
@@ -282,7 +282,7 @@ public class SchedulerLoader {
             throw new IllegalStateException(
                     "'script.timeoutSeconds' must be > 0, got " + timeoutSeconds);
         }
-        return new ResolvedScheduler.ScriptSpec(source, dirName, path, timeoutSeconds);
+        return new ResolvedUrsaScheduler.ScriptSpec(source, dirName, path, timeoutSeconds);
     }
 
     private static LockMode parseLockMode(@Nullable Object raw) {

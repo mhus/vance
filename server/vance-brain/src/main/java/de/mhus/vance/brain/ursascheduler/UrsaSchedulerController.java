@@ -1,13 +1,13 @@
-package de.mhus.vance.brain.scheduler;
+package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.api.eventlog.EventLogEntryDto;
 import de.mhus.vance.api.eventlog.EventType;
-import de.mhus.vance.api.scheduler.LockMode;
-import de.mhus.vance.api.scheduler.OverlapPolicy;
-import de.mhus.vance.api.scheduler.SchedulerDto;
-import de.mhus.vance.api.scheduler.SchedulerSaveRequest;
-import de.mhus.vance.api.scheduler.SchedulerSource;
-import de.mhus.vance.api.scheduler.SchedulerSummary;
+import de.mhus.vance.api.ursascheduler.LockMode;
+import de.mhus.vance.api.ursascheduler.OverlapPolicy;
+import de.mhus.vance.api.ursascheduler.SchedulerDto;
+import de.mhus.vance.api.ursascheduler.SchedulerSaveRequest;
+import de.mhus.vance.api.ursascheduler.SchedulerSource;
+import de.mhus.vance.api.ursascheduler.SchedulerSummary;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
@@ -15,8 +15,8 @@ import de.mhus.vance.shared.eventlog.EventLogDocument;
 import de.mhus.vance.shared.eventlog.EventLogService;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
-import de.mhus.vance.shared.scheduler.ResolvedScheduler;
-import de.mhus.vance.shared.scheduler.SchedulerLoader;
+import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
+import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Instant;
@@ -54,10 +54,10 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/brain/{tenant}/project/{project}")
 @RequiredArgsConstructor
 @Slf4j
-public class SchedulerController {
+public class UrsaSchedulerController {
 
-    private final SchedulerLoader loader;
-    private final SchedulerService schedulerService;
+    private final UrsaSchedulerLoader loader;
+    private final UrsaSchedulerService schedulerService;
     private final DocumentService documentService;
     private final EventLogService eventLogService;
     private final RequestAuthority authority;
@@ -70,9 +70,9 @@ public class SchedulerController {
             @PathVariable("project") String project,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
-        List<ResolvedScheduler> entries = loader.listAll(tenant, project);
+        List<ResolvedUrsaScheduler> entries = loader.listAll(tenant, project);
         List<SchedulerSummary> out = new ArrayList<>(entries.size());
-        for (ResolvedScheduler r : entries) {
+        for (ResolvedUrsaScheduler r : entries) {
             out.add(toSummary(tenant, project, r));
         }
         out.sort(Comparator.comparing(SchedulerSummary::getName));
@@ -89,7 +89,7 @@ public class SchedulerController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         String norm = normalizeName(name);
-        ResolvedScheduler r = loader.load(tenant, project, norm)
+        ResolvedUrsaScheduler r = loader.load(tenant, project, norm)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Scheduler '" + norm + "' not found in project '" + project + "'"));
         return toDto(r);
@@ -113,7 +113,7 @@ public class SchedulerController {
         }
         try {
             loader.validateYaml(norm, yaml);
-        } catch (SchedulerLoader.SchedulerParseException ex) {
+        } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         }
         String path = pathFor(norm);
@@ -134,7 +134,7 @@ public class SchedulerController {
                     createdBy);
         }
         schedulerService.refreshOne(tenant, project, norm);
-        ResolvedScheduler reloaded = loader.load(tenant, project, norm)
+        ResolvedUrsaScheduler reloaded = loader.load(tenant, project, norm)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                         "Scheduler vanished immediately after write"));
         SchedulerDto dto = toDto(reloaded);
@@ -184,7 +184,7 @@ public class SchedulerController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         String norm = normalizeName(name);
-        String source = SchedulerSourceKeys.sourceFor(norm);
+        String source = UrsaSchedulerSourceKeys.sourceFor(norm);
         List<EventLogDocument> rows = eventLogService.listBySource(tenant, source, limit);
         List<EventLogEntryDto> out = new ArrayList<>(rows.size());
         for (EventLogDocument e : rows) {
@@ -195,11 +195,11 @@ public class SchedulerController {
 
     // ─── Mappers ──────────────────────────────────────────────────────────
 
-    private SchedulerSummary toSummary(String tenant, String project, ResolvedScheduler r) {
+    private SchedulerSummary toSummary(String tenant, String project, ResolvedUrsaScheduler r) {
         EventType[] activity = {
                 EventType.STARTED, EventType.COMPLETED, EventType.FAILED, EventType.SKIPPED};
         Instant lastRun = eventLogService.findLatest(
-                tenant, SchedulerSourceKeys.sourceFor(r.name()), List.of(activity))
+                tenant, UrsaSchedulerSourceKeys.sourceFor(r.name()), List.of(activity))
                 .map(EventLogDocument::getTimestamp)
                 .orElse(null);
         return SchedulerSummary.builder()
@@ -216,7 +216,7 @@ public class SchedulerController {
                 .build();
     }
 
-    private static SchedulerDto toDto(ResolvedScheduler r) {
+    private static SchedulerDto toDto(ResolvedUrsaScheduler r) {
         return SchedulerDto.builder()
                 .name(r.name())
                 .yaml(r.yaml())
@@ -262,8 +262,8 @@ public class SchedulerController {
     }
 
     private static String pathFor(String name) {
-        return SchedulerLoader.SCHEDULER_PATH_PREFIX + name
-                + SchedulerLoader.SCHEDULER_PATH_SUFFIX;
+        return UrsaSchedulerLoader.SCHEDULER_PATH_PREFIX + name
+                + UrsaSchedulerLoader.SCHEDULER_PATH_SUFFIX;
     }
 
     public record RefreshResult(int registered) {

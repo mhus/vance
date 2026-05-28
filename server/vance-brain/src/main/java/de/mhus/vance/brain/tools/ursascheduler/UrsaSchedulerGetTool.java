@@ -1,7 +1,7 @@
-package de.mhus.vance.brain.tools.scheduler;
+package de.mhus.vance.brain.tools.ursascheduler;
 
-import de.mhus.vance.shared.scheduler.ResolvedScheduler;
-import de.mhus.vance.shared.scheduler.SchedulerLoader;
+import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
+import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class SchedulerGetTool implements Tool {
+public class UrsaSchedulerGetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
     static {
@@ -29,8 +29,8 @@ public class SchedulerGetTool implements Tool {
                 "required", List.of("name"));
     }
 
-    private final SchedulerLoader loader;
-    private final SchedulerToolSupport support;
+    private final UrsaSchedulerLoader loader;
+    private final UrsaSchedulerToolSupport support;
 
     @Override public String name() { return "scheduler_get"; }
 
@@ -48,8 +48,8 @@ public class SchedulerGetTool implements Tool {
         if (ctx.projectId() == null) {
             throw new ToolException("scheduler_get requires a project scope");
         }
-        String name = SchedulerToolSupport.normalizeName(stringOrThrow(params, "name"));
-        Optional<ResolvedScheduler> hit = loader.load(ctx.tenantId(), ctx.projectId(), name);
+        String name = UrsaSchedulerToolSupport.normalizeName(stringOrThrow(params, "name"));
+        Optional<ResolvedUrsaScheduler> hit = loader.load(ctx.tenantId(), ctx.projectId(), name);
         // Hidden entries respond with the same "not found" the LLM would
         // see for a truly missing scheduler — see §10b.
         if (hit.isEmpty() || hit.get().isLlmHidden()) {

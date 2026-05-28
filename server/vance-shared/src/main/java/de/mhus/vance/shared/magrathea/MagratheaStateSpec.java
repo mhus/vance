@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
  * generic {@link #spec} map for the type-executor to read.
  *
  * <p>This intentionally mirrors the loose typing of
- * {@code ResolvedScheduler.params}: the parser checks the shape that
+ * {@code ResolvedUrsaScheduler.params}: the parser checks the shape that
  * is universal, the type-executors validate the bits that are specific
  * to them. The trade-off is fewer dedicated record classes and one
  * place where the runtime contract is enforced — closer to the YAML

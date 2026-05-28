@@ -1,8 +1,8 @@
-package de.mhus.vance.shared.events;
+package de.mhus.vance.shared.ursaevents;
 
 import de.mhus.vance.api.action.TriggerAction;
-import de.mhus.vance.api.events.EventSource;
-import de.mhus.vance.shared.scheduler.ResolvedScheduler;
+import de.mhus.vance.api.ursaevents.EventSource;
+import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -12,7 +12,7 @@ import org.jspecify.annotations.Nullable;
  * Result of loading and parsing one event YAML document.
  *
  * <p>Trigger target: exactly one of {@link #recipe}, {@link #workflow},
- * {@link #script} is set — enforced by {@code EventLoader}. Callers
+ * {@link #script} is set — enforced by {@code UrsaEventLoader}. Callers
  * use {@link #toTriggerAction(Map)} to obtain the unified
  * {@link TriggerAction} with the incoming HTTP payload merged into the
  * params under the key {@code payload}.
@@ -21,10 +21,10 @@ import org.jspecify.annotations.Nullable;
  * {@link #tokenLiteral} carries an inline {@code auth.token:} when set
  * (cheap convenience for tests), {@link #tokenSettingKey} carries the
  * setting-cascade key when the YAML used {@code auth.tokenSetting:}.
- * The actual secret comparison happens in {@code EventService} which
+ * The actual secret comparison happens in {@code UrsaEventService} which
  * resolves the setting via {@link de.mhus.vance.shared.settings.SettingService}.
  */
-public record ResolvedEvent(
+public record ResolvedUrsaEvent(
         String name,
         String yaml,
         EventSource source,
@@ -36,7 +36,7 @@ public record ResolvedEvent(
         /** Workflow to spawn — mutually exclusive with {@link #recipe} and {@link #script}. */
         @Nullable String workflow,
         /** Script to run — mutually exclusive with {@link #recipe} and {@link #workflow}. */
-        ResolvedScheduler.@Nullable ScriptSpec script,
+        ResolvedUrsaScheduler.@Nullable ScriptSpec script,
         /** First user message dispatched to a recipe-spawned process. {@code null} for workflow/script. */
         @Nullable String initialMessage,
         /** {@code false} disables the event — REST returns 404. */
@@ -63,7 +63,7 @@ public record ResolvedEvent(
         return methods.contains(method.toUpperCase(java.util.Locale.ROOT));
     }
 
-    /** Effective {@code runAs} — same fallback chain as {@code ResolvedScheduler}. */
+    /** Effective {@code runAs} — same fallback chain as {@code ResolvedUrsaScheduler}. */
     @Nullable
     public String effectiveRunAs() {
         if (runAs != null && !runAs.isBlank()) return runAs;

@@ -6,6 +6,6 @@
  * <p>See {@code specification/events.md}.
  */
 @NullMarked
-package de.mhus.vance.shared.events;
+package de.mhus.vance.shared.ursaevents;
 
 import org.jspecify.annotations.NullMarked;

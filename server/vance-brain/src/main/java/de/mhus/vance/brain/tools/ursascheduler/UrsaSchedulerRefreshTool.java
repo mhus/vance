@@ -1,6 +1,6 @@
-package de.mhus.vance.brain.tools.scheduler;
+package de.mhus.vance.brain.tools.ursascheduler;
 
-import de.mhus.vance.brain.scheduler.SchedulerService;
+import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -13,14 +13,14 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class SchedulerRefreshTool implements Tool {
+public class UrsaSchedulerRefreshTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", new LinkedHashMap<>(),
             "required", List.of());
 
-    private final SchedulerService schedulerService;
+    private final UrsaSchedulerService schedulerService;
 
     @Override public String name() { return "scheduler_refresh"; }
 

@@ -68,6 +68,7 @@ public class LightLlmServiceImpl implements LightLlmService {
     private final AiModelService aiModelService;
     private final ObjectMapper objectMapper;
     private final MetricService metricService;
+    private final de.mhus.vance.shared.audit.AuditService auditService;
 
     @Override
     public String call(LightLlmRequest req) {
@@ -301,6 +302,28 @@ public class LightLlmServiceImpl implements LightLlmService {
         options.setTenantId(req.getTenantId());
         options.setProjectId(req.getProjectId());
         applySamplingParams(options, params);
+        // Light calls don't persist to LlmTraceService — the writer hook
+        // is repurposed as the audit emitter. Caller's tenantId/projectId
+        // closure is captured here; no process / session scope.
+        String recipeName = recipe.name();
+        String tenantId = req.getTenantId();
+        String projectId = req.getProjectId();
+        options.setLlmTraceWriter((request, response, elapsedMs) -> {
+            Integer tokensIn = null;
+            Integer tokensOut = null;
+            if (response != null && response.tokenUsage() != null) {
+                tokensIn = response.tokenUsage().inputTokenCount();
+                tokensOut = response.tokenUsage().outputTokenCount();
+            }
+            String modelAlias = (request.parameters() == null)
+                    ? null
+                    : request.parameters().modelName();
+            auditService.llmLightCall(
+                    tenantId, projectId,
+                    recipeName, modelAlias,
+                    tokensIn, tokensOut,
+                    elapsedMs, response != null, null);
+        });
 
         AiChat chat = aiModelService.createChat(behavior, options);
         return chat.chatModel();

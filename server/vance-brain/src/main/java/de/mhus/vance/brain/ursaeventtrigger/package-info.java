@@ -7,11 +7,11 @@
  * the unrelated server-to-client notification plumbing).
  *
  * <p>YAML parsing and the document-cascade lookup live in
- * {@code vance-shared/events}.
+ * {@code vance-shared/ursaevents}.
  *
  * <p>See {@code specification/events.md}.
  */
 @NullMarked
-package de.mhus.vance.brain.eventtrigger;
+package de.mhus.vance.brain.ursaeventtrigger;
 
 import org.jspecify.annotations.NullMarked;

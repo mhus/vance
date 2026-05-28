@@ -82,7 +82,8 @@ class LightLlmServiceImplTest {
         service = new LightLlmServiceImpl(
                 recipeLoader, templateRenderer, settingService,
                 aiModelResolver, aiModelService, JsonMapper.builder().build(),
-                metricService);
+                metricService,
+                org.mockito.Mockito.mock(de.mhus.vance.shared.audit.AuditService.class));
     }
 
     // ──────────────────── extractJson static helper ────────────────────

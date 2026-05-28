@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.eventtrigger;
+package de.mhus.vance.brain.ursaeventtrigger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -10,10 +10,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import de.mhus.vance.api.events.EventSource;
+import de.mhus.vance.api.ursaevents.EventSource;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
-import de.mhus.vance.shared.events.EventLoader;
-import de.mhus.vance.shared.events.ResolvedEvent;
+import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
+import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -30,30 +30,30 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Behavioural tests for {@link EventService}. Stubs the loader,
+ * Behavioural tests for {@link UrsaEventService}. Stubs the loader,
  * settings cascade, and workflow service — no Spring context, no
  * Mongo. Covers the full request flow: resolve, enabled, method,
  * bearer auth (literal + setting), workflow spawn, payload merging.
  */
-class EventServiceTest {
+class UrsaEventServiceTest {
 
     private static final String TENANT = "acme";
     private static final String PROJECT = "p1";
     private static final String EVENT = "deploy";
 
-    private EventLoader eventLoader;
+    private UrsaEventLoader eventLoader;
     private SettingService settingService;
     private MetricService metricService;
     private MagratheaWorkflowService workflowService;
     @SuppressWarnings("unchecked")
     private final ObjectProvider<MagratheaWorkflowService> workflowProvider = mock(ObjectProvider.class);
     private de.mhus.vance.brain.action.ActionExecutorRegistry actionExecutorRegistry;
-    private de.mhus.vance.brain.scheduler.SystemSessionResolver systemSessionResolver;
-    private EventService service;
+    private de.mhus.vance.brain.ursascheduler.SystemSessionResolver systemSessionResolver;
+    private UrsaEventService service;
 
     @BeforeEach
     void setUp() {
-        eventLoader = mock(EventLoader.class);
+        eventLoader = mock(UrsaEventLoader.class);
         settingService = mock(SettingService.class);
         metricService = new MetricService(new SimpleMeterRegistry());
         workflowService = mock(MagratheaWorkflowService.class);
@@ -73,11 +73,11 @@ class EventServiceTest {
             }
             return de.mhus.vance.brain.action.ActionResult.success(java.util.Map.of());
         });
-        systemSessionResolver = mock(de.mhus.vance.brain.scheduler.SystemSessionResolver.class);
+        systemSessionResolver = mock(de.mhus.vance.brain.ursascheduler.SystemSessionResolver.class);
         de.mhus.vance.shared.session.SessionDocument session = new de.mhus.vance.shared.session.SessionDocument();
         session.setSessionId("sess-event");
         when(systemSessionResolver.resolve(any(), any(), any(), any())).thenReturn(session);
-        service = new EventService(
+        service = new UrsaEventService(
                 eventLoader, settingService, metricService, workflowProvider,
                 actionExecutorRegistry, systemSessionResolver);
     }
@@ -90,7 +90,7 @@ class EventServiceTest {
         when(workflowService.start(eq(TENANT), eq(PROJECT), eq("w-deploy"), any(), any()))
                 .thenReturn("run-123");
 
-        EventService.EventTriggerResult r = service.trigger(
+        UrsaEventService.UrsaEventTriggerResult r = service.trigger(
                 TENANT, PROJECT, EVENT, "POST", null, null);
 
         assertThat(r.workflowName()).isEqualTo("w-deploy");
@@ -109,12 +109,12 @@ class EventServiceTest {
         ArgumentCaptor<Map<String, Object>> paramsCap = ArgumentCaptor.forClass(Map.class);
         verify(workflowService).start(any(), any(), any(), paramsCap.capture(), any());
         assertThat(paramsCap.getValue())
-                .containsEntry(EventService.PAYLOAD_PARAM_KEY, payload);
+                .containsEntry(UrsaEventService.PAYLOAD_PARAM_KEY, payload);
     }
 
     @Test
     void trigger_merges_static_params_with_payload() {
-        ResolvedEvent ev = event(b -> b.params(Map.of("env", "prod")));
+        ResolvedUrsaEvent ev = event(b -> b.params(Map.of("env", "prod")));
         when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(ev));
         when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-x");
 
@@ -125,12 +125,12 @@ class EventServiceTest {
         verify(workflowService).start(any(), any(), any(), paramsCap.capture(), any());
         Map<String, Object> merged = paramsCap.getValue();
         assertThat(merged).containsEntry("env", "prod");
-        assertThat(merged).containsEntry(EventService.PAYLOAD_PARAM_KEY, Map.of("k", "v"));
+        assertThat(merged).containsEntry(UrsaEventService.PAYLOAD_PARAM_KEY, Map.of("k", "v"));
     }
 
     @Test
     void trigger_uses_runAs_then_createdBy_fallback() {
-        ResolvedEvent ev = event(b -> b.runAs(null).createdBy("alice"));
+        ResolvedUrsaEvent ev = event(b -> b.runAs(null).createdBy("alice"));
         when(eventLoader.load(TENANT, PROJECT, EVENT)).thenReturn(Optional.of(ev));
         when(workflowService.start(any(), any(), any(), any(), any())).thenReturn("run-x");
 
@@ -255,14 +255,14 @@ class EventServiceTest {
     // ─── helpers ─────────────────────────────────────────────────────────
 
     /** Builder-style helper: defaults are filled in, callers override what they care about. */
-    private static ResolvedEvent event(java.util.function.Consumer<EventBuilder> tweaks) {
+    private static ResolvedUrsaEvent event(java.util.function.Consumer<EventBuilder> tweaks) {
         EventBuilder b = new EventBuilder();
         tweaks.accept(b);
         return b.build();
     }
 
     /**
-     * Mutable bag of all {@link ResolvedEvent} fields with sensible
+     * Mutable bag of all {@link ResolvedUrsaEvent} fields with sensible
      * defaults. Local to the test — production code uses the record
      * constructor directly.
      */
@@ -290,8 +290,8 @@ class EventServiceTest {
         EventBuilder runAs(String v) { this.runAs = v; return this; }
         EventBuilder createdBy(String v) { this.createdBy = v; return this; }
 
-        ResolvedEvent build() {
-            return new ResolvedEvent(name, yaml, source, documentId, createdBy,
+        ResolvedUrsaEvent build() {
+            return new ResolvedUrsaEvent(name, yaml, source, documentId, createdBy,
                     description,
                     /*recipe*/ null, workflow, /*script*/ null, /*initialMessage*/ null,
                     enabled, methods,

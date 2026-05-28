@@ -1,14 +1,14 @@
-package de.mhus.vance.brain.tools.scheduler;
+package de.mhus.vance.brain.tools.ursascheduler;
 
 import de.mhus.vance.api.eventlog.EventType;
-import de.mhus.vance.brain.scheduler.SchedulerService;
-import de.mhus.vance.brain.scheduler.SchedulerSourceKeys;
+import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
+import de.mhus.vance.brain.ursascheduler.UrsaSchedulerSourceKeys;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.eventlog.EventLogDocument;
 import de.mhus.vance.shared.eventlog.EventLogService;
-import de.mhus.vance.shared.scheduler.ResolvedScheduler;
-import de.mhus.vance.shared.scheduler.SchedulerLoader;
+import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
+import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.toolpack.ToolException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -29,15 +29,15 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-class SchedulerToolSupport {
+class UrsaSchedulerToolSupport {
 
     private static final java.util.regex.Pattern NAME_PATTERN =
             java.util.regex.Pattern.compile("^[a-z0-9][a-z0-9_-]{0,63}$");
 
     private final DocumentService documentService;
-    private final SchedulerLoader loader;
+    private final UrsaSchedulerLoader loader;
     private final EventLogService eventLogService;
-    private final SchedulerService schedulerService;
+    private final UrsaSchedulerService schedulerService;
 
     static String normalizeName(String name) {
         if (name == null) {
@@ -55,8 +55,8 @@ class SchedulerToolSupport {
     }
 
     static String pathFor(String name) {
-        return SchedulerLoader.SCHEDULER_PATH_PREFIX + name
-                + SchedulerLoader.SCHEDULER_PATH_SUFFIX;
+        return UrsaSchedulerLoader.SCHEDULER_PATH_PREFIX + name
+                + UrsaSchedulerLoader.SCHEDULER_PATH_SUFFIX;
     }
 
     /**
@@ -79,7 +79,7 @@ class SchedulerToolSupport {
      */
     void guardMutation(String tenantId, String projectId, String name) {
         loader.load(tenantId, projectId, name)
-                .filter(de.mhus.vance.shared.scheduler.ResolvedScheduler::isLlmLocked)
+                .filter(de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler::isLlmLocked)
                 .ifPresent(r -> {
                     throw new ToolException(
                             "scheduler '" + name + "' is locked (lockMode="
@@ -93,13 +93,13 @@ class SchedulerToolSupport {
      * Throws {@link ToolException} with a field-level message on
      * malformed input.
      */
-    ResolvedScheduler parseOrThrow(String name, String yaml) {
+    ResolvedUrsaScheduler parseOrThrow(String name, String yaml) {
         if (yaml == null || yaml.isBlank()) {
             throw new ToolException("'yaml' must be a non-empty string");
         }
         try {
             return loader.validateYaml(name, yaml);
-        } catch (SchedulerLoader.SchedulerParseException ex) {
+        } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
             throw new ToolException(ex.getMessage());
         }
     }
@@ -138,7 +138,7 @@ class SchedulerToolSupport {
 
     /** Compact list-shape for the read tools and REST list endpoint. */
     Map<String, Object> shape(
-            String tenantId, String projectId, ResolvedScheduler r) {
+            String tenantId, String projectId, ResolvedUrsaScheduler r) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", r.name());
         out.put("description", r.description());
@@ -151,7 +151,7 @@ class SchedulerToolSupport {
         if (r.runAs() != null) out.put("runAs", r.runAs());
         if (r.effectiveRunAs() != null) out.put("effectiveRunAs", r.effectiveRunAs());
         if (r.overlap() != null) out.put("overlap", r.overlap().name());
-        if (r.lockMode() != null && r.lockMode() != de.mhus.vance.api.scheduler.LockMode.FULL) {
+        if (r.lockMode() != null && r.lockMode() != de.mhus.vance.api.ursascheduler.LockMode.FULL) {
             out.put("lockMode", r.lockMode().name().toLowerCase(Locale.ROOT));
             out.put("locked", Boolean.TRUE);
         }
@@ -161,7 +161,7 @@ class SchedulerToolSupport {
                 EventType.STARTED, EventType.COMPLETED, EventType.FAILED, EventType.SKIPPED};
         Optional<EventLogDocument> last = eventLogService.findLatest(
                 tenantId,
-                SchedulerSourceKeys.sourceFor(r.name()),
+                UrsaSchedulerSourceKeys.sourceFor(r.name()),
                 List.of(activityTypes));
         last.ifPresent(e -> {
             Map<String, Object> lastRun = new LinkedHashMap<>();
@@ -176,7 +176,7 @@ class SchedulerToolSupport {
     }
 
     Map<String, Object> shapeFull(
-            String tenantId, String projectId, ResolvedScheduler r) {
+            String tenantId, String projectId, ResolvedUrsaScheduler r) {
         Map<String, Object> out = shape(tenantId, projectId, r);
         out.put("yaml", r.yaml());
         if (r.params() != null && !r.params().isEmpty()) out.put("params", r.params());

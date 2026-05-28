@@ -8,11 +8,11 @@ import de.mhus.vance.brain.tools.hooks.HookDeleteTool;
 import de.mhus.vance.brain.tools.hooks.HookUpdateTool;
 import de.mhus.vance.brain.tools.process.ProcessCreateTool;
 import de.mhus.vance.brain.tools.process.ProcessRunTool;
-import de.mhus.vance.brain.tools.scheduler.SchedulerCreateTool;
+import de.mhus.vance.brain.tools.ursascheduler.UrsaSchedulerCreateTool;
 import de.mhus.vance.brain.tools.script.ScriptRunDocTool;
 import de.mhus.vance.brain.tools.script.ScriptRunWorkspaceTool;
-import de.mhus.vance.brain.tools.scheduler.SchedulerDeleteTool;
-import de.mhus.vance.brain.tools.scheduler.SchedulerUpdateTool;
+import de.mhus.vance.brain.tools.ursascheduler.UrsaSchedulerDeleteTool;
+import de.mhus.vance.brain.tools.ursascheduler.UrsaSchedulerUpdateTool;
 import de.mhus.vance.toolpack.SpawnTool;
 import de.mhus.vance.toolpack.Tool;
 import java.util.List;
@@ -44,9 +44,9 @@ class AllSpawnToolsAnnotatedTest {
             ScriptRunDocTool.class,
             ScriptRunWorkspaceTool.class,
             WorkflowStartTool.class,
-            SchedulerCreateTool.class,
-            SchedulerUpdateTool.class,
-            SchedulerDeleteTool.class,
+            UrsaSchedulerCreateTool.class,
+            UrsaSchedulerUpdateTool.class,
+            UrsaSchedulerDeleteTool.class,
             HookCreateTool.class,
             HookUpdateTool.class,
             HookDeleteTool.class);

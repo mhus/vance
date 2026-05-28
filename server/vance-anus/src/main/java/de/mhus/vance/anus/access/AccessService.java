@@ -1,5 +1,6 @@
 package de.mhus.vance.anus.access;
 
+import de.mhus.vance.shared.audit.AuditService;
 import java.time.Duration;
 import java.time.Instant;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +33,7 @@ public class AccessService {
     public static final String DEFAULT_PASSWORD = "vance-anus-login";
 
     private final AccessProperties properties;
+    private final AuditService auditService;
     private final BCryptPasswordEncoder encoder;
     /** Effective hash — either the configured one, or a freshly generated one for {@link #DEFAULT_PASSWORD}. */
     private final String effectiveHash;
@@ -39,8 +41,9 @@ public class AccessService {
 
     @Nullable private volatile Instant authorizedUntil;
 
-    public AccessService(AccessProperties properties) {
+    public AccessService(AccessProperties properties, AuditService auditService) {
         this.properties = properties;
+        this.auditService = auditService;
         this.encoder = new BCryptPasswordEncoder();
         if (StringUtils.isBlank(properties.getPasswordHash())) {
             // v1 fallback: no hash configured → accept the well-known
@@ -71,14 +74,17 @@ public class AccessService {
      */
     public synchronized boolean login(String plainPassword) {
         if (StringUtils.isBlank(plainPassword)) {
+            auditService.anusLoginFailure();
             return false;
         }
         boolean ok = encoder.matches(plainPassword, effectiveHash);
         if (ok) {
             extendWindow();
             log.info("Anus login succeeded — window armed for {}", properties.getTimeout());
+            auditService.anusLoginSuccess();
         } else {
             log.warn("Anus login failed");
+            auditService.anusLoginFailure();
         }
         return ok;
     }
@@ -87,6 +93,7 @@ public class AccessService {
     public synchronized void logout() {
         if (authorizedUntil != null) {
             log.info("Anus logout");
+            auditService.authLogout(null, null);
         }
         authorizedUntil = null;
     }

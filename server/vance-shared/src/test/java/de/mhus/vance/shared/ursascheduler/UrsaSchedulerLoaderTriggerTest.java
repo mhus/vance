@@ -1,4 +1,4 @@
-package de.mhus.vance.shared.scheduler;
+package de.mhus.vance.shared.ursascheduler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -10,9 +10,9 @@ import org.junit.jupiter.api.Test;
  * exclusivity — the trigger-target discriminator added when Magrathea
  * workflows became a scheduler-spawnable target alongside recipes.
  */
-class SchedulerLoaderTriggerTest {
+class UrsaSchedulerLoaderTriggerTest {
 
-    private final SchedulerLoader loader = new SchedulerLoader(null);
+    private final UrsaSchedulerLoader loader = new UrsaSchedulerLoader(null);
 
     @Test
     void recipe_trigger_parses_and_isWorkflowTrigger_is_false() {
@@ -21,7 +21,7 @@ class SchedulerLoaderTriggerTest {
                 cron: "0 0 8 * * *"
                 recipe: "analyze"
                 """;
-        ResolvedScheduler r = loader.validateYaml("daily", yaml);
+        ResolvedUrsaScheduler r = loader.validateYaml("daily", yaml);
 
         assertThat(r.recipe()).isEqualTo("analyze");
         assertThat(r.workflow()).isNull();
@@ -37,7 +37,7 @@ class SchedulerLoaderTriggerTest {
                 params:
                   project: "main"
                 """;
-        ResolvedScheduler r = loader.validateYaml("audit", yaml);
+        ResolvedUrsaScheduler r = loader.validateYaml("audit", yaml);
 
         assertThat(r.workflow()).isEqualTo("daily-audit");
         assertThat(r.recipe()).isNull();
@@ -54,7 +54,7 @@ class SchedulerLoaderTriggerTest {
                 workflow: "daily-audit"
                 """;
         assertThatThrownBy(() -> loader.validateYaml("amb", yaml))
-                .isInstanceOf(SchedulerLoader.SchedulerParseException.class)
+                .isInstanceOf(UrsaSchedulerLoader.SchedulerParseException.class)
                 .hasMessageContaining("mutually exclusive");
     }
 
@@ -65,7 +65,7 @@ class SchedulerLoaderTriggerTest {
                 cron: "0 0 8 * * *"
                 """;
         assertThatThrownBy(() -> loader.validateYaml("none", yaml))
-                .isInstanceOf(SchedulerLoader.SchedulerParseException.class)
+                .isInstanceOf(UrsaSchedulerLoader.SchedulerParseException.class)
                 .hasMessageContaining("missing trigger target");
     }
 }

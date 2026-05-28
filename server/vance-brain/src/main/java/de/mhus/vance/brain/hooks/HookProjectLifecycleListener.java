@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Wires hook activation/teardown to the project lifecycle — analogous
- * to {@code SchedulerProjectLifecycleListener}. The project-lifecycle
+ * to {@code UrsaSchedulerProjectLifecycleListener}. The project-lifecycle
  * service is the canonical "this project is live on this pod" seam.
  */
 @Component

@@ -1,11 +1,11 @@
-package de.mhus.vance.brain.eventtrigger;
+package de.mhus.vance.brain.ursaeventtrigger;
 
-import de.mhus.vance.api.events.EventDto;
-import de.mhus.vance.api.events.EventSummary;
-import de.mhus.vance.api.events.EventTriggerResponse;
+import de.mhus.vance.api.ursaevents.EventDto;
+import de.mhus.vance.api.ursaevents.EventSummary;
+import de.mhus.vance.api.ursaevents.EventTriggerResponse;
 import de.mhus.vance.brain.permission.RequestAuthority;
-import de.mhus.vance.shared.events.EventLoader;
-import de.mhus.vance.shared.events.ResolvedEvent;
+import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
+import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,12 +31,12 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code /brain/{tenant}/project/{project}/events} — JWT-authenticated,
  * tenant-checked by {@link de.mhus.vance.brain.access.BrainAccessFilter}.
  *
- * <p>Separate from {@link EventController} (the public, JWT-free
+ * <p>Separate from {@link UrsaEventController} (the public, JWT-free
  * trigger endpoint at {@code /brain/{tenant}/event/{project}/{event}}).
  * Same controller pattern as scheduler: list / detail / admin-trigger
  * with the {@link Action#READ}/{@link Action#WRITE} authority checks.
  *
- * <p>The admin trigger {@link EventService#triggerAdmin} <strong>skips
+ * <p>The admin trigger {@link UrsaEventService#triggerAdmin} <strong>skips
  * the bearer-token check</strong> — the caller has already proven
  * tenant-admin privilege via the JWT, so demanding the event's own
  * bearer would just force operators to copy secrets into the UI.
@@ -45,10 +45,10 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/brain/{tenant}/project/{project}")
 @RequiredArgsConstructor
 @Slf4j
-public class EventAdminController {
+public class UrsaEventAdminController {
 
-    private final EventLoader eventLoader;
-    private final EventService eventService;
+    private final UrsaEventLoader eventLoader;
+    private final UrsaEventService eventService;
     private final RequestAuthority authority;
 
     // ─── List ─────────────────────────────────────────────────────────────
@@ -59,9 +59,9 @@ public class EventAdminController {
             @PathVariable("project") String project,
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
-        List<ResolvedEvent> entries = eventLoader.listAll(tenant, project);
+        List<ResolvedUrsaEvent> entries = eventLoader.listAll(tenant, project);
         List<EventSummary> out = new ArrayList<>(entries.size());
-        for (ResolvedEvent r : entries) {
+        for (ResolvedUrsaEvent r : entries) {
             out.add(toSummary(r));
         }
         out.sort(Comparator.comparing(EventSummary::getName));
@@ -78,7 +78,7 @@ public class EventAdminController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.READ);
         String norm = normalizeName(name);
-        ResolvedEvent r = eventLoader.load(tenant, project, norm)
+        ResolvedUrsaEvent r = eventLoader.load(tenant, project, norm)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Event '" + norm + "' not found in project '" + project + "'"));
         return toDto(r);
@@ -108,7 +108,7 @@ public class EventAdminController {
         String triggeredBy = authority.contextOf(request).subjectId();
         Object payload = body == null ? null : body.payload();
 
-        EventService.EventTriggerResult result = eventService.triggerAdmin(
+        UrsaEventService.UrsaEventTriggerResult result = eventService.triggerAdmin(
                 tenant, project, norm, payload, triggeredBy);
         return new EventTriggerResponse(norm, result.workflowName(), result.workflowRunId());
     }
@@ -121,7 +121,7 @@ public class EventAdminController {
 
     // ─── Mappers ──────────────────────────────────────────────────────────
 
-    private static EventSummary toSummary(ResolvedEvent r) {
+    private static EventSummary toSummary(ResolvedUrsaEvent r) {
         List<String> methods = r.methods().isEmpty()
                 ? null
                 : new ArrayList<>(r.methods());
@@ -138,7 +138,7 @@ public class EventAdminController {
                 .build();
     }
 
-    private static EventDto toDto(ResolvedEvent r) {
+    private static EventDto toDto(ResolvedUrsaEvent r) {
         List<String> methods = r.methods().isEmpty()
                 ? null
                 : new ArrayList<>(r.methods());

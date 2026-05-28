@@ -1,4 +1,4 @@
-package de.mhus.vance.api.scheduler;
+package de.mhus.vance.api.ursascheduler;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 

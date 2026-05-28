@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.eventtrigger;
+package de.mhus.vance.brain.ursaeventtrigger;
 
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
@@ -7,9 +7,9 @@ import de.mhus.vance.brain.action.ActionResult;
 import de.mhus.vance.brain.action.TriggerContext;
 import de.mhus.vance.brain.action.TriggerKind;
 import de.mhus.vance.brain.magrathea.MagratheaWorkflowService;
-import de.mhus.vance.brain.scheduler.SystemSessionResolver;
-import de.mhus.vance.shared.events.EventLoader;
-import de.mhus.vance.shared.events.ResolvedEvent;
+import de.mhus.vance.brain.ursascheduler.SystemSessionResolver;
+import de.mhus.vance.shared.ursaevents.UrsaEventLoader;
+import de.mhus.vance.shared.ursaevents.ResolvedUrsaEvent;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.settings.SettingService;
@@ -40,18 +40,18 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class EventService {
+public class UrsaEventService {
 
     /** Reserved param key under which the request payload is exposed to the workflow. */
     public static final String PAYLOAD_PARAM_KEY = "payload";
 
     /** Micrometer counter for trigger calls. Tags: {@code event}, {@code outcome}. */
-    private static final String METRIC_TRIGGERS = "vance.events.triggers";
+    private static final String METRIC_TRIGGERS = "vance.ursaevents.triggers";
 
     /** Micrometer timer for successful trigger latency. Tag: {@code event}. */
-    private static final String METRIC_TRIGGER_DURATION = "vance.events.trigger.duration";
+    private static final String METRIC_TRIGGER_DURATION = "vance.ursaevents.trigger.duration";
 
-    private final EventLoader eventLoader;
+    private final UrsaEventLoader eventLoader;
     private final SettingService settingService;
     private final MetricService metricService;
     /** Optional — Magrathea is feature-flagged; when off, workflow-events return 503. */
@@ -66,7 +66,7 @@ public class EventService {
      * a {@code script:<path>} sentinel; {@code spawnedId} is the
      * workflowRunId, processId, or {@code null} for script-runs.
      */
-    public record EventTriggerResult(String workflowName, String workflowRunId) {}
+    public record UrsaEventTriggerResult(String workflowName, String workflowRunId) {}
 
     /**
      * Trigger flow:
@@ -80,7 +80,7 @@ public class EventService {
      * <p>{@code payload} is nested under {@link #PAYLOAD_PARAM_KEY} in
      * the params handed to the workflow — see {@code specification/events.md} §4.
      */
-    public EventTriggerResult trigger(
+    public UrsaEventTriggerResult trigger(
             String tenantId,
             String projectId,
             String eventName,
@@ -89,7 +89,7 @@ public class EventService {
             @Nullable Object payload) {
         long startNanos = System.nanoTime();
 
-        ResolvedEvent event;
+        ResolvedUrsaEvent event;
         try {
             event = eventLoader.load(tenantId, projectId, eventName)
                     .orElse(null);
@@ -139,7 +139,7 @@ public class EventService {
             }
         }
 
-        EventTriggerResult result = executeAction(tenantId, projectId, eventName, event, payload);
+        UrsaEventTriggerResult result = executeAction(tenantId, projectId, eventName, event, payload);
         countOutcome(eventName, "success");
         metricService.timer(METRIC_TRIGGER_DURATION, "event", eventName)
                 .record(Duration.ofNanos(System.nanoTime() - startNanos));
@@ -151,12 +151,12 @@ public class EventService {
     /**
      * Build the {@link TriggerAction}, route it via
      * {@link ActionExecutorRegistry}, and translate the result to a
-     * {@link EventTriggerResult} or an {@link HttpStatus} error. Used by
+     * {@link UrsaEventTriggerResult} or an {@link HttpStatus} error. Used by
      * both {@link #trigger} and {@link #triggerAdmin}.
      */
-    private EventTriggerResult executeAction(
+    private UrsaEventTriggerResult executeAction(
             String tenantId, String projectId, String eventName,
-            ResolvedEvent event, @Nullable Object payload) {
+            ResolvedUrsaEvent event, @Nullable Object payload) {
 
         Map<String, Object> mergedParams = new LinkedHashMap<>(event.params());
         if (payload != null) {
@@ -238,7 +238,7 @@ public class EventService {
         } else {
             targetName = eventName;
         }
-        return new EventTriggerResult(targetName, result.spawnedId());
+        return new UrsaEventTriggerResult(targetName, result.spawnedId());
     }
 
     /**
@@ -253,7 +253,7 @@ public class EventService {
      * event with {@code methods: [POST]} can still be "test-fired" from
      * the admin UI without manual reconfiguration.
      */
-    public EventTriggerResult triggerAdmin(
+    public UrsaEventTriggerResult triggerAdmin(
             String tenantId,
             String projectId,
             String eventName,
@@ -261,7 +261,7 @@ public class EventService {
             @Nullable String triggeredBy) {
         long startNanos = System.nanoTime();
 
-        ResolvedEvent event = eventLoader.load(tenantId, projectId, eventName)
+        ResolvedUrsaEvent event = eventLoader.load(tenantId, projectId, eventName)
                 .orElse(null);
         if (event == null) {
             countOutcomeAdmin(eventName, "not_found");
@@ -275,7 +275,7 @@ public class EventService {
                     "Event '" + eventName + "' is disabled — flip enabled: true to trigger");
         }
 
-        EventTriggerResult result;
+        UrsaEventTriggerResult result;
         try {
             result = executeAction(tenantId, projectId, eventName, event, payload);
         } catch (ResponseStatusException ex) {
@@ -322,7 +322,7 @@ public class EventService {
     }
 
     private @Nullable String resolveExpectedToken(
-            String tenantId, String projectId, ResolvedEvent event) {
+            String tenantId, String projectId, ResolvedUrsaEvent event) {
         if (event.tokenLiteral() != null) return event.tokenLiteral();
         if (event.tokenSettingKey() != null) {
             // Setting cascade: project → _vance. No think-process scope

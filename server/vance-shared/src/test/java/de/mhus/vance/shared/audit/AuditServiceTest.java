@@ -2,6 +2,7 @@ package de.mhus.vance.shared.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import de.mhus.vance.api.settings.SettingType;
 import de.mhus.vance.shared.metric.MetricService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
@@ -174,6 +175,177 @@ class AuditServiceTest {
         service.init();
         // Just must not throw
         service.record(AuditEventDto.builder().action("noop").build());
+    }
+
+    // ─── Specialised emitters ──────────────────────────────────────────
+
+    @Test
+    void authLoginSuccess_buildsExpectedEvent() {
+        service = buildService(AuditMode.SYNC);
+
+        service.authLoginSuccess("acme", "alice");
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("auth.login");
+        assertThat(e.getSeverity()).isEqualTo(AuditSeverity.INFO);
+        assertThat(e.getOutcome()).isEqualTo("success");
+        assertThat(e.getTenantId()).isEqualTo("acme");
+        assertThat(e.getActor()).isEqualTo("alice");
+        assertThat(e.getTarget()).isEqualTo("user:alice");
+    }
+
+    @Test
+    void authLoginFailure_isWarn_withReason() {
+        service = buildService(AuditMode.SYNC);
+
+        service.authLoginFailure("acme", "alice", "bad password");
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("auth.login");
+        assertThat(e.getSeverity()).isEqualTo(AuditSeverity.WARN);
+        assertThat(e.getOutcome()).isEqualTo("failure");
+        assertThat(e.getMessage()).isEqualTo("bad password");
+    }
+
+    @Test
+    void authLogout_withoutUsername_targetsTenant() {
+        service = buildService(AuditMode.SYNC);
+
+        service.authLogout("acme", null);
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("auth.logout");
+        assertThat(e.getTarget()).isEqualTo("tenant:acme");
+        assertThat(e.getActor()).isNull();
+    }
+
+    @Test
+    void anusLoginSuccess_isWarn_noTenant() {
+        service = buildService(AuditMode.SYNC);
+
+        service.anusLoginSuccess();
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("anus.login");
+        assertThat(e.getSeverity()).isEqualTo(AuditSeverity.WARN);
+        assertThat(e.getOutcome()).isEqualTo("success");
+        assertThat(e.getTarget()).isEqualTo("shell:anus");
+        assertThat(e.getTenantId()).isNull();
+    }
+
+    @Test
+    void settingsUpdate_passwordType_isWarn() {
+        service = buildService(AuditMode.SYNC);
+
+        service.settingsUpdate("acme", "PROJECT", "p-001",
+                "api.anthropic.key", SettingType.PASSWORD);
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("settings.update");
+        assertThat(e.getSeverity()).isEqualTo(AuditSeverity.WARN);
+        assertThat(e.getTarget()).isEqualTo("setting:api.anthropic.key");
+        assertThat(e.getDetails()).containsEntry("type", "PASSWORD");
+    }
+
+    @Test
+    void settingsUpdate_nonPasswordType_isInfo() {
+        service = buildService(AuditMode.SYNC);
+
+        service.settingsUpdate("acme", "PROJECT", "p-001",
+                "ai.default.provider", SettingType.STRING);
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getSeverity()).isEqualTo(AuditSeverity.INFO);
+    }
+
+    @Test
+    void settingsPasswordRead_isWarn_noValueLeak() {
+        service = buildService(AuditMode.SYNC);
+
+        service.settingsPasswordRead("acme", "PROJECT", "p-001", "api.anthropic.key");
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("settings.password.read");
+        assertThat(e.getSeverity()).isEqualTo(AuditSeverity.WARN);
+        assertThat(e.getMessage()).isNull();
+        assertThat(e.getDetails())
+                .doesNotContainKey("value")
+                .doesNotContainKey("plaintext");
+    }
+
+    @Test
+    void projectCreate_buildsExpectedEvent() {
+        service = buildService(AuditMode.SYNC);
+
+        service.projectCreate("acme", "p-001");
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("project.create");
+        assertThat(e.getSeverity()).isEqualTo(AuditSeverity.INFO);
+        assertThat(e.getProjectId()).isEqualTo("p-001");
+        assertThat(e.getTarget()).isEqualTo("project:p-001");
+    }
+
+    @Test
+    void projectClose_isCritical() {
+        service = buildService(AuditMode.SYNC);
+
+        service.projectClose("acme", "p-001", "closed-2026");
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("project.close");
+        assertThat(e.getSeverity()).isEqualTo(AuditSeverity.CRITICAL);
+        assertThat(e.getDetails()).containsEntry("closedGroupId", "closed-2026");
+    }
+
+    @Test
+    void llmEngineCall_success_carriesTokensAndScope() {
+        service = buildService(AuditMode.SYNC);
+
+        service.llmEngineCall("acme", "p-001", "sess-1", "proc-1",
+                "arthur", "default:fast", 1200, 800, 845L, true, null);
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("llm.engine.call");
+        assertThat(e.getOutcome()).isEqualTo("success");
+        assertThat(e.getTenantId()).isEqualTo("acme");
+        assertThat(e.getProjectId()).isEqualTo("p-001");
+        assertThat(e.getSessionId()).isEqualTo("sess-1");
+        assertThat(e.getTarget()).contains("engine:arthur").contains("process:proc-1");
+        assertThat(e.getDetails())
+                .containsEntry("modelAlias", "default:fast")
+                .containsEntry("tokensIn", 1200)
+                .containsEntry("tokensOut", 800)
+                .containsEntry("elapsedMs", 845L);
+    }
+
+    @Test
+    void llmEngineCall_failure_carriesErrorMessage() {
+        service = buildService(AuditMode.SYNC);
+
+        service.llmEngineCall("acme", "p-001", "sess-1", "proc-1",
+                "arthur", "default:fast", null, null, 200L, false, "timeout");
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getOutcome()).isEqualTo("failure");
+        assertThat(e.getMessage()).isEqualTo("timeout");
+        assertThat(e.getDetails())
+                .doesNotContainKey("tokensIn")     // null values omitted
+                .doesNotContainKey("tokensOut");
+    }
+
+    @Test
+    void llmLightCall_targetsRecipe() {
+        service = buildService(AuditMode.SYNC);
+
+        service.llmLightCall("acme", "p-001",
+                "how-do-i", "default:small",
+                300, 120, 410L, true, null);
+
+        AuditEventDto e = consumer.events.get(0);
+        assertThat(e.getAction()).isEqualTo("llm.light.call");
+        assertThat(e.getTarget()).isEqualTo("recipe:how-do-i");
+        assertThat(e.getDetails()).containsEntry("modelAlias", "default:small");
     }
 
     // ─── helpers ────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 package de.mhus.vance.shared.settings;
 
 import de.mhus.vance.api.settings.SettingType;
+import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.crypto.AesEncryptionService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import java.util.LinkedHashMap;
@@ -27,6 +28,7 @@ public class SettingService {
 
     private final SettingRepository repository;
     private final AesEncryptionService encryption;
+    private final AuditService auditService;
 
     // ──────────────────── Raw lookup ────────────────────
 
@@ -118,7 +120,9 @@ public class SettingService {
         if (description != null) {
             doc.setDescription(description);
         }
-        return repository.save(doc);
+        SettingDocument saved = repository.save(doc);
+        auditService.settingsUpdate(tenantId, referenceType, referenceId, key, type);
+        return saved;
     }
 
     // ──────────────────── Typed getters ────────────────────
@@ -545,7 +549,9 @@ public class SettingService {
             return null;
         }
         try {
-            return encryption.decrypt(doc.getValue());
+            String plaintext = encryption.decrypt(doc.getValue());
+            auditService.settingsPasswordRead(tenantId, referenceType, referenceId, key);
+            return plaintext;
         } catch (AesEncryptionService.EncryptionException e) {
             log.warn("Failed to decrypt password for tenant='{}' ref='{}:{}' key='{}': {}",
                     tenantId, referenceType, referenceId, key, e.getMessage());

@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.scheduler;
+package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.api.eventlog.EventType;
 import de.mhus.vance.api.thinkprocess.CloseReason;
@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 /**
  * Hooks {@link ThinkProcessStatusChangedEvent} to write the terminal
  * event-log entry (COMPLETED / FAILED / CANCELLED) for scheduler-spawned
- * processes, and to notify {@link SchedulerService} so the
+ * processes, and to notify {@link UrsaSchedulerService} so the
  * overlap-{@code QUEUE} re-fire can proceed.
  *
  * <p>Process identity is recovered through the event log itself: the
@@ -32,11 +32,11 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class SchedulerProcessTerminationListener {
+public class UrsaSchedulerProcessTerminationListener {
 
     private final EventLogService eventLogService;
     private final ThinkProcessService thinkProcessService;
-    private final SchedulerService schedulerService;
+    private final UrsaSchedulerService schedulerService;
 
     @EventListener
     public void onStatusChanged(ThinkProcessStatusChangedEvent event) {
@@ -45,7 +45,7 @@ public class SchedulerProcessTerminationListener {
         }
         Optional<EventLogDocument> startOpt = eventLogService.findStartForProcess(
                 event.tenantId(), event.processId(),
-                SchedulerSourceKeys.SOURCE_PREFIX);
+                UrsaSchedulerSourceKeys.SOURCE_PREFIX);
         if (startOpt.isEmpty()) {
             return;
         }

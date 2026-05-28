@@ -9,6 +9,6 @@
  * under the {@code scheduler} label.
  */
 @NullMarked
-package de.mhus.vance.api.scheduler;
+package de.mhus.vance.api.ursascheduler;
 
 import org.jspecify.annotations.NullMarked;

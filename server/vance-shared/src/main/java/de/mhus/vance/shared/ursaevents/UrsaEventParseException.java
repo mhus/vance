@@ -1,8 +1,8 @@
-package de.mhus.vance.shared.events;
+package de.mhus.vance.shared.ursaevents;
 
 /** Surfacing-friendly wrapper for event YAML parse failures. */
-public class EventParseException extends RuntimeException {
-    public EventParseException(String message, Throwable cause) {
+public class UrsaEventParseException extends RuntimeException {
+    public UrsaEventParseException(String message, Throwable cause) {
         super(message, cause);
     }
 }

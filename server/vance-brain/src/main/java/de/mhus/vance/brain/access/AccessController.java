@@ -6,6 +6,7 @@ import de.mhus.vance.api.access.RefreshTokenResponse;
 import de.mhus.vance.api.access.WebUiSessionData;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.access.WebUiCookies;
+import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
@@ -78,6 +79,7 @@ public class AccessController {
     private final PasswordService passwordService;
     private final HomeBootstrapService homeBootstrapService;
     private final SettingService settingService;
+    private final AuditService auditService;
     private final boolean cookieSecure;
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
@@ -93,12 +95,14 @@ public class AccessController {
                             PasswordService passwordService,
                             HomeBootstrapService homeBootstrapService,
                             SettingService settingService,
+                            AuditService auditService,
                             @Value("${vance.web.cookies.secure:true}") boolean cookieSecure) {
         this.jwtService = jwtService;
         this.userService = userService;
         this.passwordService = passwordService;
         this.homeBootstrapService = homeBootstrapService;
         this.settingService = settingService;
+        this.auditService = auditService;
         this.cookieSecure = cookieSecure;
     }
 
@@ -131,19 +135,19 @@ public class AccessController {
             // which field-shape the server expects.
             log.debug("Login rejected: must supply exactly one of password/refreshToken (tenant='{}' name='{}')",
                     tenant, username);
-            return unauthorized();
+            return rejectLogin(tenant, username, "missing-credentials");
         }
 
         Optional<UserDocument> userOpt = userService.findByTenantAndName(tenant, username);
         if (userOpt.isEmpty()) {
             log.debug("Login rejected: unknown user tenant='{}' name='{}'", tenant, username);
-            return unauthorized();
+            return rejectLogin(tenant, username, "unknown-user");
         }
         UserDocument user = userOpt.get();
 
         if (user.getStatus() != UserStatus.ACTIVE) {
             log.debug("Login rejected: status={} tenant='{}' name='{}'", user.getStatus(), tenant, username);
-            return unauthorized();
+            return rejectLogin(tenant, username, "user-not-active");
         }
 
         // Service accounts and temporarily login-blocked users (e.g. lockouts)
@@ -153,18 +157,18 @@ public class AccessController {
         if (!user.isLoginEnabled()) {
             log.debug("Login rejected: loginEnabled=false tenant='{}' name='{}' serviceAccount={}",
                     tenant, username, user.isServiceAccount());
-            return unauthorized();
+            return rejectLogin(tenant, username, "login-disabled");
         }
 
         if (hasPassword) {
             String hash = user.getPasswordHash();
             if (hash == null) {
                 log.debug("Login rejected: no password hash tenant='{}' name='{}'", tenant, username);
-                return unauthorized();
+                return rejectLogin(tenant, username, "no-password-hash");
             }
             if (!passwordService.verify(request.getPassword(), hash)) {
                 log.debug("Login rejected: bad password tenant='{}' name='{}'", tenant, username);
-                return unauthorized();
+                return rejectLogin(tenant, username, "bad-password");
             }
         } else {
             // Refresh-token login: validate signature, kind, and that
@@ -175,17 +179,17 @@ public class AccessController {
             VanceJwtClaims claims = jwtService.validateToken(request.getRefreshToken()).orElse(null);
             if (claims == null) {
                 log.debug("Login rejected: refresh token invalid (tenant='{}' name='{}')", tenant, username);
-                return unauthorized();
+                return rejectLogin(tenant, username, "refresh-token-invalid");
             }
             if (claims.tokenType() != TokenType.REFRESH) {
                 log.debug("Login rejected: presented {} token in refreshToken slot (tenant='{}' name='{}')",
                         claims.tokenType(), tenant, username);
-                return unauthorized();
+                return rejectLogin(tenant, username, "refresh-token-wrong-type");
             }
             if (!tenant.equals(claims.tenantId()) || !username.equals(claims.username())) {
                 log.debug("Login rejected: refresh token identity mismatch — path tenant='{}' user='{}', token tenant='{}' user='{}'",
                         tenant, username, claims.tenantId(), claims.username());
-                return unauthorized();
+                return rejectLogin(tenant, username, "refresh-token-identity-mismatch");
             }
         }
 
@@ -224,6 +228,7 @@ public class AccessController {
         } else {
             log.info("Issued JWT tenant='{}' user='{}' expiresAt={}", tenant, username, expiresAt);
         }
+        auditService.authLoginSuccess(tenant, username);
 
         ResponseEntity.BodyBuilder responseEntityBuilder = ResponseEntity.ok();
         if (request.isRequestCookies()) {
@@ -383,6 +388,7 @@ public class AccessController {
         String token = jwtService.createToken(tenant, username, expiresAt);
 
         log.info("Refreshed JWT tenant='{}' user='{}' expiresAt={}", tenant, username, expiresAt);
+        auditService.authTokenRefresh(tenant, username);
         return ResponseEntity.ok(RefreshTokenResponse.builder()
                 .token(token)
                 .expiresAtTimestamp(expiresAt.toEpochMilli())
@@ -391,6 +397,17 @@ public class AccessController {
 
     private static ResponseEntity<AccessTokenResponse> unauthorized() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+
+    /**
+     * Audit-aware rejection. Each failure path in {@link #createToken}
+     * routes through here so the audit trail captures the reason while
+     * the HTTP response stays uniform (no user-enumeration leak).
+     */
+    private ResponseEntity<AccessTokenResponse> rejectLogin(
+            String tenant, String username, String reason) {
+        auditService.authLoginFailure(tenant, username, reason);
+        return unauthorized();
     }
 
     /**
@@ -416,6 +433,7 @@ public class AccessController {
             builder.header(HttpHeaders.SET_COOKIE, expired.toString());
         }
         log.info("Logout tenant='{}'", tenant);
+        auditService.authLogout(tenant, null);
         return builder.build();
     }
 

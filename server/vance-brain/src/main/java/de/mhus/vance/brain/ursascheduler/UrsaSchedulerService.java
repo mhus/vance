@@ -1,8 +1,8 @@
-package de.mhus.vance.brain.scheduler;
+package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.api.action.TriggerAction;
 import de.mhus.vance.api.eventlog.EventType;
-import de.mhus.vance.api.scheduler.OverlapPolicy;
+import de.mhus.vance.api.ursascheduler.OverlapPolicy;
 import de.mhus.vance.brain.action.ActionExecutorRegistry;
 import de.mhus.vance.brain.action.ActionOutcome;
 import de.mhus.vance.brain.action.ActionResult;
@@ -14,8 +14,8 @@ import de.mhus.vance.brain.scheduling.LaneScheduler;
 import de.mhus.vance.brain.thinkengine.ThinkEngineService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.eventlog.EventLogService;
-import de.mhus.vance.shared.scheduler.ResolvedScheduler;
-import de.mhus.vance.shared.scheduler.SchedulerLoader;
+import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
+import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.shared.session.SessionDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessService;
@@ -61,9 +61,9 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class SchedulerService {
+public class UrsaSchedulerService {
 
-    private final SchedulerLoader loader;
+    private final UrsaSchedulerLoader loader;
     private final TaskScheduler taskScheduler;
     private final SystemSessionResolver systemSessionResolver;
     private final RecipeResolver recipeResolver;
@@ -83,10 +83,10 @@ public class SchedulerService {
     private final de.mhus.vance.shared.metric.MetricService metricService;
 
     /** Counter for scheduler fires. Tags: {@code scheduler}, {@code outcome}. */
-    private static final String METRIC_FIRES = "vance.scheduler.fires";
+    private static final String METRIC_FIRES = "vance.ursascheduler.fires";
 
     /** Timer for successful spawn latency. Tag: {@code scheduler}. */
-    private static final String METRIC_SPAWN_DURATION = "vance.scheduler.spawn.duration";
+    private static final String METRIC_SPAWN_DURATION = "vance.ursascheduler.spawn.duration";
 
     /** Concurrent registry, keyed by {@code tenant|project|name}. */
     private final Map<String, Registration> registry = new ConcurrentHashMap<>();
@@ -104,9 +104,9 @@ public class SchedulerService {
      */
     public int bootstrapProject(String tenantId, String projectId) {
         unloadProject(tenantId, projectId);
-        List<ResolvedScheduler> entries = loader.listAll(tenantId, projectId);
+        List<ResolvedUrsaScheduler> entries = loader.listAll(tenantId, projectId);
         int ok = 0;
-        for (ResolvedScheduler entry : entries) {
+        for (ResolvedUrsaScheduler entry : entries) {
             if (registerOne(tenantId, projectId, entry)) {
                 ok++;
             }
@@ -153,10 +153,10 @@ public class SchedulerService {
         String key = registryKey(tenantId, projectId, name);
         Registration prior = registry.remove(key);
         if (prior != null) cancelRegistration(prior, "refresh");
-        Optional<ResolvedScheduler> reloaded;
+        Optional<ResolvedUrsaScheduler> reloaded;
         try {
             reloaded = loader.load(tenantId, projectId, name);
-        } catch (SchedulerLoader.SchedulerParseException ex) {
+        } catch (UrsaSchedulerLoader.SchedulerParseException ex) {
             log.warn("Scheduler refreshOne parse failed '{}/{}/{}': {}",
                     tenantId, projectId, name, ex.getMessage());
             return false;
@@ -203,8 +203,8 @@ public class SchedulerService {
      * regardless of source. Used by the REST list endpoint and the
      * {@code scheduler_list} agent tool.
      */
-    public List<ResolvedScheduler> listRegistered(String tenantId, String projectId) {
-        List<ResolvedScheduler> out = new ArrayList<>();
+    public List<ResolvedUrsaScheduler> listRegistered(String tenantId, String projectId) {
+        List<ResolvedUrsaScheduler> out = new ArrayList<>();
         for (Map.Entry<String, Registration> e : registry.entrySet()) {
             if (!e.getKey().startsWith(registryKey(tenantId, projectId, ""))) continue;
             out.add(e.getValue().config);
@@ -220,14 +220,14 @@ public class SchedulerService {
     public @Nullable Instant nextFireFor(String tenantId, String projectId, String name) {
         Registration reg = registry.get(registryKey(tenantId, projectId, name));
         if (reg == null) return null;
-        ResolvedScheduler cfg = reg.config;
+        ResolvedUrsaScheduler cfg = reg.config;
         if (cfg.isOneShot()) {
             if (!cfg.enabled()) return null;
             // Once a STARTED event has been recorded, the one-shot is
             // considered consumed regardless of what the YAML still says.
             boolean fired = eventLogService.findLatest(
                     reg.tenantId,
-                    SchedulerSourceKeys.sourceFor(cfg.name()),
+                    UrsaSchedulerSourceKeys.sourceFor(cfg.name()),
                     java.util.List.of(EventType.STARTED)).isPresent();
             return fired ? null : cfg.at();
         }
@@ -245,7 +245,7 @@ public class SchedulerService {
 
     // ───────────────────────── Registration internals ─────────────────────────
 
-    private boolean registerOne(String tenantId, String projectId, ResolvedScheduler config) {
+    private boolean registerOne(String tenantId, String projectId, ResolvedUrsaScheduler config) {
         if (!config.enabled()) {
             log.info("Scheduler '{}/{}/{}' is disabled — registration skipped",
                     tenantId, projectId, config.name());
@@ -275,7 +275,7 @@ public class SchedulerService {
     }
 
     private boolean registerCron(
-            String tenantId, String projectId, ResolvedScheduler config, ZoneId zone) {
+            String tenantId, String projectId, ResolvedUrsaScheduler config, ZoneId zone) {
         String cron = config.cron();
         if (cron == null || !CronExpression.isValidExpression(cron)) {
             log.warn("Scheduler '{}/{}/{}' has invalid cron '{}' — registration skipped",
@@ -302,7 +302,7 @@ public class SchedulerService {
      * one-shot. See {@code specification/scheduler.md} §10a.
      */
     private boolean registerOneShot(
-            String tenantId, String projectId, ResolvedScheduler config, ZoneId zone) {
+            String tenantId, String projectId, ResolvedUrsaScheduler config, ZoneId zone) {
         Instant at = config.at();
         if (at == null) {
             log.warn("Scheduler '{}/{}/{}' missing 'at' on one-shot — registration skipped",
@@ -311,7 +311,7 @@ public class SchedulerService {
         }
         boolean alreadyFired = eventLogService.findLatest(
                 tenantId,
-                SchedulerSourceKeys.sourceFor(config.name()),
+                UrsaSchedulerSourceKeys.sourceFor(config.name()),
                 java.util.List.of(EventType.STARTED)).isPresent();
         Registration reg = new Registration(tenantId, projectId, config, zone, null);
         registry.put(registryKey(tenantId, projectId, config.name()), reg);
@@ -374,8 +374,8 @@ public class SchedulerService {
     // ───────────────────────── Fire (one tick) ─────────────────────────
 
     private void fire(Registration reg) {
-        ResolvedScheduler cfg = reg.config;
-        String source = SchedulerSourceKeys.sourceFor(cfg.name());
+        ResolvedUrsaScheduler cfg = reg.config;
+        String source = UrsaSchedulerSourceKeys.sourceFor(cfg.name());
         String runAs = cfg.effectiveRunAs();
         if (runAs == null) {
             log.warn("Scheduler '{}' fired without runAs — should have been filtered at register",
@@ -484,7 +484,7 @@ public class SchedulerService {
     }
 
     private void spawn(
-            Registration reg, ResolvedScheduler cfg,
+            Registration reg, ResolvedUrsaScheduler cfg,
             String source, String correlationId, String runAs) {
         TriggerAction action;
         try {
@@ -632,7 +632,7 @@ public class SchedulerService {
     static final class Registration {
         final String tenantId;
         final String projectId;
-        final ResolvedScheduler config;
+        final ResolvedUrsaScheduler config;
         final ZoneId zoneId;
         final Object lock = new Object();
         @Nullable volatile ScheduledFuture<?> future;
@@ -641,7 +641,7 @@ public class SchedulerService {
 
         Registration(
                 String tenantId, String projectId,
-                ResolvedScheduler config, ZoneId zoneId,
+                ResolvedUrsaScheduler config, ZoneId zoneId,
                 @Nullable ScheduledFuture<?> future) {
             this.tenantId = tenantId;
             this.projectId = projectId;

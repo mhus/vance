@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.scheduler;
+package de.mhus.vance.brain.ursascheduler;
 
 /**
  * Source-string conventions for scheduler entries in the event log.
@@ -7,15 +7,15 @@ package de.mhus.vance.brain.scheduler;
  *
  * <p>See {@code specification/scheduler.md} §7.
  */
-public final class SchedulerSourceKeys {
+public final class UrsaSchedulerSourceKeys {
 
     /** Prefix used to scope event-log queries to scheduler-spawned activity. */
-    public static final String SOURCE_PREFIX = "scheduler:";
+    public static final String SOURCE_PREFIX = "ursascheduler:";
 
     /** Display-name pattern for the dedicated system session of a scheduler. */
-    public static final String SYSTEM_SESSION_PREFIX = "_scheduler_";
+    public static final String SYSTEM_SESSION_PREFIX = "_ursascheduler_";
 
-    private SchedulerSourceKeys() {
+    private UrsaSchedulerSourceKeys() {
     }
 
     public static String sourceFor(String schedulerName) {

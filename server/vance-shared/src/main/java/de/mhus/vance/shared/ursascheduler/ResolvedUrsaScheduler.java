@@ -1,10 +1,10 @@
-package de.mhus.vance.shared.scheduler;
+package de.mhus.vance.shared.ursascheduler;
 
 import de.mhus.vance.api.action.ScriptSource;
 import de.mhus.vance.api.action.TriggerAction;
-import de.mhus.vance.api.scheduler.LockMode;
-import de.mhus.vance.api.scheduler.OverlapPolicy;
-import de.mhus.vance.api.scheduler.SchedulerSource;
+import de.mhus.vance.api.ursascheduler.LockMode;
+import de.mhus.vance.api.ursascheduler.OverlapPolicy;
+import de.mhus.vance.api.ursascheduler.SchedulerSource;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  * and is the fallback for {@link #runAs} when the YAML doesn't pin it.
  *
  * <p>Trigger target: exactly one of {@link #recipe}, {@link #workflow},
- * {@link #script} is set — enforced by {@code SchedulerLoader}. Callers
+ * {@link #script} is set — enforced by {@code UrsaSchedulerLoader}. Callers
  * that want a unified action shape use {@link #toTriggerAction()}.
  *
  * <p>{@code documentId} is the Mongo {@code _id} of the document and
@@ -30,7 +30,7 @@ import org.jspecify.annotations.Nullable;
  * layer hits — schedulers don't ship a resource tier so this stays
  * informational.
  */
-public record ResolvedScheduler(
+public record ResolvedUrsaScheduler(
         String name,
         String yaml,
         SchedulerSource source,
@@ -85,7 +85,7 @@ public record ResolvedScheduler(
      * enforced at load time; this method assumes the invariant.
      *
      * @throws IllegalStateException when none of the three fields is set
-     *         (defensive — should never happen for a parsed ResolvedScheduler).
+     *         (defensive — should never happen for a parsed ResolvedUrsaScheduler).
      */
     public TriggerAction toTriggerAction() {
         if (recipe != null && !recipe.isBlank()) {

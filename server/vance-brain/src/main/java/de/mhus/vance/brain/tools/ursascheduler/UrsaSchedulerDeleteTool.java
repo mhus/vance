@@ -1,6 +1,6 @@
-package de.mhus.vance.brain.tools.scheduler;
+package de.mhus.vance.brain.tools.ursascheduler;
 
-import de.mhus.vance.brain.scheduler.SchedulerService;
+import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 @Slf4j
 @de.mhus.vance.toolpack.SpawnTool
-public class SchedulerDeleteTool implements Tool {
+public class UrsaSchedulerDeleteTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
     static {
@@ -31,9 +31,9 @@ public class SchedulerDeleteTool implements Tool {
                 "required", List.of("name"));
     }
 
-    private final SchedulerToolSupport support;
+    private final UrsaSchedulerToolSupport support;
     private final DocumentService documentService;
-    private final SchedulerService schedulerService;
+    private final UrsaSchedulerService schedulerService;
 
     @Override public String name() { return "scheduler_delete"; }
 
@@ -53,13 +53,13 @@ public class SchedulerDeleteTool implements Tool {
         if (ctx.projectId() == null) {
             throw new ToolException("scheduler_delete requires a project scope");
         }
-        String name = SchedulerToolSupport.normalizeName(stringOrThrow(params, "name"));
+        String name = UrsaSchedulerToolSupport.normalizeName(stringOrThrow(params, "name"));
 
         support.guardMutation(ctx.tenantId(), ctx.projectId(), name);
 
         boolean existed = documentService.findByPath(
                 ctx.tenantId(), ctx.projectId(),
-                SchedulerToolSupport.pathFor(name)).isPresent();
+                UrsaSchedulerToolSupport.pathFor(name)).isPresent();
         support.deleteByPath(ctx.tenantId(), ctx.projectId(), name);
         schedulerService.refreshOne(ctx.tenantId(), ctx.projectId(), name);
 

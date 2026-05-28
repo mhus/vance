@@ -1,8 +1,8 @@
-package de.mhus.vance.brain.tools.scheduler;
+package de.mhus.vance.brain.tools.ursascheduler;
 
-import de.mhus.vance.brain.scheduler.SchedulerService;
+import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.shared.scheduler.ResolvedScheduler;
+import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 @Slf4j
 @de.mhus.vance.toolpack.SpawnTool
-public class SchedulerUpdateTool implements Tool {
+public class UrsaSchedulerUpdateTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
     static {
@@ -36,9 +36,9 @@ public class SchedulerUpdateTool implements Tool {
                 "required", List.of("name", "yaml"));
     }
 
-    private final SchedulerToolSupport support;
+    private final UrsaSchedulerToolSupport support;
     private final DocumentService documentService;
-    private final SchedulerService schedulerService;
+    private final UrsaSchedulerService schedulerService;
 
     @Override public String name() { return "scheduler_update"; }
 
@@ -57,18 +57,18 @@ public class SchedulerUpdateTool implements Tool {
         if (ctx.projectId() == null) {
             throw new ToolException("scheduler_update requires a project scope");
         }
-        String name = SchedulerToolSupport.normalizeName(stringOrThrow(params, "name"));
+        String name = UrsaSchedulerToolSupport.normalizeName(stringOrThrow(params, "name"));
         String yaml = stringOrThrow(params, "yaml");
 
         support.guardMutation(ctx.tenantId(), ctx.projectId(), name);
 
         if (documentService.findByPath(ctx.tenantId(), ctx.projectId(),
-                SchedulerToolSupport.pathFor(name)).isEmpty()) {
+                UrsaSchedulerToolSupport.pathFor(name)).isEmpty()) {
             throw new ToolException("scheduler '" + name
                     + "' does not exist in this project — use scheduler_create");
         }
 
-        ResolvedScheduler validated = support.parseOrThrow(name, yaml);
+        ResolvedUrsaScheduler validated = support.parseOrThrow(name, yaml);
         support.upsert(ctx.tenantId(), ctx.projectId(), name, yaml, ctx.userId());
         boolean registered = schedulerService.refreshOne(ctx.tenantId(), ctx.projectId(), name);
 

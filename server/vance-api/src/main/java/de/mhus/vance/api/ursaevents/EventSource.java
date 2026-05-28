@@ -1,4 +1,4 @@
-package de.mhus.vance.api.events;
+package de.mhus.vance.api.ursaevents;
 
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 

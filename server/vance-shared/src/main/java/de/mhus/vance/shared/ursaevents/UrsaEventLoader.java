@@ -1,6 +1,6 @@
-package de.mhus.vance.shared.events;
+package de.mhus.vance.shared.ursaevents;
 
-import de.mhus.vance.api.events.EventSource;
+import de.mhus.vance.api.ursaevents.EventSource;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.LookupResult;
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
 
 /**
- * Cascade-aware event loader. Mirrors {@code SchedulerLoader}: one YAML
+ * Cascade-aware event loader. Mirrors {@code UrsaSchedulerLoader}: one YAML
  * per event under {@code _vance/events/<name>.yaml}, resolved through
  * {@link DocumentService#lookupCascade}: {@code project → _vance}.
  *
@@ -31,7 +31,7 @@ import org.yaml.snakeyaml.Yaml;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class EventLoader {
+public class UrsaEventLoader {
 
     /** Path prefix used for event documents in any cascade tier. */
     public static final String EVENT_PATH_PREFIX = "_vance/events/";
@@ -45,7 +45,7 @@ public class EventLoader {
      * Resolve a single event by name in the project/_vance cascade.
      * Returns empty if no tier carries it.
      */
-    public Optional<ResolvedEvent> load(
+    public Optional<ResolvedUrsaEvent> load(
             String tenantId, @Nullable String projectId, String name) {
         if (name == null || name.isBlank()) return Optional.empty();
         String path = pathFor(name);
@@ -54,13 +54,13 @@ public class EventLoader {
         if (hit.isEmpty()) return Optional.empty();
         LookupResult result = hit.get();
         if (result.source() == LookupResult.Source.RESOURCE) {
-            log.warn("EventLoader: ignoring resource-layer event at '{}'", result.path());
+            log.warn("UrsaEventLoader: ignoring resource-layer event at '{}'", result.path());
             return Optional.empty();
         }
         try {
             return Optional.of(parse(normalizedName(name), result));
         } catch (RuntimeException e) {
-            throw new EventParseException(
+            throw new UrsaEventParseException(
                     "Failed to parse event '" + name + "' from "
                             + result.source() + " at path '" + result.path()
                             + "': " + e.getMessage(), e);
@@ -72,10 +72,10 @@ public class EventLoader {
      * {@code _vance/events/} entries by name. Malformed entries are
      * logged and skipped — the rest of the listing continues.
      */
-    public List<ResolvedEvent> listAll(String tenantId, @Nullable String projectId) {
+    public List<ResolvedUrsaEvent> listAll(String tenantId, @Nullable String projectId) {
         Map<String, LookupResult> hits = documentService.listByPrefixCascade(
                 tenantId, effectiveProjectId(projectId), EVENT_PATH_PREFIX);
-        List<ResolvedEvent> out = new ArrayList<>(hits.size());
+        List<ResolvedUrsaEvent> out = new ArrayList<>(hits.size());
         for (Map.Entry<String, LookupResult> e : hits.entrySet()) {
             String path = e.getKey();
             String name = nameFromPath(path);
@@ -85,7 +85,7 @@ public class EventLoader {
             try {
                 out.add(parse(name, hit));
             } catch (RuntimeException ex) {
-                log.warn("EventLoader: skipping malformed event path='{}' source={}: {}",
+                log.warn("UrsaEventLoader: skipping malformed event path='{}' source={}: {}",
                         path, hit.source(), ex.getMessage());
             }
         }
@@ -96,14 +96,14 @@ public class EventLoader {
      * Validate a YAML body without persisting. Used by the agent tools
      * and the REST controller before writing an event document.
      *
-     * @throws EventParseException with a field-level error message
+     * @throws UrsaEventParseException with a field-level error message
      */
-    public ResolvedEvent validateYaml(String name, String yaml) {
+    public ResolvedUrsaEvent validateYaml(String name, String yaml) {
         String norm = normalizedName(name);
         try {
             return parse(norm, syntheticHit(norm, yaml));
         } catch (RuntimeException ex) {
-            throw new EventParseException("event YAML invalid: " + ex.getMessage(), ex);
+            throw new UrsaEventParseException("event YAML invalid: " + ex.getMessage(), ex);
         }
     }
 
@@ -138,7 +138,7 @@ public class EventLoader {
     }
 
     @SuppressWarnings("unchecked")
-    private static ResolvedEvent parse(String name, LookupResult hit) {
+    private static ResolvedUrsaEvent parse(String name, LookupResult hit) {
         Yaml yaml = new Yaml();
         Object parsed = yaml.load(hit.content());
         if (parsed == null) {
@@ -151,7 +151,7 @@ public class EventLoader {
 
         String recipe = stringOrNull(spec.get("recipe"));
         String workflow = stringOrNull(spec.get("workflow"));
-        de.mhus.vance.shared.scheduler.ResolvedScheduler.ScriptSpec script =
+        de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.ScriptSpec script =
                 parseScriptSpec(spec.get("script"));
         int targetCount = (recipe != null ? 1 : 0)
                 + (workflow != null ? 1 : 0)
@@ -201,7 +201,7 @@ public class EventLoader {
         List<String> tags = stringList(spec.get("tags"), "tags");
 
         DocumentDocument doc = hit.document();
-        return new ResolvedEvent(
+        return new ResolvedUrsaEvent(
                 name,
                 hit.content(),
                 mapSource(hit.source()),
@@ -222,7 +222,7 @@ public class EventLoader {
     }
 
     /** Parses the {@code script:} block when present; returns {@code null} when absent. */
-    private static de.mhus.vance.shared.scheduler.ResolvedScheduler.@Nullable ScriptSpec parseScriptSpec(@Nullable Object raw) {
+    private static de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.@Nullable ScriptSpec parseScriptSpec(@Nullable Object raw) {
         if (raw == null) return null;
         if (!(raw instanceof Map<?, ?> sm)) {
             throw new IllegalStateException(
@@ -275,7 +275,7 @@ public class EventLoader {
             throw new IllegalStateException(
                     "'script.timeoutSeconds' must be > 0, got " + timeoutSeconds);
         }
-        return new de.mhus.vance.shared.scheduler.ResolvedScheduler.ScriptSpec(
+        return new de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler.ScriptSpec(
                 source, dirName, path, timeoutSeconds);
     }
 

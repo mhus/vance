@@ -3,7 +3,12 @@ package de.mhus.vance.anus.access;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import de.mhus.vance.shared.audit.AuditService;
+import de.mhus.vance.shared.audit.AuditServiceProperties;
+import de.mhus.vance.shared.metric.MetricService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -15,13 +20,23 @@ class AccessServiceTest {
     private static final String SECRET = "test-correct-horse-battery-staple";
     private AccessProperties props;
     private AccessService service;
+    private AuditService auditService;
 
     @BeforeEach
     void setUp() {
         props = new AccessProperties();
         props.setPasswordHash(new BCryptPasswordEncoder(4).encode(SECRET));
         props.setTimeout(Duration.ofMinutes(5));
-        service = new AccessService(props);
+        auditService = noopAudit();
+        service = new AccessService(props, auditService);
+    }
+
+    private static AuditService noopAudit() {
+        // SYNC default + empty consumer list = no-op; @PostConstruct is
+        // not invoked under direct construction, which is fine — mode is
+        // already SYNC from the field initializer.
+        return new AuditService(new AuditServiceProperties(),
+                new MetricService(new SimpleMeterRegistry()), List.of());
     }
 
     @Test
@@ -32,7 +47,7 @@ class AccessServiceTest {
         AccessProperties empty = new AccessProperties();
         empty.setPasswordHash("   ");
 
-        AccessService fallback = new AccessService(empty);
+        AccessService fallback = new AccessService(empty, auditService);
 
         assertThat(fallback.isUsingDefaultPassword()).isTrue();
         assertThat(fallback.login("anything")).isFalse();

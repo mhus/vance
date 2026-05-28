@@ -3,6 +3,7 @@ package de.mhus.vance.brain.ai;
 import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.progress.ProgressEmitter;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
+import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.metric.MetricService;
 import de.mhus.vance.shared.settings.SettingService;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -60,6 +61,7 @@ public class EngineChatFactory {
     private final AiModelResolver aiModelResolver;
     private final ProgressEmitter progressEmitter;
     private final MetricService metricService;
+    private final AuditService auditService;
 
     /**
      * Build the {@link EngineChatBundle} the engine should drive its
@@ -126,11 +128,37 @@ public class EngineChatFactory {
             base.setUserNotifier(msg -> progressEmitter.emitStatus(
                     process, StatusTag.PROVIDER, msg));
         }
-        // Default trace-writer — only attached when persistence is on,
-        // so the wrappers truly skip the path when tracing is off.
-        if (base.getLlmTraceWriter() == null && ctx.traceLlm()) {
-            base.setLlmTraceWriter((req, resp, ms) -> LlmTraceRecorder.record(
-                    ctx.llmTraceService(), process, engineName, req, resp, ms));
+        // Trace-writer is attached unconditionally so audit always fires.
+        // The DB-write leg gates on ctx.traceLlm() inside the lambda —
+        // when tracing is off, only audit runs. Caller-supplied writer
+        // still wins, in which case audit responsibility moves to that
+        // caller (kept consistent with the original "their lambda, their
+        // rules" behaviour for tests / engines with custom persistence).
+        if (base.getLlmTraceWriter() == null) {
+            base.setLlmTraceWriter((req, resp, ms) -> {
+                if (ctx.traceLlm()) {
+                    LlmTraceRecorder.record(
+                            ctx.llmTraceService(), process, engineName, req, resp, ms);
+                }
+                Integer tokensIn = null;
+                Integer tokensOut = null;
+                if (resp != null && resp.tokenUsage() != null) {
+                    tokensIn = resp.tokenUsage().inputTokenCount();
+                    tokensOut = resp.tokenUsage().outputTokenCount();
+                }
+                String modelAlias = (req.parameters() == null)
+                        ? null
+                        : req.parameters().modelName();
+                auditService.llmEngineCall(
+                        process.getTenantId(),
+                        process.getProjectId(),
+                        process.getSessionId(),
+                        process.getId(),
+                        engineName,
+                        modelAlias,
+                        tokensIn, tokensOut,
+                        ms, resp != null, null);
+            });
         }
         // Default metric-service — always set so every engine-spawned
         // chat pushes char-length distribution summaries to Prometheus.

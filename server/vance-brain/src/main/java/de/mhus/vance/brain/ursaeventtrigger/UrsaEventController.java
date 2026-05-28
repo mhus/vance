@@ -1,6 +1,6 @@
-package de.mhus.vance.brain.eventtrigger;
+package de.mhus.vance.brain.ursaeventtrigger;
 
-import de.mhus.vance.api.events.EventTriggerResponse;
+import de.mhus.vance.api.ursaevents.EventTriggerResponse;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,9 +39,9 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequiredArgsConstructor
 @Slf4j
-public class EventController {
+public class UrsaEventController {
 
-    private final EventService eventService;
+    private final UrsaEventService eventService;
     private final ObjectMapper objectMapper;
 
     @GetMapping("/brain/{tenant}/event/{project}/{event}")
@@ -51,7 +51,7 @@ public class EventController {
             @PathVariable("event") String event,
             HttpServletRequest request) {
         String bearer = extractBearer(request);
-        EventService.EventTriggerResult result = eventService.trigger(
+        UrsaEventService.UrsaEventTriggerResult result = eventService.trigger(
                 tenant, project, event,
                 "GET", bearer, /*payload*/ null);
         return new EventTriggerResponse(event, result.workflowName(), result.workflowRunId());
@@ -65,7 +65,7 @@ public class EventController {
             HttpServletRequest request) {
         String bearer = extractBearer(request);
         Object payload = readJsonBody(request);
-        EventService.EventTriggerResult result = eventService.trigger(
+        UrsaEventService.UrsaEventTriggerResult result = eventService.trigger(
                 tenant, project, event,
                 "POST", bearer, payload);
         return new EventTriggerResponse(event, result.workflowName(), result.workflowRunId());

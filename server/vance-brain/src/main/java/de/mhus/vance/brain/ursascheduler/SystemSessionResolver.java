@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.scheduler;
+package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.api.ws.Profiles;
 import de.mhus.vance.shared.session.SessionDocument;
@@ -33,7 +33,7 @@ public class SystemSessionResolver {
      */
     public SessionDocument resolve(
             String tenantId, String projectId, String schedulerName, String runAs) {
-        String displayName = SchedulerSourceKeys.systemSessionDisplayName(schedulerName);
+        String displayName = UrsaSchedulerSourceKeys.systemSessionDisplayName(schedulerName);
         return sessionService.findSystemSession(tenantId, projectId, displayName)
                 .orElseGet(() -> createFresh(tenantId, projectId, runAs, displayName));
     }

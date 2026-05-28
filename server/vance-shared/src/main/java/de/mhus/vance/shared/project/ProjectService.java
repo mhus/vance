@@ -1,5 +1,6 @@
 package de.mhus.vance.shared.project;
 
+import de.mhus.vance.shared.audit.AuditService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +59,7 @@ public class ProjectService {
 
     private final ProjectRepository repository;
     private final MongoTemplate mongoTemplate;
+    private final AuditService auditService;
 
     public Optional<ProjectDocument> findByTenantAndName(String tenantId, String name) {
         return repository.findByTenantIdAndName(tenantId, name);
@@ -138,6 +140,7 @@ public class ProjectService {
         log.info("Created project tenantId='{}' name='{}' kind={} lifecycle={} id='{}'",
                 saved.getTenantId(), saved.getName(), saved.getKind(),
                 saved.getLifecycleType(), saved.getId());
+        auditService.projectCreate(tenantId, name);
         return saved;
     }
 
@@ -308,6 +311,7 @@ public class ProjectService {
         }
         log.info("Closed project tenantId='{}' name='{}' → group='{}'",
                 tenantId, name, closedGroupId);
+        auditService.projectClose(tenantId, name, closedGroupId);
         return updated;
     }
 

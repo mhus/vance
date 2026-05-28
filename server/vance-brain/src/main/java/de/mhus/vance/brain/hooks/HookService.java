@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Lifecycle owner of the hook subsystem. Mirrors
- * {@code SchedulerService} on the responsibility axis but does not
+ * {@code UrsaSchedulerService} on the responsibility axis but does not
  * need the {@code TaskScheduler} thread pool — hooks fire on
  * Spring-event ingress, never on a clock.
  *

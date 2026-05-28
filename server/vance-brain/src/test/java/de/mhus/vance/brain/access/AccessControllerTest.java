@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import de.mhus.vance.api.access.AccessTokenRequest;
 import de.mhus.vance.api.access.AccessTokenResponse;
 import de.mhus.vance.shared.access.WebUiCookies;
+import de.mhus.vance.shared.audit.AuditService;
 import de.mhus.vance.shared.home.HomeBootstrapService;
 import de.mhus.vance.shared.jwt.JwtService;
 import de.mhus.vance.shared.jwt.TokenType;
@@ -53,6 +54,7 @@ class AccessControllerTest {
     private PasswordService passwordService;
     private HomeBootstrapService homeBootstrapService;
     private SettingService settingService;
+    private AuditService auditService;
     private AccessController controller;
 
     @BeforeEach
@@ -62,6 +64,7 @@ class AccessControllerTest {
         passwordService = mock(PasswordService.class);
         homeBootstrapService = mock(HomeBootstrapService.class);
         settingService = mock(SettingService.class);
+        auditService = mock(AuditService.class);
 
         controller = new AccessController(
                 jwtService,
@@ -69,6 +72,7 @@ class AccessControllerTest {
                 passwordService,
                 homeBootstrapService,
                 settingService,
+                auditService,
                 /* cookieSecure */ true);
 
         // Default wiring — an active user exists in the tenant with a
@@ -492,7 +496,7 @@ class AccessControllerTest {
         // path. Production must keep it true.
         AccessController insecure = new AccessController(
                 jwtService, userService, passwordService,
-                homeBootstrapService, settingService,
+                homeBootstrapService, settingService, auditService,
                 /* cookieSecure */ false);
 
         AccessTokenRequest req = AccessTokenRequest.builder()

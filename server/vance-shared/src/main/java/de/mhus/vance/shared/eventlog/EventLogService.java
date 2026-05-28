@@ -110,7 +110,7 @@ public class EventLogService {
      * a logged trigger (e.g. user-driven, recipe-spawned worker).
      *
      * @param sourcePrefix optional filter "any source that starts with
-     *                     this prefix" — pass e.g. {@code "scheduler:"}
+     *                     this prefix" — pass e.g. {@code "ursascheduler:"}
      *                     to scope to scheduler-spawned processes.
      */
     public Optional<EventLogDocument> findStartForProcess(

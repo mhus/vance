@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.scheduler;
+package de.mhus.vance.brain.ursascheduler;
 
 import de.mhus.vance.brain.project.ProjectEnginesStartRequested;
 import de.mhus.vance.brain.project.ProjectEnginesStopRequested;
@@ -23,9 +23,9 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class SchedulerProjectLifecycleListener {
+public class UrsaSchedulerProjectLifecycleListener {
 
-    private final SchedulerService schedulerService;
+    private final UrsaSchedulerService schedulerService;
 
     @EventListener
     public void onStart(ProjectEnginesStartRequested event) {

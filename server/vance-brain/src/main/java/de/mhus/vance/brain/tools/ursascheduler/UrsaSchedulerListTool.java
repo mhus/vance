@@ -1,7 +1,7 @@
-package de.mhus.vance.brain.tools.scheduler;
+package de.mhus.vance.brain.tools.ursascheduler;
 
-import de.mhus.vance.shared.scheduler.ResolvedScheduler;
-import de.mhus.vance.shared.scheduler.SchedulerLoader;
+import de.mhus.vance.shared.ursascheduler.ResolvedUrsaScheduler;
+import de.mhus.vance.shared.ursascheduler.UrsaSchedulerLoader;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -15,15 +15,15 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class SchedulerListTool implements Tool {
+public class UrsaSchedulerListTool implements Tool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
             "type", "object",
             "properties", new LinkedHashMap<>(),
             "required", List.of());
 
-    private final SchedulerLoader loader;
-    private final SchedulerToolSupport support;
+    private final UrsaSchedulerLoader loader;
+    private final UrsaSchedulerToolSupport support;
 
     @Override public String name() { return "scheduler_list"; }
 
@@ -43,9 +43,9 @@ public class SchedulerListTool implements Tool {
         if (ctx.projectId() == null) {
             throw new ToolException("scheduler_list requires a project scope");
         }
-        List<ResolvedScheduler> entries = loader.listAll(ctx.tenantId(), ctx.projectId());
+        List<ResolvedUrsaScheduler> entries = loader.listAll(ctx.tenantId(), ctx.projectId());
         List<Map<String, Object>> out = new ArrayList<>(entries.size());
-        for (ResolvedScheduler r : entries) {
+        for (ResolvedUrsaScheduler r : entries) {
             // Hidden entries are invisible to LLM list — protected
             // entries stay listed so the agent can reason about them
             // ("there is already a nightly-cleanup running, no need to

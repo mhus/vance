@@ -177,6 +177,50 @@
             <version>1.8.1</version>
         </dependency>
 
+        <!-- Multi-format report export (pdf_from_markdown,
+             docx_from_markdown). Three building blocks share the same
+             commonmark-AST frontend; the Vance-Kind graceful-degradation
+             logic is centralised so all output formats agree on how to
+             render charts/diagrams/mindmaps in print form (= code-block
+             with note). See planning/web-office-suite.md.
+
+             - commonmark + GFM tables ext: MD parser
+             - openhtmltopdf-pdfbox (io.github.* variant, PDFBox-3-
+               compatible to match the brain's existing pdfbox dep):
+               HTML+CSS -> PDF
+             - Apache POI XWPF: DOCX writer. Brings xmlbeans / dom4j /
+               commons-collections4 transitively; POI's surface for
+               documents is large but well-maintained. -->
+        <dependency>
+            <groupId>org.commonmark</groupId>
+            <artifactId>commonmark</artifactId>
+            <version>0.24.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.commonmark</groupId>
+            <artifactId>commonmark-ext-gfm-tables</artifactId>
+            <version>0.24.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-pdfbox</artifactId>
+            <version>1.1.37</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.0</version>
+        </dependency>
+        <!-- POI 5.4 calls BoundedInputStream.builder() which only
+             exists in commons-io 2.17+. The swagger-parser pulls in
+             2.15.1; pin newer here so POI can read its own DOCX
+             output back via XWPFDocument#new(InputStream). -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.18.0</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

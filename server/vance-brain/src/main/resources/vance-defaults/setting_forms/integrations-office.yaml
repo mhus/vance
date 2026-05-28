@@ -1,0 +1,96 @@
+title:
+  de: "Office-Editor (ONLYOFFICE / Collabora)"
+  en: "Office editor (ONLYOFFICE / Collabora)"
+description:
+  de: "Bindet einen selbst gehosteten Office-Server an, damit Word-/Excel-Dokumente direkt im Vance-Chat editierbar sind. Vance liefert den Document-Server nicht mit — der Operator stellt ihn separat bereit (siehe planning/web-office-suite.md §4)."
+  en: "Connects a self-hosted office document server so Word/Excel documents can be edited directly in the Vance chat. Vance does not ship the document server — the operator runs it separately (see planning/web-office-suite.md §4)."
+icon: link
+category: integrations
+defaultScope: project
+# Verfügbar in normalen Projekten und im Tenant-Default-Project
+# (_vance / _tenant), damit Operators die Office-Anbindung
+# tenant-weit setzen können. User-Home-Spaces (_user_*) bekommen
+# das Formular nicht — dort macht Office-Edit konzeptionell
+# keinen Sinn (private Single-User-Sandbox).
+availableIn: [ "!_user_*" ]
+
+fields:
+  - name: provider
+    type: select
+    required: true
+    defaultValue: "none"
+    label:
+      de: "Anbieter"
+      en: "Provider"
+    help:
+      de: "Welcher Document-Server soll genutzt werden? 'Keiner' deaktiviert die Edit-Funktion (Preview bleibt verfügbar)."
+      en: "Which document server to use? 'None' disables editing (preview still works)."
+    bindsTo:
+      key: "office.provider"
+    choices:
+      - value: "none"
+        label: { de: "Keiner (deaktiviert)", en: "None (disabled)" }
+      - value: "onlyoffice"
+        label: { de: "ONLYOFFICE Document Server", en: "ONLYOFFICE Document Server" }
+      - value: "collabora"
+        label: { de: "Collabora Online", en: "Collabora Online" }
+
+  - name: url
+    type: string
+    label:
+      de: "URL des Document-Servers"
+      en: "Document-server URL"
+    help:
+      de: "Vollqualifizierte URL der eigenen Instanz, z.B. https://office.example.com — vom Vance-Brain und vom User-Browser aus erreichbar."
+      en: "Fully qualified URL of your instance, e.g. https://office.example.com — must be reachable from both the Vance brain and the user's browser."
+    showIf:  "provider != 'none'"
+    writeIf: "provider != 'none'"
+    bindsTo:
+      key: "office.url"
+
+  - name: jwtSecret
+    type: password
+    label:
+      de: "JWT-Secret"
+      en: "JWT secret"
+    help:
+      de: "Geteiltes Geheimnis zwischen Vance und dem Document-Server. Min. 32 Zeichen für HS256, 48 für HS384, 64 für HS512. Im ONLYOFFICE-Container: Env-Variable JWT_SECRET, in Collabora: 'jwt_secret' im config-Snippet."
+      en: "Shared secret between Vance and the document server. Min. 32 chars for HS256, 48 for HS384, 64 for HS512. ONLYOFFICE: container env JWT_SECRET; Collabora: 'jwt_secret' in config."
+    showIf:  "provider != 'none'"
+    writeIf: "provider != 'none'"
+    bindsTo:
+      key: "office.jwtSecret"
+
+  - name: jwtAlgorithm
+    type: select
+    defaultValue: "HS256"
+    label:
+      de: "JWT-Algorithmus"
+      en: "JWT algorithm"
+    help:
+      de: "HS256 ist der Standard und passt zum ONLYOFFICE-Default. Nur ändern, wenn der Document-Server eine andere HMAC-Variante erzwingt."
+      en: "HS256 is the default and matches ONLYOFFICE out of the box. Change only if your document server is configured for a different HMAC variant."
+    showIf:  "provider != 'none'"
+    writeIf: "provider != 'none'"
+    bindsTo:
+      key: "office.jwtAlgorithm"
+    choices:
+      - value: "HS256"
+        label: { de: "HS256 (Standard)", en: "HS256 (default)" }
+      - value: "HS384"
+        label: { de: "HS384", en: "HS384" }
+      - value: "HS512"
+        label: { de: "HS512", en: "HS512" }
+
+  - name: callbackBaseUrl
+    type: string
+    label:
+      de: "Callback-Base-URL"
+      en: "Callback base URL"
+    help:
+      de: "Nur Schema + Host + Port — der Sub-Pfad (/brain/{tenant}/office/...) wird vom Connector automatisch angehängt. URL des **Vance-Brain** (nicht der Web-UI), unter der der Document-Server das Brain erreicht. Default-Brain-Port ist 9990 (die Web-UI läuft auf 9900). Beispiele: lokal mit ONLYOFFICE im Docker und Brain auf dem Mac-Host → 'http://host.docker.internal:9990'; Production hinter Reverse-Proxy → 'https://vance.example.com'. Leer lassen nur dann, wenn Brain und Web-UI denselben Public-Host nutzen (Reverse-Proxy / unified ingress)."
+      en: "Just scheme + host + port — the connector appends the sub-path (/brain/{tenant}/office/...) automatically. URL of the **Vance brain** (not the web-UI), used by the document server for download + save callbacks. The brain's default port is 9990 (web-UI is 9900). Examples: locally with ONLYOFFICE in Docker and the brain on the macOS host → 'http://host.docker.internal:9990'; production behind a reverse proxy → 'https://vance.example.com'. Leave empty only when brain and web-UI share the same public host (reverse proxy / unified ingress)."
+    showIf:  "provider != 'none'"
+    writeIf: "provider != 'none'"
+    bindsTo:
+      key: "office.callbackBaseUrl"

@@ -403,6 +403,68 @@ public class DocumentService {
     }
 
     /**
+     * Replace the binary content of an existing document. Always
+     * writes through to the storage layer (no inline-text branch
+     * — binary by design). Used by the office-editor callback path
+     * to persist DOCX/XLSX bytes coming back from ONLYOFFICE /
+     * Collabora.
+     *
+     * @param id          document id
+     * @param newMimeType optional new mime — when {@code null} the
+     *                    document's existing mime is preserved
+     * @param bytes       new content
+     * @param updatedBy   optional audit field for the save
+     * @return the updated document
+     * @throws IllegalArgumentException if the document is unknown
+     */
+    public DocumentDocument replaceBinaryContent(
+            String id,
+            @Nullable String newMimeType,
+            byte[] bytes,
+            @Nullable String updatedBy) {
+        DocumentDocument doc = repository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown document id='" + id + "'"));
+        if (bytes == null) {
+            throw new IllegalArgumentException(
+                    "bytes must not be null for binary replace");
+        }
+        if (doc.getLineageId() == null) {
+            doc.setLineageId(java.util.UUID.randomUUID().toString());
+        }
+        String oldStorageId = doc.getStorageId();
+        StorageService.StorageInfo info;
+        try (InputStream in = new ByteArrayInputStream(bytes)) {
+            info = storageService.store(
+                    doc.getTenantId(), doc.getPath(), in);
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "Failed to stream replaced binary content for id='"
+                            + id + "'", e);
+        }
+        if (newMimeType != null && !newMimeType.isBlank()) {
+            doc.setMimeType(newMimeType);
+        }
+        doc.setInlineText(null);
+        doc.setStorageId(info.id());
+        doc.setSize(info.size());
+        doc.setRagDirty(isRagEligible(doc));
+        // updatedBy is unused for now — DocumentDocument has no
+        // last-editor field. Reserved in the signature so the
+        // office-callback path can record audit info once that
+        // field lands.
+        DocumentDocument saved = repository.save(doc);
+        if (oldStorageId != null && !oldStorageId.equals(info.id())) {
+            deleteStorageBlobQuietly(oldStorageId, id);
+        }
+        log.info("Replaced binary content tenantId='{}' projectId='{}' "
+                        + "path='{}' id='{}' bytes={}",
+                saved.getTenantId(), saved.getProjectId(),
+                saved.getPath(), saved.getId(), saved.getSize());
+        return saved;
+    }
+
+    /**
      * Opens a streaming read over the document's content. Caller closes.
      * Returns an empty stream for documents that have neither inline text nor
      * a storage blob (shouldn't happen, but defensive).

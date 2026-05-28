@@ -41,6 +41,10 @@ const SlidesView = defineAsyncComponent(() => import('./SlidesView.vue'));
 // Mermaid (~700 KB minified gzipped) ships only when a diagram
 // document is opened — keep the documents bundle lean.
 const DiagramView = defineAsyncComponent(() => import('./DiagramView.vue'));
+// ONLYOFFICE / Collabora editor — only relevant for DOCX/XLSX
+// documents when a tenant has configured `office.*`. Pulled in
+// lazily so the documents bundle isn't paying for it.
+const OfficeEditor = defineAsyncComponent(() => import('./OfficeEditor.vue'));
 import {
   isListMime,
   parseList,
@@ -454,8 +458,21 @@ type ContentTab =
   | 'chart'
   | 'sheet'
   | 'slides'
-  | 'diagram';
+  | 'diagram'
+  | 'office';
 const contentTab = ref<ContentTab>('raw');
+
+// Counter bumped whenever the user comes BACK from the office-edit
+// tab. Used as a :key on the office-document preview so the browser
+// remounts and re-fetches the content — the office-server's save
+// callback has run by the time the user switches tabs, but the
+// preview pane otherwise has no way to know its bytes are stale.
+const previewReloadCounter = ref(0);
+watch(contentTab, (next, prev) => {
+  if (prev === 'office' && next !== 'office') {
+    previewReloadCounter.value += 1;
+  }
+});
 
 const isListDocument = computed<boolean>(() => {
   const sel = docsState.selected.value;
@@ -540,6 +557,19 @@ const isDiagramDocument = computed<boolean>(() => {
 // {@code CodeEditor} fallback. Other kinded markdown docs (list,
 // tree, mindmap, …) are caught by their own branches above; this
 // covers everything else with a markdown mime type.
+// Office-editable documents — DOCX / XLSX served as binary from
+// storage. The OfficeEditor component asks the brain whether
+// office.* is actually configured (server-side check) and renders
+// a "not-configured" placeholder when not, so this flag only
+// gates the *tab* visibility, not the actual editor availability.
+const isOfficeEditableDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel) return false;
+  const mime = (sel.mimeType ?? '').toLowerCase();
+  return mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      || mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+});
+
 const isMarkdownDocument = computed<boolean>(() => {
   const sel = docsState.selected.value;
   if (!sel?.inline) return false;
@@ -1760,6 +1790,38 @@ const formatBytes = (n: number): string => {
                 :rows="20"
                 :disabled="saving"
                 :mime-type="docsState.selected.value.mimeType"
+              />
+            </template>
+            <!-- Binary-document branch (DOCX/XLSX/PDF/images/…).
+                 Office-editable docs get a Preview / Office-Edit
+                 tab pair; everything else falls through to the
+                 plain DocumentPreview. -->
+            <template v-else-if="isOfficeEditableDocument">
+              <div class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'preview' }"
+                  @click="contentTab = 'preview'"
+                >{{ $t('documents.detail.tabPreview') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'office' }"
+                  @click="contentTab = 'office'"
+                >{{ $t('documents.detail.tabOfficeEdit') }}</button>
+              </div>
+              <OfficeEditor
+                v-if="contentTab === 'office'"
+                :document-id="docsState.selected.value.id"
+                :mime-type="docsState.selected.value.mimeType"
+              />
+              <DocumentPreview
+                v-else
+                :key="`office-preview-${docsState.selected.value.id}-${previewReloadCounter}`"
+                :document-id="docsState.selected.value.id"
+                :mime-type="docsState.selected.value.mimeType"
+                :inline="false"
               />
             </template>
             <DocumentPreview

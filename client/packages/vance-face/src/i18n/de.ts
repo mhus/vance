@@ -283,6 +283,7 @@ export default {
       contentLabel: 'Inhalt',
       tabRaw: 'Roh',
       tabPreview: 'Vorschau',
+      tabOfficeEdit: 'Bearbeiten (Office)',
       tabList: 'Liste',
       tabTree: 'Baum',
       tabMindmap: 'Mindmap',

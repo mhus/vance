@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue';
 import { documentContentUrl } from '@vance/shared';
 import * as pdfjsLib from 'pdfjs-dist';
 // PDF.js v5 uses an ESM worker that Vite can bundle as a URL via the
@@ -9,7 +9,16 @@ import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore — Vite asset import resolves at build time.
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-export interface Props {
+// Office previews — async so the mammoth / xlsx bundles stay out
+// of the initial document-app chunk; they only load when the user
+// opens a DOCX/XLSX document.
+const DocxView = defineAsyncComponent(() => import('./DocxView.vue'));
+const XlsxView = defineAsyncComponent(() => import('./XlsxView.vue'));
+
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+interface Props {
   documentId: string;
   mimeType?: string | null;
   /** True when the source is editable inline-text — preview steps
@@ -26,10 +35,12 @@ const streamUrl = computed(() =>
   props.documentId ? documentContentUrl(props.documentId, false) : '',
 );
 
-const kind = computed<'image' | 'pdf' | 'inline' | 'binary'>(() => {
+const kind = computed<'image' | 'pdf' | 'docx' | 'xlsx' | 'inline' | 'binary'>(() => {
   if (props.inline) return 'inline';
   const mt = (props.mimeType ?? '').toLowerCase();
   if (mt === 'application/pdf') return 'pdf';
+  if (mt === DOCX_MIME) return 'docx';
+  if (mt === XLSX_MIME) return 'xlsx';
   if (mt.startsWith('image/')) return 'image';
   return 'binary';
 });
@@ -145,6 +156,20 @@ defineExpose({ downloadUrl });
         :ref="(el) => attachCanvas(el as HTMLElement | null, canvas)"
       />
     </div>
+
+    <!-- DOCX: mammoth.js client-side preview, read-only. -->
+    <DocxView
+      v-else-if="kind === 'docx'"
+      mode="editor"
+      :document-id="documentId"
+    />
+
+    <!-- XLSX: SheetJS client-side preview, read-only with sheet tabs. -->
+    <XlsxView
+      v-else-if="kind === 'xlsx'"
+      mode="editor"
+      :document-id="documentId"
+    />
 
     <!-- Binary: nothing useful to render in-page. The parent shows
          a Download button. -->

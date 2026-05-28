@@ -18,6 +18,8 @@ const ChartView = defineAsyncComponent(() => import('@/document/ChartView.vue'))
 const SlidesView = defineAsyncComponent(() => import('@/document/SlidesView.vue'));
 const ImageView = defineAsyncComponent(() => import('@/document/ImageView.vue'));
 const PdfView = defineAsyncComponent(() => import('@/document/PdfView.vue'));
+const DocxView = defineAsyncComponent(() => import('@/document/DocxView.vue'));
+const XlsxView = defineAsyncComponent(() => import('@/document/XlsxView.vue'));
 const AudioView = defineAsyncComponent(() => import('@/document/AudioView.vue'));
 const VideoView = defineAsyncComponent(() => import('@/document/VideoView.vue'));
 const YouTubeView = defineAsyncComponent(() => import('@/document/YouTubeView.vue'));
@@ -50,6 +52,12 @@ export const kindRegistry = {
     image: { embedded: ImageView, label: 'Image', icon: '🖼' },
     svg: { embedded: ImageView, label: 'SVG', icon: '🖼' },
     pdf: { embedded: PdfView, label: 'PDF', icon: '📄' },
+    // Office formats: client-side read-only preview via mammoth.js
+    // (DOCX) and SheetJS (XLSX). Editing lives in a future layer
+    // backed by tenant-configured ONLYOFFICE/Collabora — see
+    // planning/web-office-suite.md.
+    docx: { embedded: DocxView, label: 'Word', icon: '📝' },
+    xlsx: { embedded: XlsxView, label: 'Excel', icon: '📊' },
     audio: { embedded: AudioView, label: 'Audio', icon: '🔊' },
     video: { embedded: VideoView, label: 'Video', icon: '🎬' },
     // External-source embeds — inline-only (no Document load).

@@ -76,6 +76,17 @@ public class BrainAccessFilter extends AccessFilterBase {
     private static final Pattern EVENT_TRIGGER_PATH =
             Pattern.compile("^/brain/[^/]+/event/[^/]+/[^/]+/?$");
 
+    /**
+     * Office download / callback endpoints called by the ONLYOFFICE /
+     * Collabora document server. These don't carry a Vance bearer
+     * token — the document server signs the request with the
+     * per-tenant {@code office.jwtSecret}, the OfficeController
+     * verifies that token itself. Letting them past this filter
+     * keeps the global tenant-mismatch check from rejecting them.
+     */
+    private static final Pattern OFFICE_EXTERNAL_PATH =
+            Pattern.compile("^/brain/[^/]+/office/(download|callback)/[^/]+/?$");
+
     public BrainAccessFilter(JwtService jwtService) {
         super(jwtService);
     }
@@ -101,6 +112,12 @@ public class BrainAccessFilter extends AccessFilterBase {
             // External callers don't have a JWT — the UrsaEventService
             // performs its own bearer-token check based on the
             // event's YAML config.
+            return false;
+        }
+        if (OFFICE_EXTERNAL_PATH.matcher(requestUri).matches()) {
+            // ONLYOFFICE / Collabora document server callbacks — the
+            // OfficeController verifies its own JWT signed with the
+            // per-tenant office.jwtSecret.
             return false;
         }
         return true;

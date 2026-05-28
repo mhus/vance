@@ -252,6 +252,7 @@ declare const _default: {
             contentLabel: string;
             tabRaw: string;
             tabPreview: string;
+            tabOfficeEdit: string;
             tabList: string;
             tabTree: string;
             tabMindmap: string;

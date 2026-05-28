@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue';
 import { documentContentUrl } from '@vance/shared';
 import * as pdfjsLib from 'pdfjs-dist';
 // PDF.js v5 uses an ESM worker that Vite can bundle as a URL via the
@@ -21,6 +21,13 @@ function attachCanvas(host, canvas) {
 export { attachCanvas };
 debugger; /* PartiallyEnd: #3632/both.vue */
 export default await (async () => {
+    // Office previews — async so the mammoth / xlsx bundles stay out
+    // of the initial document-app chunk; they only load when the user
+    // opens a DOCX/XLSX document.
+    const DocxView = defineAsyncComponent(() => import('./DocxView.vue'));
+    const XlsxView = defineAsyncComponent(() => import('./XlsxView.vue'));
+    const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const props = defineProps();
     pdfjsLib
         .GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -31,6 +38,10 @@ export default await (async () => {
         const mt = (props.mimeType ?? '').toLowerCase();
         if (mt === 'application/pdf')
             return 'pdf';
+        if (mt === DOCX_MIME)
+            return 'docx';
+        if (mt === XLSX_MIME)
+            return 'xlsx';
         if (mt.startsWith('image/'))
             return 'image';
         return 'binary';
@@ -154,6 +165,32 @@ export default await (async () => {
             });
         }
     }
+    else if (__VLS_ctx.kind === 'docx') {
+        const __VLS_0 = {}.DocxView;
+        /** @type {[typeof __VLS_components.DocxView, ]} */ ;
+        // @ts-ignore
+        const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+            mode: "editor",
+            documentId: (__VLS_ctx.documentId),
+        }));
+        const __VLS_2 = __VLS_1({
+            mode: "editor",
+            documentId: (__VLS_ctx.documentId),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+    }
+    else if (__VLS_ctx.kind === 'xlsx') {
+        const __VLS_4 = {}.XlsxView;
+        /** @type {[typeof __VLS_components.XlsxView, ]} */ ;
+        // @ts-ignore
+        const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
+            mode: "editor",
+            documentId: (__VLS_ctx.documentId),
+        }));
+        const __VLS_6 = __VLS_5({
+            mode: "editor",
+            documentId: (__VLS_ctx.documentId),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_5));
+    }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-sm opacity-70 italic" },
@@ -180,6 +217,8 @@ export default await (async () => {
     const __VLS_self = (await import('vue')).defineComponent({
         setup() {
             return {
+                DocxView: DocxView,
+                XlsxView: XlsxView,
                 streamUrl: streamUrl,
                 kind: kind,
                 pdfPages: pdfPages,

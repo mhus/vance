@@ -1,3 +1,7 @@
+---
+triggers: execute_javascript, JavaScript, JS script, vance.tools.call, GraalJS, scratch javascript, client_javascript, host bindings, vance.*, client.*, multi-tool plumbing
+summary: How to call tools from JavaScript on brain (vance.*) or foot (client.*) — execute_javascript, execute_scratch_javascript, client_javascript.
+---
 # Scripts that call tools
 
 You can drop into JavaScript when arithmetic, sorting, filtering, or

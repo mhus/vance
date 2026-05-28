@@ -1,3 +1,7 @@
+---
+triggers: REST, REST API, HTTP, OpenAPI, Swagger, rest_api, API tool, generated tools, third-party API, integration, custom endpoint
+summary: How to wire a REST-API tool from an OpenAPI spec — emits one typed tool per operation, supports key auth / OAuth / mutual-TLS.
+---
 # REST API tools
 
 How to wire a server tool that talks to any REST API — public,

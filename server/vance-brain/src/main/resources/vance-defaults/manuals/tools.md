@@ -1,3 +1,7 @@
+---
+triggers: tools, find_tools, describe_tool, server tools, client tools, client_*, RAG tools, rag_*, scratchpad, exec, sandbox, tool discovery, what tools are there
+summary: Tool catalogue overview — server vs. client tools, find_tools / describe_tool discovery, scratch + exec sandboxes, RAG tools, tagging.
+---
 # Tools catalogue and composition
 
 Two universes of tools share the same dispatcher:

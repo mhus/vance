@@ -520,9 +520,12 @@ something — **before** answering, ask the system:
   `how_do_i('<one-sentence description of what you want to do>')`
 
 The tool searches all manuals, skills and tools and returns
-either `loaded` (capability content ready to use), `alternatives`
-(candidates — pick one and `manual_read('<name>')`), or `hint`
-(refine the intent).
+either `loaded` (confident single match), `alternatives` (ranked
+candidates), or `hint` (refine the intent). Both `loaded` and
+`alternatives` give you only a `name` plus a short summary — the
+catalog ships summary cards, not full bodies. Pick a name and load
+it via `manual_read('<name>')` (for type:manual) to get the actual
+content.
 
 Quick channel choice (when you already know which fits):
 

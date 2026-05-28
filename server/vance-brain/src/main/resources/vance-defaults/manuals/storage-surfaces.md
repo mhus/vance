@@ -1,3 +1,7 @@
+---
+triggers: storage, where to save, persist, Datei speichern, Document vs scratch vs exec, save file, durable storage, ephemeral, scratchpad, RootDir
+summary: Where to put a file — Document (long-lived, indexed) vs scratch (project sandbox) vs exec (per-run workspace). Choose by audience + lifetime.
+---
 # Storage Surfaces — where to put a file
 
 Vance has three distinct stores. Picking the wrong one is hard to

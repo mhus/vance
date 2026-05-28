@@ -1,3 +1,7 @@
+---
+triggers: process, sub-process, subprocess, spawn, delegate, delegieren, parallel work, background worker, process_create, process_steer, process_list, orchestration, Sub-Agent, side task
+summary: Spawning sub-processes (process_create / process_steer / process_list) — when to delegate work to a side worker instead of doing it inline.
+---
 # Sub-processes and orchestration
 
 A think-process is a running engine instance with its own chat log,

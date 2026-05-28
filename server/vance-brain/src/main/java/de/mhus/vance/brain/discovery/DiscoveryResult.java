@@ -21,21 +21,25 @@ public class DiscoveryResult {
     /** The intent the caller submitted, echoed for clarity. */
     String intent;
 
-    /** Confident match — capability content already loaded. */
+    /** Confident match — caller resolves the body via
+     *  {@code manual_read('<name>')}. */
     @Nullable Match loaded;
 
-    /** Ambiguous alternatives — caller picks and calls manual_read. */
+    /** Ambiguous alternatives — caller picks one and resolves the
+     *  body via {@code manual_read('<name>')}. */
     List<Match> alternatives;
 
     /** No match — short hint string for the caller. */
     @Nullable String hint;
 
     /**
-     * Capability reference returned by the discovery LLM. Same shape
-     * for both {@link DiscoveryResult#getLoaded} (with {@code content}
-     * populated) and entries in
-     * {@link DiscoveryResult#getAlternatives} (with {@code summary}
-     * + {@code score} instead).
+     * Capability reference returned by the discovery LLM. The same
+     * shape is used for {@link DiscoveryResult#getLoaded} (confident
+     * single match) and {@link DiscoveryResult#getAlternatives}
+     * (ranked candidates). Both flows lead the caller to a
+     * {@code manual_read('<name>')} call — the catalog ships summary
+     * cards, never full bodies, so the discovery layer never returns
+     * raw content inline.
      */
     @Value
     @Builder
@@ -46,11 +50,10 @@ public class DiscoveryResult {
         String name;
         /** Catalog source attribution, e.g. {@code engine}. */
         @Nullable String source;
-        /** Full content (only populated for {@link DiscoveryResult#loaded}). */
-        @Nullable String content;
-        /** One-line summary (only populated for alternatives). */
+        /** One-line summary — usually copied from the catalog card. */
         @Nullable String summary;
-        /** Subjective confidence 0–1 (only populated for alternatives). */
+        /** Subjective confidence 0–1 (populated for alternatives;
+         *  may be present on loaded too). */
         @Nullable Double score;
     }
 }

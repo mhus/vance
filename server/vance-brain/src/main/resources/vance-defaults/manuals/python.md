@@ -1,3 +1,7 @@
+---
+triggers: Python, pip, venv, python script, pandas, numpy, matplotlib, scientific computing, Datenanalyse, requirements.txt, python_create, python_run, python_install
+summary: Python tooling (venv per RootDir, python_create / install / uninstall / run / set_interpreter) — use when a JS-only solution is awkward.
+---
 # Python tooling
 
 When the project has a Python RootDir, you have a local `venv` plus

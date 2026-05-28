@@ -1,3 +1,7 @@
+---
+triggers: image, picture, photo, screenshot, Bild, Foto, Bildschirmfoto, Grafik, "show me a picture", image_search, Pixabay, Unsplash, png, jpg, svg
+summary: How to show a picture in chat — external URLs, project Documents, or image_search results.
+---
 # Embedding — Images
 
 How to show a picture in the chat. There are three sources, all

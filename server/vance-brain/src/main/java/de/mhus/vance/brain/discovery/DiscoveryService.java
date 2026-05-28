@@ -96,7 +96,7 @@ public class DiscoveryService {
         // Loaded — confident single match (takes precedence)
         Object loaded = raw.get("loaded");
         if (loaded instanceof Map<?, ?> loadedMap) {
-            DiscoveryResult.Match match = toMatch(loadedMap, /*expectContent*/ true);
+            DiscoveryResult.Match match = toMatch(loadedMap);
             if (match != null && knownCapability(match.getName(), catalog)) {
                 return builder.loaded(match).build();
             }
@@ -116,7 +116,7 @@ public class DiscoveryService {
             List<DiscoveryResult.Match> filtered = new ArrayList<>();
             for (Object item : list) {
                 if (!(item instanceof Map<?, ?> entry)) continue;
-                DiscoveryResult.Match m = toMatch(entry, /*expectContent*/ false);
+                DiscoveryResult.Match m = toMatch(entry);
                 if (m == null) continue;
                 if (!knownCapability(m.getName(), catalog)) {
                     log.debug("DiscoveryService: dropping unknown alternative '{}'", m.getName());
@@ -142,16 +142,12 @@ public class DiscoveryService {
                 .build();
     }
 
-    private static DiscoveryResult.@Nullable Match toMatch(
-            Map<?, ?> raw, boolean expectContent) {
+    private static DiscoveryResult.@Nullable Match toMatch(Map<?, ?> raw) {
         Object name = raw.get("name");
         if (!(name instanceof String n) || n.isBlank()) return null;
         DiscoveryResult.Match.MatchBuilder b = DiscoveryResult.Match.builder().name(n);
         if (raw.get("type") instanceof String t) b.type(t);
         if (raw.get("source") instanceof String src) b.source(src);
-        if (expectContent && raw.get("content") instanceof String c) {
-            b.content(c);
-        }
         if (raw.get("summary") instanceof String summary) b.summary(summary);
         if (raw.get("score") instanceof Number sc) b.score(sc.doubleValue());
         return b.build();

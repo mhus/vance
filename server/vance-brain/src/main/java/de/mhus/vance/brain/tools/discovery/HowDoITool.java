@@ -72,10 +72,13 @@ public class HowDoITool implements Tool {
     public String description() {
         return "Semantic discovery across Vance's capabilities (manuals, "
                 + "skills, tools). Pass a one-sentence intent and the tool "
-                + "returns either the matching capability content "
-                + "directly (`loaded`), a ranked list of candidates "
-                + "(`alternatives`), or a hint when nothing matches "
-                + "(`hint`). Call this BEFORE saying you cannot do "
+                + "returns either a confident single match (`loaded`), a "
+                + "ranked list of candidates (`alternatives`), or a hint "
+                + "when nothing matches (`hint`). Both `loaded` and "
+                + "`alternatives` give you a `name` — call "
+                + "`manual_read('<name>')` (for type:manual) to load "
+                + "the body. The catalog ships summary cards, not full "
+                + "bodies. Call this BEFORE saying you cannot do "
                 + "something — the system often knows more than your "
                 + "training data does.";
     }
@@ -127,14 +130,14 @@ public class HowDoITool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("intent", result.getIntent());
         if (result.getLoaded() != null) {
-            out.put("loaded", matchToMap(result.getLoaded(), true));
+            out.put("loaded", matchToMap(result.getLoaded()));
         } else {
             out.put("loaded", null);
         }
         List<Map<String, Object>> alternatives = new ArrayList<>();
         if (result.getAlternatives() != null) {
             for (DiscoveryResult.Match m : result.getAlternatives()) {
-                alternatives.add(matchToMap(m, false));
+                alternatives.add(matchToMap(m));
             }
         }
         out.put("alternatives", alternatives);
@@ -142,15 +145,11 @@ public class HowDoITool implements Tool {
         return out;
     }
 
-    private static Map<String, Object> matchToMap(
-            DiscoveryResult.Match m, boolean includeContent) {
+    private static Map<String, Object> matchToMap(DiscoveryResult.Match m) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("type", m.getType());
         out.put("name", m.getName());
         if (m.getSource() != null) out.put("source", m.getSource());
-        if (includeContent && m.getContent() != null) {
-            out.put("content", m.getContent());
-        }
         if (m.getSummary() != null) out.put("summary", m.getSummary());
         if (m.getScore() != null) out.put("score", m.getScore());
         return out;

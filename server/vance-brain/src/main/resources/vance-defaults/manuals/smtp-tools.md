@@ -1,3 +1,7 @@
+---
+triggers: SMTP, send email, send mail, outbound email, Mail senden, Bestätigungsmail, Benachrichtigungsmail, digest email, send_message
+summary: How to wire an outbound-SMTP tool — one send_message operation per pack, credentials live in settings (LLM never sees them).
+---
 # SMTP sender tools
 
 How to wire an outbound-email tool — confirmation mails, ticket

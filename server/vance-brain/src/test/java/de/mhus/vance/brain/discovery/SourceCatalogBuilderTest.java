@@ -29,7 +29,7 @@ class SourceCatalogBuilderTest {
     private static final String TENANT = "acme";
 
     @Test
-    void renders_manuals_section_with_each_manual_as_h3_block() {
+    void renders_manuals_section_with_each_manual_as_summary_card() {
         DocumentService documentService = mock(DocumentService.class);
         SkillResolver skillResolver = mock(SkillResolver.class);
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
@@ -37,10 +37,17 @@ class SourceCatalogBuilderTest {
         Map<String, LookupResult> manuals = new LinkedHashMap<>();
         manuals.put("manuals/getting-started.md",
                 new LookupResult("manuals/getting-started.md",
-                        "Welcome to Vance.", LookupResult.Source.RESOURCE, null));
+                        "# Getting started\n\nWelcome to Vance.\n",
+                        LookupResult.Source.RESOURCE, null));
         manuals.put("manuals/embed-images.md",
                 new LookupResult("manuals/embed-images.md",
-                        "How to embed images.", LookupResult.Source.RESOURCE, null));
+                        "---\n"
+                        + "triggers: image, picture, screenshot, Bild\n"
+                        + "summary: How to show a picture in the chat.\n"
+                        + "---\n"
+                        + "# Embedding — Images\n\n"
+                        + "Long body lives below.\n",
+                        LookupResult.Source.RESOURCE, null));
         when(documentService.listByPrefixCascade(any(), any(), any()))
                 .thenReturn(manuals);
 
@@ -51,9 +58,86 @@ class SourceCatalogBuilderTest {
         assertThat(snapshot.markdown())
                 .contains("## Manuals")
                 .contains("### embed-images")
-                .contains("How to embed images.")
+                .contains("**Title:** Embedding — Images")
+                .contains("**Triggers:** image, picture, screenshot, Bild")
+                // summary from front-matter beats first paragraph
+                .contains("How to show a picture in the chat.")
+                .doesNotContain("Long body lives below")
                 .contains("### getting-started")
+                .contains("**Title:** Getting started")
                 .contains("Welcome to Vance.");
+    }
+
+    @Test
+    void manual_card_omits_triggers_line_when_absent() {
+        DocumentService documentService = mock(DocumentService.class);
+        SkillResolver skillResolver = mock(SkillResolver.class);
+        when(skillResolver.listAvailable(any())).thenReturn(List.of());
+
+        when(documentService.listByPrefixCascade(any(), any(), any()))
+                .thenReturn(Map.of("manuals/plain.md",
+                        new LookupResult("manuals/plain.md",
+                                "# Plain manual\n\nBody description.\n",
+                                LookupResult.Source.RESOURCE, null)));
+
+        SourceCatalogBuilder builder = new SourceCatalogBuilder(
+                documentService, skillResolver, List.of());
+        String md = builder.build(TENANT, null).markdown();
+
+        assertThat(md)
+                .contains("**Title:** Plain manual")
+                .contains("Body description.")
+                .doesNotContain("**Triggers:**");
+    }
+
+    @Test
+    void manual_card_falls_back_to_first_paragraph_when_summary_absent() {
+        DocumentService documentService = mock(DocumentService.class);
+        SkillResolver skillResolver = mock(SkillResolver.class);
+        when(skillResolver.listAvailable(any())).thenReturn(List.of());
+
+        // Front-matter has triggers but no summary — the catalog card
+        // should fall back to the first body paragraph.
+        when(documentService.listByPrefixCascade(any(), any(), any()))
+                .thenReturn(Map.of("manuals/with-triggers.md",
+                        new LookupResult("manuals/with-triggers.md",
+                                "---\ntriggers: foo, bar\n---\n"
+                                + "# Title here\n\nFirst paragraph wins.\n\n"
+                                + "Second paragraph ignored.\n",
+                                LookupResult.Source.RESOURCE, null)));
+
+        SourceCatalogBuilder builder = new SourceCatalogBuilder(
+                documentService, skillResolver, List.of());
+        String md = builder.build(TENANT, null).markdown();
+
+        assertThat(md)
+                .contains("**Triggers:** foo, bar")
+                .contains("First paragraph wins.")
+                .doesNotContain("Second paragraph");
+    }
+
+    @Test
+    void manual_card_drops_full_body_paragraphs_beyond_the_first() {
+        DocumentService documentService = mock(DocumentService.class);
+        SkillResolver skillResolver = mock(SkillResolver.class);
+        when(skillResolver.listAvailable(any())).thenReturn(List.of());
+
+        String longBody = "# Big manual\n\nOpening paragraph.\n\n"
+                + "## Section\n\nLots of detail here that should not "
+                + "appear in the catalog summary card.\n";
+        when(documentService.listByPrefixCascade(any(), any(), any()))
+                .thenReturn(Map.of("manuals/big.md",
+                        new LookupResult("manuals/big.md", longBody,
+                                LookupResult.Source.RESOURCE, null)));
+
+        SourceCatalogBuilder builder = new SourceCatalogBuilder(
+                documentService, skillResolver, List.of());
+        String md = builder.build(TENANT, null).markdown();
+
+        assertThat(md)
+                .contains("Opening paragraph.")
+                .doesNotContain("Lots of detail")
+                .doesNotContain("## Section");
     }
 
     @Test

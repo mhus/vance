@@ -1,3 +1,7 @@
+---
+triggers: search, web search, rich_search, web_search, image_search, video_search, pdf_search, recherche, suchen, "look up", find information online, "what does the web say"
+summary: How to pick between rich_search / web_search / image_search / video_search / pdf_search for a given user intent.
+---
 # Search tools — picking the right one
 
 Five web-search tools, four use cases. Pick by what the user is

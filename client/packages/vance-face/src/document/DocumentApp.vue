@@ -38,6 +38,9 @@ import SheetView from './SheetView.vue';
 // Marpit is only used for `kind: slides` — keep it out of the
 // initial bundle.
 const SlidesView = defineAsyncComponent(() => import('./SlidesView.vue'));
+// Mermaid (~700 KB minified gzipped) ships only when a diagram
+// document is opened — keep the documents bundle lean.
+const DiagramView = defineAsyncComponent(() => import('./DiagramView.vue'));
 import {
   isListMime,
   parseList,
@@ -86,6 +89,12 @@ import {
   SlidesCodecError,
   type SlidesDocument,
 } from './slidesCodec';
+import {
+  isDiagramMime,
+  parseDiagram,
+  DiagramCodecError,
+  type DiagramDocument,
+} from './diagramCodec';
 import type {
   DocumentDto,
   DocumentSummary,
@@ -403,6 +412,7 @@ function fillEditor(): void {
   else if (isMindmapDocument.value) contentTab.value = 'mindmap';
   else if (isTreeDocument.value) contentTab.value = 'tree';
   else if (isSlidesDocument.value) contentTab.value = 'slides';
+  else if (isDiagramDocument.value) contentTab.value = 'diagram';
   // Markdown lands on Preview first — the user opened a doc to read
   // it, editing is one click away on the Raw tab.
   else if (isMarkdownDocument.value) contentTab.value = 'preview';
@@ -443,7 +453,8 @@ type ContentTab =
   | 'graph'
   | 'chart'
   | 'sheet'
-  | 'slides';
+  | 'slides'
+  | 'diagram';
 const contentTab = ref<ContentTab>('raw');
 
 const isListDocument = computed<boolean>(() => {
@@ -513,6 +524,15 @@ const isSlidesDocument = computed<boolean>(() => {
   return isSlidesMime(sel.mimeType);
 });
 
+// Diagram documents: kind: diagram + md/json/yaml. Renderer is Mermaid;
+// edit happens in the Raw tab (spec doc-kind-diagram.md §5).
+const isDiagramDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'diagram') return false;
+  return isDiagramMime(sel.mimeType);
+});
+
 // Markdown documents get a Preview / Raw tab pair. Preview goes
 // through {@code MarkdownView} (same renderer as chat bubbles,
 // inbox previews, help drawer) so all the inline-kind-box dispatch
@@ -534,7 +554,8 @@ const isMarkdownDocument = computed<boolean>(() => {
     && !isGraphDocument.value
     && !isChartDocument.value
     && !isSheetDocument.value
-    && !isSlidesDocument.value;
+    && !isSlidesDocument.value
+    && !isDiagramDocument.value;
 });
 
 // Trash convention: documents under `_bin/` are already in the
@@ -677,6 +698,25 @@ const parsedSlides = computed<ParsedSlides>(() => {
     return { doc, error: null };
   } catch (e) {
     if (e instanceof SlidesCodecError) {
+      return { doc: null, error: e.message };
+    }
+    return { doc: null, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+interface ParsedDiagram {
+  doc: DiagramDocument | null;
+  error: string | null;
+}
+
+const parsedDiagram = computed<ParsedDiagram>(() => {
+  if (!isDiagramDocument.value) return { doc: null, error: null };
+  try {
+    const sel = docsState.selected.value;
+    const doc = parseDiagram(editInlineText.value, sel?.mimeType ?? '');
+    return { doc, error: null };
+  } catch (e) {
+    if (e instanceof DiagramCodecError) {
       return { doc: null, error: e.message };
     }
     return { doc: null, error: e instanceof Error ? e.message : String(e) };
@@ -872,7 +912,7 @@ function openCreateModal(prefill?: CreateModalPrefill): void {
  * they are domain tokens, not localisable noise.
  */
 const KIND_CREATE_OPTIONS = [
-  'list', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet', 'slides', 'data', 'records', 'schema',
+  'list', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet', 'slides', 'diagram', 'data', 'records', 'schema',
 ] as const;
 
 const kindCreateOptions = computed(() => [
@@ -935,6 +975,13 @@ function buildKindStub(kind: string, mime: string): string {
     if (isMd) return '---\nkind: slides\nslides:\n  theme: default\n  aspect: "16:9"\n  paginate: true\n---\n\n# First slide\n\nWelcome to your deck.\n\n---\n\n## Second slide\n\n- bullet one\n- bullet two\n';
     if (isJson) return '{\n  "$meta": { "kind": "slides" },\n  "slides": { "theme": "default", "aspect": "16:9", "paginate": true },\n  "items": [\n    "# First slide\\n\\nWelcome to your deck.",\n    "## Second slide\\n\\n- bullet one\\n- bullet two"\n  ]\n}\n';
     if (isYaml) return '$meta:\n  kind: slides\nslides:\n  theme: default\n  aspect: "16:9"\n  paginate: true\nitems:\n  - |\n    # First slide\n\n    Welcome to your deck.\n  - |\n    ## Second slide\n\n    - bullet one\n    - bullet two\n';
+  }
+  if (kind === 'diagram') {
+    // Mermaid is the default dialect; markdown is canonical (one
+    // fenced ```mermaid block). JSON/YAML hold the source as a string.
+    if (isMd) return '---\nkind: diagram\n---\n\n```mermaid\nflowchart TD\n  A[Start] --> B{Decision}\n  B -->|yes| C[Do it]\n  B -->|no| D[Skip]\n```\n';
+    if (isJson) return '{\n  "$meta": { "kind": "diagram" },\n  "source": "flowchart TD\\n  A[Start] --> B{Decision}\\n  B -->|yes| C[Do it]\\n  B -->|no| D[Skip]\\n"\n}\n';
+    if (isYaml) return '$meta:\n  kind: diagram\nsource: |\n  flowchart TD\n    A[Start] --> B{Decision}\n    B -->|yes| C[Do it]\n    B -->|no| D[Skip]\n';
   }
   if (kind === 'sheet') {
     // Markdown not supported for sheets (spec §3.3) — falls through
@@ -1570,6 +1617,20 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isDiagramDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'diagram' }"
+                  @click="contentTab = 'diagram'"
+                >{{ $t('documents.detail.tabDiagram') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
               <div v-else-if="isTreeDocument" class="content-tabs">
                 <button
                   type="button"
@@ -1666,6 +1727,13 @@ const formatBytes = (n: number): string => {
                   <span>{{ $t('documents.detail.slidesParseError', { message: parsedSlides.error }) }}</span>
                 </VAlert>
                 <SlidesView v-else-if="parsedSlides.doc" :doc="parsedSlides.doc" />
+              </template>
+
+              <template v-else-if="isDiagramDocument && contentTab === 'diagram'">
+                <VAlert v-if="parsedDiagram.error" variant="warning">
+                  <span>{{ $t('documents.detail.diagramParseError', { message: parsedDiagram.error }) }}</span>
+                </VAlert>
+                <DiagramView v-else-if="parsedDiagram.doc" :doc="parsedDiagram.doc" />
               </template>
 
               <template v-else-if="(isTreeDocument || isMindmapDocument) && contentTab === 'tree'">

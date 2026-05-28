@@ -629,9 +629,11 @@ referenzieren sollst — **vor** dem Antworten frag das System:
   `how_do_i('<ein Satz, was du tun willst>')`
 
 Das Tool sucht alle Manuals, Skills und Tools und liefert entweder
-`loaded` (passendes Capability ist direkt drin), `alternatives`
-(Kandidaten — eines per `manual_read('<name>')` nachladen) oder
-`hint` (Intent präzisieren).
+`loaded` (ein klarer Treffer), `alternatives` (mehrere Kandidaten
+mit Score) oder `hint` (Intent präzisieren). Sowohl `loaded` als
+auch `alternatives` liefern nur einen `name` plus kurze Summary —
+der Catalog enthält Summary-Cards, keine Volltexte. Den Body lädst
+du dann via `manual_read('<name>')` (für `type: manual`).
 
 Quick-Decision (wenn du schon weißt, was passt):
 

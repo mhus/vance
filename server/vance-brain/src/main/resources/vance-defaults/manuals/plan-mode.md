@@ -1,3 +1,7 @@
+---
+triggers: plan, planning, plan-mode, START_PLAN, multi-step, propose before doing, mach erst einen Plan, schlage einen Plan vor, complex task, breakdown, structured approach
+summary: Plan-mode workflow — when to propose a plan before acting, the four actions (START_PLAN / STEP / REVISE / END_PLAN), topic recompaction.
+---
 # Plan-Mode and topic-recompaction
 
 Plan-Mode is the structured "propose before doing" workflow. Use it

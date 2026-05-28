@@ -95,8 +95,9 @@ For the *how*:
 - `manual_read('embed-documents')` — `doc_create_kind` workflow,
   `markdownLink`-Felder in Tool-Responses, when to embed vs.
   reference
-- `manual_read('embed-fences')` — small-inline kinds (mindmap,
-  chart, tree, list, records, youtube)
+- `manual_read('embed-fences')` — router for small-inline kinds
+  (covers `tree` / `list` / `records` inline; delegates to
+  `kind-diagram`, `kind-chart`, `kind-mindmap`, `kind-youtube`)
 - `manual_read('embed-images')` — external image URLs and the
   `image_search` tool
 {% endif %}

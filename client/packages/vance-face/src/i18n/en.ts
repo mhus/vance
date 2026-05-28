@@ -294,6 +294,7 @@ export default {
       tabSheet: 'Sheet',
       tabChart: 'Chart',
       tabSlides: 'Slides',
+      tabDiagram: 'Diagram',
       listParseError: 'Cannot show list view: {message}',
       treeParseError: 'Cannot show tree view: {message}',
       mindmapParseError: 'Cannot show mindmap view: {message}',
@@ -302,6 +303,7 @@ export default {
       sheetParseError: 'Cannot show sheet view: {message}',
       chartParseError: 'Cannot show chart view: {message}',
       slidesParseError: 'Cannot show slides view: {message}',
+      diagramParseError: 'Cannot show diagram view: {message}',
       delete: 'Move to bin',
       deletePermanent: 'Delete permanently',
       download: 'Download',
@@ -362,6 +364,13 @@ export default {
     },
     mindmapView: {
       panZoomHint: 'Scroll to zoom · Drag to pan · Click a node to fold',
+    },
+    diagramView: {
+      renderError: 'Diagram syntax error',
+      sourceLabel: 'Source',
+      empty: 'No diagram yet — add a Mermaid source in the Raw tab.',
+      unsupportedDialect: 'Unsupported diagram dialect: {dialect}. Edit the source in the Raw tab.',
+      downloadSvg: 'Download as SVG',
     },
     slidesView: {
       prev: 'Previous slide',

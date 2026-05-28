@@ -1,3 +1,7 @@
+---
+triggers: IMAP, mailbox, email, e-mail, mail, inbox, Mails lesen, read mail, mailing list, support queue, triage, Postfach
+summary: How to wire a read-only IMAP mailbox tool — list folders, list messages, fetch a single message body.
+---
 # IMAP mailbox tools
 
 How to wire a read-only IMAP-mailbox tool — for inbox processing,

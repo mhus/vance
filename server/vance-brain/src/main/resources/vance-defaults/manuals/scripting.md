@@ -1,3 +1,7 @@
+---
+triggers: JavaScript vs Python, choose language, which language, JS oder Python, script language, compute, loop over, batch operation, "write a script", "schreib ein Script"
+summary: How to pick between execute_javascript and python_run for a scripting task — default JS, Python only when its libraries earn it.
+---
 # Scripting — JavaScript or Python?
 
 Default to JavaScript. Switch to Python only when you genuinely

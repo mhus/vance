@@ -70,12 +70,12 @@ class HowDoIToolTest {
     }
 
     @Test
-    void invoke_serialises_loaded_match_with_content() {
+    void invoke_serialises_loaded_match_with_name_and_summary() {
         DiscoveryResult.Match match = DiscoveryResult.Match.builder()
                 .type("manual")
                 .name("embed-images")
                 .source("engine")
-                .content("How to embed images.")
+                .summary("How to embed images.")
                 .build();
         when(discoveryService.discover(any(), any(), any(), any())).thenReturn(
                 DiscoveryResult.builder()
@@ -89,8 +89,11 @@ class HowDoIToolTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> loaded = (Map<String, Object>) result.get("loaded");
         assertThat(loaded).containsEntry("name", "embed-images");
-        assertThat(loaded).containsEntry("content", "How to embed images.");
         assertThat(loaded).containsEntry("source", "engine");
+        assertThat(loaded).containsEntry("summary", "How to embed images.");
+        // The catalog ships summary cards only — `content` never appears
+        // in a how_do_i response; callers resolve bodies via manual_read.
+        assertThat(loaded).doesNotContainKey("content");
     }
 
     @Test

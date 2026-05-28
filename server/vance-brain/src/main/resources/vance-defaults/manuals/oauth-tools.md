@@ -1,3 +1,7 @@
+---
+triggers: OAuth, Slack, Jira, Atlassian, Google, Gmail, GitHub, Microsoft, connect, verbinde, Authentifizierung, Token, Workspace integration, third-party API
+summary: How to wire a tool against an OAuth-protected API (Slack, Jira, Google, GitHub, …) using the connecting user's token.
+---
 # OAuth-backed tools
 
 How to wire a tool that talks to Slack, Jira/Atlassian, Google

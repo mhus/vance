@@ -55,12 +55,12 @@ class DiscoveryServiceTest {
                         "type", "manual",
                         "name", "embed-images",
                         "source", "engine",
-                        "content", "How to embed images.")));
+                        "summary", "How to embed images.")));
 
         DiscoveryResult r = service.discover("show me a picture", TENANT, null, null);
         assertThat(r.getLoaded()).isNotNull();
         assertThat(r.getLoaded().getName()).isEqualTo("embed-images");
-        assertThat(r.getLoaded().getContent()).contains("embed images");
+        assertThat(r.getLoaded().getSummary()).contains("embed images");
         assertThat(r.getAlternatives()).isEmpty();
         assertThat(r.getHint()).isNull();
     }
@@ -101,7 +101,7 @@ class DiscoveryServiceTest {
                         "type", "manual",
                         "name", "embed-hallucinated",
                         "source", "engine",
-                        "content", "made up content")));
+                        "summary", "made up summary")));
 
         DiscoveryResult r = service.discover("hmm", TENANT, null, null);
         assertThat(r.getLoaded()).isNull();

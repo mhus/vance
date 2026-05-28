@@ -1,3 +1,7 @@
+---
+triggers: fence, code block, inline, list, outline, table, bullets, Liste, Tabelle, Aufzählung, show inline, "right now in chat", structured artifact
+summary: Vance fence kinds (tree, list, records inline; routes to kind-* manuals for diagram, chart, mindmap, youtube).
+---
 # Embedding — Inline Fences
 
 Vance-specific fenced code blocks that the Web-UI renders as
@@ -7,162 +11,85 @@ Use these for content you generate **right now** in chat.
 ## When to use this
 
 User wants to *see* a structured artifact directly in the chat:
-mindmap, chart, YouTube video, outline, table, list. Triggers:
-"show me", "draw a mindmap", "spiel das Video", "zeig die
-Verteilung als Chart". The expectation is immediate visual output,
-not "I saved it as a Document".
+mindmap, chart, diagram, video, outline, table, list. Triggers:
+"show me", "draw / mach mir", "spiel das Video", "zeig die
+Verteilung". The expectation is immediate visual output, not
+"I saved it as a Document".
 
-## Available kinds
+## Pick the right kind
 
-### mindmap — bullet hierarchy as a markmap
+| User wants … | Kind | Manual |
+|---|---|---|
+| Flowchart, sequence, state, ER, gantt, gitGraph, journey, C4, timeline | `diagram` | `manual_read('kind-diagram')` |
+| Numerical chart (line, bar, pie, scatter, candlestick, heatmap) | `chart` | `manual_read('kind-chart')` |
+| Brainstorm hierarchy (radial mindmap) | `mindmap` | `manual_read('kind-mindmap')` |
+| YouTube video | `youtube` | `manual_read('kind-youtube')` |
+| Outline (no radial layout) | `tree` | inline below |
+| Structured bullet list | `list` | inline below |
+| Small sortable table | `records` | inline below |
 
-```
-\`\`\`mindmap
-- Vance
-  - Brain
-    - Engines
-  - Foot
-  - Face
-\`\`\`
-```
+Each per-kind manual covers the syntax, anti-patterns, and the
+"when to graduate to a Document" trigger for that kind.
 
-Body is a nested bullet list. Renders as a clickable mindmap.
+## Trivial inline kinds (covered here)
 
 ### tree — outline view
 
-```
-\`\`\`tree
+````
+```tree
 - Project
   - Folder
     - File
-\`\`\`
 ```
+````
 
-Like mindmap but stays as an outline (no force-directed layout).
+Two-space indent per level. Like mindmap but stays as an outline
+(no force-directed layout).
 
-### list / items — flat bullets
+### list — flat bullets
 
-```
-\`\`\`list
+````
+```list
 - First
 - Second
 - Third
-\`\`\`
 ```
+````
 
-Use when you want a structured bullet block separated from the
-chat prose. For small lists, plain Markdown bullets are fine.
+Use when you want a structured bullet block separated from chat
+prose. For small lists, plain Markdown bullets are fine — reach for
+the fence only when the user explicitly asks for a list artifact.
 
 ### records — table with a schema header
 
-```
-\`\`\`records
+````
+```records
 | Name | Age |
 | ---- | --- |
 | Alice | 30 |
 | Bob   | 28 |
-\`\`\`
 ```
+````
 
-Renders as a sortable HTML table.
-
-### chart — Vance chart schema (not raw ECharts)
-
-YAML body with a fixed shape. Top-level keys: `$meta`, `chart`,
-`xAxis`, `yAxis`, `series`. `chartType` is one of `line`, `bar`,
-`area`, `scatter`, `pie`, `donut`, `candlestick`, `heatmap`.
-
-Data-point shape per `chartType`:
-
-- line/bar/area/scatter: `{ x, y }`
-- pie/donut: `{ name, value }`
-- candlestick: `{ t, o, h, l, c }` (optional `v` for volume)
-- heatmap: `{ x, y, v }`
-
-Minimal example:
-
-```
-\`\`\`chart
-$meta:
-  kind: chart
-chart:
-  chartType: bar
-  title: Sales Q1
-xAxis: { type: category }
-yAxis: { type: value }
-series:
-  - name: Revenue
-    data:
-      - { x: Jan, y: 12000 }
-      - { x: Feb, y: 14500 }
-      - { x: Mar, y: 13200 }
-\`\`\`
-```
-
-Each series needs `name` (string) and `data` (array). Do **not**
-emit ECharts constructs like `dataset.source` or `series[].type`
-without `data` — the codec rejects them and the chart stays empty.
-
-### youtube — embedded video
-
-```
-\`\`\`youtube
-https://youtu.be/dQw4w9WgXcQ
-\`\`\`
-```
-
-Body is a YouTube URL or bare 11-char video ID. Renders as a
-privacy-friendly `youtube-nocookie.com` iframe. Optional fence-meta:
-`start=N` (seconds offset), `title=<text>` (caption).
-
-YouTube is **inline-only** — there is no `vance:` document path
-for external videos.
-
-**Finding videos:** call `video_search(query=...)` instead of
-`web_search` when the user asks for a video, tutorial, ride-along,
-or "show me how X looks". The tool pre-validates each result via
-YouTube oEmbed and drops anything that can't actually embed
-(uploader-disabled, private, geo-blocked). Each surviving result
-carries an `embedFence` field — drop that string **verbatim** into
-your reply.
-
-The fence body is exactly the YouTube URL, nothing else:
-
-```
-\`\`\`youtube
-https://youtu.be/dQw4w9WgXcQ
-\`\`\`
-```
-
-**Do NOT rewrite the body as YAML** (`id: <id>`, `title: ...`,
-`channel: ...`) — only `chart` fences carry YAML. The `youtube`
-fence wants a single line: a URL or bare 11-char ID. Title and
-channel from the search result go into prose **around** the
-fence, not inside it. Example reply:
-
-```
-Hier zwei Treffer:
-
-*Lisbon Walking Tour 4K — by Wander Lisbon (12:34)*
-
-\`\`\`youtube
-https://youtu.be/dQw4w9WgXcQ
-\`\`\`
-```
+Renders as a sortable HTML table. Header row plus the alignment
+divider, then one row per record.
 
 ## What is NOT a Vance fence
 
-Plain language fences like `\`\`\`java`, `\`\`\`json`, `\`\`\`yaml`,
-`\`\`\`bash`, `\`\`\`python`, `\`\`\`markdown`, … render as ordinary
+Plain language fences like ` ```java`, ` ```json`, ` ```yaml`,
+` ```bash`, ` ```python`, ` ```markdown`, … render as ordinary
 Markdown code blocks (syntax-highlighted `<pre>`). Use them for
 code/config excerpts — that is correct, not a missed opportunity.
 Do not force them into a Vance kind.
 
-**Slides are also not a fence kind.** A `\`\`\`slides` fence renders
+**Slides are also not a fence kind.** A ` ```slides` fence renders
 as plain `<pre>`; slide decks live as Documents only. When the user
 asks for a presentation, deck, or slide show, create a Document via
-`doc_create_kind(kind="slides", ...)` and link it — see
+`doc_create_kind(kind="slides", …)` — see
 `manual_read('embed-documents')`.
+
+**Diagrams beyond Mermaid** — d2, PlantUML, draw.io — are not
+supported. Only ` ```mermaid` renders to a diagram.
 
 ## When to graduate to a Document
 

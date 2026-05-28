@@ -1,3 +1,7 @@
+---
+triggers: install tool, set up service, "richte mir X ein", "verbinde Vance mit", "ich will X nutzen", tool_template_list, tool_template_install, integration setup, configure Jira, configure Slack, configure GitHub
+summary: How to install a pre-configured tool template (Jira, IMAP, SMTP, Slack, GitHub, …) for the user via the tool-template catalog.
+---
 # Installing tools from templates
 
 How to set up Jira, IMAP, SMTP, Slack, etc. via the tool-template

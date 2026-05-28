@@ -12,12 +12,16 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 /**
  * Renders the source catalog for a tenant/project scope as a single
@@ -25,6 +29,28 @@ import org.springframework.stereotype.Component;
  * sorted alphabetically so the same set of sources always yields the
  * same hash. The DiscoveryService hands this block to the
  * {@code how-do-i} recipe via Pebble variable {@code {{ sources }}}.
+ *
+ * <p>Manuals are rendered as <em>summary cards</em> rather than full
+ * bodies — the LLM picks a name from the catalog and the caller
+ * loads the body via {@code manual_read('<name>')}. Card layout:
+ * H1 title (from the body), plus {@code triggers} and {@code summary}
+ * if present in the YAML front-matter:
+ *
+ * <pre>
+ * ---
+ * triggers: image, picture, screenshot, Bild
+ * summary: How to show a picture in the chat.
+ * ---
+ * # Embedding — Images
+ *
+ * Full body lives below; only title + triggers + summary make it
+ * into the catalog card.
+ * </pre>
+ *
+ * <p>When {@code summary} is absent, the first prose paragraph after
+ * the H1 serves as a fallback description (capped at ~400 chars).
+ * Cuts catalog size from ~150 KB to ~5 KB without losing routing
+ * signal.
  *
  * <p>Pure render — no Mongo writes, no caching. The
  * {@link SourceCatalogService} owns the cache layer on top.
@@ -36,6 +62,10 @@ public class SourceCatalogBuilder {
 
     private static final String MANUALS_PREFIX = "manuals/";
     private static final String MD_SUFFIX = ".md";
+
+    private static final java.util.regex.Pattern H1_LINE =
+            java.util.regex.Pattern.compile("(?m)^#\\s+(?<title>.+?)\\s*$");
+    private static final String FRONTMATTER_FENCE = "---";
 
     private final DocumentService documentService;
     private final SkillResolver skillResolver;
@@ -76,8 +106,155 @@ public class SourceCatalogBuilder {
             String content = e.getValue().content();
             if (content == null || content.isBlank()) continue;
             md.append("### ").append(name).append("\n\n")
-                    .append(content.trim()).append("\n\n");
+                    .append(renderManualCard(content)).append("\n");
         }
+    }
+
+    /**
+     * Build the per-manual summary card the catalog ships instead of
+     * the full body. Three pieces:
+     *
+     * <ul>
+     *   <li>{@code **Title:**} — the H1 (first {@code # …} line in
+     *       the body, after any front-matter). Falls back to the
+     *       manual name when no H1 is present.</li>
+     *   <li>{@code **Triggers:**} — comma-separated trigger string
+     *       from the YAML front-matter key {@code triggers}.
+     *       Optional; omitted when absent.</li>
+     *   <li>Description — front-matter {@code summary} when present;
+     *       otherwise the first non-empty prose paragraph after the
+     *       H1 (capped at ~400 chars).</li>
+     * </ul>
+     */
+    static String renderManualCard(String content) {
+        FrontMatter fm = parseFrontMatter(content);
+
+        var h1Matcher = H1_LINE.matcher(fm.body);
+        String title = h1Matcher.find() ? h1Matcher.group("title").trim() : "";
+
+        String triggers = stringOf(fm.values.get("triggers"));
+        String summary = stringOf(fm.values.get("summary"));
+
+        String description = !summary.isEmpty()
+                ? summary
+                : extractFirstParagraph(fm.body);
+
+        StringBuilder out = new StringBuilder();
+        if (!title.isEmpty()) {
+            out.append("**Title:** ").append(title).append("\n\n");
+        }
+        if (!triggers.isEmpty()) {
+            out.append("**Triggers:** ").append(triggers).append("\n\n");
+        }
+        if (!description.isEmpty()) {
+            out.append(description).append("\n\n");
+        }
+        return out.toString();
+    }
+
+    /**
+     * Result of parsing the optional YAML front-matter at the top of
+     * a manual. {@code values} contains the scalar keys we care about
+     * (currently {@code triggers}, {@code summary}); {@code body} is
+     * the markdown body with the front-matter stripped off.
+     */
+    private record FrontMatter(Map<String, Object> values, String body) {}
+
+    /**
+     * Detect and parse a leading {@code ---}-fenced YAML block. Lenient:
+     * a missing fence, unterminated fence, or invalid YAML all yield an
+     * empty values map plus the body unchanged — front-matter is
+     * never load-bearing for the catalog, just enrichment.
+     */
+    private static FrontMatter parseFrontMatter(String content) {
+        String trimmed = content.trim();
+        String[] lines = trimmed.split("\\R", -1);
+        if (lines.length < 2 || !FRONTMATTER_FENCE.equals(lines[0].trim())) {
+            return new FrontMatter(Map.of(), trimmed);
+        }
+        int end = -1;
+        for (int i = 1; i < lines.length; i++) {
+            if (FRONTMATTER_FENCE.equals(lines[i].trim())) { end = i; break; }
+        }
+        if (end < 0) {
+            return new FrontMatter(Map.of(), trimmed);
+        }
+        StringBuilder fm = new StringBuilder();
+        for (int i = 1; i < end; i++) fm.append(lines[i]).append('\n');
+        Map<String, Object> parsed;
+        try {
+            LoaderOptions opts = new LoaderOptions();
+            opts.setAllowDuplicateKeys(false);
+            Yaml yaml = new Yaml(new SafeConstructor(opts));
+            Object root = yaml.load(fm.toString());
+            if (root instanceof Map<?, ?> map) {
+                Map<String, Object> out = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> e : map.entrySet()) {
+                    if (e.getKey() instanceof String k) out.put(k, e.getValue());
+                }
+                parsed = out;
+            } else {
+                parsed = Map.of();
+            }
+        } catch (RuntimeException ignored) {
+            parsed = Map.of();
+        }
+        StringBuilder body = new StringBuilder();
+        for (int i = end + 1; i < lines.length; i++) {
+            body.append(lines[i]);
+            if (i < lines.length - 1) body.append('\n');
+        }
+        return new FrontMatter(parsed, body.toString().trim());
+    }
+
+    private static String stringOf(@Nullable Object v) {
+        return v instanceof String s ? s.trim() : "";
+    }
+
+    /**
+     * Extract the first prose paragraph after the H1. Stops at a blank
+     * line, a heading, or a list marker — pure body text only. Capped
+     * at ~400 chars to keep catalog cards compact. Used as a fallback
+     * when the manual's front-matter doesn't supply an explicit
+     * {@code summary}.
+     */
+    private static String extractFirstParagraph(String content) {
+        String[] lines = content.split("\\R", -1);
+        boolean pastH1 = false;
+        StringBuilder buf = new StringBuilder();
+        for (String raw : lines) {
+            String line = raw.stripTrailing();
+            if (!pastH1) {
+                if (line.startsWith("# ")) {
+                    pastH1 = true;
+                }
+                continue;
+            }
+            String stripped = line.strip();
+            if (stripped.isEmpty()) {
+                if (buf.length() == 0) continue;
+                break;
+            }
+            // Stop when the paragraph ends in a heading / list / fence /
+            // table marker — those aren't part of the opening prose.
+            if (stripped.startsWith("#")
+                    || stripped.startsWith("- ")
+                    || stripped.startsWith("* ")
+                    || stripped.startsWith("| ")
+                    || stripped.startsWith("```")
+                    || stripped.startsWith(">")) {
+                if (buf.length() == 0) continue;
+                break;
+            }
+            if (buf.length() > 0) buf.append(' ');
+            buf.append(stripped);
+            if (buf.length() > 400) break;
+        }
+        String out = buf.toString();
+        if (out.length() > 400) {
+            out = out.substring(0, 397).trim() + "…";
+        }
+        return out;
     }
 
     private static String manualName(String path) {

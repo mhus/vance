@@ -1,3 +1,7 @@
+---
+triggers: getting started, intro, overview, was ist Vance, what is Vance, beginner, basics, Grundlagen, Scope, tenant, project, session, think-process
+summary: Vance overview — scope hierarchy (tenant / project / session / process), what an engine can and cannot do.
+---
 # Getting started with Vance
 
 Vance is a "think tool" — a brain server with pluggable engines that

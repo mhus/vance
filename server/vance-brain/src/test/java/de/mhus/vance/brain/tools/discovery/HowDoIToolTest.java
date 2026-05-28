@@ -70,12 +70,15 @@ class HowDoIToolTest {
     }
 
     @Test
-    void invoke_serialises_loaded_match_with_name_and_summary() {
+    void invoke_serialises_loaded_match_with_inlined_content() {
+        // DiscoveryService server-side-loads the body for a confident
+        // manual pick — the tool just passes it through.
         DiscoveryResult.Match match = DiscoveryResult.Match.builder()
                 .type("manual")
                 .name("embed-images")
                 .source("engine")
                 .summary("How to embed images.")
+                .content("# Embedding — Images\n\nFull body inline.")
                 .build();
         when(discoveryService.discover(any(), any(), any(), any())).thenReturn(
                 DiscoveryResult.builder()
@@ -91,9 +94,7 @@ class HowDoIToolTest {
         assertThat(loaded).containsEntry("name", "embed-images");
         assertThat(loaded).containsEntry("source", "engine");
         assertThat(loaded).containsEntry("summary", "How to embed images.");
-        // The catalog ships summary cards only — `content` never appears
-        // in a how_do_i response; callers resolve bodies via manual_read.
-        assertThat(loaded).doesNotContainKey("content");
+        assertThat(loaded).containsEntry("content", "# Embedding — Images\n\nFull body inline.");
     }
 
     @Test

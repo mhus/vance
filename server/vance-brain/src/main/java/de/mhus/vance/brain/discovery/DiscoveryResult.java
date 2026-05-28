@@ -33,13 +33,20 @@ public class DiscoveryResult {
     @Nullable String hint;
 
     /**
-     * Capability reference returned by the discovery LLM. The same
-     * shape is used for {@link DiscoveryResult#getLoaded} (confident
-     * single match) and {@link DiscoveryResult#getAlternatives}
-     * (ranked candidates). Both flows lead the caller to a
-     * {@code manual_read('<name>')} call — the catalog ships summary
-     * cards, never full bodies, so the discovery layer never returns
-     * raw content inline.
+     * Capability reference returned by the discovery LLM. Same shape
+     * for {@link DiscoveryResult#getLoaded} (confident single match)
+     * and entries in {@link DiscoveryResult#getAlternatives} (ranked
+     * candidates).
+     *
+     * <p>{@code content} is server-side-loaded: when the LLM picks a
+     * {@code type: manual} entry for {@code loaded}, the
+     * {@link DiscoveryService} resolves the name against the document
+     * cascade and inlines the manual body here so the caller gets
+     * everything in one hop. Hallucinated names trigger a retry loop
+     * (max 3) before the result downgrades to a hint. The LLM never
+     * supplies {@code content} itself — it's never given the bodies.
+     * Alternatives stay name + summary only; the caller picks one and
+     * does its own {@code manual_read}.
      */
     @Value
     @Builder
@@ -50,6 +57,9 @@ public class DiscoveryResult {
         String name;
         /** Catalog source attribution, e.g. {@code engine}. */
         @Nullable String source;
+        /** Full body, server-loaded for {@code loaded} + {@code type:manual}.
+         *  Always {@code null} for alternatives. */
+        @Nullable String content;
         /** One-line summary — usually copied from the catalog card. */
         @Nullable String summary;
         /** Subjective confidence 0–1 (populated for alternatives;

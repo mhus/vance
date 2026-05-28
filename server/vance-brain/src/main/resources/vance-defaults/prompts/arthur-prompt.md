@@ -519,13 +519,18 @@ something — **before** answering, ask the system:
 
   `how_do_i('<one-sentence description of what you want to do>')`
 
-The tool searches all manuals, skills and tools and returns
-either `loaded` (confident single match), `alternatives` (ranked
-candidates), or `hint` (refine the intent). Both `loaded` and
-`alternatives` give you only a `name` plus a short summary — the
-catalog ships summary cards, not full bodies. Pick a name and load
-it via `manual_read('<name>')` (for type:manual) to get the actual
-content.
+The tool searches all manuals, skills and tools and returns one
+of three shapes:
+
+- `loaded` — confident single match. For type:manual the body is
+  **already inlined** as `loaded.content` (the backend resolves it
+  server-side). Use the content directly; no follow-up
+  `manual_read` is needed.
+- `alternatives` — ranked candidate list. Each entry has a
+  `name` + `summary` + `score`. Pick one and call
+  `manual_read('<name>')` to load it.
+- `hint` — no match; refine the intent or call `manual_list` for
+  an authoritative inventory.
 
 Quick channel choice (when you already know which fits):
 

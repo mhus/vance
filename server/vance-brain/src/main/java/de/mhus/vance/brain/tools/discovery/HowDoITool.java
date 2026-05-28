@@ -72,15 +72,14 @@ public class HowDoITool implements Tool {
     public String description() {
         return "Semantic discovery across Vance's capabilities (manuals, "
                 + "skills, tools). Pass a one-sentence intent and the tool "
-                + "returns either a confident single match (`loaded`), a "
-                + "ranked list of candidates (`alternatives`), or a hint "
-                + "when nothing matches (`hint`). Both `loaded` and "
-                + "`alternatives` give you a `name` — call "
-                + "`manual_read('<name>')` (for type:manual) to load "
-                + "the body. The catalog ships summary cards, not full "
-                + "bodies. Call this BEFORE saying you cannot do "
-                + "something — the system often knows more than your "
-                + "training data does.";
+                + "returns one of: `loaded` (a confident single match — "
+                + "for type:manual the body is already inlined as "
+                + "`loaded.content`, use it directly), `alternatives` (a "
+                + "ranked candidate list — pick one by `summary`/`score` "
+                + "and call `manual_read('<name>')` to load it), or "
+                + "`hint` (no match, refine the intent). Call this BEFORE "
+                + "saying you cannot do something — the system often "
+                + "knows more than your training data does.";
     }
 
     @Override
@@ -152,6 +151,9 @@ public class HowDoITool implements Tool {
         if (m.getSource() != null) out.put("source", m.getSource());
         if (m.getSummary() != null) out.put("summary", m.getSummary());
         if (m.getScore() != null) out.put("score", m.getScore());
+        // `content` is server-side-loaded for confident manual picks
+        // (see DiscoveryService.discover). Alternatives never carry it.
+        if (m.getContent() != null) out.put("content", m.getContent());
         return out;
     }
 }

@@ -628,12 +628,18 @@ referenzieren sollst — **vor** dem Antworten frag das System:
 
   `how_do_i('<ein Satz, was du tun willst>')`
 
-Das Tool sucht alle Manuals, Skills und Tools und liefert entweder
-`loaded` (ein klarer Treffer), `alternatives` (mehrere Kandidaten
-mit Score) oder `hint` (Intent präzisieren). Sowohl `loaded` als
-auch `alternatives` liefern nur einen `name` plus kurze Summary —
-der Catalog enthält Summary-Cards, keine Volltexte. Den Body lädst
-du dann via `manual_read('<name>')` (für `type: manual`).
+Das Tool sucht alle Manuals, Skills und Tools und liefert eine
+von drei Antworten:
+
+- `loaded` — klarer Einzeltreffer. Bei `type: manual` ist der
+  Body bereits als `loaded.content` mitgeliefert (Backend lädt
+  ihn serverseitig). Nutz den Inhalt direkt, **kein** weiterer
+  `manual_read` nötig.
+- `alternatives` — Kandidatenliste. Jeder Eintrag hat `name` +
+  `summary` + `score`. Wähl einen aus und lade ihn via
+  `manual_read('<name>')`.
+- `hint` — kein Match; Intent präzisieren oder `manual_list`
+  für die volle Übersicht.
 
 Quick-Decision (wenn du schon weißt, was passt):
 

@@ -32,10 +32,12 @@ embedding in your reply.
 | `kind:records` (md/json/yaml) | `xlsx` | Header row from schema, one body row per record |
 | `kind:records` | `pdf` | Records table embedded in an A4 PDF — same theme as `report_from_markdown` |
 | `kind:records` | `docx` | Records as a Word table, editable locally |
+| `kind:records` | `odt` | Records as an OpenDocument table, native LibreOffice format |
 | `kind:records` | `csv` | RFC-4180 quoting, UTF-8 with BOM so Excel detects the encoding on direct-open |
 | markdown document with GFM-table | `xlsx` | First Markdown-table in the body becomes the sheet. Multi-table docs export only the first table (multi-sheet support is on the roadmap). Inline formatting is stripped to plain text. |
 | markdown document | `pdf` | A4, Times serif, page numbers — same theme as `report_from_markdown` |
 | markdown document | `docx` | POI XWPF, editable locally in Word/Pages/LibreOffice |
+| markdown document | `odt` | odfdom-based ODT, opens natively in LibreOffice (and in Word with format-translation) |
 
 More pairs (chart→pdf, mindmap→pdf, …) will be added as
 `DocumentTransformer` beans on the brain side.

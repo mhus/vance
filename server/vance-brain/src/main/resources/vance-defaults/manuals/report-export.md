@@ -24,6 +24,7 @@ click.
 |---|---|---|
 | `pdf` | final submissions, hand-in versions, archive | not really |
 | `docx` | drafts the user wants to polish locally in Word / Pages / LibreOffice | yes |
+| `odt` | LibreOffice-native; OpenSource-affine users; same use-case as docx | yes |
 
 The user often wants **both**: a DOCX to clean up and a PDF after.
 Do that as two calls — same `markdown`, different `format`. Each
@@ -34,7 +35,7 @@ same chat reply.
 
 | Param | Type | Required | Notes |
 |---|---|---|---|
-| `format` | string | yes | `"pdf"` or `"docx"` |
+| `format` | string | yes | `"pdf"`, `"docx"`, or `"odt"` |
 | `markdown` | string | one of | Inline markdown content |
 | `documentRef` | string | one of | Path or id of an existing markdown document to render. Useful when the report has built up over multiple turns as a real Document |
 | `projectId` | string | no | Project name for documentRef lookup. Defaults to active project |

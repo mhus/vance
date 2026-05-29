@@ -211,6 +211,17 @@
             <artifactId>poi-ooxml</artifactId>
             <version>5.4.0</version>
         </dependency>
+        <!-- ODT (LibreOffice Native) renderer. Pure Java, Apache
+             2.0, maintained by The Document Foundation (the
+             original Apache project was retired and lives on under
+             org.odftoolkit). Used by OdtReportRenderer to round out
+             the PDF/DOCX/ODT trio in Layer A of
+             planning/web-office-suite.md. -->
+        <dependency>
+            <groupId>org.odftoolkit</groupId>
+            <artifactId>odfdom-java</artifactId>
+            <version>0.13.0</version>
+        </dependency>
         <!-- POI 5.4 calls BoundedInputStream.builder() which only
              exists in commons-io 2.17+. The swagger-parser pulls in
              2.15.1; pin newer here so POI can read its own DOCX

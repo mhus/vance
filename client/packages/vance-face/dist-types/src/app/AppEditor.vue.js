@@ -4,6 +4,7 @@ import { brainFetch } from '@vance/shared';
 // Lazy-load app sub-editors so the bundle stays slim.
 const KanbanBoard = defineAsyncComponent(() => import('./kanban/KanbanBoard.vue'));
 const CalendarPlanner = defineAsyncComponent(() => import('./calendar/CalendarPlanner.vue'));
+const SlideshowApp = defineAsyncComponent(() => import('./slideshow/SlideshowApp.vue'));
 const projectId = ref('');
 const folder = ref('');
 const appType = ref(null);
@@ -112,18 +113,33 @@ else if (__VLS_ctx.appType === 'calendar') {
         title: (__VLS_ctx.docTitle),
     }, ...__VLS_functionalComponentArgsRest(__VLS_14));
 }
-else {
-    const __VLS_17 = {}.VEmptyState;
-    /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+else if (__VLS_ctx.appType === 'slideshow') {
+    const __VLS_17 = {}.SlideshowApp;
+    /** @type {[typeof __VLS_components.SlideshowApp, ]} */ ;
     // @ts-ignore
     const __VLS_18 = __VLS_asFunctionalComponent(__VLS_17, new __VLS_17({
+        projectId: (__VLS_ctx.projectId),
+        folder: (__VLS_ctx.folder),
+        title: (__VLS_ctx.docTitle),
+    }));
+    const __VLS_19 = __VLS_18({
+        projectId: (__VLS_ctx.projectId),
+        folder: (__VLS_ctx.folder),
+        title: (__VLS_ctx.docTitle),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_18));
+}
+else {
+    const __VLS_21 = {}.VEmptyState;
+    /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
+    // @ts-ignore
+    const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
         headline: "Unknown app type",
         body: (`No editor registered for app type '${__VLS_ctx.appType ?? '(missing)'}'. The folder's _app.yaml may be malformed.`),
     }));
-    const __VLS_19 = __VLS_18({
+    const __VLS_23 = __VLS_22({
         headline: "Unknown app type",
         body: (`No editor registered for app type '${__VLS_ctx.appType ?? '(missing)'}'. The folder's _app.yaml may be malformed.`),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_18));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_22));
 }
 var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['p-8']} */ ;
@@ -138,6 +154,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VEmptyState: VEmptyState,
             KanbanBoard: KanbanBoard,
             CalendarPlanner: CalendarPlanner,
+            SlideshowApp: SlideshowApp,
             projectId: projectId,
             folder: folder,
             appType: appType,

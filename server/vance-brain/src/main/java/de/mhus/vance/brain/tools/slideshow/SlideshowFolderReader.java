@@ -186,11 +186,20 @@ public class SlideshowFolderReader {
         remainder.sort(Comparator.naturalOrder());
         ordered.addAll(remainder);
 
-        // Build slides with dimensions.
+        // Build slides with dimensions. Caption hierarchy:
+        //   1. explicit manifest captions  (user-curated)
+        //   2. document.summary            (LLM-written at import time
+        //                                   or via doc_set_summary)
+        //   3. filename stem               (last-resort fallback)
         List<Slide> out = new ArrayList<>(ordered.size());
         for (String relative : ordered) {
             DocumentDocument d = byRelative.get(relative);
-            String caption = cfg.captions().getOrDefault(relative, stem(relative));
+            String caption = cfg.captions().get(relative);
+            if (caption == null) {
+                String summary = d.getSummary();
+                caption = (summary != null && !summary.isBlank())
+                        ? summary.trim() : stem(relative);
+            }
             ImageDimensionProbe.Dim dim = probeDimensions(d);
             out.add(new Slide(d, relative, caption,
                     dim != null ? dim.width() : null,

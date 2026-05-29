@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 import { EditorShell, VAlert, VEmptyState } from '@/components';
+import type { Crumb } from '@/components';
 import { brainFetch } from '@vance/shared';
 
 interface DocumentSummary {
@@ -24,6 +25,27 @@ const appType = ref<string | null>(null);
 const docTitle = ref<string>('');
 const loading = ref(true);
 const error = ref<string | null>(null);
+
+/**
+ * Top-bar breadcrumbs. The app editor is a leaf — there's no "back"
+ * button anywhere else in its chrome, so the breadcrumb is the only
+ * navigation back to the Documents listing. Always show "Documents"
+ * (project-scoped) and the folder-path crumbs as plain text.
+ */
+const breadcrumbs = computed<Crumb[]>(() => {
+  const crumbs: Crumb[] = [];
+  if (projectId.value) {
+    crumbs.push({
+      text: 'Documents',
+      onClick: () => {
+        const url = `/documents.html?projectId=${encodeURIComponent(projectId.value)}`;
+        window.location.assign(url);
+      },
+    });
+  }
+  if (folder.value) crumbs.push(folder.value);
+  return crumbs;
+});
 
 onMounted(async () => {
   try {
@@ -60,7 +82,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <EditorShell :title="docTitle || 'App'" full-height>
+  <EditorShell :title="docTitle || 'App'" :breadcrumbs="breadcrumbs" full-height>
     <div v-if="loading" class="p-8 text-base-content/70">Loading…</div>
     <VAlert v-else-if="error" variant="error" class="m-4">
       {{ error }}

@@ -52,6 +52,7 @@ export * from './documents/DocumentFoldersResponse';
 export * from './documents/DocumentKindsResponse';
 export * from './documents/DocumentListResponse';
 export * from './documents/DocumentSummary';
+export * from './documents/DocumentSummaryRequest';
 export * from './documents/DocumentUpdateRequest';
 
 export * from './oauth/OAuthProviderAdminDto';

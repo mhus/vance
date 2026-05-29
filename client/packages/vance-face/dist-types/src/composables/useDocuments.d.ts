@@ -35,6 +35,7 @@ export declare function useDocuments(pageSize?: number): {
     create: (projectId: string, body: DocumentCreateRequest) => Promise<DocumentDto | null>;
     upload: (projectId: string, opts: UploadOptions) => Promise<DocumentDto | null>;
     update: (id: string, body: DocumentUpdateRequest) => Promise<void>;
+    setSummary: (id: string, summary: string) => Promise<DocumentDto | null>;
     remove: (id: string) => Promise<boolean>;
 };
 //# sourceMappingURL=useDocuments.d.ts.map

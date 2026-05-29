@@ -256,6 +256,11 @@ declare const _default: {
             pathHelp: string;
             mimeTypeLabel: string;
             mimeTypeHelp: string;
+            summaryEditorLabel: string;
+            summaryEditorHelp: string;
+            summaryEditorSave: string;
+            summaryEditorSaved: string;
+            summaryEditorCleared: string;
             contentLabel: string;
             tabRaw: string;
             tabPreview: string;

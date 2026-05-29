@@ -40,10 +40,12 @@ public class DocImportUrlTool implements Tool {
 
     /**
      * Maximum import size — generous because the body lives in
-     * Mongo / storage afterwards, not in an LLM call. 2 MB covers
-     * most articles plus PDFs of moderate size.
+     * Mongo / storage afterwards, not in an LLM call. 10 MB covers
+     * modern 4K JPEGs, mid-size PDFs, and most full-page article
+     * snapshots; bigger imports need a deliberate scripted ingest
+     * rather than an LLM-triggered call.
      */
-    private static final int MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
     private static final String USER_AGENT = "Vance-Brain/0.1 (+https://github.com/mhus/vance)";
 
@@ -72,7 +74,16 @@ public class DocImportUrlTool implements Tool {
                             "type", "array",
                             "items", Map.of("type", "string"),
                             "description", "Optional tags. 'imported' is "
-                                    + "added automatically.")),
+                                    + "added automatically."),
+                    "summary", Map.of(
+                            "type", "string",
+                            "description", "Optional summary / caption to "
+                                    + "store on the document. Especially "
+                                    + "useful for binary content (images, "
+                                    + "PDFs) where the auto-summary "
+                                    + "scheduler doesn't run. Slideshows "
+                                    + "fall back to this when no caption "
+                                    + "is set in the manifest.")),
             "required", List.of("url"));
 
     private final HttpClient http = HttpClient.newBuilder()
@@ -202,8 +213,16 @@ public class DocImportUrlTool implements Tool {
             throw new ToolException(e.getMessage(), e);
         }
 
-        log.info("DocImportUrl tenant='{}' project='{}' path='{}' from='{}' bytes={}",
-                ctx.tenantId(), project.getName(), path, rawUrl, body.length);
+        // Optional caller-supplied summary — important for binaries
+        // (images, PDFs) where the auto-summary scheduler doesn't run.
+        String summary = paramString(params, "summary");
+        if (summary != null) {
+            documentService.setSummary(created.getId(), summary);
+        }
+
+        log.info("DocImportUrl tenant='{}' project='{}' path='{}' from='{}' bytes={} summary={}",
+                ctx.tenantId(), project.getName(), path, rawUrl, body.length,
+                summary != null);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", created.getId());
@@ -214,6 +233,7 @@ public class DocImportUrlTool implements Tool {
         out.put("mimeType", created.getMimeType());
         out.put("size", created.getSize());
         out.put("tags", created.getTags() == null ? List.of() : created.getTags());
+        if (summary != null) out.put("summary", summary);
         out.put("sourceUrl", rawUrl);
         out.put("httpStatus", status);
         return out;

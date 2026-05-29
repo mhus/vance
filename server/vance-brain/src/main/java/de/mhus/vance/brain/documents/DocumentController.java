@@ -9,6 +9,7 @@ import de.mhus.vance.api.documents.DocumentFoldersResponse;
 import de.mhus.vance.api.documents.DocumentKindsResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
 import de.mhus.vance.api.documents.DocumentSummary;
+import de.mhus.vance.api.documents.DocumentSummaryRequest;
 import de.mhus.vance.api.documents.DocumentUpdateRequest;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.access.AccessFilterBase;
@@ -370,6 +371,34 @@ public class DocumentController {
      * the JWT's tenant must match the URL tenant must match the
      * document's tenant.
      */
+    /**
+     * Set / clear the document's summary. Used by the document
+     * editor's caption field — single-field write keeps the payload
+     * minimal compared to the larger {@code DocumentUpdateRequest}
+     * path. Returns the updated DTO so the editor can refresh in
+     * place.
+     */
+    @PutMapping("/brain/{tenant}/documents/{id}/summary")
+    public DocumentDto setSummary(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("id") String id,
+            @Valid @RequestBody DocumentSummaryRequest request,
+            HttpServletRequest httpRequest) {
+
+        DocumentDocument existing = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        if (!tenant.equals(existing.getTenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, existing.getProjectId(), existing.getPath()),
+                Action.WRITE);
+        documentService.setSummary(id, request.getSummary());
+        DocumentDocument refreshed = documentService.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        return toDto(refreshed);
+    }
+
     @DeleteMapping("/brain/{tenant}/documents/{id}")
     public ResponseEntity<Void> delete(
             @PathVariable("tenant") String tenant,

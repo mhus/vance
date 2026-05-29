@@ -1,4 +1,4 @@
-import { defineAsyncComponent, onMounted, ref } from 'vue';
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 import { EditorShell, VAlert, VEmptyState } from '@/components';
 import { brainFetch } from '@vance/shared';
 // Lazy-load app sub-editors so the bundle stays slim.
@@ -11,6 +11,27 @@ const appType = ref(null);
 const docTitle = ref('');
 const loading = ref(true);
 const error = ref(null);
+/**
+ * Top-bar breadcrumbs. The app editor is a leaf — there's no "back"
+ * button anywhere else in its chrome, so the breadcrumb is the only
+ * navigation back to the Documents listing. Always show "Documents"
+ * (project-scoped) and the folder-path crumbs as plain text.
+ */
+const breadcrumbs = computed(() => {
+    const crumbs = [];
+    if (projectId.value) {
+        crumbs.push({
+            text: 'Documents',
+            onClick: () => {
+                const url = `/documents.html?projectId=${encodeURIComponent(projectId.value)}`;
+                window.location.assign(url);
+            },
+        });
+    }
+    if (folder.value)
+        crumbs.push(folder.value);
+    return crumbs;
+});
 onMounted(async () => {
     try {
         const params = new URLSearchParams(window.location.search);
@@ -54,10 +75,12 @@ const __VLS_0 = {}.EditorShell;
 // @ts-ignore
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
     title: (__VLS_ctx.docTitle || 'App'),
+    breadcrumbs: (__VLS_ctx.breadcrumbs),
     fullHeight: true,
 }));
 const __VLS_2 = __VLS_1({
     title: (__VLS_ctx.docTitle || 'App'),
+    breadcrumbs: (__VLS_ctx.breadcrumbs),
     fullHeight: true,
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 var __VLS_4 = {};
@@ -161,6 +184,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             docTitle: docTitle,
             loading: loading,
             error: error,
+            breadcrumbs: breadcrumbs,
         };
     },
 });

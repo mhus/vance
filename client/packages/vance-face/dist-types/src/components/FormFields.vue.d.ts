@@ -36,8 +36,8 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
     "onUpdate:modelValue"?: ((value: Record<string, FormValue>) => any) | undefined;
 }>, {
-    disabled: boolean;
     pathPrefix: string;
+    disabled: boolean;
     errors: Record<string, string>;
     preferredLang: string;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;

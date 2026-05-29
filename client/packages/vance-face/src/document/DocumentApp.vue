@@ -15,6 +15,7 @@ import {
   VModal,
   VPagination,
   VSelect,
+  VTextarea,
   CodeEditor,
   MarkdownView,
 } from '@/components';
@@ -139,6 +140,13 @@ const editMimeType = ref('');
 const editInlineText = ref('');
 const editAutoSummary = ref(false);
 const editSummaryDirty = ref(false);
+// Direct edit on `document.summary` — single-field write through
+// the dedicated /summary endpoint. Important for binaries (images,
+// PDFs) where the auto-summary scheduler doesn't run and the user /
+// LLM needs to author the caption manually.
+const editSummary = ref('');
+const summarySaving = ref(false);
+const summarySaveMessage = ref<string | null>(null);
 /**
  * Tri-state for the project-RAG inclusion override. {@code 'auto'} (default
  * — null in the DTO) follows the project rule "documents/** + textual mime";
@@ -507,6 +515,8 @@ function fillEditor(): void {
   editInlineText.value = sel?.inlineText ?? '';
   editAutoSummary.value = sel?.autoSummary ?? false;
   editSummaryDirty.value = sel?.summaryDirty ?? false;
+  editSummary.value = sel?.summary ?? '';
+  summarySaveMessage.value = null;
   editRagEnabled.value = sel?.ragEnabled == null ? 'auto' : (sel.ragEnabled ? 'on' : 'off');
   editError.value = null;
   // Switching documents resets the editor mode to the kind-aware
@@ -1399,6 +1409,31 @@ async function submitCreate(): Promise<void> {
 }
 
 /**
+ * Persist the user-edited summary independently of the larger apply()
+ * path. Single-field write through PUT .../summary — leaves title,
+ * tags, inlineText, mime untouched even when those have unsaved
+ * changes in the editor. Important for binary docs (image, PDF) where
+ * the user only wants to author a caption.
+ */
+async function saveSummary(): Promise<void> {
+  const sel = docsState.selected.value;
+  if (!sel?.id) return;
+  summarySaving.value = true;
+  summarySaveMessage.value = null;
+  try {
+    const updated = await docsState.setSummary(sel.id, editSummary.value);
+    if (updated) {
+      summarySaveMessage.value = updated.summary ? 'Saved.' : 'Cleared.';
+    }
+  } catch (e) {
+    summarySaveMessage.value =
+      e instanceof Error ? e.message : 'Failed to save summary.';
+  } finally {
+    summarySaving.value = false;
+  }
+}
+
+/**
  * Persist current edits without leaving the detail view. Conventional
  * "Apply" semantic — see specification/web-ui.md §7.7.
  *
@@ -1833,6 +1868,30 @@ const formatBytes = (n: number): string => {
                 :disabled="saving"
                 :help="$t('documents.detail.mimeTypeHelp')"
               />
+              <!-- Summary / caption — saved through a dedicated
+                   PUT .../summary endpoint so it doesn't interact
+                   with title/path/inlineText edits. Auto-summary
+                   scheduler also writes here when enabled. -->
+              <div class="flex flex-col gap-1">
+                <VTextarea
+                  v-model="editSummary"
+                  :label="$t('documents.detail.summaryEditorLabel')"
+                  :rows="3"
+                  :disabled="summarySaving"
+                  :help="$t('documents.detail.summaryEditorHelp')"
+                />
+                <div class="flex items-center gap-2 mt-1">
+                  <VButton
+                    size="sm"
+                    variant="ghost"
+                    :disabled="summarySaving || editSummary === (docsState.selected.value.summary ?? '')"
+                    @click="saveSummary"
+                  >{{ $t('documents.detail.summaryEditorSave') }}</VButton>
+                  <span v-if="summarySaveMessage" class="text-xs text-base-content/70">
+                    {{ summarySaveMessage }}
+                  </span>
+                </div>
+              </div>
             </template>
             <template v-if="docsState.selected.value.inline">
               <!-- Tab bar appears for list/tree-kind documents in a

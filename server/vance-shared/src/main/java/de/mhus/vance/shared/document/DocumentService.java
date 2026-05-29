@@ -1179,6 +1179,35 @@ public class DocumentService {
     }
 
     /**
+     * Set the summary directly without touching tags or claim state.
+     * Used by callers that have a summary in hand (LLM ingestion via
+     * {@code doc_import_url(..., summary=...)}, user edit through
+     * {@code DocumentController#update}, or the future
+     * {@code doc_set_summary} tool) and want to skip the
+     * claim/release dance the scheduler does.
+     *
+     * <p>Clears {@code summaryDirty} so the scheduler doesn't pick the
+     * document up again immediately, and stamps {@code summarizedAt}
+     * for the audit trail. An empty/blank summary clears the field.
+     */
+    public void setSummary(String id, @Nullable String summary) {
+        String normalised = (summary != null && !summary.isBlank())
+                ? summary.trim() : null;
+        Update update = new Update()
+                .set("summarizedAt", Instant.now())
+                .set("summaryDirty", false);
+        if (normalised == null) {
+            update.unset("summary");
+        } else {
+            update.set("summary", normalised);
+        }
+        mongoTemplate.updateFirst(
+                Query.query(Criteria.where("_id").is(id)),
+                update,
+                DocumentDocument.class);
+    }
+
+    /**
      * Release a claim without touching {@code summaryDirty}. The
      * scheduler calls this when the LLM run failed — the document
      * stays dirty so the next tick picks it up again.

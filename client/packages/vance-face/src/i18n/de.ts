@@ -287,6 +287,12 @@ export default {
       mimeTypeLabel: 'MIME-Type',
       mimeTypeHelp:
         'Inhaltstyp dieses Dokuments. Wenn der ursprüngliche Type falsch geraten war (z.B. Markdown als text/plain importiert), hier korrigieren.',
+      summaryEditorLabel: 'Zusammenfassung',
+      summaryEditorHelp:
+        'Kurze Beschriftung / Beschreibung. Slideshows zeigen das unter jedem Bild; der Auto-Summary-Scheduler schreibt hier für Text-Dokumente. Bei Binärdaten (Bilder, PDFs) schreibt das LLM oder der Nutzer manuell.',
+      summaryEditorSave: 'Speichern',
+      summaryEditorSaved: 'Gespeichert.',
+      summaryEditorCleared: 'Gelöscht.',
       contentLabel: 'Inhalt',
       tabRaw: 'Roh',
       tabPreview: 'Vorschau',

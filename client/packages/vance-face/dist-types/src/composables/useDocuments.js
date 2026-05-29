@@ -184,6 +184,30 @@ export function useDocuments(pageSize = 20) {
      * @returns `true` on success, `false` if the server rejected.
      *          Errors land in {@link error} for the UI to surface.
      */
+    /**
+     * Set / clear the document's `summary` field. Hits the dedicated
+     * single-field endpoint so the payload stays minimal (no risk of
+     * accidentally touching tags/title/inlineText). Returns the
+     * refreshed DTO so the caller can swap it into local state.
+     */
+    async function setSummary(id, summary) {
+        error.value = null;
+        try {
+            const updated = await brainFetch('PUT', `documents/${encodeURIComponent(id)}/summary`, { body: { summary } });
+            // `items` is the lightweight DocumentSummary list and doesn't
+            // carry summary — only the selected detail does. Patch
+            // `selected` so the editor's bound `editSummary` stays in
+            // sync with what the server just persisted.
+            if (selected.value?.id === id) {
+                selected.value = updated;
+            }
+            return updated;
+        }
+        catch (e) {
+            error.value = e instanceof Error ? e.message : 'Failed to set summary.';
+            return null;
+        }
+    }
     async function remove(id) {
         loading.value = true;
         error.value = null;
@@ -228,6 +252,7 @@ export function useDocuments(pageSize = 20) {
         create,
         upload,
         update,
+        setSummary,
         remove,
     };
 }

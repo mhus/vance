@@ -38,8 +38,8 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
     "onUpdate:doc"?: ((doc: ChecklistDocument) => any) | undefined;
 }>, {
-    meta: FenceMeta;
     mode: "editor" | "inline" | "embedded";
+    meta: FenceMeta;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=ChecklistView.vue.d.ts.map

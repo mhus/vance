@@ -134,13 +134,39 @@ public class SlideshowApplication implements VanceApplication {
                         + "manifestPath='{}'",
                 ctx.tenantId(), folder, manifestPath);
 
+        // Slide count from the refresh — drives the nextStep branch
+        // below. With zero slides the LLM tends to retry
+        // `slideshow_app_create` in a loop (saw this in production);
+        // a sharper hint at the import path stops the spin.
+        int slideCount = 0;
+        if (!refresh.artefacts().isEmpty()) {
+            Object raw = refresh.artefacts().get(0).stats().get("slideCount");
+            if (raw instanceof Number n) slideCount = n.intValue();
+        }
+
         Map<String, Object> stats = new LinkedHashMap<>();
         if (title != null) stats.put("title", title);
+        stats.put("slideCount", slideCount);
 
-        String nextStep = "Slideshow ready — open `" + manifestPath
-                + "` in the App editor for the full viewer. The "
-                + "`artefacts` list carries the `_index.yaml` with "
-                + "every slide's dimensions and caption.";
+        String nextStep;
+        if (slideCount == 0) {
+            nextStep = "Manifest written but the folder contains no "
+                    + "images yet. Fetch image URLs into this folder "
+                    + "with `doc_import_url(url=..., path='"
+                    + folder + "/<filename>.jpg')` — one call per "
+                    + "image. After the images are in, run "
+                    + "`app_rebuild('" + folder + "')` (or just open "
+                    + "the App editor — it refreshes on load). Do NOT "
+                    + "re-call `slideshow_app_create` for the same "
+                    + "folder; the manifest is already there.";
+        } else {
+            nextStep = "Slideshow ready with " + slideCount + " slide"
+                    + (slideCount == 1 ? "" : "s") + " — open `"
+                    + manifestPath + "` in the App editor for the "
+                    + "full viewer. The `artefacts` list carries the "
+                    + "`_index.yaml` with every slide's dimensions "
+                    + "and caption.";
+        }
 
         return new CreateResult(
                 APP_NAME, folder, stored.getPath(),

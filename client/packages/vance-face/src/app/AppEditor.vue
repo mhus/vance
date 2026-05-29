@@ -15,6 +15,7 @@ interface DocumentSummary {
 
 // Lazy-load app sub-editors so the bundle stays slim.
 const KanbanBoard = defineAsyncComponent(() => import('./kanban/KanbanBoard.vue'));
+const CalendarPlanner = defineAsyncComponent(() => import('./calendar/CalendarPlanner.vue'));
 
 const projectId = ref<string>('');
 const folder = ref<string>('');
@@ -65,6 +66,12 @@ onMounted(async () => {
     </VAlert>
     <KanbanBoard
       v-else-if="appType === 'kanban'"
+      :project-id="projectId"
+      :folder="folder"
+      :title="docTitle"
+    />
+    <CalendarPlanner
+      v-else-if="appType === 'calendar'"
       :project-id="projectId"
       :folder="folder"
       :title="docTitle"

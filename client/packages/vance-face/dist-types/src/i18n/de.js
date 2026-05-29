@@ -251,6 +251,8 @@ export default {
             propsToggleLabel: 'Eigenschaften',
             propsExpandHint: 'Eigenschaften einblenden',
             propsCollapseHint: 'Eigenschaften einklappen',
+            versionsBadge: '{count} Versionen',
+            versionsBadgeTooltip: 'Frühere Versionen — zum Anzeigen klicken (öffnet die Eigenschaften).',
             frontMatter: 'Front-Matter',
             readOnlyNote: 'Extern gespeicherter Inhalt — in v1 nur lesbar. Zum Speichern den Download-Button nutzen.',
             titleLabel: 'Titel',

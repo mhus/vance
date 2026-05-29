@@ -15,8 +15,10 @@ type __VLS_Props = {
 };
 declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
     restored: (restored: DocumentDto) => any;
+    "update:count": (count: number) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
     onRestored?: ((restored: DocumentDto) => any) | undefined;
+    "onUpdate:count"?: ((count: number) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=DocumentArchives.vue.d.ts.map

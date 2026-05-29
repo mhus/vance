@@ -193,10 +193,21 @@ public class CalendarCreateTool implements Tool {
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         List<Map<String, Object>> rawEvents = paramMapList(params, "events");
         if (rawEvents == null || rawEvents.isEmpty()) {
-            throw new ToolException(
-                    "Provide at least one event in the 'events' "
-                            + "array. Each event needs 'title' and "
-                            + "'start' (ISO-8601 date or date-time).");
+            // Empty events array → graceful skip. The LLM sometimes
+            // calls this to "initialise" a lane file in a calendar
+            // app, but lanes don't need a placeholder file: the
+            // manifest declares them, app_rebuild picks them up from
+            // there. Return a warning instead of an exception so the
+            // LLM can move on.
+            Map<String, Object> skipped = new LinkedHashMap<>();
+            skipped.put("skipped", true);
+            skipped.put("reason", "Empty events array — no file written. "
+                    + "Lanes are declared in _app.yaml; you don't need "
+                    + "to pre-create an empty calendar file per lane. "
+                    + "Add events to this call when you have them, or "
+                    + "use calendar_app_create(folder, lanes=[…], events=[…]) "
+                    + "for one-shot setup.");
+            return skipped;
         }
 
         String title = paramString(params, "title");

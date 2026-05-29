@@ -22,6 +22,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** Fired after a successful restore — parent reloads the live document. */
   (e: 'restored', restored: DocumentDto): void;
+  /** Fired whenever the archive count for the current document changes.
+   *  Lets the parent surface a counter outside the panel (e.g. a badge
+   *  in the metadata strip) without owning the archive state. */
+  (e: 'update:count', count: number): void;
 }>();
 
 const archives = useDocumentArchives();
@@ -48,6 +52,12 @@ watch(
 );
 
 const count = computed(() => archives.items.value.length);
+
+// Surface the count to the parent so it can render a badge or
+// counter without owning the archive state. Initial mount fires once
+// with the current length (typically 0 before {@link load} resolves);
+// subsequent emits cover load results, delete and restore.
+watch(count, (n) => emit('update:count', n), { immediate: true });
 
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleString();

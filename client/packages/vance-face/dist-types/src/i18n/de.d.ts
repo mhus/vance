@@ -247,6 +247,8 @@ declare const _default: {
             propsToggleLabel: string;
             propsExpandHint: string;
             propsCollapseHint: string;
+            versionsBadge: string;
+            versionsBadgeTooltip: string;
             frontMatter: string;
             readOnlyNote: string;
             titleLabel: string;

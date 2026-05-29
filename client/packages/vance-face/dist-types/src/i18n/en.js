@@ -257,6 +257,8 @@ export default {
             propsToggleLabel: 'Properties',
             propsExpandHint: 'Show properties',
             propsCollapseHint: 'Hide properties',
+            versionsBadge: '{count} versions',
+            versionsBadgeTooltip: 'Previous versions — click to show (opens the properties panel).',
             frontMatter: 'Front matter',
             readOnlyNote: 'Stored content — read-only in v1. Use the download button to save a local copy.',
             titleLabel: 'Title',

@@ -225,6 +225,17 @@ watch(propsCollapsed, (v) => {
 function togglePropsCollapsed(): void {
   propsCollapsed.value = !propsCollapsed.value;
 }
+
+// Archive count surfaced from <DocumentArchives> so we can render a
+// badge in the always-visible metadata strip — even when the
+// properties panel is collapsed and the archive list itself is
+// hidden. The child component owns the loading; we just mirror the
+// count for the badge.
+const archiveCount = ref(0);
+
+function onArchiveCount(n: number): void {
+  archiveCount.value = n;
+}
 const createMode = ref<CreateMode>('inline');
 const createPath = ref('');
 const createTitle = ref('');
@@ -1648,6 +1659,13 @@ const formatBytes = (n: number): string => {
               class="badge badge-warning badge-sm"
               :title="$t('documents.detail.changedBadgeTooltip')"
             >{{ $t('documents.detail.changedBadge') }}</span>
+            <button
+              v-if="archiveCount > 0"
+              type="button"
+              class="badge badge-ghost badge-sm cursor-pointer"
+              :title="$t('documents.detail.versionsBadgeTooltip')"
+              @click="propsCollapsed = false"
+            >{{ $t('documents.detail.versionsBadge', { count: archiveCount }) }}</button>
             <!-- Spacer pushes the props toggle to the right end of
                  the metadata strip. -->
             <span class="grow"></span>
@@ -1778,6 +1796,7 @@ const formatBytes = (n: number): string => {
             v-show="!propsCollapsed"
             :document="docsState.selected.value"
             @restored="onArchiveRestored"
+            @update:count="onArchiveCount"
           />
 
           <VAlert v-if="!docsState.selected.value.inline" variant="info" class="mt-3">

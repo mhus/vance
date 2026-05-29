@@ -72,54 +72,54 @@ calendar:
 
 | Tool | What it does |
 |---|---|
-| `app_rebuild(folder)` | **The one you usually want.** Reads `_app.yaml`, regenerates `_gantt.md` + `_conflicts.yaml` in one go. Generic — works for any future Vance app type, not just calendar. |
+| **`calendar_app_create(folder, lanes=[…])`** | **First call for any new app.** Writes `_app.yaml` with correct schema, returns lane descriptors with `suggestedFilePath` for the follow-up `calendar_create` calls. See `manual_read('calendar-app-create')`. |
+| `calendar_create(outputPath, events=[…])` | Add events into a single lane. Use `suggestedFilePath` from `calendar_app_create` as `outputPath`. |
+| `app_rebuild(folder)` | **Run after lanes are populated.** Reads `_app.yaml`, regenerates `_gantt.md` + `_conflicts.yaml` in one go. Generic — works for any future Vance app type, not just calendar. |
 | `calendar_aggregate(folder, from?, to?, lanes?, tags?, expandRecurring?)` | Read-only query. "Was hab ich nächste Woche?", "welche Termine in Lane backend?", "alle Milestones im Q3". Returns flat sorted event list. **No file written.** |
 | `calendar_conflicts(folder, from?, to?)` | Regenerate only `_conflicts.yaml`. Use when you don't need the Gantt updated. |
 | `gantt_from_calendars(folder, from?, to?)` | Regenerate only `_gantt.md`. Use when you don't need the conflicts updated. |
 
-## Canonical flow
+## Canonical flow — one-shot (preferred)
 
-**1. User asks for a project plan.** Create the manifest:
-
-```
-doc_create_kind(
-  kind="application",
-  mimeType="application/yaml",
-  path="projects/website-relaunch/calendars/_app.yaml",
-  body="$meta:\n  kind: application\n  app: calendar\ntitle: Website Relaunch\ncalendar:\n  lanes:\n    design:  { title: Design, color: blue, order: 1 }\n    backend: { title: Backend, color: green, order: 2 }\n  gantt:\n    outputPath: _gantt.md\n  conflicts:\n    outputPath: _conflicts.yaml\n"
-)
-```
-
-**2. Create the per-lane calendars** using `calendar_create` (one call per lane, with `outputPath` pointing inside the lane folder):
+When you have the full plan up-front, **one** `calendar_app_create` call sets up everything: manifest, per-lane source files, Gantt, Conflicts.
 
 ```
-calendar_create(
-  events=[
-    { title: "Mockups",     start: "2026-06-01", end: "2026-06-15", allDay: true, tags: [milestone] },
-    { title: "Review",      start: "2026-06-16", end: "2026-06-18", allDay: true }
+calendar_app_create(
+  folder="projects/website-relaunch/calendars",
+  title="Website Relaunch",
+  lanes=[
+    { name: "design",   title: "Design",   color: "blue",   order: 1 },
+    { name: "backend",  title: "Backend",  color: "green",  order: 2 },
+    { name: "frontend", title: "Frontend", color: "purple", order: 3 }
   ],
-  title="Design",
-  outputPath="projects/website-relaunch/calendars/design/work.yaml"
-)
-```
-
-```
-calendar_create(
+  window={ from: "2026-06-01", until: "2026-09-30" },
   events=[
-    { title: "API design",     start: "2026-06-01", end: "2026-06-21", allDay: true },
-    { title: "Implementation", start: "2026-06-22", end: "2026-07-31", allDay: true },
-    { title: "Beta launch",    start: "2026-08-01", allDay: true, tags: [milestone, critical] }
-  ],
-  title="Backend",
-  outputPath="projects/website-relaunch/calendars/backend/work.yaml"
+    # Cross-team events (no `lane:` → lane "common")
+    { title: "Sprint Planning", start: "2026-06-15T09:00", end: "2026-06-15T11:00" },
+    { title: "Sprint Review",   start: "2026-06-26T14:00", end: "2026-06-26T16:00", tags: ["milestone"] },
+
+    # Per-lane events via `lane:` hint
+    { title: "Mockups",     start: "2026-06-01", end: "2026-06-15", allDay: true, lane: "design",  tags: ["milestone"] },
+    { title: "API design",  start: "2026-06-01", end: "2026-06-21", allDay: true, lane: "backend" },
+    { title: "Beta launch", start: "2026-08-01", allDay: true,                    lane: "backend", tags: ["milestone", "critical"] }
+  ]
 )
+# → manifest written, per-lane files written, app_rebuild ran automatically.
+# Result includes artefacts[]: gantt + conflicts paths + markdownLinks.
 ```
 
-**3. Rebuild artifacts**:
+**Embed both artefact `markdownLink`s in your chat reply.**
 
-```
-app_rebuild(folder="projects/website-relaunch/calendars")
-```
+## Incremental flow — only when adding events after-the-fact
+
+If the user wants to add events to an existing app:
+
+1. `calendar_create(outputPath=<lane>/work.yaml, events=[…])` — replaces the lane file.
+2. `app_rebuild(folder)` — refresh artefacts.
+
+Or simpler: `calendar_app_create(overwrite=true, events=[<all events including the new ones>])` — replays the whole one-shot setup.
+
+**Never** hand-write `_app.yaml` via `doc_create_kind` / `doc_create_text` — the schema has tripwires (kind/app/lane-shape) that `calendar_app_create` avoids.
 
 The response contains the Gantt + conflicts paths and markdownLinks. Embed both in the chat reply:
 

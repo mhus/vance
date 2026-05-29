@@ -148,9 +148,10 @@ public class CalendarFolderReader {
         return documentService.findByPath(tenantId, projectName, path)
                 .orElseThrow(() -> new ToolException(
                         "No _app.yaml manifest found at '" + path
-                                + "'. Create one with `$meta: { kind: "
-                                + "application, app: calendar }` to turn "
-                                + "the folder into a calendar app."));
+                                + "'. Use `calendar_app_create` to "
+                                + "bootstrap a new calendar app — "
+                                + "writing the manifest by hand is "
+                                + "error-prone."));
     }
 
     private ApplicationDocument parseManifest(DocumentDocument doc) {
@@ -161,13 +162,50 @@ public class CalendarFolderReader {
                     "Manifest '" + doc.getPath() + "' has mime '"
                             + mime + "' — must be JSON or YAML.");
         }
+        ApplicationDocument parsed;
         try {
-            return ApplicationCodec.parse(body, mime);
+            parsed = ApplicationCodec.parse(body, mime);
         } catch (Exception e) {
             throw new ToolException(
                     "Could not parse manifest '" + doc.getPath()
                             + "': " + e.getMessage());
         }
+
+        // Reject manifests that don't actually carry a $meta.kind of
+        // 'application' — the codec defaults to "application" when the
+        // field is missing, which silently lets a malformed manifest
+        // through. We use the DB-mirrored DocumentDocument.kind (which
+        // *only* gets set when $meta.kind was present in the body)
+        // as the authoritative signal.
+        String dbKind = doc.getKind();
+        if (dbKind == null || dbKind.isBlank()) {
+            throw new ToolException(
+                    "Manifest '" + doc.getPath() + "' is missing "
+                            + "`$meta.kind: application`. Without it "
+                            + "the file is treated as plain YAML, "
+                            + "not as an app manifest. Recreate the "
+                            + "app via `calendar_app_create` or add "
+                            + "the `$meta` header manually:\n"
+                            + "  $meta:\n"
+                            + "    kind: application\n"
+                            + "    app:  calendar");
+        }
+        if (!"application".equalsIgnoreCase(dbKind)) {
+            throw new ToolException(
+                    "Manifest '" + doc.getPath() + "' has "
+                            + "`$meta.kind: " + dbKind + "`, expected "
+                            + "'application'. This document is not "
+                            + "an app manifest.");
+        }
+        if (parsed.app() == null || parsed.app().isBlank()) {
+            throw new ToolException(
+                    "Manifest '" + doc.getPath() + "' is missing "
+                            + "`$meta.app`. The discriminator is "
+                            + "required so app-specific tools know "
+                            + "which service to dispatch to (e.g. "
+                            + "`app: calendar` for a calendar suite).");
+        }
+        return parsed;
     }
 
     // ── Calendars ─────────────────────────────────────────────────

@@ -20,6 +20,11 @@ watch(() => props.document?.id, async (newId) => {
     await archives.load(newId);
 }, { immediate: true });
 const count = computed(() => archives.items.value.length);
+// Surface the count to the parent so it can render a badge or
+// counter without owning the archive state. Initial mount fires once
+// with the current length (typically 0 before {@link load} resolves);
+// subsequent emits cover load results, delete and restore.
+watch(count, (n) => emit('update:count', n), { immediate: true });
 function formatDate(ms) {
     return new Date(ms).toLocaleString();
 }

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import mermaid from 'mermaid';
+import panzoom, { type PanZoom } from 'panzoom';
 import { parseDiagram, type DiagramDocument } from './diagramCodec';
 import { VAlert } from '@components/index';
 import type { DocumentDto } from '@vance/generated';
@@ -40,6 +41,10 @@ const stageHost = ref<HTMLElement | null>(null);
 const rendering = ref(false);
 const error = ref<string | null>(null);
 const svg = ref<string>('');
+
+/** Live PanZoom instance attached to the rendered SVG. Recreated
+ *  whenever the source SVG changes; disposed on unmount. */
+let pzInstance: PanZoom | null = null;
 
 /** Per-instance render id — Mermaid uses it to namespace generated
  *  SVG ids. Stable across renders so id-suffix-sensitive consumers
@@ -118,6 +123,72 @@ async function render(): Promise<void> {
 
 function applyStage(): void {
   if (stageHost.value) stageHost.value.innerHTML = svg.value;
+  attachPanZoom();
+}
+
+/**
+ * Attach a fresh {@link PanZoom} instance to the rendered SVG. Mermaid
+ * gives the SVG a {@code max-width: 100%} attribute which the library
+ * needs cleared — otherwise the scaled element overshoots its layout
+ * box and clips inside the stage. Initial state is identity transform;
+ * the {@link fitToContainer} helper re-runs after a tick so the SVG
+ * has settled dimensions before we compute the fit ratio.
+ */
+function attachPanZoom(): void {
+  pzInstance?.dispose();
+  pzInstance = null;
+  if (!stageHost.value || !svg.value) return;
+  const svgEl = stageHost.value.querySelector('svg');
+  if (!svgEl) return;
+  // Mermaid hard-codes `style="max-width: ..."` on the root <svg>;
+  // panzoom's transform fights it. Strip it so zoom > 1 stays visible.
+  svgEl.style.maxWidth = 'none';
+  svgEl.style.height = 'auto';
+  svgEl.style.transformOrigin = '0 0';
+  // Cast: panzoom's TS bindings type the argument as HTMLElement, but
+  // it works on SVG / SVGGraphicsElement too — the underlying impl
+  // uses generic DOM APIs.
+  pzInstance = panzoom(svgEl as unknown as HTMLElement, {
+    maxZoom: 10,
+    minZoom: 0.1,
+    bounds: false,
+    zoomDoubleClickSpeed: 1, // disable double-click zoom (1 = no animation = effectively off)
+    smoothScroll: false,
+  });
+  // Give Vue a tick so the SVG's natural size is measurable before
+  // the initial fit-to-container calculation.
+  requestAnimationFrame(() => fitToContainer());
+}
+
+/** Reset zoom and centre the SVG inside the stage. Used for the
+ *  toolbar reset button and the initial render. */
+function fitToContainer(): void {
+  if (!pzInstance || !stageHost.value) return;
+  const svgEl = stageHost.value.querySelector('svg');
+  if (!svgEl) return;
+  const stageRect = stageHost.value.getBoundingClientRect();
+  // The SVG's intrinsic width/height comes from Mermaid's render —
+  // either explicit attributes or computed from viewBox. Use the
+  // bounding rect of the SVG element itself as the source of truth.
+  const svgRect = svgEl.getBoundingClientRect();
+  if (svgRect.width === 0 || svgRect.height === 0) return;
+  // Fit to 95% of the stage so there's a small margin around the edges.
+  const zoomX = (stageRect.width * 0.95) / svgRect.width;
+  const zoomY = (stageRect.height * 0.95) / svgRect.height;
+  const zoom = Math.min(zoomX, zoomY, 1); // never auto-upscale beyond 1
+  pzInstance.zoomAbs(0, 0, zoom);
+  const offsetX = (stageRect.width - svgRect.width * zoom) / 2;
+  const offsetY = (stageRect.height - svgRect.height * zoom) / 2;
+  pzInstance.moveTo(offsetX, offsetY);
+}
+
+function zoomBy(factor: number): void {
+  if (!pzInstance || !stageHost.value) return;
+  const rect = stageHost.value.getBoundingClientRect();
+  // Anchor the zoom on the stage centre — most natural for keyboard /
+  // toolbar zoom. Wheel-zoom is handled by panzoom itself with the
+  // cursor as the anchor.
+  pzInstance.smoothZoom(rect.width / 2, rect.height / 2, factor);
 }
 
 /** Download the rendered SVG as a file. Filename derives from the
@@ -158,8 +229,11 @@ watch(svg, () => {
 });
 
 onBeforeUnmount(() => {
-  // Mermaid keeps no per-instance state we need to tear down; we just
-  // drop the SVG from the host so a re-mount starts clean.
+  // Mermaid keeps no per-instance state we need to tear down; the
+  // panzoom instance, however, attaches window-level wheel/mouse
+  // listeners and must be disposed explicitly.
+  pzInstance?.dispose();
+  pzInstance = null;
   if (stageHost.value) stageHost.value.innerHTML = '';
 });
 </script>
@@ -195,12 +269,28 @@ onBeforeUnmount(() => {
     <div v-if="mode === 'editor' && svg" class="diagram-toolbar">
       <button
         type="button"
-        class="diagram-download"
+        class="diagram-tool-btn"
+        :title="t('documents.diagramView.zoomOut')"
+        @click="zoomBy(0.8)"
+      >−</button>
+      <button
+        type="button"
+        class="diagram-tool-btn"
+        :title="t('documents.diagramView.zoomIn')"
+        @click="zoomBy(1.25)"
+      >+</button>
+      <button
+        type="button"
+        class="diagram-tool-btn"
+        :title="t('documents.diagramView.fitToView')"
+        @click="fitToContainer"
+      >⤢</button>
+      <button
+        type="button"
+        class="diagram-tool-btn diagram-tool-btn--text"
         :title="t('documents.diagramView.downloadSvg')"
         @click="downloadSvg"
-      >
-        ↓ SVG
-      </button>
+      >↓ SVG</button>
     </div>
   </div>
 </template>
@@ -231,15 +321,22 @@ onBeforeUnmount(() => {
 .diagram-stage {
   flex: 1;
   min-height: 0;
-  overflow: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
+  overflow: hidden;
+  position: relative;
+  cursor: grab;
+  /* panzoom moves the SVG via transform; the stage is the clipped
+     viewport. No flex centering — fitToContainer() handles the
+     initial position so we don't fight the library's transform. */
 }
+.diagram-stage:active { cursor: grabbing; }
 .diagram-stage :deep(svg) {
-  max-width: 100%;
+  /* panzoom needs the natural SVG dimensions to compute zoom. The
+     attachPanZoom() helper clears max-width inline; the rule below
+     is the layer-zero fallback in case the inline style is dropped
+     by a future Mermaid version that uses CSS instead. */
+  max-width: none;
   height: auto;
+  transform-origin: 0 0;
 }
 
 .diagram-empty {
@@ -291,19 +388,31 @@ onBeforeUnmount(() => {
   bottom: 0.5rem;
   right: 0.75rem;
   display: flex;
-  gap: 0.5rem;
+  gap: 0.35rem;
+  z-index: 2;
 }
-.diagram-download {
-  border: 1px solid hsl(var(--bc) / 0.2);
-  background: hsl(var(--b1) / 0.85);
+.diagram-tool-btn {
+  min-width: 2rem;
+  height: 2rem;
+  border: 1px solid oklch(var(--bc) / 0.2);
+  background: oklch(var(--b1) / 0.9);
   backdrop-filter: blur(4px);
   border-radius: 0.375rem;
-  padding: 0.25rem 0.75rem;
-  font-size: 0.8125rem;
+  padding: 0 0.5rem;
+  font-size: 0.95rem;
+  line-height: 1;
   cursor: pointer;
-  color: hsl(var(--bc));
+  color: oklch(var(--bc));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.diagram-download:hover {
-  background: hsl(var(--b2));
+.diagram-tool-btn:hover {
+  background: oklch(var(--b2));
+  border-color: oklch(var(--bc) / 0.35);
+}
+.diagram-tool-btn--text {
+  font-size: 0.8125rem;
+  padding: 0 0.75rem;
 }
 </style>

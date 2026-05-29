@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import mermaid from 'mermaid';
+import panzoom from 'panzoom';
 import { parseDiagram } from './diagramCodec';
 import { VAlert } from '@components/index';
 /**
@@ -26,6 +27,9 @@ const stageHost = ref(null);
 const rendering = ref(false);
 const error = ref(null);
 const svg = ref('');
+/** Live PanZoom instance attached to the rendered SVG. Recreated
+ *  whenever the source SVG changes; disposed on unmount. */
+let pzInstance = null;
 /** Per-instance render id — Mermaid uses it to namespace generated
  *  SVG ids. Stable across renders so id-suffix-sensitive consumers
  *  (download, deep-links) don't churn. */
@@ -101,6 +105,75 @@ async function render() {
 function applyStage() {
     if (stageHost.value)
         stageHost.value.innerHTML = svg.value;
+    attachPanZoom();
+}
+/**
+ * Attach a fresh {@link PanZoom} instance to the rendered SVG. Mermaid
+ * gives the SVG a {@code max-width: 100%} attribute which the library
+ * needs cleared — otherwise the scaled element overshoots its layout
+ * box and clips inside the stage. Initial state is identity transform;
+ * the {@link fitToContainer} helper re-runs after a tick so the SVG
+ * has settled dimensions before we compute the fit ratio.
+ */
+function attachPanZoom() {
+    pzInstance?.dispose();
+    pzInstance = null;
+    if (!stageHost.value || !svg.value)
+        return;
+    const svgEl = stageHost.value.querySelector('svg');
+    if (!svgEl)
+        return;
+    // Mermaid hard-codes `style="max-width: ..."` on the root <svg>;
+    // panzoom's transform fights it. Strip it so zoom > 1 stays visible.
+    svgEl.style.maxWidth = 'none';
+    svgEl.style.height = 'auto';
+    svgEl.style.transformOrigin = '0 0';
+    // Cast: panzoom's TS bindings type the argument as HTMLElement, but
+    // it works on SVG / SVGGraphicsElement too — the underlying impl
+    // uses generic DOM APIs.
+    pzInstance = panzoom(svgEl, {
+        maxZoom: 10,
+        minZoom: 0.1,
+        bounds: false,
+        zoomDoubleClickSpeed: 1, // disable double-click zoom (1 = no animation = effectively off)
+        smoothScroll: false,
+    });
+    // Give Vue a tick so the SVG's natural size is measurable before
+    // the initial fit-to-container calculation.
+    requestAnimationFrame(() => fitToContainer());
+}
+/** Reset zoom and centre the SVG inside the stage. Used for the
+ *  toolbar reset button and the initial render. */
+function fitToContainer() {
+    if (!pzInstance || !stageHost.value)
+        return;
+    const svgEl = stageHost.value.querySelector('svg');
+    if (!svgEl)
+        return;
+    const stageRect = stageHost.value.getBoundingClientRect();
+    // The SVG's intrinsic width/height comes from Mermaid's render —
+    // either explicit attributes or computed from viewBox. Use the
+    // bounding rect of the SVG element itself as the source of truth.
+    const svgRect = svgEl.getBoundingClientRect();
+    if (svgRect.width === 0 || svgRect.height === 0)
+        return;
+    // Fit to 95% of the stage so there's a small margin around the edges.
+    const zoomX = (stageRect.width * 0.95) / svgRect.width;
+    const zoomY = (stageRect.height * 0.95) / svgRect.height;
+    const zoom = Math.min(zoomX, zoomY, 1); // never auto-upscale beyond 1
+    pzInstance.zoomAbs(0, 0, zoom);
+    const offsetX = (stageRect.width - svgRect.width * zoom) / 2;
+    const offsetY = (stageRect.height - svgRect.height * zoom) / 2;
+    pzInstance.moveTo(offsetX, offsetY);
+}
+function zoomBy(factor) {
+    if (!pzInstance || !stageHost.value)
+        return;
+    const rect = stageHost.value.getBoundingClientRect();
+    // Anchor the zoom on the stage centre — most natural for keyboard /
+    // toolbar zoom. Wheel-zoom is handled by panzoom itself with the
+    // cursor as the anchor.
+    pzInstance.smoothZoom(rect.width / 2, rect.height / 2, factor);
 }
 /** Download the rendered SVG as a file. Filename derives from the
  *  embedded document's path / title when available, falls back to a
@@ -136,8 +209,11 @@ watch(svg, () => {
     applyStage();
 });
 onBeforeUnmount(() => {
-    // Mermaid keeps no per-instance state we need to tear down; we just
-    // drop the SVG from the host so a re-mount starts clean.
+    // Mermaid keeps no per-instance state we need to tear down; the
+    // panzoom instance, however, attaches window-level wheel/mouse
+    // listeners and must be disposed explicitly.
+    pzInstance?.dispose();
+    pzInstance = null;
     if (stageHost.value)
         stageHost.value.innerHTML = '';
 });
@@ -147,8 +223,9 @@ const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['diagram-stage']} */ ;
+/** @type {__VLS_StyleScopedClasses['diagram-stage']} */ ;
 /** @type {__VLS_StyleScopedClasses['diagram-error-source']} */ ;
-/** @type {__VLS_StyleScopedClasses['diagram-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['diagram-tool-btn']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -209,9 +286,35 @@ if (__VLS_ctx.mode === 'editor' && __VLS_ctx.svg) {
         ...{ class: "diagram-toolbar" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.mode === 'editor' && __VLS_ctx.svg))
+                    return;
+                __VLS_ctx.zoomBy(0.8);
+            } },
+        type: "button",
+        ...{ class: "diagram-tool-btn" },
+        title: (__VLS_ctx.t('documents.diagramView.zoomOut')),
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (...[$event]) => {
+                if (!(__VLS_ctx.mode === 'editor' && __VLS_ctx.svg))
+                    return;
+                __VLS_ctx.zoomBy(1.25);
+            } },
+        type: "button",
+        ...{ class: "diagram-tool-btn" },
+        title: (__VLS_ctx.t('documents.diagramView.zoomIn')),
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.fitToContainer) },
+        type: "button",
+        ...{ class: "diagram-tool-btn" },
+        title: (__VLS_ctx.t('documents.diagramView.fitToView')),
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
         ...{ onClick: (__VLS_ctx.downloadSvg) },
         type: "button",
-        ...{ class: "diagram-download" },
+        ...{ class: "diagram-tool-btn diagram-tool-btn--text" },
         title: (__VLS_ctx.t('documents.diagramView.downloadSvg')),
     });
 }
@@ -224,7 +327,11 @@ if (__VLS_ctx.mode === 'editor' && __VLS_ctx.svg) {
 /** @type {__VLS_StyleScopedClasses['diagram-empty']} */ ;
 /** @type {__VLS_StyleScopedClasses['diagram-empty']} */ ;
 /** @type {__VLS_StyleScopedClasses['diagram-toolbar']} */ ;
-/** @type {__VLS_StyleScopedClasses['diagram-download']} */ ;
+/** @type {__VLS_StyleScopedClasses['diagram-tool-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['diagram-tool-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['diagram-tool-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['diagram-tool-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['diagram-tool-btn--text']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -236,6 +343,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             error: error,
             svg: svg,
             resolvedDoc: resolvedDoc,
+            fitToContainer: fitToContainer,
+            zoomBy: zoomBy,
             downloadSvg: downloadSvg,
         };
     },

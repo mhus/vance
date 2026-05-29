@@ -412,6 +412,9 @@ export default {
       empty: 'Noch kein Diagramm — Mermaid-Source im Roh-Tab eintragen.',
       unsupportedDialect: 'Diagramm-Dialekt nicht unterstützt: {dialect}. Bearbeitung im Roh-Tab.',
       downloadSvg: 'Als SVG herunterladen',
+      zoomIn: 'Vergrößern',
+      zoomOut: 'Verkleinern',
+      fitToView: 'An Fenster anpassen',
     },
     slidesView: {
       prev: 'Vorherige Folie',

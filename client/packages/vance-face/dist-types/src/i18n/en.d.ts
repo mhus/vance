@@ -380,6 +380,9 @@ declare const _default: {
             empty: string;
             unsupportedDialect: string;
             downloadSvg: string;
+            zoomIn: string;
+            zoomOut: string;
+            fitToView: string;
         };
         slidesView: {
             prev: string;

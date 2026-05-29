@@ -390,6 +390,9 @@ export default {
             empty: 'No diagram yet — add a Mermaid source in the Raw tab.',
             unsupportedDialect: 'Unsupported diagram dialect: {dialect}. Edit the source in the Raw tab.',
             downloadSvg: 'Download as SVG',
+            zoomIn: 'Zoom in',
+            zoomOut: 'Zoom out',
+            fitToView: 'Fit to view',
         },
         slidesView: {
             prev: 'Previous slide',

@@ -385,6 +385,13 @@ function selectFolder(folder) {
 async function openDocument(doc) {
     if (!doc.id)
         return;
+    // App-manifest files redirect to the dedicated app editor — the
+    // Kanban board / Calendar planner / etc. don't render in the
+    // generic Document viewer at all.
+    if (doc.kind === 'application' && doc.path?.endsWith('/_app.yaml')) {
+        window.location.assign(`/app.html?documentId=${encodeURIComponent(doc.id)}`);
+        return;
+    }
     await docsState.loadOne(doc.id);
     fillEditor();
 }

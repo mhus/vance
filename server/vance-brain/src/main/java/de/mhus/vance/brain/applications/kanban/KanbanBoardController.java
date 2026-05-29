@@ -1,0 +1,352 @@
+package de.mhus.vance.brain.applications.kanban;
+
+import de.mhus.vance.api.kanban.KanbanArtefactSummary;
+import de.mhus.vance.api.kanban.KanbanBoardView;
+import de.mhus.vance.api.kanban.KanbanCardCreateRequest;
+import de.mhus.vance.api.kanban.KanbanCardUpdateRequest;
+import de.mhus.vance.api.kanban.KanbanCardView;
+import de.mhus.vance.api.kanban.KanbanMoveRequest;
+import de.mhus.vance.api.kanban.KanbanMoveResponse;
+import de.mhus.vance.api.kanban.KanbanRebuildResponse;
+import de.mhus.vance.brain.applications.KanbanApplication;
+import de.mhus.vance.brain.applications.VanceApplication;
+import de.mhus.vance.brain.permission.RequestAuthority;
+import de.mhus.vance.brain.tools.kanban.KanbanFolderReader;
+import de.mhus.vance.shared.access.AccessFilterBase;
+import de.mhus.vance.shared.document.DocumentDocument;
+import de.mhus.vance.shared.document.DocumentService;
+import de.mhus.vance.shared.document.kind.CardCodec;
+import de.mhus.vance.shared.document.kind.CardDocument;
+import de.mhus.vance.shared.permission.Action;
+import de.mhus.vance.shared.permission.Resource;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
+/**
+ * REST endpoints for the interactive Kanban board editor in the
+ * Web-UI. Thin adapter over {@link KanbanApplication} +
+ * {@link DocumentService} — no business logic here.
+ *
+ * <p>Authority is enforced per request via {@link RequestAuthority}
+ * exactly like {@code DocumentController}: project-level READ for
+ * the board view, document-level WRITE/CREATE/DELETE for mutations.
+ *
+ * <p>Card paths come in as query parameters (cards have slashes in
+ * their paths; query params are cleaner than encoding into the URL
+ * path segment).
+ */
+@RestController
+@RequiredArgsConstructor
+@Slf4j
+public class KanbanBoardController {
+
+    private static final String MD_MIME = "text/markdown";
+    private static final String CARD_KIND = "card";
+
+    private final KanbanApplication kanbanApplication;
+    private final KanbanFolderReader folderReader;
+    private final DocumentService documentService;
+    private final RequestAuthority authority;
+
+    // ── Board view ────────────────────────────────────────────────
+
+    @GetMapping("/brain/{tenant}/kanban/board")
+    public KanbanBoardView getBoard(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        String normalised = normaliseFolder(folder);
+        KanbanFolderReader.Scan scan = folderReader.scan(tenant, projectId, normalised);
+        return KanbanBoardMapper.toView(scan, List.of());
+    }
+
+    // ── Move ──────────────────────────────────────────────────────
+
+    @PostMapping("/brain/{tenant}/kanban/move")
+    public KanbanMoveResponse move(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @Valid @RequestBody KanbanMoveRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        String normalised = normaliseFolder(folder);
+        VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
+                tenant, projectId, normalised, currentUser(httpRequest), null);
+
+        KanbanApplication.MoveResult mv = kanbanApplication.moveCard(
+                rc, normalised, request.getCard(), request.getToColumn());
+
+        return KanbanMoveResponse.builder()
+                .card(mv.cardPath())
+                .fromColumn(mv.fromColumn())
+                .toColumn(mv.toColumn())
+                .warnings(new ArrayList<>(mv.warnings()))
+                .build();
+    }
+
+    // ── Card create ───────────────────────────────────────────────
+
+    @PostMapping("/brain/{tenant}/kanban/cards")
+    public KanbanCardView createCard(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @Valid @RequestBody KanbanCardCreateRequest request,
+            HttpServletRequest httpRequest) {
+
+        String normalisedFolder = normaliseFolder(folder);
+        String column = request.getColumn() != null && !request.getColumn().isBlank()
+                ? sanitiseName(request.getColumn())
+                : KanbanFolderReader.DEFAULT_COLUMN;
+
+        String slug = request.getFilename() != null && !request.getFilename().isBlank()
+                ? sanitiseName(request.getFilename())
+                : sanitiseName(request.getTitle());
+        String path = normalisedFolder + "/" + column + "/" + slug + ".md";
+
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, projectId, path), Action.CREATE);
+
+        if (documentService.findByPath(tenant, projectId, path).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Card already exists at '" + path + "'.");
+        }
+
+        CardDocument card = new CardDocument(
+                CARD_KIND, request.getTitle(),
+                request.getPriority(), request.getAssignee(),
+                request.getLabels() != null ? new ArrayList<>(request.getLabels()) : new ArrayList<>(),
+                request.getDueDate(), request.getEstimate(),
+                request.isBlocked(),
+                request.getBody() != null ? request.getBody() : "",
+                new LinkedHashMap<>());
+        String body = CardCodec.serialize(card, MD_MIME);
+        DocumentDocument stored = writeNew(tenant, projectId, path, request.getTitle(), body, httpRequest);
+
+        log.info("KanbanBoardController.createCard tenant='{}' folder='{}' path='{}'",
+                tenant, normalisedFolder, stored.getPath());
+
+        return toCardView(stored, column, card);
+    }
+
+    // ── Card update ───────────────────────────────────────────────
+
+    @PatchMapping("/brain/{tenant}/kanban/cards")
+    public KanbanCardView updateCard(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @RequestParam("path") String path,
+            @Valid @RequestBody KanbanCardUpdateRequest request,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, projectId, path), Action.WRITE);
+
+        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Card not found: " + path));
+        if (!CARD_KIND.equalsIgnoreCase(doc.getKind())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Document at '" + path + "' is not a card (kind="
+                            + doc.getKind() + ").");
+        }
+
+        // Parse existing, merge with patch payload, re-serialise.
+        String existingBody = loadAsText(doc);
+        CardDocument existing;
+        try {
+            existing = CardCodec.parse(existingBody, doc.getMimeType());
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Could not parse card '" + path + "': " + e.getMessage());
+        }
+
+        CardDocument merged = mergePatch(existing, request);
+        String mergedBody = CardCodec.serialize(merged, MD_MIME);
+        DocumentDocument updated = documentService.update(
+                doc.getId(), merged.title(), List.of(CARD_KIND),
+                mergedBody, null, null, null, null, MD_MIME);
+
+        log.info("KanbanBoardController.updateCard tenant='{}' folder='{}' path='{}'",
+                tenant, folder, updated.getPath());
+
+        String column = KanbanFolderReader.columnFor(normaliseFolder(folder), updated.getPath());
+        return toCardView(updated, column, merged);
+    }
+
+    // ── Card delete ───────────────────────────────────────────────
+
+    @DeleteMapping("/brain/{tenant}/kanban/cards")
+    public void deleteCard(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            @RequestParam("path") String path,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest,
+                new Resource.Document(tenant, projectId, path), Action.DELETE);
+
+        DocumentDocument doc = documentService.findByPath(tenant, projectId, path)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Card not found: " + path));
+        if (!CARD_KIND.equalsIgnoreCase(doc.getKind())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Document at '" + path + "' is not a card.");
+        }
+        documentService.trash(doc.getId());
+        log.info("KanbanBoardController.deleteCard tenant='{}' folder='{}' path='{}'",
+                tenant, folder, path);
+    }
+
+    // ── Rebuild ───────────────────────────────────────────────────
+
+    @PostMapping("/brain/{tenant}/kanban/rebuild")
+    public KanbanRebuildResponse rebuild(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam("folder") String folder,
+            HttpServletRequest httpRequest) {
+
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.WRITE);
+        String normalised = normaliseFolder(folder);
+        VanceApplication.RefreshContext rc = new VanceApplication.RefreshContext(
+                tenant, projectId, normalised, currentUser(httpRequest), null);
+        VanceApplication.RefreshResult result = kanbanApplication.refresh(rc);
+
+        List<KanbanArtefactSummary> arts = new ArrayList<>();
+        for (VanceApplication.ArtefactResult a : result.artefacts()) {
+            arts.add(KanbanArtefactSummary.builder()
+                    .name(a.name()).path(a.path()).markdownLink(a.markdownLink()).build());
+        }
+        return KanbanRebuildResponse.builder()
+                .folder(normalised)
+                .artefacts(arts)
+                .build();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────
+
+    private static CardDocument mergePatch(CardDocument existing, KanbanCardUpdateRequest p) {
+        String title = p.getTitle() != null ? p.getTitle() : existing.title();
+        String priority = p.getPriority() != null
+                ? (p.getPriority().isBlank() ? null : p.getPriority())
+                : existing.priority();
+        String assignee = p.getAssignee() != null
+                ? (p.getAssignee().isBlank() ? null : p.getAssignee())
+                : existing.assignee();
+        List<String> labels = p.getLabels() != null
+                ? new ArrayList<>(p.getLabels())
+                : new ArrayList<>(existing.labels());
+        String dueDate = p.getDueDate() != null
+                ? (p.getDueDate().isBlank() ? null : p.getDueDate())
+                : existing.dueDate();
+        Double estimate = p.getEstimate() != null ? p.getEstimate() : existing.estimate();
+        boolean blocked = p.getBlocked() != null ? p.getBlocked() : existing.blocked();
+        String body = p.getBody() != null ? p.getBody() : existing.body();
+        return new CardDocument(
+                existing.kind(), title, priority, assignee, labels, dueDate,
+                estimate, blocked, body, existing.extra());
+    }
+
+    private DocumentDocument writeNew(String tenant, String projectId,
+                                      String path, String title, String body,
+                                      HttpServletRequest httpRequest) {
+        try (InputStream in = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))) {
+            return documentService.create(
+                    tenant, projectId, path, title,
+                    List.of(CARD_KIND), MD_MIME, in, currentUser(httpRequest));
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Could not write card '" + path + "': " + e.getMessage());
+        }
+    }
+
+    private String loadAsText(DocumentDocument doc) {
+        if (doc.getInlineText() != null) return doc.getInlineText();
+        try (InputStream in = documentService.loadContent(doc)) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Could not read card body: " + e.getMessage());
+        }
+    }
+
+    private static KanbanCardView toCardView(DocumentDocument doc, String column, CardDocument card) {
+        int[] cb = CardCodec.countCheckboxes(card.body());
+        return KanbanCardView.builder()
+                .path(doc.getPath())
+                .column(column)
+                .title(card.title())
+                .priority(card.priority())
+                .assignee(card.assignee())
+                .labels(new ArrayList<>(card.labels()))
+                .dueDate(card.dueDate())
+                .estimate(card.estimate())
+                .blocked(card.blocked())
+                .body(card.body().isEmpty() ? null : card.body())
+                .subtaskTotal(cb[0])
+                .subtaskDone(cb[1])
+                .build();
+    }
+
+    private static String normaliseFolder(String folder) {
+        if (folder == null || folder.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "folder must be provided");
+        }
+        String f = folder.trim();
+        while (f.endsWith("/")) f = f.substring(0, f.length() - 1);
+        while (f.startsWith("/")) f = f.substring(1);
+        if (f.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "folder must not be empty");
+        }
+        return f;
+    }
+
+    private static String sanitiseName(String raw) {
+        StringBuilder sb = new StringBuilder(raw.length());
+        for (char c : raw.toLowerCase(Locale.ROOT).toCharArray()) {
+            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+                sb.append(c);
+            } else if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '-') {
+                sb.append('-');
+            }
+        }
+        while (sb.length() > 0 && sb.charAt(sb.length() - 1) == '-') sb.setLength(sb.length() - 1);
+        return sb.length() == 0 ? "card" : sb.toString();
+    }
+
+    private static @Nullable String currentUser(HttpServletRequest httpRequest) {
+        Object v = httpRequest.getAttribute(AccessFilterBase.ATTR_USERNAME);
+        return v instanceof String s ? s : null;
+    }
+}

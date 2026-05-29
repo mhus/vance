@@ -1,3 +1,4 @@
+export * from './kanban';
 export * from './linkPreview';
 export * from './restClient';
 export * from './sessions';

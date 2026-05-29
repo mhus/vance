@@ -62,6 +62,16 @@ export * from './inbox/InboxListResponse';
 export * from './inbox/InboxTagsResponse';
 export * from './inbox/ResolvedBy';
 
+export * from './kanban/KanbanArtefactSummary';
+export * from './kanban/KanbanBoardView';
+export * from './kanban/KanbanCardCreateRequest';
+export * from './kanban/KanbanCardUpdateRequest';
+export * from './kanban/KanbanCardView';
+export * from './kanban/KanbanColumnView';
+export * from './kanban/KanbanMoveRequest';
+export * from './kanban/KanbanMoveResponse';
+export * from './kanban/KanbanRebuildResponse';
+
 export * from './kit/InheritArtefactsDto';
 export * from './kit/KitDescriptorDto';
 export * from './kit/KitExportRequestDto';

@@ -262,6 +262,143 @@ public class KanbanApplication implements VanceApplication {
                 columnResults, artefacts, nextStep, stats);
     }
 
+    /**
+     * Outcome of {@link #moveCard}. {@code fromColumn} reflects the
+     * card's location before the move; {@code warnings} carries
+     * WIP-overflow notices (only populated with {@code wipEnforce=soft}).
+     */
+    public record MoveResult(
+            String cardPath,
+            String fromColumn,
+            String toColumn,
+            List<String> warnings,
+            boolean skipped,
+            @Nullable String skipReason) {
+
+        public Map<String, Object> toMap() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("card", cardPath);
+            m.put("fromColumn", fromColumn);
+            m.put("toColumn", toColumn);
+            if (skipped) {
+                m.put("skipped", true);
+                if (skipReason != null) m.put("reason", skipReason);
+            }
+            if (warnings != null && !warnings.isEmpty()) {
+                m.put("warnings", warnings);
+            }
+            return m;
+        }
+    }
+
+    /**
+     * Move a card between columns. Resolves the card by full path,
+     * filename, or sanitised title — all three forms work. Enforces
+     * {@code wipEnforce=hard} by throwing, surfaces {@code soft}
+     * overruns as warnings.
+     *
+     * @param folder        the kanban-app folder (already normalised).
+     * @param cardRef       full path, filename (with/without {@code .md}),
+     *                      or sanitised title.
+     * @param toColumnRaw   target column (sanitised internally).
+     */
+    public MoveResult moveCard(RefreshContext ctx,
+                               String folder,
+                               String cardRef,
+                               String toColumnRaw) {
+        String toColumn = sanitiseColumnName(toColumnRaw);
+        KanbanFolderReader.Scan scan = folderReader.scan(
+                ctx.tenantId(), ctx.projectName(), folder);
+        DocumentDocument cardDoc = resolveCard(scan, folder, cardRef);
+        String fromColumn = KanbanFolderReader.columnFor(folder, cardDoc.getPath());
+
+        if (fromColumn.equals(toColumn)) {
+            return new MoveResult(cardDoc.getPath(), fromColumn, toColumn,
+                    List.of(), true, "Card already in target column.");
+        }
+
+        // WIP-limit check.
+        KanbanAppConfig.Column target = scan.kanbanConfig().columns().get(toColumn);
+        Integer wipLimit = target != null ? target.wipLimit() : null;
+        List<String> warnings = new ArrayList<>();
+        if (wipLimit != null) {
+            int currentCount = 0;
+            for (KanbanFolderReader.CardFile cf : scan.cards()) {
+                if (toColumn.equals(cf.column())) currentCount++;
+            }
+            if (currentCount >= wipLimit) {
+                if (scan.kanbanConfig().wipEnforce() == KanbanAppConfig.WipEnforce.HARD) {
+                    throw new ToolException(
+                            "Column '" + toColumn + "' is at WIP limit ("
+                                    + currentCount + "/" + wipLimit + "). "
+                                    + "wipEnforce=hard blocks this move.");
+                }
+                warnings.add("wip-exceeded:" + toColumn + ":" + (currentCount + 1)
+                        + "/" + wipLimit);
+            }
+        }
+
+        // Compute new path.
+        String oldPath = cardDoc.getPath();
+        int slash = oldPath.lastIndexOf('/');
+        String filename = slash < 0 ? oldPath : oldPath.substring(slash + 1);
+        String newPath = folder + "/" + toColumn + "/" + filename;
+
+        Optional<DocumentDocument> collision = documentService.findByPath(
+                ctx.tenantId(), ctx.projectName(), newPath);
+        if (collision.isPresent() && !collision.get().getId().equals(cardDoc.getId())) {
+            throw new ToolException(
+                    "Target path '" + newPath + "' is already occupied "
+                            + "by another card. Rename the card first.");
+        }
+
+        DocumentDocument moved = documentService.update(
+                cardDoc.getId(), null, null, null, newPath);
+
+        log.info("KanbanApplication.moveCard tenant='{}' folder='{}' "
+                        + "card='{}' {}→{} warnings={}",
+                ctx.tenantId(), folder, filename,
+                fromColumn, toColumn, warnings);
+
+        return new MoveResult(moved.getPath(), fromColumn, toColumn,
+                warnings, false, null);
+    }
+
+    private static DocumentDocument resolveCard(KanbanFolderReader.Scan scan,
+                                                String folder, String ref) {
+        for (KanbanFolderReader.CardFile cf : scan.cards()) {
+            if (cf.doc().getPath().equals(ref)) return cf.doc();
+        }
+        String wantedLeaf = ref.contains("/")
+                ? ref.substring(ref.lastIndexOf('/') + 1)
+                : ref;
+        if (!wantedLeaf.endsWith(".md")) wantedLeaf = wantedLeaf + ".md";
+        for (KanbanFolderReader.CardFile cf : scan.cards()) {
+            String path = cf.doc().getPath();
+            String leaf = path.substring(path.lastIndexOf('/') + 1);
+            if (leaf.equalsIgnoreCase(wantedLeaf)) return cf.doc();
+        }
+        String titleSlug = sanitiseColumnName(ref);
+        for (KanbanFolderReader.CardFile cf : scan.cards()) {
+            if (sanitiseColumnName(cf.card().title()).equals(titleSlug)) return cf.doc();
+        }
+        throw new ToolException(
+                "No card matching '" + ref + "' found in '" + folder + "'.");
+    }
+
+    private static String sanitiseColumnName(String raw) {
+        StringBuilder sb = new StringBuilder(raw.length());
+        for (char c : raw.toLowerCase(Locale.ROOT).toCharArray()) {
+            if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+                sb.append(c);
+            } else if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '-') {
+                sb.append('-');
+            }
+        }
+        while (sb.length() > 0 && sb.charAt(sb.length() - 1) == '-') sb.setLength(sb.length() - 1);
+        return sb.length() == 0 ? "card" : sb.toString();
+    }
+
     @Override
     public RefreshResult refresh(RefreshContext ctx) {
         KanbanFolderReader.Scan scan = folderReader.scan(

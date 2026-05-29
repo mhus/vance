@@ -28,6 +28,9 @@ import DocumentIcon from './DocumentIcon.vue';
 import DocumentArchives from './DocumentArchives.vue';
 import ListView from './ListView.vue';
 import TreeView from './TreeView.vue';
+// Checklist editor — ships when the user opens a kind:checklist
+// document. Lazy-loaded so the documents bundle stays slim.
+const ChecklistView = defineAsyncComponent(() => import('./ChecklistView.vue'));
 import MindmapView from './MindmapView.vue';
 import RecordsView from './RecordsView.vue';
 import GraphView from './GraphView.vue';
@@ -55,6 +58,13 @@ import {
   ListCodecError,
   type ListDocument,
 } from './listItemsCodec';
+import {
+  isChecklistMime,
+  parseChecklist,
+  serializeChecklist,
+  ChecklistCodecError,
+  type ChecklistDocument,
+} from './checklistCodec';
 import {
   isTreeMime,
   parseTree,
@@ -422,6 +432,7 @@ function fillEditor(): void {
   else if (isGraphDocument.value) contentTab.value = 'graph';
   else if (isRecordsDocument.value) contentTab.value = 'records';
   else if (isListDocument.value) contentTab.value = 'list';
+  else if (isChecklistDocument.value) contentTab.value = 'checklist';
   else if (isMindmapDocument.value) contentTab.value = 'mindmap';
   else if (isTreeDocument.value) contentTab.value = 'tree';
   else if (isSlidesDocument.value) contentTab.value = 'slides';
@@ -461,6 +472,7 @@ type ContentTab =
   | 'raw'
   | 'preview'
   | 'list'
+  | 'checklist'
   | 'tree'
   | 'mindmap'
   | 'records'
@@ -490,6 +502,13 @@ const isListDocument = computed<boolean>(() => {
   if (!sel?.inline) return false;
   if ((sel.kind ?? '').toLowerCase() !== 'list') return false;
   return isListMime(sel.mimeType);
+});
+
+const isChecklistDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'checklist') return false;
+  return isChecklistMime(sel.mimeType);
 });
 
 const isTreeDocument = computed<boolean>(() => {
@@ -598,6 +617,7 @@ const isMarkdownDocument = computed<boolean>(() => {
   // Don't claim the doc when a kind-specific branch will handle it —
   // those have their own tab pairs and shouldn't double up.
   return !isListDocument.value
+    && !isChecklistDocument.value
     && !isTreeDocument.value
     && !isMindmapDocument.value
     && !isRecordsDocument.value
@@ -632,6 +652,25 @@ const parsedList = computed<ParsedList>(() => {
     return { doc, error: null };
   } catch (e) {
     if (e instanceof ListCodecError) {
+      return { doc: null, error: e.message };
+    }
+    return { doc: null, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+interface ParsedChecklist {
+  doc: ChecklistDocument | null;
+  error: string | null;
+}
+
+const parsedChecklist = computed<ParsedChecklist>(() => {
+  if (!isChecklistDocument.value) return { doc: null, error: null };
+  try {
+    const sel = docsState.selected.value;
+    const doc = parseChecklist(editInlineText.value, sel?.mimeType ?? '');
+    return { doc, error: null };
+  } catch (e) {
+    if (e instanceof ChecklistCodecError) {
       return { doc: null, error: e.message };
     }
     return { doc: null, error: e instanceof Error ? e.message : String(e) };
@@ -815,6 +854,24 @@ function onListChanged(updated: ListDocument): void {
 }
 
 /**
+ * Bridge from the typed checklist editor back to the raw body. Same
+ * pattern as {@link onListChanged} — the editor emits a fresh
+ * {@link ChecklistDocument} on every mutation; we serialise into the
+ * document's mime type so the existing Save / Apply pathway picks up
+ * the canonical body unchanged.
+ */
+function onChecklistChanged(updated: ChecklistDocument): void {
+  const sel = docsState.selected.value;
+  if (!sel?.mimeType) return;
+  try {
+    editInlineText.value = serializeChecklist(updated, sel.mimeType);
+    editError.value = null;
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : String(e);
+  }
+}
+
+/**
  * Same bridge as {@link onListChanged} but for tree documents.
  * The {@code <TreeView>} component owns the editor state internally
  * and emits a fresh {@link TreeDocument} on every mutation; we
@@ -981,7 +1038,7 @@ function openCreateModal(prefill?: CreateModalPrefill): void {
  * they are domain tokens, not localisable noise.
  */
 const KIND_CREATE_OPTIONS = [
-  'list', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet', 'slides', 'diagram', 'calendar', 'application', 'data', 'records', 'schema',
+  'list', 'checklist', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet', 'slides', 'diagram', 'calendar', 'application', 'data', 'records', 'schema',
 ] as const;
 
 const kindCreateOptions = computed(() => [
@@ -1011,6 +1068,11 @@ function buildKindStub(kind: string, mime: string): string {
     if (isMd) return '---\nkind: list\n---\n- item 1\n- item 2\n';
     if (isJson) return '{\n  "$meta": { "kind": "list" },\n  "items": [\n    { "text": "item 1" },\n    { "text": "item 2" }\n  ]\n}\n';
     if (isYaml) return '$meta:\n  kind: list\nitems:\n  - text: item 1\n  - text: item 2\n';
+  }
+  if (kind === 'checklist') {
+    if (isMd) return '---\nkind: checklist\n---\n- [ ] open task\n- [x] done task\n- [~] in progress task\n';
+    if (isJson) return '{\n  "$meta": { "kind": "checklist" },\n  "items": [\n    { "text": "open task" },\n    { "text": "done task", "status": "done" },\n    { "text": "in progress task", "status": "in_progress" }\n  ]\n}\n';
+    if (isYaml) return '$meta:\n  kind: checklist\nitems:\n  - text: open task\n  - text: done task\n    status: done\n  - text: in progress task\n    status: in_progress\n';
   }
   if (kind === 'tree') {
     if (isMd) return '---\nkind: tree\n---\n- parent\n  - child\n';
@@ -1610,6 +1672,20 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isChecklistDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'checklist' }"
+                  @click="contentTab = 'checklist'"
+                >{{ $t('documents.detail.tabChecklist') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
               <div v-else-if="isSheetDocument" class="content-tabs">
                 <button
                   type="button"
@@ -1765,6 +1841,17 @@ const formatBytes = (n: number): string => {
                   v-else-if="parsedList.doc"
                   :doc="parsedList.doc"
                   @update:doc="onListChanged"
+                />
+              </template>
+
+              <template v-else-if="isChecklistDocument && contentTab === 'checklist'">
+                <VAlert v-if="parsedChecklist.error" variant="warning">
+                  <span>{{ $t('documents.detail.checklistParseError', { message: parsedChecklist.error }) }}</span>
+                </VAlert>
+                <ChecklistView
+                  v-else-if="parsedChecklist.doc"
+                  :doc="parsedChecklist.doc"
+                  @update:doc="onChecklistChanged"
                 />
               </template>
 

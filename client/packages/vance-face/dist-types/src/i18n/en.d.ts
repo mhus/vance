@@ -254,6 +254,7 @@ declare const _default: {
             tabPreview: string;
             tabOfficeEdit: string;
             tabList: string;
+            tabChecklist: string;
             tabTree: string;
             tabMindmap: string;
             tabRecords: string;
@@ -264,6 +265,7 @@ declare const _default: {
             tabDiagram: string;
             tabCalendar: string;
             listParseError: string;
+            checklistParseError: string;
             treeParseError: string;
             mindmapParseError: string;
             recordsParseError: string;
@@ -324,6 +326,33 @@ declare const _default: {
             selectedCountPlural: string;
             deleteSelected: string;
             clearSelection: string;
+        };
+        checklistEditor: {
+            addItem: string;
+            deleteItem: string;
+            clickToEdit: string;
+            emptyItem: string;
+            empty: string;
+            dragHandle: string;
+            selectedCountSingular: string;
+            selectedCountPlural: string;
+            deleteSelected: string;
+            clearSelection: string;
+            togglePriority: string;
+            openStatusMenu: string;
+            totalItems: string;
+            filterActive: string;
+            status: {
+                open: string;
+                done: string;
+                in_progress: string;
+                review: string;
+                blocked: string;
+                needs_info: string;
+                deferred: string;
+                delegated: string;
+                waiting: string;
+            };
         };
         treeEditor: {
             addItem: string;

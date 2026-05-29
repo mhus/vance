@@ -34,10 +34,10 @@ public class DocCreateKindTool implements Tool {
         Map<String, Object> p = new LinkedHashMap<>(KindToolSupport.documentSelectorProperties());
         p.remove("id");
         p.put("kind", Map.of("type", "string",
-                "description", "One of: list, tree, mindmap, records, sheet, graph, chart, slides, data, text, schema."));
+                "description", "One of: list, checklist, tree, mindmap, records, sheet, graph, chart, slides, data, text, schema."));
         p.put("mimeType", Map.of("type", "string",
                 "description", "Mime type for the new body. Defaults to a kind-appropriate value: "
-                        + "text/markdown for list/tree/mindmap/records/slides, application/json for sheet/graph/chart/data."));
+                        + "text/markdown for list/checklist/tree/mindmap/records/slides, application/json for sheet/graph/chart/data."));
         p.put("title", Map.of("type", "string", "description", "Optional display title."));
         p.put("tags", Map.of("type", "array", "items", Map.of("type", "string"),
                 "description", "Optional tag list."));
@@ -116,7 +116,7 @@ public class DocCreateKindTool implements Tool {
 
     private static String defaultMimeFor(String kind) {
         return switch (kind) {
-            case "list", "tree", "mindmap", "records", "slides", "text" -> "text/markdown";
+            case "list", "checklist", "tree", "mindmap", "records", "slides", "text" -> "text/markdown";
             case "sheet", "graph", "chart", "data" -> "application/json";
             case "schema" -> "application/json";
             default -> "text/markdown";
@@ -131,6 +131,10 @@ public class DocCreateKindTool implements Tool {
             case "list" -> md ? "---\nkind: list\n---\n- item 1\n- item 2\n"
                     : json ? "{\n  \"$meta\": { \"kind\": \"list\" },\n  \"items\": []\n}\n"
                     : yaml ? "$meta:\n  kind: list\nitems: []\n"
+                    : "";
+            case "checklist" -> md ? "---\nkind: checklist\n---\n- [ ] first task\n- [ ] second task\n"
+                    : json ? "{\n  \"$meta\": { \"kind\": \"checklist\" },\n  \"items\": [\n    { \"text\": \"first task\" },\n    { \"text\": \"second task\" }\n  ]\n}\n"
+                    : yaml ? "$meta:\n  kind: checklist\nitems:\n  - text: first task\n  - text: second task\n"
                     : "";
             case "tree" -> md ? "---\nkind: tree\n---\n- parent\n  - child\n"
                     : json ? "{\n  \"$meta\": { \"kind\": \"tree\" },\n  \"items\": []\n}\n"

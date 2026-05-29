@@ -25,6 +25,7 @@ export interface KindRenderer {
 // embedded PDF, etc.).
 const MindmapView = defineAsyncComponent(() => import('@/document/MindmapView.vue'));
 const ListView    = defineAsyncComponent(() => import('@/document/ListView.vue'));
+const ChecklistView = defineAsyncComponent(() => import('@/document/ChecklistView.vue'));
 const TreeView    = defineAsyncComponent(() => import('@/document/TreeView.vue'));
 const RecordsView = defineAsyncComponent(() => import('@/document/RecordsView.vue'));
 const GraphView   = defineAsyncComponent(() => import('@/document/GraphView.vue'));
@@ -57,6 +58,7 @@ export const kindRegistry: Record<string, KindRenderer> = {
   tree:    { inline: TreeView,    embedded: TreeView,    label: 'Tree',    icon: '🌳' },
   list:    { inline: ListView,    embedded: ListView,    label: 'List',    icon: '•'  },
   items:   { inline: ListView,    embedded: ListView,    label: 'Items',   icon: '•'  },
+  checklist: { inline: ChecklistView, embedded: ChecklistView, label: 'Checklist', icon: '☑' },
   records: { inline: RecordsView, embedded: RecordsView, label: 'Records', icon: '▤'  },
   graph:   { inline: GraphView,   embedded: GraphView,   label: 'Graph',   icon: '🕸' },
   chart:   { inline: ChartView,   embedded: ChartView,   label: 'Chart',   icon: '📊' },

@@ -647,6 +647,18 @@ bullets (NOT Mermaid `root((X))`); records takes a Markdown table
   calendar call this session** read
   `manual_read('doc-kind-calendar')` for the full RRULE subset,
   the color palette, and the canonical chat-embed pattern.
+- **Project plan / Projektplan / Sprint plan / Gantt / roadmap /
+  multi-lane planning / "trenne nach Teams / Phasen" / "mehrere
+  Kalender"** → use the **calendar-application** pattern
+  (a folder with `_app.yaml`, one calendar file per lane,
+  auto-generated `_gantt.md` + `_conflicts.yaml`). Tools:
+  `app_rebuild(folder)` for the regeneration, `calendar_aggregate`
+  for read queries, `calendar_conflicts` / `gantt_from_calendars`
+  for partial refreshes. **Before the first multi-calendar /
+  Gantt task** read `manual_read('app-calendar')` for the folder
+  layout, manifest schema, and canonical flow. The single-event
+  `calendar_create` path is the wrong tool when the user is
+  thinking in lanes / phases / teams.
 
 **Never claim something is impossible** without calling
 `how_do_i` first. The 2026-05-26 Lisbon failure was a refusal to

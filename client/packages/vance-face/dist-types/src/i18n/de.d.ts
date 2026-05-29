@@ -262,6 +262,7 @@ declare const _default: {
             tabChart: string;
             tabSlides: string;
             tabDiagram: string;
+            tabCalendar: string;
             listParseError: string;
             treeParseError: string;
             mindmapParseError: string;
@@ -271,6 +272,7 @@ declare const _default: {
             chartParseError: string;
             slidesParseError: string;
             diagramParseError: string;
+            calendarParseError: string;
             delete: string;
             deletePermanent: string;
             download: string;
@@ -288,6 +290,13 @@ declare const _default: {
                 summaryDirtyLabel: string;
                 summaryDirtyHelp: string;
             };
+        };
+        calendar: {
+            viewMonth: string;
+            viewAgenda: string;
+            today: string;
+            allDay: string;
+            empty: string;
         };
         archives: {
             heading: string;

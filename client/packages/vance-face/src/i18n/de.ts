@@ -293,6 +293,7 @@ export default {
       tabChart: 'Chart',
       tabSlides: 'Slides',
       tabDiagram: 'Diagramm',
+      tabCalendar: 'Kalender',
       listParseError: 'List-Ansicht nicht möglich: {message}',
       treeParseError: 'Baum-Ansicht nicht möglich: {message}',
       mindmapParseError: 'Mindmap-Ansicht nicht möglich: {message}',
@@ -302,6 +303,7 @@ export default {
       chartParseError: 'Chart-Ansicht nicht möglich: {message}',
       slidesParseError: 'Slides-Ansicht nicht möglich: {message}',
       diagramParseError: 'Diagramm-Ansicht nicht möglich: {message}',
+      calendarParseError: 'Kalender-Ansicht nicht möglich: {message}',
       delete: 'In Papierkorb',
       deletePermanent: 'Endgültig löschen',
       download: 'Herunterladen',
@@ -321,6 +323,13 @@ export default {
         summaryDirtyHelp:
           'Server räumt das Flag nach erfolgreichem Lauf wieder ab. Manuell setzen erzwingt einen Refresh ohne Body-Edit.',
       },
+    },
+    calendar: {
+      viewMonth: 'Monat',
+      viewAgenda: 'Agenda',
+      today: 'Heute',
+      allDay: 'ganztägig',
+      empty: 'Keine Termine in den nächsten zwei Wochen.',
     },
     archives: {
       heading: 'Versionen',

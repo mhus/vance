@@ -29,6 +29,7 @@ const TreeView    = defineAsyncComponent(() => import('@/document/TreeView.vue')
 const RecordsView = defineAsyncComponent(() => import('@/document/RecordsView.vue'));
 const GraphView   = defineAsyncComponent(() => import('@/document/GraphView.vue'));
 const ChartView   = defineAsyncComponent(() => import('@/document/ChartView.vue'));
+const CalendarView = defineAsyncComponent(() => import('@/document/CalendarView.vue'));
 const SlidesView  = defineAsyncComponent(() => import('@/document/SlidesView.vue'));
 const ImageView   = defineAsyncComponent(() => import('@/document/ImageView.vue'));
 const PdfView     = defineAsyncComponent(() => import('@/document/PdfView.vue'));
@@ -59,6 +60,7 @@ export const kindRegistry: Record<string, KindRenderer> = {
   records: { inline: RecordsView, embedded: RecordsView, label: 'Records', icon: '▤'  },
   graph:   { inline: GraphView,   embedded: GraphView,   label: 'Graph',   icon: '🕸' },
   chart:   { inline: ChartView,   embedded: ChartView,   label: 'Chart',   icon: '📊' },
+  calendar: { inline: CalendarView, embedded: CalendarView, label: 'Calendar', icon: '📅' },
 
   // Slides are embedded-only by design (spec inline-and-embedded-content
   // §8 + doc-kind-slides §1): presentation artefacts belong in the

@@ -41,6 +41,9 @@ const SlidesView = defineAsyncComponent(() => import('./SlidesView.vue'));
 // Mermaid (~700 KB minified gzipped) ships only when a diagram
 // document is opened — keep the documents bundle lean.
 const DiagramView = defineAsyncComponent(() => import('./DiagramView.vue'));
+// Calendar renderer ships month + agenda views; lazy so the
+// document bundle stays slim when no calendar is opened.
+const CalendarView = defineAsyncComponent(() => import('./CalendarView.vue'));
 // ONLYOFFICE / Collabora editor — only relevant for DOCX/XLSX
 // documents when a tenant has configured `office.*`. Pulled in
 // lazily so the documents bundle isn't paying for it.
@@ -99,6 +102,12 @@ import {
   DiagramCodecError,
   type DiagramDocument,
 } from './diagramCodec';
+import {
+  isCalendarMime,
+  parseCalendar,
+  CalendarCodecError,
+  type CalendarDocument,
+} from './calendarCodec';
 import type {
   DocumentDto,
   DocumentSummary,
@@ -417,6 +426,7 @@ function fillEditor(): void {
   else if (isTreeDocument.value) contentTab.value = 'tree';
   else if (isSlidesDocument.value) contentTab.value = 'slides';
   else if (isDiagramDocument.value) contentTab.value = 'diagram';
+  else if (isCalendarDocument.value) contentTab.value = 'calendar';
   // Markdown lands on Preview first — the user opened a doc to read
   // it, editing is one click away on the Raw tab.
   else if (isMarkdownDocument.value) contentTab.value = 'preview';
@@ -459,6 +469,7 @@ type ContentTab =
   | 'sheet'
   | 'slides'
   | 'diagram'
+  | 'calendar'
   | 'office';
 const contentTab = ref<ContentTab>('raw');
 
@@ -548,6 +559,15 @@ const isDiagramDocument = computed<boolean>(() => {
   if (!sel?.inline) return false;
   if ((sel.kind ?? '').toLowerCase() !== 'diagram') return false;
   return isDiagramMime(sel.mimeType);
+});
+
+// Calendar documents: kind: calendar + json/yaml. v1 is read-only
+// (month + agenda); edits go through the Raw tab. Spec doc-kind-calendar.md.
+const isCalendarDocument = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel?.inline) return false;
+  if ((sel.kind ?? '').toLowerCase() !== 'calendar') return false;
+  return isCalendarMime(sel.mimeType);
 });
 
 // Markdown documents get a Preview / Raw tab pair. Preview goes
@@ -753,6 +773,25 @@ const parsedDiagram = computed<ParsedDiagram>(() => {
   }
 });
 
+interface ParsedCalendar {
+  doc: CalendarDocument | null;
+  error: string | null;
+}
+
+const parsedCalendar = computed<ParsedCalendar>(() => {
+  if (!isCalendarDocument.value) return { doc: null, error: null };
+  try {
+    const sel = docsState.selected.value;
+    const doc = parseCalendar(editInlineText.value, sel?.mimeType ?? '');
+    return { doc, error: null };
+  } catch (e) {
+    if (e instanceof CalendarCodecError) {
+      return { doc: null, error: e.message };
+    }
+    return { doc: null, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
 /**
  * Bridge from the typed list editor back to the raw body. Each
  * mutation in {@code <ListView>} emits a fresh {@link ListDocument};
@@ -942,7 +981,7 @@ function openCreateModal(prefill?: CreateModalPrefill): void {
  * they are domain tokens, not localisable noise.
  */
 const KIND_CREATE_OPTIONS = [
-  'list', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet', 'slides', 'diagram', 'data', 'records', 'schema',
+  'list', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet', 'slides', 'diagram', 'calendar', 'data', 'records', 'schema',
 ] as const;
 
 const kindCreateOptions = computed(() => [
@@ -1012,6 +1051,12 @@ function buildKindStub(kind: string, mime: string): string {
     if (isMd) return '---\nkind: diagram\n---\n\n```mermaid\nflowchart TD\n  A[Start] --> B{Decision}\n  B -->|yes| C[Do it]\n  B -->|no| D[Skip]\n```\n';
     if (isJson) return '{\n  "$meta": { "kind": "diagram" },\n  "source": "flowchart TD\\n  A[Start] --> B{Decision}\\n  B -->|yes| C[Do it]\\n  B -->|no| D[Skip]\\n"\n}\n';
     if (isYaml) return '$meta:\n  kind: diagram\nsource: |\n  flowchart TD\n    A[Start] --> B{Decision}\n    B -->|yes| C[Do it]\n    B -->|no| D[Skip]\n';
+  }
+  if (kind === 'calendar') {
+    // Markdown isn't supported for calendars (spec §3) — JSON / YAML
+    // only. MD falls through to the schema-less branch.
+    if (isJson) return '{\n  "$meta": { "kind": "calendar" },\n  "events": [\n    {\n      "id": "ev-1",\n      "title": "Sprint Planning",\n      "start": "2026-06-12T09:00",\n      "end": "2026-06-12T11:00",\n      "location": "Büro"\n    },\n    {\n      "id": "ev-2",\n      "title": "Urlaub",\n      "start": "2026-07-15",\n      "end": "2026-07-28",\n      "allDay": true,\n      "tags": ["private"]\n    }\n  ]\n}\n';
+    if (isYaml) return '$meta:\n  kind: calendar\nevents:\n  - id: ev-1\n    title: Sprint Planning\n    start: "2026-06-12T09:00"\n    end: "2026-06-12T11:00"\n    location: Büro\n  - id: ev-2\n    title: Urlaub\n    start: "2026-07-15"\n    end: "2026-07-28"\n    allDay: true\n    tags: [private]\n';
   }
   if (kind === 'sheet') {
     // Markdown not supported for sheets (spec §3.3) — falls through
@@ -1661,6 +1706,20 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
+              <div v-else-if="isCalendarDocument" class="content-tabs">
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'calendar' }"
+                  @click="contentTab = 'calendar'"
+                >{{ $t('documents.detail.tabCalendar') }}</button>
+                <button
+                  type="button"
+                  class="content-tab"
+                  :class="{ 'content-tab--active': contentTab === 'raw' }"
+                  @click="contentTab = 'raw'"
+                >{{ $t('documents.detail.tabRaw') }}</button>
+              </div>
               <div v-else-if="isTreeDocument" class="content-tabs">
                 <button
                   type="button"
@@ -1764,6 +1823,17 @@ const formatBytes = (n: number): string => {
                   <span>{{ $t('documents.detail.diagramParseError', { message: parsedDiagram.error }) }}</span>
                 </VAlert>
                 <DiagramView v-else-if="parsedDiagram.doc" :doc="parsedDiagram.doc" />
+              </template>
+
+              <template v-else-if="isCalendarDocument && contentTab === 'calendar'">
+                <VAlert v-if="parsedCalendar.error" variant="warning">
+                  <span>{{ $t('documents.detail.calendarParseError', { message: parsedCalendar.error }) }}</span>
+                </VAlert>
+                <CalendarView
+                  v-else-if="parsedCalendar.doc"
+                  mode="embedded"
+                  :doc="parsedCalendar.doc"
+                />
               </template>
 
               <template v-else-if="(isTreeDocument || isMindmapDocument) && contentTab === 'tree'">

@@ -24,6 +24,9 @@ const SlidesView = defineAsyncComponent(() => import('./SlidesView.vue'));
 // Mermaid (~700 KB minified gzipped) ships only when a diagram
 // document is opened — keep the documents bundle lean.
 const DiagramView = defineAsyncComponent(() => import('./DiagramView.vue'));
+// Calendar renderer ships month + agenda views; lazy so the
+// document bundle stays slim when no calendar is opened.
+const CalendarView = defineAsyncComponent(() => import('./CalendarView.vue'));
 // ONLYOFFICE / Collabora editor — only relevant for DOCX/XLSX
 // documents when a tenant has configured `office.*`. Pulled in
 // lazily so the documents bundle isn't paying for it.
@@ -36,6 +39,7 @@ import { isChartMime, parseChart, serializeChart, ChartCodecError, } from './cha
 import { isSheetMime, parseSheet, serializeSheet, SheetCodecError, } from './sheetCodec';
 import { isSlidesMime, parseSlides, SlidesCodecError, } from './slidesCodec';
 import { isDiagramMime, parseDiagram, DiagramCodecError, } from './diagramCodec';
+import { isCalendarMime, parseCalendar, CalendarCodecError, } from './calendarCodec';
 const PAGE_SIZE = 20;
 const { t } = useI18n();
 const projectsState = useTenantProjects();
@@ -331,6 +335,8 @@ function fillEditor() {
         contentTab.value = 'slides';
     else if (isDiagramDocument.value)
         contentTab.value = 'diagram';
+    else if (isCalendarDocument.value)
+        contentTab.value = 'calendar';
     // Markdown lands on Preview first — the user opened a doc to read
     // it, editing is one click away on the Raw tab.
     else if (isMarkdownDocument.value)
@@ -449,6 +455,16 @@ const isDiagramDocument = computed(() => {
     if ((sel.kind ?? '').toLowerCase() !== 'diagram')
         return false;
     return isDiagramMime(sel.mimeType);
+});
+// Calendar documents: kind: calendar + json/yaml. v1 is read-only
+// (month + agenda); edits go through the Raw tab. Spec doc-kind-calendar.md.
+const isCalendarDocument = computed(() => {
+    const sel = docsState.selected.value;
+    if (!sel?.inline)
+        return false;
+    if ((sel.kind ?? '').toLowerCase() !== 'calendar')
+        return false;
+    return isCalendarMime(sel.mimeType);
 });
 // Markdown documents get a Preview / Raw tab pair. Preview goes
 // through {@code MarkdownView} (same renderer as chat bubbles,
@@ -613,6 +629,21 @@ const parsedDiagram = computed(() => {
     }
     catch (e) {
         if (e instanceof DiagramCodecError) {
+            return { doc: null, error: e.message };
+        }
+        return { doc: null, error: e instanceof Error ? e.message : String(e) };
+    }
+});
+const parsedCalendar = computed(() => {
+    if (!isCalendarDocument.value)
+        return { doc: null, error: null };
+    try {
+        const sel = docsState.selected.value;
+        const doc = parseCalendar(editInlineText.value, sel?.mimeType ?? '');
+        return { doc, error: null };
+    }
+    catch (e) {
+        if (e instanceof CalendarCodecError) {
             return { doc: null, error: e.message };
         }
         return { doc: null, error: e instanceof Error ? e.message : String(e) };
@@ -790,7 +821,7 @@ function openCreateModal(prefill) {
  * they are domain tokens, not localisable noise.
  */
 const KIND_CREATE_OPTIONS = [
-    'list', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet', 'slides', 'diagram', 'data', 'records', 'schema',
+    'list', 'tree', 'text', 'mindmap', 'graph', 'chart', 'sheet', 'slides', 'diagram', 'calendar', 'data', 'records', 'schema',
 ];
 const kindCreateOptions = computed(() => [
     { value: '', label: t('documents.create.kindNone') },
@@ -880,6 +911,14 @@ function buildKindStub(kind, mime) {
             return '{\n  "$meta": { "kind": "diagram" },\n  "source": "flowchart TD\\n  A[Start] --> B{Decision}\\n  B -->|yes| C[Do it]\\n  B -->|no| D[Skip]\\n"\n}\n';
         if (isYaml)
             return '$meta:\n  kind: diagram\nsource: |\n  flowchart TD\n    A[Start] --> B{Decision}\n    B -->|yes| C[Do it]\n    B -->|no| D[Skip]\n';
+    }
+    if (kind === 'calendar') {
+        // Markdown isn't supported for calendars (spec §3) — JSON / YAML
+        // only. MD falls through to the schema-less branch.
+        if (isJson)
+            return '{\n  "$meta": { "kind": "calendar" },\n  "events": [\n    {\n      "id": "ev-1",\n      "title": "Sprint Planning",\n      "start": "2026-06-12T09:00",\n      "end": "2026-06-12T11:00",\n      "location": "Büro"\n    },\n    {\n      "id": "ev-2",\n      "title": "Urlaub",\n      "start": "2026-07-15",\n      "end": "2026-07-28",\n      "allDay": true,\n      "tags": ["private"]\n    }\n  ]\n}\n';
+        if (isYaml)
+            return '$meta:\n  kind: calendar\nevents:\n  - id: ev-1\n    title: Sprint Planning\n    start: "2026-06-12T09:00"\n    end: "2026-06-12T11:00"\n    location: Büro\n  - id: ev-2\n    title: Urlaub\n    start: "2026-07-15"\n    end: "2026-07-28"\n    allDay: true\n    tags: [private]\n';
     }
     if (kind === 'sheet') {
         // Markdown not supported for sheets (spec §3.3) — falls through
@@ -2111,6 +2150,81 @@ else if (__VLS_ctx.docsState.selected.value) {
             });
             (__VLS_ctx.$t('documents.detail.tabRaw'));
         }
+        else if (__VLS_ctx.isCalendarDocument) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "content-tabs" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!!(__VLS_ctx.isGraphDocument))
+                            return;
+                        if (!!(__VLS_ctx.isChartDocument))
+                            return;
+                        if (!!(__VLS_ctx.isRecordsDocument))
+                            return;
+                        if (!!(__VLS_ctx.isMindmapDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSlidesDocument))
+                            return;
+                        if (!!(__VLS_ctx.isDiagramDocument))
+                            return;
+                        if (!(__VLS_ctx.isCalendarDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'calendar';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'calendar' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabCalendar'));
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                            return;
+                        if (!!(!__VLS_ctx.selectedProjectId))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value))
+                            return;
+                        if (!(__VLS_ctx.docsState.selected.value.inline))
+                            return;
+                        if (!!(__VLS_ctx.isListDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSheetDocument))
+                            return;
+                        if (!!(__VLS_ctx.isGraphDocument))
+                            return;
+                        if (!!(__VLS_ctx.isChartDocument))
+                            return;
+                        if (!!(__VLS_ctx.isRecordsDocument))
+                            return;
+                        if (!!(__VLS_ctx.isMindmapDocument))
+                            return;
+                        if (!!(__VLS_ctx.isSlidesDocument))
+                            return;
+                        if (!!(__VLS_ctx.isDiagramDocument))
+                            return;
+                        if (!(__VLS_ctx.isCalendarDocument))
+                            return;
+                        __VLS_ctx.contentTab = 'raw';
+                    } },
+                type: "button",
+                ...{ class: "content-tab" },
+                ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'raw' }) },
+            });
+            (__VLS_ctx.$t('documents.detail.tabRaw'));
+        }
         else if (__VLS_ctx.isTreeDocument) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "content-tabs" },
@@ -2140,6 +2254,8 @@ else if (__VLS_ctx.docsState.selected.value) {
                         if (!!(__VLS_ctx.isSlidesDocument))
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
+                            return;
+                        if (!!(__VLS_ctx.isCalendarDocument))
                             return;
                         if (!(__VLS_ctx.isTreeDocument))
                             return;
@@ -2175,6 +2291,8 @@ else if (__VLS_ctx.docsState.selected.value) {
                         if (!!(__VLS_ctx.isSlidesDocument))
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
+                            return;
+                        if (!!(__VLS_ctx.isCalendarDocument))
                             return;
                         if (!(__VLS_ctx.isTreeDocument))
                             return;
@@ -2216,6 +2334,8 @@ else if (__VLS_ctx.docsState.selected.value) {
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
                             return;
+                        if (!!(__VLS_ctx.isCalendarDocument))
+                            return;
                         if (!!(__VLS_ctx.isTreeDocument))
                             return;
                         if (!(__VLS_ctx.isMarkdownDocument))
@@ -2252,6 +2372,8 @@ else if (__VLS_ctx.docsState.selected.value) {
                         if (!!(__VLS_ctx.isSlidesDocument))
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
+                            return;
+                        if (!!(__VLS_ctx.isCalendarDocument))
                             return;
                         if (!!(__VLS_ctx.isTreeDocument))
                             return;
@@ -2529,8 +2651,8 @@ else if (__VLS_ctx.docsState.selected.value) {
                 }, ...__VLS_functionalComponentArgsRest(__VLS_147));
             }
         }
-        else if ((__VLS_ctx.isTreeDocument || __VLS_ctx.isMindmapDocument) && __VLS_ctx.contentTab === 'tree') {
-            if (__VLS_ctx.parsedTree.error) {
+        else if (__VLS_ctx.isCalendarDocument && __VLS_ctx.contentTab === 'calendar') {
+            if (__VLS_ctx.parsedCalendar.error) {
                 const __VLS_150 = {}.VAlert;
                 /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
                 // @ts-ignore
@@ -2542,61 +2664,91 @@ else if (__VLS_ctx.docsState.selected.value) {
                 }, ...__VLS_functionalComponentArgsRest(__VLS_151));
                 __VLS_153.slots.default;
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                (__VLS_ctx.$t('documents.detail.treeParseError', { message: __VLS_ctx.parsedTree.error }));
+                (__VLS_ctx.$t('documents.detail.calendarParseError', { message: __VLS_ctx.parsedCalendar.error }));
                 var __VLS_153;
+            }
+            else if (__VLS_ctx.parsedCalendar.doc) {
+                const __VLS_154 = {}.CalendarView;
+                /** @type {[typeof __VLS_components.CalendarView, ]} */ ;
+                // @ts-ignore
+                const __VLS_155 = __VLS_asFunctionalComponent(__VLS_154, new __VLS_154({
+                    mode: "embedded",
+                    doc: (__VLS_ctx.parsedCalendar.doc),
+                }));
+                const __VLS_156 = __VLS_155({
+                    mode: "embedded",
+                    doc: (__VLS_ctx.parsedCalendar.doc),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_155));
+            }
+        }
+        else if ((__VLS_ctx.isTreeDocument || __VLS_ctx.isMindmapDocument) && __VLS_ctx.contentTab === 'tree') {
+            if (__VLS_ctx.parsedTree.error) {
+                const __VLS_158 = {}.VAlert;
+                /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+                // @ts-ignore
+                const __VLS_159 = __VLS_asFunctionalComponent(__VLS_158, new __VLS_158({
+                    variant: "warning",
+                }));
+                const __VLS_160 = __VLS_159({
+                    variant: "warning",
+                }, ...__VLS_functionalComponentArgsRest(__VLS_159));
+                __VLS_161.slots.default;
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+                (__VLS_ctx.$t('documents.detail.treeParseError', { message: __VLS_ctx.parsedTree.error }));
+                var __VLS_161;
             }
             else if (__VLS_ctx.parsedTree.doc) {
                 /** @type {[typeof TreeView, ]} */ ;
                 // @ts-ignore
-                const __VLS_154 = __VLS_asFunctionalComponent(TreeView, new TreeView({
+                const __VLS_162 = __VLS_asFunctionalComponent(TreeView, new TreeView({
                     ...{ 'onUpdate:doc': {} },
                     doc: (__VLS_ctx.parsedTree.doc),
                 }));
-                const __VLS_155 = __VLS_154({
+                const __VLS_163 = __VLS_162({
                     ...{ 'onUpdate:doc': {} },
                     doc: (__VLS_ctx.parsedTree.doc),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_154));
-                let __VLS_157;
-                let __VLS_158;
-                let __VLS_159;
-                const __VLS_160 = {
+                }, ...__VLS_functionalComponentArgsRest(__VLS_162));
+                let __VLS_165;
+                let __VLS_166;
+                let __VLS_167;
+                const __VLS_168 = {
                     'onUpdate:doc': (__VLS_ctx.onTreeChanged)
                 };
-                var __VLS_156;
+                var __VLS_164;
             }
         }
         else if (__VLS_ctx.isMarkdownDocument && __VLS_ctx.contentTab === 'preview') {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "markdown-preview-pane" },
             });
-            const __VLS_161 = {}.MarkdownView;
+            const __VLS_169 = {}.MarkdownView;
             /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
             // @ts-ignore
-            const __VLS_162 = __VLS_asFunctionalComponent(__VLS_161, new __VLS_161({
+            const __VLS_170 = __VLS_asFunctionalComponent(__VLS_169, new __VLS_169({
                 source: (__VLS_ctx.editInlineText),
             }));
-            const __VLS_163 = __VLS_162({
+            const __VLS_171 = __VLS_170({
                 source: (__VLS_ctx.editInlineText),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_162));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_170));
         }
         else {
-            const __VLS_165 = {}.CodeEditor;
+            const __VLS_173 = {}.CodeEditor;
             /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
             // @ts-ignore
-            const __VLS_166 = __VLS_asFunctionalComponent(__VLS_165, new __VLS_165({
+            const __VLS_174 = __VLS_asFunctionalComponent(__VLS_173, new __VLS_173({
                 modelValue: (__VLS_ctx.editInlineText),
                 label: (__VLS_ctx.$t('documents.detail.contentLabel')),
                 rows: (20),
                 disabled: (__VLS_ctx.saving),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
             }));
-            const __VLS_167 = __VLS_166({
+            const __VLS_175 = __VLS_174({
                 modelValue: (__VLS_ctx.editInlineText),
                 label: (__VLS_ctx.$t('documents.detail.contentLabel')),
                 rows: (20),
                 disabled: (__VLS_ctx.saving),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_166));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_174));
         }
     }
     else if (__VLS_ctx.isOfficeEditableDocument) {
@@ -2642,159 +2794,159 @@ else if (__VLS_ctx.docsState.selected.value) {
         });
         (__VLS_ctx.$t('documents.detail.tabOfficeEdit'));
         if (__VLS_ctx.contentTab === 'office') {
-            const __VLS_169 = {}.OfficeEditor;
+            const __VLS_177 = {}.OfficeEditor;
             /** @type {[typeof __VLS_components.OfficeEditor, ]} */ ;
             // @ts-ignore
-            const __VLS_170 = __VLS_asFunctionalComponent(__VLS_169, new __VLS_169({
+            const __VLS_178 = __VLS_asFunctionalComponent(__VLS_177, new __VLS_177({
                 documentId: (__VLS_ctx.docsState.selected.value.id),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
             }));
-            const __VLS_171 = __VLS_170({
+            const __VLS_179 = __VLS_178({
                 documentId: (__VLS_ctx.docsState.selected.value.id),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_170));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_178));
         }
         else {
             /** @type {[typeof DocumentPreview, ]} */ ;
             // @ts-ignore
-            const __VLS_173 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
+            const __VLS_181 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
                 key: (`office-preview-${__VLS_ctx.docsState.selected.value.id}-${__VLS_ctx.previewReloadCounter}`),
                 documentId: (__VLS_ctx.docsState.selected.value.id),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
                 inline: (false),
             }));
-            const __VLS_174 = __VLS_173({
+            const __VLS_182 = __VLS_181({
                 key: (`office-preview-${__VLS_ctx.docsState.selected.value.id}-${__VLS_ctx.previewReloadCounter}`),
                 documentId: (__VLS_ctx.docsState.selected.value.id),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
                 inline: (false),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_173));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_181));
         }
     }
     else {
         /** @type {[typeof DocumentPreview, ]} */ ;
         // @ts-ignore
-        const __VLS_176 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
+        const __VLS_184 = __VLS_asFunctionalComponent(DocumentPreview, new DocumentPreview({
             documentId: (__VLS_ctx.docsState.selected.value.id),
             mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
             inline: (false),
         }));
-        const __VLS_177 = __VLS_176({
+        const __VLS_185 = __VLS_184({
             documentId: (__VLS_ctx.docsState.selected.value.id),
             mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
             inline: (false),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_176));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_184));
     }
     {
         const { actions: __VLS_thisSlot } = __VLS_32.slots;
-        const __VLS_179 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_180 = __VLS_asFunctionalComponent(__VLS_179, new __VLS_179({
-            ...{ 'onClick': {} },
-            ...{ class: "mr-auto" },
-            variant: "danger",
-            disabled: (__VLS_ctx.saving || __VLS_ctx.deleting),
-        }));
-        const __VLS_181 = __VLS_180({
-            ...{ 'onClick': {} },
-            ...{ class: "mr-auto" },
-            variant: "danger",
-            disabled: (__VLS_ctx.saving || __VLS_ctx.deleting),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_180));
-        let __VLS_183;
-        let __VLS_184;
-        let __VLS_185;
-        const __VLS_186 = {
-            onClick: (__VLS_ctx.openDeleteModal)
-        };
-        __VLS_182.slots.default;
-        (__VLS_ctx.isSelectedInTrash
-            ? __VLS_ctx.$t('documents.detail.deletePermanent')
-            : __VLS_ctx.$t('documents.detail.delete'));
-        var __VLS_182;
         const __VLS_187 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
         const __VLS_188 = __VLS_asFunctionalComponent(__VLS_187, new __VLS_187({
-            variant: "ghost",
-            href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
-            download: (__VLS_ctx.docsState.selected.value.name || 'document'),
+            ...{ 'onClick': {} },
+            ...{ class: "mr-auto" },
+            variant: "danger",
+            disabled: (__VLS_ctx.saving || __VLS_ctx.deleting),
         }));
         const __VLS_189 = __VLS_188({
+            ...{ 'onClick': {} },
+            ...{ class: "mr-auto" },
+            variant: "danger",
+            disabled: (__VLS_ctx.saving || __VLS_ctx.deleting),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_188));
+        let __VLS_191;
+        let __VLS_192;
+        let __VLS_193;
+        const __VLS_194 = {
+            onClick: (__VLS_ctx.openDeleteModal)
+        };
+        __VLS_190.slots.default;
+        (__VLS_ctx.isSelectedInTrash
+            ? __VLS_ctx.$t('documents.detail.deletePermanent')
+            : __VLS_ctx.$t('documents.detail.delete'));
+        var __VLS_190;
+        const __VLS_195 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_196 = __VLS_asFunctionalComponent(__VLS_195, new __VLS_195({
             variant: "ghost",
             href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
             download: (__VLS_ctx.docsState.selected.value.name || 'document'),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_188));
-        __VLS_190.slots.default;
-        (__VLS_ctx.$t('documents.detail.download'));
-        var __VLS_190;
-        const __VLS_191 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_192 = __VLS_asFunctionalComponent(__VLS_191, new __VLS_191({
-            ...{ 'onClick': {} },
-            variant: "ghost",
-            disabled: (__VLS_ctx.saving),
         }));
-        const __VLS_193 = __VLS_192({
-            ...{ 'onClick': {} },
+        const __VLS_197 = __VLS_196({
             variant: "ghost",
-            disabled: (__VLS_ctx.saving),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_192));
-        let __VLS_195;
-        let __VLS_196;
-        let __VLS_197;
-        const __VLS_198 = {
-            onClick: (__VLS_ctx.backToList)
-        };
-        __VLS_194.slots.default;
-        (__VLS_ctx.$t('documents.detail.cancel'));
-        var __VLS_194;
+            href: (__VLS_ctx.downloadUrl(__VLS_ctx.docsState.selected.value)),
+            download: (__VLS_ctx.docsState.selected.value.name || 'document'),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_196));
+        __VLS_198.slots.default;
+        (__VLS_ctx.$t('documents.detail.download'));
+        var __VLS_198;
         const __VLS_199 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
         const __VLS_200 = __VLS_asFunctionalComponent(__VLS_199, new __VLS_199({
             ...{ 'onClick': {} },
-            variant: "secondary",
-            loading: (__VLS_ctx.saving),
+            variant: "ghost",
+            disabled: (__VLS_ctx.saving),
         }));
         const __VLS_201 = __VLS_200({
             ...{ 'onClick': {} },
-            variant: "secondary",
-            loading: (__VLS_ctx.saving),
+            variant: "ghost",
+            disabled: (__VLS_ctx.saving),
         }, ...__VLS_functionalComponentArgsRest(__VLS_200));
         let __VLS_203;
         let __VLS_204;
         let __VLS_205;
         const __VLS_206 = {
-            onClick: (__VLS_ctx.apply)
+            onClick: (__VLS_ctx.backToList)
         };
         __VLS_202.slots.default;
-        (__VLS_ctx.$t('documents.detail.apply'));
+        (__VLS_ctx.$t('documents.detail.cancel'));
         var __VLS_202;
         const __VLS_207 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
         const __VLS_208 = __VLS_asFunctionalComponent(__VLS_207, new __VLS_207({
             ...{ 'onClick': {} },
-            variant: "primary",
+            variant: "secondary",
             loading: (__VLS_ctx.saving),
         }));
         const __VLS_209 = __VLS_208({
             ...{ 'onClick': {} },
-            variant: "primary",
+            variant: "secondary",
             loading: (__VLS_ctx.saving),
         }, ...__VLS_functionalComponentArgsRest(__VLS_208));
         let __VLS_211;
         let __VLS_212;
         let __VLS_213;
         const __VLS_214 = {
-            onClick: (__VLS_ctx.save)
+            onClick: (__VLS_ctx.apply)
         };
         __VLS_210.slots.default;
-        (__VLS_ctx.$t('documents.detail.save'));
+        (__VLS_ctx.$t('documents.detail.apply'));
         var __VLS_210;
+        const __VLS_215 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+        // @ts-ignore
+        const __VLS_216 = __VLS_asFunctionalComponent(__VLS_215, new __VLS_215({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            loading: (__VLS_ctx.saving),
+        }));
+        const __VLS_217 = __VLS_216({
+            ...{ 'onClick': {} },
+            variant: "primary",
+            loading: (__VLS_ctx.saving),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_216));
+        let __VLS_219;
+        let __VLS_220;
+        let __VLS_221;
+        const __VLS_222 = {
+            onClick: (__VLS_ctx.save)
+        };
+        __VLS_218.slots.default;
+        (__VLS_ctx.$t('documents.detail.save'));
+        var __VLS_218;
     }
     var __VLS_32;
 }
@@ -2852,23 +3004,23 @@ else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "w-40 shrink-0" },
         });
-        const __VLS_215 = {}.VSelect;
+        const __VLS_223 = {}.VSelect;
         /** @type {[typeof __VLS_components.VSelect, ]} */ ;
         // @ts-ignore
-        const __VLS_216 = __VLS_asFunctionalComponent(__VLS_215, new __VLS_215({
+        const __VLS_224 = __VLS_asFunctionalComponent(__VLS_223, new __VLS_223({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.docsState.kindFilter.value),
             options: (__VLS_ctx.kindOptions),
         }));
-        const __VLS_217 = __VLS_216({
+        const __VLS_225 = __VLS_224({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.docsState.kindFilter.value),
             options: (__VLS_ctx.kindOptions),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_216));
-        let __VLS_219;
-        let __VLS_220;
-        let __VLS_221;
-        const __VLS_222 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_224));
+        let __VLS_227;
+        let __VLS_228;
+        let __VLS_229;
+        const __VLS_230 = {
             'onUpdate:modelValue': (...[$event]) => {
                 if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
                     return;
@@ -2881,7 +3033,7 @@ else {
                 __VLS_ctx.applyKindFilter($event ?? '');
             }
         };
-        var __VLS_218;
+        var __VLS_226;
     }
     if (__VLS_ctx.docsState.pathPrefix.value || __VLS_ctx.docsState.kindFilter.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
@@ -2903,23 +3055,23 @@ else {
         });
         (__VLS_ctx.$t('documents.clearFilter'));
     }
-    const __VLS_223 = {}.VButton;
+    const __VLS_231 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_224 = __VLS_asFunctionalComponent(__VLS_223, new __VLS_223({
+    const __VLS_232 = __VLS_asFunctionalComponent(__VLS_231, new __VLS_231({
         ...{ 'onClick': {} },
         variant: "primary",
         size: "sm",
     }));
-    const __VLS_225 = __VLS_224({
+    const __VLS_233 = __VLS_232({
         ...{ 'onClick': {} },
         variant: "primary",
         size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_224));
-    let __VLS_227;
-    let __VLS_228;
-    let __VLS_229;
-    const __VLS_230 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_232));
+    let __VLS_235;
+    let __VLS_236;
+    let __VLS_237;
+    const __VLS_238 = {
         onClick: (...[$event]) => {
             if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
                 return;
@@ -2930,56 +3082,56 @@ else {
             __VLS_ctx.openCreateModal();
         }
     };
-    __VLS_226.slots.default;
+    __VLS_234.slots.default;
     (__VLS_ctx.$t('documents.newDocument'));
-    var __VLS_226;
+    var __VLS_234;
     if (__VLS_ctx.docsState.error.value) {
-        const __VLS_231 = {}.VAlert;
+        const __VLS_239 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_232 = __VLS_asFunctionalComponent(__VLS_231, new __VLS_231({
+        const __VLS_240 = __VLS_asFunctionalComponent(__VLS_239, new __VLS_239({
             variant: "error",
             ...{ class: "mb-4" },
         }));
-        const __VLS_233 = __VLS_232({
+        const __VLS_241 = __VLS_240({
             variant: "error",
             ...{ class: "mb-4" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_232));
-        __VLS_234.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_240));
+        __VLS_242.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
         (__VLS_ctx.docsState.error.value);
-        var __VLS_234;
+        var __VLS_242;
     }
     if (!__VLS_ctx.docsState.loading.value && __VLS_ctx.docsState.items.value.length === 0) {
-        const __VLS_235 = {}.VEmptyState;
+        const __VLS_243 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_236 = __VLS_asFunctionalComponent(__VLS_235, new __VLS_235({
+        const __VLS_244 = __VLS_asFunctionalComponent(__VLS_243, new __VLS_243({
             headline: (__VLS_ctx.$t('documents.noDocumentsHeadline')),
             body: (__VLS_ctx.$t('documents.noDocumentsBody')),
         }));
-        const __VLS_237 = __VLS_236({
+        const __VLS_245 = __VLS_244({
             headline: (__VLS_ctx.$t('documents.noDocumentsHeadline')),
             body: (__VLS_ctx.$t('documents.noDocumentsBody')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_236));
-        __VLS_238.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_244));
+        __VLS_246.slots.default;
         {
-            const { action: __VLS_thisSlot } = __VLS_238.slots;
-            const __VLS_239 = {}.VButton;
+            const { action: __VLS_thisSlot } = __VLS_246.slots;
+            const __VLS_247 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
-            const __VLS_240 = __VLS_asFunctionalComponent(__VLS_239, new __VLS_239({
+            const __VLS_248 = __VLS_asFunctionalComponent(__VLS_247, new __VLS_247({
                 ...{ 'onClick': {} },
                 variant: "primary",
             }));
-            const __VLS_241 = __VLS_240({
+            const __VLS_249 = __VLS_248({
                 ...{ 'onClick': {} },
                 variant: "primary",
-            }, ...__VLS_functionalComponentArgsRest(__VLS_240));
-            let __VLS_243;
-            let __VLS_244;
-            let __VLS_245;
-            const __VLS_246 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_248));
+            let __VLS_251;
+            let __VLS_252;
+            let __VLS_253;
+            const __VLS_254 = {
                 onClick: (...[$event]) => {
                     if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
                         return;
@@ -2992,51 +3144,51 @@ else {
                     __VLS_ctx.openCreateModal();
                 }
             };
-            __VLS_242.slots.default;
+            __VLS_250.slots.default;
             (__VLS_ctx.$t('documents.createFirstDocument'));
-            var __VLS_242;
+            var __VLS_250;
         }
-        var __VLS_238;
+        var __VLS_246;
     }
     else {
-        const __VLS_247 = {}.VDataList;
+        const __VLS_255 = {}.VDataList;
         /** @type {[typeof __VLS_components.VDataList, typeof __VLS_components.VDataList, ]} */ ;
         // @ts-ignore
-        const __VLS_248 = __VLS_asFunctionalComponent(__VLS_247, new __VLS_247({
+        const __VLS_256 = __VLS_asFunctionalComponent(__VLS_255, new __VLS_255({
             ...{ 'onSelect': {} },
             items: (__VLS_ctx.docsState.items.value),
             selectable: true,
         }));
-        const __VLS_249 = __VLS_248({
+        const __VLS_257 = __VLS_256({
             ...{ 'onSelect': {} },
             items: (__VLS_ctx.docsState.items.value),
             selectable: true,
-        }, ...__VLS_functionalComponentArgsRest(__VLS_248));
-        let __VLS_251;
-        let __VLS_252;
-        let __VLS_253;
-        const __VLS_254 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_256));
+        let __VLS_259;
+        let __VLS_260;
+        let __VLS_261;
+        const __VLS_262 = {
             onSelect: (__VLS_ctx.openDocument)
         };
-        __VLS_250.slots.default;
+        __VLS_258.slots.default;
         {
-            const { default: __VLS_thisSlot } = __VLS_250.slots;
+            const { default: __VLS_thisSlot } = __VLS_258.slots;
             const [{ item }] = __VLS_getSlotParams(__VLS_thisSlot);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "flex items-center gap-3" },
             });
             /** @type {[typeof DocumentIcon, ]} */ ;
             // @ts-ignore
-            const __VLS_255 = __VLS_asFunctionalComponent(DocumentIcon, new DocumentIcon({
+            const __VLS_263 = __VLS_asFunctionalComponent(DocumentIcon, new DocumentIcon({
                 path: (item.path),
                 mimeType: (item.mimeType),
                 kind: (item.kind),
             }));
-            const __VLS_256 = __VLS_255({
+            const __VLS_264 = __VLS_263({
                 path: (item.path),
                 mimeType: (item.mimeType),
                 kind: (item.kind),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_255));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_263));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "min-w-0 flex-1" },
             });
@@ -3082,54 +3234,54 @@ else {
                 (__VLS_ctx.$t('documents.storedNote'));
             }
         }
-        var __VLS_250;
+        var __VLS_258;
     }
     if (__VLS_ctx.docsState.totalCount.value > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "mt-4" },
         });
-        const __VLS_258 = {}.VPagination;
+        const __VLS_266 = {}.VPagination;
         /** @type {[typeof __VLS_components.VPagination, ]} */ ;
         // @ts-ignore
-        const __VLS_259 = __VLS_asFunctionalComponent(__VLS_258, new __VLS_258({
+        const __VLS_267 = __VLS_asFunctionalComponent(__VLS_266, new __VLS_266({
             ...{ 'onUpdate:page': {} },
             page: (__VLS_ctx.docsState.page.value),
             pageSize: (__VLS_ctx.docsState.pageSize.value),
             totalCount: (__VLS_ctx.docsState.totalCount.value),
         }));
-        const __VLS_260 = __VLS_259({
+        const __VLS_268 = __VLS_267({
             ...{ 'onUpdate:page': {} },
             page: (__VLS_ctx.docsState.page.value),
             pageSize: (__VLS_ctx.docsState.pageSize.value),
             totalCount: (__VLS_ctx.docsState.totalCount.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_259));
-        let __VLS_262;
-        let __VLS_263;
-        let __VLS_264;
-        const __VLS_265 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_267));
+        let __VLS_270;
+        let __VLS_271;
+        let __VLS_272;
+        const __VLS_273 = {
             'onUpdate:page': (__VLS_ctx.changePage)
         };
-        var __VLS_261;
+        var __VLS_269;
     }
 }
-const __VLS_266 = {}.VModal;
+const __VLS_274 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_267 = __VLS_asFunctionalComponent(__VLS_266, new __VLS_266({
+const __VLS_275 = __VLS_asFunctionalComponent(__VLS_274, new __VLS_274({
     modelValue: (__VLS_ctx.showDeleteModal),
     title: (__VLS_ctx.isSelectedInTrash
         ? __VLS_ctx.$t('documents.delete.titlePermanent')
         : __VLS_ctx.$t('documents.delete.title')),
     closeOnBackdrop: (!__VLS_ctx.deleting),
 }));
-const __VLS_268 = __VLS_267({
+const __VLS_276 = __VLS_275({
     modelValue: (__VLS_ctx.showDeleteModal),
     title: (__VLS_ctx.isSelectedInTrash
         ? __VLS_ctx.$t('documents.delete.titlePermanent')
         : __VLS_ctx.$t('documents.delete.title')),
     closeOnBackdrop: (!__VLS_ctx.deleting),
-}, ...__VLS_functionalComponentArgsRest(__VLS_267));
-__VLS_269.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_275));
+__VLS_277.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({});
 (__VLS_ctx.isSelectedInTrash
     ? __VLS_ctx.$t('documents.delete.bodyPermanent', { path: __VLS_ctx.docsState.selected.value?.path ?? '' })
@@ -3138,112 +3290,86 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)(
         bin: __VLS_ctx.TRASH_PREFIX,
     }));
 {
-    const { actions: __VLS_thisSlot } = __VLS_269.slots;
-    const __VLS_270 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_271 = __VLS_asFunctionalComponent(__VLS_270, new __VLS_270({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        disabled: (__VLS_ctx.deleting),
-    }));
-    const __VLS_272 = __VLS_271({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        disabled: (__VLS_ctx.deleting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_271));
-    let __VLS_274;
-    let __VLS_275;
-    let __VLS_276;
-    const __VLS_277 = {
-        onClick: (...[$event]) => {
-            __VLS_ctx.showDeleteModal = false;
-        }
-    };
-    __VLS_273.slots.default;
-    (__VLS_ctx.$t('documents.delete.cancel'));
-    var __VLS_273;
+    const { actions: __VLS_thisSlot } = __VLS_277.slots;
     const __VLS_278 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
     const __VLS_279 = __VLS_asFunctionalComponent(__VLS_278, new __VLS_278({
         ...{ 'onClick': {} },
-        variant: "danger",
-        loading: (__VLS_ctx.deleting),
+        variant: "ghost",
+        disabled: (__VLS_ctx.deleting),
     }));
     const __VLS_280 = __VLS_279({
         ...{ 'onClick': {} },
-        variant: "danger",
-        loading: (__VLS_ctx.deleting),
+        variant: "ghost",
+        disabled: (__VLS_ctx.deleting),
     }, ...__VLS_functionalComponentArgsRest(__VLS_279));
     let __VLS_282;
     let __VLS_283;
     let __VLS_284;
     const __VLS_285 = {
-        onClick: (__VLS_ctx.confirmDelete)
+        onClick: (...[$event]) => {
+            __VLS_ctx.showDeleteModal = false;
+        }
     };
     __VLS_281.slots.default;
+    (__VLS_ctx.$t('documents.delete.cancel'));
+    var __VLS_281;
+    const __VLS_286 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_287 = __VLS_asFunctionalComponent(__VLS_286, new __VLS_286({
+        ...{ 'onClick': {} },
+        variant: "danger",
+        loading: (__VLS_ctx.deleting),
+    }));
+    const __VLS_288 = __VLS_287({
+        ...{ 'onClick': {} },
+        variant: "danger",
+        loading: (__VLS_ctx.deleting),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_287));
+    let __VLS_290;
+    let __VLS_291;
+    let __VLS_292;
+    const __VLS_293 = {
+        onClick: (__VLS_ctx.confirmDelete)
+    };
+    __VLS_289.slots.default;
     (__VLS_ctx.isSelectedInTrash
         ? __VLS_ctx.$t('documents.delete.confirmPermanent')
         : __VLS_ctx.$t('documents.delete.confirm'));
-    var __VLS_281;
+    var __VLS_289;
 }
-var __VLS_269;
-const __VLS_286 = {}.VModal;
+var __VLS_277;
+const __VLS_294 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_287 = __VLS_asFunctionalComponent(__VLS_286, new __VLS_286({
+const __VLS_295 = __VLS_asFunctionalComponent(__VLS_294, new __VLS_294({
     modelValue: (__VLS_ctx.showCreateModal),
     title: (__VLS_ctx.$t('documents.create.newDocument')),
     closeOnBackdrop: (false),
 }));
-const __VLS_288 = __VLS_287({
+const __VLS_296 = __VLS_295({
     modelValue: (__VLS_ctx.showCreateModal),
     title: (__VLS_ctx.$t('documents.create.newDocument')),
     closeOnBackdrop: (false),
-}, ...__VLS_functionalComponentArgsRest(__VLS_287));
-__VLS_289.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_295));
+__VLS_297.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex gap-2 mb-4" },
 });
-const __VLS_290 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_291 = __VLS_asFunctionalComponent(__VLS_290, new __VLS_290({
-    ...{ 'onClick': {} },
-    variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
-    size: "sm",
-    disabled: (__VLS_ctx.creating),
-}));
-const __VLS_292 = __VLS_291({
-    ...{ 'onClick': {} },
-    variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
-    size: "sm",
-    disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_291));
-let __VLS_294;
-let __VLS_295;
-let __VLS_296;
-const __VLS_297 = {
-    onClick: (...[$event]) => {
-        __VLS_ctx.setCreateMode('inline');
-    }
-};
-__VLS_293.slots.default;
-(__VLS_ctx.$t('documents.create.typeContent'));
-var __VLS_293;
 const __VLS_298 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
 const __VLS_299 = __VLS_asFunctionalComponent(__VLS_298, new __VLS_298({
     ...{ 'onClick': {} },
-    variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
+    variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
 }));
 const __VLS_300 = __VLS_299({
     ...{ 'onClick': {} },
-    variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
+    variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
 }, ...__VLS_functionalComponentArgsRest(__VLS_299));
@@ -3252,193 +3378,219 @@ let __VLS_303;
 let __VLS_304;
 const __VLS_305 = {
     onClick: (...[$event]) => {
-        __VLS_ctx.setCreateMode('upload');
+        __VLS_ctx.setCreateMode('inline');
     }
 };
 __VLS_301.slots.default;
-(__VLS_ctx.$t('documents.create.uploadFile'));
+(__VLS_ctx.$t('documents.create.typeContent'));
 var __VLS_301;
+const __VLS_306 = {}.VButton;
+/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+// @ts-ignore
+const __VLS_307 = __VLS_asFunctionalComponent(__VLS_306, new __VLS_306({
+    ...{ 'onClick': {} },
+    variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
+    size: "sm",
+    disabled: (__VLS_ctx.creating),
+}));
+const __VLS_308 = __VLS_307({
+    ...{ 'onClick': {} },
+    variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
+    size: "sm",
+    disabled: (__VLS_ctx.creating),
+}, ...__VLS_functionalComponentArgsRest(__VLS_307));
+let __VLS_310;
+let __VLS_311;
+let __VLS_312;
+const __VLS_313 = {
+    onClick: (...[$event]) => {
+        __VLS_ctx.setCreateMode('upload');
+    }
+};
+__VLS_309.slots.default;
+(__VLS_ctx.$t('documents.create.uploadFile'));
+var __VLS_309;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.submitCreate) },
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.createError) {
-    const __VLS_306 = {}.VAlert;
+    const __VLS_314 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_307 = __VLS_asFunctionalComponent(__VLS_306, new __VLS_306({
-        variant: "error",
-    }));
-    const __VLS_308 = __VLS_307({
-        variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_307));
-    __VLS_309.slots.default;
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-    (__VLS_ctx.createError);
-    var __VLS_309;
-}
-if (__VLS_ctx.createMode === 'inline') {
-    const __VLS_310 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_311 = __VLS_asFunctionalComponent(__VLS_310, new __VLS_310({
-        modelValue: (__VLS_ctx.createPath),
-        label: (__VLS_ctx.$t('documents.create.pathLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
-        required: true,
-        disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.pathHelp')),
-    }));
-    const __VLS_312 = __VLS_311({
-        modelValue: (__VLS_ctx.createPath),
-        label: (__VLS_ctx.$t('documents.create.pathLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
-        required: true,
-        disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.pathHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_311));
-    const __VLS_314 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
     const __VLS_315 = __VLS_asFunctionalComponent(__VLS_314, new __VLS_314({
-        modelValue: (__VLS_ctx.createTitle),
-        label: (__VLS_ctx.$t('documents.create.titleLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
-        disabled: (__VLS_ctx.creating),
+        variant: "error",
     }));
     const __VLS_316 = __VLS_315({
-        modelValue: (__VLS_ctx.createTitle),
-        label: (__VLS_ctx.$t('documents.create.titleLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
-        disabled: (__VLS_ctx.creating),
+        variant: "error",
     }, ...__VLS_functionalComponentArgsRest(__VLS_315));
+    __VLS_317.slots.default;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    (__VLS_ctx.createError);
+    var __VLS_317;
+}
+if (__VLS_ctx.createMode === 'inline') {
     const __VLS_318 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
     const __VLS_319 = __VLS_asFunctionalComponent(__VLS_318, new __VLS_318({
-        modelValue: (__VLS_ctx.createTagsRaw),
-        label: (__VLS_ctx.$t('documents.create.tagsLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
+        modelValue: (__VLS_ctx.createPath),
+        label: (__VLS_ctx.$t('documents.create.pathLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
+        required: true,
         disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.tagsHelp')),
+        help: (__VLS_ctx.$t('documents.create.pathHelp')),
     }));
     const __VLS_320 = __VLS_319({
-        modelValue: (__VLS_ctx.createTagsRaw),
-        label: (__VLS_ctx.$t('documents.create.tagsLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
+        modelValue: (__VLS_ctx.createPath),
+        label: (__VLS_ctx.$t('documents.create.pathLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
+        required: true,
         disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.tagsHelp')),
+        help: (__VLS_ctx.$t('documents.create.pathHelp')),
     }, ...__VLS_functionalComponentArgsRest(__VLS_319));
-    const __VLS_322 = {}.VSelect;
-    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+    const __VLS_322 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
     const __VLS_323 = __VLS_asFunctionalComponent(__VLS_322, new __VLS_322({
-        modelValue: (__VLS_ctx.createMime),
-        options: (__VLS_ctx.createMimeOptions),
-        label: (__VLS_ctx.$t('documents.create.typeLabel')),
+        modelValue: (__VLS_ctx.createTitle),
+        label: (__VLS_ctx.$t('documents.create.titleLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
         disabled: (__VLS_ctx.creating),
     }));
     const __VLS_324 = __VLS_323({
+        modelValue: (__VLS_ctx.createTitle),
+        label: (__VLS_ctx.$t('documents.create.titleLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
+        disabled: (__VLS_ctx.creating),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_323));
+    const __VLS_326 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+    // @ts-ignore
+    const __VLS_327 = __VLS_asFunctionalComponent(__VLS_326, new __VLS_326({
+        modelValue: (__VLS_ctx.createTagsRaw),
+        label: (__VLS_ctx.$t('documents.create.tagsLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
+        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.$t('documents.create.tagsHelp')),
+    }));
+    const __VLS_328 = __VLS_327({
+        modelValue: (__VLS_ctx.createTagsRaw),
+        label: (__VLS_ctx.$t('documents.create.tagsLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
+        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.$t('documents.create.tagsHelp')),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_327));
+    const __VLS_330 = {}.VSelect;
+    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+    // @ts-ignore
+    const __VLS_331 = __VLS_asFunctionalComponent(__VLS_330, new __VLS_330({
         modelValue: (__VLS_ctx.createMime),
         options: (__VLS_ctx.createMimeOptions),
         label: (__VLS_ctx.$t('documents.create.typeLabel')),
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_323));
-    const __VLS_326 = {}.VSelect;
-    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
-    // @ts-ignore
-    const __VLS_327 = __VLS_asFunctionalComponent(__VLS_326, new __VLS_326({
-        modelValue: (__VLS_ctx.createKind),
-        options: (__VLS_ctx.kindCreateOptions),
-        label: (__VLS_ctx.$t('documents.create.kindLabel')),
-        help: (__VLS_ctx.$t('documents.create.kindHelp')),
-        disabled: (__VLS_ctx.creating),
-    }));
-    const __VLS_328 = __VLS_327({
-        modelValue: (__VLS_ctx.createKind),
-        options: (__VLS_ctx.kindCreateOptions),
-        label: (__VLS_ctx.$t('documents.create.kindLabel')),
-        help: (__VLS_ctx.$t('documents.create.kindHelp')),
-        disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_327));
-    const __VLS_330 = {}.CodeEditor;
-    /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
-    // @ts-ignore
-    const __VLS_331 = __VLS_asFunctionalComponent(__VLS_330, new __VLS_330({
-        modelValue: (__VLS_ctx.createContent),
-        label: (__VLS_ctx.$t('documents.create.contentLabel')),
-        rows: (14),
-        disabled: (__VLS_ctx.creating),
-        mimeType: (__VLS_ctx.createMime),
     }));
     const __VLS_332 = __VLS_331({
+        modelValue: (__VLS_ctx.createMime),
+        options: (__VLS_ctx.createMimeOptions),
+        label: (__VLS_ctx.$t('documents.create.typeLabel')),
+        disabled: (__VLS_ctx.creating),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_331));
+    const __VLS_334 = {}.VSelect;
+    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+    // @ts-ignore
+    const __VLS_335 = __VLS_asFunctionalComponent(__VLS_334, new __VLS_334({
+        modelValue: (__VLS_ctx.createKind),
+        options: (__VLS_ctx.kindCreateOptions),
+        label: (__VLS_ctx.$t('documents.create.kindLabel')),
+        help: (__VLS_ctx.$t('documents.create.kindHelp')),
+        disabled: (__VLS_ctx.creating),
+    }));
+    const __VLS_336 = __VLS_335({
+        modelValue: (__VLS_ctx.createKind),
+        options: (__VLS_ctx.kindCreateOptions),
+        label: (__VLS_ctx.$t('documents.create.kindLabel')),
+        help: (__VLS_ctx.$t('documents.create.kindHelp')),
+        disabled: (__VLS_ctx.creating),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_335));
+    const __VLS_338 = {}.CodeEditor;
+    /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
+    // @ts-ignore
+    const __VLS_339 = __VLS_asFunctionalComponent(__VLS_338, new __VLS_338({
         modelValue: (__VLS_ctx.createContent),
         label: (__VLS_ctx.$t('documents.create.contentLabel')),
         rows: (14),
         disabled: (__VLS_ctx.creating),
         mimeType: (__VLS_ctx.createMime),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_331));
+    }));
+    const __VLS_340 = __VLS_339({
+        modelValue: (__VLS_ctx.createContent),
+        label: (__VLS_ctx.$t('documents.create.contentLabel')),
+        rows: (14),
+        disabled: (__VLS_ctx.creating),
+        mimeType: (__VLS_ctx.createMime),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_339));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
         ...{ class: "text-xs opacity-70 -mt-1" },
     });
     (__VLS_ctx.$t('documents.create.inlineSizeNote'));
 }
 else {
-    const __VLS_334 = {}.VFileInput;
+    const __VLS_342 = {}.VFileInput;
     /** @type {[typeof __VLS_components.VFileInput, ]} */ ;
     // @ts-ignore
-    const __VLS_335 = __VLS_asFunctionalComponent(__VLS_334, new __VLS_334({
+    const __VLS_343 = __VLS_asFunctionalComponent(__VLS_342, new __VLS_342({
         modelValue: (__VLS_ctx.createFiles),
         label: (__VLS_ctx.$t('documents.create.filesLabel')),
         multiple: true,
         disabled: (__VLS_ctx.creating),
         help: (__VLS_ctx.$t('documents.create.filesHelp')),
     }));
-    const __VLS_336 = __VLS_335({
+    const __VLS_344 = __VLS_343({
         modelValue: (__VLS_ctx.createFiles),
         label: (__VLS_ctx.$t('documents.create.filesLabel')),
         multiple: true,
         disabled: (__VLS_ctx.creating),
         help: (__VLS_ctx.$t('documents.create.filesHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_335));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_343));
     if (__VLS_ctx.createFiles.length <= 1) {
-        const __VLS_338 = {}.VInput;
+        const __VLS_346 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_339 = __VLS_asFunctionalComponent(__VLS_338, new __VLS_338({
+        const __VLS_347 = __VLS_asFunctionalComponent(__VLS_346, new __VLS_346({
             modelValue: (__VLS_ctx.createPath),
             label: (__VLS_ctx.$t('documents.create.pathLabel')),
             placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholderUpload')),
             disabled: (__VLS_ctx.creating),
             help: (__VLS_ctx.$t('documents.create.pathHelpUpload')),
         }));
-        const __VLS_340 = __VLS_339({
+        const __VLS_348 = __VLS_347({
             modelValue: (__VLS_ctx.createPath),
             label: (__VLS_ctx.$t('documents.create.pathLabel')),
             placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholderUpload')),
             disabled: (__VLS_ctx.creating),
             help: (__VLS_ctx.$t('documents.create.pathHelpUpload')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_339));
-        const __VLS_342 = {}.VInput;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_347));
+        const __VLS_350 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_343 = __VLS_asFunctionalComponent(__VLS_342, new __VLS_342({
+        const __VLS_351 = __VLS_asFunctionalComponent(__VLS_350, new __VLS_350({
             modelValue: (__VLS_ctx.createTitle),
             label: (__VLS_ctx.$t('documents.create.titleLabel')),
             placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
             disabled: (__VLS_ctx.creating),
         }));
-        const __VLS_344 = __VLS_343({
+        const __VLS_352 = __VLS_351({
             modelValue: (__VLS_ctx.createTitle),
             label: (__VLS_ctx.$t('documents.create.titleLabel')),
             placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
             disabled: (__VLS_ctx.creating),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_343));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_351));
     }
-    const __VLS_346 = {}.VInput;
+    const __VLS_354 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_347 = __VLS_asFunctionalComponent(__VLS_346, new __VLS_346({
+    const __VLS_355 = __VLS_asFunctionalComponent(__VLS_354, new __VLS_354({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: (__VLS_ctx.$t('documents.create.tagsLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
@@ -3447,7 +3599,7 @@ else {
             ? __VLS_ctx.$t('documents.create.tagsHelpMulti')
             : __VLS_ctx.$t('documents.create.tagsHelp')),
     }));
-    const __VLS_348 = __VLS_347({
+    const __VLS_356 = __VLS_355({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: (__VLS_ctx.$t('documents.create.tagsLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
@@ -3455,7 +3607,7 @@ else {
         help: (__VLS_ctx.createFiles.length > 1
             ? __VLS_ctx.$t('documents.create.tagsHelpMulti')
             : __VLS_ctx.$t('documents.create.tagsHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_347));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_355));
     if (__VLS_ctx.uploadProgress.length > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
             ...{ class: "flex flex-col gap-1.5 text-sm border border-base-300 rounded-md p-3 bg-base-200" },
@@ -3492,57 +3644,57 @@ else {
     }
 }
 {
-    const { actions: __VLS_thisSlot } = __VLS_289.slots;
-    const __VLS_350 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_351 = __VLS_asFunctionalComponent(__VLS_350, new __VLS_350({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        disabled: (__VLS_ctx.creating),
-    }));
-    const __VLS_352 = __VLS_351({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_351));
-    let __VLS_354;
-    let __VLS_355;
-    let __VLS_356;
-    const __VLS_357 = {
-        onClick: (...[$event]) => {
-            __VLS_ctx.showCreateModal = false;
-        }
-    };
-    __VLS_353.slots.default;
-    (__VLS_ctx.$t('documents.create.cancel'));
-    var __VLS_353;
+    const { actions: __VLS_thisSlot } = __VLS_297.slots;
     const __VLS_358 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
     const __VLS_359 = __VLS_asFunctionalComponent(__VLS_358, new __VLS_358({
         ...{ 'onClick': {} },
-        variant: "primary",
-        loading: (__VLS_ctx.creating),
+        variant: "ghost",
+        disabled: (__VLS_ctx.creating),
     }));
     const __VLS_360 = __VLS_359({
         ...{ 'onClick': {} },
-        variant: "primary",
-        loading: (__VLS_ctx.creating),
+        variant: "ghost",
+        disabled: (__VLS_ctx.creating),
     }, ...__VLS_functionalComponentArgsRest(__VLS_359));
     let __VLS_362;
     let __VLS_363;
     let __VLS_364;
     const __VLS_365 = {
-        onClick: (__VLS_ctx.submitCreate)
+        onClick: (...[$event]) => {
+            __VLS_ctx.showCreateModal = false;
+        }
     };
     __VLS_361.slots.default;
+    (__VLS_ctx.$t('documents.create.cancel'));
+    var __VLS_361;
+    const __VLS_366 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_367 = __VLS_asFunctionalComponent(__VLS_366, new __VLS_366({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        loading: (__VLS_ctx.creating),
+    }));
+    const __VLS_368 = __VLS_367({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        loading: (__VLS_ctx.creating),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_367));
+    let __VLS_370;
+    let __VLS_371;
+    let __VLS_372;
+    const __VLS_373 = {
+        onClick: (__VLS_ctx.submitCreate)
+    };
+    __VLS_369.slots.default;
     (__VLS_ctx.createMode === 'upload'
         ? __VLS_ctx.$t('documents.create.submitUpload')
         : __VLS_ctx.$t('documents.create.submitCreate'));
-    var __VLS_361;
+    var __VLS_369;
 }
-var __VLS_289;
+var __VLS_297;
 if (__VLS_ctx.helpResource) {
     {
         const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
@@ -3572,15 +3724,15 @@ if (__VLS_ctx.helpResource) {
             (__VLS_ctx.$t('documents.help.empty'));
         }
         else {
-            const __VLS_366 = {}.MarkdownView;
+            const __VLS_374 = {}.MarkdownView;
             /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
             // @ts-ignore
-            const __VLS_367 = __VLS_asFunctionalComponent(__VLS_366, new __VLS_366({
+            const __VLS_375 = __VLS_asFunctionalComponent(__VLS_374, new __VLS_374({
                 source: (__VLS_ctx.help.content.value),
             }));
-            const __VLS_368 = __VLS_367({
+            const __VLS_376 = __VLS_375({
                 source: (__VLS_ctx.help.content.value),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_367));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_375));
         }
     }
 }
@@ -3750,6 +3902,11 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tabs']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['content-tab--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['markdown-preview-pane']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tabs']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
@@ -3881,6 +4038,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             SheetView: SheetView,
             SlidesView: SlidesView,
             DiagramView: DiagramView,
+            CalendarView: CalendarView,
             OfficeEditor: OfficeEditor,
             projectsState: projectsState,
             docsState: docsState,
@@ -3930,6 +4088,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             isSheetDocument: isSheetDocument,
             isSlidesDocument: isSlidesDocument,
             isDiagramDocument: isDiagramDocument,
+            isCalendarDocument: isCalendarDocument,
             isOfficeEditableDocument: isOfficeEditableDocument,
             isMarkdownDocument: isMarkdownDocument,
             TRASH_PREFIX: TRASH_PREFIX,
@@ -3942,6 +4101,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             parsedSheet: parsedSheet,
             parsedSlides: parsedSlides,
             parsedDiagram: parsedDiagram,
+            parsedCalendar: parsedCalendar,
             onListChanged: onListChanged,
             onTreeChanged: onTreeChanged,
             onRecordsChanged: onRecordsChanged,

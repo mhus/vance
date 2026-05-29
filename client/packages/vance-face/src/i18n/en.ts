@@ -296,6 +296,7 @@ export default {
       tabChart: 'Chart',
       tabSlides: 'Slides',
       tabDiagram: 'Diagram',
+      tabCalendar: 'Calendar',
       listParseError: 'Cannot show list view: {message}',
       treeParseError: 'Cannot show tree view: {message}',
       mindmapParseError: 'Cannot show mindmap view: {message}',
@@ -305,6 +306,7 @@ export default {
       chartParseError: 'Cannot show chart view: {message}',
       slidesParseError: 'Cannot show slides view: {message}',
       diagramParseError: 'Cannot show diagram view: {message}',
+      calendarParseError: 'Cannot show calendar view: {message}',
       delete: 'Move to bin',
       deletePermanent: 'Delete permanently',
       download: 'Download',
@@ -324,6 +326,13 @@ export default {
         summaryDirtyHelp:
           'Server flips this off after a successful run. Flip it on manually to force a refresh without editing the body.',
       },
+    },
+    calendar: {
+      viewMonth: 'Month',
+      viewAgenda: 'Agenda',
+      today: 'Today',
+      allDay: 'all day',
+      empty: 'No events in the next two weeks.',
     },
     archives: {
       heading: 'Versions',

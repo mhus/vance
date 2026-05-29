@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { parseCalendar, emptyCalendar } from './calendarCodec';
 const props = withDefaults(defineProps(), {
@@ -351,7 +351,141 @@ function prevMonth() {
 function nextMonth() {
     monthAnchor.value = addMonths(monthAnchor.value, 1);
 }
-// ── Color resolution ────────────────────────────────────────────────
+function googleCalendarUrl(ev, occStart, occEnd) {
+    const params = new URLSearchParams();
+    params.set('action', 'TEMPLATE');
+    params.set('text', ev.title);
+    params.set('dates', googleDateRange(ev, occStart, occEnd));
+    if (ev.notes)
+        params.set('details', ev.notes);
+    if (ev.location)
+        params.set('location', ev.location);
+    return 'https://calendar.google.com/calendar/render?' + params.toString();
+}
+function googleDateRange(ev, occStart, occEnd) {
+    // Google Calendar render URL date format:
+    //   all-day:   YYYYMMDD/YYYYMMDD   (end is exclusive — add 1 day)
+    //   timed:     YYYYMMDDTHHMMSSZ/YYYYMMDDTHHMMSSZ (always UTC)
+    if (ev.allDay) {
+        const start = formatYmd(occStart);
+        const endExcl = occEnd ? addDays(occEnd, 1) : addDays(occStart, 1);
+        return `${start}/${formatYmd(endExcl)}`;
+    }
+    const end = occEnd ?? new Date(occStart.getTime() + 30 * 60 * 1000);
+    return `${formatUtcCompact(occStart)}/${formatUtcCompact(end)}`;
+}
+function outlookCalendarUrl(ev, occStart, occEnd) {
+    // Outlook Live deeplink. Times go as ISO-8601 local strings.
+    // Outlook Web parses them in the user's profile timezone.
+    const params = new URLSearchParams();
+    params.set('path', '/calendar/action/compose');
+    params.set('rru', 'addevent');
+    params.set('subject', ev.title);
+    params.set('startdt', formatLocalIso(occStart, ev.allDay));
+    const end = occEnd ?? new Date(occStart.getTime() + 30 * 60 * 1000);
+    params.set('enddt', formatLocalIso(end, ev.allDay));
+    if (ev.notes)
+        params.set('body', ev.notes);
+    if (ev.location)
+        params.set('location', ev.location);
+    if (ev.allDay)
+        params.set('allday', 'true');
+    return 'https://outlook.live.com/calendar/0/deeplink/compose?' + params.toString();
+}
+/** Build a tiny single-event RFC 5545 ICS body. The CN/role parameter
+ *  flora of full iCalendar is overkill for "add this one to my
+ *  calendar app" — we keep it minimal so any calendar client accepts
+ *  it. The same shape feeds the .ics download button. */
+function singleEventIcs(ev, occStart, occEnd) {
+    const lines = [];
+    lines.push('BEGIN:VCALENDAR');
+    lines.push('VERSION:2.0');
+    lines.push('PRODID:-//Vance//Calendar//EN');
+    lines.push('CALSCALE:GREGORIAN');
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:' + ev.id + '@vance');
+    lines.push('DTSTAMP:' + formatUtcCompact(new Date()));
+    if (ev.allDay) {
+        lines.push('DTSTART;VALUE=DATE:' + formatYmd(occStart));
+        const endExcl = occEnd ? addDays(occEnd, 1) : addDays(occStart, 1);
+        lines.push('DTEND;VALUE=DATE:' + formatYmd(endExcl));
+    }
+    else {
+        lines.push('DTSTART:' + formatUtcCompact(occStart));
+        const end = occEnd ?? new Date(occStart.getTime() + 30 * 60 * 1000);
+        lines.push('DTEND:' + formatUtcCompact(end));
+    }
+    lines.push('SUMMARY:' + escapeIcsText(ev.title));
+    if (ev.location)
+        lines.push('LOCATION:' + escapeIcsText(ev.location));
+    if (ev.notes)
+        lines.push('DESCRIPTION:' + escapeIcsText(ev.notes));
+    lines.push('END:VEVENT');
+    lines.push('END:VCALENDAR');
+    return lines.join('\r\n') + '\r\n';
+}
+function icsDownloadHref(ics) {
+    return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+}
+function escapeIcsText(s) {
+    return s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+}
+function formatYmd(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}${m}${dd}`;
+}
+function formatUtcCompact(d) {
+    // YYYYMMDDTHHMMSSZ
+    return d.toISOString().replace(/[-:.]/g, '').replace(/\d{3}Z$/, 'Z');
+}
+function formatLocalIso(d, dateOnly) {
+    // 2026-06-12T09:00:00 — Outlook expects local-time ISO without zone.
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    if (dateOnly)
+        return `${y}-${m}-${dd}`;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${dd}T${hh}:${mi}:00`;
+}
+function externalLinksFor(row) {
+    const ics = singleEventIcs(row.event, row.start, row.end);
+    return [
+        { label: 'Google', href: googleCalendarUrl(row.event, row.start, row.end) },
+        { label: 'Outlook', href: outlookCalendarUrl(row.event, row.start, row.end) },
+        {
+            label: 'Apple / .ics',
+            href: icsDownloadHref(ics),
+            download: (row.event.title || 'event').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() + '.ics',
+        },
+    ];
+}
+/** Which occurrence row currently has its add-to-calendar popup open.
+ *  `null` = no popup. We key the popup by start-time so recurrences
+ *  with multiple occurrences each get their own targeted button. */
+const openLinksKey = ref(null);
+function linkKey(row) {
+    return row.event.id + '@' + row.start.getTime();
+}
+function toggleLinks(row) {
+    const k = linkKey(row);
+    openLinksKey.value = openLinksKey.value === k ? null : k;
+}
+function closeLinks() {
+    openLinksKey.value = null;
+}
+// Dismiss the popup when the user clicks anywhere outside it. The
+// menu itself stops propagation, and item clicks call closeLinks
+// explicitly.
+function onDocumentClick(_event) {
+    if (openLinksKey.value !== null)
+        closeLinks();
+}
+onMounted(() => document.addEventListener('click', onDocumentClick));
+onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
 /** Map a free-form color string (palette name or CSS color) to a CSS
  *  color value. Palette names are deliberately limited so calendars
  *  stay visually coherent. */
@@ -387,6 +521,8 @@ let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['cal-month-cell']} */ ;
 /** @type {__VLS_StyleScopedClasses['cal-month-cell--today']} */ ;
 /** @type {__VLS_StyleScopedClasses['cal-month-date']} */ ;
+/** @type {__VLS_StyleScopedClasses['cal-add-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['cal-add-menu-item']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -539,9 +675,43 @@ else {
                 ...{ class: "cal-agenda-body" },
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "cal-agenda-title-row" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "cal-agenda-title" },
             });
             (occ.event.title);
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "cal-add-wrap" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.view === 'month' && __VLS_ctx.mode !== 'inline'))
+                            return;
+                        __VLS_ctx.toggleLinks(occ);
+                    } },
+                type: "button",
+                ...{ class: "cal-add-btn" },
+                title: (__VLS_ctx.t('documents.calendar.addToCalendar')),
+            });
+            if (__VLS_ctx.openLinksKey === __VLS_ctx.linkKey(occ)) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ onClick: () => { } },
+                    ...{ class: "cal-add-menu" },
+                });
+                for (const [link, li] of __VLS_getVForSourceType((__VLS_ctx.externalLinksFor(occ)))) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+                        ...{ onClick: (__VLS_ctx.closeLinks) },
+                        key: (li),
+                        ...{ class: "cal-add-menu-item" },
+                        href: (link.href),
+                        download: (link.download),
+                        target: (link.download ? undefined : '_blank'),
+                        rel: "noopener",
+                    });
+                    (link.label);
+                }
+            }
             if (occ.event.location) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "cal-agenda-meta" },
@@ -609,7 +779,12 @@ else {
 /** @type {__VLS_StyleScopedClasses['cal-agenda-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['cal-agenda-time']} */ ;
 /** @type {__VLS_StyleScopedClasses['cal-agenda-body']} */ ;
+/** @type {__VLS_StyleScopedClasses['cal-agenda-title-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['cal-agenda-title']} */ ;
+/** @type {__VLS_StyleScopedClasses['cal-add-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['cal-add-btn']} */ ;
+/** @type {__VLS_StyleScopedClasses['cal-add-menu']} */ ;
+/** @type {__VLS_StyleScopedClasses['cal-add-menu-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['cal-agenda-meta']} */ ;
 /** @type {__VLS_StyleScopedClasses['cal-agenda-meta']} */ ;
 /** @type {__VLS_StyleScopedClasses['cal-agenda-notes']} */ ;
@@ -632,6 +807,11 @@ const __VLS_self = (await import('vue')).defineComponent({
             gotoToday: gotoToday,
             prevMonth: prevMonth,
             nextMonth: nextMonth,
+            externalLinksFor: externalLinksFor,
+            openLinksKey: openLinksKey,
+            linkKey: linkKey,
+            toggleLinks: toggleLinks,
+            closeLinks: closeLinks,
             colorFor: colorFor,
         };
     },

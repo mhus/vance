@@ -281,6 +281,33 @@ public class CalendarCreateTool implements Tool {
         out.put("vanceUri", vanceUri);
         out.put("markdownLink", markdownLink);
         if (existing.isPresent()) out.put("replaced", true);
+        out.put("addLinks", buildAddLinks(events));
+        return out;
+    }
+
+    /**
+     * One-click "add to my real calendar" deep-links per event.
+     * Returned in the same order as the input {@code events} list so
+     * the LLM can pair them with its own per-event commentary in
+     * chat.
+     *
+     * <p>The LLM is expected to embed these inline — typically as
+     * a Markdown bullet per event with two link-text labels:
+     * {@code [Sprint Planning](vance:/…) — [Google](<google-url>) · [Outlook](<outlook-url>)}.
+     * For Apple users the per-event button in the Web UI carries the
+     * .ics download; we don't ship a `data:`-URI here because chat
+     * pasting kilobyte-long URIs as link targets is fragile.
+     */
+    private static List<Map<String, Object>> buildAddLinks(List<CalendarEvent> events) {
+        List<Map<String, Object>> out = new ArrayList<>(events.size());
+        for (CalendarEvent ev : events) {
+            CalendarLinkBuilder.Links links = CalendarLinkBuilder.buildLinks(ev);
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("title", ev.title());
+            if (links.google() != null) entry.put("google", links.google());
+            if (links.outlook() != null) entry.put("outlook", links.outlook());
+            out.add(entry);
+        }
         return out;
     }
 

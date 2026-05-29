@@ -116,7 +116,32 @@ calendar_create(
 )
 ```
 
-Returns `{ path, eventCount, vanceUri, markdownLink }`. Embed `markdownLink` in your answer so the user opens the calendar with one click.
+Returns `{ path, eventCount, vanceUri, markdownLink, addLinks }`. Embed `markdownLink` in your answer so the user opens the calendar with one click.
+
+### `addLinks` — one-click push to the user's real calendar
+
+The response also carries an `addLinks` array, one entry per event in the same order as your input, with the shape:
+
+```
+[
+  { "title": "Sprint Planning", "google": "https://calendar.google.com/calendar/render?...", "outlook": "https://outlook.live.com/calendar/0/deeplink/compose?..." },
+  ...
+]
+```
+
+**Always embed these in your chat reply** when the user asked you to *put something into the calendar* / *book a slot* / *trag X ein*. Pattern:
+
+```markdown
+Habe deinen Sprint-Plan vorbereitet: [sprint-q3](vance:/calendars/sprint-q3.yaml)
+
+- **Sprint Planning** Mo 15.06. 09:00-11:00 — [→ Google](google-url) · [→ Outlook](outlook-url)
+- **Daily Standup** Mo-Fr (recurring) — [→ Google](google-url) · [→ Outlook](outlook-url)
+- **Sprint Review** Fr 26.06. 14:00 — [→ Google](google-url) · [→ Outlook](outlook-url)
+```
+
+That's the Vance Calendar workflow: **you draft, the user one-clicks into their real calendar app**. Vance is the assistant, not the calendar. For Apple/iCloud users the per-event 📅 button in the Web UI's Calendar view carries an .ics download.
+
+For a single quick-add ("trag morgen 14 Uhr Zahnarzt ein") the same tool with one event works — the user gets one Google + one Outlook link, picks the one they use, and the event lands in their real calendar in one click.
 
 If you absolutely need the low-level path (e.g. to attach unusual `extra` fields the typed tool doesn't expose), `doc_create_kind(kind="calendar", mimeType="application/yaml", body="$meta:\n  kind: calendar\n...")` still works.
 
@@ -129,6 +154,18 @@ ics_to_calendar(documentRef="invites/team-offsite.ics")
 ```
 
 The result is a fresh `kind: calendar` document with one event per VEVENT.
+
+## Exporting to Google / Apple / Outlook
+
+For **single events** the Calendar view in the Web UI shows a 📅 button next to each event with one-click links to Google Calendar and Outlook plus an `.ics` download — no tool call needed; just tell the user where the button is.
+
+For **the whole calendar** call `calendar_export_ics` (see `manual_read('calendar-export-ics')`):
+
+```
+calendar_export_ics(documentRef="calendars/sprint-q3.yaml")
+```
+
+Returns a `.ics` file the user imports into their calendar app. One-shot, not a continuous sync.
 
 ## Editing — full-body rewrites in v1
 

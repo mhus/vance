@@ -297,6 +297,7 @@ declare const _default: {
             today: string;
             allDay: string;
             empty: string;
+            addToCalendar: string;
         };
         archives: {
             heading: string;

@@ -333,6 +333,7 @@ export default {
       today: 'Today',
       allDay: 'all day',
       empty: 'No events in the next two weeks.',
+      addToCalendar: 'Add to your calendar',
     },
     archives: {
       heading: 'Versions',

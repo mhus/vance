@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { parseCalendar, type CalendarDocument, type CalendarEvent, emptyCalendar } from './calendarCodec';
 import type { DocumentDto } from '@vance/generated';
@@ -416,6 +416,160 @@ function nextMonth(): void {
 
 // ── Color resolution ────────────────────────────────────────────────
 
+// ── External-calendar link builders ─────────────────────────────────
+//
+// Each occurrence in the rendered agenda gets a small "add to my
+// calendar" button. We don't bridge to Google/Outlook/Apple via an
+// API — we hand the user a one-click link that opens their existing
+// calendar app with the event pre-filled. No OAuth, no sync,
+// no backend.
+
+interface ExternalLink {
+  label: string;
+  href: string;
+  download?: string;
+}
+
+function googleCalendarUrl(ev: CalendarEvent, occStart: Date, occEnd: Date | null): string {
+  const params = new URLSearchParams();
+  params.set('action', 'TEMPLATE');
+  params.set('text', ev.title);
+  params.set('dates', googleDateRange(ev, occStart, occEnd));
+  if (ev.notes) params.set('details', ev.notes);
+  if (ev.location) params.set('location', ev.location);
+  return 'https://calendar.google.com/calendar/render?' + params.toString();
+}
+
+function googleDateRange(ev: CalendarEvent, occStart: Date, occEnd: Date | null): string {
+  // Google Calendar render URL date format:
+  //   all-day:   YYYYMMDD/YYYYMMDD   (end is exclusive — add 1 day)
+  //   timed:     YYYYMMDDTHHMMSSZ/YYYYMMDDTHHMMSSZ (always UTC)
+  if (ev.allDay) {
+    const start = formatYmd(occStart);
+    const endExcl = occEnd ? addDays(occEnd, 1) : addDays(occStart, 1);
+    return `${start}/${formatYmd(endExcl)}`;
+  }
+  const end = occEnd ?? new Date(occStart.getTime() + 30 * 60 * 1000);
+  return `${formatUtcCompact(occStart)}/${formatUtcCompact(end)}`;
+}
+
+function outlookCalendarUrl(ev: CalendarEvent, occStart: Date, occEnd: Date | null): string {
+  // Outlook Live deeplink. Times go as ISO-8601 local strings.
+  // Outlook Web parses them in the user's profile timezone.
+  const params = new URLSearchParams();
+  params.set('path', '/calendar/action/compose');
+  params.set('rru', 'addevent');
+  params.set('subject', ev.title);
+  params.set('startdt', formatLocalIso(occStart, ev.allDay));
+  const end = occEnd ?? new Date(occStart.getTime() + 30 * 60 * 1000);
+  params.set('enddt', formatLocalIso(end, ev.allDay));
+  if (ev.notes) params.set('body', ev.notes);
+  if (ev.location) params.set('location', ev.location);
+  if (ev.allDay) params.set('allday', 'true');
+  return 'https://outlook.live.com/calendar/0/deeplink/compose?' + params.toString();
+}
+
+/** Build a tiny single-event RFC 5545 ICS body. The CN/role parameter
+ *  flora of full iCalendar is overkill for "add this one to my
+ *  calendar app" — we keep it minimal so any calendar client accepts
+ *  it. The same shape feeds the .ics download button. */
+function singleEventIcs(ev: CalendarEvent, occStart: Date, occEnd: Date | null): string {
+  const lines: string[] = [];
+  lines.push('BEGIN:VCALENDAR');
+  lines.push('VERSION:2.0');
+  lines.push('PRODID:-//Vance//Calendar//EN');
+  lines.push('CALSCALE:GREGORIAN');
+  lines.push('BEGIN:VEVENT');
+  lines.push('UID:' + ev.id + '@vance');
+  lines.push('DTSTAMP:' + formatUtcCompact(new Date()));
+  if (ev.allDay) {
+    lines.push('DTSTART;VALUE=DATE:' + formatYmd(occStart));
+    const endExcl = occEnd ? addDays(occEnd, 1) : addDays(occStart, 1);
+    lines.push('DTEND;VALUE=DATE:' + formatYmd(endExcl));
+  } else {
+    lines.push('DTSTART:' + formatUtcCompact(occStart));
+    const end = occEnd ?? new Date(occStart.getTime() + 30 * 60 * 1000);
+    lines.push('DTEND:' + formatUtcCompact(end));
+  }
+  lines.push('SUMMARY:' + escapeIcsText(ev.title));
+  if (ev.location) lines.push('LOCATION:' + escapeIcsText(ev.location));
+  if (ev.notes) lines.push('DESCRIPTION:' + escapeIcsText(ev.notes));
+  lines.push('END:VEVENT');
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n') + '\r\n';
+}
+
+function icsDownloadHref(ics: string): string {
+  return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+}
+
+function escapeIcsText(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
+}
+
+function formatYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${dd}`;
+}
+
+function formatUtcCompact(d: Date): string {
+  // YYYYMMDDTHHMMSSZ
+  return d.toISOString().replace(/[-:.]/g, '').replace(/\d{3}Z$/, 'Z');
+}
+
+function formatLocalIso(d: Date, dateOnly: boolean): string {
+  // 2026-06-12T09:00:00 — Outlook expects local-time ISO without zone.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  if (dateOnly) return `${y}-${m}-${dd}`;
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${dd}T${hh}:${mi}:00`;
+}
+
+function externalLinksFor(row: OccurrenceRow): ExternalLink[] {
+  const ics = singleEventIcs(row.event, row.start, row.end);
+  return [
+    { label: 'Google', href: googleCalendarUrl(row.event, row.start, row.end) },
+    { label: 'Outlook', href: outlookCalendarUrl(row.event, row.start, row.end) },
+    {
+      label: 'Apple / .ics',
+      href: icsDownloadHref(ics),
+      download: (row.event.title || 'event').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() + '.ics',
+    },
+  ];
+}
+
+/** Which occurrence row currently has its add-to-calendar popup open.
+ *  `null` = no popup. We key the popup by start-time so recurrences
+ *  with multiple occurrences each get their own targeted button. */
+const openLinksKey = ref<string | null>(null);
+
+function linkKey(row: OccurrenceRow): string {
+  return row.event.id + '@' + row.start.getTime();
+}
+
+function toggleLinks(row: OccurrenceRow): void {
+  const k = linkKey(row);
+  openLinksKey.value = openLinksKey.value === k ? null : k;
+}
+
+function closeLinks(): void {
+  openLinksKey.value = null;
+}
+
+// Dismiss the popup when the user clicks anywhere outside it. The
+// menu itself stops propagation, and item clicks call closeLinks
+// explicitly.
+function onDocumentClick(_event: MouseEvent): void {
+  if (openLinksKey.value !== null) closeLinks();
+}
+onMounted(() => document.addEventListener('click', onDocumentClick));
+onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
+
 /** Map a free-form color string (palette name or CSS color) to a CSS
  *  color value. Palette names are deliberately limited so calendars
  *  stay visually coherent. */
@@ -516,7 +670,33 @@ function colorFor(ev: CalendarEvent): string {
           >
             <div class="cal-agenda-time">{{ rangeLabel(occ) }}</div>
             <div class="cal-agenda-body">
-              <div class="cal-agenda-title">{{ occ.event.title }}</div>
+              <div class="cal-agenda-title-row">
+                <div class="cal-agenda-title">{{ occ.event.title }}</div>
+                <div class="cal-add-wrap">
+                  <button
+                    type="button"
+                    class="cal-add-btn"
+                    :title="t('documents.calendar.addToCalendar')"
+                    @click.stop="toggleLinks(occ)"
+                  >📅</button>
+                  <div
+                    v-if="openLinksKey === linkKey(occ)"
+                    class="cal-add-menu"
+                    @click.stop
+                  >
+                    <a
+                      v-for="(link, li) in externalLinksFor(occ)"
+                      :key="li"
+                      class="cal-add-menu-item"
+                      :href="link.href"
+                      :download="link.download"
+                      :target="link.download ? undefined : '_blank'"
+                      rel="noopener"
+                      @click="closeLinks"
+                    >{{ link.label }}</a>
+                  </div>
+                </div>
+              </div>
               <div v-if="occ.event.location" class="cal-agenda-meta">
                 📍 {{ occ.event.location }}
               </div>
@@ -705,9 +885,61 @@ function colorFor(ev: CalendarEvent): string {
   white-space: nowrap;
 }
 .cal-agenda-body { min-width: 0; }
+.cal-agenda-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.15rem;
+}
 .cal-agenda-title {
   font-weight: 600;
-  margin-bottom: 0.15rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cal-add-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.cal-add-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 0.5;
+}
+.cal-add-btn:hover {
+  opacity: 1;
+  background: hsl(var(--bc) / 0.06);
+  border-color: hsl(var(--bc) / 0.15);
+}
+.cal-add-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.2rem);
+  z-index: 4;
+  background: hsl(var(--b1));
+  border: 1px solid hsl(var(--bc) / 0.2);
+  border-radius: 0.3rem;
+  box-shadow: 0 4px 14px hsl(var(--bc) / 0.18);
+  display: flex;
+  flex-direction: column;
+  min-width: 9rem;
+  overflow: hidden;
+}
+.cal-add-menu-item {
+  display: block;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  text-decoration: none;
+  color: inherit;
+  white-space: nowrap;
+}
+.cal-add-menu-item:hover {
+  background: hsl(var(--p) / 0.1);
 }
 .cal-agenda-meta {
   font-size: 0.78rem;

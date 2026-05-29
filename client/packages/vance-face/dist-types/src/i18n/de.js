@@ -301,6 +301,7 @@ export default {
             today: 'Heute',
             allDay: 'ganztägig',
             empty: 'Keine Termine in den nächsten zwei Wochen.',
+            addToCalendar: 'In deinen Kalender übernehmen',
         },
         archives: {
             heading: 'Versionen',

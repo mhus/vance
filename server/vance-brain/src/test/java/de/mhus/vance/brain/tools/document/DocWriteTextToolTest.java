@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.eddie;
+package de.mhus.vance.brain.tools.document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.project.ProjectDocument;
@@ -136,11 +137,13 @@ class DocWriteTextToolTest {
     }
 
     @Test
-    void labels_include_eddie_and_write() {
+    void labels_include_write_and_document() {
         // Important for Slart's recovery loops: persist phases run
         // in workers that may filter by label, and 'write' is the
-        // marker that survives EXPLORING/PLANNING strips.
-        assertThat(tool.labels()).contains("eddie", "write");
+        // marker that survives EXPLORING/PLANNING strips. 'document'
+        // tags the tool family alongside doc_summary / doc_info /
+        // doc_read.
+        assertThat(tool.labels()).contains("write", "document");
     }
 
     @Test

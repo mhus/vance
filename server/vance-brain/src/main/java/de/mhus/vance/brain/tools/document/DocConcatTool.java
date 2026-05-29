@@ -1,5 +1,6 @@
-package de.mhus.vance.brain.tools.eddie;
+package de.mhus.vance.brain.tools.document;
 
+import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -102,7 +103,7 @@ public class DocConcatTool implements Tool {
 
     @Override
     public java.util.Set<String> labels() {
-        return java.util.Set.of("eddie", "write");
+        return java.util.Set.of("write", "document");
     }
 
     @Override

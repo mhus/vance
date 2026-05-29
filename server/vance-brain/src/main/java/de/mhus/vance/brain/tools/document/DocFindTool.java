@@ -1,5 +1,6 @@
-package de.mhus.vance.brain.tools.eddie;
+package de.mhus.vance.brain.tools.document;
 
+import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
@@ -84,7 +85,7 @@ public class DocFindTool implements Tool {
 
     @Override
     public Set<String> labels() {
-        return Set.of("eddie", "read-only");
+        return Set.of("read-only", "document");
     }
 
     @Override

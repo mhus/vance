@@ -68,6 +68,70 @@ function isVanceLinkParagraph(token) {
     }
     return false;
 }
+/**
+ * Find a single {@code vance:}-href image / link inside a list-item's
+ * token tree. Returns the token if the item collapses to exactly one
+ * vance-URI media reference (with only whitespace alongside it);
+ * otherwise {@code null}. Mixed items (text + image) fall through to
+ * normal Markdown rendering — those still produce a broken
+ * {@code <img src="vance:…">} but are rare in practice.
+ */
+function findSoleVanceMediaInListItem(item) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const itemTokens = item.tokens;
+    if (!itemTokens)
+        return null;
+    // Each list item typically wraps its inline content in a single
+    // `text` token whose nested `tokens` carry the real Markdown
+    // inlines (link / image / em / strong / …). Drill one level when
+    // that's the shape, otherwise scan the item-tokens directly.
+    let inlineTokens = itemTokens;
+    if (itemTokens.length === 1 && itemTokens[0].type === 'text') {
+        const inner = itemTokens[0].tokens;
+        if (inner)
+            inlineTokens = inner;
+    }
+    let media = null;
+    for (const t of inlineTokens) {
+        if (t.type === 'text') {
+            const txt = (t.text ?? '').trim();
+            if (txt.length > 0)
+                return null;
+            continue;
+        }
+        if ((t.type === 'link' || t.type === 'image') &&
+            isVanceUri(t.href)) {
+            if (media)
+                return null;
+            media = t;
+            continue;
+        }
+        // Any other inline kind (em, strong, codespan, …) breaks the
+        // "sole media" rule.
+        return null;
+    }
+    return media;
+}
+/**
+ * Does this list contain at least one item whose only meaningful
+ * content is a {@code vance:}-URI link / image? Used to route the
+ * whole list through the embedded-channel renderer so the
+ * {@code <img src="vance:…">} (which the browser can't load) never
+ * gets emitted.
+ */
+function isVanceMediaList(token) {
+    if (token.type !== 'list')
+        return false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items = token.items;
+    if (!items || items.length === 0)
+        return false;
+    for (const item of items) {
+        if (findSoleVanceMediaInListItem(item))
+            return true;
+    }
+    return false;
+}
 function tokensToText(tokens) {
     return tokens.map((t) => t.text ?? '').join('');
 }
@@ -189,6 +253,51 @@ function vnodesForTokens(tokens) {
                 }
             }
             buffer.push(token);
+            continue;
+        }
+        // Lists of vance:-URI media (typical LLM output for image galleries):
+        //   - ![alt1](vance:/a.jpg?kind=image)
+        //   - ![alt2](vance:/b.jpg?kind=image)
+        // Marked would render these as <ul><li><img src="vance:..."></li>…</ul>,
+        // and the browser refuses the unknown scheme — broken images. Route
+        // each "sole-media" item through EmbeddedKindBox instead; mixed
+        // items (text + image) stay in the normal Markdown stream and
+        // accept the broken-image artifact as a known limitation.
+        if (isVanceMediaList(token)) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const items = token.items;
+            flushHtmlBuffer(buffer, out);
+            const leftover = [];
+            for (const item of items) {
+                const media = findSoleVanceMediaInListItem(item);
+                if (!media) {
+                    leftover.push(item);
+                    continue;
+                }
+                if (leftover.length > 0) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    flushHtmlBuffer([{ ...token, items: leftover }], out);
+                    leftover.length = 0;
+                }
+                const isImage = media.type === 'image';
+                const text = isImage
+                    ? (media.text ?? '')
+                    : tokensToText(media.tokens ?? []);
+                try {
+                    const embedRef = parseVanceUri(media.href, {
+                        text,
+                        imageStyle: isImage,
+                    });
+                    out.push(h(EmbeddedKindBox, { embedRef }));
+                }
+                catch (e) {
+                    console.warn('MarkdownView: failed to parse vance: URI', e);
+                }
+            }
+            if (leftover.length > 0) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                flushHtmlBuffer([{ ...token, items: leftover }], out);
+            }
             continue;
         }
         // External http(s) links in a paragraph get Slack-style preview

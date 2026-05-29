@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
@@ -158,6 +158,73 @@ const showCreateModal = ref(false);
 // confirmation step. See specification/web-ui.md §7.7.1.
 const showDeleteModal = ref(false);
 const deleting = ref(false);
+
+// Unsaved-changes guard. Mirrors the diff logic in {@link apply}: a
+// document is considered dirty when any editable field — title, path,
+// mime type, inline body, auto-summary toggles, RAG override —
+// differs from the currently loaded server-side document. Used to
+// gate `backToList` (modal) and the page-unload event (browser
+// prompt). The kind-specific tabs (list/checklist/tree/…) all funnel
+// their mutations through `editInlineText`, so the inline-body
+// comparison covers them too.
+const isDirty = computed<boolean>(() => {
+  const sel = docsState.selected.value;
+  if (!sel) return false;
+  if (editTitle.value !== (sel.title ?? '')) return true;
+  const newPath = editPath.value.trim();
+  if (newPath && newPath !== sel.path) return true;
+  const newMime = editMimeType.value.trim();
+  if (newMime && newMime !== (sel.mimeType ?? '')) return true;
+  if (sel.inline && editInlineText.value !== (sel.inlineText ?? '')) return true;
+  if (editAutoSummary.value !== (sel.autoSummary ?? false)) return true;
+  if (editSummaryDirty.value !== (sel.summaryDirty ?? false)) return true;
+  const currentRag: 'auto' | 'on' | 'off' =
+      sel.ragEnabled == null ? 'auto'
+    : sel.ragEnabled ? 'on'
+    : 'off';
+  if (editRagEnabled.value !== currentRag) return true;
+  return false;
+});
+
+// Discard-confirm modal — gates `backToList` (and the Cancel
+// button) when there are unsaved edits. Three actions: Save (apply +
+// leave), Discard (just leave), Cancel (stay on detail view).
+const showDiscardModal = ref(false);
+
+// Collapsed-state for the detail-view properties panel — wraps front
+// matter, auto-summary, version archive, and the title/path/mime
+// fields. The user gave feedback that the editor surface sits too
+// far below the fold; the toggle defaults to collapsed and the state
+// is persisted in `sessionStorage` so the user's preference survives
+// route changes within the session (cleared per browser tab).
+const PROPS_COLLAPSED_KEY = 'documents:propsCollapsed';
+const propsCollapsed = ref<boolean>(loadPropsCollapsed());
+
+function loadPropsCollapsed(): boolean {
+  try {
+    const raw = sessionStorage.getItem(PROPS_COLLAPSED_KEY);
+    // Default collapsed — the body editor is what the user actually
+    // came here to look at, not the metadata.
+    if (raw == null) return true;
+    return raw === '1';
+  } catch {
+    return true;
+  }
+}
+
+watch(propsCollapsed, (v) => {
+  try {
+    sessionStorage.setItem(PROPS_COLLAPSED_KEY, v ? '1' : '0');
+  } catch {
+    // sessionStorage may be unavailable (private mode, locked-down
+    // browser); silently ignore — the state still works for the
+    // current view, it just doesn't persist.
+  }
+});
+
+function togglePropsCollapsed(): void {
+  propsCollapsed.value = !propsCollapsed.value;
+}
 const createMode = ref<CreateMode>('inline');
 const createPath = ref('');
 const createTitle = ref('');
@@ -995,6 +1062,60 @@ function backToList(): void {
 }
 
 /**
+ * Wrap {@link backToList} with a dirty-state check. When the user
+ * has unsaved edits, open the discard-confirm modal instead of
+ * leaving immediately. The modal's three actions resolve into
+ * apply-and-leave / discard / stay.
+ */
+function requestBackToList(): void {
+  if (isDirty.value) {
+    showDiscardModal.value = true;
+    return;
+  }
+  backToList();
+}
+
+/** Discard-modal action: drop the edits and return to the list. */
+function discardAndBack(): void {
+  showDiscardModal.value = false;
+  backToList();
+}
+
+/** Discard-modal action: persist the edits, then return to the list
+ *  if the server accepted them. On error stay on the detail view so
+ *  the user can read the message (mirrors {@link save}). */
+async function saveAndBack(): Promise<void> {
+  const ok = await apply();
+  if (ok) {
+    showDiscardModal.value = false;
+    backToList();
+  } else {
+    // Apply failed — close the modal so the user can see the inline
+    // error and retry; the edits are still in the form.
+    showDiscardModal.value = false;
+  }
+}
+
+/**
+ * Browser-level page-unload guard. The browser ignores any custom
+ * text these days (Chrome / Firefox / Safari all show a generic
+ * "leave site?" prompt), but the listener still has to call
+ * {@code preventDefault} and set {@code returnValue} to opt in.
+ * Only attached while there is an active dirty selection — saves
+ * the user from seeing the prompt after they've already left the
+ * editor.
+ */
+function onBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!isDirty.value) return;
+  event.preventDefault();
+  // Legacy requirement: setting returnValue triggers the prompt in
+  // older browsers that don't yet listen for preventDefault alone.
+  event.returnValue = '';
+}
+onMounted(() => window.addEventListener('beforeunload', onBeforeUnload));
+onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload));
+
+/**
  * Build a `Content-Disposition: attachment` URL for a document.
  * The {@code documentContentUrl} helper appends the JWT as
  * `?token=…` so an `<a download>` link works without a header.
@@ -1494,7 +1615,7 @@ const formatBytes = (n: number): string => {
       <!-- Detail / edit view -->
       <template v-else-if="docsState.selected.value">
         <div class="mb-4">
-          <VBackButton :label="$t('documents.backToList')" @click="backToList" />
+          <VBackButton :label="$t('documents.backToList')" @click="requestBackToList" />
         </div>
 
         <VCard>
@@ -1522,13 +1643,36 @@ const formatBytes = (n: number): string => {
               class="badge badge-info badge-sm"
               :title="$t('documents.detail.kindBadgeTooltip')"
             >{{ $t('documents.detail.kindLabel', { kind: docsState.selected.value.kind }) }}</span>
+            <span
+              v-if="isDirty"
+              class="badge badge-warning badge-sm"
+              :title="$t('documents.detail.changedBadgeTooltip')"
+            >{{ $t('documents.detail.changedBadge') }}</span>
+            <!-- Spacer pushes the props toggle to the right end of
+                 the metadata strip. -->
+            <span class="grow"></span>
+            <button
+              type="button"
+              class="props-toggle text-xs font-medium opacity-70 hover:opacity-100"
+              :title="propsCollapsed
+                ? $t('documents.detail.propsExpandHint')
+                : $t('documents.detail.propsCollapseHint')"
+              :aria-expanded="!propsCollapsed"
+              @click="togglePropsCollapsed"
+            >
+              <span class="props-toggle__chevron" aria-hidden="true">
+                {{ propsCollapsed ? '▸' : '▾' }}
+              </span>
+              {{ $t('documents.detail.propsToggleLabel') }}
+            </button>
           </div>
 
           <!-- ─── Front-matter table — only when the markdown body
                carries a recognised header. Read-only: the content is
-               authoritative, this just mirrors what the parser saw. ─── -->
+               authoritative, this just mirrors what the parser saw.
+               Hidden when the user collapses the properties panel. ─── -->
           <div
-            v-if="headerEntries.length > 0"
+            v-if="!propsCollapsed && headerEntries.length > 0"
             class="mt-3 border border-base-300 rounded-md overflow-hidden"
           >
             <div class="px-3 py-2 bg-base-200 text-xs uppercase opacity-70">
@@ -1547,8 +1691,12 @@ const formatBytes = (n: number): string => {
           <!-- ─── Auto-summary panel — read-only summary text plus the
                two editable flags. Visible regardless of mime type so
                users can disable the scheduler on a doc that shouldn't
-               be summarised, or force a re-run on demand. ─── -->
-          <div class="mt-3 border border-base-300 rounded-md overflow-hidden">
+               be summarised, or force a re-run on demand. Hidden when
+               the user collapses the properties panel. ─── -->
+          <div
+            v-show="!propsCollapsed"
+            class="mt-3 border border-base-300 rounded-md overflow-hidden"
+          >
             <div class="px-3 py-2 bg-base-200 text-xs uppercase opacity-70">
               {{ $t('documents.detail.summary.heading') }}
             </div>
@@ -1627,6 +1775,7 @@ const formatBytes = (n: number): string => {
           </div>
 
           <DocumentArchives
+            v-show="!propsCollapsed"
             :document="docsState.selected.value"
             @restored="onArchiveRestored"
           />
@@ -1640,20 +1789,25 @@ const formatBytes = (n: number): string => {
           </VAlert>
 
           <div class="flex flex-col gap-3 mt-3">
-            <VInput v-model="editTitle" :label="$t('documents.detail.titleLabel')" :disabled="saving" />
-            <VInput
-              v-model="editPath"
-              :label="$t('documents.detail.pathLabel')"
-              :disabled="saving"
-              :help="$t('documents.detail.pathHelp')"
-            />
-            <VSelect
-              v-model="editMimeType"
-              :options="editMimeOptions"
-              :label="$t('documents.detail.mimeTypeLabel')"
-              :disabled="saving"
-              :help="$t('documents.detail.mimeTypeHelp')"
-            />
+            <!-- Title / Path / MIME — part of the collapsible
+                 properties panel. The editor and action bar below
+                 stay visible regardless of the collapsed state. -->
+            <template v-if="!propsCollapsed">
+              <VInput v-model="editTitle" :label="$t('documents.detail.titleLabel')" :disabled="saving" />
+              <VInput
+                v-model="editPath"
+                :label="$t('documents.detail.pathLabel')"
+                :disabled="saving"
+                :help="$t('documents.detail.pathHelp')"
+              />
+              <VSelect
+                v-model="editMimeType"
+                :options="editMimeOptions"
+                :label="$t('documents.detail.mimeTypeLabel')"
+                :disabled="saving"
+                :help="$t('documents.detail.mimeTypeHelp')"
+              />
+            </template>
             <template v-if="docsState.selected.value.inline">
               <!-- Tab bar appears for list/tree-kind documents in a
                    supported mime type. Other docs jump straight to
@@ -2015,7 +2169,7 @@ const formatBytes = (n: number): string => {
               :href="downloadUrl(docsState.selected.value)"
               :download="docsState.selected.value.name || 'document'"
             >{{ $t('documents.detail.download') }}</VButton>
-            <VButton variant="ghost" :disabled="saving" @click="backToList">
+            <VButton variant="ghost" :disabled="saving" @click="requestBackToList">
               {{ $t('documents.detail.cancel') }}
             </VButton>
             <VButton variant="secondary" :loading="saving" @click="apply">
@@ -2171,6 +2325,34 @@ const formatBytes = (n: number): string => {
             ? $t('documents.delete.confirmPermanent')
             : $t('documents.delete.confirm') }}
         </VButton>
+      </template>
+    </VModal>
+
+    <!-- Unsaved-changes modal: opens when the user tries to leave the
+         detail view (Back / Cancel) with unsaved edits. Three actions
+         — save & leave, discard & leave, stay. -->
+    <VModal
+      v-model="showDiscardModal"
+      :title="$t('documents.discard.title')"
+      :close-on-backdrop="!saving"
+    >
+      <p>{{ $t('documents.discard.body') }}</p>
+      <template #actions>
+        <VButton
+          variant="ghost"
+          :disabled="saving"
+          @click="showDiscardModal = false"
+        >{{ $t('documents.discard.cancel') }}</VButton>
+        <VButton
+          variant="danger"
+          :disabled="saving"
+          @click="discardAndBack"
+        >{{ $t('documents.discard.discard') }}</VButton>
+        <VButton
+          variant="primary"
+          :loading="saving"
+          @click="saveAndBack"
+        >{{ $t('documents.discard.save') }}</VButton>
       </template>
     </VModal>
 
@@ -2419,5 +2601,34 @@ const formatBytes = (n: number): string => {
   min-height: 16rem;
   max-height: 70vh;
   overflow-y: auto;
+}
+
+/* Properties-panel toggle — slim button in the metadata strip that
+   expands / collapses the front-matter, summary, archive, and
+   title/path/mime fields together. The chevron rotates only via the
+   character swap (▸ vs ▾); a CSS transform would need a single
+   character + rotation, but emoji-style chars render more reliably
+   across themes when swapped directly. */
+.props-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: transparent;
+  border: 1px solid oklch(var(--bc) / 0.18);
+  border-radius: 0.3rem;
+  padding: 0.15rem 0.55rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.props-toggle:hover {
+  background: oklch(var(--bc) / 0.06);
+  border-color: oklch(var(--bc) / 0.3);
+}
+.props-toggle__chevron {
+  display: inline-block;
+  width: 0.7em;
+  text-align: center;
+  font-size: 0.9em;
 }
 </style>

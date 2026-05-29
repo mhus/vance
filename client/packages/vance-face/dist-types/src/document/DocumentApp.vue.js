@@ -1,4 +1,4 @@
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { EditorShell, VAlert, VBackButton, VButton, VCard, VCheckbox, VDataList, VEmptyState, VFileInput, VInput, VModal, VPagination, VSelect, CodeEditor, MarkdownView, } from '@/components';
 import { useDocuments } from '@/composables/useDocuments';
@@ -68,6 +68,77 @@ const showCreateModal = ref(false);
 // confirmation step. See specification/web-ui.md §7.7.1.
 const showDeleteModal = ref(false);
 const deleting = ref(false);
+// Unsaved-changes guard. Mirrors the diff logic in {@link apply}: a
+// document is considered dirty when any editable field — title, path,
+// mime type, inline body, auto-summary toggles, RAG override —
+// differs from the currently loaded server-side document. Used to
+// gate `backToList` (modal) and the page-unload event (browser
+// prompt). The kind-specific tabs (list/checklist/tree/…) all funnel
+// their mutations through `editInlineText`, so the inline-body
+// comparison covers them too.
+const isDirty = computed(() => {
+    const sel = docsState.selected.value;
+    if (!sel)
+        return false;
+    if (editTitle.value !== (sel.title ?? ''))
+        return true;
+    const newPath = editPath.value.trim();
+    if (newPath && newPath !== sel.path)
+        return true;
+    const newMime = editMimeType.value.trim();
+    if (newMime && newMime !== (sel.mimeType ?? ''))
+        return true;
+    if (sel.inline && editInlineText.value !== (sel.inlineText ?? ''))
+        return true;
+    if (editAutoSummary.value !== (sel.autoSummary ?? false))
+        return true;
+    if (editSummaryDirty.value !== (sel.summaryDirty ?? false))
+        return true;
+    const currentRag = sel.ragEnabled == null ? 'auto'
+        : sel.ragEnabled ? 'on'
+            : 'off';
+    if (editRagEnabled.value !== currentRag)
+        return true;
+    return false;
+});
+// Discard-confirm modal — gates `backToList` (and the Cancel
+// button) when there are unsaved edits. Three actions: Save (apply +
+// leave), Discard (just leave), Cancel (stay on detail view).
+const showDiscardModal = ref(false);
+// Collapsed-state for the detail-view properties panel — wraps front
+// matter, auto-summary, version archive, and the title/path/mime
+// fields. The user gave feedback that the editor surface sits too
+// far below the fold; the toggle defaults to collapsed and the state
+// is persisted in `sessionStorage` so the user's preference survives
+// route changes within the session (cleared per browser tab).
+const PROPS_COLLAPSED_KEY = 'documents:propsCollapsed';
+const propsCollapsed = ref(loadPropsCollapsed());
+function loadPropsCollapsed() {
+    try {
+        const raw = sessionStorage.getItem(PROPS_COLLAPSED_KEY);
+        // Default collapsed — the body editor is what the user actually
+        // came here to look at, not the metadata.
+        if (raw == null)
+            return true;
+        return raw === '1';
+    }
+    catch {
+        return true;
+    }
+}
+watch(propsCollapsed, (v) => {
+    try {
+        sessionStorage.setItem(PROPS_COLLAPSED_KEY, v ? '1' : '0');
+    }
+    catch {
+        // sessionStorage may be unavailable (private mode, locked-down
+        // browser); silently ignore — the state still works for the
+        // current view, it just doesn't persist.
+    }
+});
+function togglePropsCollapsed() {
+    propsCollapsed.value = !propsCollapsed.value;
+}
 const createMode = ref('inline');
 const createPath = ref('');
 const createTitle = ref('');
@@ -836,6 +907,58 @@ function backToList() {
     editError.value = null;
 }
 /**
+ * Wrap {@link backToList} with a dirty-state check. When the user
+ * has unsaved edits, open the discard-confirm modal instead of
+ * leaving immediately. The modal's three actions resolve into
+ * apply-and-leave / discard / stay.
+ */
+function requestBackToList() {
+    if (isDirty.value) {
+        showDiscardModal.value = true;
+        return;
+    }
+    backToList();
+}
+/** Discard-modal action: drop the edits and return to the list. */
+function discardAndBack() {
+    showDiscardModal.value = false;
+    backToList();
+}
+/** Discard-modal action: persist the edits, then return to the list
+ *  if the server accepted them. On error stay on the detail view so
+ *  the user can read the message (mirrors {@link save}). */
+async function saveAndBack() {
+    const ok = await apply();
+    if (ok) {
+        showDiscardModal.value = false;
+        backToList();
+    }
+    else {
+        // Apply failed — close the modal so the user can see the inline
+        // error and retry; the edits are still in the form.
+        showDiscardModal.value = false;
+    }
+}
+/**
+ * Browser-level page-unload guard. The browser ignores any custom
+ * text these days (Chrome / Firefox / Safari all show a generic
+ * "leave site?" prompt), but the listener still has to call
+ * {@code preventDefault} and set {@code returnValue} to opt in.
+ * Only attached while there is an active dirty selection — saves
+ * the user from seeing the prompt after they've already left the
+ * editor.
+ */
+function onBeforeUnload(event) {
+    if (!isDirty.value)
+        return;
+    event.preventDefault();
+    // Legacy requirement: setting returnValue triggers the prompt in
+    // older browsers that don't yet listen for preventDefault alone.
+    event.returnValue = '';
+}
+onMounted(() => window.addEventListener('beforeunload', onBeforeUnload));
+onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload));
+/**
  * Build a `Content-Disposition: attachment` URL for a document.
  * The {@code documentContentUrl} helper appends the JWT as
  * `?token=…` so an `<a download>` link works without a header.
@@ -1295,6 +1418,7 @@ let __VLS_components;
 let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['folder-item']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
+/** @type {__VLS_StyleScopedClasses['props-toggle']} */ ;
 // CSS variable injection 
 // CSS variable injection end 
 const __VLS_0 = {}.EditorShell;
@@ -1447,7 +1571,7 @@ else if (__VLS_ctx.docsState.selected.value) {
     let __VLS_26;
     let __VLS_27;
     const __VLS_28 = {
-        onClick: (__VLS_ctx.backToList)
+        onClick: (__VLS_ctx.requestBackToList)
     };
     var __VLS_24;
     const __VLS_29 = {}.VCard;
@@ -1498,7 +1622,32 @@ else if (__VLS_ctx.docsState.selected.value) {
         });
         (__VLS_ctx.$t('documents.detail.kindLabel', { kind: __VLS_ctx.docsState.selected.value.kind }));
     }
-    if (__VLS_ctx.headerEntries.length > 0) {
+    if (__VLS_ctx.isDirty) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+            ...{ class: "badge badge-warning badge-sm" },
+            title: (__VLS_ctx.$t('documents.detail.changedBadgeTooltip')),
+        });
+        (__VLS_ctx.$t('documents.detail.changedBadge'));
+    }
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "grow" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onClick: (__VLS_ctx.togglePropsCollapsed) },
+        type: "button",
+        ...{ class: "props-toggle text-xs font-medium opacity-70 hover:opacity-100" },
+        title: (__VLS_ctx.propsCollapsed
+            ? __VLS_ctx.$t('documents.detail.propsExpandHint')
+            : __VLS_ctx.$t('documents.detail.propsCollapseHint')),
+        'aria-expanded': (!__VLS_ctx.propsCollapsed),
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+        ...{ class: "props-toggle__chevron" },
+        'aria-hidden': "true",
+    });
+    (__VLS_ctx.propsCollapsed ? '▸' : '▾');
+    (__VLS_ctx.$t('documents.detail.propsToggleLabel'));
+    if (!__VLS_ctx.propsCollapsed && __VLS_ctx.headerEntries.length > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "mt-3 border border-base-300 rounded-md overflow-hidden" },
         });
@@ -1527,6 +1676,7 @@ else if (__VLS_ctx.docsState.selected.value) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "mt-3 border border-base-300 rounded-md overflow-hidden" },
     });
+    __VLS_asFunctionalDirective(__VLS_directives.vShow)(null, { ...__VLS_directiveBindingRestFields, value: (!__VLS_ctx.propsCollapsed) }, null, null);
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "px-3 py-2 bg-base-200 text-xs uppercase opacity-70" },
     });
@@ -1648,6 +1798,7 @@ else if (__VLS_ctx.docsState.selected.value) {
     const __VLS_50 = {
         onRestored: (__VLS_ctx.onArchiveRestored)
     };
+    __VLS_asFunctionalDirective(__VLS_directives.vShow)(null, { ...__VLS_directiveBindingRestFields, value: (!__VLS_ctx.propsCollapsed) }, null, null);
     var __VLS_46;
     if (!__VLS_ctx.docsState.selected.value.inline) {
         const __VLS_51 = {}.VAlert;
@@ -1686,51 +1837,53 @@ else if (__VLS_ctx.docsState.selected.value) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex flex-col gap-3 mt-3" },
     });
-    const __VLS_59 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_60 = __VLS_asFunctionalComponent(__VLS_59, new __VLS_59({
-        modelValue: (__VLS_ctx.editTitle),
-        label: (__VLS_ctx.$t('documents.detail.titleLabel')),
-        disabled: (__VLS_ctx.saving),
-    }));
-    const __VLS_61 = __VLS_60({
-        modelValue: (__VLS_ctx.editTitle),
-        label: (__VLS_ctx.$t('documents.detail.titleLabel')),
-        disabled: (__VLS_ctx.saving),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_60));
-    const __VLS_63 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_64 = __VLS_asFunctionalComponent(__VLS_63, new __VLS_63({
-        modelValue: (__VLS_ctx.editPath),
-        label: (__VLS_ctx.$t('documents.detail.pathLabel')),
-        disabled: (__VLS_ctx.saving),
-        help: (__VLS_ctx.$t('documents.detail.pathHelp')),
-    }));
-    const __VLS_65 = __VLS_64({
-        modelValue: (__VLS_ctx.editPath),
-        label: (__VLS_ctx.$t('documents.detail.pathLabel')),
-        disabled: (__VLS_ctx.saving),
-        help: (__VLS_ctx.$t('documents.detail.pathHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_64));
-    const __VLS_67 = {}.VSelect;
-    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
-    // @ts-ignore
-    const __VLS_68 = __VLS_asFunctionalComponent(__VLS_67, new __VLS_67({
-        modelValue: (__VLS_ctx.editMimeType),
-        options: (__VLS_ctx.editMimeOptions),
-        label: (__VLS_ctx.$t('documents.detail.mimeTypeLabel')),
-        disabled: (__VLS_ctx.saving),
-        help: (__VLS_ctx.$t('documents.detail.mimeTypeHelp')),
-    }));
-    const __VLS_69 = __VLS_68({
-        modelValue: (__VLS_ctx.editMimeType),
-        options: (__VLS_ctx.editMimeOptions),
-        label: (__VLS_ctx.$t('documents.detail.mimeTypeLabel')),
-        disabled: (__VLS_ctx.saving),
-        help: (__VLS_ctx.$t('documents.detail.mimeTypeHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_68));
+    if (!__VLS_ctx.propsCollapsed) {
+        const __VLS_59 = {}.VInput;
+        /** @type {[typeof __VLS_components.VInput, ]} */ ;
+        // @ts-ignore
+        const __VLS_60 = __VLS_asFunctionalComponent(__VLS_59, new __VLS_59({
+            modelValue: (__VLS_ctx.editTitle),
+            label: (__VLS_ctx.$t('documents.detail.titleLabel')),
+            disabled: (__VLS_ctx.saving),
+        }));
+        const __VLS_61 = __VLS_60({
+            modelValue: (__VLS_ctx.editTitle),
+            label: (__VLS_ctx.$t('documents.detail.titleLabel')),
+            disabled: (__VLS_ctx.saving),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_60));
+        const __VLS_63 = {}.VInput;
+        /** @type {[typeof __VLS_components.VInput, ]} */ ;
+        // @ts-ignore
+        const __VLS_64 = __VLS_asFunctionalComponent(__VLS_63, new __VLS_63({
+            modelValue: (__VLS_ctx.editPath),
+            label: (__VLS_ctx.$t('documents.detail.pathLabel')),
+            disabled: (__VLS_ctx.saving),
+            help: (__VLS_ctx.$t('documents.detail.pathHelp')),
+        }));
+        const __VLS_65 = __VLS_64({
+            modelValue: (__VLS_ctx.editPath),
+            label: (__VLS_ctx.$t('documents.detail.pathLabel')),
+            disabled: (__VLS_ctx.saving),
+            help: (__VLS_ctx.$t('documents.detail.pathHelp')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_64));
+        const __VLS_67 = {}.VSelect;
+        /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+        // @ts-ignore
+        const __VLS_68 = __VLS_asFunctionalComponent(__VLS_67, new __VLS_67({
+            modelValue: (__VLS_ctx.editMimeType),
+            options: (__VLS_ctx.editMimeOptions),
+            label: (__VLS_ctx.$t('documents.detail.mimeTypeLabel')),
+            disabled: (__VLS_ctx.saving),
+            help: (__VLS_ctx.$t('documents.detail.mimeTypeHelp')),
+        }));
+        const __VLS_69 = __VLS_68({
+            modelValue: (__VLS_ctx.editMimeType),
+            options: (__VLS_ctx.editMimeOptions),
+            label: (__VLS_ctx.$t('documents.detail.mimeTypeLabel')),
+            disabled: (__VLS_ctx.saving),
+            help: (__VLS_ctx.$t('documents.detail.mimeTypeHelp')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_68));
+    }
     if (__VLS_ctx.docsState.selected.value.inline) {
         if (__VLS_ctx.isListDocument) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -3091,7 +3244,7 @@ else if (__VLS_ctx.docsState.selected.value) {
         let __VLS_216;
         let __VLS_217;
         const __VLS_218 = {
-            onClick: (__VLS_ctx.backToList)
+            onClick: (__VLS_ctx.requestBackToList)
         };
         __VLS_214.slots.default;
         (__VLS_ctx.$t('documents.detail.cancel'));
@@ -3538,248 +3691,213 @@ const __VLS_306 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
 const __VLS_307 = __VLS_asFunctionalComponent(__VLS_306, new __VLS_306({
+    modelValue: (__VLS_ctx.showDiscardModal),
+    title: (__VLS_ctx.$t('documents.discard.title')),
+    closeOnBackdrop: (!__VLS_ctx.saving),
+}));
+const __VLS_308 = __VLS_307({
+    modelValue: (__VLS_ctx.showDiscardModal),
+    title: (__VLS_ctx.$t('documents.discard.title')),
+    closeOnBackdrop: (!__VLS_ctx.saving),
+}, ...__VLS_functionalComponentArgsRest(__VLS_307));
+__VLS_309.slots.default;
+__VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({});
+(__VLS_ctx.$t('documents.discard.body'));
+{
+    const { actions: __VLS_thisSlot } = __VLS_309.slots;
+    const __VLS_310 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_311 = __VLS_asFunctionalComponent(__VLS_310, new __VLS_310({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        disabled: (__VLS_ctx.saving),
+    }));
+    const __VLS_312 = __VLS_311({
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        disabled: (__VLS_ctx.saving),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_311));
+    let __VLS_314;
+    let __VLS_315;
+    let __VLS_316;
+    const __VLS_317 = {
+        onClick: (...[$event]) => {
+            __VLS_ctx.showDiscardModal = false;
+        }
+    };
+    __VLS_313.slots.default;
+    (__VLS_ctx.$t('documents.discard.cancel'));
+    var __VLS_313;
+    const __VLS_318 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_319 = __VLS_asFunctionalComponent(__VLS_318, new __VLS_318({
+        ...{ 'onClick': {} },
+        variant: "danger",
+        disabled: (__VLS_ctx.saving),
+    }));
+    const __VLS_320 = __VLS_319({
+        ...{ 'onClick': {} },
+        variant: "danger",
+        disabled: (__VLS_ctx.saving),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_319));
+    let __VLS_322;
+    let __VLS_323;
+    let __VLS_324;
+    const __VLS_325 = {
+        onClick: (__VLS_ctx.discardAndBack)
+    };
+    __VLS_321.slots.default;
+    (__VLS_ctx.$t('documents.discard.discard'));
+    var __VLS_321;
+    const __VLS_326 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_327 = __VLS_asFunctionalComponent(__VLS_326, new __VLS_326({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        loading: (__VLS_ctx.saving),
+    }));
+    const __VLS_328 = __VLS_327({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        loading: (__VLS_ctx.saving),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_327));
+    let __VLS_330;
+    let __VLS_331;
+    let __VLS_332;
+    const __VLS_333 = {
+        onClick: (__VLS_ctx.saveAndBack)
+    };
+    __VLS_329.slots.default;
+    (__VLS_ctx.$t('documents.discard.save'));
+    var __VLS_329;
+}
+var __VLS_309;
+const __VLS_334 = {}.VModal;
+/** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
+// @ts-ignore
+const __VLS_335 = __VLS_asFunctionalComponent(__VLS_334, new __VLS_334({
     modelValue: (__VLS_ctx.showCreateModal),
     title: (__VLS_ctx.$t('documents.create.newDocument')),
     closeOnBackdrop: (false),
 }));
-const __VLS_308 = __VLS_307({
+const __VLS_336 = __VLS_335({
     modelValue: (__VLS_ctx.showCreateModal),
     title: (__VLS_ctx.$t('documents.create.newDocument')),
     closeOnBackdrop: (false),
-}, ...__VLS_functionalComponentArgsRest(__VLS_307));
-__VLS_309.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_335));
+__VLS_337.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex gap-2 mb-4" },
 });
-const __VLS_310 = {}.VButton;
+const __VLS_338 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_311 = __VLS_asFunctionalComponent(__VLS_310, new __VLS_310({
+const __VLS_339 = __VLS_asFunctionalComponent(__VLS_338, new __VLS_338({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_312 = __VLS_311({
+const __VLS_340 = __VLS_339({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'inline' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_311));
-let __VLS_314;
-let __VLS_315;
-let __VLS_316;
-const __VLS_317 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_339));
+let __VLS_342;
+let __VLS_343;
+let __VLS_344;
+const __VLS_345 = {
     onClick: (...[$event]) => {
         __VLS_ctx.setCreateMode('inline');
     }
 };
-__VLS_313.slots.default;
+__VLS_341.slots.default;
 (__VLS_ctx.$t('documents.create.typeContent'));
-var __VLS_313;
-const __VLS_318 = {}.VButton;
+var __VLS_341;
+const __VLS_346 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_319 = __VLS_asFunctionalComponent(__VLS_318, new __VLS_318({
+const __VLS_347 = __VLS_asFunctionalComponent(__VLS_346, new __VLS_346({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_320 = __VLS_319({
+const __VLS_348 = __VLS_347({
     ...{ 'onClick': {} },
     variant: (__VLS_ctx.createMode === 'upload' ? 'primary' : 'ghost'),
     size: "sm",
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_319));
-let __VLS_322;
-let __VLS_323;
-let __VLS_324;
-const __VLS_325 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_347));
+let __VLS_350;
+let __VLS_351;
+let __VLS_352;
+const __VLS_353 = {
     onClick: (...[$event]) => {
         __VLS_ctx.setCreateMode('upload');
     }
 };
-__VLS_321.slots.default;
+__VLS_349.slots.default;
 (__VLS_ctx.$t('documents.create.uploadFile'));
-var __VLS_321;
+var __VLS_349;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.submitCreate) },
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.createError) {
-    const __VLS_326 = {}.VAlert;
+    const __VLS_354 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_327 = __VLS_asFunctionalComponent(__VLS_326, new __VLS_326({
-        variant: "error",
-    }));
-    const __VLS_328 = __VLS_327({
-        variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_327));
-    __VLS_329.slots.default;
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-    (__VLS_ctx.createError);
-    var __VLS_329;
-}
-if (__VLS_ctx.createMode === 'inline') {
-    const __VLS_330 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_331 = __VLS_asFunctionalComponent(__VLS_330, new __VLS_330({
-        modelValue: (__VLS_ctx.createPath),
-        label: (__VLS_ctx.$t('documents.create.pathLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
-        required: true,
-        disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.pathHelp')),
-    }));
-    const __VLS_332 = __VLS_331({
-        modelValue: (__VLS_ctx.createPath),
-        label: (__VLS_ctx.$t('documents.create.pathLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
-        required: true,
-        disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.pathHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_331));
-    const __VLS_334 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_335 = __VLS_asFunctionalComponent(__VLS_334, new __VLS_334({
-        modelValue: (__VLS_ctx.createTitle),
-        label: (__VLS_ctx.$t('documents.create.titleLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
-        disabled: (__VLS_ctx.creating),
-    }));
-    const __VLS_336 = __VLS_335({
-        modelValue: (__VLS_ctx.createTitle),
-        label: (__VLS_ctx.$t('documents.create.titleLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
-        disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_335));
-    const __VLS_338 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
-    // @ts-ignore
-    const __VLS_339 = __VLS_asFunctionalComponent(__VLS_338, new __VLS_338({
-        modelValue: (__VLS_ctx.createTagsRaw),
-        label: (__VLS_ctx.$t('documents.create.tagsLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
-        disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.tagsHelp')),
-    }));
-    const __VLS_340 = __VLS_339({
-        modelValue: (__VLS_ctx.createTagsRaw),
-        label: (__VLS_ctx.$t('documents.create.tagsLabel')),
-        placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
-        disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.tagsHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_339));
-    const __VLS_342 = {}.VSelect;
-    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
-    // @ts-ignore
-    const __VLS_343 = __VLS_asFunctionalComponent(__VLS_342, new __VLS_342({
-        modelValue: (__VLS_ctx.createMime),
-        options: (__VLS_ctx.createMimeOptions),
-        label: (__VLS_ctx.$t('documents.create.typeLabel')),
-        disabled: (__VLS_ctx.creating),
-    }));
-    const __VLS_344 = __VLS_343({
-        modelValue: (__VLS_ctx.createMime),
-        options: (__VLS_ctx.createMimeOptions),
-        label: (__VLS_ctx.$t('documents.create.typeLabel')),
-        disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_343));
-    const __VLS_346 = {}.VSelect;
-    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
-    // @ts-ignore
-    const __VLS_347 = __VLS_asFunctionalComponent(__VLS_346, new __VLS_346({
-        modelValue: (__VLS_ctx.createKind),
-        options: (__VLS_ctx.kindCreateOptions),
-        label: (__VLS_ctx.$t('documents.create.kindLabel')),
-        help: (__VLS_ctx.$t('documents.create.kindHelp')),
-        disabled: (__VLS_ctx.creating),
-    }));
-    const __VLS_348 = __VLS_347({
-        modelValue: (__VLS_ctx.createKind),
-        options: (__VLS_ctx.kindCreateOptions),
-        label: (__VLS_ctx.$t('documents.create.kindLabel')),
-        help: (__VLS_ctx.$t('documents.create.kindHelp')),
-        disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_347));
-    const __VLS_350 = {}.CodeEditor;
-    /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
-    // @ts-ignore
-    const __VLS_351 = __VLS_asFunctionalComponent(__VLS_350, new __VLS_350({
-        modelValue: (__VLS_ctx.createContent),
-        label: (__VLS_ctx.$t('documents.create.contentLabel')),
-        rows: (14),
-        disabled: (__VLS_ctx.creating),
-        mimeType: (__VLS_ctx.createMime),
-    }));
-    const __VLS_352 = __VLS_351({
-        modelValue: (__VLS_ctx.createContent),
-        label: (__VLS_ctx.$t('documents.create.contentLabel')),
-        rows: (14),
-        disabled: (__VLS_ctx.creating),
-        mimeType: (__VLS_ctx.createMime),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_351));
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
-        ...{ class: "text-xs opacity-70 -mt-1" },
-    });
-    (__VLS_ctx.$t('documents.create.inlineSizeNote'));
-}
-else {
-    const __VLS_354 = {}.VFileInput;
-    /** @type {[typeof __VLS_components.VFileInput, ]} */ ;
-    // @ts-ignore
     const __VLS_355 = __VLS_asFunctionalComponent(__VLS_354, new __VLS_354({
-        modelValue: (__VLS_ctx.createFiles),
-        label: (__VLS_ctx.$t('documents.create.filesLabel')),
-        multiple: true,
-        disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.filesHelp')),
+        variant: "error",
     }));
     const __VLS_356 = __VLS_355({
-        modelValue: (__VLS_ctx.createFiles),
-        label: (__VLS_ctx.$t('documents.create.filesLabel')),
-        multiple: true,
-        disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.$t('documents.create.filesHelp')),
+        variant: "error",
     }, ...__VLS_functionalComponentArgsRest(__VLS_355));
-    if (__VLS_ctx.createFiles.length <= 1) {
-        const __VLS_358 = {}.VInput;
-        /** @type {[typeof __VLS_components.VInput, ]} */ ;
-        // @ts-ignore
-        const __VLS_359 = __VLS_asFunctionalComponent(__VLS_358, new __VLS_358({
-            modelValue: (__VLS_ctx.createPath),
-            label: (__VLS_ctx.$t('documents.create.pathLabel')),
-            placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholderUpload')),
-            disabled: (__VLS_ctx.creating),
-            help: (__VLS_ctx.$t('documents.create.pathHelpUpload')),
-        }));
-        const __VLS_360 = __VLS_359({
-            modelValue: (__VLS_ctx.createPath),
-            label: (__VLS_ctx.$t('documents.create.pathLabel')),
-            placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholderUpload')),
-            disabled: (__VLS_ctx.creating),
-            help: (__VLS_ctx.$t('documents.create.pathHelpUpload')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_359));
-        const __VLS_362 = {}.VInput;
-        /** @type {[typeof __VLS_components.VInput, ]} */ ;
-        // @ts-ignore
-        const __VLS_363 = __VLS_asFunctionalComponent(__VLS_362, new __VLS_362({
-            modelValue: (__VLS_ctx.createTitle),
-            label: (__VLS_ctx.$t('documents.create.titleLabel')),
-            placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
-            disabled: (__VLS_ctx.creating),
-        }));
-        const __VLS_364 = __VLS_363({
-            modelValue: (__VLS_ctx.createTitle),
-            label: (__VLS_ctx.$t('documents.create.titleLabel')),
-            placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
-            disabled: (__VLS_ctx.creating),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_363));
-    }
+    __VLS_357.slots.default;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+    (__VLS_ctx.createError);
+    var __VLS_357;
+}
+if (__VLS_ctx.createMode === 'inline') {
+    const __VLS_358 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+    // @ts-ignore
+    const __VLS_359 = __VLS_asFunctionalComponent(__VLS_358, new __VLS_358({
+        modelValue: (__VLS_ctx.createPath),
+        label: (__VLS_ctx.$t('documents.create.pathLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
+        required: true,
+        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.$t('documents.create.pathHelp')),
+    }));
+    const __VLS_360 = __VLS_359({
+        modelValue: (__VLS_ctx.createPath),
+        label: (__VLS_ctx.$t('documents.create.pathLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholder')),
+        required: true,
+        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.$t('documents.create.pathHelp')),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_359));
+    const __VLS_362 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+    // @ts-ignore
+    const __VLS_363 = __VLS_asFunctionalComponent(__VLS_362, new __VLS_362({
+        modelValue: (__VLS_ctx.createTitle),
+        label: (__VLS_ctx.$t('documents.create.titleLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
+        disabled: (__VLS_ctx.creating),
+    }));
+    const __VLS_364 = __VLS_363({
+        modelValue: (__VLS_ctx.createTitle),
+        label: (__VLS_ctx.$t('documents.create.titleLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
+        disabled: (__VLS_ctx.creating),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_363));
     const __VLS_366 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
@@ -3788,11 +3906,125 @@ else {
         label: (__VLS_ctx.$t('documents.create.tagsLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
         disabled: (__VLS_ctx.creating),
-        help: (__VLS_ctx.createFiles.length > 1
-            ? __VLS_ctx.$t('documents.create.tagsHelpMulti')
-            : __VLS_ctx.$t('documents.create.tagsHelp')),
+        help: (__VLS_ctx.$t('documents.create.tagsHelp')),
     }));
     const __VLS_368 = __VLS_367({
+        modelValue: (__VLS_ctx.createTagsRaw),
+        label: (__VLS_ctx.$t('documents.create.tagsLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
+        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.$t('documents.create.tagsHelp')),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_367));
+    const __VLS_370 = {}.VSelect;
+    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+    // @ts-ignore
+    const __VLS_371 = __VLS_asFunctionalComponent(__VLS_370, new __VLS_370({
+        modelValue: (__VLS_ctx.createMime),
+        options: (__VLS_ctx.createMimeOptions),
+        label: (__VLS_ctx.$t('documents.create.typeLabel')),
+        disabled: (__VLS_ctx.creating),
+    }));
+    const __VLS_372 = __VLS_371({
+        modelValue: (__VLS_ctx.createMime),
+        options: (__VLS_ctx.createMimeOptions),
+        label: (__VLS_ctx.$t('documents.create.typeLabel')),
+        disabled: (__VLS_ctx.creating),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_371));
+    const __VLS_374 = {}.VSelect;
+    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
+    // @ts-ignore
+    const __VLS_375 = __VLS_asFunctionalComponent(__VLS_374, new __VLS_374({
+        modelValue: (__VLS_ctx.createKind),
+        options: (__VLS_ctx.kindCreateOptions),
+        label: (__VLS_ctx.$t('documents.create.kindLabel')),
+        help: (__VLS_ctx.$t('documents.create.kindHelp')),
+        disabled: (__VLS_ctx.creating),
+    }));
+    const __VLS_376 = __VLS_375({
+        modelValue: (__VLS_ctx.createKind),
+        options: (__VLS_ctx.kindCreateOptions),
+        label: (__VLS_ctx.$t('documents.create.kindLabel')),
+        help: (__VLS_ctx.$t('documents.create.kindHelp')),
+        disabled: (__VLS_ctx.creating),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_375));
+    const __VLS_378 = {}.CodeEditor;
+    /** @type {[typeof __VLS_components.CodeEditor, ]} */ ;
+    // @ts-ignore
+    const __VLS_379 = __VLS_asFunctionalComponent(__VLS_378, new __VLS_378({
+        modelValue: (__VLS_ctx.createContent),
+        label: (__VLS_ctx.$t('documents.create.contentLabel')),
+        rows: (14),
+        disabled: (__VLS_ctx.creating),
+        mimeType: (__VLS_ctx.createMime),
+    }));
+    const __VLS_380 = __VLS_379({
+        modelValue: (__VLS_ctx.createContent),
+        label: (__VLS_ctx.$t('documents.create.contentLabel')),
+        rows: (14),
+        disabled: (__VLS_ctx.creating),
+        mimeType: (__VLS_ctx.createMime),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_379));
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-xs opacity-70 -mt-1" },
+    });
+    (__VLS_ctx.$t('documents.create.inlineSizeNote'));
+}
+else {
+    const __VLS_382 = {}.VFileInput;
+    /** @type {[typeof __VLS_components.VFileInput, ]} */ ;
+    // @ts-ignore
+    const __VLS_383 = __VLS_asFunctionalComponent(__VLS_382, new __VLS_382({
+        modelValue: (__VLS_ctx.createFiles),
+        label: (__VLS_ctx.$t('documents.create.filesLabel')),
+        multiple: true,
+        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.$t('documents.create.filesHelp')),
+    }));
+    const __VLS_384 = __VLS_383({
+        modelValue: (__VLS_ctx.createFiles),
+        label: (__VLS_ctx.$t('documents.create.filesLabel')),
+        multiple: true,
+        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.$t('documents.create.filesHelp')),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_383));
+    if (__VLS_ctx.createFiles.length <= 1) {
+        const __VLS_386 = {}.VInput;
+        /** @type {[typeof __VLS_components.VInput, ]} */ ;
+        // @ts-ignore
+        const __VLS_387 = __VLS_asFunctionalComponent(__VLS_386, new __VLS_386({
+            modelValue: (__VLS_ctx.createPath),
+            label: (__VLS_ctx.$t('documents.create.pathLabel')),
+            placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholderUpload')),
+            disabled: (__VLS_ctx.creating),
+            help: (__VLS_ctx.$t('documents.create.pathHelpUpload')),
+        }));
+        const __VLS_388 = __VLS_387({
+            modelValue: (__VLS_ctx.createPath),
+            label: (__VLS_ctx.$t('documents.create.pathLabel')),
+            placeholder: (__VLS_ctx.$t('documents.create.pathPlaceholderUpload')),
+            disabled: (__VLS_ctx.creating),
+            help: (__VLS_ctx.$t('documents.create.pathHelpUpload')),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_387));
+        const __VLS_390 = {}.VInput;
+        /** @type {[typeof __VLS_components.VInput, ]} */ ;
+        // @ts-ignore
+        const __VLS_391 = __VLS_asFunctionalComponent(__VLS_390, new __VLS_390({
+            modelValue: (__VLS_ctx.createTitle),
+            label: (__VLS_ctx.$t('documents.create.titleLabel')),
+            placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
+            disabled: (__VLS_ctx.creating),
+        }));
+        const __VLS_392 = __VLS_391({
+            modelValue: (__VLS_ctx.createTitle),
+            label: (__VLS_ctx.$t('documents.create.titleLabel')),
+            placeholder: (__VLS_ctx.$t('documents.create.titlePlaceholder')),
+            disabled: (__VLS_ctx.creating),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_391));
+    }
+    const __VLS_394 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+    // @ts-ignore
+    const __VLS_395 = __VLS_asFunctionalComponent(__VLS_394, new __VLS_394({
         modelValue: (__VLS_ctx.createTagsRaw),
         label: (__VLS_ctx.$t('documents.create.tagsLabel')),
         placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
@@ -3800,7 +4032,16 @@ else {
         help: (__VLS_ctx.createFiles.length > 1
             ? __VLS_ctx.$t('documents.create.tagsHelpMulti')
             : __VLS_ctx.$t('documents.create.tagsHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_367));
+    }));
+    const __VLS_396 = __VLS_395({
+        modelValue: (__VLS_ctx.createTagsRaw),
+        label: (__VLS_ctx.$t('documents.create.tagsLabel')),
+        placeholder: (__VLS_ctx.$t('documents.create.tagsPlaceholder')),
+        disabled: (__VLS_ctx.creating),
+        help: (__VLS_ctx.createFiles.length > 1
+            ? __VLS_ctx.$t('documents.create.tagsHelpMulti')
+            : __VLS_ctx.$t('documents.create.tagsHelp')),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_395));
     if (__VLS_ctx.uploadProgress.length > 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
             ...{ class: "flex flex-col gap-1.5 text-sm border border-base-300 rounded-md p-3 bg-base-200" },
@@ -3837,57 +4078,57 @@ else {
     }
 }
 {
-    const { actions: __VLS_thisSlot } = __VLS_309.slots;
-    const __VLS_370 = {}.VButton;
+    const { actions: __VLS_thisSlot } = __VLS_337.slots;
+    const __VLS_398 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_371 = __VLS_asFunctionalComponent(__VLS_370, new __VLS_370({
+    const __VLS_399 = __VLS_asFunctionalComponent(__VLS_398, new __VLS_398({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_372 = __VLS_371({
+    const __VLS_400 = __VLS_399({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_371));
-    let __VLS_374;
-    let __VLS_375;
-    let __VLS_376;
-    const __VLS_377 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_399));
+    let __VLS_402;
+    let __VLS_403;
+    let __VLS_404;
+    const __VLS_405 = {
         onClick: (...[$event]) => {
             __VLS_ctx.showCreateModal = false;
         }
     };
-    __VLS_373.slots.default;
+    __VLS_401.slots.default;
     (__VLS_ctx.$t('documents.create.cancel'));
-    var __VLS_373;
-    const __VLS_378 = {}.VButton;
+    var __VLS_401;
+    const __VLS_406 = {}.VButton;
     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_379 = __VLS_asFunctionalComponent(__VLS_378, new __VLS_378({
+    const __VLS_407 = __VLS_asFunctionalComponent(__VLS_406, new __VLS_406({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
     }));
-    const __VLS_380 = __VLS_379({
+    const __VLS_408 = __VLS_407({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_379));
-    let __VLS_382;
-    let __VLS_383;
-    let __VLS_384;
-    const __VLS_385 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_407));
+    let __VLS_410;
+    let __VLS_411;
+    let __VLS_412;
+    const __VLS_413 = {
         onClick: (__VLS_ctx.submitCreate)
     };
-    __VLS_381.slots.default;
+    __VLS_409.slots.default;
     (__VLS_ctx.createMode === 'upload'
         ? __VLS_ctx.$t('documents.create.submitUpload')
         : __VLS_ctx.$t('documents.create.submitCreate'));
-    var __VLS_381;
+    var __VLS_409;
 }
-var __VLS_309;
+var __VLS_337;
 if (__VLS_ctx.helpResource) {
     {
         const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
@@ -3917,15 +4158,15 @@ if (__VLS_ctx.helpResource) {
             (__VLS_ctx.$t('documents.help.empty'));
         }
         else {
-            const __VLS_386 = {}.MarkdownView;
+            const __VLS_414 = {}.MarkdownView;
             /** @type {[typeof __VLS_components.MarkdownView, ]} */ ;
             // @ts-ignore
-            const __VLS_387 = __VLS_asFunctionalComponent(__VLS_386, new __VLS_386({
+            const __VLS_415 = __VLS_asFunctionalComponent(__VLS_414, new __VLS_414({
                 source: (__VLS_ctx.help.content.value),
             }));
-            const __VLS_388 = __VLS_387({
+            const __VLS_416 = __VLS_415({
                 source: (__VLS_ctx.help.content.value),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_387));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_415));
         }
     }
 }
@@ -3971,6 +4212,16 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['badge']} */ ;
 /** @type {__VLS_StyleScopedClasses['badge-info']} */ ;
 /** @type {__VLS_StyleScopedClasses['badge-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge-warning']} */ ;
+/** @type {__VLS_StyleScopedClasses['badge-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['grow']} */ ;
+/** @type {__VLS_StyleScopedClasses['props-toggle']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['props-toggle__chevron']} */ ;
 /** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['border']} */ ;
 /** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
@@ -4254,6 +4505,10 @@ const __VLS_self = (await import('vue')).defineComponent({
             showCreateModal: showCreateModal,
             showDeleteModal: showDeleteModal,
             deleting: deleting,
+            isDirty: isDirty,
+            showDiscardModal: showDiscardModal,
+            propsCollapsed: propsCollapsed,
+            togglePropsCollapsed: togglePropsCollapsed,
             createMode: createMode,
             createPath: createPath,
             createTitle: createTitle,
@@ -4312,7 +4567,9 @@ const __VLS_self = (await import('vue')).defineComponent({
             onChartChanged: onChartChanged,
             help: help,
             helpResource: helpResource,
-            backToList: backToList,
+            requestBackToList: requestBackToList,
+            discardAndBack: discardAndBack,
+            saveAndBack: saveAndBack,
             downloadUrl: downloadUrl,
             openCreateModal: openCreateModal,
             kindCreateOptions: kindCreateOptions,

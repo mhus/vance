@@ -273,6 +273,11 @@ export default {
       sizeBy: 'by {user}',
       kindBadgeTooltip: 'Document kind, parsed from front matter',
       kindLabel: 'kind: {kind}',
+      changedBadge: 'Changed',
+      changedBadgeTooltip: 'You have unsaved changes — click Apply or Save.',
+      propsToggleLabel: 'Properties',
+      propsExpandHint: 'Show properties',
+      propsCollapseHint: 'Hide properties',
       frontMatter: 'Front matter',
       readOnlyNote:
         'Stored content — read-only in v1. Use the download button to save a local copy.',
@@ -521,6 +526,14 @@ export default {
       bodyPermanent:
         'Permanently delete {path}? This removes the document and its stored content. The action cannot be undone.',
       confirmPermanent: 'Delete permanently',
+    },
+    discard: {
+      title: 'Unsaved changes',
+      body:
+        'There are changes to this document that have not been saved yet. What would you like to do?',
+      save: 'Save and leave',
+      discard: 'Discard',
+      cancel: 'Stay here',
     },
     help: {
       title: 'Field reference',

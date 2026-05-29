@@ -242,6 +242,11 @@ declare const _default: {
             sizeBy: string;
             kindBadgeTooltip: string;
             kindLabel: string;
+            changedBadge: string;
+            changedBadgeTooltip: string;
+            propsToggleLabel: string;
+            propsExpandHint: string;
+            propsCollapseHint: string;
             frontMatter: string;
             readOnlyNote: string;
             titleLabel: string;
@@ -479,6 +484,13 @@ declare const _default: {
             titlePermanent: string;
             bodyPermanent: string;
             confirmPermanent: string;
+        };
+        discard: {
+            title: string;
+            body: string;
+            save: string;
+            discard: string;
+            cancel: string;
         };
         help: {
             title: string;

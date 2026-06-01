@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 
 /**
- * Loads the bundled {@code vance-defaults/recipes/python.yaml} through
+ * Loads the bundled {@code vance-defaults/_vance/recipes/python.yaml} through
  * the real {@link RecipeLoader} (with a mocked
  * {@link DocumentService}) so we catch YAML structural drift,
  * Pebble compile errors in {@code promptPrefix}, and silent
@@ -38,7 +38,7 @@ class PythonRecipeTest {
         loader = new RecipeLoader(documentService, new PromptTemplateRenderer());
 
         String content = new String(
-                new ClassPathResource("vance-defaults/recipes/python.yaml")
+                new ClassPathResource("vance-defaults/_vance/recipes/python.yaml")
                         .getInputStream()
                         .readAllBytes(),
                 StandardCharsets.UTF_8);

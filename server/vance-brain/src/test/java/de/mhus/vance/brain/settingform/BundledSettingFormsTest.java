@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Smoke test for the bundled Setting Forms under
- * {@code src/main/resources/vance-defaults/setting_forms/}. Reads each
+ * {@code src/main/resources/vance-defaults/_vance/setting_forms/}. Reads each
  * YAML straight from the classpath and runs it through
  * {@link SettingFormLoader}'s parse + Pebble-compile path. Catches
  * typos and template syntax errors that would otherwise only surface
@@ -98,7 +98,7 @@ class BundledSettingFormsTest {
     }
 
     private ResolvedSettingForm loadBundled(String name) throws IOException {
-        String resourcePath = "vance-defaults/setting_forms/" + name + ".yaml";
+        String resourcePath = "vance-defaults/_vance/setting_forms/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);
         String docPath = "_vance/setting_forms/" + name + ".yaml";
 

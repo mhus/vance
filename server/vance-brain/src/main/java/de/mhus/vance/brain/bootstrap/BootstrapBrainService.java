@@ -64,13 +64,6 @@ public class BootstrapBrainService {
     private final HomeBootstrapService homeBootstrapService;
     private final InitSettingsLoader initSettingsLoader;
     private final BootstrapProperties properties;
-    // Inject the migration so its @PostConstruct fires before this service's
-    // @PostConstruct does. Without this dependency, the bootstrap would create
-    // a fresh _tenant project alongside the legacy _vance project on a
-    // pre-migration dev Mongo, and the migration would crash on the unique
-    // (tenantId, name) index when trying to rename.
-    @SuppressWarnings("unused")
-    private final VanceToTenantProjectMigration tenantProjectMigration;
 
     @PostConstruct
     void init() {

@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Smoke test for the bundled wizards under
- * {@code src/main/resources/vance-defaults/wizards/}. Reads each YAML
+ * {@code src/main/resources/vance-defaults/_vance/wizards/}. Reads each YAML
  * straight from the classpath and runs it through {@link WizardLoader}'s
  * parse + Pebble-compile path. Catches typos and template syntax
  * errors that would otherwise only surface on a tenant's first
@@ -107,7 +107,7 @@ class BundledWizardsTest {
     }
 
     private ResolvedWizard loadBundled(String name) throws IOException {
-        String resourcePath = "vance-defaults/wizards/" + name + ".yaml";
+        String resourcePath = "vance-defaults/_vance/wizards/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);
         String docPath = "_vance/wizards/" + name + ".yaml";
 

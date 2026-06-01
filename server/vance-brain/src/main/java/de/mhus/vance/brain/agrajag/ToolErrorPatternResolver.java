@@ -36,7 +36,7 @@ import org.yaml.snakeyaml.Yaml;
 @Slf4j
 public class ToolErrorPatternResolver {
 
-    public static final String BUNDLED_RESOURCE = "vance-defaults/agrajag/error-patterns.yaml";
+    public static final String BUNDLED_RESOURCE = "vance-defaults/_vance/agrajag/error-patterns.yaml";
     public static final String DOCUMENT_PATH = "_vance/agrajag/error-patterns.yaml";
 
     private final DocumentService documentService;

@@ -14,23 +14,37 @@ export function useDocuments(pageSize = 20) {
     const loading = ref(false);
     const error = ref(null);
     const folders = ref([]);
+    /** Direct subfolders of the current {@link pathPrefix} — populated
+     *  by every {@link loadPage} call so the UI can render the folder
+     *  tree alongside the file list. Alphabetically sorted server-side. */
+    const subFolders = ref([]);
     const kinds = ref([]);
     // Sticky path-filter — owned by the composable so reloads
     // (e.g. after upload, after page-change) keep the active filter.
     const pathPrefix = ref('');
     const kindFilter = ref('');
-    async function loadPage(projectId, p, prefixOverride, kindOverride) {
+    /** Free-text search needle — server-side filtered against file
+     *  path/title and folder names. Sticky like {@link pathPrefix}. */
+    const search = ref('');
+    async function loadPage(projectId, p, prefixOverride, kindOverride, searchOverride) {
         loading.value = true;
         error.value = null;
         try {
             // Caller may pass an explicit prefix to override the sticky
-            // value (e.g. when the user types into the filter combobox);
-            // otherwise reuse what we have.
+            // value (e.g. when the user clicks a subfolder, or hits the
+            // path-back button); otherwise reuse what we have.
             if (prefixOverride !== undefined) {
                 pathPrefix.value = prefixOverride;
             }
+            // `kindOverride` is retained on the signature for back-compat —
+            // the new folder-view endpoint doesn't take a kind filter, so
+            // we just remember the value for whoever still reads it. UI
+            // surface for kinds has been removed in the picker-style layout.
             if (kindOverride !== undefined) {
                 kindFilter.value = kindOverride;
+            }
+            if (searchOverride !== undefined) {
+                search.value = searchOverride;
             }
             const params = new URLSearchParams({
                 projectId,
@@ -38,13 +52,14 @@ export function useDocuments(pageSize = 20) {
                 size: String(pageSizeRef.value),
             });
             if (pathPrefix.value.trim()) {
-                params.set('pathPrefix', pathPrefix.value.trim());
+                params.set('path', pathPrefix.value.trim());
             }
-            if (kindFilter.value.trim()) {
-                params.set('kind', kindFilter.value.trim());
+            if (search.value.trim()) {
+                params.set('search', search.value.trim());
             }
-            const data = await brainFetch('GET', `documents?${params}`);
-            items.value = data.items ?? [];
+            const data = await brainFetch('GET', `documents/folder?${params}`);
+            items.value = data.files ?? [];
+            subFolders.value = data.folders ?? [];
             page.value = data.page;
             pageSizeRef.value = data.pageSize;
             totalCount.value = data.totalCount;
@@ -241,9 +256,11 @@ export function useDocuments(pageSize = 20) {
         loading,
         error,
         folders,
+        subFolders,
         pathPrefix,
         kinds,
         kindFilter,
+        search,
         loadPage,
         loadFolders,
         loadKinds,

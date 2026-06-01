@@ -25,34 +25,34 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {
     appendLocalEcho: typeof appendLocalEcho;
     rollbackLocalEcho: typeof rollbackLocalEcho;
 }, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
+    "project-resolved": (payload: {
+        name: string;
+        title: string;
+    }) => any;
     leave: () => any;
     hub: () => any;
+    "speak-message": (content: string) => any;
     "note-activity": () => any;
     "history-loaded": () => any;
-    "speak-message": (content: string) => any;
     "ask-user-pick": (label: string) => any;
     "wizard-deep-link": (detail: {
         name: string;
         prefill: Record<string, string>;
     }) => any;
-    "project-resolved": (payload: {
+}, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
+    "onProject-resolved"?: ((payload: {
         name: string;
         title: string;
-    }) => any;
-}, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
+    }) => any) | undefined;
     onLeave?: (() => any) | undefined;
     onHub?: (() => any) | undefined;
+    "onSpeak-message"?: ((content: string) => any) | undefined;
     "onNote-activity"?: (() => any) | undefined;
     "onHistory-loaded"?: (() => any) | undefined;
-    "onSpeak-message"?: ((content: string) => any) | undefined;
     "onAsk-user-pick"?: ((label: string) => any) | undefined;
     "onWizard-deep-link"?: ((detail: {
         name: string;
         prefill: Record<string, string>;
-    }) => any) | undefined;
-    "onProject-resolved"?: ((payload: {
-        name: string;
-        title: string;
     }) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;

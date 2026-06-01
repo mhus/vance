@@ -24,10 +24,12 @@ export declare function useDocuments(pageSize?: number): {
     loading: Ref<boolean>;
     error: Ref<string | null>;
     folders: Ref<string[]>;
+    subFolders: Ref<string[]>;
     pathPrefix: Ref<string>;
     kinds: Ref<string[]>;
     kindFilter: Ref<string>;
-    loadPage: (projectId: string, page: number, pathPrefix?: string, kind?: string) => Promise<void>;
+    search: Ref<string>;
+    loadPage: (projectId: string, page: number, pathPrefix?: string, kind?: string, search?: string) => Promise<void>;
     loadFolders: (projectId: string) => Promise<void>;
     loadKinds: (projectId: string) => Promise<void>;
     loadOne: (id: string) => Promise<void>;

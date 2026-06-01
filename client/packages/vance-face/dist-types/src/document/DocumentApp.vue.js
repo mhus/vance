@@ -390,20 +390,22 @@ const filteredProjectsByGroup = computed(() => {
 const filteredProjectsCount = computed(() => filteredProjectsByGroup.value.reduce((n, b) => n + b.projects.length, 0));
 // ──────────────── Main sub-header: search + back ────────────────
 /**
- * Free-text filter over the currently loaded document page. Operates
- * client-side on whatever the server already paged in — search across
- * paths and titles (case-insensitive substring).
+ * Free-text search needle — forwarded to the folder REST endpoint
+ * as the {@code search} query param. Server-side filter against
+ * file path/title and folder names (case-insensitive substring).
+ * Debounced so each keystroke doesn't fire a request.
  */
 const documentFilter = ref('');
-const filteredDocuments = computed(() => {
-    const needle = documentFilter.value.trim().toLowerCase();
-    if (!needle)
-        return docsState.items.value;
-    return docsState.items.value.filter((d) => {
-        const path = (d.path ?? '').toLowerCase();
-        const title = (d.title ?? '').toLowerCase();
-        return path.includes(needle) || title.includes(needle);
-    });
+let searchDebounceTimer = null;
+watch(documentFilter, (next) => {
+    if (searchDebounceTimer !== null)
+        clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+        const project = selectedProjectId.value;
+        if (!project)
+            return;
+        void docsState.loadPage(project, 0, undefined, undefined, next);
+    }, 250);
 });
 /**
  * Walk one path segment up: {@code documents/notes/foo/} →
@@ -418,6 +420,15 @@ function pathSegmentBack() {
     const lastSlash = noSlash.lastIndexOf('/');
     const next = lastSlash >= 0 ? noSlash.slice(0, lastSlash + 1) : '';
     applyPathFilter(next, true);
+}
+/**
+ * Descend one level: append the clicked folder name to the current
+ * pathPrefix (with the trailing slash that the server expects).
+ */
+function navigateIntoFolder(folder) {
+    const base = docsState.pathPrefix.value;
+    const baseSlashed = base === '' || base.endsWith('/') ? base : base + '/';
+    applyPathFilter(baseSlashed + folder + '/', true);
 }
 async function changePage(p) {
     if (!selectedProjectId.value)
@@ -1544,6 +1555,7 @@ const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
 /** @type {__VLS_StyleScopedClasses['folder-item']} */ ;
+/** @type {__VLS_StyleScopedClasses['folder-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['content-tab']} */ ;
 /** @type {__VLS_StyleScopedClasses['props-toggle']} */ ;
 // CSS variable injection 
@@ -3695,7 +3707,9 @@ else {
         (__VLS_ctx.docsState.error.value);
         var __VLS_279;
     }
-    if (!__VLS_ctx.docsState.loading.value && __VLS_ctx.docsState.items.value.length === 0) {
+    if (!__VLS_ctx.docsState.loading.value
+        && __VLS_ctx.docsState.items.value.length === 0
+        && __VLS_ctx.docsState.subFolders.value.length === 0) {
         const __VLS_280 = {}.VEmptyState;
         /** @type {[typeof __VLS_components.VEmptyState, typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
@@ -3732,7 +3746,9 @@ else {
                         return;
                     if (!!(__VLS_ctx.docsState.selected.value))
                         return;
-                    if (!(!__VLS_ctx.docsState.loading.value && __VLS_ctx.docsState.items.value.length === 0))
+                    if (!(!__VLS_ctx.docsState.loading.value
+                        && __VLS_ctx.docsState.items.value.length === 0
+                        && __VLS_ctx.docsState.subFolders.value.length === 0))
                         return;
                     __VLS_ctx.openCreateModal();
                 }
@@ -3744,117 +3760,152 @@ else {
         var __VLS_283;
     }
     else {
-        const __VLS_292 = {}.VDataList;
-        /** @type {[typeof __VLS_components.VDataList, typeof __VLS_components.VDataList, ]} */ ;
-        // @ts-ignore
-        const __VLS_293 = __VLS_asFunctionalComponent(__VLS_292, new __VLS_292({
-            ...{ 'onSelect': {} },
-            items: (__VLS_ctx.filteredDocuments),
-            selectable: true,
-        }));
-        const __VLS_294 = __VLS_293({
-            ...{ 'onSelect': {} },
-            items: (__VLS_ctx.filteredDocuments),
-            selectable: true,
-        }, ...__VLS_functionalComponentArgsRest(__VLS_293));
-        let __VLS_296;
-        let __VLS_297;
-        let __VLS_298;
-        const __VLS_299 = {
-            onSelect: (__VLS_ctx.openDocument)
-        };
-        __VLS_295.slots.default;
-        {
-            const { default: __VLS_thisSlot } = __VLS_295.slots;
-            const [{ item }] = __VLS_getSlotParams(__VLS_thisSlot);
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                ...{ class: "flex items-center gap-3" },
+        if (__VLS_ctx.docsState.subFolders.value.length > 0) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
+                ...{ class: "flex flex-col gap-1 mb-3" },
             });
-            /** @type {[typeof DocumentIcon, ]} */ ;
-            // @ts-ignore
-            const __VLS_300 = __VLS_asFunctionalComponent(DocumentIcon, new DocumentIcon({
-                path: (item.path),
-                mimeType: (item.mimeType),
-                kind: (item.kind),
-            }));
-            const __VLS_301 = __VLS_300({
-                path: (item.path),
-                mimeType: (item.mimeType),
-                kind: (item.kind),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_300));
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                ...{ class: "min-w-0 flex-1" },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                ...{ class: "font-semibold truncate flex items-center gap-2" },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "truncate" },
-            });
-            (item.title?.trim() || item.name);
-            if (item.kind) {
+            for (const [folder] of __VLS_getVForSourceType((__VLS_ctx.docsState.subFolders.value))) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
+                                return;
+                            if (!!(!__VLS_ctx.selectedProjectId))
+                                return;
+                            if (!!(__VLS_ctx.docsState.selected.value))
+                                return;
+                            if (!!(!__VLS_ctx.docsState.loading.value
+                                && __VLS_ctx.docsState.items.value.length === 0
+                                && __VLS_ctx.docsState.subFolders.value.length === 0))
+                                return;
+                            if (!(__VLS_ctx.docsState.subFolders.value.length > 0))
+                                return;
+                            __VLS_ctx.navigateIntoFolder(folder);
+                        } },
+                    key: (folder),
+                    ...{ class: "folder-row" },
+                });
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                    ...{ class: "badge badge-info badge-sm shrink-0" },
-                    title: (`kind: ${item.kind}`),
+                    ...{ class: "text-lg leading-none" },
                 });
-                (item.kind);
-            }
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                ...{ class: "text-xs opacity-60 truncate font-mono" },
-            });
-            (item.path);
-            if (item.tags && item.tags.length) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "mt-1 flex gap-1 flex-wrap" },
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "font-medium" },
                 });
-                for (const [tag] of __VLS_getVForSourceType((item.tags))) {
-                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                        key: (tag),
-                        ...{ class: "badge badge-ghost badge-sm" },
-                    });
-                    (tag);
-                }
-            }
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                ...{ class: "text-right text-xs opacity-60 shrink-0" },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
-            (__VLS_ctx.formatBytes(item.size));
-            if (!item.inline) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                    ...{ class: "text-warning" },
-                });
-                (__VLS_ctx.$t('documents.storedNote'));
+                (folder);
             }
         }
-        var __VLS_295;
-    }
-    if (__VLS_ctx.docsState.totalCount.value > 0) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "mt-4" },
-        });
-        const __VLS_303 = {}.VPagination;
-        /** @type {[typeof __VLS_components.VPagination, ]} */ ;
-        // @ts-ignore
-        const __VLS_304 = __VLS_asFunctionalComponent(__VLS_303, new __VLS_303({
-            ...{ 'onUpdate:page': {} },
-            page: (__VLS_ctx.docsState.page.value),
-            pageSize: (__VLS_ctx.docsState.pageSize.value),
-            totalCount: (__VLS_ctx.docsState.totalCount.value),
-        }));
-        const __VLS_305 = __VLS_304({
-            ...{ 'onUpdate:page': {} },
-            page: (__VLS_ctx.docsState.page.value),
-            pageSize: (__VLS_ctx.docsState.pageSize.value),
-            totalCount: (__VLS_ctx.docsState.totalCount.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_304));
-        let __VLS_307;
-        let __VLS_308;
-        let __VLS_309;
-        const __VLS_310 = {
-            'onUpdate:page': (__VLS_ctx.changePage)
-        };
-        var __VLS_306;
+        if (__VLS_ctx.docsState.items.value.length > 0) {
+            const __VLS_292 = {}.VDataList;
+            /** @type {[typeof __VLS_components.VDataList, typeof __VLS_components.VDataList, ]} */ ;
+            // @ts-ignore
+            const __VLS_293 = __VLS_asFunctionalComponent(__VLS_292, new __VLS_292({
+                ...{ 'onSelect': {} },
+                items: (__VLS_ctx.docsState.items.value),
+                selectable: true,
+            }));
+            const __VLS_294 = __VLS_293({
+                ...{ 'onSelect': {} },
+                items: (__VLS_ctx.docsState.items.value),
+                selectable: true,
+            }, ...__VLS_functionalComponentArgsRest(__VLS_293));
+            let __VLS_296;
+            let __VLS_297;
+            let __VLS_298;
+            const __VLS_299 = {
+                onSelect: (__VLS_ctx.openDocument)
+            };
+            __VLS_295.slots.default;
+            {
+                const { default: __VLS_thisSlot } = __VLS_295.slots;
+                const [{ item }] = __VLS_getSlotParams(__VLS_thisSlot);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "flex items-center gap-3" },
+                });
+                /** @type {[typeof DocumentIcon, ]} */ ;
+                // @ts-ignore
+                const __VLS_300 = __VLS_asFunctionalComponent(DocumentIcon, new DocumentIcon({
+                    path: (item.path),
+                    mimeType: (item.mimeType),
+                    kind: (item.kind),
+                }));
+                const __VLS_301 = __VLS_300({
+                    path: (item.path),
+                    mimeType: (item.mimeType),
+                    kind: (item.kind),
+                }, ...__VLS_functionalComponentArgsRest(__VLS_300));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "min-w-0 flex-1" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "font-semibold truncate flex items-center gap-2" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "truncate" },
+                });
+                (item.title?.trim() || item.name);
+                if (item.kind) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                        ...{ class: "badge badge-info badge-sm shrink-0" },
+                        title: (`kind: ${item.kind}`),
+                    });
+                    (item.kind);
+                }
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "text-xs opacity-60 truncate font-mono" },
+                });
+                (item.path);
+                if (item.tags && item.tags.length) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "mt-1 flex gap-1 flex-wrap" },
+                    });
+                    for (const [tag] of __VLS_getVForSourceType((item.tags))) {
+                        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                            key: (tag),
+                            ...{ class: "badge badge-ghost badge-sm" },
+                        });
+                        (tag);
+                    }
+                }
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "text-right text-xs opacity-60 shrink-0" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
+                (__VLS_ctx.formatBytes(item.size));
+                if (!item.inline) {
+                    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                        ...{ class: "text-warning" },
+                    });
+                    (__VLS_ctx.$t('documents.storedNote'));
+                }
+            }
+            var __VLS_295;
+        }
+        if (__VLS_ctx.docsState.totalCount.value > 0) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                ...{ class: "mt-4" },
+            });
+            const __VLS_303 = {}.VPagination;
+            /** @type {[typeof __VLS_components.VPagination, ]} */ ;
+            // @ts-ignore
+            const __VLS_304 = __VLS_asFunctionalComponent(__VLS_303, new __VLS_303({
+                ...{ 'onUpdate:page': {} },
+                page: (__VLS_ctx.docsState.page.value),
+                pageSize: (__VLS_ctx.docsState.pageSize.value),
+                totalCount: (__VLS_ctx.docsState.totalCount.value),
+            }));
+            const __VLS_305 = __VLS_304({
+                ...{ 'onUpdate:page': {} },
+                page: (__VLS_ctx.docsState.page.value),
+                pageSize: (__VLS_ctx.docsState.pageSize.value),
+                totalCount: (__VLS_ctx.docsState.totalCount.value),
+            }, ...__VLS_functionalComponentArgsRest(__VLS_304));
+            let __VLS_307;
+            let __VLS_308;
+            let __VLS_309;
+            const __VLS_310 = {
+                'onUpdate:page': (__VLS_ctx.changePage)
+            };
+            var __VLS_306;
+        }
     }
 }
 const __VLS_311 = {}.VModal;
@@ -4678,6 +4729,14 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['mr-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['folder-row']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-lg']} */ ;
+/** @type {__VLS_StyleScopedClasses['leading-none']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-medium']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
@@ -4832,8 +4891,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             filteredProjectsByGroup: filteredProjectsByGroup,
             filteredProjectsCount: filteredProjectsCount,
             documentFilter: documentFilter,
-            filteredDocuments: filteredDocuments,
             pathSegmentBack: pathSegmentBack,
+            navigateIntoFolder: navigateIntoFolder,
             changePage: changePage,
             topLevelFolders: topLevelFolders,
             selectedFolderKey: selectedFolderKey,

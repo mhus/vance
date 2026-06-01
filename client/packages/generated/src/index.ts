@@ -48,6 +48,7 @@ export * from './documents/DocumentArchiveListResponse';
 export * from './documents/DocumentArchiveSummary';
 export * from './documents/DocumentCreateRequest';
 export * from './documents/DocumentDto';
+export * from './documents/DocumentFolderListResponse';
 export * from './documents/DocumentFoldersResponse';
 export * from './documents/DocumentKindsResponse';
 export * from './documents/DocumentListResponse';

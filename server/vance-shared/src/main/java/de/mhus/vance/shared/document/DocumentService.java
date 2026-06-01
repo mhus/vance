@@ -198,6 +198,140 @@ public class DocumentService {
         return new org.springframework.data.domain.PageImpl<>(content, pageable, total);
     }
 
+    /**
+     * Folder-view listing for the documents UI: subfolders directly
+     * under {@code path} plus a paged list of files in that same
+     * directory (one level deep only, not recursive).
+     *
+     * <p>Path normalisation:
+     * <ul>
+     *   <li>{@code null} / blank → list the project root.</li>
+     *   <li>leading {@code /} stripped (paths are stored without).</li>
+     *   <li>missing trailing {@code /} appended so the regex pivots
+     *       on a real segment boundary.</li>
+     * </ul>
+     *
+     * <p>The trash folder ({@value #TRASH_FOLDER_PREFIX}) is excluded
+     * from both folders and files unless the caller explicitly browses
+     * inside it — same convention as {@link #listByProjectPaged}.
+     */
+    public FolderListing listByFolder(
+            String tenantId, String projectId, @Nullable String path,
+            @Nullable String search, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(1, Math.min(size, 200));
+        String prefix = normalizeFolderPrefix(path);
+        String needle = (search == null || search.isBlank()) ? null : search.trim();
+
+        // ─── Files: paths starting with prefix and containing no further slash.
+        // No explicit trash-exclusion needed: the {@code [^/]+$} tail
+        // already rejects anything that nests further (including
+        // {@code _bin/foo}), and the only way to see trash files is to
+        // explicitly browse with {@code prefix = "_bin/"}.
+        //
+        // When a search needle is set we layer an OR(path, title)
+        // substring match via {@code andOperator} so the path-shape
+        // anchor and the search criteria don't both try to add a
+        // top-level {@code path} field on the Query.
+        String filesRegex = "^" + java.util.regex.Pattern.quote(prefix) + "[^/]+$";
+        Criteria fileCriteria;
+        if (needle == null) {
+            fileCriteria = Criteria.where("path").regex(filesRegex);
+        } else {
+            String needleRegex = java.util.regex.Pattern.quote(needle);
+            fileCriteria = new Criteria().andOperator(
+                    Criteria.where("path").regex(filesRegex),
+                    new Criteria().orOperator(
+                            Criteria.where("path").regex(needleRegex, "i"),
+                            Criteria.where("title").regex(needleRegex, "i")));
+        }
+        Query filesQuery = baseProjectQuery(tenantId, projectId)
+                .addCriteria(fileCriteria)
+                .with(PageRequest.of(safePage, safeSize, Sort.by("path").ascending()));
+        long totalFiles = mongoTemplate.count(
+                Query.of(filesQuery).limit(-1).skip(-1), DocumentDocument.class);
+        List<DocumentDocument> files = mongoTemplate.find(filesQuery, DocumentDocument.class);
+
+        // ─── Folders: distinct first segments of paths that nest
+        // beyond the prefix. Aggregation pipeline:
+        //   1. Match: documents in this project under the prefix.
+        //   2. Project: strip the prefix from path → keep the remainder.
+        //   3. Match: remainder must contain at least one slash.
+        //   4. Project: first slash-segment of the remainder.
+        //   5. Group + sort: distinct folder names, alphabetical.
+        java.util.List<org.bson.Document> pipeline = new java.util.ArrayList<>();
+        org.bson.Document match = new org.bson.Document()
+                .append("tenantId", tenantId)
+                .append("projectId", projectId)
+                .append("status", DocumentStatus.ACTIVE.name())
+                .append("path", new org.bson.Document(
+                        "$regex", "^" + java.util.regex.Pattern.quote(prefix)));
+        if (prefix.isEmpty()) {
+            // Same trash-exclusion as the file query.
+            match.append("$nor", List.of(new org.bson.Document(
+                    "path",
+                    new org.bson.Document("$regex",
+                            "^" + java.util.regex.Pattern.quote(TRASH_FOLDER_PREFIX)))));
+        }
+        pipeline.add(new org.bson.Document("$match", match));
+        // {@code $substr} of (path, prefixLen, -1) returns the suffix
+        // after the prefix. With prefixLen=0 (root) that's the full
+        // path; with prefix=`documents/` and path=`documents/notes/x`
+        // we get `notes/x`.
+        pipeline.add(new org.bson.Document("$project", new org.bson.Document(
+                "rest", new org.bson.Document("$substr",
+                        java.util.List.of("$path", prefix.length(), -1)))));
+        pipeline.add(new org.bson.Document("$match", new org.bson.Document(
+                "rest", new org.bson.Document("$regex", "/"))));
+        pipeline.add(new org.bson.Document("$project", new org.bson.Document(
+                "folder", new org.bson.Document("$arrayElemAt",
+                        java.util.List.of(new org.bson.Document(
+                                "$split", java.util.List.of("$rest", "/")), 0)))));
+        pipeline.add(new org.bson.Document("$group", new org.bson.Document("_id", "$folder")));
+        if (needle != null) {
+            // Filter folder names by the same search needle (case-
+            // insensitive substring on the folder segment itself).
+            pipeline.add(new org.bson.Document("$match", new org.bson.Document(
+                    "_id", new org.bson.Document()
+                            .append("$regex", java.util.regex.Pattern.quote(needle))
+                            .append("$options", "i"))));
+        }
+        pipeline.add(new org.bson.Document("$sort", new org.bson.Document("_id", 1)));
+
+        List<String> folders = new ArrayList<>();
+        for (org.bson.Document doc : mongoTemplate.getCollection("documents")
+                .aggregate(pipeline).allowDiskUse(true)) {
+            Object id = doc.get("_id");
+            if (id instanceof String s && !s.isBlank()) folders.add(s);
+        }
+
+        return new FolderListing(folders, files, safePage, safeSize, totalFiles);
+    }
+
+    private static String normalizeFolderPrefix(@Nullable String raw) {
+        if (raw == null) return "";
+        String s = raw.trim();
+        while (s.startsWith("/")) s = s.substring(1);
+        if (s.isEmpty()) return "";
+        if (!s.endsWith("/")) s = s + "/";
+        return s;
+    }
+
+    private Query baseProjectQuery(String tenantId, String projectId) {
+        return new Query()
+                .addCriteria(Criteria.where("tenantId").is(tenantId))
+                .addCriteria(Criteria.where("projectId").is(projectId))
+                .addCriteria(Criteria.where("status").is(DocumentStatus.ACTIVE));
+    }
+
+    /** Return shape for {@link #listByFolder}. */
+    public record FolderListing(
+            List<String> folders,
+            List<DocumentDocument> files,
+            int page,
+            int pageSize,
+            long totalFiles) {}
+
     /** All {@link DocumentStatus#ACTIVE} documents in the project that declared {@code kind: <kind>}. */
     public List<DocumentDocument> listByKind(String tenantId, String projectId, String kind) {
         return repository.findByTenantIdAndProjectIdAndStatusAndKind(

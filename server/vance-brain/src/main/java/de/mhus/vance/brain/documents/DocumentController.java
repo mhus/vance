@@ -5,6 +5,7 @@ import de.mhus.vance.api.documents.DocumentArchiveListResponse;
 import de.mhus.vance.api.documents.DocumentArchiveSummary;
 import de.mhus.vance.api.documents.DocumentCreateRequest;
 import de.mhus.vance.api.documents.DocumentDto;
+import de.mhus.vance.api.documents.DocumentFolderListResponse;
 import de.mhus.vance.api.documents.DocumentFoldersResponse;
 import de.mhus.vance.api.documents.DocumentKindsResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
@@ -84,6 +85,34 @@ public class DocumentController {
                 .page(result.getNumber())
                 .pageSize(result.getSize())
                 .totalCount(result.getTotalElements())
+                .build();
+    }
+
+    /**
+     * Folder-view endpoint for the documents browser. Returns the
+     * subfolders directly under the requested {@code path} plus a
+     * paged list of files in that same folder (no nesting). Path
+     * defaults to project root when omitted. Folders are sorted
+     * alphabetically; files by path ascending.
+     */
+    @GetMapping("/brain/{tenant}/documents/folder")
+    public DocumentFolderListResponse folderView(
+            @PathVariable("tenant") String tenant,
+            @RequestParam("projectId") String projectId,
+            @RequestParam(value = "path", required = false) @Nullable String path,
+            @RequestParam(value = "search", required = false) @Nullable String search,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "50") int size,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, projectId), Action.READ);
+        DocumentService.FolderListing listing =
+                documentService.listByFolder(tenant, projectId, path, search, page, size);
+        return DocumentFolderListResponse.builder()
+                .folders(listing.folders())
+                .files(listing.files().stream().map(DocumentController::toSummary).toList())
+                .page(listing.page())
+                .pageSize(listing.pageSize())
+                .totalCount(listing.totalFiles())
                 .build();
     }
 

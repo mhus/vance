@@ -505,20 +505,21 @@ const filteredProjectsCount = computed<number>(() =>
 // ──────────────── Main sub-header: search + back ────────────────
 
 /**
- * Free-text filter over the currently loaded document page. Operates
- * client-side on whatever the server already paged in — search across
- * paths and titles (case-insensitive substring).
+ * Free-text search needle — forwarded to the folder REST endpoint
+ * as the {@code search} query param. Server-side filter against
+ * file path/title and folder names (case-insensitive substring).
+ * Debounced so each keystroke doesn't fire a request.
  */
 const documentFilter = ref('');
 
-const filteredDocuments = computed(() => {
-  const needle = documentFilter.value.trim().toLowerCase();
-  if (!needle) return docsState.items.value;
-  return docsState.items.value.filter((d) => {
-    const path = (d.path ?? '').toLowerCase();
-    const title = (d.title ?? '').toLowerCase();
-    return path.includes(needle) || title.includes(needle);
-  });
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+watch(documentFilter, (next) => {
+  if (searchDebounceTimer !== null) clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    const project = selectedProjectId.value;
+    if (!project) return;
+    void docsState.loadPage(project, 0, undefined, undefined, next);
+  }, 250);
 });
 
 /**
@@ -533,6 +534,16 @@ function pathSegmentBack(): void {
   const lastSlash = noSlash.lastIndexOf('/');
   const next = lastSlash >= 0 ? noSlash.slice(0, lastSlash + 1) : '';
   applyPathFilter(next, true);
+}
+
+/**
+ * Descend one level: append the clicked folder name to the current
+ * pathPrefix (with the trailing slash that the server expects).
+ */
+function navigateIntoFolder(folder: string): void {
+  const base = docsState.pathPrefix.value;
+  const baseSlashed = base === '' || base.endsWith('/') ? base : base + '/';
+  applyPathFilter(baseSlashed + folder + '/', true);
 }
 
 async function changePage(p: number): Promise<void> {
@@ -2448,7 +2459,9 @@ const formatBytes = (n: number): string => {
         </VAlert>
 
         <VEmptyState
-          v-if="!docsState.loading.value && docsState.items.value.length === 0"
+          v-if="!docsState.loading.value
+            && docsState.items.value.length === 0
+            && docsState.subFolders.value.length === 0"
           :headline="$t('documents.noDocumentsHeadline')"
           :body="$t('documents.noDocumentsBody')"
         >
@@ -2459,9 +2472,28 @@ const formatBytes = (n: number): string => {
           </template>
         </VEmptyState>
 
+        <template v-else>
+          <!-- Sub-folders — clickable rows that descend into that
+               folder. Listed first, alphabetically (sorted server-
+               side). Files follow below. -->
+          <ul
+            v-if="docsState.subFolders.value.length > 0"
+            class="flex flex-col gap-1 mb-3"
+          >
+            <li
+              v-for="folder in docsState.subFolders.value"
+              :key="folder"
+              class="folder-row"
+              @click="navigateIntoFolder(folder)"
+            >
+              <span class="text-lg leading-none">📁</span>
+              <span class="font-medium">{{ folder }}/</span>
+            </li>
+          </ul>
+
         <VDataList
-          v-else
-          :items="filteredDocuments"
+          v-if="docsState.items.value.length > 0"
+          :items="docsState.items.value"
           selectable
           @select="openDocument"
         >
@@ -2508,6 +2540,7 @@ const formatBytes = (n: number): string => {
             @update:page="changePage"
           />
         </div>
+        </template>
       </template>
         </div>
       </div>
@@ -2781,6 +2814,24 @@ const formatBytes = (n: number): string => {
 .folder-count {
   font-size: 0.7rem;
   opacity: 0.6;
+}
+
+/* Sub-folder row in the main file list — clickable, descends into
+ * that folder when activated. Sized to match the {@code <VDataList>}
+ * row underneath visually. */
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
+}
+.folder-row:hover {
+  background: rgba(127, 127, 127, 0.06);
+  border-color: rgba(127, 127, 127, 0.18);
 }
 
 /* Tab bar above the inline-text editor for kind-aware view modes

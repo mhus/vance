@@ -59,11 +59,11 @@ public class WindowTitleService {
     static final String OSC_PREFIX = ((char) 0x1B) + "]0;";
     static final String OSC_TERMINATOR = String.valueOf((char) 0x07);
     /** Idle prefix — italic "v" (MATHEMATICAL ITALIC SMALL V) as a nod to "vance". */
-    private static final String GLYPH_IDLE = "𝑣";
+    private static final String GLYPH_IDLE = "[𝑣]";
     /** Busy "on" half of the blink — filled circle. */
-    private static final String GLYPH_BUSY_ON = "●";
+    private static final String GLYPH_BUSY_ON = "[●]";
     /** Busy "off" half of the blink — hollow circle (same shape, just emptied). */
-    private static final String GLYPH_BUSY_OFF = "○";
+    private static final String GLYPH_BUSY_OFF = "[○]";
     /** Shown when the expanded title would degrade to nothing more than the glyph. */
     private static final String FALLBACK_LABEL = "[vance]";
     private static final long BLINK_INTERVAL_MS = 500;

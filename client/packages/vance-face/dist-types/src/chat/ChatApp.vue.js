@@ -1,9 +1,11 @@
-import { onBeforeUnmount, onMounted, ref, computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { BrainWebSocket, WebSocketRequestError, getTenantId, getUsername, setActiveSessionId, getActiveSessionId, } from '@vance/shared';
-import { EditorShell, VAlert, VButton } from '@components/index';
+import { BrainWebSocket, WebSocketRequestError, getTenantId, getUsername, setActiveSessionId, } from '@vance/shared';
+import { EditorShell, VAlert, VButton, } from '@components/index';
 import PickerView from './PickerView.vue';
 import ChatView from './ChatView.vue';
+import ChatComposer from './ChatComposer.vue';
+import ChatRightPanel from './ChatRightPanel.vue';
 const { t } = useI18n();
 const CLIENT_VERSION = '0.1.0';
 const mode = ref('connecting');
@@ -13,10 +15,7 @@ const activeSessionId = ref(null);
 const mediation = ref(null);
 /**
  * Single-level back-stack: the session id we were bound to before the
- * current switch-to. {@code null} means we're at the hub already.
- * {@code /hub} closes the current WS and reopens one bound to this
- * id. v2 can grow this into a real stack for multi-hop project
- * context switching.
+ * current switch-to. `null` means we're at the hub already.
  */
 const previousSessionId = ref(null);
 const username = computed(() => getUsername());
@@ -29,6 +28,168 @@ const connectionState = computed(() => {
         return 'idle';
     return undefined;
 });
+// ──────────────── Session-resolved state ────────────────
+//
+// Filled by {@link resolveSessionAndProcess} once a session has been
+// bound. Composer + RightPanel + ChatView all read these; they hang
+// off ChatApp instead of any specific child because the WS lookup
+// crosses component boundaries.
+const chatProcessName = ref(null);
+const chatProjectId = ref('');
+/**
+ * Display name of the bound session, fetched together with the
+ * project id in {@link resolveSessionAndProcess}. Empty when no
+ * session is bound or the session-list lookup failed. Drives the
+ * second breadcrumb segment in live mode.
+ */
+const sessionDisplayName = ref(null);
+// ──────────────── Picker project selection ────────────────
+//
+// The picker's currently-selected project lives here so the URL,
+// breadcrumb, and PickerView all agree on a single source of truth.
+// User clicks in the project list flow upward via {@code project-pick},
+// trigger a pushState, and become navigable through the browser
+// back/forward stack. Title is resolved by PickerView (only it has the
+// project list) and reported via {@code project-resolved}.
+const pickerProjectName = ref(null);
+/**
+ * Display title of the currently relevant project — picker selection
+ * in picker mode, the bound session's owning project in live mode.
+ * Both PickerView and ChatView feed this via {@code project-resolved}.
+ */
+const currentProjectTitle = ref(null);
+function urlProjectName() {
+    const id = new URLSearchParams(window.location.search).get('project');
+    return id && id.length > 0 ? id : null;
+}
+function pushProjectToUrl(name, mode = 'push') {
+    const url = new URL(window.location.href);
+    if (name)
+        url.searchParams.set('project', name);
+    else
+        url.searchParams.delete('project');
+    if (url.toString() === window.location.href)
+        return;
+    if (mode === 'push') {
+        window.history.pushState(null, '', url.toString());
+    }
+    else {
+        window.history.replaceState(null, '', url.toString());
+    }
+}
+function onPickerProjectPick(payload) {
+    pickerProjectName.value = payload.name;
+    currentProjectTitle.value = payload.title;
+    pushProjectToUrl(payload.name, 'push');
+}
+function onPickerProjectResolved(payload) {
+    if (payload.name === pickerProjectName.value) {
+        currentProjectTitle.value = payload.title;
+    }
+}
+function onChatViewProjectResolved(payload) {
+    if (payload.name === chatProjectId.value) {
+        currentProjectTitle.value = payload.title;
+    }
+}
+/**
+ * Click handler for the project segment of the live-mode breadcrumb.
+ * Unbinds the current session, transitions to picker mode with the
+ * same project pre-selected, and rewrites the URL in one step (single
+ * history entry rather than two).
+ */
+function goToPickerWithProject(projectName) {
+    if (!projectName)
+        return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('sessionId');
+    url.searchParams.set('project', projectName);
+    if (url.toString() !== window.location.href) {
+        window.history.pushState(null, '', url.toString());
+    }
+    pickerProjectName.value = projectName;
+    // Land on the sessions list, not the project list — user just told
+    // us they want to navigate this project's sessions.
+    focusZone.value = 'main';
+    void leaveLive();
+}
+const breadcrumbs = computed(() => {
+    if (liveOk.value) {
+        const projectText = currentProjectTitle.value || chatProjectId.value;
+        const session = sessionDisplayName.value || t('chat.breadcrumb.unnamedSession');
+        if (projectText && chatProjectId.value) {
+            const projectId = chatProjectId.value;
+            return [
+                { text: projectText, onClick: () => goToPickerWithProject(projectId) },
+                session,
+            ];
+        }
+        return [session];
+    }
+    if (pickerMode.value && currentProjectTitle.value) {
+        return [currentProjectTitle.value];
+    }
+    return [];
+});
+async function resolveSessionAndProcess(sessionId) {
+    if (!socket.value)
+        return;
+    try {
+        const resp = await socket.value.send('session-list', {});
+        const summary = resp.sessions?.find((s) => s.sessionId === sessionId);
+        chatProjectId.value = summary?.projectId ?? '';
+        sessionDisplayName.value = summary?.displayName ?? null;
+    }
+    catch {
+        chatProjectId.value = '';
+        sessionDisplayName.value = null;
+    }
+    // The chat-process name is fixed by SessionChatBootstrapper to
+    // CHAT_PROCESS_NAME = "chat" — exactly one per session.
+    chatProcessName.value = 'chat';
+}
+// ──────────────── Progress events (right-panel feed) ────────────────
+const PROGRESS_CAP = 50;
+const progressEvents = ref([]);
+let progressUnsubscribe = null;
+function recordProgress(data) {
+    progressEvents.value.push(data);
+    if (progressEvents.value.length > PROGRESS_CAP) {
+        progressEvents.value.splice(0, progressEvents.value.length - PROGRESS_CAP);
+    }
+}
+// ──────────────── Focus model ────────────────
+const focusZone = ref('main');
+// ──────────────── Child refs (for imperative cross-component calls) ────────────────
+const chatViewRef = ref(null);
+const composerRef = ref(null);
+const rightPanelRef = ref(null);
+// ──────────────── Cross-component event routing ────────────────
+function onLocalEchoFromComposer(msg) {
+    chatViewRef.value?.appendLocalEcho(msg);
+}
+function onRollbackEchoFromComposer(messageId) {
+    chatViewRef.value?.rollbackLocalEcho(messageId);
+}
+function onSpeakMessageFromView(text) {
+    composerRef.value?.speakMessage(text);
+}
+function onNoteActivityFromView() {
+    composerRef.value?.noteTalkActivity();
+}
+function onHistoryLoadedFromView() {
+    composerRef.value?.markSpeakerLive();
+}
+function onAskUserPickFromView(label) {
+    void composerRef.value?.setTextAndSend(label);
+}
+function onWizardDeepLinkFromView(detail) {
+    rightPanelRef.value?.openWizard(detail.name, detail.prefill);
+}
+function onPromptReadyFromRightPanel(prompt) {
+    composerRef.value?.setText(prompt);
+}
+// ──────────────── URL state ────────────────
 function urlSessionId() {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('sessionId');
@@ -40,28 +201,27 @@ function pushSessionIdToUrl(sessionId) {
         url.searchParams.set('sessionId', sessionId);
     else
         url.searchParams.delete('sessionId');
-    window.history.replaceState(null, '', url.toString());
+    // pushState adds a new history entry — Browser-Back from chat goes
+    // back to the picker. The check below guards against duplicate
+    // entries when the URL didn't actually change (notably when this
+    // is called via the popstate handler after the browser already
+    // navigated).
+    if (url.toString() !== window.location.href) {
+        window.history.pushState(null, '', url.toString());
+    }
 }
+// ──────────────── WS socket lifecycle ────────────────
 async function openSocket() {
     const tenant = getTenantId();
     if (!tenant) {
         throw new Error('Missing tenant — cannot open chat connection.');
     }
-    // Same-origin upgrade ships the {@code vance_access} cookie
-    // automatically. No JWT lookup in JS — that's the whole point of
-    // the cookie-based auth flow.
     return BrainWebSocket.connect({
         tenant,
         profile: 'web',
         clientVersion: CLIENT_VERSION,
     });
 }
-/**
- * Open a session-less socket and attach the global listeners. Used
- * by the picker, which then drives session-bootstrap on this same
- * socket. The picker's success path goes through
- * {@link onSessionBootstrapped} without re-opening the socket.
- */
 async function openSocketForPicker() {
     await teardownCurrentSocket();
     try {
@@ -75,30 +235,22 @@ async function openSocketForPicker() {
     attachSocketListeners(socket.value);
     return true;
 }
-/**
- * Drop the current socket and detach its listeners. Called before
- * any switch — the listener unsubs run before close() so onClose
- * doesn't fire the "connection lost" UI message for what's really an
- * intentional swap.
- */
 async function teardownCurrentSocket() {
     switchToUnsubscribe?.();
     switchToUnsubscribe = null;
     onCloseUnsubscribe?.();
     onCloseUnsubscribe = null;
+    progressUnsubscribe?.();
+    progressUnsubscribe = null;
     if (socket.value) {
         socket.value.close();
         socket.value = null;
     }
+    // Reset session-bound state — these belong to the now-dead WS.
+    progressEvents.value = [];
+    chatProcessName.value = null;
+    chatProjectId.value = '';
 }
-/**
- * Attach onClose + switch-to listeners on the given socket. Pulled
- * out so both paths (session-bound via {@link openAndBind} and
- * session-less via {@link openSocketForPicker}) share the same
- * wiring. The handles live in module-level refs so
- * {@link teardownCurrentSocket} can detach them before an intentional
- * close.
- */
 function attachSocketListeners(s) {
     onCloseUnsubscribe = s.onClose(() => {
         if (mode.value === 'live') {
@@ -111,17 +263,8 @@ function attachSocketListeners(s) {
         }
     });
     switchToUnsubscribe = s.on('switch-to', (data) => { void onSwitchTo(data); });
+    progressUnsubscribe = s.on('process-progress', recordProgress);
 }
-/**
- * Open a fresh WS and bind it to {@code sessionId}. Closes any existing
- * WS first. This is the unified switch path used by both the initial
- * connect (from picker / URL hint) and the server-pushed switch-to
- * frame. Re-registers the switch-to listener on the new socket so a
- * subsequent switch still finds us.
- *
- * @returns {@code true} on a clean bind, {@code false} when resume
- *          failed (mode + errorMessage are populated as a side effect).
- */
 async function openAndBind(sessionId) {
     await teardownCurrentSocket();
     try {
@@ -138,11 +281,9 @@ async function openAndBind(sessionId) {
         activeSessionId.value = sessionId;
         setActiveSessionId(sessionId);
         pushSessionIdToUrl(sessionId);
-        // Clear any stale failure message from a prior connection cycle —
-        // we just successfully bound, so anything that complained about a
-        // lost connection is no longer true.
         errorMessage.value = null;
         mode.value = 'live';
+        await resolveSessionAndProcess(sessionId);
         return true;
     }
     catch (e) {
@@ -169,13 +310,6 @@ async function openAndBind(sessionId) {
         return false;
     }
 }
-/**
- * Server-pushed {@code switch-to} frame — Eddie's MEDIATE action (or a
- * future flow like project-tab switching) asks the client to drop the
- * current WS and open a new one bound to {@code targetSessionId}. The
- * previous session id is pushed onto our single-level back-stack so
- * {@code /hub} can return.
- */
 async function onSwitchTo(data) {
     const target = data.targetSessionId;
     if (!target)
@@ -189,15 +323,6 @@ async function onSwitchTo(data) {
         workerProjectName: data.targetProjectId || data.targetProcessName || target,
     };
 }
-/**
- * User-triggered {@code /hub} — purely client-side. Close the current
- * WS, open a new one bound to the remembered previous session, drop
- * the mediation banner. No server round-trip; the server doesn't know
- * (or care) about the back-stack — workers are regular sessions, the
- * hub is a regular session, switching between them is local.
- *
- * No-op when we're already at the hub (no previous session remembered).
- */
 async function backToHub() {
     const target = previousSessionId.value;
     if (!target)
@@ -213,24 +338,23 @@ async function onSessionPicked(sessionId) {
     await openAndBind(sessionId);
 }
 async function onSessionBootstrapped(sessionId) {
-    // session-bootstrap binds the socket as a side effect; no extra resume.
     errorMessage.value = null;
     activeSessionId.value = sessionId;
     setActiveSessionId(sessionId);
     pushSessionIdToUrl(sessionId);
     mode.value = 'live';
+    await resolveSessionAndProcess(sessionId);
 }
 async function leaveLive() {
-    // No confirm dialog — the session stays alive on the server and the
-    // user can always re-enter it from the picker. Sending session-
-    // unbind frees the binding so the server marks the connection
-    // available; the WS itself stays open for picker / bootstrap use.
     if (socket.value && !socket.value.closed()) {
         socket.value.sendNoReply('session-unbind');
     }
     activeSessionId.value = null;
     pushSessionIdToUrl(null);
-    // localStorage.activeSessionId stays — it's a hint for next visit, not state.
+    chatProcessName.value = null;
+    chatProjectId.value = '';
+    sessionDisplayName.value = null;
+    progressEvents.value = [];
     mode.value = 'picker';
 }
 function backToPicker() {
@@ -240,11 +364,43 @@ function backToPicker() {
 }
 let switchToUnsubscribe = null;
 let onCloseUnsubscribe = null;
+/**
+ * Browser back/forward routes through here. Reads the current URL
+ * and either binds to the new session id, or — if the URL no longer
+ * carries a sessionId — drops back to the picker. We deliberately
+ * compare against {@link activeSessionId} so popstate events that
+ * land on the same URL (e.g. a programmatic replaceState elsewhere)
+ * become no-ops. The {@code ?project=} parameter steers the picker's
+ * project selection along the same axis.
+ */
+async function onPopstate() {
+    const id = urlSessionId();
+    if (id) {
+        if (id !== activeSessionId.value) {
+            await openAndBind(id);
+        }
+    }
+    else if (mode.value === 'live') {
+        await leaveLive();
+    }
+    // Project changes are independent of session — both can shift in
+    // a single popstate when the user navigates directly across
+    // different URLs. Sync the picker selection too.
+    const project = urlProjectName();
+    if (project !== pickerProjectName.value) {
+        pickerProjectName.value = project;
+        if (!project)
+            currentProjectTitle.value = null;
+    }
+}
 onMounted(async () => {
-    // Resume hint: URL param wins over localStorage. With a hint we go
-    // straight to a session-bound socket via openAndBind; without one
-    // we open a session-less socket for the picker.
-    const hinted = urlSessionId() ?? getActiveSessionId();
+    // Only URL-hint triggers auto-bind. Stale localStorage sessionId is
+    // intentionally ignored — opening chat.html with no params lands
+    // in the picker so the user explicitly picks a session.
+    const hinted = urlSessionId();
+    // Project from URL is seeded before mount completes so PickerView
+    // sees it via the v-model prop on its first render.
+    pickerProjectName.value = urlProjectName();
     if (hinted) {
         await openAndBind(hinted);
     }
@@ -253,12 +409,40 @@ onMounted(async () => {
         if (ok)
             mode.value = 'picker';
     }
+    window.addEventListener('popstate', onPopstate);
 });
 onBeforeUnmount(() => {
+    window.removeEventListener('popstate', onPopstate);
     switchToUnsubscribe?.();
     onCloseUnsubscribe?.();
+    progressUnsubscribe?.();
     socket.value?.close();
 });
+// Mode-driven cleanup: when we leave live mode (back to picker / failed),
+// the composer is unmounted, but if a user is staring at the picker with
+// stale chatProcessName around the watch is harmless. Tracked here for
+// clarity rather than as a side-effect of leaveLive alone.
+watch(mode, (next) => {
+    if (next !== 'live') {
+        progressEvents.value = [];
+    }
+});
+const liveOk = computed(() => mode.value === 'live' && socket.value !== null && activeSessionId.value !== null);
+const pickerMode = computed(() => mode.value === 'picker' && socket.value !== null);
+/**
+ * Title-click in the topbar — same affordance, different action per
+ * mode. In picker mode it focuses the project-list sidebar; in live
+ * mode it leaves the session back to the picker (which is why the
+ * old "← Sessions" button inside ChatView's header is gone).
+ */
+function onTitleClick() {
+    if (pickerMode.value) {
+        focusZone.value = 'sidebar';
+    }
+    else if (liveOk.value) {
+        void leaveLive();
+    }
+}
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
@@ -267,17 +451,48 @@ const __VLS_0 = {}.EditorShell;
 /** @type {[typeof __VLS_components.EditorShell, typeof __VLS_components.EditorShell, ]} */ ;
 // @ts-ignore
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+    ...{ 'onTitleClick': {} },
+    focusZone: (__VLS_ctx.focusZone),
     title: (__VLS_ctx.$t('chat.pageTitle')),
+    breadcrumbs: (__VLS_ctx.breadcrumbs),
     connectionState: (__VLS_ctx.connectionState),
     fullHeight: (true),
+    focusModel: "auto",
+    showSidebar: (__VLS_ctx.pickerMode),
+    showRightPanel: (__VLS_ctx.liveOk),
+    showFooter: (__VLS_ctx.liveOk),
+    titleClickable: (__VLS_ctx.pickerMode || __VLS_ctx.liveOk),
 }));
 const __VLS_2 = __VLS_1({
+    ...{ 'onTitleClick': {} },
+    focusZone: (__VLS_ctx.focusZone),
     title: (__VLS_ctx.$t('chat.pageTitle')),
+    breadcrumbs: (__VLS_ctx.breadcrumbs),
     connectionState: (__VLS_ctx.connectionState),
     fullHeight: (true),
+    focusModel: "auto",
+    showSidebar: (__VLS_ctx.pickerMode),
+    showRightPanel: (__VLS_ctx.liveOk),
+    showFooter: (__VLS_ctx.liveOk),
+    titleClickable: (__VLS_ctx.pickerMode || __VLS_ctx.liveOk),
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-var __VLS_4 = {};
+let __VLS_4;
+let __VLS_5;
+let __VLS_6;
+const __VLS_7 = {
+    onTitleClick: (__VLS_ctx.onTitleClick)
+};
+var __VLS_8 = {};
 __VLS_3.slots.default;
+{
+    const { sidebar: __VLS_thisSlot } = __VLS_3.slots;
+    if (__VLS_ctx.pickerMode) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
+            id: "vance-picker-projects-target",
+            ...{ class: "h-full" },
+        });
+    }
+}
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "h-full min-h-0 flex flex-col" },
 });
@@ -285,56 +500,56 @@ if (__VLS_ctx.errorMessage) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "px-6 pt-4" },
     });
-    const __VLS_5 = {}.VAlert;
+    const __VLS_9 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_6 = __VLS_asFunctionalComponent(__VLS_5, new __VLS_5({
+    const __VLS_10 = __VLS_asFunctionalComponent(__VLS_9, new __VLS_9({
         variant: (__VLS_ctx.mode === 'occupied' ? 'warning' : 'error'),
     }));
-    const __VLS_7 = __VLS_6({
+    const __VLS_11 = __VLS_10({
         variant: (__VLS_ctx.mode === 'occupied' ? 'warning' : 'error'),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_6));
-    __VLS_8.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_10));
+    __VLS_12.slots.default;
     (__VLS_ctx.errorMessage);
     if (__VLS_ctx.mode === 'occupied') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "mt-2 flex gap-2" },
         });
-        const __VLS_9 = {}.VButton;
+        const __VLS_13 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_10 = __VLS_asFunctionalComponent(__VLS_9, new __VLS_9({
+        const __VLS_14 = __VLS_asFunctionalComponent(__VLS_13, new __VLS_13({
             ...{ 'onClick': {} },
             variant: "secondary",
         }));
-        const __VLS_11 = __VLS_10({
+        const __VLS_15 = __VLS_14({
             ...{ 'onClick': {} },
             variant: "secondary",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_10));
-        let __VLS_13;
-        let __VLS_14;
-        let __VLS_15;
-        const __VLS_16 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_14));
+        let __VLS_17;
+        let __VLS_18;
+        let __VLS_19;
+        const __VLS_20 = {
             onClick: (__VLS_ctx.backToPicker)
         };
-        __VLS_12.slots.default;
+        __VLS_16.slots.default;
         (__VLS_ctx.$t('chat.pickAnotherSession'));
-        var __VLS_12;
-        const __VLS_17 = {}.VButton;
+        var __VLS_16;
+        const __VLS_21 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_18 = __VLS_asFunctionalComponent(__VLS_17, new __VLS_17({
+        const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
             ...{ 'onClick': {} },
             variant: "ghost",
         }));
-        const __VLS_19 = __VLS_18({
+        const __VLS_23 = __VLS_22({
             ...{ 'onClick': {} },
             variant: "ghost",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_18));
-        let __VLS_21;
-        let __VLS_22;
-        let __VLS_23;
-        const __VLS_24 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_22));
+        let __VLS_25;
+        let __VLS_26;
+        let __VLS_27;
+        const __VLS_28 = {
             onClick: (...[$event]) => {
                 if (!(__VLS_ctx.errorMessage))
                     return;
@@ -343,36 +558,36 @@ if (__VLS_ctx.errorMessage) {
                 __VLS_ctx.openAndBind(__VLS_ctx.activeSessionId ?? '');
             }
         };
-        __VLS_20.slots.default;
+        __VLS_24.slots.default;
         (__VLS_ctx.$t('chat.tryAgain'));
-        var __VLS_20;
+        var __VLS_24;
     }
     else if (__VLS_ctx.mode === 'failed') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "mt-2" },
         });
-        const __VLS_25 = {}.VButton;
+        const __VLS_29 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
+        const __VLS_30 = __VLS_asFunctionalComponent(__VLS_29, new __VLS_29({
             ...{ 'onClick': {} },
             variant: "secondary",
         }));
-        const __VLS_27 = __VLS_26({
+        const __VLS_31 = __VLS_30({
             ...{ 'onClick': {} },
             variant: "secondary",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_26));
-        let __VLS_29;
-        let __VLS_30;
-        let __VLS_31;
-        const __VLS_32 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_30));
+        let __VLS_33;
+        let __VLS_34;
+        let __VLS_35;
+        const __VLS_36 = {
             onClick: (__VLS_ctx.backToPicker)
         };
-        __VLS_28.slots.default;
+        __VLS_32.slots.default;
         (__VLS_ctx.$t('chat.backToPicker'));
-        var __VLS_28;
+        var __VLS_32;
     }
-    var __VLS_8;
+    var __VLS_12;
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1 min-h-0" },
@@ -380,58 +595,117 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 if (__VLS_ctx.mode === 'picker' && __VLS_ctx.socket) {
     /** @type {[typeof PickerView, ]} */ ;
     // @ts-ignore
-    const __VLS_33 = __VLS_asFunctionalComponent(PickerView, new PickerView({
+    const __VLS_37 = __VLS_asFunctionalComponent(PickerView, new PickerView({
         ...{ 'onSessionPicked': {} },
         ...{ 'onSessionBootstrapped': {} },
+        ...{ 'onFocusMain': {} },
+        ...{ 'onProjectPick': {} },
+        ...{ 'onProjectResolved': {} },
+        selectedProject: (__VLS_ctx.pickerProjectName),
         socket: (__VLS_ctx.socket),
         username: (__VLS_ctx.username),
     }));
-    const __VLS_34 = __VLS_33({
+    const __VLS_38 = __VLS_37({
         ...{ 'onSessionPicked': {} },
         ...{ 'onSessionBootstrapped': {} },
+        ...{ 'onFocusMain': {} },
+        ...{ 'onProjectPick': {} },
+        ...{ 'onProjectResolved': {} },
+        selectedProject: (__VLS_ctx.pickerProjectName),
         socket: (__VLS_ctx.socket),
         username: (__VLS_ctx.username),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
-    let __VLS_36;
-    let __VLS_37;
-    let __VLS_38;
-    const __VLS_39 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_37));
+    let __VLS_40;
+    let __VLS_41;
+    let __VLS_42;
+    const __VLS_43 = {
         onSessionPicked: (__VLS_ctx.onSessionPicked)
     };
-    const __VLS_40 = {
+    const __VLS_44 = {
         onSessionBootstrapped: (__VLS_ctx.onSessionBootstrapped)
     };
-    var __VLS_35;
+    const __VLS_45 = {
+        onFocusMain: (...[$event]) => {
+            if (!(__VLS_ctx.mode === 'picker' && __VLS_ctx.socket))
+                return;
+            __VLS_ctx.focusZone = 'main';
+        }
+    };
+    const __VLS_46 = {
+        onProjectPick: (__VLS_ctx.onPickerProjectPick)
+    };
+    const __VLS_47 = {
+        onProjectResolved: (__VLS_ctx.onPickerProjectResolved)
+    };
+    var __VLS_39;
 }
-else if (__VLS_ctx.mode === 'live' && __VLS_ctx.socket && __VLS_ctx.activeSessionId) {
+else if (__VLS_ctx.liveOk) {
     /** @type {[typeof ChatView, ]} */ ;
     // @ts-ignore
-    const __VLS_41 = __VLS_asFunctionalComponent(ChatView, new ChatView({
+    const __VLS_48 = __VLS_asFunctionalComponent(ChatView, new ChatView({
         ...{ 'onLeave': {} },
         ...{ 'onHub': {} },
-        key: (__VLS_ctx.activeSessionId),
+        ...{ 'onSpeakMessage': {} },
+        ...{ 'onNoteActivity': {} },
+        ...{ 'onHistoryLoaded': {} },
+        ...{ 'onAskUserPick': {} },
+        ...{ 'onWizardDeepLink': {} },
+        ...{ 'onProjectResolved': {} },
+        ref: "chatViewRef",
+        key: (__VLS_ctx.activeSessionId ?? ''),
         socket: (__VLS_ctx.socket),
         sessionId: (__VLS_ctx.activeSessionId),
         mediation: (__VLS_ctx.mediation),
+        chatProcessName: (__VLS_ctx.chatProcessName),
+        chatProjectId: (__VLS_ctx.chatProjectId),
     }));
-    const __VLS_42 = __VLS_41({
+    const __VLS_49 = __VLS_48({
         ...{ 'onLeave': {} },
         ...{ 'onHub': {} },
-        key: (__VLS_ctx.activeSessionId),
+        ...{ 'onSpeakMessage': {} },
+        ...{ 'onNoteActivity': {} },
+        ...{ 'onHistoryLoaded': {} },
+        ...{ 'onAskUserPick': {} },
+        ...{ 'onWizardDeepLink': {} },
+        ...{ 'onProjectResolved': {} },
+        ref: "chatViewRef",
+        key: (__VLS_ctx.activeSessionId ?? ''),
         socket: (__VLS_ctx.socket),
         sessionId: (__VLS_ctx.activeSessionId),
         mediation: (__VLS_ctx.mediation),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_41));
-    let __VLS_44;
-    let __VLS_45;
-    let __VLS_46;
-    const __VLS_47 = {
+        chatProcessName: (__VLS_ctx.chatProcessName),
+        chatProjectId: (__VLS_ctx.chatProjectId),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_48));
+    let __VLS_51;
+    let __VLS_52;
+    let __VLS_53;
+    const __VLS_54 = {
         onLeave: (__VLS_ctx.leaveLive)
     };
-    const __VLS_48 = {
+    const __VLS_55 = {
         onHub: (__VLS_ctx.backToHub)
     };
-    var __VLS_43;
+    const __VLS_56 = {
+        onSpeakMessage: (__VLS_ctx.onSpeakMessageFromView)
+    };
+    const __VLS_57 = {
+        onNoteActivity: (__VLS_ctx.onNoteActivityFromView)
+    };
+    const __VLS_58 = {
+        onHistoryLoaded: (__VLS_ctx.onHistoryLoadedFromView)
+    };
+    const __VLS_59 = {
+        onAskUserPick: (__VLS_ctx.onAskUserPickFromView)
+    };
+    const __VLS_60 = {
+        onWizardDeepLink: (__VLS_ctx.onWizardDeepLinkFromView)
+    };
+    const __VLS_61 = {
+        onProjectResolved: (__VLS_ctx.onChatViewProjectResolved)
+    };
+    /** @type {typeof __VLS_ctx.chatViewRef} */ ;
+    var __VLS_62 = {};
+    var __VLS_50;
 }
 else if (__VLS_ctx.mode === 'connecting') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -439,7 +713,82 @@ else if (__VLS_ctx.mode === 'connecting') {
     });
     (__VLS_ctx.$t('chat.connecting'));
 }
+{
+    const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
+    if (__VLS_ctx.liveOk) {
+        /** @type {[typeof ChatRightPanel, ]} */ ;
+        // @ts-ignore
+        const __VLS_64 = __VLS_asFunctionalComponent(ChatRightPanel, new ChatRightPanel({
+            ...{ 'onPromptReady': {} },
+            ref: "rightPanelRef",
+            events: (__VLS_ctx.progressEvents),
+            projectId: (__VLS_ctx.chatProjectId || undefined),
+            sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
+        }));
+        const __VLS_65 = __VLS_64({
+            ...{ 'onPromptReady': {} },
+            ref: "rightPanelRef",
+            events: (__VLS_ctx.progressEvents),
+            projectId: (__VLS_ctx.chatProjectId || undefined),
+            sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_64));
+        let __VLS_67;
+        let __VLS_68;
+        let __VLS_69;
+        const __VLS_70 = {
+            onPromptReady: (__VLS_ctx.onPromptReadyFromRightPanel)
+        };
+        /** @type {typeof __VLS_ctx.rightPanelRef} */ ;
+        var __VLS_71 = {};
+        var __VLS_66;
+    }
+}
+{
+    const { footer: __VLS_thisSlot } = __VLS_3.slots;
+    if (__VLS_ctx.liveOk) {
+        /** @type {[typeof ChatComposer, ]} */ ;
+        // @ts-ignore
+        const __VLS_73 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
+            ...{ 'onHub': {} },
+            ...{ 'onLocalEcho': {} },
+            ...{ 'onRollbackEcho': {} },
+            ref: "composerRef",
+            key: (__VLS_ctx.activeSessionId ?? ''),
+            socket: (__VLS_ctx.socket),
+            chatProcessName: (__VLS_ctx.chatProcessName),
+            chatProjectId: (__VLS_ctx.chatProjectId),
+            mediation: (__VLS_ctx.mediation),
+        }));
+        const __VLS_74 = __VLS_73({
+            ...{ 'onHub': {} },
+            ...{ 'onLocalEcho': {} },
+            ...{ 'onRollbackEcho': {} },
+            ref: "composerRef",
+            key: (__VLS_ctx.activeSessionId ?? ''),
+            socket: (__VLS_ctx.socket),
+            chatProcessName: (__VLS_ctx.chatProcessName),
+            chatProjectId: (__VLS_ctx.chatProjectId),
+            mediation: (__VLS_ctx.mediation),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_73));
+        let __VLS_76;
+        let __VLS_77;
+        let __VLS_78;
+        const __VLS_79 = {
+            onHub: (__VLS_ctx.backToHub)
+        };
+        const __VLS_80 = {
+            onLocalEcho: (__VLS_ctx.onLocalEchoFromComposer)
+        };
+        const __VLS_81 = {
+            onRollbackEcho: (__VLS_ctx.onRollbackEchoFromComposer)
+        };
+        /** @type {typeof __VLS_ctx.composerRef} */ ;
+        var __VLS_82 = {};
+        var __VLS_75;
+    }
+}
 var __VLS_3;
+/** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -455,6 +804,8 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['p-6']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+// @ts-ignore
+var __VLS_63 = __VLS_62, __VLS_72 = __VLS_71, __VLS_83 = __VLS_82;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -464,6 +815,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             VButton: VButton,
             PickerView: PickerView,
             ChatView: ChatView,
+            ChatComposer: ChatComposer,
+            ChatRightPanel: ChatRightPanel,
             mode: mode,
             errorMessage: errorMessage,
             socket: socket,
@@ -471,12 +824,35 @@ const __VLS_self = (await import('vue')).defineComponent({
             mediation: mediation,
             username: username,
             connectionState: connectionState,
+            chatProcessName: chatProcessName,
+            chatProjectId: chatProjectId,
+            pickerProjectName: pickerProjectName,
+            onPickerProjectPick: onPickerProjectPick,
+            onPickerProjectResolved: onPickerProjectResolved,
+            onChatViewProjectResolved: onChatViewProjectResolved,
+            breadcrumbs: breadcrumbs,
+            progressEvents: progressEvents,
+            focusZone: focusZone,
+            chatViewRef: chatViewRef,
+            composerRef: composerRef,
+            rightPanelRef: rightPanelRef,
+            onLocalEchoFromComposer: onLocalEchoFromComposer,
+            onRollbackEchoFromComposer: onRollbackEchoFromComposer,
+            onSpeakMessageFromView: onSpeakMessageFromView,
+            onNoteActivityFromView: onNoteActivityFromView,
+            onHistoryLoadedFromView: onHistoryLoadedFromView,
+            onAskUserPickFromView: onAskUserPickFromView,
+            onWizardDeepLinkFromView: onWizardDeepLinkFromView,
+            onPromptReadyFromRightPanel: onPromptReadyFromRightPanel,
             openAndBind: openAndBind,
             backToHub: backToHub,
             onSessionPicked: onSessionPicked,
             onSessionBootstrapped: onSessionBootstrapped,
             leaveLive: leaveLive,
             backToPicker: backToPicker,
+            liveOk: liveOk,
+            pickerMode: pickerMode,
+            onTitleClick: onTitleClick,
         };
     },
 });

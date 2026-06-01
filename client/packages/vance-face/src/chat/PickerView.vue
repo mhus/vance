@@ -22,6 +22,7 @@ import {
   VButton,
   VCheckbox,
   VEmptyState,
+  VInput,
 } from '@components/index';
 import SessionSearchModal from './SessionSearchModal.vue';
 
@@ -35,39 +36,43 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'session-picked', sessionId: string): void;
   (event: 'session-bootstrapped', sessionId: string): void;
+  /** User clicked something in the project-list sidebar — focus the
+   *  main sessions view so the picked project's sessions get the
+   *  attention. */
+  (event: 'focus-main'): void;
+  /** User actively clicked a project button — distinct from a
+   *  prop-driven selection sync. Parent uses this to push browser
+   *  history (so back/forward steps between projects). */
+  (event: 'project-pick', payload: { name: string; title: string }): void;
+  /** Selected project's display title is now known (projects list
+   *  finished loading, or selection changed). Parent uses this to
+   *  update the topbar breadcrumb. */
+  (event: 'project-resolved', payload: { name: string; title: string }): void;
 }>();
+
+/**
+ * Two-way bound with ChatApp's {@code pickerProjectName} — keeps the
+ * picker's selection in sync with the URL state. Writes from inside
+ * (user clicks) propagate up; writes from outside (popstate) propagate
+ * back down.
+ */
+const selectedProjectName = defineModel<string | null>('selectedProject', {
+  default: null,
+});
+
+/**
+ * The {@code Teleport} target div lives in ChatApp's EditorShell
+ * sidebar slot. Both this component and the target render in the same
+ * Vue mount pass, but during the very first render `document.getElementById`
+ * may not see the target yet. We disable the Teleport for that first
+ * tick and flip it on after mount.
+ */
+const teleportReady = ref(false);
 
 const { groups, projects, loading: projectsLoading, error: projectsError, reload: loadProjects } =
   useTenantProjects();
 
-// Persists the picker's project selection across reloads of this
-// chat tab. sessionStorage (not localStorage) by design: it scopes the
-// memory to the current browser tab — closing the tab resets the
-// pick. Long-term cross-tab persistence isn't wanted here; users
-// switching projects across tabs would otherwise be confusing.
-const PICKER_PROJECT_STORAGE_KEY = 'vance.chat.picker.projectName';
-
-function readStoredProjectName(): string | null {
-  try {
-    const v = window.sessionStorage.getItem(PICKER_PROJECT_STORAGE_KEY);
-    return v && v.length > 0 ? v : null;
-  } catch {
-    // Private-mode / disabled storage — fall back to in-memory default.
-    return null;
-  }
-}
-
-function writeStoredProjectName(name: string | null): void {
-  try {
-    if (name) window.sessionStorage.setItem(PICKER_PROJECT_STORAGE_KEY, name);
-    else window.sessionStorage.removeItem(PICKER_PROJECT_STORAGE_KEY);
-  } catch {
-    // Same fallback as the read side — silently ignore.
-  }
-}
-
 const sessions = ref<SessionSummaryRichDto[]>([]);
-const selectedProjectName = ref<string | null>(null);
 const sessionsLoading = ref(false);
 const sessionsError = ref<string | null>(null);
 const bootstrapping = ref(false);
@@ -75,6 +80,26 @@ const bootstrapError = ref<string | null>(null);
 const showArchived = ref(false);
 const reactivating = ref<string | null>(null);
 const searchOpen = ref(false);
+
+/**
+ * Free-text filter for the project sidebar — matches project title
+ * and technical name (case-insensitive substring). Independent from
+ * {@link searchOpen} which drives the session-content search modal.
+ */
+const projectFilter = ref('');
+
+/**
+ * Free-text filter for the sessions list in the main area — matches
+ * against the displayed session title (case-insensitive substring).
+ */
+const sessionFilter = ref('');
+
+/**
+ * Narrow-viewport: the session-filter / archived-toggle / new-session
+ * cluster collapses into a single {@code ⋯} button on phones. Toggled
+ * open by tapping the button.
+ */
+const pickerToolsOpen = ref(false);
 
 interface GroupBlock {
   group: ProjectGroupSummary | null;
@@ -105,6 +130,39 @@ const projectsByGroup = computed<GroupBlock[]>(() => {
   return result;
 });
 
+/**
+ * Applies the free-text filter on top of {@link projectsByGroup}.
+ * Empty filter passes everything through unchanged. Otherwise each
+ * project must match the filter on its title (preferred) or its
+ * technical name; groups with zero remaining projects drop out.
+ */
+const filteredProjectsByGroup = computed<GroupBlock[]>(() => {
+  const needle = projectFilter.value.trim().toLowerCase();
+  if (!needle) return projectsByGroup.value;
+  const result: GroupBlock[] = [];
+  for (const block of projectsByGroup.value) {
+    const matching = block.projects.filter((p) => {
+      const title = (p.title ?? '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return title.includes(needle) || name.includes(needle);
+    });
+    if (matching.length > 0) {
+      result.push({ group: block.group, projects: matching });
+    }
+  }
+  return result;
+});
+
+const filteredProjectsCount = computed<number>(() =>
+  filteredProjectsByGroup.value.reduce((n, b) => n + b.projects.length, 0));
+
+const filteredSessions = computed<SessionSummaryRichDto[]>(() => {
+  const needle = sessionFilter.value.trim().toLowerCase();
+  if (!needle) return sessions.value;
+  return sessions.value.filter((s) =>
+    sessionTitle(s).toLowerCase().includes(needle));
+});
+
 async function loadSessions(projectName: string): Promise<void> {
   sessionsLoading.value = true;
   sessionsError.value = null;
@@ -124,7 +182,10 @@ async function loadSessions(projectName: string): Promise<void> {
 
 function selectProject(projectName: string): void {
   selectedProjectName.value = projectName;
-  writeStoredProjectName(projectName);
+  // The {@code project-resolved} watcher below will fire as a side
+  // effect; the explicit pick emit is what drives the URL push in the
+  // parent (history entry per user-initiated selection).
+  emit('project-pick', { name: projectName, title: projectTitle(projectName) });
 }
 
 function pickSession(session: SessionSummaryRichDto): void {
@@ -236,24 +297,38 @@ function onSearchPick(sessionId: string): void {
 }
 
 onMounted(async () => {
+  // Enable the project-list Teleport on the next tick — after the
+  // first render flush so ChatApp's sidebar-slot target div is in DOM.
+  teleportReady.value = true;
   await loadProjects();
-  if (!selectedProjectName.value && projects.value.length > 0) {
-    // Prefer the project remembered from a previous picker visit in
-    // this tab, but only when it still exists in the tenant's project
-    // list. Otherwise fall back to the first project so the picker
-    // always lands on something selectable.
-    const stored = readStoredProjectName();
-    const restored = stored && projects.value.some((p) => p.name === stored)
-      ? stored
-      : projects.value[0].name;
-    selectedProjectName.value = restored;
-    if (restored !== stored) writeStoredProjectName(restored);
+  // Title resolution can only happen once {@link projects} has loaded.
+  // Emit resolution for whatever selection arrived via the URL-driven
+  // v-model so ChatApp can populate the breadcrumb on first paint.
+  if (selectedProjectName.value && projects.value.length > 0) {
+    emit('project-resolved', {
+      name: selectedProjectName.value,
+      title: projectTitle(selectedProjectName.value),
+    });
   }
 });
 
+// Title resolution on any subsequent change (e.g. URL-driven popstate
+// switching to a different project). Catches the case where the
+// selection changes after the projects list is already loaded.
+watch(selectedProjectName, (name) => {
+  if (name && projects.value.length > 0) {
+    emit('project-resolved', { name, title: projectTitle(name) });
+  }
+});
+
+// {@code immediate} ensures sessions also load when the picker mounts
+// with a pre-set selection (e.g. after leaveLive from a chat session,
+// or on a fresh page load with {@code ?project=}). Without it, the
+// watcher only catches subsequent changes and the sessions list stays
+// empty until the user re-picks the same project.
 watch(selectedProjectName, async (newName) => {
   if (newName) await loadSessions(newName);
-});
+}, { immediate: true });
 
 watch(showArchived, async () => {
   if (selectedProjectName.value) await loadSessions(selectedProjectName.value);
@@ -261,90 +336,147 @@ watch(showArchived, async () => {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0">
-    <!-- Sidebar: project groups → projects -->
-    <aside class="w-72 shrink-0 border-r border-base-300 bg-base-100 overflow-y-auto p-4 flex flex-col gap-4">
-      <div class="flex items-center justify-between">
-        <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">
-          {{ $t('chat.picker.projectsTitle') }}
+  <div class="h-full min-h-0 flex flex-col">
+    <!--
+      Project list teleports into the EditorShell sidebar zone via
+      ChatApp's #sidebar slot target. Outer width/border/background
+      styling lives on the zone-sidebar aside in EditorShell; here we
+      only set inner padding + flex layout. Click handlers on project
+      buttons emit `focus-main` (with @pointerdown.stop) so the focus
+      jumps to the sessions view as soon as a project is picked.
+    -->
+    <Teleport to="#vance-picker-projects-target" :disabled="!teleportReady">
+      <div class="p-4 flex flex-col gap-4">
+        <div class="flex items-center justify-between">
+          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">
+            {{ $t('chat.picker.projectsTitle') }}
+          </div>
+          <VButton
+            variant="ghost"
+            size="sm"
+            :title="$t('chat.picker.searchTooltip')"
+            @pointerdown.stop="emit('focus-main')"
+            @click="searchOpen = true"
+          >
+            🔍
+          </VButton>
         </div>
+
+        <!-- Local project filter — narrows the visible list down by
+             title/name substring. Independent from the 🔍 button
+             above which opens the cross-session content search. -->
+        <VInput
+          v-if="!projectsLoading && !projectsError && projects.length > 0"
+          v-model="projectFilter"
+          :placeholder="$t('chat.picker.filterPlaceholder')"
+        />
+
+        <div v-if="projectsLoading" class="text-sm opacity-60">
+          {{ $t('chat.picker.loading') }}
+        </div>
+
+        <VAlert v-else-if="projectsError" variant="error">
+          {{ projectsError }}
+        </VAlert>
+
+        <template v-else>
+          <div
+            v-for="block in filteredProjectsByGroup"
+            :key="block.group?.name ?? '_ungrouped'"
+            class="flex flex-col gap-1"
+          >
+            <div class="text-xs opacity-50 px-2">{{ groupLabel(block) }}</div>
+            <button
+              v-for="p in block.projects"
+              :key="p.name"
+              type="button"
+              class="text-left px-2 py-1.5 rounded text-sm transition-colors"
+              :class="selectedProjectName === p.name
+                ? 'bg-primary/10 text-primary font-medium'
+                : 'hover:bg-base-200'"
+              @pointerdown.stop="emit('focus-main')"
+              @click="selectProject(p.name)"
+            >
+              {{ p.title || p.name }}
+            </button>
+          </div>
+
+          <VEmptyState
+            v-if="projects.length === 0"
+            :headline="$t('chat.picker.noProjects')"
+            :body="$t('chat.picker.noProjectsBody')"
+          />
+          <div
+            v-else-if="projectFilter && filteredProjectsCount === 0"
+            class="text-xs opacity-60 px-2"
+          >
+            {{ $t('chat.picker.filterNoMatch', { filter: projectFilter }) }}
+          </div>
+        </template>
+      </div>
+    </Teleport>
+
+    <!-- Main: sessions of selected project -->
+    <section class="flex-1 min-w-0 min-h-0 flex flex-col">
+      <!-- Full-width header: project info + tool cluster sit in the
+           same row when there's room (flex-wrap drops the cluster to
+           the next line on medium widths; the {@code ⋯} toggle hides
+           the cluster entirely on phones — see scoped style below). -->
+      <div class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-3 relative">
+        <!-- Project info — takes the available space; title truncates
+             on overflow. The technical name is shown only on viewports
+             with room for it (≥ sm). On phone-narrow, only the title
+             plus the {@code ⋯} toggle share the row. -->
+        <div v-if="selectedProjectName" class="flex-1 min-w-0 flex items-baseline gap-2">
+          <h2 class="text-lg font-semibold truncate">{{ projectTitle(selectedProjectName) }}</h2>
+          <span class="hidden sm:inline text-sm opacity-50 font-mono truncate">{{ selectedProjectName }}</span>
+        </div>
+        <h2 v-else class="flex-1 min-w-0 text-lg font-semibold">
+          {{ $t('chat.picker.pickAProject') }}
+        </h2>
+
+        <!-- Phone-only menu toggle. CSS in scoped block hides it on
+             wider screens and turns .picker-tools into a popup. -->
         <VButton
           variant="ghost"
           size="sm"
-          :title="$t('chat.picker.searchTooltip')"
-          @click="searchOpen = true"
+          class="picker-tools-toggle"
+          :title="pickerToolsOpen ? 'Hide tools' : 'Show tools'"
+          @click="pickerToolsOpen = !pickerToolsOpen"
         >
-          🔍
+          ⋯
         </VButton>
-      </div>
 
-      <div v-if="projectsLoading" class="text-sm opacity-60">
-        {{ $t('chat.picker.loading') }}
-      </div>
-
-      <VAlert v-else-if="projectsError" variant="error">
-        {{ projectsError }}
-      </VAlert>
-
-      <template v-else>
         <div
-          v-for="block in projectsByGroup"
-          :key="block.group?.name ?? '_ungrouped'"
-          class="flex flex-col gap-1"
+          class="picker-tools"
+          :class="{ 'picker-tools--open': pickerToolsOpen }"
         >
-          <div class="text-xs opacity-50 px-2">{{ groupLabel(block) }}</div>
-          <button
-            v-for="p in block.projects"
-            :key="p.name"
-            type="button"
-            class="text-left px-2 py-1.5 rounded text-sm transition-colors"
-            :class="selectedProjectName === p.name
-              ? 'bg-primary/10 text-primary font-medium'
-              : 'hover:bg-base-200'"
-            @click="selectProject(p.name)"
-          >
-            {{ p.title || p.name }}
-          </button>
-        </div>
-
-        <VEmptyState
-          v-if="projects.length === 0"
-          :headline="$t('chat.picker.noProjects')"
-          :body="$t('chat.picker.noProjectsBody')"
-        />
-      </template>
-    </aside>
-
-    <!-- Main: sessions of selected project -->
-    <section class="flex-1 min-w-0 overflow-y-auto p-6">
-      <div class="max-w-3xl mx-auto flex flex-col gap-4">
-        <div class="flex items-baseline justify-between">
-          <div>
-            <h2 class="text-lg font-semibold">
-              {{ selectedProjectName ? projectTitle(selectedProjectName) : $t('chat.picker.pickAProject') }}
-            </h2>
-            <p class="text-sm opacity-60">
-              <template v-if="username">
-                {{ $t('chat.picker.signedInAs', { username }) }}
-              </template>
-            </p>
-          </div>
-          <div class="flex items-center gap-3">
-            <VCheckbox
-              v-model="showArchived"
-              :label="$t('chat.picker.showArchived')"
+          <div class="w-[150px]">
+            <VInput
+              v-model="sessionFilter"
+              :placeholder="$t('chat.picker.sessionFilterPlaceholder')"
             />
-            <VButton
-              variant="primary"
-              :disabled="!selectedProjectName || bootstrapping"
-              :loading="bootstrapping"
-              @click="bootstrapNew"
-            >
-              {{ $t('chat.picker.newSession') }}
-            </VButton>
           </div>
+          <VCheckbox
+            v-model="showArchived"
+            :label="$t('chat.picker.showArchived')"
+          />
+          <VButton
+            variant="primary"
+            :disabled="!selectedProjectName || bootstrapping"
+            :loading="bootstrapping"
+            :title="$t('chat.picker.newSession')"
+            @click="bootstrapNew"
+          >
+            +
+          </VButton>
         </div>
+      </div>
 
+      <!-- Scrollable list area — content is centered/constrained for
+           readability while the header above stays full-width. -->
+      <div class="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+        <div class="max-w-3xl mx-auto flex flex-col gap-4">
         <VAlert v-if="bootstrapError" variant="error">{{ bootstrapError }}</VAlert>
         <VAlert v-if="sessionsError" variant="error">{{ sessionsError }}</VAlert>
 
@@ -358,9 +490,16 @@ watch(showArchived, async () => {
           :body="$t('chat.picker.noSessionsBody')"
         />
 
+        <div
+          v-else-if="sessions.length > 0 && filteredSessions.length === 0"
+          class="text-sm opacity-60"
+        >
+          {{ $t('chat.picker.sessionFilterNoMatch', { filter: sessionFilter }) }}
+        </div>
+
         <ul v-else class="flex flex-col gap-2">
           <li
-            v-for="session in sessions"
+            v-for="session in filteredSessions"
             :key="session.sessionId"
             class="card bg-base-100 shadow-sm border border-base-300 border-l-4"
             :class="[
@@ -445,6 +584,7 @@ watch(showArchived, async () => {
             </div>
           </li>
         </ul>
+        </div>
       </div>
     </section>
 
@@ -455,3 +595,43 @@ watch(showArchived, async () => {
     />
   </div>
 </template>
+
+<style scoped>
+/* On wide-enough viewports the session-filter / archived-toggle /
+ * new-session cluster sits inline next to the project title. On
+ * phones (≤ 640px) it collapses behind a {@code ⋯} button and the
+ * cluster reappears as a popup anchored to the header's bottom-right. */
+
+.picker-tools-toggle {
+  display: none;
+}
+.picker-tools {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .picker-tools-toggle {
+    display: inline-flex;
+  }
+  .picker-tools {
+    display: none;
+  }
+  .picker-tools.picker-tools--open {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    position: absolute;
+    top: 100%;
+    right: 0.5rem;
+    z-index: 20;
+    padding: 0.75rem;
+    background-color: var(--fallback-b1, oklch(var(--b1) / 1));
+    border: 1px solid var(--fallback-b3, oklch(var(--b3) / 1));
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+}
+</style>

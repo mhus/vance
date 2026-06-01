@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
+  type FocusZone,
   MarkdownView,
   VAlert,
   VButton,
@@ -42,6 +43,14 @@ type SidebarSelection =
   | { kind: 'team'; teamName: string };
 
 const selection = ref<SidebarSelection>({ kind: 'inbox', tag: null });
+
+/**
+ * Two-way bound focus zone for {@code <EditorShell>}'s focus model.
+ * Local writes (e.g. on sidebar-nav click) shift the focus directly;
+ * EditorShell still drives reads from its own pointer/focus/escape
+ * listeners.
+ */
+const focusZone = ref<FocusZone>('main');
 
 function isSelected(other: SidebarSelection): boolean {
   const s = selection.value;
@@ -87,10 +96,57 @@ function selectionToFilter(s: SidebarSelection): InboxFilter {
   };
 }
 
+// ─────── URL state ───────
+//
+// `?item=<id>` carries the master-detail mode: empty = list view,
+// present = detail view. Push on selection change so the browser
+// back-button takes the user from detail back to the list. Read on
+// mount and on popstate to keep state and URL in sync.
+
+function readItemFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get('item');
+}
+
+function pushItemToUrl(id: string | null): void {
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set('item', id);
+  else url.searchParams.delete('item');
+  if (url.toString() !== window.location.href) {
+    window.history.pushState(null, '', url.toString());
+  }
+}
+
+async function onPopstate(): Promise<void> {
+  const id = readItemFromUrl();
+  if (id && inbox.selected.value?.id !== id) {
+    await inbox.loadOne(id);
+  } else if (!id && inbox.selected.value) {
+    inbox.clearSelection();
+  }
+}
+
+// Single source of truth: any time `inbox.selected` changes, mirror
+// that into the URL. Includes both user-action paths (openItem, the
+// close-button) and the filter-change watcher below that calls
+// clearSelection.
+watch(() => inbox.selected.value?.id ?? null, (id) => {
+  pushItemToUrl(id);
+});
+
 // ─────── Lifecycle ───────
 onMounted(async () => {
   await Promise.all([teamsState.reload(), inbox.loadTags()]);
   await inbox.loadList(selectionToFilter(selection.value));
+  // Deep-link restore: if the URL points at an item, load it.
+  const initial = readItemFromUrl();
+  if (initial) {
+    await inbox.loadOne(initial);
+  }
+  window.addEventListener('popstate', onPopstate);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('popstate', onPopstate);
 });
 
 watch(selection, async (next) => {
@@ -98,10 +154,14 @@ watch(selection, async (next) => {
   await inbox.loadList(selectionToFilter(next));
 }, { deep: true });
 
-// ─────── Item open ───────
+// ─────── Item open / close ───────
 async function openItem(item: InboxItemDto): Promise<void> {
   if (!item.id) return;
   await inbox.loadOne(item.id);
+}
+
+function closeItem(): void {
+  inbox.clearSelection();
 }
 
 function formatTimestamp(value?: Date | string | null): string {
@@ -304,7 +364,9 @@ function decisionOptions(item: InboxItemDto): string[] {
 }
 
 const breadcrumbs = computed<string[]>(() => {
-  const c: string[] = [t('inbox.breadcrumbInbox')];
+  // Breadcrumbs carry the path *within* the editor — the editor name
+  // itself is in the topbar title and would otherwise read twice.
+  const c: string[] = [];
   const s = selection.value;
   if (s.kind === 'inbox' && s.tag) c.push('#' + s.tag);
   if (s.kind === 'archive') c.push(t('inbox.breadcrumbArchive'));
@@ -315,105 +377,122 @@ const breadcrumbs = computed<string[]>(() => {
 </script>
 
 <template>
-  <EditorShell :title="$t('inbox.pageTitle')" :breadcrumbs="breadcrumbs">
-    <div class="inbox-grid">
-      <!-- ─── Sidebar ─── -->
-      <aside class="inbox-sidebar">
-        <nav class="flex flex-col gap-1">
-          <button
-            class="sidebar-item"
-            :class="{ 'sidebar-item--active': isSelected({ kind: 'inbox', tag: null }) }"
-            type="button"
-            @click="selectInbox(null)"
-          >{{ $t('inbox.sidebar.inbox') }}</button>
+  <EditorShell
+    v-model:focus-zone="focusZone"
+    :title="$t('inbox.pageTitle')"
+    :breadcrumbs="breadcrumbs"
+    focus-model="auto"
+    title-clickable
+    @title-click="focusZone = 'sidebar'"
+  >
+    <!-- ─── Sidebar ─── -->
+    <!--
+      Each nav button uses {@code @pointerdown.stop="focusZone='main'"}
+      so that clicking a nav option jumps focus straight to the main
+      zone without first flashing through 'sidebar' (which is what
+      EditorShell's aside-level pointerdown listener would otherwise
+      assign on the way to the click). The {@code .stop} swallows the
+      bubble; click fires normally and runs selectXxx. Clicking the
+      sidebar's empty space still focuses the sidebar.
+    -->
+    <template #sidebar>
+      <nav class="flex flex-col gap-1 p-2">
+        <button
+          class="sidebar-item"
+          :class="{ 'sidebar-item--active': isSelected({ kind: 'inbox', tag: null }) }"
+          type="button"
+          @pointerdown.stop="focusZone = 'main'"
+          @click="selectInbox(null)"
+        >{{ $t('inbox.sidebar.inbox') }}</button>
 
-          <button
-            v-for="tag in inbox.tags.value"
-            :key="'t-' + tag"
-            class="sidebar-item sidebar-item--child"
-            :class="{ 'sidebar-item--active': isSelected({ kind: 'inbox', tag }) }"
-            type="button"
-            @click="selectInbox(tag)"
-          >#{{ tag }}</button>
+        <button
+          v-for="tag in inbox.tags.value"
+          :key="'t-' + tag"
+          class="sidebar-item sidebar-item--child"
+          :class="{ 'sidebar-item--active': isSelected({ kind: 'inbox', tag }) }"
+          type="button"
+          @pointerdown.stop="focusZone = 'main'"
+          @click="selectInbox(tag)"
+        >#{{ tag }}</button>
 
-          <button
-            class="sidebar-item mt-2"
-            :class="{ 'sidebar-item--active': isSelected({ kind: 'archive' }) }"
-            type="button"
-            @click="selectArchive"
-          >{{ $t('inbox.sidebar.archive') }}</button>
+        <button
+          class="sidebar-item mt-2"
+          :class="{ 'sidebar-item--active': isSelected({ kind: 'archive' }) }"
+          type="button"
+          @pointerdown.stop="focusZone = 'main'"
+          @click="selectArchive"
+        >{{ $t('inbox.sidebar.archive') }}</button>
 
-          <div class="mt-3 text-xs uppercase opacity-50 px-2">
-            {{ $t('inbox.sidebar.teamInbox') }}
+        <div class="mt-3 text-xs uppercase opacity-50 px-2">
+          {{ $t('inbox.sidebar.teamInbox') }}
+        </div>
+        <div v-if="teamsState.loading.value" class="px-2 text-xs opacity-60">
+          {{ $t('inbox.sidebar.loadingTeams') }}
+        </div>
+        <div v-else-if="teamsState.teams.value.length === 0" class="px-2 text-xs opacity-60">
+          {{ $t('inbox.sidebar.noTeams') }}
+        </div>
+        <button
+          v-for="team in teamsState.teams.value"
+          :key="'team-' + team.id"
+          class="sidebar-item sidebar-item--child"
+          :class="{ 'sidebar-item--active': isSelected({ kind: 'team', teamName: team.name }) }"
+          type="button"
+          @pointerdown.stop="focusZone = 'main'"
+          @click="selectTeam(team.name)"
+        >{{ team.title || team.name }}</button>
+      </nav>
+    </template>
+
+    <!-- ─── Main: list ↔ detail switcher ─── -->
+    <section v-if="!inbox.selected.value" class="inbox-list p-2">
+      <VAlert v-if="inbox.error.value" variant="error" class="mb-3">
+        <span>{{ inbox.error.value }}</span>
+      </VAlert>
+      <VEmptyState
+        v-if="!inbox.loading.value && inbox.items.value.length === 0"
+        :headline="$t('inbox.list.emptyHeadline')"
+        :body="$t('inbox.list.emptyBody')"
+      />
+      <ul class="flex flex-col gap-1">
+        <li
+          v-for="item in inbox.items.value"
+          :key="item.id ?? ''"
+          class="list-row"
+          @click="openItem(item)"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-medium truncate">
+              {{ item.title || $t('inbox.list.noTitle') }}
+            </span>
+            <span class="text-xs opacity-60 shrink-0">{{ formatTimestamp(item.createdAt) }}</span>
           </div>
-          <div v-if="teamsState.loading.value" class="px-2 text-xs opacity-60">
-            {{ $t('inbox.sidebar.loadingTeams') }}
+          <div class="flex items-center gap-2 text-xs opacity-70">
+            <span>{{ item.type }}</span>
+            <span v-if="item.criticality !== Criticality.NORMAL" class="badge badge-warning badge-sm">{{ item.criticality }}</span>
+            <span v-if="item.assignedToUserId !== currentUser" class="opacity-60">
+              → {{ item.assignedToUserId }}
+            </span>
+            <span v-if="item.status !== InboxItemStatus.PENDING" class="opacity-60">{{ item.status }}</span>
           </div>
-          <div v-else-if="teamsState.teams.value.length === 0" class="px-2 text-xs opacity-60">
-            {{ $t('inbox.sidebar.noTeams') }}
+          <div v-if="item.tags && item.tags.length" class="mt-1 flex gap-1 flex-wrap">
+            <span
+              v-for="t in item.tags"
+              :key="t"
+              class="badge badge-ghost badge-sm"
+            >{{ t }}</span>
           </div>
-          <button
-            v-for="team in teamsState.teams.value"
-            :key="'team-' + team.id"
-            class="sidebar-item sidebar-item--child"
-            :class="{ 'sidebar-item--active': isSelected({ kind: 'team', teamName: team.name }) }"
-            type="button"
-            @click="selectTeam(team.name)"
-          >{{ team.title || team.name }}</button>
-        </nav>
-      </aside>
+        </li>
+      </ul>
+    </section>
 
-      <!-- ─── Item list ─── -->
-      <section class="inbox-list">
-        <VAlert v-if="inbox.error.value" variant="error" class="mb-3">
-          <span>{{ inbox.error.value }}</span>
-        </VAlert>
-        <VEmptyState
-          v-if="!inbox.loading.value && inbox.items.value.length === 0"
-          :headline="$t('inbox.list.emptyHeadline')"
-          :body="$t('inbox.list.emptyBody')"
-        />
-        <ul class="flex flex-col gap-1">
-          <li
-            v-for="item in inbox.items.value"
-            :key="item.id ?? ''"
-            class="list-row"
-            :class="{ 'list-row--active': inbox.selected.value?.id === item.id }"
-            @click="openItem(item)"
-          >
-            <div class="flex items-center justify-between gap-2">
-              <span class="font-medium truncate">
-                {{ item.title || $t('inbox.list.noTitle') }}
-              </span>
-              <span class="text-xs opacity-60 shrink-0">{{ formatTimestamp(item.createdAt) }}</span>
-            </div>
-            <div class="flex items-center gap-2 text-xs opacity-70">
-              <span>{{ item.type }}</span>
-              <span v-if="item.criticality !== Criticality.NORMAL" class="badge badge-warning badge-sm">{{ item.criticality }}</span>
-              <span v-if="item.assignedToUserId !== currentUser" class="opacity-60">
-                → {{ item.assignedToUserId }}
-              </span>
-              <span v-if="item.status !== InboxItemStatus.PENDING" class="opacity-60">{{ item.status }}</span>
-            </div>
-            <div v-if="item.tags && item.tags.length" class="mt-1 flex gap-1 flex-wrap">
-              <span
-                v-for="t in item.tags"
-                :key="t"
-                class="badge badge-ghost badge-sm"
-              >{{ t }}</span>
-            </div>
-          </li>
-        </ul>
-      </section>
-
-      <!-- ─── Detail ─── -->
-      <section class="inbox-detail">
-        <VEmptyState
-          v-if="!inbox.selected.value"
-          :headline="$t('inbox.detail.pickAnItem')"
-          :body="$t('inbox.detail.pickAnItemBody')"
-        />
-        <VCard v-else>
+    <section v-else class="inbox-detail p-2">
+      <div class="mb-3">
+        <VButton variant="ghost" size="sm" @click="closeItem">
+          ← {{ $t('inbox.detail.backToList') }}
+        </VButton>
+      </div>
+      <VCard>
           <template #header>
             <div class="flex items-center justify-between gap-2">
               <span class="font-semibold truncate">
@@ -564,7 +643,6 @@ const breadcrumbs = computed<string[]>(() => {
           </template>
         </VCard>
       </section>
-    </div>
 
     <!-- Delegate modal -->
     <VModal
@@ -603,35 +681,10 @@ const breadcrumbs = computed<string[]>(() => {
 </template>
 
 <style scoped>
-.inbox-grid {
-  display: grid;
-  grid-template-columns: 14rem 22rem 1fr;
-  gap: 1rem;
-  min-height: 70vh;
-}
-
-@media (max-width: 1024px) {
-  .inbox-grid {
-    /* Stack to a single column on tablets / phones. The list and
-       detail then scroll independently below the sidebar. */
-    grid-template-columns: 1fr;
-  }
-}
-
-.inbox-sidebar {
-  border-right: 1px solid hsl(var(--bc) / 0.12);
-  padding-right: 0.5rem;
-}
-
-.inbox-list {
-  border-right: 1px solid hsl(var(--bc) / 0.12);
-  padding-right: 0.75rem;
-  overflow-y: auto;
-}
-
-.inbox-detail {
-  overflow-y: auto;
-}
+/* Layout (sidebar / list / detail) now comes from {@code <EditorShell>}'s
+ * focus-model — zone widths, borders, backgrounds, transitions all
+ * live there. We only keep the inner-content styles for sidebar nav
+ * items and list rows. */
 
 .sidebar-item {
   display: block;

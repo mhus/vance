@@ -85,6 +85,9 @@ export default {
     },
     chat: {
         pageTitle: 'Chat',
+        breadcrumb: {
+            unnamedSession: 'Session',
+        },
         backToSessions: '← Sessions',
         projectTooltip: 'Project: {name}',
         connecting: 'Connecting to brain…',
@@ -93,8 +96,8 @@ export default {
         tryAgain: 'Try again',
         backToPicker: 'Back to picker',
         historyLoading: 'Loading history…',
-        composerPlaceholderSingle: 'Type a message — Enter to send',
-        composerPlaceholderMulti: 'Type a message — Ctrl/Cmd+Enter to send, Enter for newline',
+        composerPlaceholderSingle: 'Message',
+        composerPlaceholderMulti: 'Message',
         send: 'Send',
         pause: 'Pause',
         pauseTooltip: 'Pause the chat (and all workers in this session)',
@@ -180,6 +183,10 @@ export default {
             relativeDays: '{n}d ago',
             searchTooltip: 'Search sessions (Cmd/Ctrl-K)',
             showArchived: 'Show archived',
+            filterPlaceholder: 'Filter projects…',
+            filterNoMatch: 'No projects match "{filter}".',
+            sessionFilterPlaceholder: 'Filter sessions…',
+            sessionFilterNoMatch: 'No sessions match "{filter}".',
         },
         search: {
             title: 'Search sessions',
@@ -1333,8 +1340,7 @@ export default {
             noTitle: '(no title)',
         },
         detail: {
-            pickAnItem: 'Pick an item',
-            pickAnItemBody: 'Select an inbox item from the list to see its content and reply.',
+            backToList: 'Back to list',
             noTitle: '(no title)',
             fromLabel: 'From: {user}',
             toLabel: 'To: {user}',

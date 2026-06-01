@@ -75,6 +75,9 @@ declare const _default: {
     };
     chat: {
         pageTitle: string;
+        breadcrumb: {
+            unnamedSession: string;
+        };
         backToSessions: string;
         projectTooltip: string;
         connecting: string;
@@ -170,6 +173,10 @@ declare const _default: {
             relativeDays: string;
             searchTooltip: string;
             showArchived: string;
+            filterPlaceholder: string;
+            filterNoMatch: string;
+            sessionFilterPlaceholder: string;
+            sessionFilterNoMatch: string;
         };
         search: {
             title: string;
@@ -1319,8 +1326,7 @@ declare const _default: {
             noTitle: string;
         };
         detail: {
-            pickAnItem: string;
-            pickAnItemBody: string;
+            backToList: string;
             noTitle: string;
             fromLabel: string;
             toLabel: string;

@@ -79,6 +79,9 @@ export default {
     },
     chat: {
         pageTitle: 'Chat',
+        breadcrumb: {
+            unnamedSession: 'Session',
+        },
         backToSessions: '← Sessions',
         projectTooltip: 'Projekt: {name}',
         connecting: 'Verbindung zum Brain wird aufgebaut…',
@@ -87,8 +90,8 @@ export default {
         tryAgain: 'Erneut versuchen',
         backToPicker: 'Zurück zur Auswahl',
         historyLoading: 'Verlauf wird geladen…',
-        composerPlaceholderSingle: 'Nachricht schreiben — Eingabe zum Senden',
-        composerPlaceholderMulti: 'Nachricht schreiben — Strg/Cmd+Eingabe zum Senden, Eingabe für Zeilenumbruch',
+        composerPlaceholderSingle: 'Nachricht',
+        composerPlaceholderMulti: 'Nachricht',
         send: 'Senden',
         pause: 'Pausieren',
         pauseTooltip: 'Den Chat pausieren (und alle Worker dieser Session)',
@@ -174,6 +177,10 @@ export default {
             relativeDays: 'vor {n}T',
             searchTooltip: 'Sessions durchsuchen (Cmd/Ctrl-K)',
             showArchived: 'Archivierte zeigen',
+            filterPlaceholder: 'Projekte filtern…',
+            filterNoMatch: 'Keine Projekte passen zu „{filter}".',
+            sessionFilterPlaceholder: 'Sessions filtern…',
+            sessionFilterNoMatch: 'Keine Sessions passen zu „{filter}".',
         },
         search: {
             title: 'Sessions durchsuchen',
@@ -1327,8 +1334,7 @@ export default {
             noTitle: '(kein Titel)',
         },
         detail: {
-            pickAnItem: 'Eintrag auswählen',
-            pickAnItemBody: 'Wählen Sie einen Posteingang-Eintrag aus der Liste, um Inhalt und Antwort zu sehen.',
+            backToList: 'Zurück zur Liste',
             noTitle: '(kein Titel)',
             fromLabel: 'Von: {user}',
             toLabel: 'An: {user}',

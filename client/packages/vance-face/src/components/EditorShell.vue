@@ -1,26 +1,27 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue';
-import { useI18n } from 'vue-i18n';
-import { getTenantId, getUsername } from '@vance/shared';
+import { computed, onMounted, onBeforeUnmount, ref, useSlots, watch } from 'vue';
 import {
   getSessionData,
   isAccessAlive,
   isRefreshAlive,
-  logout as serverLogout,
   refreshAccessCookie,
-  setActiveLanguage,
 } from '@/platform';
-import { setUiLocale } from '@/i18n';
 import { useHelp } from '@/composables/useHelp';
+import EditorTopbar, { type Crumb } from './EditorTopbar.vue';
 import MarkdownView from './MarkdownView.vue';
 
+// Re-export the breadcrumb segment type so existing consumers
+// (`import { type Crumb } from '@components'`) keep working without
+// a path change.
+export type { Crumb };
+
 /**
- * A breadcrumb segment. Either a plain string label (immutable, no
- * navigation) or an object with an {@code onClick} handler that turns
- * the segment into a button — used to navigate back to a parent view
- * (e.g. from a process detail back to the owning session).
+ * The four-zone layout's focus state. Drives column/row sizing,
+ * background highlighting, and reclaim handle visibility when
+ * {@link Props.focusModel} is {@code 'auto'}. See
+ * `specification/web-ui.md` §7.2.1.
  */
-export type Crumb = string | { text: string; onClick?: () => void };
+export type FocusZone = 'main' | 'sidebar' | 'right' | 'footer';
 
 interface Props {
   /** Page title shown in the topbar. */
@@ -43,6 +44,9 @@ interface Props {
   /**
    * Doubles the default width of the right panel (320px → 640px). Use for
    * editors whose right panel hosts forms (e.g. settings editor).
+   *
+   * <p>Ignored when {@link focusModel} is {@code 'auto'} — focus mode
+   * computes the right-panel width from {@link focusZone} instead.
    */
   wideRightPanel?: boolean;
   /**
@@ -73,6 +77,41 @@ interface Props {
    * user visits) can flip this and persist the preference themselves.
    */
   helpOpen?: boolean;
+  /**
+   * Renders the page title as a clickable element that emits the
+   * {@code title-click} event. Editors with a sidebar typically wire
+   * this to focusing the sidebar; editors with a meaningful "back to
+   * entry-point" (e.g. chat → session picker) wire it to that
+   * navigation. EditorShell itself does not implement any default
+   * behaviour for the click — the parent decides via the emitted event.
+   */
+  titleClickable?: boolean;
+  /**
+   * Focus-driven zone resizing. {@code 'off'} (default) keeps the
+   * legacy fixed-width layout — sidebar 16rem, right panel 20rem (or
+   * 40rem with {@link wideRightPanel}), no footer scaling, no zone
+   * highlighting, no reclaim handles. {@code 'auto'} activates the
+   * single-focus-zone model: the fokussierte zone bekommt mehr Platz
+   * und einen hellen Background; die anderen schrumpfen auf eine
+   * Kompakt-Breite und nehmen den Editor-Background an. Reclaim-Handles
+   * an den Rändern bleiben klickbar, auch wenn eine Zone auf 0
+   * kollabiert ist.
+   *
+   * <p>See `specification/web-ui.md` §7.2.1 for the full model.
+   */
+  focusModel?: 'off' | 'auto';
+  /**
+   * Explicit per-zone visibility overrides. When set to {@code false}
+   * the corresponding zone is suppressed even if its slot is filled —
+   * useful when the slot content depends on a state that briefly
+   * renders empty (e.g. chat's picker mode keeps the {@code #footer}
+   * slot template registered but the inner v-if hides the composer;
+   * without this prop the editor shows an empty footer rail).
+   * Default {@code undefined} = fall back to slot-presence detection.
+   */
+  showSidebar?: boolean;
+  showRightPanel?: boolean;
+  showFooter?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -80,7 +119,24 @@ const props = withDefaults(defineProps<Props>(), {
   wideRightPanel: false,
   fullHeight: false,
   helpOpen: false,
+  titleClickable: false,
+  focusModel: 'off',
 });
+
+const emit = defineEmits<{
+  /** Forwarded from EditorTopbar when the title is clicked and
+   *  {@link Props.titleClickable} is true. EditorShell does not act
+   *  on this itself — the host editor decides what title-click means. */
+  'title-click': [];
+}>();
+
+/**
+ * Currently focused zone. v-model'd so a parent can read it (or
+ * preset it) but EditorShell owns the runtime updates via its
+ * pointerdown/focusin/escape listeners. Ignored entirely when
+ * {@link Props.focusModel} is {@code 'off'}.
+ */
+const focusZone = defineModel<FocusZone>('focusZone', { default: 'main' });
 
 const showHelp = ref<boolean>(false);
 const help = useHelp();
@@ -104,58 +160,87 @@ function toggleHelp(): void {
   }
 }
 
-function crumbText(c: Crumb): string {
-  return typeof c === 'string' ? c : c.text;
-}
-function crumbOnClick(c: Crumb): (() => void) | null {
-  return typeof c === 'string' ? null : (c.onClick ?? null);
-}
+/**
+ * Body layout — CSS Grid with up to three columns (sidebar, main,
+ * right) and up to two rows (main row, footer row). Columns appear
+ * only when their slot is filled (or the help drawer is open, which
+ * borrows the right-panel column). Footer is full-width in row 2.
+ *
+ * <p>Actual track widths live in CSS variables in the scoped
+ * {@code <style>} block below — driven by the {@code data-focus} /
+ * {@code data-wide-right} / {@code data-help-open} attributes set on
+ * the grid container. See `specification/web-ui.md` §7.2.1.
+ */
+const slots = useSlots();
 
-const { t, locale } = useI18n();
+const hasSidebarSlot = computed<boolean>(() => {
+  if (props.showSidebar === false) return false;
+  return !!slots.sidebar;
+});
+const hasRightCell = computed<boolean>(() => {
+  if (props.showRightPanel === false && !showHelp.value) return false;
+  return showHelp.value || !!slots['right-panel'];
+});
+const hasFooterSlot = computed<boolean>(() => {
+  if (props.showFooter === false) return false;
+  return !!slots.footer;
+});
 
-const tenantId = computed<string | null>(() => getTenantId());
-const username = computed<string | null>(() => getUsername());
+const gridTemplateColumns = computed<string>(() => {
+  const cols: string[] = [];
+  if (hasSidebarSlot.value) cols.push('var(--shell-sidebar-w)');
+  cols.push('1fr');
+  if (hasRightCell.value) cols.push('var(--shell-right-w)');
+  return cols.join(' ');
+});
 
-const defaultConnectionTooltip = computed<string>(() => {
-  switch (props.connectionState) {
-    case 'connected': return t('header.connection.connected');
-    case 'occupied':  return t('header.connection.occupied');
-    case 'idle':      return t('header.connection.idle');
-    default:          return '';
-  }
+const gridTemplateRows = computed<string>(() => {
+  return hasFooterSlot.value ? '1fr var(--shell-footer-h)' : '1fr';
 });
 
 /**
- * Quick language switcher in the user-menu — flips the active locale
- * for this tab without a server round-trip. Persistence-on-server
- * stays in the profile page; this is the "I want to read this page in
- * the other language right now" shortcut.
- *
- * Mirrors the value into sessionStorage via {@link setActiveLanguage}
- * so other components that read {@code getActiveLanguage} pick it up.
+ * Encodes the current focus zone as the {@code data-focus} attribute
+ * on the grid root — but only when focus-model is active. CSS rules
+ * key off this attribute for column widths, backgrounds, and reclaim
+ * handle visibility.
  */
-interface LanguageOption {
-  code: 'en' | 'de';
-  label: string;
-}
-const LANGUAGES: readonly LanguageOption[] = [
-  { code: 'en', label: 'English' },
-  { code: 'de', label: 'Deutsch' },
-];
+const effectiveFocusZone = computed<FocusZone | null>(() =>
+  props.focusModel === 'auto' ? (focusZone.value ?? null) : null);
 
-const currentLocale = computed<string>(() => String(locale.value));
-
-function selectLanguage(code: LanguageOption['code']): void {
-  setActiveLanguage(code);
-  setUiLocale(code);
+function onZonePointerdown(zone: FocusZone): void {
+  if (props.focusModel !== 'auto') return;
+  focusZone.value = zone;
 }
 
-async function logout(): Promise<void> {
-  const tenant = getTenantId();
-  if (tenant) {
-    await serverLogout(tenant);
+function onFooterFocusin(): void {
+  if (props.focusModel !== 'auto') return;
+  focusZone.value = 'footer';
+}
+
+/**
+ * Escape returns focus to {@code 'main'} — the implicit "home" zone.
+ * Only active when focus-model is on, so editors that don't opt in
+ * are unaffected by global keyboard captures.
+ */
+function onGlobalKeydown(ev: KeyboardEvent): void {
+  if (props.focusModel !== 'auto') return;
+  if (ev.key === 'Escape' && focusZone.value !== 'main') {
+    focusZone.value = 'main';
   }
-  window.location.href = '/index.html';
+}
+
+/**
+ * Pointerdown outside the editor-shell grid (notably the topbar) has
+ * no zone it belongs to — default to {@code 'main'} so the main zone
+ * is always the implicit "home" when nothing else asked for focus.
+ */
+function onGlobalPointerdown(ev: PointerEvent): void {
+  if (props.focusModel !== 'auto') return;
+  const target = ev.target as HTMLElement | null;
+  if (!target) return;
+  if (!target.closest('.editor-shell-grid')) {
+    focusZone.value = 'main';
+  }
 }
 
 /**
@@ -194,6 +279,11 @@ onMounted(() => {
   expiryTimer = window.setInterval(() => {
     void guardAccessCookie();
   }, 60_000);
+  // Listeners always attached; the handlers themselves no-op when
+  // focusModel !== 'auto'. Cheaper than churning add/remove on prop
+  // changes and lets a parent flip focusModel at runtime cleanly.
+  window.addEventListener('keydown', onGlobalKeydown);
+  window.addEventListener('pointerdown', onGlobalPointerdown);
 });
 
 onBeforeUnmount(() => {
@@ -201,117 +291,62 @@ onBeforeUnmount(() => {
     window.clearInterval(expiryTimer);
     expiryTimer = null;
   }
+  window.removeEventListener('keydown', onGlobalKeydown);
+  window.removeEventListener('pointerdown', onGlobalPointerdown);
 });
 </script>
 
 <template>
   <div class="h-screen overflow-hidden flex flex-col bg-base-200">
-    <header class="navbar bg-base-100 shadow-sm border-b border-base-300 px-4 gap-2">
-      <!-- Logo doubles as a "home" link back to the editor list. -->
-      <a
-        href="/index.html"
-        class="flex-none font-bold text-lg font-mono no-underline hover:opacity-80"
-        :title="$t('common.backToHome')"
-      >vance</a>
+    <EditorTopbar
+      :title="title"
+      :breadcrumbs="breadcrumbs"
+      :connection-state="connectionState"
+      :connection-tooltip="connectionTooltip"
+      :help-path="helpPath"
+      :help-open="showHelp"
+      :title-clickable="titleClickable"
+      @toggle-help="toggleHelp"
+      @title-click="emit('title-click')"
+    >
+      <!-- Only forward when the parent of EditorShell actually filled
+           the slot — an empty <template> would still satisfy a
+           {@code $slots['topbar-extra']} check inside EditorTopbar
+           and produce extra spacing. -->
+      <template v-if="$slots['topbar-extra']" #topbar-extra>
+        <slot name="topbar-extra" />
+      </template>
+    </EditorTopbar>
 
-      <div class="flex-1 flex items-center gap-2 text-sm">
-        <span class="font-semibold">{{ title }}</span>
-        <span v-if="breadcrumbs.length" class="opacity-50">·</span>
-        <span class="opacity-70 truncate">
-          <template v-for="(crumb, idx) in breadcrumbs" :key="idx">
-            <button
-              v-if="crumbOnClick(crumb)"
-              type="button"
-              class="crumb-link"
-              @click="crumbOnClick(crumb)?.()"
-            >{{ crumbText(crumb) }}</button>
-            <span v-else>{{ crumbText(crumb) }}</span>
-            <span v-if="idx < breadcrumbs.length - 1" class="mx-1 opacity-40">›</span>
-          </template>
-        </span>
-      </div>
-
-      <div class="flex-none flex items-center gap-3">
-        <!-- Editor-specific topbar slot — e.g. the project selector in the
-             document editor. Sits between the breadcrumbs and the
-             connection/user controls. Keep it compact: a single dropdown
-             or short button row. -->
-        <div v-if="$slots['topbar-extra']" class="flex items-center">
-          <slot name="topbar-extra" />
-        </div>
-
-        <span
-          v-if="connectionState"
-          :class="[
-            'inline-block w-2.5 h-2.5 rounded-full',
-            connectionState === 'connected' ? 'bg-success' : '',
-            connectionState === 'idle' ? 'bg-base-content/40' : '',
-            connectionState === 'occupied' ? 'bg-error' : '',
-          ]"
-          :title="connectionTooltip ?? defaultConnectionTooltip"
-        />
-
-        <!-- Help-drawer toggle. Only rendered when the editor supplied
-             a helpPath; closed by default, reclaims the right-panel
-             space when opened. -->
-        <button
-          v-if="helpPath"
-          type="button"
-          class="btn btn-ghost btn-sm btn-circle"
-          :class="showHelp ? 'btn-active' : ''"
-          :title="$t('header.help.toggle')"
-          :aria-pressed="showHelp"
-          @click="toggleHelp"
-        >?</button>
-
-        <div class="dropdown dropdown-end">
-          <div tabindex="0" role="button" class="btn btn-ghost btn-sm">
-            <span class="font-mono text-xs opacity-70">{{ tenantId }}</span>
-            <span>·</span>
-            <span>{{ username }}</span>
-          </div>
-          <ul
-            tabindex="0"
-            class="dropdown-content menu bg-base-100 rounded-box z-[1] mt-2 w-48 p-2 shadow"
-          >
-            <li class="menu-title">
-              <span>{{ $t('header.menu.languageHeader') }}</span>
-            </li>
-            <li v-for="lang in LANGUAGES" :key="lang.code">
-              <a
-                :class="{ active: currentLocale === lang.code }"
-                @click="selectLanguage(lang.code)"
-              >
-                <span class="font-mono text-xs opacity-50 w-6">{{ lang.code.toUpperCase() }}</span>
-                <span>{{ lang.label }}</span>
-              </a>
-            </li>
-            <li class="divider-row"><div class="divider my-1" /></li>
-            <li><a href="/profile.html">{{ $t('common.profile') }}</a></li>
-            <li><a @click="logout">{{ $t('common.signOut') }}</a></li>
-          </ul>
-        </div>
-      </div>
-    </header>
-
-    <div class="flex-1 flex min-h-0">
+    <div
+      class="editor-shell-grid flex-1 min-h-0"
+      :data-focus="effectiveFocusZone"
+      :data-wide-right="focusModel === 'off' && wideRightPanel ? '' : null"
+      :data-help-open="showHelp ? '' : null"
+      :style="{ gridTemplateColumns, gridTemplateRows }"
+    >
       <aside
-        v-if="$slots.sidebar"
-        class="w-64 shrink-0 border-r border-base-300 bg-base-100 overflow-y-auto"
+        v-if="hasSidebarSlot"
+        class="zone zone-sidebar min-w-0 min-h-0 border-r border-base-300 overflow-y-auto"
+        @pointerdown="onZonePointerdown('sidebar')"
       >
         <slot name="sidebar" />
       </aside>
 
-      <main :class="['flex-1 min-w-0 min-h-0', fullHeight ? 'overflow-hidden' : 'overflow-y-auto']">
+      <main
+        :class="[
+          'zone zone-main min-w-0 min-h-0',
+          fullHeight ? 'overflow-hidden' : 'overflow-y-auto',
+        ]"
+        @pointerdown="onZonePointerdown('main')"
+      >
         <slot />
       </main>
 
       <aside
-        v-if="showHelp || $slots['right-panel']"
-        :class="[
-          'shrink-0 border-l border-base-300 bg-base-100 overflow-y-auto',
-          wideRightPanel ? 'w-[40rem]' : 'w-80',
-        ]"
+        v-if="hasRightCell"
+        class="zone zone-right min-w-0 min-h-0 border-l border-base-300 overflow-y-auto"
+        @pointerdown="onZonePointerdown('right')"
       >
         <!-- Help drawer reclaims the right-panel space; the editor's
              own right-panel content is hidden while help is shown. -->
@@ -342,21 +377,188 @@ onBeforeUnmount(() => {
         </div>
         <slot v-else name="right-panel" />
       </aside>
+
+      <footer
+        v-if="hasFooterSlot"
+        class="zone zone-footer col-span-full min-w-0 min-h-0 border-t border-base-300 overflow-hidden"
+        @focusin="onFooterFocusin"
+      >
+        <slot name="footer" />
+      </footer>
+
+      <!-- Reclaim handles — sit at zone boundaries so they stay
+           clickable even when the adjacent zone collapses to width 0.
+           Only rendered in focus-model 'auto' AND when the zone
+           actually exists. The handle for the currently-focused zone
+           is fade-hidden so it doesn't double as a noisy chip. -->
+      <template v-if="focusModel === 'auto'">
+        <button
+          v-if="hasSidebarSlot"
+          type="button"
+          class="reclaim-handle reclaim-handle-sidebar"
+          :class="{ 'reclaim-handle--hidden': focusZone === 'sidebar' }"
+          aria-label="Expand sidebar"
+          @click="focusZone = 'sidebar'"
+        >›</button>
+        <button
+          v-if="hasRightCell"
+          type="button"
+          class="reclaim-handle reclaim-handle-right"
+          :class="{ 'reclaim-handle--hidden': focusZone === 'right' }"
+          aria-label="Expand right panel"
+          @click="focusZone = 'right'"
+        >‹</button>
+      </template>
     </div>
   </div>
 </template>
 
 <style scoped>
-.crumb-link {
-  background: transparent;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  color: inherit;
-  font-size: inherit;
+/* ──────────────── Editor-shell grid + focus model ────────────────
+ *
+ * Track widths and row heights live in CSS variables so editors can
+ * tune them by overriding the variable on the {@code .editor-shell-grid}
+ * selector — no script changes needed. The {@code data-focus} attribute
+ * on the grid root carries the currently focused zone (only set when
+ * {@code focusModel='auto'}); CSS rules key off it for column widths,
+ * backgrounds, and reclaim handle visibility.
+ *
+ * To make a zone disappear on small viewports, drop its CSS variable
+ * to 0 (or {@code clamp(...)}) inside a media query. The reclaim
+ * handle stays clickable because it's anchored to the grid container,
+ * not the zone itself.
+ *
+ * Spec: `specification/web-ui.md` §7.2.1.
+ */
+
+.editor-shell-grid {
+  /* Track sizes per zone. Defaults match the legacy fixed-width
+   * layout used by {@code focusModel='off'}. */
+  --shell-sidebar-w: 16rem;
+  --shell-right-w: 20rem;
+  --shell-footer-h: auto;
+
+  /* Single source of truth for resize + colour transitions. */
+  --shell-focus-duration: 200ms;
+
+  position: relative;        /* anchors the absolutely-placed handles */
+  display: grid;
+  transition:
+    grid-template-columns var(--shell-focus-duration) ease-out,
+    grid-template-rows var(--shell-focus-duration) ease-out;
 }
-.crumb-link:hover {
-  text-decoration: underline;
-  opacity: 1;
+
+/* Legacy wide-right-panel mode (focusModel='off' + wideRightPanel). */
+.editor-shell-grid[data-wide-right] {
+  --shell-right-w: 40rem;
+}
+
+/* Focus-driven widths. Applied only when data-focus is set, which
+ * happens exclusively in focusModel='auto'. Sidebar expands a bit when
+ * focused; right column shrinks when the focus is elsewhere (and
+ * collapses further when the footer is focused, freeing horizontal
+ * room for the composer). */
+.editor-shell-grid[data-focus='sidebar'] { --shell-sidebar-w: 24rem; }
+.editor-shell-grid[data-focus='right']   { --shell-right-w: 32rem; }
+.editor-shell-grid[data-focus='footer']  { --shell-right-w: 14rem; }
+
+/* Help drawer commandeers the right column at its non-focus baseline
+ * (20rem, or 40rem with wideRightPanel). Comes *after* the focus
+ * rules so it wins when both attributes are present. */
+.editor-shell-grid[data-help-open] {
+  --shell-right-w: 20rem;
+}
+.editor-shell-grid[data-help-open][data-wide-right] {
+  --shell-right-w: 40rem;
+}
+
+/* Phone-narrow viewports: optional unfocused zones disappear entirely.
+ * Reclaim handles stay anchored at the right/left edges. The focused
+ * zone takes the full width when it's the sidebar or the right panel
+ * (main collapses to 0 in those cases — Escape brings it back). */
+@media (max-width: 400px) {
+  .editor-shell-grid[data-focus]:not([data-help-open]) {
+    --shell-sidebar-w: 0;
+    --shell-right-w: 0;
+  }
+  .editor-shell-grid[data-focus='sidebar']:not([data-help-open]) {
+    --shell-sidebar-w: 100%;
+  }
+  .editor-shell-grid[data-focus='right']:not([data-help-open]) {
+    --shell-right-w: 100%;
+  }
+}
+
+/* ──────────────── Zone backgrounds ────────────────
+ *
+ * Legacy look (focus-model 'off'): sidebar / right / footer are
+ * panels (base-100, white), main inherits the editor surround
+ * (base-200, grey). Focus mode flips that — all zones default to
+ * the surround colour, and only the focused one lifts to white.
+ * That makes the active zone visually pop without separating panels
+ * via heavy borders.
+ *
+ * The focus-mode rules have higher specificity ({@code [data-focus]}
+ * attribute selector) so they win when both apply.
+ */
+.editor-shell-grid > .zone-sidebar,
+.editor-shell-grid > .zone-right,
+.editor-shell-grid > .zone-footer {
+  background-color: var(--fallback-b1, oklch(var(--b1) / 1));
+  transition: background-color var(--shell-focus-duration) ease-out;
+}
+.editor-shell-grid[data-focus] > .zone {
+  background-color: var(--fallback-b2, oklch(var(--b2) / 1));
+}
+.editor-shell-grid[data-focus='sidebar'] > .zone-sidebar,
+.editor-shell-grid[data-focus='main']    > .zone-main,
+.editor-shell-grid[data-focus='right']   > .zone-right,
+.editor-shell-grid[data-focus='footer']  > .zone-footer {
+  background-color: var(--fallback-b1, oklch(var(--b1) / 1));
+}
+
+/* ──────────────── Reclaim handles ────────────────
+ *
+ * Anchored to the grid container, not to the zone, so they stay
+ * clickable when the zone collapses to width 0. Position uses the
+ * same CSS variable that drives the grid track, so the handle glides
+ * along the boundary as the layout animates.
+ */
+.reclaim-handle {
+  position: absolute;
+  z-index: 10;
+  padding: 0.5rem 0.25rem;
+  background-color: var(--fallback-b3, oklch(var(--b3) / 1));
+  color: var(--fallback-bc, oklch(var(--bc) / 0.7));
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+  border: none;
+  transition:
+    opacity var(--shell-focus-duration) ease-out,
+    left var(--shell-focus-duration) ease-out,
+    right var(--shell-focus-duration) ease-out,
+    background-color 120ms ease-out;
+}
+.reclaim-handle:hover {
+  background-color: var(--fallback-b2, oklch(var(--b2) / 1));
+  color: var(--fallback-bc, oklch(var(--bc) / 1));
+}
+.reclaim-handle--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.reclaim-handle-sidebar {
+  left: var(--shell-sidebar-w);
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+.reclaim-handle-right {
+  right: var(--shell-right-w);
+  top: 50%;
+  transform: translateY(-50%);
+  border-radius: 0.375rem 0 0 0.375rem;
 }
 </style>

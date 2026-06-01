@@ -313,7 +313,7 @@ class ServerToolRegistryTest {
     private static ServerToolConfig singletonConfig(String name) {
         return new ServerToolConfig(
                 name, "doc_lookup", "test " + name,
-                new LinkedHashMap<>(Map.of("path", "manuals/" + name + ".md")),
+                new LinkedHashMap<>(Map.of("path", "_vance/manuals/" + name + ".md")),
                 new ArrayList<>(),
                 /*enabled*/ true,
                 /*primary*/ false,

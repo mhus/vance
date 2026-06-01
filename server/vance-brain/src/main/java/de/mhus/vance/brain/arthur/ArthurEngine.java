@@ -196,7 +196,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * Recipes can swap the paths via {@code promptDocument} /
      * {@code promptDocumentSmall} params.
      */
-    private static final String DEFAULT_PROMPT_PATH = "prompts/arthur-prompt.md";
+    private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/arthur-prompt.md";
 
     private final ThinkProcessService thinkProcessService;
     private final ArthurProperties arthurProperties;

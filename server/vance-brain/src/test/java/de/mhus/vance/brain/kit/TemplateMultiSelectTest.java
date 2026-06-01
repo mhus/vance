@@ -160,8 +160,8 @@ class TemplateMultiSelectTest {
                     type: multiselect
                     choices: [jira, confluence]
                 documents:
-                  - { path: server-tools/jira_rest.yaml, requires: jira }
-                  - { path: server-tools/atlassian_admin.yaml, requires: [jira, confluence] }
+                  - { path: _vance/server-tools/jira_rest.yaml, requires: jira }
+                  - { path: _vance/server-tools/atlassian_admin.yaml, requires: [jira, confluence] }
                 """);
         assertThat(t.documents()).hasSize(2);
         assertThat(t.documents().get(0).requires()).containsExactly("jira");

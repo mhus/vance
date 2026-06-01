@@ -62,7 +62,7 @@ import org.yaml.snakeyaml.Yaml;
 public class ModelCatalog {
 
     /** Document path used in every cascade layer. */
-    public static final String CATALOG_PATH = "ai-models.yaml";
+    public static final String CATALOG_PATH = "_vance/ai-models.yaml";
 
     /** Classpath location of the bundled defaults (mirrors {@link DocumentService} convention). */
     private static final String BUNDLED_RESOURCE = "vance-defaults/" + CATALOG_PATH;

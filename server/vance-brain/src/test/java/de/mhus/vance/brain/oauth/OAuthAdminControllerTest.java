@@ -42,7 +42,7 @@ class OAuthAdminControllerTest {
     private static final String TENANT = "acme";
     private static final String ADMIN_USER = "marvin.acme";
     private static final String PROVIDER = "slack";
-    private static final String DOC_PATH = "oauth/slack.yaml";
+    private static final String DOC_PATH = "_vance/oauth/slack.yaml";
     private static final String SECRET_KEY = "oauth.slack.client_secret";
     private static final String TENANT_PROJECT = "_tenant";
 

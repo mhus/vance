@@ -570,9 +570,9 @@ public class SlartibartfastEngine implements ThinkEngine {
             state.setStatus(ArchitectStatus.FAILED);
             return;
         }
-        String recipeName = recipePath.startsWith("recipes/")
+        String recipeName = recipePath.startsWith("_vance/recipes/")
                 && recipePath.endsWith(".yaml")
-                ? recipePath.substring("recipes/".length(),
+                ? recipePath.substring("_vance/recipes/".length(),
                         recipePath.length() - ".yaml".length())
                 : null;
         if (recipeName == null) {

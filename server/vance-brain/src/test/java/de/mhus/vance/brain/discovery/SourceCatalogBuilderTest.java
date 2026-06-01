@@ -35,12 +35,12 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
 
         Map<String, LookupResult> manuals = new LinkedHashMap<>();
-        manuals.put("manuals/getting-started.md",
-                new LookupResult("manuals/getting-started.md",
+        manuals.put("_vance/manuals/getting-started.md",
+                new LookupResult("_vance/manuals/getting-started.md",
                         "# Getting started\n\nWelcome to Vance.\n",
                         LookupResult.Source.RESOURCE, null));
-        manuals.put("manuals/embed-images.md",
-                new LookupResult("manuals/embed-images.md",
+        manuals.put("_vance/manuals/embed-images.md",
+                new LookupResult("_vance/manuals/embed-images.md",
                         "---\n"
                         + "triggers: image, picture, screenshot, Bild\n"
                         + "summary: How to show a picture in the chat.\n"
@@ -75,8 +75,8 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
 
         when(documentService.listByPrefixCascade(any(), any(), any()))
-                .thenReturn(Map.of("manuals/plain.md",
-                        new LookupResult("manuals/plain.md",
+                .thenReturn(Map.of("_vance/manuals/plain.md",
+                        new LookupResult("_vance/manuals/plain.md",
                                 "# Plain manual\n\nBody description.\n",
                                 LookupResult.Source.RESOURCE, null)));
 
@@ -99,8 +99,8 @@ class SourceCatalogBuilderTest {
         // Front-matter has triggers but no summary — the catalog card
         // should fall back to the first body paragraph.
         when(documentService.listByPrefixCascade(any(), any(), any()))
-                .thenReturn(Map.of("manuals/with-triggers.md",
-                        new LookupResult("manuals/with-triggers.md",
+                .thenReturn(Map.of("_vance/manuals/with-triggers.md",
+                        new LookupResult("_vance/manuals/with-triggers.md",
                                 "---\ntriggers: foo, bar\n---\n"
                                 + "# Title here\n\nFirst paragraph wins.\n\n"
                                 + "Second paragraph ignored.\n",
@@ -126,8 +126,8 @@ class SourceCatalogBuilderTest {
                 + "## Section\n\nLots of detail here that should not "
                 + "appear in the catalog summary card.\n";
         when(documentService.listByPrefixCascade(any(), any(), any()))
-                .thenReturn(Map.of("manuals/big.md",
-                        new LookupResult("manuals/big.md", longBody,
+                .thenReturn(Map.of("_vance/manuals/big.md",
+                        new LookupResult("_vance/manuals/big.md", longBody,
                                 LookupResult.Source.RESOURCE, null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
@@ -147,10 +147,10 @@ class SourceCatalogBuilderTest {
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
 
         Map<String, LookupResult> shuffled = new LinkedHashMap<>();
-        shuffled.put("manuals/zeta.md",
-                new LookupResult("manuals/zeta.md", "z", LookupResult.Source.RESOURCE, null));
-        shuffled.put("manuals/alpha.md",
-                new LookupResult("manuals/alpha.md", "a", LookupResult.Source.RESOURCE, null));
+        shuffled.put("_vance/manuals/zeta.md",
+                new LookupResult("_vance/manuals/zeta.md", "z", LookupResult.Source.RESOURCE, null));
+        shuffled.put("_vance/manuals/alpha.md",
+                new LookupResult("_vance/manuals/alpha.md", "a", LookupResult.Source.RESOURCE, null));
         when(documentService.listByPrefixCascade(any(), any(), any())).thenReturn(shuffled);
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(
@@ -252,8 +252,8 @@ class SourceCatalogBuilderTest {
         SkillResolver skillResolver = mock(SkillResolver.class);
         when(skillResolver.listAvailable(any())).thenReturn(List.of());
         when(documentService.listByPrefixCascade(any(), any(), any())).thenReturn(
-                Map.of("manuals/x.md",
-                        new LookupResult("manuals/x.md", "body",
+                Map.of("_vance/manuals/x.md",
+                        new LookupResult("_vance/manuals/x.md", "body",
                                 LookupResult.Source.RESOURCE, null)));
 
         SourceCatalogBuilder builder = new SourceCatalogBuilder(

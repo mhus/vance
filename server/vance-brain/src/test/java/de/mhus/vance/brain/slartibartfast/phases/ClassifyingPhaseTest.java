@@ -113,7 +113,7 @@ class ClassifyingPhaseTest {
                 }
                 """));
 
-        ArchitectState state = withSources(source("ev1", "manuals/x.md", "..."));
+        ArchitectState state = withSources(source("ev1", "_vance/manuals/x.md", "..."));
 
         phase.execute(state, process, ctx);
 
@@ -156,8 +156,8 @@ class ClassifyingPhaseTest {
                 """));
 
         ArchitectState state = withSources(
-                source("ev1", "manuals/a.md", "content-a"),
-                source("ev2", "manuals/b.md", "content-b"));
+                source("ev1", "_vance/manuals/a.md", "content-a"),
+                source("ev2", "_vance/manuals/b.md", "content-b"));
 
         phase.execute(state, process, ctx);
 
@@ -175,7 +175,7 @@ class ClassifyingPhaseTest {
                 {"claims":[{"text":"x","classification":"FACT","quote":null,"rationale":null}]}
                 """));
 
-        ArchitectState state = withSources(source("ev1", "manuals/x.md", "..."));
+        ArchitectState state = withSources(source("ev1", "_vance/manuals/x.md", "..."));
         phase.execute(state, process, ctx);
 
         assertThat(state.getFailureReason()).isNull();
@@ -195,7 +195,7 @@ class ClassifyingPhaseTest {
                 {"claims":[{"text":"x","classification":"OPINION","quote":null,"rationale":"because preference"}]}
                 """));
 
-        ArchitectState state = withSources(source("ev1", "manuals/x.md", "..."));
+        ArchitectState state = withSources(source("ev1", "_vance/manuals/x.md", "..."));
         phase.execute(state, process, ctx);
 
         assertThat(state.getFailureReason()).isNull();
@@ -211,7 +211,7 @@ class ClassifyingPhaseTest {
                 """;
         chatModel.script(List.of(bad, bad, bad));
 
-        ArchitectState state = withSources(source("ev1", "manuals/x.md", "..."));
+        ArchitectState state = withSources(source("ev1", "_vance/manuals/x.md", "..."));
         phase.execute(state, process, ctx);
 
         assertThat(state.getFailureReason()).contains("CLASSIFYING failed at source");
@@ -232,7 +232,7 @@ class ClassifyingPhaseTest {
                 {"claims":[{"text":"second","classification":"FACT","quote":null,"rationale":null}]}
                 """));
 
-        ArchitectState state = withSources(source("ev1", "manuals/x.md", "..."));
+        ArchitectState state = withSources(source("ev1", "_vance/manuals/x.md", "..."));
         // Pre-populate a FRAMING-tier rationale that must survive
         // the CLASSIFYING re-run.
         state.setRationales(new ArrayList<>(List.of(
@@ -270,7 +270,7 @@ class ClassifyingPhaseTest {
                 {"claims":[{"text":"x","classification":"FACT","quote":null,"rationale":null}]}
                 """));
 
-        ArchitectState state = withSources(source("ev1", "manuals/x.md", "..."));
+        ArchitectState state = withSources(source("ev1", "_vance/manuals/x.md", "..."));
         phase.execute(state, process, ctx);
 
         verify(llmCallTracker, atLeastOnce())

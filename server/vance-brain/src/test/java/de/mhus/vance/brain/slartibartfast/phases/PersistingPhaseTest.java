@@ -72,7 +72,7 @@ class PersistingPhaseTest {
 
         assertThat(state.getFailureReason()).isNull();
         assertThat(state.getPersistedRecipePath())
-                .isEqualTo("recipes/_slart/3a4f7c91/essay-pipeline.yaml");
+                .isEqualTo("_vance/recipes/_slart/3a4f7c91/essay-pipeline.yaml");
 
         ArgumentCaptor<String> pathCap = ArgumentCaptor.forClass(String.class);
         verify(documentService, times(2)).createText(
@@ -80,20 +80,20 @@ class PersistingPhaseTest {
                 any(), any(), any(), any());
         assertThat(pathCap.getAllValues())
                 .containsExactly(
-                        "recipes/_slart/3a4f7c91/essay-pipeline.yaml",
-                        "recipes/_slart/3a4f7c91/audit.json");
+                        "_vance/recipes/_slart/3a4f7c91/essay-pipeline.yaml",
+                        "_vance/recipes/_slart/3a4f7c91/audit.json");
     }
 
     @Test
     void existingRecipeIsUpdated_notRecreated() {
         DocumentDocument existing = new DocumentDocument();
         existing.setId("docid-recipe");
-        existing.setPath("recipes/_slart/3a4f7c91/essay-pipeline.yaml");
+        existing.setPath("_vance/recipes/_slart/3a4f7c91/essay-pipeline.yaml");
         // Setting inlineText distinguishes the inline-update branch
         // from the storage-backed delete-and-recreate branch.
         existing.setInlineText("name: stale-content\nengine: vogon\n");
         when(documentService.findByPath("acme", "test-project",
-                "recipes/_slart/3a4f7c91/essay-pipeline.yaml"))
+                "_vance/recipes/_slart/3a4f7c91/essay-pipeline.yaml"))
                 .thenReturn(Optional.of(existing));
 
         ArchitectState state = stateWithMinimalRecipe("3a4f7c91", "essay-pipeline");
@@ -101,7 +101,7 @@ class PersistingPhaseTest {
 
         verify(documentService, never()).createText(
                 any(), any(),
-                eq("recipes/_slart/3a4f7c91/essay-pipeline.yaml"),
+                eq("_vance/recipes/_slart/3a4f7c91/essay-pipeline.yaml"),
                 any(), any(), any(), any());
         verify(documentService, atLeastOnce()).update(
                 eq("docid-recipe"), any(), any(), any(), any());
@@ -184,7 +184,7 @@ class PersistingPhaseTest {
         org.mockito.Mockito.doThrow(new RuntimeException("disk full"))
                 .when(documentService).createText(
                         any(), any(),
-                        eq("recipes/_slart/3a4f7c91/x.yaml"),
+                        eq("_vance/recipes/_slart/3a4f7c91/x.yaml"),
                         any(), any(), any(), any());
 
         ArchitectState state = stateWithMinimalRecipe("3a4f7c91", "x");
@@ -203,15 +203,15 @@ class PersistingPhaseTest {
         // Recipe write succeeds, audit write throws — phase still
         // marks PASSED because the recipe is the productive output.
         when(documentService.findByPath(any(), any(),
-                eq("recipes/_slart/3a4f7c91/x.yaml")))
+                eq("_vance/recipes/_slart/3a4f7c91/x.yaml")))
                 .thenReturn(Optional.empty());
         when(documentService.findByPath(any(), any(),
-                eq("recipes/_slart/3a4f7c91/audit.json")))
+                eq("_vance/recipes/_slart/3a4f7c91/audit.json")))
                 .thenReturn(Optional.empty());
         org.mockito.Mockito.doThrow(new RuntimeException("audit-fail"))
                 .when(documentService).createText(
                         any(), any(),
-                        eq("recipes/_slart/3a4f7c91/audit.json"),
+                        eq("_vance/recipes/_slart/3a4f7c91/audit.json"),
                         any(), any(), any(), any());
 
         ArchitectState state = stateWithMinimalRecipe("3a4f7c91", "x");
@@ -219,7 +219,7 @@ class PersistingPhaseTest {
 
         assertThat(state.getFailureReason()).isNull();
         assertThat(state.getPersistedRecipePath())
-                .isEqualTo("recipes/_slart/3a4f7c91/x.yaml");
+                .isEqualTo("_vance/recipes/_slart/3a4f7c91/x.yaml");
         assertThat(state.getIterations())
                 .filteredOn(it -> it.getPhase() == ArchitectStatus.PERSISTING)
                 .extracting(PhaseIteration::getOutcome)

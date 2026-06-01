@@ -119,7 +119,7 @@ public class EddieEngine extends StructuredActionEngine {
      */
     private static final Set<String> ALLOWED_TOOLS = Set.of();
 
-    private static final String PROMPT_PATH = "prompts/eddie-prompt.md";
+    private static final String PROMPT_PATH = "_vance/prompts/eddie-prompt.md";
     private static final String PROMPT_RESOURCE = "vance-defaults/prompts/eddie-prompt.md";
 
     /**

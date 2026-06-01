@@ -153,7 +153,7 @@ public class ZaphodEngine implements ThinkEngine {
 
     /** Cascade path for the Zaphod synthesis prompt. Loaded via
      *  {@link de.mhus.vance.brain.thinkengine.EnginePromptResolver}. */
-    private static final String SYNTHESIS_PROMPT_PATH = "prompts/zaphod-synthesis.md";
+    private static final String SYNTHESIS_PROMPT_PATH = "_vance/prompts/zaphod-synthesis.md";
 
     /** Soft-cap on heads per council. More than this is almost
      *  certainly a config error; we warn + cut off. */

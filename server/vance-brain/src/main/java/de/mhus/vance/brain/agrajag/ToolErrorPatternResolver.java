@@ -37,7 +37,7 @@ import org.yaml.snakeyaml.Yaml;
 public class ToolErrorPatternResolver {
 
     public static final String BUNDLED_RESOURCE = "vance-defaults/agrajag/error-patterns.yaml";
-    public static final String DOCUMENT_PATH = "agrajag/error-patterns.yaml";
+    public static final String DOCUMENT_PATH = "_vance/agrajag/error-patterns.yaml";
 
     private final DocumentService documentService;
 

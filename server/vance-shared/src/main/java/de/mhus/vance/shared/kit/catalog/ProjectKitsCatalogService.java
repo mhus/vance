@@ -34,8 +34,8 @@ import org.yaml.snakeyaml.Yaml;
 @Slf4j
 public class ProjectKitsCatalogService {
 
-    /** Document path inside the {@code _vance} project. */
-    public static final String CATALOG_PATH = "config/project-kits.yaml";
+    /** Document path inside the {@code _tenant} project. */
+    public static final String CATALOG_PATH = "_vance/config/project-kits.yaml";
 
     /** Currently supported schema version. */
     public static final int CURRENT_VERSION = 1;

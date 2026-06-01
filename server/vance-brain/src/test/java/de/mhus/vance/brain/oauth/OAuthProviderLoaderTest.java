@@ -109,7 +109,7 @@ class OAuthProviderLoaderTest {
     @Test
     void path_for_uses_prefix_and_suffix() {
         assertThat(OAuthProviderLoader.pathFor("Slack-Workspace"))
-                .isEqualTo("oauth/slack-workspace.yaml");
+                .isEqualTo("_vance/oauth/slack-workspace.yaml");
     }
 
     @Test

@@ -63,9 +63,9 @@ class GatheringPhaseTest {
     void readsAllManualsUnderManualsPrefix_inAlphabeticalOrder() {
         when(documentService.listByProject("acme", "test-project"))
                 .thenReturn(List.of(
-                        manual("manuals/essay/STYLE.md", "Adams style content"),
+                        manual("_vance/manuals/essay/STYLE.md", "Adams style content"),
                         manual("recipes/some.yaml", "should be skipped"),
-                        manual("manuals/essay/STRUCTURE.md", "structure content"),
+                        manual("_vance/manuals/essay/STRUCTURE.md", "structure content"),
                         manual("essay/draft.md", "should be skipped")));
 
         ArchitectState state = ArchitectState.builder().runId("run1").build();
@@ -76,21 +76,21 @@ class GatheringPhaseTest {
         // the active schema (default VOGON_STRATEGY → vogon-architect/).
         assertThat(state.getEvidenceSources())
                 .extracting(EvidenceSource::getPath)
-                .containsSequence("manuals/essay/STRUCTURE.md",
-                        "manuals/essay/STYLE.md");
+                .containsSequence("_vance/manuals/essay/STRUCTURE.md",
+                        "_vance/manuals/essay/STYLE.md");
         assertThat(state.getEvidenceSources())
                 .extracting(EvidenceSource::getType)
                 .containsOnly(EvidenceType.MANUAL);
         assertThat(state.getEvidenceSources())
                 .as("bundled engine self-knowledge appended after project manuals")
                 .anySatisfy(s -> assertThat(s.getPath())
-                        .startsWith("vance-defaults/manuals/slartibartfast/"));
+                        .startsWith("vance-defaults/_vance/manuals/slartibartfast/"));
     }
 
     @Test
     void everySourceCarriesGatheringRationale_resolvableInPool() {
         when(documentService.listByProject("acme", "test-project"))
-                .thenReturn(List.of(manual("manuals/x.md", "content")));
+                .thenReturn(List.of(manual("_vance/manuals/x.md", "content")));
 
         ArchitectState state = ArchitectState.builder().runId("run1").build();
         phase.execute(state, process, ctx);
@@ -110,7 +110,7 @@ class GatheringPhaseTest {
     void readsContent_intoEvidenceSourceVerbatim() {
         String body = "# heading\nbody line 1\nbody line 2";
         when(documentService.listByProject("acme", "test-project"))
-                .thenReturn(List.of(manual("manuals/h.md", body)));
+                .thenReturn(List.of(manual("_vance/manuals/h.md", body)));
 
         ArchitectState state = ArchitectState.builder().runId("run1").build();
         phase.execute(state, process, ctx);
@@ -134,7 +134,7 @@ class GatheringPhaseTest {
                 .as("bundled self-knowledge must be loaded even without project manuals")
                 .isNotEmpty()
                 .allSatisfy(s -> assertThat(s.getPath())
-                        .startsWith("vance-defaults/manuals/slartibartfast/"));
+                        .startsWith("vance-defaults/_vance/manuals/slartibartfast/"));
         assertThat(state.getIterations())
                 .filteredOn(it -> it.getPhase() == ArchitectStatus.GATHERING)
                 .hasSize(1);
@@ -145,7 +145,7 @@ class GatheringPhaseTest {
     @Test
     void reExecute_rebuildsEvidenceSourcesFromScratch() {
         when(documentService.listByProject("acme", "test-project"))
-                .thenReturn(List.of(manual("manuals/a.md", "first")));
+                .thenReturn(List.of(manual("_vance/manuals/a.md", "first")));
 
         ArchitectState state = ArchitectState.builder().runId("run1").build();
         phase.execute(state, process, ctx);
@@ -156,18 +156,18 @@ class GatheringPhaseTest {
         // must replace the old one, not extend it.
         when(documentService.listByProject("acme", "test-project"))
                 .thenReturn(List.of(
-                        manual("manuals/b.md", "second"),
-                        manual("manuals/c.md", "third")));
+                        manual("_vance/manuals/b.md", "second"),
+                        manual("_vance/manuals/c.md", "third")));
         phase.execute(state, process, ctx);
 
         // Project manuals first (in alpha order), bundled appended.
         assertThat(state.getEvidenceSources())
                 .extracting(EvidenceSource::getPath)
-                .containsSequence("manuals/b.md", "manuals/c.md");
-        // Old "manuals/a.md" from the first pass must be gone.
+                .containsSequence("_vance/manuals/b.md", "_vance/manuals/c.md");
+        // Old "_vance/manuals/a.md" from the first pass must be gone.
         assertThat(state.getEvidenceSources())
                 .extracting(EvidenceSource::getPath)
-                .doesNotContain("manuals/a.md");
+                .doesNotContain("_vance/manuals/a.md");
 
         // Two iteration entries — initial + recovery.
         assertThat(state.getIterations())
@@ -193,7 +193,7 @@ class GatheringPhaseTest {
                                 .build())))
                 .build();
         when(documentService.listByProject("acme", "test-project"))
-                .thenReturn(List.of(manual("manuals/x.md", "content")));
+                .thenReturn(List.of(manual("_vance/manuals/x.md", "content")));
 
         phase.execute(state, process, ctx);
 

@@ -69,9 +69,9 @@ class DiscoveryServiceTest {
                         "source", "engine",
                         "summary", "How to embed images.")));
         // Document cascade returns the manual body.
-        when(documentService.lookupCascade(eq(TENANT), any(), eq("manuals/embed-images.md")))
+        when(documentService.lookupCascade(eq(TENANT), any(), eq("_vance/manuals/embed-images.md")))
                 .thenReturn(Optional.of(new LookupResult(
-                        "manuals/embed-images.md",
+                        "_vance/manuals/embed-images.md",
                         "# Embedding — Images\n\nFull body text here.\n",
                         LookupResult.Source.RESOURCE, null)));
 
@@ -163,9 +163,9 @@ class DiscoveryServiceTest {
                                 "name", "embed-images",
                                 "source", "engine",
                                 "summary", "Images.")));
-        when(documentService.lookupCascade(eq(TENANT), any(), eq("manuals/embed-images.md")))
+        when(documentService.lookupCascade(eq(TENANT), any(), eq("_vance/manuals/embed-images.md")))
                 .thenReturn(Optional.of(new LookupResult(
-                        "manuals/embed-images.md", "real body",
+                        "_vance/manuals/embed-images.md", "real body",
                         LookupResult.Source.RESOURCE, null)));
 
         DiscoveryResult r = service.discover("show pic", TENANT, null, null);
@@ -194,11 +194,11 @@ class DiscoveryServiceTest {
                                 "name", "embed-overview",
                                 "source", "engine",
                                 "summary", "Routing.")));
-        when(documentService.lookupCascade(eq(TENANT), any(), eq("manuals/embed-images.md")))
+        when(documentService.lookupCascade(eq(TENANT), any(), eq("_vance/manuals/embed-images.md")))
                 .thenReturn(Optional.empty());
-        when(documentService.lookupCascade(eq(TENANT), any(), eq("manuals/embed-overview.md")))
+        when(documentService.lookupCascade(eq(TENANT), any(), eq("_vance/manuals/embed-overview.md")))
                 .thenReturn(Optional.of(new LookupResult(
-                        "manuals/embed-overview.md", "overview body",
+                        "_vance/manuals/embed-overview.md", "overview body",
                         LookupResult.Source.RESOURCE, null)));
 
         DiscoveryResult r = service.discover("show pic", TENANT, null, null);

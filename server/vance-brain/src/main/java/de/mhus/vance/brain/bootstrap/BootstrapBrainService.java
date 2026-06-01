@@ -218,7 +218,7 @@ public class BootstrapBrainService {
      */
     private void ensureMockOAuthProvider(String tenantId) {
         String tenantProject = HomeBootstrapService.TENANT_PROJECT_NAME;
-        String docPath = "oauth/" + MOCK_OAUTH_PROVIDER_ID + ".yaml";
+        String docPath = "_vance/oauth/" + MOCK_OAUTH_PROVIDER_ID + ".yaml";
         String secretKey = "oauth." + MOCK_OAUTH_PROVIDER_ID + ".client_secret";
 
         if (documentService.findByPath(tenantId, tenantProject, docPath).isEmpty()) {

@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Resilience-focused — the LLM frequently echoes a manual path back
- * verbatim from a workspace listing or an error message ("manuals/
+ * verbatim from a workspace listing or an error message ("_vance/manuals/
  * essay/STYLE.md", "essay/STYLE.md", "/STYLE.md"). All of these
  * shapes must resolve to the same content.
  */
@@ -38,7 +38,7 @@ class ManualReadToolTest {
     private static final String PROJECT = "test-project";
     private static final String SESSION = "sess1";
     private static final String PROCESS = "proc-1";
-    private static final String FOLDER = "manuals/essay/";
+    private static final String FOLDER = "_vance/manuals/essay/";
     private static final String STEM = "STYLE";
 
     private DocumentService documentService;
@@ -89,7 +89,7 @@ class ManualReadToolTest {
 
     @Test
     void fullFolderPathResolves() {
-        Map<String, Object> out = tool.invoke(Map.of("name", "manuals/essay/STYLE.md"), ctx);
+        Map<String, Object> out = tool.invoke(Map.of("name", "_vance/manuals/essay/STYLE.md"), ctx);
         assertThat(out).containsEntry("name", "STYLE");
     }
 
@@ -141,7 +141,7 @@ class ManualReadToolTest {
         // Recipe folder doesn't contain MANUAL — but the active skill's
         // own manualPath does. The tool must find it via the skill
         // contribution.
-        String skillFolder = "manuals/decision/";
+        String skillFolder = "_vance/manuals/decision/";
         process.setActiveSkills(List.of(
                 ActiveSkillRefEmbedded.builder().name("decision-frame").build()));
 
@@ -173,7 +173,7 @@ class ManualReadToolTest {
     void recipePathsTakePrecedenceOverSkillPaths() {
         // Both recipe and skill point at the same stem — recipe folder
         // appears first in the effective list, so its hit wins.
-        String skillFolder = "manuals/decision/";
+        String skillFolder = "_vance/manuals/decision/";
         process.setActiveSkills(List.of(
                 ActiveSkillRefEmbedded.builder().name("decision-frame").build()));
 

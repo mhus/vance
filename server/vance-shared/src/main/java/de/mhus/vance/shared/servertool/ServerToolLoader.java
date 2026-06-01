@@ -42,7 +42,7 @@ import org.yaml.snakeyaml.Yaml;
 public class ServerToolLoader {
 
     /** Path prefix used for server-tool documents in any cascade tier. */
-    public static final String SERVER_TOOL_PATH_PREFIX = "server-tools/";
+    public static final String SERVER_TOOL_PATH_PREFIX = "_vance/server-tools/";
 
     /** File suffix kept on the document path; the tool name does not carry it. */
     public static final String SERVER_TOOL_PATH_SUFFIX = ".yaml";

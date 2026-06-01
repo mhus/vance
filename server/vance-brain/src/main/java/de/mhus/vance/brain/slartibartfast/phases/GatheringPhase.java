@@ -56,16 +56,16 @@ public class GatheringPhase {
 
     /** Document-cascade prefix Slartibartfast scans for manuals.
      *  Same convention the existing {@code manual_read} tool uses. */
-    public static final String MANUALS_PREFIX = "manuals/";
+    public static final String MANUALS_PREFIX = "_vance/manuals/";
 
     /** Classpath root for bundled engine-self-knowledge manuals.
      *  GATHERING loads everything under
-     *  {@code vance-defaults/manuals/slartibartfast/<schema-arch>/}
-     *  in addition to the project's own {@code manuals/} folder,
+     *  {@code vance-defaults/_vance/manuals/slartibartfast/<schema-arch>/}
+     *  in addition to the project's own {@code _vance/manuals/} folder,
      *  so Slart can plan its three architect schemas even on
      *  greenfield projects without an installed kit. */
     public static final String BUNDLED_MANUALS_ROOT =
-            "classpath:vance-defaults/manuals/slartibartfast/";
+            "classpath:vance-defaults/_vance/manuals/slartibartfast/";
 
     /** Per-source content cap. Manuals over this size get
      *  truncated with a marker — protects engineParams against
@@ -225,7 +225,7 @@ public class GatheringPhase {
                     String content = new String(bytes, StandardCharsets.UTF_8);
                     String filename = resource.getFilename();
                     if (filename == null) continue;
-                    String displayPath = "vance-defaults/manuals/slartibartfast/"
+                    String displayPath = "vance-defaults/_vance/manuals/slartibartfast/"
                             + bundledSchemaDir(schemaType) + "/" + filename;
                     out.add(new BundledManual(displayPath, content));
                 } catch (IOException e) {

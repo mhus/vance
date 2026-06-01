@@ -57,7 +57,7 @@ public class MarvinArchitect implements SchemaArchitect {
 
     /** Classpath location of the bundled Marvin recipe templates. */
     private static final String TEMPLATE_PREFIX =
-            "vance-defaults/manuals/slartibartfast/marvin-architect/templates/";
+            "vance-defaults/_vance/manuals/slartibartfast/marvin-architect/templates/";
 
     /** Whitelist of supported template IDs. */
     private static final Set<String> SUPPORTED_TEMPLATE_IDS = Set.of(

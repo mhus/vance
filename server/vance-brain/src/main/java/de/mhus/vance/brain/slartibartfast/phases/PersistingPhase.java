@@ -46,8 +46,8 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 public class PersistingPhase {
 
-    public static final String SLART_PREFIX = "recipes/_slart/";
-    public static final String USER_PREFIX = "recipes/_user/";
+    public static final String SLART_PREFIX = "_vance/recipes/_slart/";
+    public static final String USER_PREFIX = "_vance/recipes/_user/";
 
     private final DocumentService documentService;
     private final ObjectMapper objectMapper;

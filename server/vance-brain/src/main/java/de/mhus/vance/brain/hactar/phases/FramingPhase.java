@@ -43,7 +43,7 @@ public class FramingPhase {
 
     public static final String ENGINE_NAME = "hactar";
 
-    private static final String FRAMING_PROMPT_PATH = "prompts/hactar-framing.md";
+    private static final String FRAMING_PROMPT_PATH = "_vance/prompts/hactar-framing.md";
     private static final String FRAMING_FALLBACK_PROMPT =
             "You are the FRAMING node of Hactar. Write a "
                     + "structured plan sketch for a JavaScript orchestrator "

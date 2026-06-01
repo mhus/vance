@@ -500,13 +500,13 @@ class HactarEngineLifecycleTest {
         // engine must list them by stem + folder + source.
         DocumentService.class.toString(); // keep import alive
         when(documentService.listByPrefixCascade(
-                eq("acme"), eq("test-project"), eq("manuals/")))
+                eq("acme"), eq("test-project"), eq("_vance/manuals/")))
                 .thenReturn(new java.util.LinkedHashMap<>(java.util.Map.of(
-                        "manuals/tool-conventions.md",
-                        new LookupResult("manuals/tool-conventions.md",
+                        "_vance/manuals/tool-conventions.md",
+                        new LookupResult("_vance/manuals/tool-conventions.md",
                                 "...", LookupResult.Source.PROJECT, null),
-                        "manuals/data-export.md",
-                        new LookupResult("manuals/data-export.md",
+                        "_vance/manuals/data-export.md",
+                        new LookupResult("_vance/manuals/data-export.md",
                                 "...", LookupResult.Source.RESOURCE, null))));
 
         when(enginePromptResolver.resolve(any(), anyString(), anyString()))
@@ -516,7 +516,7 @@ class HactarEngineLifecycleTest {
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(
                 HactarEngine.MANUAL_PATHS_KEY,
-                List.of("manuals/"));
+                List.of("_vance/manuals/"));
         engine.start(process, ctx);
         chatModel.script("```javascript\n(function () { return 1; })();\n```");
 
@@ -528,19 +528,19 @@ class HactarEngineLifecycleTest {
         assertThat(systemText)
                 .contains("MANUALS:")
                 .contains("**data-export**")
-                .contains("(folder: manuals/, source: resource)")
+                .contains("(folder: _vance/manuals/, source: resource)")
                 .contains("**tool-conventions**")
-                .contains("(folder: manuals/, source: project)");
+                .contains("(folder: _vance/manuals/, source: project)");
     }
 
     @Test
     void drafting_normalizesManualPaths_appendsTrailingSlash() {
         // Pass "manuals" (no trailing slash) — engine must normalise.
         when(documentService.listByPrefixCascade(
-                anyString(), any(), eq("manuals/")))
+                anyString(), any(), eq("_vance/manuals/")))
                 .thenReturn(java.util.Map.of(
-                        "manuals/x.md",
-                        new LookupResult("manuals/x.md", "...",
+                        "_vance/manuals/x.md",
+                        new LookupResult("_vance/manuals/x.md", "...",
                                 LookupResult.Source.PROJECT, null)));
         when(enginePromptResolver.resolve(any(), anyString(), anyString()))
                 .thenReturn("{% if manualInventory %}{{ manualInventory }}{% endif %}");
@@ -548,7 +548,7 @@ class HactarEngineLifecycleTest {
         ThinkProcessDocument process = newProcess();
         process.getEngineParams().put(
                 HactarEngine.MANUAL_PATHS_KEY,
-                List.of("manuals"));
+                List.of("_vance/manuals"));
         engine.start(process, ctx);
         chatModel.script("```javascript\n(function () { return 1; })();\n```");
 

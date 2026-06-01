@@ -203,7 +203,7 @@ class SlartibartfastEngineLifecycleTest {
         ArchitectState finalState = readState(process);
         assertThat(finalState.getStatus()).isEqualTo(ArchitectStatus.DONE);
         assertThat(finalState.getPersistedRecipePath())
-                .startsWith("recipes/_slart/" + finalState.getRunId() + "/");
+                .startsWith("_vance/recipes/_slart/" + finalState.getRunId() + "/");
         assertThat(finalState.getGoal()).isNotNull();
         assertThat(finalState.getEvidenceSources()).isNotEmpty();
         assertThat(finalState.getEvidenceClaims()).isNotEmpty();

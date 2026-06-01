@@ -45,7 +45,7 @@ import org.yaml.snakeyaml.Yaml;
 public class RecipeLoader {
 
     /** Path prefix used for recipe documents in any cascade tier. */
-    public static final String RECIPE_PATH_PREFIX = "recipes/";
+    public static final String RECIPE_PATH_PREFIX = "_vance/recipes/";
 
     /** File suffix kept on the document path; the recipe name itself does not carry it. */
     public static final String RECIPE_PATH_SUFFIX = ".yaml";

@@ -41,7 +41,7 @@ import org.yaml.snakeyaml.Yaml;
 public class WizardLoader {
 
     /** Path prefix used for wizard documents in any cascade tier. */
-    public static final String WIZARD_PATH_PREFIX = "wizards/";
+    public static final String WIZARD_PATH_PREFIX = "_vance/wizards/";
 
     /** File suffix kept on the document path; the wizard name itself does not carry it. */
     public static final String WIZARD_PATH_SUFFIX = ".yaml";

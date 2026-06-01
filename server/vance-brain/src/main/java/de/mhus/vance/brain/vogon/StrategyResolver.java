@@ -60,7 +60,7 @@ import org.yaml.snakeyaml.Yaml;
 public class StrategyResolver {
 
     /** Cascade folder for strategy files. */
-    public static final String STRATEGIES_PREFIX = "strategies/";
+    public static final String STRATEGIES_PREFIX = "_vance/strategies/";
 
     private static final String YAML_SUFFIX = ".yaml";
 

@@ -47,7 +47,7 @@ public class DraftingPhase {
 
     public static final String ENGINE_NAME = "hactar";
 
-    private static final String DRAFTING_PROMPT_PATH = "prompts/hactar-drafting.md";
+    private static final String DRAFTING_PROMPT_PATH = "_vance/prompts/hactar-drafting.md";
     private static final String DRAFTING_FALLBACK_PROMPT =
             "You are the DRAFTING node of the Hactar engine. "
                     + "Reply with EXACTLY one ```javascript fenced block "

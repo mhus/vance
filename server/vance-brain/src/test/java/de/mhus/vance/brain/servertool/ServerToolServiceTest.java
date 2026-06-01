@@ -124,11 +124,11 @@ class ServerToolServiceTest {
     void create_persists_via_documentService_and_refreshes_registry() {
         when(factoryRegistry.find(eq("doc_lookup")))
                 .thenReturn(Optional.of(new NoopFactory("doc_lookup")));
-        when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq("server-tools/new_tool.yaml")))
+        when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq("_vance/server-tools/new_tool.yaml")))
                 .thenReturn(Optional.empty());
         when(loader.validateYaml(eq("new_tool"), any())).thenReturn(enabledConfig("new_tool"));
         when(documentService.upsertText(
-                eq(TENANT), eq(PROJECT), eq("server-tools/new_tool.yaml"),
+                eq(TENANT), eq(PROJECT), eq("_vance/server-tools/new_tool.yaml"),
                 any(), any(), any(), any()))
                 .thenReturn(new DocumentDocument());
         when(registry.refreshOne(eq(TENANT), eq(PROJECT), eq("new_tool"))).thenReturn(true);
@@ -139,14 +139,14 @@ class ServerToolServiceTest {
 
         assertThat(stored.name()).isEqualTo("new_tool");
         verify(documentService).upsertText(
-                eq(TENANT), eq(PROJECT), eq("server-tools/new_tool.yaml"),
+                eq(TENANT), eq(PROJECT), eq("_vance/server-tools/new_tool.yaml"),
                 any(), any(), any(), any());
         verify(registry, times(1)).refreshOne(TENANT, PROJECT, "new_tool");
     }
 
     @Test
     void create_rejects_duplicate_name() {
-        when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq("server-tools/existing.yaml")))
+        when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq("_vance/server-tools/existing.yaml")))
                 .thenReturn(Optional.of(new DocumentDocument()));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
@@ -179,7 +179,7 @@ class ServerToolServiceTest {
     void delete_removes_document_and_refreshes() {
         DocumentDocument doc = new DocumentDocument();
         doc.setId("doc-123");
-        when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq("server-tools/old.yaml")))
+        when(documentService.findByPath(eq(TENANT), eq(PROJECT), eq("_vance/server-tools/old.yaml")))
                 .thenReturn(Optional.of(doc));
 
         service.delete(TENANT, PROJECT, "old");
@@ -203,7 +203,7 @@ class ServerToolServiceTest {
     private static ServerToolConfig enabledConfig(String name) {
         return new ServerToolConfig(
                 name, "doc_lookup", "test " + name,
-                new LinkedHashMap<>(Map.of("path", "manuals/" + name + ".md")),
+                new LinkedHashMap<>(Map.of("path", "_vance/manuals/" + name + ".md")),
                 new ArrayList<>(),
                 /*enabled*/ true,
                 /*primary*/ false,

@@ -65,8 +65,12 @@ public class DiscoveryService {
 
     /** Path prefix where manual bodies live in the cascade — mirrors
      *  {@link SourceCatalogBuilder} so the auto-load resolves
-     *  exactly the bodies the catalog summarised from. */
-    static final String MANUAL_PATH_PREFIX = "manuals/";
+     *  exactly the bodies the catalog summarised from.
+     *  Manuals are system-managed, so they live under the
+     *  {@code _vance/} folder convention used for every kit-installed
+     *  artifact (matches kit-manifest, hooks, scheduler, workflows,
+     *  events, tool-templates). */
+    static final String MANUAL_PATH_PREFIX = "_vance/manuals/";
 
     /**
      * JsonSchemaLight description of the expected reply shape. The
@@ -143,7 +147,7 @@ public class DiscoveryService {
                 }
                 log.info("DiscoveryService: attempt {}/{} picked '{}' which is "
                                 + "in the catalog header but not loadable as "
-                                + "manuals/{}.md — retrying",
+                                + "_vance/manuals/{}.md — retrying",
                         attempt, MAX_DISCOVERY_ATTEMPTS, loaded.getName(), loaded.getName());
                 badPicks.add(loaded.getName());
                 continue;

@@ -228,6 +228,11 @@ declare const _default: {
         pageTitle: string;
         breadcrumbRoot: string;
         selectAProject: string;
+        projectsTitle: string;
+        projectFilterPlaceholder: string;
+        projectFilterNoMatch: string;
+        searchPlaceholder: string;
+        pathBack: string;
         foldersTitle: string;
         folderAll: string;
         foldersEmptyHint: string;

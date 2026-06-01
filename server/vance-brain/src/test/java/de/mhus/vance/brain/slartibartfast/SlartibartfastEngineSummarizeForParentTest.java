@@ -89,7 +89,7 @@ class SlartibartfastEngineSummarizeForParentTest {
             s.setProposedRecipe(RecipeDraft.builder()
                     .name("school-essay-ki-pro-contra").build());
             s.setPersistedRecipePath(
-                    "recipes/_slart/4f31b631/school-essay-ki-pro-contra.yaml");
+                    "_vance/recipes/_slart/4f31b631/school-essay-ki-pro-contra.yaml");
             s.setChildExecutionOutcome("DONE");
             s.setStatus(ArchitectStatus.DONE);
             s.setAcceptanceCriteria(new ArrayList<>(List.of(
@@ -106,7 +106,7 @@ class SlartibartfastEngineSummarizeForParentTest {
         assertThat(report.humanSummary())
                 .contains("Slartibartfast finished")
                 .contains("school-essay-ki-pro-contra")
-                .contains("recipes/_slart/4f31b631/school-essay-ki-pro-contra.yaml")
+                .contains("_vance/recipes/_slart/4f31b631/school-essay-ki-pro-contra.yaml")
                 .contains("essay/research-question.md")
                 .contains("essay/sources.md")
                 .contains("essay/outline.md")
@@ -117,7 +117,7 @@ class SlartibartfastEngineSummarizeForParentTest {
                 .containsEntry("eventType", "DONE")
                 .containsEntry("schemaType", "VOGON_STRATEGY")
                 .containsEntry("recipePath",
-                        "recipes/_slart/4f31b631/school-essay-ki-pro-contra.yaml")
+                        "_vance/recipes/_slart/4f31b631/school-essay-ki-pro-contra.yaml")
                 .containsEntry("childOutcome", "DONE");
         @SuppressWarnings("unchecked")
         List<String> paths = (List<String>) report.payload().get("outputPaths");
@@ -135,7 +135,7 @@ class SlartibartfastEngineSummarizeForParentTest {
         ThinkProcessDocument process = process(state(s -> {
             s.setProposedRecipe(RecipeDraft.builder()
                     .name("essay-plan").build());
-            s.setPersistedRecipePath("recipes/_slart/abc/essay-plan.yaml");
+            s.setPersistedRecipePath("_vance/recipes/_slart/abc/essay-plan.yaml");
             s.setPlanOnly(true);
             s.setStatus(ArchitectStatus.DONE);
         }));
@@ -146,7 +146,7 @@ class SlartibartfastEngineSummarizeForParentTest {
         assertThat(report.humanSummary())
                 .contains("plan-only")
                 .contains("essay-plan")
-                .contains("recipes/_slart/abc/essay-plan.yaml")
+                .contains("_vance/recipes/_slart/abc/essay-plan.yaml")
                 .doesNotContain("ran it to completion");
     }
 
@@ -158,7 +158,7 @@ class SlartibartfastEngineSummarizeForParentTest {
         ThinkProcessDocument process = process(state(s -> {
             s.setProposedRecipe(RecipeDraft.builder()
                     .name("quick-analysis").build());
-            s.setPersistedRecipePath("recipes/_slart/x/quick-analysis.yaml");
+            s.setPersistedRecipePath("_vance/recipes/_slart/x/quick-analysis.yaml");
             s.setChildExecutionOutcome("DONE");
             s.setStatus(ArchitectStatus.DONE);
         }));
@@ -184,7 +184,7 @@ class SlartibartfastEngineSummarizeForParentTest {
             s.setProposedRecipe(RecipeDraft.builder()
                     .name("deep-research").build());
             s.setPersistedRecipePath(
-                    "recipes/_user/deep-research.yaml");
+                    "_vance/recipes/_user/deep-research.yaml");
             s.setExecutionDecision(
                     de.mhus.vance.api.slartibartfast.ExecutionDecision.SKIP);
             s.setExecutionDecisionReason(
@@ -198,7 +198,7 @@ class SlartibartfastEngineSummarizeForParentTest {
 
         assertThat(report.humanSummary())
                 .contains("deep-research")
-                .contains("recipes/_user/deep-research.yaml")
+                .contains("_vance/recipes/_user/deep-research.yaml")
                 .contains("execution was skipped deliberately")
                 .contains("did not supply a concrete topic")
                 .contains("spawn it with a concrete topic")

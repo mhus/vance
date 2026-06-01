@@ -20,13 +20,13 @@ class ServerToolLoaderTest {
                 type: doc_lookup
                 description: Processes manual
                 parameters:
-                  path: manuals/processes.md
+                  path: _vance/manuals/processes.md
                 """);
 
         assertThat(cfg.name()).isEqualTo("doc_processes");
         assertThat(cfg.type()).isEqualTo("doc_lookup");
         assertThat(cfg.description()).isEqualTo("Processes manual");
-        assertThat(cfg.parameters()).containsEntry("path", "manuals/processes.md");
+        assertThat(cfg.parameters()).containsEntry("path", "_vance/manuals/processes.md");
         assertThat(cfg.enabled()).isTrue();
         assertThat(cfg.primary()).isFalse();
         assertThat(cfg.defaultDeferred()).isFalse();
@@ -169,7 +169,7 @@ class ServerToolLoaderTest {
     @Test
     void path_for_uses_prefix_and_suffix() {
         assertThat(ServerToolLoader.pathFor("Slack-Bot"))
-                .isEqualTo("server-tools/slack-bot.yaml");
+                .isEqualTo("_vance/server-tools/slack-bot.yaml");
     }
 
     @Test

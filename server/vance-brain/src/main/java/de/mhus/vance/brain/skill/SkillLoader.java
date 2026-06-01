@@ -47,8 +47,11 @@ import org.yaml.snakeyaml.Yaml;
 @Slf4j
 public class SkillLoader {
 
-    /** Path prefix used for skill subtrees in any cascade tier. */
-    public static final String SKILL_PATH_PREFIX = "skills/";
+    /** Path prefix used for skill subtrees in any cascade tier.
+     *  Skills are system-managed — installed by kits or shipped as
+     *  classpath defaults — and live under the {@code _vance/} folder
+     *  convention (matches manuals, hooks, scheduler, workflows, etc.). */
+    public static final String SKILL_PATH_PREFIX = "_vance/skills/";
 
     /** Entry point file inside each skill folder. */
     public static final String SKILL_ENTRY_FILE = "SKILL.md";

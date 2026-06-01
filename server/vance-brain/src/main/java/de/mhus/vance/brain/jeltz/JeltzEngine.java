@@ -59,7 +59,7 @@ public class JeltzEngine implements ThinkEngine {
     public static final String NAME = "jeltz";
     public static final String VERSION = "0.1.0";
 
-    private static final String DEFAULT_PROMPT_PATH = "prompts/jeltz-prompt.md";
+    private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/jeltz-prompt.md";
 
     /**
      * Hardcoded fallback for the absolute minimum — overridden by the

@@ -251,6 +251,11 @@ export default {
     pageTitle: 'Dokumente',
     breadcrumbRoot: 'Dokumente',
     selectAProject: 'Projekt wählen',
+    projectsTitle: 'Projekte',
+    projectFilterPlaceholder: 'Projekte filtern…',
+    projectFilterNoMatch: 'Keine Projekte passen zu „{filter}".',
+    searchPlaceholder: 'Dokumente suchen…',
+    pathBack: 'Eine Ebene höher',
     foldersTitle: 'Ordner',
     folderAll: 'Alle',
     foldersEmptyHint:

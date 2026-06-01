@@ -27,7 +27,7 @@ import org.springframework.core.io.ClassPathResource;
 class PythonRecipeTest {
 
     private static final String RECIPE_NAME = "python";
-    private static final String RECIPE_PATH = "recipes/python.yaml";
+    private static final String RECIPE_PATH = "_vance/recipes/python.yaml";
 
     private DocumentService documentService;
     private RecipeLoader loader;

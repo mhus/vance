@@ -60,7 +60,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 @Slf4j
 public class SourceCatalogBuilder {
 
-    private static final String MANUALS_PREFIX = "manuals/";
+    private static final String MANUALS_PREFIX = "_vance/manuals/";
     private static final String MD_SUFFIX = ".md";
 
     private static final java.util.regex.Pattern H1_LINE =

@@ -63,9 +63,9 @@ class WizardLoaderTest {
         when(documentService.findByPath(eq(TENANT), eq("_user_" + USER), any())).thenReturn(Optional.empty());
         // 2. Cascade returns the wizard from VANCE.
         when(documentService.lookupCascade(
-                TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, "wizards/gremium.yaml"))
+                TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, "_vance/wizards/gremium.yaml"))
                 .thenReturn(Optional.of(new LookupResult(
-                        "wizards/gremium.yaml", GREMIUM_YAML,
+                        "_vance/wizards/gremium.yaml", GREMIUM_YAML,
                         LookupResult.Source.VANCE, null)));
 
         Optional<ResolvedWizard> hit = loader.load(TENANT, PROJECT, USER, "gremium");
@@ -84,7 +84,7 @@ class WizardLoaderTest {
     @Test
     void project_layer_overrides_vance_and_user() {
         DocumentDocument projectDoc = projectDoc(GREMIUM_YAML);
-        when(documentService.findByPath(TENANT, PROJECT, "wizards/gremium.yaml"))
+        when(documentService.findByPath(TENANT, PROJECT, "_vance/wizards/gremium.yaml"))
                 .thenReturn(Optional.of(projectDoc));
         when(documentService.readContent(projectDoc)).thenReturn(GREMIUM_YAML);
 
@@ -96,11 +96,11 @@ class WizardLoaderTest {
 
     @Test
     void user_layer_wins_when_project_misses() {
-        when(documentService.findByPath(TENANT, PROJECT, "wizards/gremium.yaml"))
+        when(documentService.findByPath(TENANT, PROJECT, "_vance/wizards/gremium.yaml"))
                 .thenReturn(Optional.empty());
 
         DocumentDocument userDoc = projectDoc(GREMIUM_YAML);
-        when(documentService.findByPath(TENANT, "_user_" + USER, "wizards/gremium.yaml"))
+        when(documentService.findByPath(TENANT, "_user_" + USER, "_vance/wizards/gremium.yaml"))
                 .thenReturn(Optional.of(userDoc));
         when(documentService.readContent(userDoc)).thenReturn(GREMIUM_YAML);
 
@@ -122,7 +122,7 @@ class WizardLoaderTest {
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+                new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -142,7 +142,7 @@ class WizardLoaderTest {
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+                new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -186,7 +186,7 @@ class WizardLoaderTest {
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("wizards/host.yaml", yaml, LookupResult.Source.VANCE, null)));
+                new LookupResult("_vance/wizards/host.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         ResolvedWizard w = loader.load(TENANT, null, null, "host").orElseThrow();
 
@@ -213,7 +213,7 @@ class WizardLoaderTest {
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+                new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -238,7 +238,7 @@ class WizardLoaderTest {
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
+                new LookupResult("_vance/wizards/broken.yaml", yaml, LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
                 .isInstanceOf(WizardParseException.class)
@@ -249,7 +249,7 @@ class WizardLoaderTest {
     void availableIn_defaultsTo_visibleEverywhere() {
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("wizards/gremium.yaml", GREMIUM_YAML,
+                new LookupResult("_vance/wizards/gremium.yaml", GREMIUM_YAML,
                         LookupResult.Source.VANCE, null)));
 
         ResolvedWizard w = loader.load(TENANT, null, null, "gremium").orElseThrow();
@@ -271,7 +271,7 @@ class WizardLoaderTest {
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("wizards/eddie-only.yaml", yaml,
+                new LookupResult("_vance/wizards/eddie-only.yaml", yaml,
                         LookupResult.Source.RESOURCE, null)));
 
         ResolvedWizard w = loader.load(TENANT, null, null, "eddie-only").orElseThrow();
@@ -293,7 +293,7 @@ class WizardLoaderTest {
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("wizards/broken.yaml", yaml,
+                new LookupResult("_vance/wizards/broken.yaml", yaml,
                         LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
@@ -315,7 +315,7 @@ class WizardLoaderTest {
                 """;
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(any(), any(), any())).thenReturn(Optional.of(
-                new LookupResult("wizards/broken.yaml", yaml,
+                new LookupResult("_vance/wizards/broken.yaml", yaml,
                         LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
@@ -384,19 +384,19 @@ class WizardLoaderTest {
 
         // The tenant tier returns both, the user and project tiers are empty.
         when(documentService.listByPrefixCascade(
-                eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("wizards/")))
+                eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("_vance/wizards/")))
                 .thenReturn(Map.of(
-                        "wizards/create-project.yaml", new LookupResult(
-                                "wizards/create-project.yaml", eddieOnlyYaml,
+                        "_vance/wizards/create-project.yaml", new LookupResult(
+                                "_vance/wizards/create-project.yaml", eddieOnlyYaml,
                                 LookupResult.Source.RESOURCE, null),
-                        "wizards/gremium.yaml", new LookupResult(
-                                "wizards/gremium.yaml", everywhereYaml,
+                        "_vance/wizards/gremium.yaml", new LookupResult(
+                                "_vance/wizards/gremium.yaml", everywhereYaml,
                                 LookupResult.Source.RESOURCE, null)));
         when(documentService.listByPrefixCascade(
-                eq(TENANT), eq("_user_" + USER), eq("wizards/")))
+                eq(TENANT), eq("_user_" + USER), eq("_vance/wizards/")))
                 .thenReturn(Map.of());
         when(documentService.listByPrefixCascade(
-                eq(TENANT), eq(PROJECT), eq("wizards/")))
+                eq(TENANT), eq(PROJECT), eq("_vance/wizards/")))
                 .thenReturn(Map.of());
 
         // In a real Arthur project: create-project is filtered out, gremium remains.
@@ -413,19 +413,19 @@ class WizardLoaderTest {
     @Test
     void listAll_dedups_acrossTiers_innermostWins() {
         when(documentService.listByPrefixCascade(
-                eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("wizards/")))
+                eq(TENANT), eq(HomeBootstrapService.TENANT_PROJECT_NAME), eq("_vance/wizards/")))
                 .thenReturn(Map.of(
-                        "wizards/gremium.yaml", new LookupResult(
-                                "wizards/gremium.yaml", GREMIUM_YAML,
+                        "_vance/wizards/gremium.yaml", new LookupResult(
+                                "_vance/wizards/gremium.yaml", GREMIUM_YAML,
                                 LookupResult.Source.RESOURCE, null)));
         when(documentService.listByPrefixCascade(
-                eq(TENANT), eq("_user_" + USER), eq("wizards/")))
+                eq(TENANT), eq("_user_" + USER), eq("_vance/wizards/")))
                 .thenReturn(Map.of(
-                        "wizards/gremium.yaml", new LookupResult(
-                                "wizards/gremium.yaml", GREMIUM_YAML,
+                        "_vance/wizards/gremium.yaml", new LookupResult(
+                                "_vance/wizards/gremium.yaml", GREMIUM_YAML,
                                 LookupResult.Source.PROJECT, projectDoc(GREMIUM_YAML))));
         when(documentService.listByPrefixCascade(
-                eq(TENANT), eq(PROJECT), eq("wizards/")))
+                eq(TENANT), eq(PROJECT), eq("_vance/wizards/")))
                 .thenReturn(Map.of());
 
         var all = loader.listAll(TENANT, PROJECT, USER);
@@ -437,7 +437,7 @@ class WizardLoaderTest {
     private static DocumentDocument projectDoc(String content) {
         DocumentDocument doc = new DocumentDocument();
         doc.setStatus(DocumentStatus.ACTIVE);
-        doc.setPath("wizards/gremium.yaml");
+        doc.setPath("_vance/wizards/gremium.yaml");
         // Content access goes through documentService.readContent — stubbed by caller.
         return doc;
     }

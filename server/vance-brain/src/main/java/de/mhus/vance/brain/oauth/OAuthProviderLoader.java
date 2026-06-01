@@ -45,7 +45,7 @@ import org.yaml.snakeyaml.Yaml;
 public class OAuthProviderLoader {
 
     /** Document path prefix for OAuth provider configs. */
-    public static final String OAUTH_PATH_PREFIX = "oauth/";
+    public static final String OAUTH_PATH_PREFIX = "_vance/oauth/";
 
     /** Document path suffix; the provider name itself does not carry it. */
     public static final String OAUTH_PATH_SUFFIX = ".yaml";

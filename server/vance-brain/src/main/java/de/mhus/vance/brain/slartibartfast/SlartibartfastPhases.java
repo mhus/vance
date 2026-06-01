@@ -235,7 +235,7 @@ final class SlartibartfastPhases {
      *  writes the recipe YAML and audit.json to the
      *  {@code _slart/<runId>/} bucket. */
     static void stubPersisting(ArchitectState state) {
-        String path = "recipes/_slart/" + state.getRunId() + "/stub-recipe.yaml";
+        String path = "_vance/recipes/_slart/" + state.getRunId() + "/stub-recipe.yaml";
         state.setPersistedRecipePath(path);
 
         TerminationRationale term = TerminationRationale.builder()

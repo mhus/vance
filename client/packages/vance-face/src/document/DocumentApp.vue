@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
+  type FocusZone,
   VAlert,
   VBackButton,
   VButton,
@@ -407,17 +408,6 @@ function applyPathFilter(prefix: string, immediate = false): void {
   else filterTimer = setTimeout(fire, 300);
 }
 
-/**
- * Switch the {@code kind} filter. Triggered immediately from the select
- * — no debounce needed (one click per change). Passing `''` clears the
- * filter back to "all kinds".
- */
-function applyKindFilter(kind: string): void {
-  const project = selectedProjectId.value;
-  if (!project) return;
-  void docsState.loadPage(project, 0, undefined, kind);
-}
-
 watch(
   () => docsState.selected.value?.id ?? null,
   (id) => {
@@ -441,6 +431,109 @@ const projectOptions = computed<{ value: string; label: string; group?: string }
     };
   });
 });
+
+// ──────────────── Project sidebar (picker-style) ────────────────
+//
+// Same shape as ChatPickerView's project list: a grouped, filterable
+// nav cluster that drops into EditorShell's #sidebar slot. No
+// magnifying-glass button — documents has no cross-project content
+// search yet, and the in-list filter below covers the navigation
+// need on its own.
+
+const focusZone = ref<FocusZone>('main');
+
+const projectFilter = ref('');
+
+interface ProjectGroupBlock {
+  groupName: string | null;
+  groupLabel: string;
+  projects: ProjectSummary[];
+}
+
+const projectsByGroup = computed<ProjectGroupBlock[]>(() => {
+  const groupTitleById = new Map<string, string>();
+  for (const g of projectsState.groups.value) {
+    groupTitleById.set(g.name, g.title?.trim() || g.name);
+  }
+  const byKey = new Map<string | null, ProjectSummary[]>();
+  for (const p of projectsState.projects.value) {
+    const key = p.projectGroupId ?? null;
+    const list = byKey.get(key) ?? [];
+    list.push(p);
+    byKey.set(key, list);
+  }
+  const result: ProjectGroupBlock[] = [];
+  for (const [groupName, list] of byKey.entries()) {
+    result.push({
+      groupName,
+      groupLabel: groupName
+        ? groupTitleById.get(groupName) ?? groupName
+        : t('documents.ungrouped'),
+      projects: list,
+    });
+  }
+  // Stable order: ungrouped first, then groups alphabetically.
+  result.sort((a, b) => {
+    if (a.groupName === null && b.groupName !== null) return -1;
+    if (a.groupName !== null && b.groupName === null) return 1;
+    if (!a.groupName || !b.groupName) return 0;
+    return a.groupLabel.localeCompare(b.groupLabel);
+  });
+  return result;
+});
+
+const filteredProjectsByGroup = computed<ProjectGroupBlock[]>(() => {
+  const needle = projectFilter.value.trim().toLowerCase();
+  if (!needle) return projectsByGroup.value;
+  const result: ProjectGroupBlock[] = [];
+  for (const block of projectsByGroup.value) {
+    const matching = block.projects.filter((p) => {
+      const title = (p.title ?? '').toLowerCase();
+      const name = p.name.toLowerCase();
+      return title.includes(needle) || name.includes(needle);
+    });
+    if (matching.length > 0) {
+      result.push({ ...block, projects: matching });
+    }
+  }
+  return result;
+});
+
+const filteredProjectsCount = computed<number>(() =>
+  filteredProjectsByGroup.value.reduce((n, b) => n + b.projects.length, 0));
+
+// ──────────────── Main sub-header: search + back ────────────────
+
+/**
+ * Free-text filter over the currently loaded document page. Operates
+ * client-side on whatever the server already paged in — search across
+ * paths and titles (case-insensitive substring).
+ */
+const documentFilter = ref('');
+
+const filteredDocuments = computed(() => {
+  const needle = documentFilter.value.trim().toLowerCase();
+  if (!needle) return docsState.items.value;
+  return docsState.items.value.filter((d) => {
+    const path = (d.path ?? '').toLowerCase();
+    const title = (d.title ?? '').toLowerCase();
+    return path.includes(needle) || title.includes(needle);
+  });
+});
+
+/**
+ * Walk one path segment up: {@code documents/notes/foo/} →
+ * {@code documents/notes/} → {@code documents/} → {@code ''}. Stops
+ * at empty (button is disabled at that point).
+ */
+function pathSegmentBack(): void {
+  const current = docsState.pathPrefix.value;
+  if (!current) return;
+  const noSlash = current.endsWith('/') ? current.slice(0, -1) : current;
+  const lastSlash = noSlash.lastIndexOf('/');
+  const next = lastSlash >= 0 ? noSlash.slice(0, lastSlash + 1) : '';
+  applyPathFilter(next, true);
+}
 
 async function changePage(p: number): Promise<void> {
   if (!selectedProjectId.value) return;
@@ -1570,13 +1663,6 @@ const headerEntries = computed<{ key: string; value: string }[]>(() => {
   return Object.entries(headers).map(([key, value]) => ({ key, value }));
 });
 
-const kindOptions = computed<{ value: string; label: string }[]>(() => {
-  return [
-    { value: '', label: t('documents.allKinds') },
-    ...docsState.kinds.value.map((k) => ({ value: k, label: k })),
-  ];
-});
-
 const breadcrumbs = computed<string[]>(() => {
   const crumbs: string[] = [t('documents.breadcrumbRoot')];
   if (selectedProjectId.value) crumbs.push(selectedProjectId.value);
@@ -1593,62 +1679,148 @@ const formatBytes = (n: number): string => {
 
 <template>
   <EditorShell
+    v-model:focus-zone="focusZone"
     :title="$t('documents.pageTitle')"
     :breadcrumbs="breadcrumbs"
     :wide-right-panel="!!helpResource"
+    :full-height="true"
+    focus-model="auto"
+    :show-sidebar="true"
+    title-clickable
+    @title-click="focusZone = 'sidebar'"
   >
-    <template #topbar-extra>
-      <div class="w-64">
-        <VSelect
-          v-model="selectedProjectId"
-          :options="projectOptions"
-          :placeholder="$t('documents.selectAProject')"
-          :disabled="projectsState.loading.value || projectOptions.length === 0"
-        />
+    <!-- ─── Sidebar: project picker + folder navigation ──────────────
+         Project list at top mirrors ChatPickerView's pattern (grouped,
+         filterable). Folder navigation below is the existing tree;
+         it'll later move into the main area, but for step 1 it stays
+         in the sidebar to preserve functionality. ─── -->
+    <template #sidebar>
+      <div class="p-4 flex flex-col gap-4">
+        <!-- Project picker -->
+        <div class="flex flex-col gap-2">
+          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold px-2">
+            {{ $t('documents.projectsTitle') }}
+          </div>
+
+          <VInput
+            v-if="!projectsState.loading.value && !projectsState.error.value
+              && projectsState.projects.value.length > 0"
+            v-model="projectFilter"
+            :placeholder="$t('documents.projectFilterPlaceholder')"
+          />
+
+          <div v-if="projectsState.loading.value" class="text-sm opacity-60 px-2">
+            {{ $t('chat.picker.loading') }}
+          </div>
+          <VAlert v-else-if="projectsState.error.value" variant="error">
+            {{ projectsState.error.value }}
+          </VAlert>
+
+          <template v-else>
+            <div
+              v-for="block in filteredProjectsByGroup"
+              :key="block.groupName ?? '_ungrouped'"
+              class="flex flex-col gap-1"
+            >
+              <div class="text-xs opacity-50 px-2">{{ block.groupLabel }}</div>
+              <button
+                v-for="p in block.projects"
+                :key="p.name"
+                type="button"
+                class="text-left px-2 py-1.5 rounded text-sm transition-colors"
+                :class="selectedProjectId === p.name
+                  ? 'bg-primary/10 text-primary font-medium'
+                  : 'hover:bg-base-200'"
+                @pointerdown.stop="focusZone = 'main'"
+                @click="selectedProjectId = p.name"
+              >
+                {{ p.title || p.name }}
+              </button>
+            </div>
+
+            <div
+              v-if="projectFilter && filteredProjectsCount === 0"
+              class="text-xs opacity-60 px-2"
+            >
+              {{ $t('documents.projectFilterNoMatch', { filter: projectFilter }) }}
+            </div>
+          </template>
+        </div>
+
+        <!-- Folder navigation (only when a project is selected) -->
+        <nav v-if="selectedProjectId" class="flex flex-col gap-1">
+          <h3 class="text-xs uppercase opacity-60 mb-2 px-2">
+            {{ $t('documents.foldersTitle') }}
+          </h3>
+          <button
+            type="button"
+            class="folder-item"
+            :class="{ 'folder-item--active': selectedFolderKey === '' }"
+            @pointerdown.stop="focusZone = 'main'"
+            @click="selectFolder(null)"
+          >
+            <span>{{ $t('documents.folderAll') }}</span>
+            <span class="folder-count">{{ docsState.totalCount.value }}</span>
+          </button>
+          <button
+            v-for="folder in topLevelFolders"
+            :key="folder"
+            type="button"
+            class="folder-item"
+            :class="{ 'folder-item--active': selectedFolderKey === folder }"
+            @pointerdown.stop="focusZone = 'main'"
+            @click="selectFolder(folder)"
+          >
+            <span>{{ folder }}/</span>
+          </button>
+          <p
+            v-if="topLevelFolders.length === 0"
+            class="text-xs opacity-60 italic mt-2 px-2"
+          >
+            {{ $t('documents.foldersEmptyHint', { example: 'notes/foo.md' }) }}
+          </p>
+        </nav>
       </div>
     </template>
 
-    <!-- ─── Folder navigation ──────────────────────────────────────────
-         Top-level folders only; clicking one applies the path-prefix
-         filter to the main list. The sidebar is hidden until a project
-         is picked (matches the empty-state in the main panel). ─── -->
-    <template v-if="selectedProjectId" #sidebar>
-      <nav class="p-3 flex flex-col gap-1">
-        <h3 class="text-xs uppercase opacity-60 mb-2 px-2">
-          {{ $t('documents.foldersTitle') }}
-        </h3>
-        <button
-          type="button"
-          class="folder-item"
-          :class="{ 'folder-item--active': selectedFolderKey === '' }"
-          @click="selectFolder(null)"
-        >
-          <span>{{ $t('documents.folderAll') }}</span>
-          <span class="folder-count">{{ docsState.totalCount.value }}</span>
-        </button>
-        <button
-          v-for="folder in topLevelFolders"
-          :key="folder"
-          type="button"
-          class="folder-item"
-          :class="{ 'folder-item--active': selectedFolderKey === folder }"
-          @click="selectFolder(folder)"
-        >
-          <span>{{ folder }}/</span>
-        </button>
-        <!-- The {example} placeholder is rendered as styled <code> via
-             i18n's component-interpolation could be used, but a quick
-             two-segment split keeps things simple here. -->
-        <p
-          v-if="topLevelFolders.length === 0"
-          class="text-xs opacity-60 italic mt-2 px-2"
-        >
-          {{ $t('documents.foldersEmptyHint', { example: 'notes/foo.md' }) }}
-        </p>
-      </nav>
-    </template>
+    <div class="h-full min-h-0 flex flex-col">
+      <!-- Full-width sub-header, picker-style: visible only when a
+           project is selected and we're showing the list (not the
+           detail view). Back-button strips one path segment until
+           empty; path is text-only; search filters the visible page
+           client-side; {@code +} opens the create-document modal. -->
+      <div
+        v-if="selectedProjectId && !docsState.selected.value && projectOptions.length > 0"
+        class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-3"
+      >
+        <VButton
+          variant="ghost"
+          size="sm"
+          :disabled="!docsState.pathPrefix.value"
+          :title="$t('documents.pathBack')"
+          @click="pathSegmentBack"
+        >←</VButton>
+        <div class="flex-1 min-w-0 font-mono text-sm opacity-70 truncate">
+          {{ docsState.pathPrefix.value || '/' }}
+        </div>
+        <div class="w-[150px] shrink-0">
+          <VInput
+            v-model="documentFilter"
+            :placeholder="$t('documents.searchPlaceholder')"
+          />
+        </div>
+        <VButton
+          variant="primary"
+          size="sm"
+          :title="$t('documents.newDocument')"
+          @click="openCreateModal()"
+        >+</VButton>
+      </div>
 
-    <div class="container mx-auto px-4 py-6 max-w-5xl">
+      <!-- Scrollable content area — each branch (empty states, detail,
+           list) lives here. The sub-header above stays put. -->
+      <div class="flex-1 min-h-0 overflow-y-auto">
+        <div class="container mx-auto px-4 py-4 max-w-5xl">
       <VAlert v-if="projectsState.error.value" variant="error" class="mb-4">
         <span>{{ projectsState.error.value }}</span>
       </VAlert>
@@ -2267,50 +2439,10 @@ const formatBytes = (n: number): string => {
         </VCard>
       </template>
 
-      <!-- List view -->
+      <!-- List view: the sub-header sits above the scroll container
+           in the section root; this branch only renders the list
+           content (alerts, empty state, data list, pagination). -->
       <template v-else>
-        <!-- Path filter — HTML5 combobox: free-text input plus a
-             folder dropdown derived from server-side projection.
-             Kind filter sits next to it; populated from /documents/kinds
-             so only kinds actually present in the project show up. -->
-        <div class="flex items-center gap-3 mb-3">
-          <div class="flex-1 min-w-0">
-            <input
-              v-model="docsState.pathPrefix.value"
-              type="text"
-              :placeholder="$t('documents.pathFilterPlaceholder')"
-              list="folder-list"
-              class="input input-bordered input-sm w-full"
-              @input="applyPathFilter(docsState.pathPrefix.value)"
-              @change="applyPathFilter(docsState.pathPrefix.value, true)"
-              @keydown.enter.prevent="applyPathFilter(docsState.pathPrefix.value, true)"
-            />
-            <datalist id="folder-list">
-              <option
-                v-for="folder in docsState.folders.value"
-                :key="folder"
-                :value="folder"
-              />
-            </datalist>
-          </div>
-          <div v-if="docsState.kinds.value.length > 0" class="w-40 shrink-0">
-            <VSelect
-              :model-value="docsState.kindFilter.value"
-              :options="kindOptions"
-              @update:model-value="applyKindFilter(($event as string | null) ?? '')"
-            />
-          </div>
-          <button
-            v-if="docsState.pathPrefix.value || docsState.kindFilter.value"
-            type="button"
-            class="btn btn-ghost btn-sm"
-            @click="applyPathFilter('', true); applyKindFilter('');"
-          >{{ $t('documents.clearFilter') }}</button>
-          <VButton variant="primary" size="sm" @click="openCreateModal()">
-            {{ $t('documents.newDocument') }}
-          </VButton>
-        </div>
-
         <VAlert v-if="docsState.error.value" variant="error" class="mb-4">
           <span>{{ docsState.error.value }}</span>
         </VAlert>
@@ -2329,7 +2461,7 @@ const formatBytes = (n: number): string => {
 
         <VDataList
           v-else
-          :items="docsState.items.value"
+          :items="filteredDocuments"
           selectable
           @select="openDocument"
         >
@@ -2377,6 +2509,8 @@ const formatBytes = (n: number): string => {
           />
         </div>
       </template>
+        </div>
+      </div>
     </div>
 
     <!-- Delete confirmation. Two flavours — soft-trash (default) and

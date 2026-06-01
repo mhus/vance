@@ -47,7 +47,7 @@ import org.yaml.snakeyaml.Yaml;
 public class SettingFormLoader {
 
     /** Path prefix used for setting-form documents in any cascade tier. */
-    public static final String SETTING_FORM_PATH_PREFIX = "setting_forms/";
+    public static final String SETTING_FORM_PATH_PREFIX = "_vance/setting_forms/";
 
     /** File suffix kept on the document path; the form name itself does not carry it. */
     public static final String SETTING_FORM_PATH_SUFFIX = ".yaml";

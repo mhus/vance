@@ -109,7 +109,7 @@ class BundledWizardsTest {
     private ResolvedWizard loadBundled(String name) throws IOException {
         String resourcePath = "vance-defaults/wizards/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);
-        String docPath = "wizards/" + name + ".yaml";
+        String docPath = "_vance/wizards/" + name + ".yaml";
 
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(

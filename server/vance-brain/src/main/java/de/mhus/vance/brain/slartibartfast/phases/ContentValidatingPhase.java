@@ -100,7 +100,11 @@ public class ContentValidatingPhase {
     private static final int MAX_CORRECTIONS = 2;
 
     /** Path prefixes excluded from the "produced output" set —
-     *  not the artifact under test. */
+     *  not the artifact under test.
+     *  Note: {@code manuals/} and {@code skills/} are kept as legacy
+     *  fall-throughs for any documents that still sit at the old
+     *  pre-migration root paths; the canonical layout now puts them
+     *  under {@code _vance/}, which the first entry already covers. */
     private static final List<String> EXCLUDED_PREFIXES = List.of(
             "_vance/",
             "_bin/",

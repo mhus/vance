@@ -56,9 +56,9 @@ class SettingFormLoaderTest {
     void parse_full_form_through_vance_layer_produces_resolved_form() {
         when(documentService.findByPath(eq(TENANT), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(
-                TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, "setting_forms/llm-setup.yaml"))
+                TENANT, HomeBootstrapService.TENANT_PROJECT_NAME, "_vance/setting_forms/llm-setup.yaml"))
                 .thenReturn(Optional.of(new LookupResult(
-                        "setting_forms/llm-setup.yaml", LLM_SETUP_YAML,
+                        "_vance/setting_forms/llm-setup.yaml", LLM_SETUP_YAML,
                         LookupResult.Source.VANCE, null)));
 
         Optional<ResolvedSettingForm> hit = loader.load(TENANT, PROJECT, USER, "llm-setup");
@@ -91,7 +91,7 @@ class SettingFormLoaderTest {
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
                 .thenReturn(Optional.of(new LookupResult(
-                        "setting_forms/broken.yaml", broken,
+                        "_vance/setting_forms/broken.yaml", broken,
                         LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
@@ -114,7 +114,7 @@ class SettingFormLoaderTest {
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
                 .thenReturn(Optional.of(new LookupResult(
-                        "setting_forms/broken.yaml", broken,
+                        "_vance/setting_forms/broken.yaml", broken,
                         LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
@@ -135,7 +135,7 @@ class SettingFormLoaderTest {
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
                 .thenReturn(Optional.of(new LookupResult(
-                        "setting_forms/broken.yaml", yaml,
+                        "_vance/setting_forms/broken.yaml", yaml,
                         LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
@@ -160,7 +160,7 @@ class SettingFormLoaderTest {
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
                 .thenReturn(Optional.of(new LookupResult(
-                        "setting_forms/broken.yaml", yaml,
+                        "_vance/setting_forms/broken.yaml", yaml,
                         LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
@@ -193,7 +193,7 @@ class SettingFormLoaderTest {
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
                 .thenReturn(Optional.of(new LookupResult(
-                        "setting_forms/ok.yaml", yaml,
+                        "_vance/setting_forms/ok.yaml", yaml,
                         LookupResult.Source.VANCE, null)));
 
         Optional<ResolvedSettingForm> hit = loader.load(TENANT, null, null, "ok");
@@ -224,7 +224,7 @@ class SettingFormLoaderTest {
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
                 .thenReturn(Optional.of(new LookupResult(
-                        "setting_forms/broken.yaml", yaml,
+                        "_vance/setting_forms/broken.yaml", yaml,
                         LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
@@ -243,7 +243,7 @@ class SettingFormLoaderTest {
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
                 .thenReturn(Optional.of(new LookupResult(
-                        "setting_forms/broken.yaml", yaml,
+                        "_vance/setting_forms/broken.yaml", yaml,
                         LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))
@@ -259,7 +259,7 @@ class SettingFormLoaderTest {
                 """;
         when(documentService.lookupCascade(eq(TENANT), any(), any()))
                 .thenReturn(Optional.of(new LookupResult(
-                        "setting_forms/broken.yaml", yaml,
+                        "_vance/setting_forms/broken.yaml", yaml,
                         LookupResult.Source.VANCE, null)));
 
         assertThatThrownBy(() -> loader.load(TENANT, null, null, "broken"))

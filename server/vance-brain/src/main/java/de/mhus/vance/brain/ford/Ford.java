@@ -117,7 +117,7 @@ public class Ford implements ThinkEngine {
      * {@code _vance} project. Recipes can swap the paths via
      * {@code promptDocument} / {@code promptDocumentSmall} params.
      */
-    private static final String DEFAULT_PROMPT_PATH = "prompts/ford-prompt.md";
+    private static final String DEFAULT_PROMPT_PATH = "_vance/prompts/ford-prompt.md";
 
     /** Hard cap on tool-call iterations per turn — a broken model can loop.
      *  Per-process override via {@code params.maxIterations}. */

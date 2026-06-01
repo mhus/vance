@@ -41,7 +41,7 @@ import org.yaml.snakeyaml.Yaml;
 public class ToolTemplateCatalogService {
 
     /** Document path inside the {@code _tenant} project. */
-    public static final String CATALOG_PATH = "config/tool-templates.yaml";
+    public static final String CATALOG_PATH = "_vance/config/tool-templates.yaml";
 
     /** Currently supported schema version. */
     public static final int CURRENT_VERSION = 1;

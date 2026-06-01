@@ -52,7 +52,7 @@ public class LoadingExistingPhase {
 
     /** Path prefix for user-namespace recipes — Slart's permanent
      *  write surface for named CREATE and all EDIT runs. */
-    public static final String USER_PREFIX = "recipes/_user/";
+    public static final String USER_PREFIX = "_vance/recipes/_user/";
 
     private final DocumentService documentService;
 

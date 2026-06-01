@@ -100,7 +100,7 @@ class BundledSettingFormsTest {
     private ResolvedSettingForm loadBundled(String name) throws IOException {
         String resourcePath = "vance-defaults/setting_forms/" + name + ".yaml";
         String yaml = readClasspath(resourcePath);
-        String docPath = "setting_forms/" + name + ".yaml";
+        String docPath = "_vance/setting_forms/" + name + ".yaml";
 
         when(documentService.findByPath(any(), any(), any())).thenReturn(Optional.empty());
         when(documentService.lookupCascade(

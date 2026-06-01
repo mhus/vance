@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+
 interface Props {
   modelValue: string;
   label?: string;
@@ -18,6 +20,18 @@ withDefaults(defineProps<Props>(), {
 });
 
 defineEmits<{ (e: 'update:modelValue', value: string): void }>();
+
+const inputRef = ref<HTMLInputElement | null>(null);
+
+/** Imperative focus — callers grab a {@code ref="…"} and call this
+ *  to programmatically focus the input. Useful when a wrapping modal
+ *  keeps its content mounted across open/close cycles so the native
+ *  {@code autofocus} attribute fires only on first paint. */
+defineExpose({
+  focus(): void {
+    inputRef.value?.focus();
+  },
+});
 </script>
 
 <template>
@@ -26,6 +40,7 @@ defineEmits<{ (e: 'update:modelValue', value: string): void }>();
       <span class="label-text">{{ label }}</span>
     </div>
     <input
+      ref="inputRef"
       :type="type"
       :value="modelValue"
       :placeholder="placeholder"

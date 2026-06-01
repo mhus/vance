@@ -3,6 +3,7 @@ package de.mhus.vance.api.documents;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import de.mhus.vance.api.annotations.GenerateTypeScript;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -38,6 +39,9 @@ public class DocumentCreateRequest {
     /** {@code text/markdown}, {@code text/plain}, … defaults to {@code text/markdown} when null. */
     private @Nullable String mimeType;
 
-    @NotBlank
+    /** Empty inline content is allowed — users may create a placeholder
+     *  document and fill it later in the editor. Null is still rejected
+     *  (forces the client to send the field explicitly). */
+    @NotNull
     private String inlineText;
 }

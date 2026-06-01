@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
+  type Crumb,
   EditorShell,
   type FocusZone,
   VAlert,
@@ -246,7 +247,13 @@ function onArchiveCount(n: number): void {
   archiveCount.value = n;
 }
 const createMode = ref<CreateMode>('inline');
+/** Folder the new document will land in (read-only in the dialog —
+ *  derived from the current browser path or a prefill). Always ends
+ *  with {@code /} or is empty for the project root. */
 const createPath = ref('');
+/** Filename portion the user types in the dialog. Joined with
+ *  {@link createPath} on submit to form the full document path. */
+const createName = ref('');
 const createTitle = ref('');
 const createTagsRaw = ref('');
 const createMime = ref('text/markdown');
@@ -328,10 +335,12 @@ const DEFAULT_PATH_PREFIX = 'documents/';
 
 onMounted(async () => {
   await projectsState.reload();
-  // Restore last selection from the URL, if any. URL is the source of truth
-  // for deep-links — reload-friendly without extra storage keys.
+  // Restore deep-link state from the URL. URL is the source of truth
+  // (reload-friendly without storage keys). On a fresh tab with no
+  // hints we fall back to the first project + DEFAULT_PATH_PREFIX.
   const params = new URLSearchParams(window.location.search);
   const queryProject = params.get('projectId');
+  const queryPath = params.get('path');
   const queryDoc = params.get('documentId');
   if (queryProject && projectsState.projects.value.some((p) => p.name === queryProject)) {
     selectedProjectId.value = queryProject;
@@ -339,12 +348,9 @@ onMounted(async () => {
     selectedProjectId.value = projectsState.projects.value[0].name;
   }
   if (selectedProjectId.value) {
-    // Same default as the project-switch path below: land inside
-    // documents/ so trash + system folders don't crowd the listing
-    // on first paint.
-    docsState.pathPrefix.value = DEFAULT_PATH_PREFIX;
+    docsState.pathPrefix.value = queryPath ?? DEFAULT_PATH_PREFIX;
     await Promise.all([
-      docsState.loadPage(selectedProjectId.value, 0, DEFAULT_PATH_PREFIX),
+      docsState.loadPage(selectedProjectId.value, 0, docsState.pathPrefix.value),
       docsState.loadFolders(selectedProjectId.value),
       docsState.loadKinds(selectedProjectId.value),
     ]);
@@ -353,6 +359,7 @@ onMounted(async () => {
     await docsState.loadOne(queryDoc);
     fillEditor();
   }
+  window.addEventListener('popstate', onPopstate);
   // One-shot draft handed over by another editor (Inbox "To
   // Document"). Read-and-clear via consumeDocumentDraft so a refresh
   // doesn't re-trigger the prefill. Requires a project to be selected
@@ -375,8 +382,11 @@ onMounted(async () => {
 
 watch(selectedProjectId, async (next) => {
   if (!next) return;
-  syncQueryParam('projectId', next);
-  syncQueryParam('documentId', null);
+  pushQueryParams({
+    projectId: next,
+    path: DEFAULT_PATH_PREFIX,
+    documentId: null,
+  });
   docsState.clearSelection();
   // Reset filters on project switch — folder/kind lists belong to
   // the new project and the previous filters won't match anyway.
@@ -395,6 +405,11 @@ watch(selectedProjectId, async (next) => {
  * Apply the path-filter input. Debounced via a small timeout so
  * typing into the combobox doesn't fire one request per keystroke;
  * pressing Enter or selecting a datalist option commits immediately.
+ *
+ * <p>Pushes the new path to browser history (pushState) so back/
+ * forward step through folder navigation. The selected document is
+ * cleared at the same time — moving to a different folder while a
+ * doc is open would otherwise leave the URL with a stale documentId.
  */
 let filterTimer: ReturnType<typeof setTimeout> | null = null;
 function applyPathFilter(prefix: string, immediate = false): void {
@@ -402,16 +417,76 @@ function applyPathFilter(prefix: string, immediate = false): void {
   if (!project) return;
   if (filterTimer) clearTimeout(filterTimer);
   const fire = () => {
+    docsState.clearSelection();
+    pushQueryParams({
+      path: prefix || null,
+      documentId: null,
+    });
     void docsState.loadPage(project, 0, prefix);
   };
   if (immediate) fire();
   else filterTimer = setTimeout(fire, 300);
 }
 
+/**
+ * Sync internal state from the current URL. Triggered by browser
+ * back/forward (popstate). Compares against the live state and only
+ * touches what changed, so popstate doesn't cascade into another
+ * pushState via the regular watchers (their dedup checks handle the
+ * residual no-op as well).
+ */
+async function onPopstate(): Promise<void> {
+  const params = new URLSearchParams(window.location.search);
+  const urlProjectId = params.get('projectId');
+  const urlPath = params.get('path') ?? '';
+  const urlDocumentId = params.get('documentId');
+
+  // Project switch from URL.
+  if (urlProjectId && urlProjectId !== selectedProjectId.value
+      && projectsState.projects.value.some((p) => p.name === urlProjectId)) {
+    selectedProjectId.value = urlProjectId;
+    // The selectedProjectId watcher takes care of loading; but it
+    // also overrides pathPrefix to DEFAULT_PATH_PREFIX, so we set
+    // the URL-driven path back after a microtask. Plus close any
+    // open document — the project-switch watcher clears it too but
+    // we want to be deterministic.
+    docsState.clearSelection();
+    // Wait for the project-switch watcher to finish before applying
+    // the path. The watcher is async so a microtask isn't enough —
+    // schedule via setTimeout to land after the load chain settles.
+    setTimeout(() => {
+      const project = selectedProjectId.value;
+      if (project && urlPath !== docsState.pathPrefix.value) {
+        docsState.pathPrefix.value = urlPath;
+        void docsState.loadPage(project, 0, urlPath);
+      }
+      if (urlDocumentId && urlDocumentId !== docsState.selected.value?.id) {
+        void docsState.loadOne(urlDocumentId);
+      }
+    }, 0);
+    return;
+  }
+
+  // Same project, possibly different path.
+  if (urlPath !== docsState.pathPrefix.value && selectedProjectId.value) {
+    docsState.pathPrefix.value = urlPath;
+    docsState.clearSelection();
+    await docsState.loadPage(selectedProjectId.value, 0, urlPath);
+  }
+
+  // Document selection.
+  if (urlDocumentId && urlDocumentId !== docsState.selected.value?.id) {
+    await docsState.loadOne(urlDocumentId);
+    fillEditor();
+  } else if (!urlDocumentId && docsState.selected.value) {
+    docsState.clearSelection();
+  }
+}
+
 watch(
   () => docsState.selected.value?.id ?? null,
   (id) => {
-    syncQueryParam('documentId', id);
+    pushQueryParams({ documentId: id });
   },
 );
 
@@ -544,6 +619,46 @@ function navigateIntoFolder(folder: string): void {
   const base = docsState.pathPrefix.value;
   const baseSlashed = base === '' || base.endsWith('/') ? base : base + '/';
   applyPathFilter(baseSlashed + folder + '/', true);
+}
+
+// ──────────────── New-folder dialog ────────────────
+//
+// Folders aren't first-class entities in storage — the server derives
+// them from document paths. "Add folder" therefore just navigates the
+// browser into the chosen subpath; the folder materialises in Mongo
+// as soon as the user creates the first file in it. Multi-segment
+// inputs like {@code foo/bar} are supported (lands two levels deep).
+
+const showNewFolderModal = ref(false);
+const newFolderName = ref('');
+const newFolderError = ref<string | null>(null);
+const newFolderNameInputRef = ref<{ focus: () => void } | null>(null);
+
+function openNewFolderModal(): void {
+  newFolderName.value = '';
+  newFolderError.value = null;
+  showNewFolderModal.value = true;
+  void nextTick(() => newFolderNameInputRef.value?.focus());
+}
+
+function submitNewFolder(): void {
+  const raw = newFolderName.value.trim();
+  if (!raw) {
+    newFolderError.value = t('documents.newFolderDialog.nameRequired');
+    return;
+  }
+  // Normalise: strip leading/trailing slashes, collapse double
+  // slashes. Multi-segment input ("foo/bar") jumps two levels deep
+  // in one go.
+  const normalised = raw.replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
+  if (!normalised) {
+    newFolderError.value = t('documents.newFolderDialog.nameRequired');
+    return;
+  }
+  const base = docsState.pathPrefix.value;
+  const baseSlashed = base === '' || base.endsWith('/') ? base : base + '/';
+  showNewFolderModal.value = false;
+  applyPathFilter(baseSlashed + normalised + '/', true);
 }
 
 async function changePage(p: number): Promise<void> {
@@ -1245,7 +1360,10 @@ function onBeforeUnload(event: BeforeUnloadEvent): void {
   event.returnValue = '';
 }
 onMounted(() => window.addEventListener('beforeunload', onBeforeUnload));
-onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload));
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', onBeforeUnload);
+  window.removeEventListener('popstate', onPopstate);
+});
 
 /**
  * Build a `Content-Disposition: attachment` URL for a document.
@@ -1263,9 +1381,26 @@ interface CreateModalPrefill {
   mimeType?: string;
 }
 
+const createNameInputRef = ref<{ focus: () => void } | null>(null);
+
 function openCreateModal(prefill?: CreateModalPrefill): void {
   createMode.value = 'inline';
-  createPath.value = prefill?.path ?? '';
+  // Path stays read-only in the dialog. If a prefill brings a
+  // slash-bearing path (e.g. inbox→document handover) we split it
+  // into folder + filename so the user still sees the destination.
+  // Without prefill we land on the current browse path.
+  const prefillPath = prefill?.path ?? '';
+  const lastSlash = prefillPath.lastIndexOf('/');
+  if (prefillPath && lastSlash >= 0) {
+    createPath.value = prefillPath.substring(0, lastSlash + 1);
+    createName.value = prefillPath.substring(lastSlash + 1);
+  } else if (prefillPath) {
+    createPath.value = docsState.pathPrefix.value;
+    createName.value = prefillPath;
+  } else {
+    createPath.value = docsState.pathPrefix.value;
+    createName.value = '';
+  }
   createTitle.value = prefill?.title ?? '';
   createTagsRaw.value = '';
   createMime.value = prefill?.mimeType ?? 'text/markdown';
@@ -1276,6 +1411,7 @@ function openCreateModal(prefill?: CreateModalPrefill): void {
   createError.value = null;
   uploadProgress.value = [];
   showCreateModal.value = true;
+  void nextTick(() => createNameInputRef.value?.focus());
 }
 
 /**
@@ -1418,8 +1554,8 @@ function setCreateMode(mode: CreateMode): void {
 // the user hasn't typed anything. With multiple files, path-override would
 // have to apply per-file (it doesn't), so we leave it blank.
 watch(createFiles, (files) => {
-  if (files.length === 1 && !createPath.value.trim()) {
-    createPath.value = files[0].name;
+  if (files.length === 1 && !createName.value.trim()) {
+    createName.value = files[0].name;
   }
 });
 
@@ -1434,10 +1570,10 @@ async function submitCreate(): Promise<void> {
       .filter((t) => t.length > 0);
 
     if (createMode.value === 'inline') {
-      if (!createPath.value.trim()) { createError.value = t('documents.create.pathRequired'); return; }
-      if (!createContent.value) { createError.value = t('documents.create.contentRequired'); return; }
+      if (!createName.value.trim()) { createError.value = t('documents.create.nameRequired'); return; }
+      const fullPath = (createPath.value + createName.value).trim();
       const created = await docsState.create(selectedProjectId.value, {
-        path: createPath.value.trim(),
+        path: fullPath,
         title: createTitle.value.trim() || undefined,
         tags: tags.length > 0 ? tags : undefined,
         mimeType: createMime.value,
@@ -1458,9 +1594,10 @@ async function submitCreate(): Promise<void> {
     if (files.length === 0) { createError.value = t('documents.create.pickAtLeastOneFile'); return; }
 
     if (files.length === 1) {
+      const fullPath = (createPath.value + createName.value).trim();
       const created = await docsState.upload(selectedProjectId.value, {
         file: files[0],
-        path: createPath.value.trim() || undefined,
+        path: fullPath || undefined,
         title: createTitle.value.trim() || undefined,
         tags: tags.length > 0 ? tags : undefined,
       });
@@ -1663,6 +1800,25 @@ function syncQueryParam(key: string, value: string | null): void {
 }
 
 /**
+ * Multi-key URL update with {@code pushState} semantics — used for
+ * navigation steps (folder descent, document open, project switch)
+ * so browser back/forward walks through them. Dedup against the
+ * current URL: identical state is a no-op (avoids stacking duplicate
+ * history entries when the same effect fires from multiple paths,
+ * e.g. a watcher echoing a popstate-driven change).
+ */
+function pushQueryParams(updates: Record<string, string | null>): void {
+  const url = new URL(window.location.href);
+  for (const [k, v] of Object.entries(updates)) {
+    if (v === null || v === '') url.searchParams.delete(k);
+    else url.searchParams.set(k, v);
+  }
+  if (url.toString() !== window.location.href) {
+    window.history.pushState(null, '', url.toString());
+  }
+}
+
+/**
  * Front-matter rows for the read-only table in the editor. Iterating
  * `Record<string,string>` yields key/value pairs in insertion order;
  * the server returns them in source order so this matches what the
@@ -1674,10 +1830,54 @@ const headerEntries = computed<{ key: string; value: string }[]>(() => {
   return Object.entries(headers).map(([key, value]) => ({ key, value }));
 });
 
-const breadcrumbs = computed<string[]>(() => {
-  const crumbs: string[] = [t('documents.breadcrumbRoot')];
-  if (selectedProjectId.value) crumbs.push(selectedProjectId.value);
-  if (docsState.selected.value) crumbs.push(docsState.selected.value.path);
+function selectedProjectTitle(): string | null {
+  const id = selectedProjectId.value;
+  if (!id) return null;
+  const p = projectsState.projects.value.find((x: ProjectSummary) => x.name === id);
+  return p?.title?.trim() || id;
+}
+
+const breadcrumbs = computed<Crumb[]>(() => {
+  if (!selectedProjectId.value) return [];
+  const crumbs: Crumb[] = [];
+
+  // Project root → clickable, navigates back to project root (drops
+  // any path filter and any open document).
+  crumbs.push({
+    text: selectedProjectTitle() ?? '',
+    onClick: () => applyPathFilter('', true),
+  });
+
+  // Path segments. Each clickable except the last (the user is
+  // already there). {@code documents/} default is included as a
+  // clickable segment so the user can pop back to the project root
+  // from inside it.
+  const path = docsState.pathPrefix.value;
+  if (path) {
+    const segments = path.split('/').filter((s) => s.length > 0);
+    let acc = '';
+    for (let i = 0; i < segments.length; i++) {
+      acc += segments[i] + '/';
+      const isLast = i === segments.length - 1 && !docsState.selected.value;
+      if (isLast) {
+        crumbs.push(segments[i]);
+      } else {
+        const target = acc;
+        crumbs.push({
+          text: segments[i],
+          onClick: () => applyPathFilter(target, true),
+        });
+      }
+    }
+  }
+
+  // Open document → final, non-clickable crumb (you're already
+  // viewing it).
+  const sel = docsState.selected.value;
+  if (sel) {
+    crumbs.push(sel.title?.trim() || sel.name);
+  }
+
   return crumbs;
 });
 
@@ -1820,6 +2020,12 @@ const formatBytes = (n: number): string => {
             :placeholder="$t('documents.searchPlaceholder')"
           />
         </div>
+        <VButton
+          variant="ghost"
+          size="sm"
+          :title="$t('documents.newFolder')"
+          @click="openNewFolderModal"
+        >📁+</VButton>
         <VButton
           variant="primary"
           size="sm"
@@ -2580,6 +2786,39 @@ const formatBytes = (n: number): string => {
       </template>
     </VModal>
 
+    <!-- Add-folder modal: virtual folder creation. Submitting just
+         navigates into the new path; the folder materialises in
+         storage when the user creates a file there. -->
+    <VModal
+      v-model="showNewFolderModal"
+      :title="$t('documents.newFolderDialog.title')"
+    >
+      <form class="flex flex-col gap-3" @submit.prevent="submitNewFolder">
+        <VAlert v-if="newFolderError" variant="error">
+          <span>{{ newFolderError }}</span>
+        </VAlert>
+        <div class="text-xs opacity-70 font-mono">
+          {{ docsState.pathPrefix.value || '/' }}
+        </div>
+        <VInput
+          ref="newFolderNameInputRef"
+          v-model="newFolderName"
+          :label="$t('documents.newFolderDialog.nameLabel')"
+          :placeholder="$t('documents.newFolderDialog.namePlaceholder')"
+          :help="$t('documents.newFolderDialog.nameHelp')"
+          required
+        />
+      </form>
+      <template #actions>
+        <VButton variant="ghost" @click="showNewFolderModal = false">
+          {{ $t('common.cancel') }}
+        </VButton>
+        <VButton variant="primary" @click="submitNewFolder">
+          {{ $t('documents.newFolderDialog.create') }}
+        </VButton>
+      </template>
+    </VModal>
+
     <!-- Unsaved-changes modal: opens when the user tries to leave the
          detail view (Back / Cancel) with unsaved edits. Three actions
          — save & leave, discard & leave, stay. -->
@@ -2636,13 +2875,23 @@ const formatBytes = (n: number): string => {
         </VAlert>
 
         <template v-if="createMode === 'inline'">
+          <!-- Path is fixed to the current folder; only the filename
+               is editable. Path on top so the destination context
+               reads top-down, name as the primary input below. -->
           <VInput
-            v-model="createPath"
+            :model-value="createPath || '/'"
             :label="$t('documents.create.pathLabel')"
-            :placeholder="$t('documents.create.pathPlaceholder')"
+            disabled
+            readonly
+          />
+          <VInput
+            ref="createNameInputRef"
+            v-model="createName"
+            :label="$t('documents.create.nameLabel')"
+            :placeholder="$t('documents.create.namePlaceholder')"
             required
             :disabled="creating"
-            :help="$t('documents.create.pathHelp')"
+            @keydown.enter.prevent="submitCreate"
           />
           <VInput
             v-model="createTitle"
@@ -2677,9 +2926,6 @@ const formatBytes = (n: number): string => {
             :disabled="creating"
             :mime-type="createMime"
           />
-          <p class="text-xs opacity-70 -mt-1">
-            {{ $t('documents.create.inlineSizeNote') }}
-          </p>
         </template>
 
         <template v-else>
@@ -2697,11 +2943,18 @@ const formatBytes = (n: number): string => {
                from the JWT. -->
           <template v-if="createFiles.length <= 1">
             <VInput
-              v-model="createPath"
+              :model-value="createPath || '/'"
               :label="$t('documents.create.pathLabel')"
-              :placeholder="$t('documents.create.pathPlaceholderUpload')"
+              disabled
+              readonly
+            />
+            <VInput
+              v-model="createName"
+              :label="$t('documents.create.nameLabel')"
+              :placeholder="$t('documents.create.namePlaceholderUpload')"
               :disabled="creating"
-              :help="$t('documents.create.pathHelpUpload')"
+              :help="$t('documents.create.nameHelpUpload')"
+              @keydown.enter.prevent="submitCreate"
             />
             <VInput
               v-model="createTitle"

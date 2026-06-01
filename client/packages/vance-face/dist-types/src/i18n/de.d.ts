@@ -245,6 +245,15 @@ declare const _default: {
         allKinds: string;
         clearFilter: string;
         newDocument: string;
+        newFolder: string;
+        newFolderDialog: {
+            title: string;
+            nameLabel: string;
+            namePlaceholder: string;
+            nameHelp: string;
+            nameRequired: string;
+            create: string;
+        };
         noDocumentsHeadline: string;
         noDocumentsBody: string;
         createFirstDocument: string;
@@ -475,6 +484,11 @@ declare const _default: {
             pathHelp: string;
             pathPlaceholderUpload: string;
             pathHelpUpload: string;
+            nameLabel: string;
+            namePlaceholder: string;
+            nameHelp: string;
+            namePlaceholderUpload: string;
+            nameHelpUpload: string;
             titleLabel: string;
             titlePlaceholder: string;
             tagsLabel: string;
@@ -490,6 +504,7 @@ declare const _default: {
             filesLabel: string;
             filesHelp: string;
             pathRequired: string;
+            nameRequired: string;
             contentRequired: string;
             pickAtLeastOneFile: string;
             multiUploadFailed: string;

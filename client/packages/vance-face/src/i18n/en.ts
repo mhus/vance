@@ -891,11 +891,11 @@ export default {
   tools: {
     pageTitle: 'Server Tools',
     loading: 'Loading…',
-    vanceProjectLabel: '_vance — system defaults',
-    projectsGroup: 'Projects',
-    vanceSystemLabel: '_vance (system)',
-    breadcrumbProjectPrefix: 'Project: {name}',
+    tenantSystemLabel: '_tenant (system)',
+    pickAProjectHeadline: 'Pick a project',
+    pickAProjectBody: 'Click a project on the left to see its tools.',
     sidebar: {
+      projectsHeading: 'Projects',
       addNew: '+ New',
       noToolsHeadline: 'No tools',
       noToolsBody: 'Click + New to create one.',
@@ -903,17 +903,27 @@ export default {
       primary: 'primary',
       deferred: 'deferred',
     },
-    empty: {
-      headline: 'Select a tool',
-      body: 'Pick one from the list, or click + New to create one in this project.',
-    },
     detail: {
-      projectLabel: 'Project',
+      backToList: 'Back to list',
       lastEdit: '· last edit {at}',
       delete: 'Delete',
       save: 'Save',
-      vanceNote:
-        'You are editing the _vance system project — changes here are tenant-wide defaults. User projects shadow individual tools by re-creating them with the same name.',
+      tenantNote:
+        'You are editing the _tenant system project — changes here are tenant-wide defaults. User projects shadow individual tools by re-creating them with the same name.',
+      cascadedFromTenant:
+        'This tool is cascaded from _tenant (tenant-wide default). Saving creates a project-specific override that shadows the tenant default only in this project.',
+      cascadedFromBundled:
+        'This tool is a built-in default (vance-defaults). Saving creates a project-specific override that shadows the default in this project.',
+    },
+    source: {
+      project: 'Project',
+      tenant: 'Tenant',
+      bundled: 'Built-in',
+    },
+    sourceTooltip: {
+      project: 'Defined directly in this project.',
+      tenant: 'Cascaded from the _tenant project.',
+      bundled: 'Built-in default from vance-defaults.',
     },
     cards: {
       identityTitle: 'Identity',

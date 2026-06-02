@@ -7,6 +7,7 @@ import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.tools.types.ToolFactory;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.servertool.ServerToolConfig;
 import de.mhus.vance.shared.servertool.ServerToolDocument;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -79,8 +80,14 @@ public class ServerToolAdminController {
             @PathVariable("project") String project,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.ADMIN);
-        return serverToolService.listDocuments(tenant, project).stream()
-                .map(ServerToolAdminController::toDto)
+        // Build DTOs from the cascade-resolved configs so each entry
+        // carries its actual {@code source} tier (PROJECT / TENANT /
+        // BUNDLED). Going through {@code listDocuments()} would lose
+        // it — the transient document carrier stamps the requesting
+        // project's id as {@code projectId} regardless of where the
+        // config actually came from.
+        return serverToolService.listConfigs(tenant, project).stream()
+                .map(cfg -> toDtoFromConfig(cfg, project))
                 .sorted(Comparator.comparing(ServerToolDto::getName))
                 .toList();
     }
@@ -92,10 +99,10 @@ public class ServerToolAdminController {
             @PathVariable("name") String name,
             HttpServletRequest httpRequest) {
         authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.ADMIN);
-        ServerToolDocument doc = serverToolService.findDocument(tenant, project, name)
+        ServerToolConfig cfg = serverToolService.findConfig(tenant, project, name)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "No server tool '" + name + "' in project '" + project + "'"));
-        return toDto(doc);
+        return toDtoFromConfig(cfg, project);
     }
 
     @PutMapping("/projects/{project}/server-tools/{name}")
@@ -173,6 +180,14 @@ public class ServerToolAdminController {
     // ─── Mapping ───────────────────────────────────────────────────────────
 
     private static ServerToolDto toDto(ServerToolDocument doc) {
+        // Save-flow path: caller always wrote into the requesting
+        // project, so the resulting DTO is project-sourced.
+        return baseBuilder(doc)
+                .source("PROJECT")
+                .build();
+    }
+
+    private static ServerToolDto.ServerToolDtoBuilder baseBuilder(ServerToolDocument doc) {
         return ServerToolDto.builder()
                 .name(doc.getName())
                 .type(doc.getType())
@@ -197,7 +212,39 @@ public class ServerToolAdminController {
                 // API stability — admin clients that want audit timestamps
                 // can read them from the documents endpoint.
                 .updatedAtTimestamp(null)
-                .createdBy(doc.getCreatedBy())
+                .createdBy(doc.getCreatedBy());
+    }
+
+    /**
+     * Build a DTO from a cascade-resolved config. The cascade tier
+     * ({@link ServerToolConfig.Source}) is mapped to a stable API
+     * string ({@code PROJECT} / {@code TENANT} / {@code BUNDLED}) so
+     * the admin UI can render a source-badge per row and warn before
+     * an edit creates an override of a cascaded entry.
+     *
+     * <p>{@code projectId} carries the source project name where it
+     * makes sense (PROJECT / TENANT cases); for bundled defaults the
+     * field falls back to the requesting {@code projectId} since
+     * classpath entries don't belong to a project document.
+     */
+    private static ServerToolDto toDtoFromConfig(ServerToolConfig cfg, String requestingProject) {
+        ServerToolDocument doc = cfg.toTransientDocument("", requestingProject);
+        String source = switch (cfg.source()) {
+            case PROJECT -> "PROJECT";
+            case VANCE   -> "TENANT";
+            case RESOURCE -> "BUNDLED";
+        };
+        // Project-id reflects the actual owner — handy for the UI to
+        // know whether saving would touch the current project or
+        // create a new override here.
+        String ownerProject = switch (cfg.source()) {
+            case PROJECT -> requestingProject;
+            case VANCE   -> "_tenant";
+            case RESOURCE -> requestingProject;
+        };
+        return baseBuilder(doc)
+                .projectId(ownerProject)
+                .source(source)
                 .build();
     }
 }

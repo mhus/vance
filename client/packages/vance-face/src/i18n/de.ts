@@ -892,11 +892,11 @@ export default {
   tools: {
     pageTitle: 'Server-Tools',
     loading: 'Laden…',
-    vanceProjectLabel: '_vance — System-Vorgaben',
-    projectsGroup: 'Projekte',
-    vanceSystemLabel: '_vance (System)',
-    breadcrumbProjectPrefix: 'Projekt: {name}',
+    tenantSystemLabel: '_tenant (System)',
+    pickAProjectHeadline: 'Projekt auswählen',
+    pickAProjectBody: 'Links ein Projekt anklicken, um dessen Tools anzuzeigen.',
     sidebar: {
+      projectsHeading: 'Projekte',
       addNew: '+ Neu',
       noToolsHeadline: 'Keine Tools',
       noToolsBody: 'Auf „+ Neu" klicken, um eines anzulegen.',
@@ -904,18 +904,27 @@ export default {
       primary: 'primär',
       deferred: 'deferred',
     },
-    empty: {
-      headline: 'Tool auswählen',
-      body:
-        'Eines aus der Liste wählen, oder auf „+ Neu" klicken, um eines in diesem Projekt anzulegen.',
-    },
     detail: {
-      projectLabel: 'Projekt',
+      backToList: 'Zurück zur Liste',
       lastEdit: '· zuletzt bearbeitet {at}',
       delete: 'Löschen',
       save: 'Speichern',
-      vanceNote:
-        'Sie bearbeiten das System-Projekt _vance — Änderungen hier sind mandantenweite Vorgaben. Benutzerprojekte überschreiben einzelne Tools, indem sie sie mit dem gleichen Namen neu anlegen.',
+      tenantNote:
+        'Sie bearbeiten das System-Projekt _tenant — Änderungen hier sind mandantenweite Vorgaben. Benutzerprojekte überschreiben einzelne Tools, indem sie sie mit dem gleichen Namen neu anlegen.',
+      cascadedFromTenant:
+        'Dieses Tool kommt aus _tenant (Mandanten-Default). Speichern legt einen project-spezifischen Override an — der ersetzt die Mandanten-Vorgabe nur in diesem Projekt.',
+      cascadedFromBundled:
+        'Dieses Tool ist ein eingebauter Default (vance-defaults). Speichern legt einen project-spezifischen Override an, der den Default in diesem Projekt ersetzt.',
+    },
+    source: {
+      project: 'Projekt',
+      tenant: 'Tenant',
+      bundled: 'Built-in',
+    },
+    sourceTooltip: {
+      project: 'Direkt in diesem Projekt definiert.',
+      tenant: 'Aus dem _tenant-Projekt cascadiert.',
+      bundled: 'Eingebauter Default aus vance-defaults.',
     },
     cards: {
       identityTitle: 'Identität',

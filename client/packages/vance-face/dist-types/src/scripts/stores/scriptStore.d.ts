@@ -72,7 +72,7 @@ export declare const useScriptStore: import("pinia").StoreDefinition<"scriptCort
     saveActive: () => Promise<void>;
     createFile: (body: CreateBody) => Promise<ScriptFile>;
     deleteFile: (id: string) => Promise<void>;
-}, "projectId" | "error" | "loading" | "files" | "openTabs" | "activeTabId">, Pick<{
+}, "loading" | "error" | "projectId" | "files" | "openTabs" | "activeTabId">, Pick<{
     projectId: import("vue").Ref<string | null, string | null>;
     files: import("vue").Ref<{
         id: string;

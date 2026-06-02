@@ -15,6 +15,7 @@ export interface ServerToolDto {
   defaultDeferred: boolean;
   promptHint: string;
   projectId: string;
+  source?: string;
   updatedAtTimestamp?: number;
   createdBy?: string;
 }

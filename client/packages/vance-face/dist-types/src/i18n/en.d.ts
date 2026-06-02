@@ -833,11 +833,11 @@ declare const _default: {
     tools: {
         pageTitle: string;
         loading: string;
-        vanceProjectLabel: string;
-        projectsGroup: string;
-        vanceSystemLabel: string;
-        breadcrumbProjectPrefix: string;
+        tenantSystemLabel: string;
+        pickAProjectHeadline: string;
+        pickAProjectBody: string;
         sidebar: {
+            projectsHeading: string;
             addNew: string;
             noToolsHeadline: string;
             noToolsBody: string;
@@ -845,16 +845,24 @@ declare const _default: {
             primary: string;
             deferred: string;
         };
-        empty: {
-            headline: string;
-            body: string;
-        };
         detail: {
-            projectLabel: string;
+            backToList: string;
             lastEdit: string;
             delete: string;
             save: string;
-            vanceNote: string;
+            tenantNote: string;
+            cascadedFromTenant: string;
+            cascadedFromBundled: string;
+        };
+        source: {
+            project: string;
+            tenant: string;
+            bundled: string;
+        };
+        sourceTooltip: {
+            project: string;
+            tenant: string;
+            bundled: string;
         };
         cards: {
             identityTitle: string;

@@ -70,8 +70,20 @@ public class ServerToolDto {
      */
     private String promptHint = "";
 
-    /** Owning project — {@code _vance} for system-wide tools. */
+    /** Owning project — {@code _tenant} for system-wide tools. */
     private String projectId;
+
+    /**
+     * Cascade tier that produced this entry — informs the admin UI
+     * whether editing it would create a project-specific override.
+     * One of:
+     * <ul>
+     *   <li>{@code PROJECT} — defined in the requesting project,</li>
+     *   <li>{@code TENANT}  — cascaded from the tenant-default project ({@code _tenant}),</li>
+     *   <li>{@code BUNDLED} — bundled classpath default ({@code vance-defaults/_vance/server-tools/}).</li>
+     * </ul>
+     */
+    private @Nullable String source;
 
     /** Last update timestamp in millis since epoch; {@code null} for unsaved drafts. */
     private @Nullable Long updatedAtTimestamp;

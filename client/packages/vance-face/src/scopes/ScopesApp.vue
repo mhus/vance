@@ -3,6 +3,9 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
+  type FocusZone,
+  type PickerNode,
+  ProjectListSidebar,
   SettingFormView,
   VAlert,
   VButton,
@@ -52,6 +55,12 @@ const projectKitsCatalog = useProjectKitsCatalog();
 const selection = ref<Selection>({ kind: 'tenant' });
 const banner = ref<string | null>(null);
 
+// Focus zone driven by user interaction. Sidebar clicks land in
+// 'main' so the detail card grows; right-panel interactions move
+// focus to 'right' for inspect/edit work. Mirrors DocumentApp /
+// ChatApp wiring — see specification/web-ui.md §7.2.1.
+const focusZone = ref<FocusZone>('main');
+
 // ─── Detail-form state ───
 // One blob keyed off the selection — re-populated on every selection change.
 const form = reactive({
@@ -61,15 +70,10 @@ const form = reactive({
 });
 
 // ─── Modals ───
-const showCreateGroup = ref(false);
-const newGroupName = ref('');
-const newGroupTitle = ref('');
-
-const showCreateProject = ref(false);
-const newProjectName = ref('');
-const newProjectTitle = ref('');
-const newProjectGroupId = ref<string | null>(null);
-const newProjectKitName = ref<string>('');
+// Create-group / create-project modals now live inside the shared
+// {@link ProjectListSidebar} component — see template. Scopes only
+// reacts to the resulting {@code @data-changed} event to reload its
+// own admin composables.
 
 // ─── Kit dialog state ───
 const showKitDialog = ref(false);
@@ -198,19 +202,6 @@ const selectedProject = computed<ProjectDto | null>(() => {
   return projectsState.projects.value.find(p => p.name === sel.name) ?? null;
 });
 
-const projectsByGroup = computed<Map<string, ProjectDto[]>>(() => {
-  const map = new Map<string, ProjectDto[]>();
-  for (const p of projectsState.projects.value) {
-    const key = p.projectGroupId ?? '';
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(p);
-  }
-  return map;
-});
-
-const ungroupedProjects = computed<ProjectDto[]>(() =>
-  projectsByGroup.value.get('') ?? []);
-
 const groupSelectOptions = computed(() => [
   { value: '', label: t('scopes.common.noGroup') },
   ...groupsState.groups.value.map(g => ({ value: g.name, label: g.title || g.name })),
@@ -239,6 +230,11 @@ onMounted(async () => {
     tenantState.reload(),
     groupsState.reload(),
     projectsState.reload(),
+    // Kit catalog feeds the create-project modal's kit-dropdown
+    // (rendered inside the shared {@link ProjectListSidebar}).
+    // Background load — the modal is rarely opened immediately
+    // after mount, so this lands well before it's needed.
+    projectKitsCatalog.load(),
   ]);
   // Selection defaults to tenant — populate the form once tenant is loaded.
   applySelectionToForm();
@@ -310,17 +306,13 @@ function resetSettingEditor(): void {
 }
 
 // ─── Selection actions ───
+//
+// Tenant click stays here because the tenant row lives outside the
+// {@link ProjectListSidebar}. Group/project clicks go through the
+// shared component which writes back via {@code pickerSelectedNode}.
 
 function selectTenant(): void {
   selection.value = { kind: 'tenant' };
-}
-
-function selectGroup(name: string): void {
-  selection.value = { kind: 'group', name };
-}
-
-function selectProject(name: string): void {
-  selection.value = { kind: 'project', name };
 }
 
 // ─── Detail-form submits ───
@@ -395,76 +387,53 @@ async function archiveProject(): Promise<void> {
   }
 }
 
-// ─── Create modals ───
+// ─── Create modals / picker bridge ───
+//
+// The shared {@link ProjectListSidebar} component owns the create-
+// group / create-project modals, the drag-and-drop move, and all the
+// {@code admin/*} POST/PUT calls. Scopes only:
+//   1. wires its tree selection through a writable computed v-model
+//      so the picker can flip between group/project rows while the
+//      tenant row (which lives outside the picker) maps to "no
+//      picker selection";
+//   2. exposes its kit catalog as options for the create-project
+//      modal so admins can pick a kit at creation time;
+//   3. reloads the admin composables on {@code @data-changed} and
+//      auto-selects the freshly created entry.
 
-function openCreateGroup(): void {
-  newGroupName.value = '';
-  newGroupTitle.value = '';
-  showCreateGroup.value = true;
-}
+const pickerSelectedNode = computed<PickerNode | null>({
+  get: () => {
+    const s = selection.value;
+    if (s.kind === 'tenant') return null;
+    return { kind: s.kind, name: s.name };
+  },
+  set: (v) => {
+    if (v == null) selection.value = { kind: 'tenant' };
+    else selection.value = v;
+  },
+});
 
-async function submitCreateGroup(): Promise<void> {
-  const name = newGroupName.value.trim();
-  if (!name) return;
-  try {
-    await groupsState.create({
-      name,
-      title: newGroupTitle.value.trim() || undefined,
-    });
-    showCreateGroup.value = false;
-    selectGroup(name);
-    banner.value = t('scopes.group.created', { name });
-  } catch {
-    /* state.error */
-  }
-}
-
-function openCreateProject(): void {
-  newProjectName.value = '';
-  newProjectTitle.value = '';
-  newProjectGroupId.value = selection.value.kind === 'group' ? selection.value.name : null;
-  newProjectKitName.value = '';
-  showCreateProject.value = true;
-  // Refresh catalog on every open so the picker reflects the latest
-  // tenant configuration. Background load — UI shows entries as they
-  // arrive, or "no kits configured" if catalog is empty.
-  void projectKitsCatalog.load();
-}
-
-async function submitCreateProject(): Promise<void> {
-  const name = newProjectName.value.trim();
-  if (!name) return;
-  try {
-    const result = await projectsState.create({
-      name,
-      title: newProjectTitle.value.trim() || undefined,
-      projectGroupId: newProjectGroupId.value || undefined,
-      teamIds: [],
-      kitName: newProjectKitName.value.trim() || undefined,
-    });
-    showCreateProject.value = false;
-    selectProject(name);
-    if (result.kitInstallError) {
-      banner.value = t('scopes.project.createdWithKitError', {
-        name,
-        kit: newProjectKitName.value,
-        error: result.kitInstallError,
-      });
-    } else {
-      banner.value = t('scopes.project.created', { name });
-    }
-  } catch {
-    /* state.error */
-  }
-}
-
-const kitSelectOptions = computed(() => [
+const pickerKitOptions = computed(() => [
   { value: '', label: t('scopes.createProject.kitNone') },
   ...(projectKitsCatalog.catalog.value?.kits ?? []).map(entry => ({
     value: entry.name,
     label: entry.title || entry.name,
   })),
 ]);
+
+async function onPickerDataChanged(
+  payload: { kind: 'group' | 'project'; name: string },
+): Promise<void> {
+  if (payload.kind === 'group') {
+    await groupsState.reload();
+    selection.value = { kind: 'group', name: payload.name };
+    banner.value = t('scopes.group.created', { name: payload.name });
+  } else {
+    await projectsState.reload();
+    selection.value = { kind: 'project', name: payload.name };
+    banner.value = t('scopes.project.created', { name: payload.name });
+  }
+}
 
 // ─── Kit actions ───
 
@@ -724,81 +693,76 @@ const combinedError = computed<string | null>(() =>
 </script>
 
 <template>
-  <EditorShell :title="$t('scopes.pageTitle')" :breadcrumbs="breadcrumbs" wide-right-panel>
-    <!-- ─── Sidebar tree ─── -->
+  <EditorShell
+    v-model:focus-zone="focusZone"
+    :title="$t('scopes.pageTitle')"
+    :breadcrumbs="breadcrumbs"
+    :full-height="true"
+    :show-sidebar="true"
+    :show-right-panel="!!settingsScope"
+    focus-model="auto"
+    title-clickable
+    wide-right-panel
+    @title-click="focusZone = 'sidebar'"
+  >
+    <!-- ─── Sidebar tree ───
+         Tenant row stays scopes-specific (the picker has no notion
+         of a tenant level); group + project rows + create/move
+         live in the shared {@link ProjectListSidebar}. -->
     <template #sidebar>
-      <nav class="flex flex-col gap-1 p-2">
-        <button
-          class="sidebar-item"
-          :class="{ 'sidebar-item--active': isSelected({ kind: 'tenant' }) }"
-          type="button"
-          @click="selectTenant"
-        >
-          <span class="opacity-50 mr-1">⌂</span>{{ $t('scopes.sidebar.tenant') }}
-          <span v-if="tenantState.tenant.value" class="opacity-60">
-            · {{ tenantState.tenant.value.name }}
-          </span>
-        </button>
-
-        <div class="mt-3 flex items-center justify-between px-2">
-          <span class="text-xs uppercase opacity-50">{{ $t('scopes.sidebar.projectGroups') }}</span>
-          <VButton variant="ghost" size="sm" @click="openCreateGroup">
-            {{ $t('scopes.sidebar.addGroup') }}
-          </VButton>
-        </div>
-
-        <template v-for="group in groupsState.groups.value" :key="'g-' + group.name">
+      <div class="flex flex-col">
+        <nav class="flex flex-col gap-1 p-2">
           <button
             class="sidebar-item"
-            :class="{ 'sidebar-item--active': isSelected({ kind: 'group', name: group.name }) }"
+            :class="{ 'sidebar-item--active': isSelected({ kind: 'tenant' }) }"
             type="button"
-            @click="selectGroup(group.name)"
+            @pointerdown.stop="focusZone = 'main'"
+            @click="selectTenant"
           >
-            <span class="opacity-50 mr-1">▸</span>
-            {{ group.title || group.name }}
-            <span v-if="!group.enabled" class="opacity-60 text-xs">
-              {{ $t('scopes.common.disabled') }}
+            <span class="opacity-50 mr-1">⌂</span>{{ $t('scopes.sidebar.tenant') }}
+            <span v-if="tenantState.tenant.value" class="opacity-60">
+              · {{ tenantState.tenant.value.name }}
             </span>
           </button>
-          <button
-            v-for="p in projectsByGroup.get(group.name) ?? []"
-            :key="'p-' + p.name"
-            class="sidebar-item sidebar-item--child"
-            :class="{ 'sidebar-item--active': isSelected({ kind: 'project', name: p.name }) }"
-            type="button"
-            @click="selectProject(p.name)"
-          >
-            {{ p.title || p.name }}
-            <span v-if="p.status === 'ARCHIVED'" class="opacity-60 text-xs">
-              {{ $t('scopes.common.archived') }}
-            </span>
-          </button>
-        </template>
+        </nav>
 
-        <div v-if="ungroupedProjects.length > 0" class="mt-3 px-2 text-xs uppercase opacity-50">
-          {{ $t('scopes.sidebar.ungroupedProjects') }}
-        </div>
-        <button
-          v-for="p in ungroupedProjects"
-          :key="'pu-' + p.name"
-          class="sidebar-item sidebar-item--child"
-          :class="{ 'sidebar-item--active': isSelected({ kind: 'project', name: p.name }) }"
-          type="button"
-          @click="selectProject(p.name)"
+        <ProjectListSidebar
+          v-model:selected-node="pickerSelectedNode"
+          :groups="groupsState.groups.value"
+          :projects="projectsState.projects.value"
+          :loading="groupsState.loading.value || projectsState.loading.value"
+          :error="groupsState.error.value || projectsState.error.value"
+          :heading="$t('scopes.sidebar.projectGroups')"
+          :ungrouped-label="$t('scopes.sidebar.ungroupedProjects')"
+          :kit-options="pickerKitOptions"
+          :search-enabled="false"
+          edit-enabled
+          show-group-rows
+          @focus-main="focusZone = 'main'"
+          @data-changed="onPickerDataChanged"
         >
-          {{ p.title || p.name }}
-        </button>
-
-        <div class="mt-3 px-2">
-          <VButton variant="ghost" size="sm" block @click="openCreateProject">
-            {{ $t('scopes.sidebar.addProject') }}
-          </VButton>
-        </div>
-      </nav>
+          <template #row-suffix="{ kind, item }">
+            <span
+              v-if="kind === 'group' && !(item as ProjectGroupSummary).enabled"
+              class="opacity-60 text-xs"
+            >{{ $t('scopes.common.disabled') }}</span>
+            <span
+              v-else-if="kind === 'project' && (item as ProjectDto).status === 'ARCHIVED'"
+              class="opacity-60 text-xs"
+            >{{ $t('scopes.common.archived') }}</span>
+          </template>
+        </ProjectListSidebar>
+      </div>
     </template>
 
-    <!-- ─── Main detail pane ─── -->
-    <div class="p-6 max-w-2xl flex flex-col gap-3">
+    <!-- ─── Main detail pane ───
+         {@code full-height} on EditorShell pins the main cell to
+         the viewport height; without an inner overflow-y the long
+         setting/kit cards push past the bottom edge. Wrapped in a
+         {@code overflow-y-auto} container so the cards scroll
+         independently of the sidebar / right panel. -->
+    <div class="h-full min-h-0 overflow-y-auto">
+      <div class="p-6 max-w-2xl flex flex-col gap-3">
       <VAlert v-if="combinedError" variant="error">
         <span>{{ combinedError }}</span>
       </VAlert>
@@ -1061,11 +1025,16 @@ const combinedError = computed<string | null>(() =>
           </ul>
         </div>
       </VCard>
+      </div>
     </div>
 
-    <!-- ─── Right panel: settings + setting-forms tabs ─── -->
-    <template v-if="settingsScope" #right-panel>
-      <div class="p-4 flex flex-col gap-3">
+    <!-- ─── Right panel: settings + setting-forms tabs ───
+         {@code v-if} sits on the inner content (not the template)
+         so Vue's slot-presence detection stays stable. The
+         {@code show-right-panel} prop on EditorShell drives the
+         column collapse when no scope is selected. -->
+    <template #right-panel>
+      <div v-if="settingsScope" class="p-4 flex flex-col gap-3">
         <h3 class="font-semibold text-sm uppercase opacity-60">
           {{ $t('scopes.settingsPanel.title', {
             type: settingsScope.type,
@@ -1277,29 +1246,8 @@ const combinedError = computed<string | null>(() =>
       </div>
     </template>
 
-    <!-- ─── Create-Group modal ─── -->
-    <VModal v-model="showCreateGroup" :title="$t('scopes.createGroup.title')">
-      <div class="flex flex-col gap-3">
-        <VInput
-          v-model="newGroupName"
-          :label="$t('scopes.common.name')"
-          required
-          :help="$t('scopes.createGroup.nameHelp')"
-        />
-        <VInput v-model="newGroupTitle" :label="$t('scopes.common.title')" />
-        <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showCreateGroup = false">
-            {{ $t('scopes.common.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            :disabled="!newGroupName.trim()"
-            :loading="groupsState.busy.value"
-            @click="submitCreateGroup"
-          >{{ $t('scopes.common.create') }}</VButton>
-        </div>
-      </div>
-    </VModal>
+    <!-- Create-Group / Create-Project modals now live inside the
+         shared {@link ProjectListSidebar} component — see template. -->
 
     <!-- ─── Kit modal (install / update / apply / export) ─── -->
     <VModal v-model="showKitDialog" :title="kitDialogTitle" :close-on-backdrop="false">
@@ -1385,40 +1333,6 @@ const combinedError = computed<string | null>(() =>
       </div>
     </VModal>
 
-    <!-- ─── Create-Project modal ─── -->
-    <VModal v-model="showCreateProject" :title="$t('scopes.createProject.title')">
-      <div class="flex flex-col gap-3">
-        <VInput
-          v-model="newProjectName"
-          :label="$t('scopes.common.name')"
-          required
-          :help="$t('scopes.createProject.nameHelp')"
-        />
-        <VInput v-model="newProjectTitle" :label="$t('scopes.common.title')" />
-        <VSelect
-          v-model="newProjectGroupId"
-          :label="$t('scopes.project.groupLabel')"
-          :options="groupSelectOptions"
-        />
-        <VSelect
-          v-model="newProjectKitName"
-          :label="$t('scopes.createProject.kitLabel')"
-          :options="kitSelectOptions"
-          :help="$t('scopes.createProject.kitHelp')"
-        />
-        <div class="flex justify-end gap-2">
-          <VButton variant="ghost" @click="showCreateProject = false">
-            {{ $t('scopes.common.cancel') }}
-          </VButton>
-          <VButton
-            variant="primary"
-            :disabled="!newProjectName.trim()"
-            :loading="projectsState.busy.value"
-            @click="submitCreateProject"
-          >{{ $t('scopes.common.create') }}</VButton>
-        </div>
-      </div>
-    </VModal>
   </EditorShell>
 </template>
 

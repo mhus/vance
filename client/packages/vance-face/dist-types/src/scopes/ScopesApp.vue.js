@@ -1,6 +1,6 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { EditorShell, SettingFormView, VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea, } from '@/components';
+import { EditorShell, ProjectListSidebar, SettingFormView, VAlert, VButton, VCard, VCheckbox, VEmptyState, VInput, VModal, VSelect, VTextarea, } from '@/components';
 import { listSettingForms, RestError } from '@vance/shared';
 import { useAdminTenant } from '@/composables/useAdminTenant';
 import { useAdminProjectGroups } from '@/composables/useAdminProjectGroups';
@@ -19,6 +19,11 @@ const kitState = useKitAdmin();
 const projectKitsCatalog = useProjectKitsCatalog();
 const selection = ref({ kind: 'tenant' });
 const banner = ref(null);
+// Focus zone driven by user interaction. Sidebar clicks land in
+// 'main' so the detail card grows; right-panel interactions move
+// focus to 'right' for inspect/edit work. Mirrors DocumentApp /
+// ChatApp wiring — see specification/web-ui.md §7.2.1.
+const focusZone = ref('main');
 // ─── Detail-form state ───
 // One blob keyed off the selection — re-populated on every selection change.
 const form = reactive({
@@ -27,14 +32,10 @@ const form = reactive({
     projectGroupId: null,
 });
 // ─── Modals ───
-const showCreateGroup = ref(false);
-const newGroupName = ref('');
-const newGroupTitle = ref('');
-const showCreateProject = ref(false);
-const newProjectName = ref('');
-const newProjectTitle = ref('');
-const newProjectGroupId = ref(null);
-const newProjectKitName = ref('');
+// Create-group / create-project modals now live inside the shared
+// {@link ProjectListSidebar} component — see template. Scopes only
+// reacts to the resulting {@code @data-changed} event to reload its
+// own admin composables.
 // ─── Kit dialog state ───
 const showKitDialog = ref(false);
 const kitDialogMode = ref('install');
@@ -151,17 +152,6 @@ const selectedProject = computed(() => {
         return null;
     return projectsState.projects.value.find(p => p.name === sel.name) ?? null;
 });
-const projectsByGroup = computed(() => {
-    const map = new Map();
-    for (const p of projectsState.projects.value) {
-        const key = p.projectGroupId ?? '';
-        if (!map.has(key))
-            map.set(key, []);
-        map.get(key).push(p);
-    }
-    return map;
-});
-const ungroupedProjects = computed(() => projectsByGroup.value.get('') ?? []);
 const groupSelectOptions = computed(() => [
     { value: '', label: t('scopes.common.noGroup') },
     ...groupsState.groups.value.map(g => ({ value: g.name, label: g.title || g.name })),
@@ -183,6 +173,11 @@ onMounted(async () => {
         tenantState.reload(),
         groupsState.reload(),
         projectsState.reload(),
+        // Kit catalog feeds the create-project modal's kit-dropdown
+        // (rendered inside the shared {@link ProjectListSidebar}).
+        // Background load — the modal is rarely opened immediately
+        // after mount, so this lands well before it's needed.
+        projectKitsCatalog.load(),
     ]);
     // Selection defaults to tenant — populate the form once tenant is loaded.
     applySelectionToForm();
@@ -250,14 +245,12 @@ function resetSettingEditor() {
     editDescription.value = '';
 }
 // ─── Selection actions ───
+//
+// Tenant click stays here because the tenant row lives outside the
+// {@link ProjectListSidebar}. Group/project clicks go through the
+// shared component which writes back via {@code pickerSelectedNode}.
 function selectTenant() {
     selection.value = { kind: 'tenant' };
-}
-function selectGroup(name) {
-    selection.value = { kind: 'group', name };
-}
-function selectProject(name) {
-    selection.value = { kind: 'project', name };
 }
 // ─── Detail-form submits ───
 async function saveTenant() {
@@ -336,76 +329,52 @@ async function archiveProject() {
         /* state.error */
     }
 }
-// ─── Create modals ───
-function openCreateGroup() {
-    newGroupName.value = '';
-    newGroupTitle.value = '';
-    showCreateGroup.value = true;
-}
-async function submitCreateGroup() {
-    const name = newGroupName.value.trim();
-    if (!name)
-        return;
-    try {
-        await groupsState.create({
-            name,
-            title: newGroupTitle.value.trim() || undefined,
-        });
-        showCreateGroup.value = false;
-        selectGroup(name);
-        banner.value = t('scopes.group.created', { name });
-    }
-    catch {
-        /* state.error */
-    }
-}
-function openCreateProject() {
-    newProjectName.value = '';
-    newProjectTitle.value = '';
-    newProjectGroupId.value = selection.value.kind === 'group' ? selection.value.name : null;
-    newProjectKitName.value = '';
-    showCreateProject.value = true;
-    // Refresh catalog on every open so the picker reflects the latest
-    // tenant configuration. Background load — UI shows entries as they
-    // arrive, or "no kits configured" if catalog is empty.
-    void projectKitsCatalog.load();
-}
-async function submitCreateProject() {
-    const name = newProjectName.value.trim();
-    if (!name)
-        return;
-    try {
-        const result = await projectsState.create({
-            name,
-            title: newProjectTitle.value.trim() || undefined,
-            projectGroupId: newProjectGroupId.value || undefined,
-            teamIds: [],
-            kitName: newProjectKitName.value.trim() || undefined,
-        });
-        showCreateProject.value = false;
-        selectProject(name);
-        if (result.kitInstallError) {
-            banner.value = t('scopes.project.createdWithKitError', {
-                name,
-                kit: newProjectKitName.value,
-                error: result.kitInstallError,
-            });
-        }
-        else {
-            banner.value = t('scopes.project.created', { name });
-        }
-    }
-    catch {
-        /* state.error */
-    }
-}
-const kitSelectOptions = computed(() => [
+// ─── Create modals / picker bridge ───
+//
+// The shared {@link ProjectListSidebar} component owns the create-
+// group / create-project modals, the drag-and-drop move, and all the
+// {@code admin/*} POST/PUT calls. Scopes only:
+//   1. wires its tree selection through a writable computed v-model
+//      so the picker can flip between group/project rows while the
+//      tenant row (which lives outside the picker) maps to "no
+//      picker selection";
+//   2. exposes its kit catalog as options for the create-project
+//      modal so admins can pick a kit at creation time;
+//   3. reloads the admin composables on {@code @data-changed} and
+//      auto-selects the freshly created entry.
+const pickerSelectedNode = computed({
+    get: () => {
+        const s = selection.value;
+        if (s.kind === 'tenant')
+            return null;
+        return { kind: s.kind, name: s.name };
+    },
+    set: (v) => {
+        if (v == null)
+            selection.value = { kind: 'tenant' };
+        else
+            selection.value = v;
+    },
+});
+const pickerKitOptions = computed(() => [
     { value: '', label: t('scopes.createProject.kitNone') },
     ...(projectKitsCatalog.catalog.value?.kits ?? []).map(entry => ({
         value: entry.name,
         label: entry.title || entry.name,
     })),
 ]);
+async function onPickerDataChanged(payload) {
+    if (payload.kind === 'group') {
+        await groupsState.reload();
+        selection.value = { kind: 'group', name: payload.name };
+        banner.value = t('scopes.group.created', { name: payload.name });
+    }
+    else {
+        await projectsState.reload();
+        selection.value = { kind: 'project', name: payload.name };
+        banner.value = t('scopes.project.created', { name: payload.name });
+    }
+}
 // ─── Kit actions ───
 const kitDialogTitle = computed(() => {
     switch (kitDialogMode.value) {
@@ -657,23 +626,51 @@ const __VLS_0 = {}.EditorShell;
 /** @type {[typeof __VLS_components.EditorShell, typeof __VLS_components.EditorShell, ]} */ ;
 // @ts-ignore
 const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
+    ...{ 'onTitleClick': {} },
+    focusZone: (__VLS_ctx.focusZone),
     title: (__VLS_ctx.$t('scopes.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
+    fullHeight: (true),
+    showSidebar: (true),
+    showRightPanel: (!!__VLS_ctx.settingsScope),
+    focusModel: "auto",
+    titleClickable: true,
     wideRightPanel: true,
 }));
 const __VLS_2 = __VLS_1({
+    ...{ 'onTitleClick': {} },
+    focusZone: (__VLS_ctx.focusZone),
     title: (__VLS_ctx.$t('scopes.pageTitle')),
     breadcrumbs: (__VLS_ctx.breadcrumbs),
+    fullHeight: (true),
+    showSidebar: (true),
+    showRightPanel: (!!__VLS_ctx.settingsScope),
+    focusModel: "auto",
+    titleClickable: true,
     wideRightPanel: true,
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
-var __VLS_4 = {};
+let __VLS_4;
+let __VLS_5;
+let __VLS_6;
+const __VLS_7 = {
+    onTitleClick: (...[$event]) => {
+        __VLS_ctx.focusZone = 'sidebar';
+    }
+};
+var __VLS_8 = {};
 __VLS_3.slots.default;
 {
     const { sidebar: __VLS_thisSlot } = __VLS_3.slots;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+        ...{ class: "flex flex-col" },
+    });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.nav, __VLS_intrinsicElements.nav)({
         ...{ class: "flex flex-col gap-1 p-2" },
     });
     __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+        ...{ onPointerdown: (...[$event]) => {
+                __VLS_ctx.focusZone = 'main';
+            } },
         ...{ onClick: (__VLS_ctx.selectTenant) },
         ...{ class: "sidebar-item" },
         ...{ class: ({ 'sidebar-item--active': __VLS_ctx.isSelected({ kind: 'tenant' }) }) },
@@ -689,164 +686,116 @@ __VLS_3.slots.default;
         });
         (__VLS_ctx.tenantState.tenant.value.name);
     }
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "mt-3 flex items-center justify-between px-2" },
-    });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-        ...{ class: "text-xs uppercase opacity-50" },
-    });
-    (__VLS_ctx.$t('scopes.sidebar.projectGroups'));
-    const __VLS_5 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    const __VLS_9 = {}.ProjectListSidebar;
+    /** @type {[typeof __VLS_components.ProjectListSidebar, typeof __VLS_components.ProjectListSidebar, ]} */ ;
     // @ts-ignore
-    const __VLS_6 = __VLS_asFunctionalComponent(__VLS_5, new __VLS_5({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
+    const __VLS_10 = __VLS_asFunctionalComponent(__VLS_9, new __VLS_9({
+        ...{ 'onFocusMain': {} },
+        ...{ 'onDataChanged': {} },
+        selectedNode: (__VLS_ctx.pickerSelectedNode),
+        groups: (__VLS_ctx.groupsState.groups.value),
+        projects: (__VLS_ctx.projectsState.projects.value),
+        loading: (__VLS_ctx.groupsState.loading.value || __VLS_ctx.projectsState.loading.value),
+        error: (__VLS_ctx.groupsState.error.value || __VLS_ctx.projectsState.error.value),
+        heading: (__VLS_ctx.$t('scopes.sidebar.projectGroups')),
+        ungroupedLabel: (__VLS_ctx.$t('scopes.sidebar.ungroupedProjects')),
+        kitOptions: (__VLS_ctx.pickerKitOptions),
+        searchEnabled: (false),
+        editEnabled: true,
+        showGroupRows: true,
     }));
-    const __VLS_7 = __VLS_6({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_6));
-    let __VLS_9;
-    let __VLS_10;
-    let __VLS_11;
-    const __VLS_12 = {
-        onClick: (__VLS_ctx.openCreateGroup)
+    const __VLS_11 = __VLS_10({
+        ...{ 'onFocusMain': {} },
+        ...{ 'onDataChanged': {} },
+        selectedNode: (__VLS_ctx.pickerSelectedNode),
+        groups: (__VLS_ctx.groupsState.groups.value),
+        projects: (__VLS_ctx.projectsState.projects.value),
+        loading: (__VLS_ctx.groupsState.loading.value || __VLS_ctx.projectsState.loading.value),
+        error: (__VLS_ctx.groupsState.error.value || __VLS_ctx.projectsState.error.value),
+        heading: (__VLS_ctx.$t('scopes.sidebar.projectGroups')),
+        ungroupedLabel: (__VLS_ctx.$t('scopes.sidebar.ungroupedProjects')),
+        kitOptions: (__VLS_ctx.pickerKitOptions),
+        searchEnabled: (false),
+        editEnabled: true,
+        showGroupRows: true,
+    }, ...__VLS_functionalComponentArgsRest(__VLS_10));
+    let __VLS_13;
+    let __VLS_14;
+    let __VLS_15;
+    const __VLS_16 = {
+        onFocusMain: (...[$event]) => {
+            __VLS_ctx.focusZone = 'main';
+        }
     };
-    __VLS_8.slots.default;
-    (__VLS_ctx.$t('scopes.sidebar.addGroup'));
-    var __VLS_8;
-    for (const [group] of __VLS_getVForSourceType((__VLS_ctx.groupsState.groups.value))) {
-        ('g-' + group.name);
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    __VLS_ctx.selectGroup(group.name);
-                } },
-            ...{ class: "sidebar-item" },
-            ...{ class: ({ 'sidebar-item--active': __VLS_ctx.isSelected({ kind: 'group', name: group.name }) }) },
-            type: "button",
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-            ...{ class: "opacity-50 mr-1" },
-        });
-        (group.title || group.name);
-        if (!group.enabled) {
+    const __VLS_17 = {
+        onDataChanged: (__VLS_ctx.onPickerDataChanged)
+    };
+    __VLS_12.slots.default;
+    {
+        const { 'row-suffix': __VLS_thisSlot } = __VLS_12.slots;
+        const [{ kind, item }] = __VLS_getSlotParams(__VLS_thisSlot);
+        if (kind === 'group' && !item.enabled) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "opacity-60 text-xs" },
             });
             (__VLS_ctx.$t('scopes.common.disabled'));
         }
-        for (const [p] of __VLS_getVForSourceType((__VLS_ctx.projectsByGroup.get(group.name) ?? []))) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onClick: (...[$event]) => {
-                        __VLS_ctx.selectProject(p.name);
-                    } },
-                key: ('p-' + p.name),
-                ...{ class: "sidebar-item sidebar-item--child" },
-                ...{ class: ({ 'sidebar-item--active': __VLS_ctx.isSelected({ kind: 'project', name: p.name }) }) },
-                type: "button",
+        else if (kind === 'project' && item.status === 'ARCHIVED') {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "opacity-60 text-xs" },
             });
-            (p.title || p.name);
-            if (p.status === 'ARCHIVED') {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                    ...{ class: "opacity-60 text-xs" },
-                });
-                (__VLS_ctx.$t('scopes.common.archived'));
-            }
+            (__VLS_ctx.$t('scopes.common.archived'));
         }
     }
-    if (__VLS_ctx.ungroupedProjects.length > 0) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "mt-3 px-2 text-xs uppercase opacity-50" },
-        });
-        (__VLS_ctx.$t('scopes.sidebar.ungroupedProjects'));
-    }
-    for (const [p] of __VLS_getVForSourceType((__VLS_ctx.ungroupedProjects))) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-            ...{ onClick: (...[$event]) => {
-                    __VLS_ctx.selectProject(p.name);
-                } },
-            key: ('pu-' + p.name),
-            ...{ class: "sidebar-item sidebar-item--child" },
-            ...{ class: ({ 'sidebar-item--active': __VLS_ctx.isSelected({ kind: 'project', name: p.name }) }) },
-            type: "button",
-        });
-        (p.title || p.name);
-    }
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "mt-3 px-2" },
-    });
-    const __VLS_13 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_14 = __VLS_asFunctionalComponent(__VLS_13, new __VLS_13({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-        block: true,
-    }));
-    const __VLS_15 = __VLS_14({
-        ...{ 'onClick': {} },
-        variant: "ghost",
-        size: "sm",
-        block: true,
-    }, ...__VLS_functionalComponentArgsRest(__VLS_14));
-    let __VLS_17;
-    let __VLS_18;
-    let __VLS_19;
-    const __VLS_20 = {
-        onClick: (__VLS_ctx.openCreateProject)
-    };
-    __VLS_16.slots.default;
-    (__VLS_ctx.$t('scopes.sidebar.addProject'));
-    var __VLS_16;
+    var __VLS_12;
 }
+__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ class: "h-full min-h-0 overflow-y-auto" },
+});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "p-6 max-w-2xl flex flex-col gap-3" },
 });
 if (__VLS_ctx.combinedError) {
-    const __VLS_21 = {}.VAlert;
+    const __VLS_18 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
+    const __VLS_19 = __VLS_asFunctionalComponent(__VLS_18, new __VLS_18({
         variant: "error",
     }));
-    const __VLS_23 = __VLS_22({
+    const __VLS_20 = __VLS_19({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_22));
-    __VLS_24.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_19));
+    __VLS_21.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.combinedError);
-    var __VLS_24;
+    var __VLS_21;
 }
 if (__VLS_ctx.banner) {
-    const __VLS_25 = {}.VAlert;
+    const __VLS_22 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
+    const __VLS_23 = __VLS_asFunctionalComponent(__VLS_22, new __VLS_22({
         variant: "success",
     }));
-    const __VLS_27 = __VLS_26({
+    const __VLS_24 = __VLS_23({
         variant: "success",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_26));
-    __VLS_28.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_23));
+    __VLS_25.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.banner);
-    var __VLS_28;
+    var __VLS_25;
 }
 if (__VLS_ctx.selection.kind === 'tenant') {
-    const __VLS_29 = {}.VCard;
+    const __VLS_26 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_30 = __VLS_asFunctionalComponent(__VLS_29, new __VLS_29({
+    const __VLS_27 = __VLS_asFunctionalComponent(__VLS_26, new __VLS_26({
         title: (__VLS_ctx.$t('scopes.tenant.cardTitle')),
     }));
-    const __VLS_31 = __VLS_30({
+    const __VLS_28 = __VLS_27({
         title: (__VLS_ctx.$t('scopes.tenant.cardTitle')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_30));
-    __VLS_32.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_27));
+    __VLS_29.slots.default;
     if (!__VLS_ctx.tenantState.tenant.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "opacity-70" },
@@ -857,107 +806,107 @@ if (__VLS_ctx.selection.kind === 'tenant') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex flex-col gap-3" },
         });
-        const __VLS_33 = {}.VInput;
+        const __VLS_30 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
+        const __VLS_31 = __VLS_asFunctionalComponent(__VLS_30, new __VLS_30({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.tenantState.tenant.value.name),
             label: (__VLS_ctx.$t('scopes.common.name')),
             disabled: true,
             help: (__VLS_ctx.$t('scopes.tenant.nameImmutable')),
         }));
-        const __VLS_35 = __VLS_34({
+        const __VLS_32 = __VLS_31({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.tenantState.tenant.value.name),
             label: (__VLS_ctx.$t('scopes.common.name')),
             disabled: true,
             help: (__VLS_ctx.$t('scopes.tenant.nameImmutable')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_34));
-        let __VLS_37;
-        let __VLS_38;
-        let __VLS_39;
-        const __VLS_40 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_31));
+        let __VLS_34;
+        let __VLS_35;
+        let __VLS_36;
+        const __VLS_37 = {
             'onUpdate:modelValue': (() => { })
         };
-        var __VLS_36;
-        const __VLS_41 = {}.VInput;
+        var __VLS_33;
+        const __VLS_38 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_42 = __VLS_asFunctionalComponent(__VLS_41, new __VLS_41({
+        const __VLS_39 = __VLS_asFunctionalComponent(__VLS_38, new __VLS_38({
             modelValue: (__VLS_ctx.form.title),
             label: (__VLS_ctx.$t('scopes.common.title')),
         }));
-        const __VLS_43 = __VLS_42({
+        const __VLS_40 = __VLS_39({
             modelValue: (__VLS_ctx.form.title),
             label: (__VLS_ctx.$t('scopes.common.title')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_42));
-        const __VLS_45 = {}.VCheckbox;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_39));
+        const __VLS_42 = {}.VCheckbox;
         /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
         // @ts-ignore
-        const __VLS_46 = __VLS_asFunctionalComponent(__VLS_45, new __VLS_45({
+        const __VLS_43 = __VLS_asFunctionalComponent(__VLS_42, new __VLS_42({
             modelValue: (__VLS_ctx.form.enabled),
             label: (__VLS_ctx.$t('scopes.common.enabled')),
         }));
-        const __VLS_47 = __VLS_46({
+        const __VLS_44 = __VLS_43({
             modelValue: (__VLS_ctx.form.enabled),
             label: (__VLS_ctx.$t('scopes.common.enabled')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_46));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_43));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex justify-end" },
         });
-        const __VLS_49 = {}.VButton;
+        const __VLS_46 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
+        const __VLS_47 = __VLS_asFunctionalComponent(__VLS_46, new __VLS_46({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.tenantState.saving.value),
         }));
-        const __VLS_51 = __VLS_50({
+        const __VLS_48 = __VLS_47({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.tenantState.saving.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_50));
-        let __VLS_53;
-        let __VLS_54;
-        let __VLS_55;
-        const __VLS_56 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_47));
+        let __VLS_50;
+        let __VLS_51;
+        let __VLS_52;
+        const __VLS_53 = {
             onClick: (__VLS_ctx.saveTenant)
         };
-        __VLS_52.slots.default;
+        __VLS_49.slots.default;
         (__VLS_ctx.$t('scopes.common.save'));
-        var __VLS_52;
+        var __VLS_49;
     }
-    var __VLS_32;
+    var __VLS_29;
 }
 else if (__VLS_ctx.selection.kind === 'group') {
-    const __VLS_57 = {}.VCard;
+    const __VLS_54 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({
+    const __VLS_55 = __VLS_asFunctionalComponent(__VLS_54, new __VLS_54({
         title: (__VLS_ctx.$t('scopes.group.cardTitle', { name: __VLS_ctx.selection.name })),
     }));
-    const __VLS_59 = __VLS_58({
+    const __VLS_56 = __VLS_55({
         title: (__VLS_ctx.$t('scopes.group.cardTitle', { name: __VLS_ctx.selection.name })),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_58));
-    __VLS_60.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_55));
+    __VLS_57.slots.default;
     if (__VLS_ctx.isReservedGroup) {
-        const __VLS_61 = {}.VAlert;
+        const __VLS_58 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_62 = __VLS_asFunctionalComponent(__VLS_61, new __VLS_61({
+        const __VLS_59 = __VLS_asFunctionalComponent(__VLS_58, new __VLS_58({
             variant: "info",
             ...{ class: "mb-3" },
         }));
-        const __VLS_63 = __VLS_62({
+        const __VLS_60 = __VLS_59({
             variant: "info",
             ...{ class: "mb-3" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_62));
-        __VLS_64.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_59));
+        __VLS_61.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
         (__VLS_ctx.$t('scopes.group.reservedNote'));
-        var __VLS_64;
+        var __VLS_61;
     }
     if (!__VLS_ctx.selectedGroup) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -969,131 +918,131 @@ else if (__VLS_ctx.selection.kind === 'group') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex flex-col gap-3" },
         });
-        const __VLS_65 = {}.VInput;
+        const __VLS_62 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_66 = __VLS_asFunctionalComponent(__VLS_65, new __VLS_65({
+        const __VLS_63 = __VLS_asFunctionalComponent(__VLS_62, new __VLS_62({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedGroup.name),
             label: (__VLS_ctx.$t('scopes.common.name')),
             disabled: true,
             help: (__VLS_ctx.$t('scopes.group.nameImmutable')),
         }));
-        const __VLS_67 = __VLS_66({
+        const __VLS_64 = __VLS_63({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedGroup.name),
             label: (__VLS_ctx.$t('scopes.common.name')),
             disabled: true,
             help: (__VLS_ctx.$t('scopes.group.nameImmutable')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_66));
-        let __VLS_69;
-        let __VLS_70;
-        let __VLS_71;
-        const __VLS_72 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_63));
+        let __VLS_66;
+        let __VLS_67;
+        let __VLS_68;
+        const __VLS_69 = {
             'onUpdate:modelValue': (() => { })
         };
-        var __VLS_68;
-        const __VLS_73 = {}.VInput;
+        var __VLS_65;
+        const __VLS_70 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_74 = __VLS_asFunctionalComponent(__VLS_73, new __VLS_73({
+        const __VLS_71 = __VLS_asFunctionalComponent(__VLS_70, new __VLS_70({
             modelValue: (__VLS_ctx.form.title),
             label: (__VLS_ctx.$t('scopes.common.title')),
         }));
-        const __VLS_75 = __VLS_74({
+        const __VLS_72 = __VLS_71({
             modelValue: (__VLS_ctx.form.title),
             label: (__VLS_ctx.$t('scopes.common.title')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_74));
-        const __VLS_77 = {}.VCheckbox;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_71));
+        const __VLS_74 = {}.VCheckbox;
         /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
         // @ts-ignore
-        const __VLS_78 = __VLS_asFunctionalComponent(__VLS_77, new __VLS_77({
+        const __VLS_75 = __VLS_asFunctionalComponent(__VLS_74, new __VLS_74({
             modelValue: (__VLS_ctx.form.enabled),
             label: (__VLS_ctx.$t('scopes.common.enabled')),
         }));
-        const __VLS_79 = __VLS_78({
+        const __VLS_76 = __VLS_75({
             modelValue: (__VLS_ctx.form.enabled),
             label: (__VLS_ctx.$t('scopes.common.enabled')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_78));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_75));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex justify-between" },
         });
-        const __VLS_81 = {}.VButton;
+        const __VLS_78 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_82 = __VLS_asFunctionalComponent(__VLS_81, new __VLS_81({
+        const __VLS_79 = __VLS_asFunctionalComponent(__VLS_78, new __VLS_78({
             ...{ 'onClick': {} },
             variant: "danger",
             disabled: (__VLS_ctx.isReservedGroup),
             loading: (__VLS_ctx.groupsState.busy.value),
         }));
-        const __VLS_83 = __VLS_82({
+        const __VLS_80 = __VLS_79({
             ...{ 'onClick': {} },
             variant: "danger",
             disabled: (__VLS_ctx.isReservedGroup),
             loading: (__VLS_ctx.groupsState.busy.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_82));
-        let __VLS_85;
-        let __VLS_86;
-        let __VLS_87;
-        const __VLS_88 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_79));
+        let __VLS_82;
+        let __VLS_83;
+        let __VLS_84;
+        const __VLS_85 = {
             onClick: (__VLS_ctx.deleteGroup)
         };
-        __VLS_84.slots.default;
+        __VLS_81.slots.default;
         (__VLS_ctx.$t('scopes.group.delete'));
-        var __VLS_84;
-        const __VLS_89 = {}.VButton;
+        var __VLS_81;
+        const __VLS_86 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_90 = __VLS_asFunctionalComponent(__VLS_89, new __VLS_89({
+        const __VLS_87 = __VLS_asFunctionalComponent(__VLS_86, new __VLS_86({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.groupsState.busy.value),
         }));
-        const __VLS_91 = __VLS_90({
+        const __VLS_88 = __VLS_87({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.groupsState.busy.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_90));
-        let __VLS_93;
-        let __VLS_94;
-        let __VLS_95;
-        const __VLS_96 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_87));
+        let __VLS_90;
+        let __VLS_91;
+        let __VLS_92;
+        const __VLS_93 = {
             onClick: (__VLS_ctx.saveGroup)
         };
-        __VLS_92.slots.default;
+        __VLS_89.slots.default;
         (__VLS_ctx.$t('scopes.common.save'));
-        var __VLS_92;
+        var __VLS_89;
     }
-    var __VLS_60;
+    var __VLS_57;
 }
 else if (__VLS_ctx.selection.kind === 'project') {
-    const __VLS_97 = {}.VCard;
+    const __VLS_94 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_98 = __VLS_asFunctionalComponent(__VLS_97, new __VLS_97({
+    const __VLS_95 = __VLS_asFunctionalComponent(__VLS_94, new __VLS_94({
         title: (__VLS_ctx.$t('scopes.project.cardTitle', { name: __VLS_ctx.selection.name })),
     }));
-    const __VLS_99 = __VLS_98({
+    const __VLS_96 = __VLS_95({
         title: (__VLS_ctx.$t('scopes.project.cardTitle', { name: __VLS_ctx.selection.name })),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_98));
-    __VLS_100.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_95));
+    __VLS_97.slots.default;
     if (__VLS_ctx.isArchivedProject) {
-        const __VLS_101 = {}.VAlert;
+        const __VLS_98 = {}.VAlert;
         /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_102 = __VLS_asFunctionalComponent(__VLS_101, new __VLS_101({
+        const __VLS_99 = __VLS_asFunctionalComponent(__VLS_98, new __VLS_98({
             variant: "warning",
             ...{ class: "mb-3" },
         }));
-        const __VLS_103 = __VLS_102({
+        const __VLS_100 = __VLS_99({
             variant: "warning",
             ...{ class: "mb-3" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_102));
-        __VLS_104.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_99));
+        __VLS_101.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
         (__VLS_ctx.$t('scopes.project.archivedNote'));
-        var __VLS_104;
+        var __VLS_101;
     }
     if (!__VLS_ctx.selectedProject) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1105,65 +1054,65 @@ else if (__VLS_ctx.selection.kind === 'project') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex flex-col gap-3" },
         });
-        const __VLS_105 = {}.VInput;
+        const __VLS_102 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_106 = __VLS_asFunctionalComponent(__VLS_105, new __VLS_105({
+        const __VLS_103 = __VLS_asFunctionalComponent(__VLS_102, new __VLS_102({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedProject.name),
             label: (__VLS_ctx.$t('scopes.common.name')),
             disabled: true,
             help: (__VLS_ctx.$t('scopes.project.nameImmutable')),
         }));
-        const __VLS_107 = __VLS_106({
+        const __VLS_104 = __VLS_103({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.selectedProject.name),
             label: (__VLS_ctx.$t('scopes.common.name')),
             disabled: true,
             help: (__VLS_ctx.$t('scopes.project.nameImmutable')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_106));
-        let __VLS_109;
-        let __VLS_110;
-        let __VLS_111;
-        const __VLS_112 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_103));
+        let __VLS_106;
+        let __VLS_107;
+        let __VLS_108;
+        const __VLS_109 = {
             'onUpdate:modelValue': (() => { })
         };
-        var __VLS_108;
-        const __VLS_113 = {}.VInput;
+        var __VLS_105;
+        const __VLS_110 = {}.VInput;
         /** @type {[typeof __VLS_components.VInput, ]} */ ;
         // @ts-ignore
-        const __VLS_114 = __VLS_asFunctionalComponent(__VLS_113, new __VLS_113({
+        const __VLS_111 = __VLS_asFunctionalComponent(__VLS_110, new __VLS_110({
             modelValue: (__VLS_ctx.form.title),
             label: (__VLS_ctx.$t('scopes.common.title')),
         }));
-        const __VLS_115 = __VLS_114({
+        const __VLS_112 = __VLS_111({
             modelValue: (__VLS_ctx.form.title),
             label: (__VLS_ctx.$t('scopes.common.title')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_114));
-        const __VLS_117 = {}.VSelect;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_111));
+        const __VLS_114 = {}.VSelect;
         /** @type {[typeof __VLS_components.VSelect, ]} */ ;
         // @ts-ignore
-        const __VLS_118 = __VLS_asFunctionalComponent(__VLS_117, new __VLS_117({
+        const __VLS_115 = __VLS_asFunctionalComponent(__VLS_114, new __VLS_114({
             modelValue: (__VLS_ctx.form.projectGroupId),
             label: (__VLS_ctx.$t('scopes.project.groupLabel')),
             options: (__VLS_ctx.groupSelectOptions),
         }));
-        const __VLS_119 = __VLS_118({
+        const __VLS_116 = __VLS_115({
             modelValue: (__VLS_ctx.form.projectGroupId),
             label: (__VLS_ctx.$t('scopes.project.groupLabel')),
             options: (__VLS_ctx.groupSelectOptions),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_118));
-        const __VLS_121 = {}.VCheckbox;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_115));
+        const __VLS_118 = {}.VCheckbox;
         /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
         // @ts-ignore
-        const __VLS_122 = __VLS_asFunctionalComponent(__VLS_121, new __VLS_121({
+        const __VLS_119 = __VLS_asFunctionalComponent(__VLS_118, new __VLS_118({
             modelValue: (__VLS_ctx.form.enabled),
             label: (__VLS_ctx.$t('scopes.common.enabled')),
         }));
-        const __VLS_123 = __VLS_122({
+        const __VLS_120 = __VLS_119({
             modelValue: (__VLS_ctx.form.enabled),
             label: (__VLS_ctx.$t('scopes.common.enabled')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_122));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_119));
         __VLS_asFunctionalElement(__VLS_intrinsicElements.dl, __VLS_intrinsicElements.dl)({
             ...{ class: "grid grid-cols-2 gap-x-4 gap-y-1 text-sm opacity-80" },
         });
@@ -1194,66 +1143,66 @@ else if (__VLS_ctx.selection.kind === 'project') {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex justify-between" },
         });
-        const __VLS_125 = {}.VButton;
+        const __VLS_122 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_126 = __VLS_asFunctionalComponent(__VLS_125, new __VLS_125({
+        const __VLS_123 = __VLS_asFunctionalComponent(__VLS_122, new __VLS_122({
             ...{ 'onClick': {} },
             variant: "danger",
             disabled: (__VLS_ctx.isArchivedProject),
             loading: (__VLS_ctx.projectsState.busy.value),
         }));
-        const __VLS_127 = __VLS_126({
+        const __VLS_124 = __VLS_123({
             ...{ 'onClick': {} },
             variant: "danger",
             disabled: (__VLS_ctx.isArchivedProject),
             loading: (__VLS_ctx.projectsState.busy.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_126));
-        let __VLS_129;
-        let __VLS_130;
-        let __VLS_131;
-        const __VLS_132 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_123));
+        let __VLS_126;
+        let __VLS_127;
+        let __VLS_128;
+        const __VLS_129 = {
             onClick: (__VLS_ctx.archiveProject)
         };
-        __VLS_128.slots.default;
+        __VLS_125.slots.default;
         (__VLS_ctx.$t('scopes.project.archive'));
-        var __VLS_128;
-        const __VLS_133 = {}.VButton;
+        var __VLS_125;
+        const __VLS_130 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_134 = __VLS_asFunctionalComponent(__VLS_133, new __VLS_133({
+        const __VLS_131 = __VLS_asFunctionalComponent(__VLS_130, new __VLS_130({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.projectsState.busy.value),
         }));
-        const __VLS_135 = __VLS_134({
+        const __VLS_132 = __VLS_131({
             ...{ 'onClick': {} },
             variant: "primary",
             loading: (__VLS_ctx.projectsState.busy.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_134));
-        let __VLS_137;
-        let __VLS_138;
-        let __VLS_139;
-        const __VLS_140 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_131));
+        let __VLS_134;
+        let __VLS_135;
+        let __VLS_136;
+        const __VLS_137 = {
             onClick: (__VLS_ctx.saveProject)
         };
-        __VLS_136.slots.default;
+        __VLS_133.slots.default;
         (__VLS_ctx.$t('scopes.common.save'));
-        var __VLS_136;
+        var __VLS_133;
     }
-    var __VLS_100;
+    var __VLS_97;
 }
 if (__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject) {
-    const __VLS_141 = {}.VCard;
+    const __VLS_138 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_142 = __VLS_asFunctionalComponent(__VLS_141, new __VLS_141({
+    const __VLS_139 = __VLS_asFunctionalComponent(__VLS_138, new __VLS_138({
         title: (__VLS_ctx.$t('scopes.project.languagesCardTitle')),
     }));
-    const __VLS_143 = __VLS_142({
+    const __VLS_140 = __VLS_139({
         title: (__VLS_ctx.$t('scopes.project.languagesCardTitle')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_142));
-    __VLS_144.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_139));
+    __VLS_141.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
         ...{ class: "text-sm opacity-70 mb-3" },
     });
@@ -1261,75 +1210,75 @@ if (__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex flex-col gap-3" },
     });
-    const __VLS_145 = {}.VSelect;
+    const __VLS_142 = {}.VSelect;
     /** @type {[typeof __VLS_components.VSelect, ]} */ ;
     // @ts-ignore
-    const __VLS_146 = __VLS_asFunctionalComponent(__VLS_145, new __VLS_145({
+    const __VLS_143 = __VLS_asFunctionalComponent(__VLS_142, new __VLS_142({
         ...{ 'onUpdate:modelValue': {} },
         modelValue: (__VLS_ctx.projectChatLanguage),
         options: (__VLS_ctx.projectLanguageOptions),
         label: (__VLS_ctx.$t('scopes.project.chatLanguageLabel')),
         disabled: (__VLS_ctx.settingsState.busy.value || __VLS_ctx.isArchivedProject),
     }));
-    const __VLS_147 = __VLS_146({
+    const __VLS_144 = __VLS_143({
         ...{ 'onUpdate:modelValue': {} },
         modelValue: (__VLS_ctx.projectChatLanguage),
         options: (__VLS_ctx.projectLanguageOptions),
         label: (__VLS_ctx.$t('scopes.project.chatLanguageLabel')),
         disabled: (__VLS_ctx.settingsState.busy.value || __VLS_ctx.isArchivedProject),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_146));
-    let __VLS_149;
-    let __VLS_150;
-    let __VLS_151;
-    const __VLS_152 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_143));
+    let __VLS_146;
+    let __VLS_147;
+    let __VLS_148;
+    const __VLS_149 = {
         'onUpdate:modelValue': (__VLS_ctx.onProjectChatLanguageChanged)
     };
-    var __VLS_148;
+    var __VLS_145;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
         ...{ class: "text-xs opacity-60 -mt-2" },
     });
     (__VLS_ctx.$t('scopes.project.chatLanguageHelp'));
-    const __VLS_153 = {}.VSelect;
+    const __VLS_150 = {}.VSelect;
     /** @type {[typeof __VLS_components.VSelect, ]} */ ;
     // @ts-ignore
-    const __VLS_154 = __VLS_asFunctionalComponent(__VLS_153, new __VLS_153({
+    const __VLS_151 = __VLS_asFunctionalComponent(__VLS_150, new __VLS_150({
         ...{ 'onUpdate:modelValue': {} },
         modelValue: (__VLS_ctx.projectContentLanguage),
         options: (__VLS_ctx.projectLanguageOptions),
         label: (__VLS_ctx.$t('scopes.project.contentLanguageLabel')),
         disabled: (__VLS_ctx.settingsState.busy.value || __VLS_ctx.isArchivedProject),
     }));
-    const __VLS_155 = __VLS_154({
+    const __VLS_152 = __VLS_151({
         ...{ 'onUpdate:modelValue': {} },
         modelValue: (__VLS_ctx.projectContentLanguage),
         options: (__VLS_ctx.projectLanguageOptions),
         label: (__VLS_ctx.$t('scopes.project.contentLanguageLabel')),
         disabled: (__VLS_ctx.settingsState.busy.value || __VLS_ctx.isArchivedProject),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_154));
-    let __VLS_157;
-    let __VLS_158;
-    let __VLS_159;
-    const __VLS_160 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_151));
+    let __VLS_154;
+    let __VLS_155;
+    let __VLS_156;
+    const __VLS_157 = {
         'onUpdate:modelValue': (__VLS_ctx.onProjectContentLanguageChanged)
     };
-    var __VLS_156;
+    var __VLS_153;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
         ...{ class: "text-xs opacity-60 -mt-2" },
     });
     (__VLS_ctx.$t('scopes.project.contentLanguageHelp'));
-    var __VLS_144;
+    var __VLS_141;
 }
 if (__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject) {
-    const __VLS_161 = {}.VCard;
+    const __VLS_158 = {}.VCard;
     /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
     // @ts-ignore
-    const __VLS_162 = __VLS_asFunctionalComponent(__VLS_161, new __VLS_161({
+    const __VLS_159 = __VLS_asFunctionalComponent(__VLS_158, new __VLS_158({
         title: (__VLS_ctx.$t('scopes.kit.cardTitle')),
     }));
-    const __VLS_163 = __VLS_162({
+    const __VLS_160 = __VLS_159({
         title: (__VLS_ctx.$t('scopes.kit.cardTitle')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_162));
-    __VLS_164.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_159));
+    __VLS_161.slots.default;
     if (__VLS_ctx.kitState.loading.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "opacity-70 text-sm" },
@@ -1443,23 +1392,23 @@ if (__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex flex-wrap justify-end gap-2 pt-2" },
         });
-        const __VLS_165 = {}.VButton;
+        const __VLS_162 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_166 = __VLS_asFunctionalComponent(__VLS_165, new __VLS_165({
+        const __VLS_163 = __VLS_asFunctionalComponent(__VLS_162, new __VLS_162({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
         }));
-        const __VLS_167 = __VLS_166({
+        const __VLS_164 = __VLS_163({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_166));
-        let __VLS_169;
-        let __VLS_170;
-        let __VLS_171;
-        const __VLS_172 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_163));
+        let __VLS_166;
+        let __VLS_167;
+        let __VLS_168;
+        const __VLS_169 = {
             onClick: (...[$event]) => {
                 if (!(__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject))
                     return;
@@ -1470,28 +1419,28 @@ if (__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject) {
                 __VLS_ctx.openKitDialog('export');
             }
         };
-        __VLS_168.slots.default;
+        __VLS_165.slots.default;
         (__VLS_ctx.$t('scopes.kit.export'));
-        var __VLS_168;
-        const __VLS_173 = {}.VButton;
+        var __VLS_165;
+        const __VLS_170 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_174 = __VLS_asFunctionalComponent(__VLS_173, new __VLS_173({
+        const __VLS_171 = __VLS_asFunctionalComponent(__VLS_170, new __VLS_170({
             ...{ 'onClick': {} },
             variant: "primary",
             size: "sm",
             loading: (__VLS_ctx.kitState.busy.value),
         }));
-        const __VLS_175 = __VLS_174({
+        const __VLS_172 = __VLS_171({
             ...{ 'onClick': {} },
             variant: "primary",
             size: "sm",
             loading: (__VLS_ctx.kitState.busy.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_174));
-        let __VLS_177;
-        let __VLS_178;
-        let __VLS_179;
-        const __VLS_180 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_171));
+        let __VLS_174;
+        let __VLS_175;
+        let __VLS_176;
+        const __VLS_177 = {
             onClick: (...[$event]) => {
                 if (!(__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject))
                     return;
@@ -1502,9 +1451,9 @@ if (__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject) {
                 __VLS_ctx.openKitDialog('update');
             }
         };
-        __VLS_176.slots.default;
+        __VLS_173.slots.default;
         (__VLS_ctx.$t('scopes.kit.update'));
-        var __VLS_176;
+        var __VLS_173;
     }
     else {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1517,25 +1466,25 @@ if (__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "flex flex-wrap justify-end gap-2 pt-2" },
         });
-        const __VLS_181 = {}.VButton;
+        const __VLS_178 = {}.VButton;
         /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_182 = __VLS_asFunctionalComponent(__VLS_181, new __VLS_181({
+        const __VLS_179 = __VLS_asFunctionalComponent(__VLS_178, new __VLS_178({
             ...{ 'onClick': {} },
             variant: "primary",
             size: "sm",
             loading: (__VLS_ctx.kitState.busy.value),
         }));
-        const __VLS_183 = __VLS_182({
+        const __VLS_180 = __VLS_179({
             ...{ 'onClick': {} },
             variant: "primary",
             size: "sm",
             loading: (__VLS_ctx.kitState.busy.value),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_182));
-        let __VLS_185;
-        let __VLS_186;
-        let __VLS_187;
-        const __VLS_188 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_179));
+        let __VLS_182;
+        let __VLS_183;
+        let __VLS_184;
+        const __VLS_185 = {
             onClick: (...[$event]) => {
                 if (!(__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject))
                     return;
@@ -1546,9 +1495,9 @@ if (__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject) {
                 __VLS_ctx.openKitDialog('install');
             }
         };
-        __VLS_184.slots.default;
+        __VLS_181.slots.default;
         (__VLS_ctx.$t('scopes.kit.install'));
-        var __VLS_184;
+        var __VLS_181;
     }
     if (__VLS_ctx.kitState.lastResult.value) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1605,11 +1554,11 @@ if (__VLS_ctx.selection.kind === 'project' && __VLS_ctx.selectedProject) {
             (w);
         }
     }
-    var __VLS_164;
+    var __VLS_161;
 }
-if (__VLS_ctx.settingsScope) {
-    {
-        const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
+{
+    const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
+    if (__VLS_ctx.settingsScope) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "p-4 flex flex-col gap-3" },
         });
@@ -1660,17 +1609,17 @@ if (__VLS_ctx.settingsScope) {
         }
         if (__VLS_ctx.rightTab === 'settings') {
             if (!__VLS_ctx.settingsState.loading.value && __VLS_ctx.settingsState.settings.value.length === 0) {
-                const __VLS_189 = {}.VEmptyState;
+                const __VLS_186 = {}.VEmptyState;
                 /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                 // @ts-ignore
-                const __VLS_190 = __VLS_asFunctionalComponent(__VLS_189, new __VLS_189({
+                const __VLS_187 = __VLS_asFunctionalComponent(__VLS_186, new __VLS_186({
                     headline: (__VLS_ctx.$t('scopes.settingsPanel.noSettingsHeadline')),
                     body: (__VLS_ctx.$t('scopes.settingsPanel.noSettingsBody')),
                 }));
-                const __VLS_191 = __VLS_190({
+                const __VLS_188 = __VLS_187({
                     headline: (__VLS_ctx.$t('scopes.settingsPanel.noSettingsHeadline')),
                     body: (__VLS_ctx.$t('scopes.settingsPanel.noSettingsBody')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_190));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_187));
             }
             __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
                 ...{ class: "flex flex-col divide-y divide-base-300" },
@@ -1693,92 +1642,92 @@ if (__VLS_ctx.settingsScope) {
                 (s.type);
                 if (__VLS_ctx.editingKey === s.key) {
                     if (s.type !== __VLS_ctx.SettingType.PASSWORD) {
-                        const __VLS_193 = {}.VInput;
+                        const __VLS_190 = {}.VInput;
                         /** @type {[typeof __VLS_components.VInput, ]} */ ;
                         // @ts-ignore
-                        const __VLS_194 = __VLS_asFunctionalComponent(__VLS_193, new __VLS_193({
+                        const __VLS_191 = __VLS_asFunctionalComponent(__VLS_190, new __VLS_190({
                             modelValue: (__VLS_ctx.editValue),
                             label: (__VLS_ctx.$t('scopes.settingsPanel.valueLabel')),
                         }));
-                        const __VLS_195 = __VLS_194({
+                        const __VLS_192 = __VLS_191({
                             modelValue: (__VLS_ctx.editValue),
                             label: (__VLS_ctx.$t('scopes.settingsPanel.valueLabel')),
-                        }, ...__VLS_functionalComponentArgsRest(__VLS_194));
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_191));
                     }
                     else {
-                        const __VLS_197 = {}.VInput;
+                        const __VLS_194 = {}.VInput;
                         /** @type {[typeof __VLS_components.VInput, ]} */ ;
                         // @ts-ignore
-                        const __VLS_198 = __VLS_asFunctionalComponent(__VLS_197, new __VLS_197({
+                        const __VLS_195 = __VLS_asFunctionalComponent(__VLS_194, new __VLS_194({
                             modelValue: (__VLS_ctx.editValue),
                             type: "password",
                             label: (__VLS_ctx.$t('scopes.settingsPanel.newPasswordLabel')),
                             placeholder: (__VLS_ctx.$t('scopes.settingsPanel.passwordEmptyToClear')),
                         }));
-                        const __VLS_199 = __VLS_198({
+                        const __VLS_196 = __VLS_195({
                             modelValue: (__VLS_ctx.editValue),
                             type: "password",
                             label: (__VLS_ctx.$t('scopes.settingsPanel.newPasswordLabel')),
                             placeholder: (__VLS_ctx.$t('scopes.settingsPanel.passwordEmptyToClear')),
-                        }, ...__VLS_functionalComponentArgsRest(__VLS_198));
+                        }, ...__VLS_functionalComponentArgsRest(__VLS_195));
                     }
-                    const __VLS_201 = {}.VTextarea;
+                    const __VLS_198 = {}.VTextarea;
                     /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
                     // @ts-ignore
-                    const __VLS_202 = __VLS_asFunctionalComponent(__VLS_201, new __VLS_201({
+                    const __VLS_199 = __VLS_asFunctionalComponent(__VLS_198, new __VLS_198({
                         modelValue: (__VLS_ctx.editDescription),
                         label: (__VLS_ctx.$t('scopes.settingsPanel.descriptionLabel')),
                         rows: (2),
                     }));
-                    const __VLS_203 = __VLS_202({
+                    const __VLS_200 = __VLS_199({
                         modelValue: (__VLS_ctx.editDescription),
                         label: (__VLS_ctx.$t('scopes.settingsPanel.descriptionLabel')),
                         rows: (2),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_202));
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_199));
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "flex justify-end gap-2 mt-1" },
                     });
-                    const __VLS_205 = {}.VButton;
+                    const __VLS_202 = {}.VButton;
                     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
                     // @ts-ignore
-                    const __VLS_206 = __VLS_asFunctionalComponent(__VLS_205, new __VLS_205({
+                    const __VLS_203 = __VLS_asFunctionalComponent(__VLS_202, new __VLS_202({
                         ...{ 'onClick': {} },
                         variant: "ghost",
                         size: "sm",
                     }));
-                    const __VLS_207 = __VLS_206({
+                    const __VLS_204 = __VLS_203({
                         ...{ 'onClick': {} },
                         variant: "ghost",
                         size: "sm",
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_206));
-                    let __VLS_209;
-                    let __VLS_210;
-                    let __VLS_211;
-                    const __VLS_212 = {
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_203));
+                    let __VLS_206;
+                    let __VLS_207;
+                    let __VLS_208;
+                    const __VLS_209 = {
                         onClick: (__VLS_ctx.cancelEditSetting)
                     };
-                    __VLS_208.slots.default;
+                    __VLS_205.slots.default;
                     (__VLS_ctx.$t('scopes.common.cancel'));
-                    var __VLS_208;
-                    const __VLS_213 = {}.VButton;
+                    var __VLS_205;
+                    const __VLS_210 = {}.VButton;
                     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
                     // @ts-ignore
-                    const __VLS_214 = __VLS_asFunctionalComponent(__VLS_213, new __VLS_213({
+                    const __VLS_211 = __VLS_asFunctionalComponent(__VLS_210, new __VLS_210({
                         ...{ 'onClick': {} },
                         variant: "primary",
                         size: "sm",
                         loading: (__VLS_ctx.settingsState.busy.value),
                     }));
-                    const __VLS_215 = __VLS_214({
+                    const __VLS_212 = __VLS_211({
                         ...{ 'onClick': {} },
                         variant: "primary",
                         size: "sm",
                         loading: (__VLS_ctx.settingsState.busy.value),
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_214));
-                    let __VLS_217;
-                    let __VLS_218;
-                    let __VLS_219;
-                    const __VLS_220 = {
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_211));
+                    let __VLS_214;
+                    let __VLS_215;
+                    let __VLS_216;
+                    const __VLS_217 = {
                         onClick: (...[$event]) => {
                             if (!(__VLS_ctx.settingsScope))
                                 return;
@@ -1789,9 +1738,9 @@ if (__VLS_ctx.settingsScope) {
                             __VLS_ctx.saveEditSetting(s);
                         }
                     };
-                    __VLS_216.slots.default;
+                    __VLS_213.slots.default;
                     (__VLS_ctx.$t('scopes.common.save'));
-                    var __VLS_216;
+                    var __VLS_213;
                 }
                 else {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1816,23 +1765,23 @@ if (__VLS_ctx.settingsScope) {
                     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                         ...{ class: "flex justify-end gap-2 mt-1" },
                     });
-                    const __VLS_221 = {}.VButton;
+                    const __VLS_218 = {}.VButton;
                     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
                     // @ts-ignore
-                    const __VLS_222 = __VLS_asFunctionalComponent(__VLS_221, new __VLS_221({
+                    const __VLS_219 = __VLS_asFunctionalComponent(__VLS_218, new __VLS_218({
                         ...{ 'onClick': {} },
                         variant: "ghost",
                         size: "sm",
                     }));
-                    const __VLS_223 = __VLS_222({
+                    const __VLS_220 = __VLS_219({
                         ...{ 'onClick': {} },
                         variant: "ghost",
                         size: "sm",
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_222));
-                    let __VLS_225;
-                    let __VLS_226;
-                    let __VLS_227;
-                    const __VLS_228 = {
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_219));
+                    let __VLS_222;
+                    let __VLS_223;
+                    let __VLS_224;
+                    const __VLS_225 = {
                         onClick: (...[$event]) => {
                             if (!(__VLS_ctx.settingsScope))
                                 return;
@@ -1843,26 +1792,26 @@ if (__VLS_ctx.settingsScope) {
                             __VLS_ctx.startEditSetting(s);
                         }
                     };
-                    __VLS_224.slots.default;
+                    __VLS_221.slots.default;
                     (__VLS_ctx.$t('scopes.settingsPanel.edit'));
-                    var __VLS_224;
-                    const __VLS_229 = {}.VButton;
+                    var __VLS_221;
+                    const __VLS_226 = {}.VButton;
                     /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
                     // @ts-ignore
-                    const __VLS_230 = __VLS_asFunctionalComponent(__VLS_229, new __VLS_229({
+                    const __VLS_227 = __VLS_asFunctionalComponent(__VLS_226, new __VLS_226({
                         ...{ 'onClick': {} },
                         variant: "ghost",
                         size: "sm",
                     }));
-                    const __VLS_231 = __VLS_230({
+                    const __VLS_228 = __VLS_227({
                         ...{ 'onClick': {} },
                         variant: "ghost",
                         size: "sm",
-                    }, ...__VLS_functionalComponentArgsRest(__VLS_230));
-                    let __VLS_233;
-                    let __VLS_234;
-                    let __VLS_235;
-                    const __VLS_236 = {
+                    }, ...__VLS_functionalComponentArgsRest(__VLS_227));
+                    let __VLS_230;
+                    let __VLS_231;
+                    let __VLS_232;
+                    const __VLS_233 = {
                         onClick: (...[$event]) => {
                             if (!(__VLS_ctx.settingsScope))
                                 return;
@@ -1873,9 +1822,9 @@ if (__VLS_ctx.settingsScope) {
                             __VLS_ctx.deleteSetting(s);
                         }
                     };
-                    __VLS_232.slots.default;
+                    __VLS_229.slots.default;
                     (__VLS_ctx.$t('scopes.settingsPanel.deleteLabel'));
-                    var __VLS_232;
+                    var __VLS_229;
                 }
             }
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -1885,133 +1834,133 @@ if (__VLS_ctx.settingsScope) {
                 ...{ class: "text-xs uppercase opacity-60" },
             });
             (__VLS_ctx.$t('scopes.settingsPanel.addTitle'));
-            const __VLS_237 = {}.VInput;
+            const __VLS_234 = {}.VInput;
             /** @type {[typeof __VLS_components.VInput, ]} */ ;
             // @ts-ignore
-            const __VLS_238 = __VLS_asFunctionalComponent(__VLS_237, new __VLS_237({
+            const __VLS_235 = __VLS_asFunctionalComponent(__VLS_234, new __VLS_234({
                 modelValue: (__VLS_ctx.newSettingKey),
                 label: (__VLS_ctx.$t('scopes.settingsPanel.keyLabel')),
                 placeholder: (__VLS_ctx.$t('scopes.settingsPanel.keyPlaceholder')),
             }));
-            const __VLS_239 = __VLS_238({
+            const __VLS_236 = __VLS_235({
                 modelValue: (__VLS_ctx.newSettingKey),
                 label: (__VLS_ctx.$t('scopes.settingsPanel.keyLabel')),
                 placeholder: (__VLS_ctx.$t('scopes.settingsPanel.keyPlaceholder')),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_238));
-            const __VLS_241 = {}.VSelect;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_235));
+            const __VLS_238 = {}.VSelect;
             /** @type {[typeof __VLS_components.VSelect, ]} */ ;
             // @ts-ignore
-            const __VLS_242 = __VLS_asFunctionalComponent(__VLS_241, new __VLS_241({
+            const __VLS_239 = __VLS_asFunctionalComponent(__VLS_238, new __VLS_238({
                 modelValue: (__VLS_ctx.newSettingType),
                 label: (__VLS_ctx.$t('scopes.settingsPanel.typeLabel')),
                 options: (__VLS_ctx.settingTypeOptions),
             }));
-            const __VLS_243 = __VLS_242({
+            const __VLS_240 = __VLS_239({
                 modelValue: (__VLS_ctx.newSettingType),
                 label: (__VLS_ctx.$t('scopes.settingsPanel.typeLabel')),
                 options: (__VLS_ctx.settingTypeOptions),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_242));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_239));
             if (__VLS_ctx.newSettingType !== __VLS_ctx.SettingType.PASSWORD) {
-                const __VLS_245 = {}.VInput;
+                const __VLS_242 = {}.VInput;
                 /** @type {[typeof __VLS_components.VInput, ]} */ ;
                 // @ts-ignore
-                const __VLS_246 = __VLS_asFunctionalComponent(__VLS_245, new __VLS_245({
+                const __VLS_243 = __VLS_asFunctionalComponent(__VLS_242, new __VLS_242({
                     modelValue: (__VLS_ctx.newSettingValue),
                     label: (__VLS_ctx.$t('scopes.settingsPanel.valueLabel')),
                 }));
-                const __VLS_247 = __VLS_246({
+                const __VLS_244 = __VLS_243({
                     modelValue: (__VLS_ctx.newSettingValue),
                     label: (__VLS_ctx.$t('scopes.settingsPanel.valueLabel')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_246));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_243));
             }
             else {
-                const __VLS_249 = {}.VInput;
+                const __VLS_246 = {}.VInput;
                 /** @type {[typeof __VLS_components.VInput, ]} */ ;
                 // @ts-ignore
-                const __VLS_250 = __VLS_asFunctionalComponent(__VLS_249, new __VLS_249({
+                const __VLS_247 = __VLS_asFunctionalComponent(__VLS_246, new __VLS_246({
                     modelValue: (__VLS_ctx.newSettingValue),
                     type: "password",
                     label: (__VLS_ctx.$t('scopes.settingsPanel.passwordLabel')),
                 }));
-                const __VLS_251 = __VLS_250({
+                const __VLS_248 = __VLS_247({
                     modelValue: (__VLS_ctx.newSettingValue),
                     type: "password",
                     label: (__VLS_ctx.$t('scopes.settingsPanel.passwordLabel')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_250));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_247));
             }
-            const __VLS_253 = {}.VTextarea;
+            const __VLS_250 = {}.VTextarea;
             /** @type {[typeof __VLS_components.VTextarea, ]} */ ;
             // @ts-ignore
-            const __VLS_254 = __VLS_asFunctionalComponent(__VLS_253, new __VLS_253({
+            const __VLS_251 = __VLS_asFunctionalComponent(__VLS_250, new __VLS_250({
                 modelValue: (__VLS_ctx.newSettingDescription),
                 label: (__VLS_ctx.$t('scopes.settingsPanel.descriptionOptional')),
                 rows: (2),
             }));
-            const __VLS_255 = __VLS_254({
+            const __VLS_252 = __VLS_251({
                 modelValue: (__VLS_ctx.newSettingDescription),
                 label: (__VLS_ctx.$t('scopes.settingsPanel.descriptionOptional')),
                 rows: (2),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_254));
-            const __VLS_257 = {}.VButton;
+            }, ...__VLS_functionalComponentArgsRest(__VLS_251));
+            const __VLS_254 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
-            const __VLS_258 = __VLS_asFunctionalComponent(__VLS_257, new __VLS_257({
+            const __VLS_255 = __VLS_asFunctionalComponent(__VLS_254, new __VLS_254({
                 ...{ 'onClick': {} },
                 variant: "primary",
                 size: "sm",
                 disabled: (!__VLS_ctx.newSettingKey.trim()),
                 loading: (__VLS_ctx.settingsState.busy.value),
             }));
-            const __VLS_259 = __VLS_258({
+            const __VLS_256 = __VLS_255({
                 ...{ 'onClick': {} },
                 variant: "primary",
                 size: "sm",
                 disabled: (!__VLS_ctx.newSettingKey.trim()),
                 loading: (__VLS_ctx.settingsState.busy.value),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_258));
-            let __VLS_261;
-            let __VLS_262;
-            let __VLS_263;
-            const __VLS_264 = {
+            }, ...__VLS_functionalComponentArgsRest(__VLS_255));
+            let __VLS_258;
+            let __VLS_259;
+            let __VLS_260;
+            const __VLS_261 = {
                 onClick: (__VLS_ctx.addSetting)
             };
-            __VLS_260.slots.default;
+            __VLS_257.slots.default;
             (__VLS_ctx.$t('scopes.settingsPanel.add'));
-            var __VLS_260;
+            var __VLS_257;
         }
         else if (__VLS_ctx.rightTab === 'forms') {
             if (__VLS_ctx.settingFormsError) {
-                const __VLS_265 = {}.VAlert;
+                const __VLS_262 = {}.VAlert;
                 /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
                 // @ts-ignore
-                const __VLS_266 = __VLS_asFunctionalComponent(__VLS_265, new __VLS_265({
+                const __VLS_263 = __VLS_asFunctionalComponent(__VLS_262, new __VLS_262({
                     variant: "error",
                 }));
-                const __VLS_267 = __VLS_266({
+                const __VLS_264 = __VLS_263({
                     variant: "error",
-                }, ...__VLS_functionalComponentArgsRest(__VLS_266));
-                __VLS_268.slots.default;
+                }, ...__VLS_functionalComponentArgsRest(__VLS_263));
+                __VLS_265.slots.default;
                 (__VLS_ctx.settingFormsError);
-                var __VLS_268;
+                var __VLS_265;
             }
             if (!__VLS_ctx.settingFormsLoading
                 && __VLS_ctx.settingFormsList.length === 0
                 && !__VLS_ctx.selectedSettingForm) {
-                const __VLS_269 = {}.VEmptyState;
+                const __VLS_266 = {}.VEmptyState;
                 /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
                 // @ts-ignore
-                const __VLS_270 = __VLS_asFunctionalComponent(__VLS_269, new __VLS_269({
+                const __VLS_267 = __VLS_asFunctionalComponent(__VLS_266, new __VLS_266({
                     headline: (__VLS_ctx.$t('scopes.settingFormsPanel.emptyHeadline')),
                     body: (__VLS_ctx.settingFormsProjectId
                         ? __VLS_ctx.$t('scopes.settingFormsPanel.emptyBodyProject')
                         : __VLS_ctx.$t('scopes.settingFormsPanel.emptyBodyTenant')),
                 }));
-                const __VLS_271 = __VLS_270({
+                const __VLS_268 = __VLS_267({
                     headline: (__VLS_ctx.$t('scopes.settingFormsPanel.emptyHeadline')),
                     body: (__VLS_ctx.settingFormsProjectId
                         ? __VLS_ctx.$t('scopes.settingFormsPanel.emptyBodyProject')
                         : __VLS_ctx.$t('scopes.settingFormsPanel.emptyBodyTenant')),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_270));
+                }, ...__VLS_functionalComponentArgsRest(__VLS_267));
             }
             if (!__VLS_ctx.selectedSettingForm) {
                 for (const [[cat, group]] of __VLS_getVForSourceType((__VLS_ctx.groupedSettingForms))) {
@@ -2060,181 +2009,90 @@ if (__VLS_ctx.settingsScope) {
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                     ...{ class: "flex items-center gap-2 -mt-1" },
                 });
-                const __VLS_273 = {}.VButton;
+                const __VLS_270 = {}.VButton;
                 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
                 // @ts-ignore
-                const __VLS_274 = __VLS_asFunctionalComponent(__VLS_273, new __VLS_273({
+                const __VLS_271 = __VLS_asFunctionalComponent(__VLS_270, new __VLS_270({
                     ...{ 'onClick': {} },
                     variant: "ghost",
                     size: "sm",
                 }));
-                const __VLS_275 = __VLS_274({
+                const __VLS_272 = __VLS_271({
                     ...{ 'onClick': {} },
                     variant: "ghost",
                     size: "sm",
-                }, ...__VLS_functionalComponentArgsRest(__VLS_274));
-                let __VLS_277;
-                let __VLS_278;
-                let __VLS_279;
-                const __VLS_280 = {
+                }, ...__VLS_functionalComponentArgsRest(__VLS_271));
+                let __VLS_274;
+                let __VLS_275;
+                let __VLS_276;
+                const __VLS_277 = {
                     onClick: (__VLS_ctx.backToSettingFormsList)
                 };
-                __VLS_276.slots.default;
+                __VLS_273.slots.default;
                 (__VLS_ctx.$t('scopes.settingFormsPanel.backToList'));
-                var __VLS_276;
-                const __VLS_281 = {}.SettingFormView;
+                var __VLS_273;
+                const __VLS_278 = {}.SettingFormView;
                 /** @type {[typeof __VLS_components.SettingFormView, ]} */ ;
                 // @ts-ignore
-                const __VLS_282 = __VLS_asFunctionalComponent(__VLS_281, new __VLS_281({
+                const __VLS_279 = __VLS_asFunctionalComponent(__VLS_278, new __VLS_278({
                     ...{ 'onApplied': {} },
                     name: (__VLS_ctx.selectedSettingForm),
                     projectId: (__VLS_ctx.settingFormsProjectId),
                     reloadKey: (__VLS_ctx.settingFormsReloadKey),
                 }));
-                const __VLS_283 = __VLS_282({
+                const __VLS_280 = __VLS_279({
                     ...{ 'onApplied': {} },
                     name: (__VLS_ctx.selectedSettingForm),
                     projectId: (__VLS_ctx.settingFormsProjectId),
                     reloadKey: (__VLS_ctx.settingFormsReloadKey),
-                }, ...__VLS_functionalComponentArgsRest(__VLS_282));
-                let __VLS_285;
-                let __VLS_286;
-                let __VLS_287;
-                const __VLS_288 = {
+                }, ...__VLS_functionalComponentArgsRest(__VLS_279));
+                let __VLS_282;
+                let __VLS_283;
+                let __VLS_284;
+                const __VLS_285 = {
                     onApplied: (__VLS_ctx.onSettingFormApplied)
                 };
-                var __VLS_284;
+                var __VLS_281;
             }
         }
     }
 }
-const __VLS_289 = {}.VModal;
+const __VLS_286 = {}.VModal;
 /** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_290 = __VLS_asFunctionalComponent(__VLS_289, new __VLS_289({
-    modelValue: (__VLS_ctx.showCreateGroup),
-    title: (__VLS_ctx.$t('scopes.createGroup.title')),
-}));
-const __VLS_291 = __VLS_290({
-    modelValue: (__VLS_ctx.showCreateGroup),
-    title: (__VLS_ctx.$t('scopes.createGroup.title')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_290));
-__VLS_292.slots.default;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "flex flex-col gap-3" },
-});
-const __VLS_293 = {}.VInput;
-/** @type {[typeof __VLS_components.VInput, ]} */ ;
-// @ts-ignore
-const __VLS_294 = __VLS_asFunctionalComponent(__VLS_293, new __VLS_293({
-    modelValue: (__VLS_ctx.newGroupName),
-    label: (__VLS_ctx.$t('scopes.common.name')),
-    required: true,
-    help: (__VLS_ctx.$t('scopes.createGroup.nameHelp')),
-}));
-const __VLS_295 = __VLS_294({
-    modelValue: (__VLS_ctx.newGroupName),
-    label: (__VLS_ctx.$t('scopes.common.name')),
-    required: true,
-    help: (__VLS_ctx.$t('scopes.createGroup.nameHelp')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_294));
-const __VLS_297 = {}.VInput;
-/** @type {[typeof __VLS_components.VInput, ]} */ ;
-// @ts-ignore
-const __VLS_298 = __VLS_asFunctionalComponent(__VLS_297, new __VLS_297({
-    modelValue: (__VLS_ctx.newGroupTitle),
-    label: (__VLS_ctx.$t('scopes.common.title')),
-}));
-const __VLS_299 = __VLS_298({
-    modelValue: (__VLS_ctx.newGroupTitle),
-    label: (__VLS_ctx.$t('scopes.common.title')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_298));
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "flex justify-end gap-2" },
-});
-const __VLS_301 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_302 = __VLS_asFunctionalComponent(__VLS_301, new __VLS_301({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-}));
-const __VLS_303 = __VLS_302({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_302));
-let __VLS_305;
-let __VLS_306;
-let __VLS_307;
-const __VLS_308 = {
-    onClick: (...[$event]) => {
-        __VLS_ctx.showCreateGroup = false;
-    }
-};
-__VLS_304.slots.default;
-(__VLS_ctx.$t('scopes.common.cancel'));
-var __VLS_304;
-const __VLS_309 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_310 = __VLS_asFunctionalComponent(__VLS_309, new __VLS_309({
-    ...{ 'onClick': {} },
-    variant: "primary",
-    disabled: (!__VLS_ctx.newGroupName.trim()),
-    loading: (__VLS_ctx.groupsState.busy.value),
-}));
-const __VLS_311 = __VLS_310({
-    ...{ 'onClick': {} },
-    variant: "primary",
-    disabled: (!__VLS_ctx.newGroupName.trim()),
-    loading: (__VLS_ctx.groupsState.busy.value),
-}, ...__VLS_functionalComponentArgsRest(__VLS_310));
-let __VLS_313;
-let __VLS_314;
-let __VLS_315;
-const __VLS_316 = {
-    onClick: (__VLS_ctx.submitCreateGroup)
-};
-__VLS_312.slots.default;
-(__VLS_ctx.$t('scopes.common.create'));
-var __VLS_312;
-var __VLS_292;
-const __VLS_317 = {}.VModal;
-/** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
-// @ts-ignore
-const __VLS_318 = __VLS_asFunctionalComponent(__VLS_317, new __VLS_317({
+const __VLS_287 = __VLS_asFunctionalComponent(__VLS_286, new __VLS_286({
     modelValue: (__VLS_ctx.showKitDialog),
     title: (__VLS_ctx.kitDialogTitle),
     closeOnBackdrop: (false),
 }));
-const __VLS_319 = __VLS_318({
+const __VLS_288 = __VLS_287({
     modelValue: (__VLS_ctx.showKitDialog),
     title: (__VLS_ctx.kitDialogTitle),
     closeOnBackdrop: (false),
-}, ...__VLS_functionalComponentArgsRest(__VLS_318));
-__VLS_320.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_287));
+__VLS_289.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.kitState.error.value) {
-    const __VLS_321 = {}.VAlert;
+    const __VLS_290 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_322 = __VLS_asFunctionalComponent(__VLS_321, new __VLS_321({
+    const __VLS_291 = __VLS_asFunctionalComponent(__VLS_290, new __VLS_290({
         variant: "error",
     }));
-    const __VLS_323 = __VLS_322({
+    const __VLS_292 = __VLS_291({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_322));
-    __VLS_324.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_291));
+    __VLS_293.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.kitState.error.value);
-    var __VLS_324;
+    var __VLS_293;
 }
-const __VLS_325 = {}.VInput;
+const __VLS_294 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_326 = __VLS_asFunctionalComponent(__VLS_325, new __VLS_325({
+const __VLS_295 = __VLS_asFunctionalComponent(__VLS_294, new __VLS_294({
     modelValue: (__VLS_ctx.kitForm.url),
     label: (__VLS_ctx.$t('scopes.kit.dialog.repoUrl')),
     required: (__VLS_ctx.kitNeedsUrl),
@@ -2242,77 +2100,77 @@ const __VLS_326 = __VLS_asFunctionalComponent(__VLS_325, new __VLS_325({
         ? __VLS_ctx.$t('scopes.kit.dialog.repoUrlReuseHelp')
         : __VLS_ctx.$t('scopes.kit.dialog.repoUrlHelp')),
 }));
-const __VLS_327 = __VLS_326({
+const __VLS_296 = __VLS_295({
     modelValue: (__VLS_ctx.kitForm.url),
     label: (__VLS_ctx.$t('scopes.kit.dialog.repoUrl')),
     required: (__VLS_ctx.kitNeedsUrl),
     help: (__VLS_ctx.kitDialogMode === 'update' || __VLS_ctx.kitDialogMode === 'export'
         ? __VLS_ctx.$t('scopes.kit.dialog.repoUrlReuseHelp')
         : __VLS_ctx.$t('scopes.kit.dialog.repoUrlHelp')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_326));
+}, ...__VLS_functionalComponentArgsRest(__VLS_295));
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "grid grid-cols-2 gap-3" },
 });
-const __VLS_329 = {}.VInput;
+const __VLS_298 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_330 = __VLS_asFunctionalComponent(__VLS_329, new __VLS_329({
+const __VLS_299 = __VLS_asFunctionalComponent(__VLS_298, new __VLS_298({
     modelValue: (__VLS_ctx.kitForm.path),
     label: (__VLS_ctx.$t('scopes.kit.dialog.subPath')),
     help: (__VLS_ctx.$t('scopes.kit.dialog.subPathHelp')),
 }));
-const __VLS_331 = __VLS_330({
+const __VLS_300 = __VLS_299({
     modelValue: (__VLS_ctx.kitForm.path),
     label: (__VLS_ctx.$t('scopes.kit.dialog.subPath')),
     help: (__VLS_ctx.$t('scopes.kit.dialog.subPathHelp')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_330));
-const __VLS_333 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_299));
+const __VLS_302 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_334 = __VLS_asFunctionalComponent(__VLS_333, new __VLS_333({
+const __VLS_303 = __VLS_asFunctionalComponent(__VLS_302, new __VLS_302({
     modelValue: (__VLS_ctx.kitForm.branch),
     label: (__VLS_ctx.$t('scopes.kit.dialog.branchLabel')),
     help: (__VLS_ctx.$t('scopes.kit.dialog.branchHelp')),
 }));
-const __VLS_335 = __VLS_334({
+const __VLS_304 = __VLS_303({
     modelValue: (__VLS_ctx.kitForm.branch),
     label: (__VLS_ctx.$t('scopes.kit.dialog.branchLabel')),
     help: (__VLS_ctx.$t('scopes.kit.dialog.branchHelp')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_334));
+}, ...__VLS_functionalComponentArgsRest(__VLS_303));
 if (__VLS_ctx.kitDialogMode !== 'export') {
-    const __VLS_337 = {}.VInput;
+    const __VLS_306 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_338 = __VLS_asFunctionalComponent(__VLS_337, new __VLS_337({
+    const __VLS_307 = __VLS_asFunctionalComponent(__VLS_306, new __VLS_306({
         modelValue: (__VLS_ctx.kitForm.commit),
         label: (__VLS_ctx.$t('scopes.kit.dialog.commitSha')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.commitShaHelp')),
     }));
-    const __VLS_339 = __VLS_338({
+    const __VLS_308 = __VLS_307({
         modelValue: (__VLS_ctx.kitForm.commit),
         label: (__VLS_ctx.$t('scopes.kit.dialog.commitSha')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.commitShaHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_338));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_307));
 }
-const __VLS_341 = {}.VInput;
+const __VLS_310 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_342 = __VLS_asFunctionalComponent(__VLS_341, new __VLS_341({
+const __VLS_311 = __VLS_asFunctionalComponent(__VLS_310, new __VLS_310({
     modelValue: (__VLS_ctx.kitForm.token),
     type: "password",
     label: (__VLS_ctx.$t('scopes.kit.dialog.authToken')),
     help: (__VLS_ctx.$t('scopes.kit.dialog.authTokenHelp')),
 }));
-const __VLS_343 = __VLS_342({
+const __VLS_312 = __VLS_311({
     modelValue: (__VLS_ctx.kitForm.token),
     type: "password",
     label: (__VLS_ctx.$t('scopes.kit.dialog.authToken')),
     help: (__VLS_ctx.$t('scopes.kit.dialog.authTokenHelp')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_342));
-const __VLS_345 = {}.VInput;
+}, ...__VLS_functionalComponentArgsRest(__VLS_311));
+const __VLS_314 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_346 = __VLS_asFunctionalComponent(__VLS_345, new __VLS_345({
+const __VLS_315 = __VLS_asFunctionalComponent(__VLS_314, new __VLS_314({
     modelValue: (__VLS_ctx.kitForm.vaultPassword),
     type: "password",
     label: (__VLS_ctx.$t('scopes.kit.dialog.vaultPassword')),
@@ -2320,244 +2178,127 @@ const __VLS_346 = __VLS_asFunctionalComponent(__VLS_345, new __VLS_345({
         ? __VLS_ctx.$t('scopes.kit.dialog.vaultPasswordExportHelp')
         : __VLS_ctx.$t('scopes.kit.dialog.vaultPasswordImportHelp')),
 }));
-const __VLS_347 = __VLS_346({
+const __VLS_316 = __VLS_315({
     modelValue: (__VLS_ctx.kitForm.vaultPassword),
     type: "password",
     label: (__VLS_ctx.$t('scopes.kit.dialog.vaultPassword')),
     help: (__VLS_ctx.kitDialogMode === 'export'
         ? __VLS_ctx.$t('scopes.kit.dialog.vaultPasswordExportHelp')
         : __VLS_ctx.$t('scopes.kit.dialog.vaultPasswordImportHelp')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_346));
+}, ...__VLS_functionalComponentArgsRest(__VLS_315));
 if (__VLS_ctx.kitDialogMode === 'export') {
-    const __VLS_349 = {}.VInput;
+    const __VLS_318 = {}.VInput;
     /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_350 = __VLS_asFunctionalComponent(__VLS_349, new __VLS_349({
+    const __VLS_319 = __VLS_asFunctionalComponent(__VLS_318, new __VLS_318({
         modelValue: (__VLS_ctx.kitForm.commitMessage),
         label: (__VLS_ctx.$t('scopes.kit.dialog.commitMessage')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.commitMessageHelp')),
     }));
-    const __VLS_351 = __VLS_350({
+    const __VLS_320 = __VLS_319({
         modelValue: (__VLS_ctx.kitForm.commitMessage),
         label: (__VLS_ctx.$t('scopes.kit.dialog.commitMessage')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.commitMessageHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_350));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_319));
 }
 if (__VLS_ctx.kitDialogMode !== 'export') {
-    const __VLS_353 = {}.VCheckbox;
+    const __VLS_322 = {}.VCheckbox;
     /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
     // @ts-ignore
-    const __VLS_354 = __VLS_asFunctionalComponent(__VLS_353, new __VLS_353({
+    const __VLS_323 = __VLS_asFunctionalComponent(__VLS_322, new __VLS_322({
         modelValue: (__VLS_ctx.kitForm.trackManifest),
         label: (__VLS_ctx.$t('scopes.kit.dialog.trackManifest')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.trackManifestHelp')),
     }));
-    const __VLS_355 = __VLS_354({
+    const __VLS_324 = __VLS_323({
         modelValue: (__VLS_ctx.kitForm.trackManifest),
         label: (__VLS_ctx.$t('scopes.kit.dialog.trackManifest')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.trackManifestHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_354));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_323));
 }
 if (__VLS_ctx.kitDialogMode === 'update' && __VLS_ctx.kitForm.trackManifest) {
-    const __VLS_357 = {}.VCheckbox;
+    const __VLS_326 = {}.VCheckbox;
     /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
     // @ts-ignore
-    const __VLS_358 = __VLS_asFunctionalComponent(__VLS_357, new __VLS_357({
+    const __VLS_327 = __VLS_asFunctionalComponent(__VLS_326, new __VLS_326({
         modelValue: (__VLS_ctx.kitForm.prune),
         label: (__VLS_ctx.$t('scopes.kit.dialog.prune')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.pruneHelp')),
     }));
-    const __VLS_359 = __VLS_358({
+    const __VLS_328 = __VLS_327({
         modelValue: (__VLS_ctx.kitForm.prune),
         label: (__VLS_ctx.$t('scopes.kit.dialog.prune')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.pruneHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_358));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_327));
 }
 if (__VLS_ctx.kitDialogMode !== 'export' && !__VLS_ctx.kitForm.trackManifest) {
-    const __VLS_361 = {}.VCheckbox;
+    const __VLS_330 = {}.VCheckbox;
     /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
     // @ts-ignore
-    const __VLS_362 = __VLS_asFunctionalComponent(__VLS_361, new __VLS_361({
+    const __VLS_331 = __VLS_asFunctionalComponent(__VLS_330, new __VLS_330({
         modelValue: (__VLS_ctx.kitForm.keepPasswords),
         label: (__VLS_ctx.$t('scopes.kit.dialog.keepPasswords')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.keepPasswordsHelp')),
     }));
-    const __VLS_363 = __VLS_362({
+    const __VLS_332 = __VLS_331({
         modelValue: (__VLS_ctx.kitForm.keepPasswords),
         label: (__VLS_ctx.$t('scopes.kit.dialog.keepPasswords')),
         help: (__VLS_ctx.$t('scopes.kit.dialog.keepPasswordsHelp')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_362));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_331));
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex justify-end gap-2 pt-2" },
 });
-const __VLS_365 = {}.VButton;
+const __VLS_334 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_366 = __VLS_asFunctionalComponent(__VLS_365, new __VLS_365({
+const __VLS_335 = __VLS_asFunctionalComponent(__VLS_334, new __VLS_334({
     ...{ 'onClick': {} },
     variant: "ghost",
 }));
-const __VLS_367 = __VLS_366({
+const __VLS_336 = __VLS_335({
     ...{ 'onClick': {} },
     variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_366));
-let __VLS_369;
-let __VLS_370;
-let __VLS_371;
-const __VLS_372 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_335));
+let __VLS_338;
+let __VLS_339;
+let __VLS_340;
+const __VLS_341 = {
     onClick: (...[$event]) => {
         __VLS_ctx.showKitDialog = false;
     }
 };
-__VLS_368.slots.default;
+__VLS_337.slots.default;
 (__VLS_ctx.$t('scopes.common.cancel'));
-var __VLS_368;
-const __VLS_373 = {}.VButton;
+var __VLS_337;
+const __VLS_342 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_374 = __VLS_asFunctionalComponent(__VLS_373, new __VLS_373({
+const __VLS_343 = __VLS_asFunctionalComponent(__VLS_342, new __VLS_342({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (__VLS_ctx.kitNeedsUrl && !__VLS_ctx.kitForm.url.trim()),
     loading: (__VLS_ctx.kitState.busy.value),
 }));
-const __VLS_375 = __VLS_374({
+const __VLS_344 = __VLS_343({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (__VLS_ctx.kitNeedsUrl && !__VLS_ctx.kitForm.url.trim()),
     loading: (__VLS_ctx.kitState.busy.value),
-}, ...__VLS_functionalComponentArgsRest(__VLS_374));
-let __VLS_377;
-let __VLS_378;
-let __VLS_379;
-const __VLS_380 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_343));
+let __VLS_346;
+let __VLS_347;
+let __VLS_348;
+const __VLS_349 = {
     onClick: (__VLS_ctx.submitKitDialog)
 };
-__VLS_376.slots.default;
+__VLS_345.slots.default;
 (__VLS_ctx.kitDialogSubmitLabel);
-var __VLS_376;
-var __VLS_320;
-const __VLS_381 = {}.VModal;
-/** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
-// @ts-ignore
-const __VLS_382 = __VLS_asFunctionalComponent(__VLS_381, new __VLS_381({
-    modelValue: (__VLS_ctx.showCreateProject),
-    title: (__VLS_ctx.$t('scopes.createProject.title')),
-}));
-const __VLS_383 = __VLS_382({
-    modelValue: (__VLS_ctx.showCreateProject),
-    title: (__VLS_ctx.$t('scopes.createProject.title')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_382));
-__VLS_384.slots.default;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "flex flex-col gap-3" },
-});
-const __VLS_385 = {}.VInput;
-/** @type {[typeof __VLS_components.VInput, ]} */ ;
-// @ts-ignore
-const __VLS_386 = __VLS_asFunctionalComponent(__VLS_385, new __VLS_385({
-    modelValue: (__VLS_ctx.newProjectName),
-    label: (__VLS_ctx.$t('scopes.common.name')),
-    required: true,
-    help: (__VLS_ctx.$t('scopes.createProject.nameHelp')),
-}));
-const __VLS_387 = __VLS_386({
-    modelValue: (__VLS_ctx.newProjectName),
-    label: (__VLS_ctx.$t('scopes.common.name')),
-    required: true,
-    help: (__VLS_ctx.$t('scopes.createProject.nameHelp')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_386));
-const __VLS_389 = {}.VInput;
-/** @type {[typeof __VLS_components.VInput, ]} */ ;
-// @ts-ignore
-const __VLS_390 = __VLS_asFunctionalComponent(__VLS_389, new __VLS_389({
-    modelValue: (__VLS_ctx.newProjectTitle),
-    label: (__VLS_ctx.$t('scopes.common.title')),
-}));
-const __VLS_391 = __VLS_390({
-    modelValue: (__VLS_ctx.newProjectTitle),
-    label: (__VLS_ctx.$t('scopes.common.title')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_390));
-const __VLS_393 = {}.VSelect;
-/** @type {[typeof __VLS_components.VSelect, ]} */ ;
-// @ts-ignore
-const __VLS_394 = __VLS_asFunctionalComponent(__VLS_393, new __VLS_393({
-    modelValue: (__VLS_ctx.newProjectGroupId),
-    label: (__VLS_ctx.$t('scopes.project.groupLabel')),
-    options: (__VLS_ctx.groupSelectOptions),
-}));
-const __VLS_395 = __VLS_394({
-    modelValue: (__VLS_ctx.newProjectGroupId),
-    label: (__VLS_ctx.$t('scopes.project.groupLabel')),
-    options: (__VLS_ctx.groupSelectOptions),
-}, ...__VLS_functionalComponentArgsRest(__VLS_394));
-const __VLS_397 = {}.VSelect;
-/** @type {[typeof __VLS_components.VSelect, ]} */ ;
-// @ts-ignore
-const __VLS_398 = __VLS_asFunctionalComponent(__VLS_397, new __VLS_397({
-    modelValue: (__VLS_ctx.newProjectKitName),
-    label: (__VLS_ctx.$t('scopes.createProject.kitLabel')),
-    options: (__VLS_ctx.kitSelectOptions),
-    help: (__VLS_ctx.$t('scopes.createProject.kitHelp')),
-}));
-const __VLS_399 = __VLS_398({
-    modelValue: (__VLS_ctx.newProjectKitName),
-    label: (__VLS_ctx.$t('scopes.createProject.kitLabel')),
-    options: (__VLS_ctx.kitSelectOptions),
-    help: (__VLS_ctx.$t('scopes.createProject.kitHelp')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_398));
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "flex justify-end gap-2" },
-});
-const __VLS_401 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_402 = __VLS_asFunctionalComponent(__VLS_401, new __VLS_401({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-}));
-const __VLS_403 = __VLS_402({
-    ...{ 'onClick': {} },
-    variant: "ghost",
-}, ...__VLS_functionalComponentArgsRest(__VLS_402));
-let __VLS_405;
-let __VLS_406;
-let __VLS_407;
-const __VLS_408 = {
-    onClick: (...[$event]) => {
-        __VLS_ctx.showCreateProject = false;
-    }
-};
-__VLS_404.slots.default;
-(__VLS_ctx.$t('scopes.common.cancel'));
-var __VLS_404;
-const __VLS_409 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-// @ts-ignore
-const __VLS_410 = __VLS_asFunctionalComponent(__VLS_409, new __VLS_409({
-    ...{ 'onClick': {} },
-    variant: "primary",
-    disabled: (!__VLS_ctx.newProjectName.trim()),
-    loading: (__VLS_ctx.projectsState.busy.value),
-}));
-const __VLS_411 = __VLS_410({
-    ...{ 'onClick': {} },
-    variant: "primary",
-    disabled: (!__VLS_ctx.newProjectName.trim()),
-    loading: (__VLS_ctx.projectsState.busy.value),
-}, ...__VLS_functionalComponentArgsRest(__VLS_410));
-let __VLS_413;
-let __VLS_414;
-let __VLS_415;
-const __VLS_416 = {
-    onClick: (__VLS_ctx.submitCreateProject)
-};
-__VLS_412.slots.default;
-(__VLS_ctx.$t('scopes.common.create'));
-var __VLS_412;
-var __VLS_384;
+var __VLS_345;
+var __VLS_289;
 var __VLS_3;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
@@ -2567,35 +2308,13 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['mr-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
-/** @type {__VLS_StyleScopedClasses['sidebar-item']} */ ;
-/** @type {__VLS_StyleScopedClasses['sidebar-item--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
-/** @type {__VLS_StyleScopedClasses['mr-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['sidebar-item']} */ ;
-/** @type {__VLS_StyleScopedClasses['sidebar-item--child']} */ ;
-/** @type {__VLS_StyleScopedClasses['sidebar-item--active']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
-/** @type {__VLS_StyleScopedClasses['sidebar-item']} */ ;
-/** @type {__VLS_StyleScopedClasses['sidebar-item--child']} */ ;
-/** @type {__VLS_StyleScopedClasses['sidebar-item--active']} */ ;
-/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['h-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['overflow-y-auto']} */ ;
 /** @type {__VLS_StyleScopedClasses['p-6']} */ ;
 /** @type {__VLS_StyleScopedClasses['max-w-2xl']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -2802,12 +2521,6 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid']} */ ;
 /** @type {__VLS_StyleScopedClasses['grid-cols-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
@@ -2815,17 +2528,12 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['pt-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-end']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             EditorShell: EditorShell,
+            ProjectListSidebar: ProjectListSidebar,
             SettingFormView: SettingFormView,
             VAlert: VAlert,
             VButton: VButton,
@@ -2844,15 +2552,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             kitState: kitState,
             selection: selection,
             banner: banner,
+            focusZone: focusZone,
             form: form,
-            showCreateGroup: showCreateGroup,
-            newGroupName: newGroupName,
-            newGroupTitle: newGroupTitle,
-            showCreateProject: showCreateProject,
-            newProjectName: newProjectName,
-            newProjectTitle: newProjectTitle,
-            newProjectGroupId: newProjectGroupId,
-            newProjectKitName: newProjectKitName,
             showKitDialog: showKitDialog,
             kitDialogMode: kitDialogMode,
             kitForm: kitForm,
@@ -2877,25 +2578,19 @@ const __VLS_self = (await import('vue')).defineComponent({
             settingTypeOptions: settingTypeOptions,
             selectedGroup: selectedGroup,
             selectedProject: selectedProject,
-            projectsByGroup: projectsByGroup,
-            ungroupedProjects: ungroupedProjects,
             groupSelectOptions: groupSelectOptions,
             settingsScope: settingsScope,
             isReservedGroup: isReservedGroup,
             isArchivedProject: isArchivedProject,
             selectTenant: selectTenant,
-            selectGroup: selectGroup,
-            selectProject: selectProject,
             saveTenant: saveTenant,
             saveGroup: saveGroup,
             deleteGroup: deleteGroup,
             saveProject: saveProject,
             archiveProject: archiveProject,
-            openCreateGroup: openCreateGroup,
-            submitCreateGroup: submitCreateGroup,
-            openCreateProject: openCreateProject,
-            submitCreateProject: submitCreateProject,
-            kitSelectOptions: kitSelectOptions,
+            pickerSelectedNode: pickerSelectedNode,
+            pickerKitOptions: pickerKitOptions,
+            onPickerDataChanged: onPickerDataChanged,
             kitDialogTitle: kitDialogTitle,
             kitDialogSubmitLabel: kitDialogSubmitLabel,
             kitNeedsUrl: kitNeedsUrl,

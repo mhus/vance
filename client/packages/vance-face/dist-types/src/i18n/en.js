@@ -21,6 +21,32 @@ export default {
         profile: 'Profile',
         home: 'Home',
         backToHome: 'Back to home',
+        projectPicker: {
+            addGroup: 'Add group',
+            addProject: 'Add project',
+            addProjectToGroup: 'Add project to this group',
+            createGroup: {
+                title: 'New project group',
+                name: 'Name',
+                nameHelp: 'Lower-case letters, digits, "-" or "_". Unique inside the tenant.',
+                titleLabel: 'Title',
+                submit: 'Create',
+            },
+            createProject: {
+                title: 'New project',
+                name: 'Name',
+                nameHelp: 'Lower-case letters, digits, "-" or "_". Unique inside the tenant.',
+                titleLabel: 'Title',
+                group: 'Group',
+                groupNone: 'No group',
+                kit: 'Kit',
+                submit: 'Create',
+            },
+            error: {
+                forbidden: 'This action requires tenant-admin access.',
+                generic: 'Error: {message}',
+            },
+        },
     },
     header: {
         connection: {
@@ -243,9 +269,6 @@ export default {
         projectFilterNoMatch: 'No projects match "{filter}".',
         searchPlaceholder: 'Search documents…',
         pathBack: 'Up one level',
-        foldersTitle: 'Folders',
-        folderAll: 'All',
-        foldersEmptyHint: 'No folders yet — create a document with a path like {example} to nest it.',
         noProjectsHeadline: 'No projects in this tenant',
         noProjectsBody: 'Ask an administrator to create a project before you can browse documents.',
         pickAProjectHeadline: 'Pick a project',

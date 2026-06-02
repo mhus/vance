@@ -16,6 +16,32 @@ export default {
     profile: 'Profil',
     home: 'Startseite',
     backToHome: 'Zurück zur Startseite',
+    projectPicker: {
+      addGroup: 'Gruppe anlegen',
+      addProject: 'Projekt anlegen',
+      addProjectToGroup: 'Projekt in dieser Gruppe anlegen',
+      createGroup: {
+        title: 'Neue Projektgruppe',
+        name: 'Name',
+        nameHelp: 'Kleinbuchstaben, Ziffern, „-" oder „_". Innerhalb des Mandanten eindeutig.',
+        titleLabel: 'Bezeichnung',
+        submit: 'Anlegen',
+      },
+      createProject: {
+        title: 'Neues Projekt',
+        name: 'Name',
+        nameHelp: 'Kleinbuchstaben, Ziffern, „-" oder „_". Innerhalb des Mandanten eindeutig.',
+        titleLabel: 'Bezeichnung',
+        group: 'Gruppe',
+        groupNone: 'Ohne Gruppe',
+        kit: 'Kit',
+        submit: 'Anlegen',
+      },
+      error: {
+        forbidden: 'Diese Aktion ist Tenant-Admins vorbehalten.',
+        generic: 'Fehler: {message}',
+      },
+    },
   },
 
   header: {
@@ -256,10 +282,6 @@ export default {
     projectFilterNoMatch: 'Keine Projekte passen zu „{filter}".',
     searchPlaceholder: 'Dokumente suchen…',
     pathBack: 'Eine Ebene höher',
-    foldersTitle: 'Ordner',
-    folderAll: 'Alle',
-    foldersEmptyHint:
-      'Noch keine Ordner — ein Dokument mit Pfad wie {example} anlegen, um es zu verschachteln.',
     noProjectsHeadline: 'Keine Projekte in diesem Mandanten',
     noProjectsBody:
       'Bitten Sie einen Administrator, ein Projekt anzulegen, bevor Dokumente eingesehen werden können.',

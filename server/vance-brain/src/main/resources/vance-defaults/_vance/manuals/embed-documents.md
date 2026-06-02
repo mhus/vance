@@ -1,5 +1,5 @@
 ---
-triggers: Document, document_link, doc_create_kind, vance: URI, markdownLink, save as document, save as file, slides, slide deck, presentation, Präsentation, Foliendeck, PDF, audio, video, generated artifact, project file, attach
+triggers: "Document, document_link, doc_create_kind, vance: URI, markdownLink, save as document, save as file, slides, slide deck, presentation, Präsentation, Foliendeck, PDF, audio, video, generated artifact, project file, attach"
 summary: How to reference a project Document (PDF, image, audio, slides, generated artifact) via a vance:-URI Markdown link.
 ---
 # Embedding — Project Documents

@@ -10,14 +10,13 @@ import {
 import {
   SessionColor,
   SessionStatus,
-  type ProjectGroupSummary,
-  type ProjectSummary,
   type SessionBootstrapRequest,
   type SessionBootstrapResponse,
   type SessionSummaryRichDto,
 } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
 import {
+  ProjectListSidebar,
   VAlert,
   VButton,
   VCheckbox,
@@ -82,13 +81,6 @@ const reactivating = ref<string | null>(null);
 const searchOpen = ref(false);
 
 /**
- * Free-text filter for the project sidebar — matches project title
- * and technical name (case-insensitive substring). Independent from
- * {@link searchOpen} which drives the session-content search modal.
- */
-const projectFilter = ref('');
-
-/**
  * Free-text filter for the sessions list in the main area — matches
  * against the displayed session title (case-insensitive substring).
  */
@@ -100,61 +92,6 @@ const sessionFilter = ref('');
  * open by tapping the button.
  */
 const pickerToolsOpen = ref(false);
-
-interface GroupBlock {
-  group: ProjectGroupSummary | null;
-  projects: ProjectSummary[];
-}
-
-const projectsByGroup = computed<GroupBlock[]>(() => {
-  const byKey = new Map<string | null, ProjectSummary[]>();
-  for (const p of projects.value) {
-    const key = p.projectGroupId ?? null;
-    const list = byKey.get(key) ?? [];
-    list.push(p);
-    byKey.set(key, list);
-  }
-  const groupByName = new Map(groups.value.map((g) => [g.name, g] as const));
-  const result: GroupBlock[] = [];
-  for (const [groupName, list] of byKey.entries()) {
-    const group = groupName ? groupByName.get(groupName) ?? null : null;
-    result.push({ group, projects: list });
-  }
-  // Stable order: ungrouped first, then groups by name.
-  result.sort((a, b) => {
-    if (a.group === null && b.group !== null) return -1;
-    if (a.group !== null && b.group === null) return 1;
-    if (!a.group || !b.group) return 0;
-    return a.group.name.localeCompare(b.group.name);
-  });
-  return result;
-});
-
-/**
- * Applies the free-text filter on top of {@link projectsByGroup}.
- * Empty filter passes everything through unchanged. Otherwise each
- * project must match the filter on its title (preferred) or its
- * technical name; groups with zero remaining projects drop out.
- */
-const filteredProjectsByGroup = computed<GroupBlock[]>(() => {
-  const needle = projectFilter.value.trim().toLowerCase();
-  if (!needle) return projectsByGroup.value;
-  const result: GroupBlock[] = [];
-  for (const block of projectsByGroup.value) {
-    const matching = block.projects.filter((p) => {
-      const title = (p.title ?? '').toLowerCase();
-      const name = p.name.toLowerCase();
-      return title.includes(needle) || name.includes(needle);
-    });
-    if (matching.length > 0) {
-      result.push({ group: block.group, projects: matching });
-    }
-  }
-  return result;
-});
-
-const filteredProjectsCount = computed<number>(() =>
-  filteredProjectsByGroup.value.reduce((n, b) => n + b.projects.length, 0));
 
 const filteredSessions = computed<SessionSummaryRichDto[]>(() => {
   const needle = sessionFilter.value.trim().toLowerCase();
@@ -178,14 +115,6 @@ async function loadSessions(projectName: string): Promise<void> {
   } finally {
     sessionsLoading.value = false;
   }
-}
-
-function selectProject(projectName: string): void {
-  selectedProjectName.value = projectName;
-  // The {@code project-resolved} watcher below will fire as a side
-  // effect; the explicit pick emit is what drives the URL push in the
-  // parent (history entry per user-initiated selection).
-  emit('project-pick', { name: projectName, title: projectTitle(projectName) });
 }
 
 function pickSession(session: SessionSummaryRichDto): void {
@@ -258,9 +187,27 @@ function projectTitle(name: string): string {
   return p?.title || p?.name || name;
 }
 
-function groupLabel(block: GroupBlock): string {
-  if (!block.group) return t('chat.picker.ungrouped');
-  return block.group.title || block.group.name;
+/** Forwarded from {@link ProjectListSidebar} — wraps the v-model
+ *  write with the URL-history emit so back/forward steps between
+ *  projects (mirrors the old in-PickerView {@code selectProject}). */
+function onProjectPick(payload: { name: string; title: string }): void {
+  emit('project-pick', payload);
+}
+
+/** {@link ProjectListSidebar} created a new group or project.
+ *  Reload {@code useTenantProjects} so the new entry shows up;
+ *  for projects, jump straight into the new workspace. */
+async function onProjectListDataChanged(
+  payload: { kind: 'group' | 'project'; name: string },
+): Promise<void> {
+  await loadProjects();
+  if (payload.kind === 'project') {
+    selectedProjectName.value = payload.name;
+    emit('project-pick', {
+      name: payload.name,
+      title: projectTitle(payload.name),
+    });
+  }
 }
 
 function sessionTitle(session: SessionSummaryRichDto): string {
@@ -346,11 +293,23 @@ watch(showArchived, async () => {
       jumps to the sessions view as soon as a project is picked.
     -->
     <Teleport to="#vance-picker-projects-target" :disabled="!teleportReady">
-      <div class="p-4 flex flex-col gap-4">
-        <div class="flex items-center justify-between">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold">
-            {{ $t('chat.picker.projectsTitle') }}
-          </div>
+      <ProjectListSidebar
+        v-model:selected-project="selectedProjectName"
+        :groups="groups"
+        :projects="projects"
+        :loading="projectsLoading"
+        :error="projectsError"
+        :heading="$t('chat.picker.projectsTitle')"
+        :filter-placeholder="$t('chat.picker.filterPlaceholder')"
+        :ungrouped-label="$t('chat.picker.ungrouped')"
+        :empty-headline="$t('chat.picker.noProjects')"
+        :empty-body="$t('chat.picker.noProjectsBody')"
+        edit-enabled
+        @project-pick="onProjectPick"
+        @focus-main="emit('focus-main')"
+        @data-changed="onProjectListDataChanged"
+      >
+        <template #header-extra>
           <VButton
             variant="ghost"
             size="sm"
@@ -360,60 +319,14 @@ watch(showArchived, async () => {
           >
             🔍
           </VButton>
-        </div>
-
-        <!-- Local project filter — narrows the visible list down by
-             title/name substring. Independent from the 🔍 button
-             above which opens the cross-session content search. -->
-        <VInput
-          v-if="!projectsLoading && !projectsError && projects.length > 0"
-          v-model="projectFilter"
-          :placeholder="$t('chat.picker.filterPlaceholder')"
-        />
-
-        <div v-if="projectsLoading" class="text-sm opacity-60">
-          {{ $t('chat.picker.loading') }}
-        </div>
-
-        <VAlert v-else-if="projectsError" variant="error">
-          {{ projectsError }}
-        </VAlert>
-
-        <template v-else>
-          <div
-            v-for="block in filteredProjectsByGroup"
-            :key="block.group?.name ?? '_ungrouped'"
-            class="flex flex-col gap-1"
-          >
-            <div class="text-xs opacity-50 px-2">{{ groupLabel(block) }}</div>
-            <button
-              v-for="p in block.projects"
-              :key="p.name"
-              type="button"
-              class="text-left px-2 py-1.5 rounded text-sm transition-colors"
-              :class="selectedProjectName === p.name
-                ? 'bg-primary/10 text-primary font-medium'
-                : 'hover:bg-base-200'"
-              @pointerdown.stop="emit('focus-main')"
-              @click="selectProject(p.name)"
-            >
-              {{ p.title || p.name }}
-            </button>
-          </div>
-
-          <VEmptyState
-            v-if="projects.length === 0"
-            :headline="$t('chat.picker.noProjects')"
-            :body="$t('chat.picker.noProjectsBody')"
-          />
-          <div
-            v-else-if="projectFilter && filteredProjectsCount === 0"
-            class="text-xs opacity-60 px-2"
-          >
-            {{ $t('chat.picker.filterNoMatch', { filter: projectFilter }) }}
-          </div>
         </template>
-      </div>
+        <template #loading>
+          {{ $t('chat.picker.loading') }}
+        </template>
+        <template #filter-no-match="{ filter }">
+          {{ $t('chat.picker.filterNoMatch', { filter }) }}
+        </template>
+      </ProjectListSidebar>
     </Teleport>
 
     <!-- Main: sessions of selected project -->

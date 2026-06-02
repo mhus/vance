@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n';
 import { WebSocketRequestError, listSessions, reactivateSession, } from '@vance/shared';
 import { SessionColor, SessionStatus, } from '@vance/generated';
 import { useTenantProjects } from '@composables/useTenantProjects';
-import { VAlert, VButton, VCheckbox, VEmptyState, VInput, } from '@components/index';
+import { ProjectListSidebar, VAlert, VButton, VCheckbox, VEmptyState, VInput, } from '@components/index';
 import SessionSearchModal from './SessionSearchModal.vue';
 const { t } = useI18n();
 const props = defineProps();
@@ -29,12 +29,6 @@ const showArchived = ref(false);
 const reactivating = ref(null);
 const searchOpen = ref(false);
 /**
- * Free-text filter for the project sidebar — matches project title
- * and technical name (case-insensitive substring). Independent from
- * {@link searchOpen} which drives the session-content search modal.
- */
-const projectFilter = ref('');
-/**
  * Free-text filter for the sessions list in the main area — matches
  * against the displayed session title (case-insensitive substring).
  */
@@ -45,56 +39,6 @@ const sessionFilter = ref('');
  * open by tapping the button.
  */
 const pickerToolsOpen = ref(false);
-const projectsByGroup = computed(() => {
-    const byKey = new Map();
-    for (const p of projects.value) {
-        const key = p.projectGroupId ?? null;
-        const list = byKey.get(key) ?? [];
-        list.push(p);
-        byKey.set(key, list);
-    }
-    const groupByName = new Map(groups.value.map((g) => [g.name, g]));
-    const result = [];
-    for (const [groupName, list] of byKey.entries()) {
-        const group = groupName ? groupByName.get(groupName) ?? null : null;
-        result.push({ group, projects: list });
-    }
-    // Stable order: ungrouped first, then groups by name.
-    result.sort((a, b) => {
-        if (a.group === null && b.group !== null)
-            return -1;
-        if (a.group !== null && b.group === null)
-            return 1;
-        if (!a.group || !b.group)
-            return 0;
-        return a.group.name.localeCompare(b.group.name);
-    });
-    return result;
-});
-/**
- * Applies the free-text filter on top of {@link projectsByGroup}.
- * Empty filter passes everything through unchanged. Otherwise each
- * project must match the filter on its title (preferred) or its
- * technical name; groups with zero remaining projects drop out.
- */
-const filteredProjectsByGroup = computed(() => {
-    const needle = projectFilter.value.trim().toLowerCase();
-    if (!needle)
-        return projectsByGroup.value;
-    const result = [];
-    for (const block of projectsByGroup.value) {
-        const matching = block.projects.filter((p) => {
-            const title = (p.title ?? '').toLowerCase();
-            const name = p.name.toLowerCase();
-            return title.includes(needle) || name.includes(needle);
-        });
-        if (matching.length > 0) {
-            result.push({ group: block.group, projects: matching });
-        }
-    }
-    return result;
-});
-const filteredProjectsCount = computed(() => filteredProjectsByGroup.value.reduce((n, b) => n + b.projects.length, 0));
 const filteredSessions = computed(() => {
     const needle = sessionFilter.value.trim().toLowerCase();
     if (!needle)
@@ -118,13 +62,6 @@ async function loadSessions(projectName) {
     finally {
         sessionsLoading.value = false;
     }
-}
-function selectProject(projectName) {
-    selectedProjectName.value = projectName;
-    // The {@code project-resolved} watcher below will fire as a side
-    // effect; the explicit pick emit is what drives the URL push in the
-    // parent (history entry per user-initiated selection).
-    emit('project-pick', { name: projectName, title: projectTitle(projectName) });
 }
 function pickSession(session) {
     if (session.bound)
@@ -203,10 +140,24 @@ function projectTitle(name) {
     const p = projects.value.find((x) => x.name === name);
     return p?.title || p?.name || name;
 }
-function groupLabel(block) {
-    if (!block.group)
-        return t('chat.picker.ungrouped');
-    return block.group.title || block.group.name;
+/** Forwarded from {@link ProjectListSidebar} — wraps the v-model
+ *  write with the URL-history emit so back/forward steps between
+ *  projects (mirrors the old in-PickerView {@code selectProject}). */
+function onProjectPick(payload) {
+    emit('project-pick', payload);
+}
+/** {@link ProjectListSidebar} created a new group or project.
+ *  Reload {@code useTenantProjects} so the new entry shows up;
+ *  for projects, jump straight into the new workspace. */
+async function onProjectListDataChanged(payload) {
+    await loadProjects();
+    if (payload.kind === 'project') {
+        selectedProjectName.value = payload.name;
+        emit('project-pick', {
+            name: payload.name,
+            title: projectTitle(payload.name),
+        });
+    }
 }
 function sessionTitle(session) {
     if (session.title && session.title.trim().length > 0)
@@ -303,137 +254,101 @@ const __VLS_2 = __VLS_1({
     disabled: (!__VLS_ctx.teleportReady),
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
 __VLS_3.slots.default;
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "p-4 flex flex-col gap-4" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "flex items-center justify-between" },
-});
-__VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-    ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold" },
-});
-(__VLS_ctx.$t('chat.picker.projectsTitle'));
-const __VLS_4 = {}.VButton;
-/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+const __VLS_4 = {}.ProjectListSidebar;
+/** @type {[typeof __VLS_components.ProjectListSidebar, typeof __VLS_components.ProjectListSidebar, ]} */ ;
 // @ts-ignore
 const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({
-    ...{ 'onPointerdown': {} },
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-    title: (__VLS_ctx.$t('chat.picker.searchTooltip')),
+    ...{ 'onProjectPick': {} },
+    ...{ 'onFocusMain': {} },
+    ...{ 'onDataChanged': {} },
+    selectedProject: (__VLS_ctx.selectedProjectName),
+    groups: (__VLS_ctx.groups),
+    projects: (__VLS_ctx.projects),
+    loading: (__VLS_ctx.projectsLoading),
+    error: (__VLS_ctx.projectsError),
+    heading: (__VLS_ctx.$t('chat.picker.projectsTitle')),
+    filterPlaceholder: (__VLS_ctx.$t('chat.picker.filterPlaceholder')),
+    ungroupedLabel: (__VLS_ctx.$t('chat.picker.ungrouped')),
+    emptyHeadline: (__VLS_ctx.$t('chat.picker.noProjects')),
+    emptyBody: (__VLS_ctx.$t('chat.picker.noProjectsBody')),
+    editEnabled: true,
 }));
 const __VLS_6 = __VLS_5({
-    ...{ 'onPointerdown': {} },
-    ...{ 'onClick': {} },
-    variant: "ghost",
-    size: "sm",
-    title: (__VLS_ctx.$t('chat.picker.searchTooltip')),
+    ...{ 'onProjectPick': {} },
+    ...{ 'onFocusMain': {} },
+    ...{ 'onDataChanged': {} },
+    selectedProject: (__VLS_ctx.selectedProjectName),
+    groups: (__VLS_ctx.groups),
+    projects: (__VLS_ctx.projects),
+    loading: (__VLS_ctx.projectsLoading),
+    error: (__VLS_ctx.projectsError),
+    heading: (__VLS_ctx.$t('chat.picker.projectsTitle')),
+    filterPlaceholder: (__VLS_ctx.$t('chat.picker.filterPlaceholder')),
+    ungroupedLabel: (__VLS_ctx.$t('chat.picker.ungrouped')),
+    emptyHeadline: (__VLS_ctx.$t('chat.picker.noProjects')),
+    emptyBody: (__VLS_ctx.$t('chat.picker.noProjectsBody')),
+    editEnabled: true,
 }, ...__VLS_functionalComponentArgsRest(__VLS_5));
 let __VLS_8;
 let __VLS_9;
 let __VLS_10;
 const __VLS_11 = {
-    onPointerdown: (...[$event]) => {
+    onProjectPick: (__VLS_ctx.onProjectPick)
+};
+const __VLS_12 = {
+    onFocusMain: (...[$event]) => {
         __VLS_ctx.emit('focus-main');
     }
 };
-const __VLS_12 = {
-    onClick: (...[$event]) => {
-        __VLS_ctx.searchOpen = true;
-    }
+const __VLS_13 = {
+    onDataChanged: (__VLS_ctx.onProjectListDataChanged)
 };
 __VLS_7.slots.default;
-var __VLS_7;
-if (!__VLS_ctx.projectsLoading && !__VLS_ctx.projectsError && __VLS_ctx.projects.length > 0) {
-    const __VLS_13 = {}.VInput;
-    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+{
+    const { 'header-extra': __VLS_thisSlot } = __VLS_7.slots;
+    const __VLS_14 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_14 = __VLS_asFunctionalComponent(__VLS_13, new __VLS_13({
-        modelValue: (__VLS_ctx.projectFilter),
-        placeholder: (__VLS_ctx.$t('chat.picker.filterPlaceholder')),
+    const __VLS_15 = __VLS_asFunctionalComponent(__VLS_14, new __VLS_14({
+        ...{ 'onPointerdown': {} },
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+        title: (__VLS_ctx.$t('chat.picker.searchTooltip')),
     }));
-    const __VLS_15 = __VLS_14({
-        modelValue: (__VLS_ctx.projectFilter),
-        placeholder: (__VLS_ctx.$t('chat.picker.filterPlaceholder')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_14));
+    const __VLS_16 = __VLS_15({
+        ...{ 'onPointerdown': {} },
+        ...{ 'onClick': {} },
+        variant: "ghost",
+        size: "sm",
+        title: (__VLS_ctx.$t('chat.picker.searchTooltip')),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_15));
+    let __VLS_18;
+    let __VLS_19;
+    let __VLS_20;
+    const __VLS_21 = {
+        onPointerdown: (...[$event]) => {
+            __VLS_ctx.emit('focus-main');
+        }
+    };
+    const __VLS_22 = {
+        onClick: (...[$event]) => {
+            __VLS_ctx.searchOpen = true;
+        }
+    };
+    __VLS_17.slots.default;
+    var __VLS_17;
 }
-if (__VLS_ctx.projectsLoading) {
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-        ...{ class: "text-sm opacity-60" },
-    });
+{
+    const { loading: __VLS_thisSlot } = __VLS_7.slots;
     (__VLS_ctx.$t('chat.picker.loading'));
 }
-else if (__VLS_ctx.projectsError) {
-    const __VLS_17 = {}.VAlert;
-    /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
-    // @ts-ignore
-    const __VLS_18 = __VLS_asFunctionalComponent(__VLS_17, new __VLS_17({
-        variant: "error",
-    }));
-    const __VLS_19 = __VLS_18({
-        variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_18));
-    __VLS_20.slots.default;
-    (__VLS_ctx.projectsError);
-    var __VLS_20;
+{
+    const { 'filter-no-match': __VLS_thisSlot } = __VLS_7.slots;
+    const [{ filter }] = __VLS_getSlotParams(__VLS_thisSlot);
+    (__VLS_ctx.$t('chat.picker.filterNoMatch', { filter }));
 }
-else {
-    for (const [block] of __VLS_getVForSourceType((__VLS_ctx.filteredProjectsByGroup))) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            key: (block.group?.name ?? '_ungrouped'),
-            ...{ class: "flex flex-col gap-1" },
-        });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "text-xs opacity-50 px-2" },
-        });
-        (__VLS_ctx.groupLabel(block));
-        for (const [p] of __VLS_getVForSourceType((block.projects))) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                ...{ onPointerdown: (...[$event]) => {
-                        if (!!(__VLS_ctx.projectsLoading))
-                            return;
-                        if (!!(__VLS_ctx.projectsError))
-                            return;
-                        __VLS_ctx.emit('focus-main');
-                    } },
-                ...{ onClick: (...[$event]) => {
-                        if (!!(__VLS_ctx.projectsLoading))
-                            return;
-                        if (!!(__VLS_ctx.projectsError))
-                            return;
-                        __VLS_ctx.selectProject(p.name);
-                    } },
-                key: (p.name),
-                type: "button",
-                ...{ class: "text-left px-2 py-1.5 rounded text-sm transition-colors" },
-                ...{ class: (__VLS_ctx.selectedProjectName === p.name
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'hover:bg-base-200') },
-            });
-            (p.title || p.name);
-        }
-    }
-    if (__VLS_ctx.projects.length === 0) {
-        const __VLS_21 = {}.VEmptyState;
-        /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
-        // @ts-ignore
-        const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
-            headline: (__VLS_ctx.$t('chat.picker.noProjects')),
-            body: (__VLS_ctx.$t('chat.picker.noProjectsBody')),
-        }));
-        const __VLS_23 = __VLS_22({
-            headline: (__VLS_ctx.$t('chat.picker.noProjects')),
-            body: (__VLS_ctx.$t('chat.picker.noProjectsBody')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_22));
-    }
-    else if (__VLS_ctx.projectFilter && __VLS_ctx.filteredProjectsCount === 0) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-            ...{ class: "text-xs opacity-60 px-2" },
-        });
-        (__VLS_ctx.$t('chat.picker.filterNoMatch', { filter: __VLS_ctx.projectFilter }));
-    }
-}
+var __VLS_7;
 var __VLS_3;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.section, __VLS_intrinsicElements.section)({
     ...{ class: "flex-1 min-w-0 min-h-0 flex flex-col" },
@@ -460,33 +375,33 @@ else {
     });
     (__VLS_ctx.$t('chat.picker.pickAProject'));
 }
-const __VLS_25 = {}.VButton;
+const __VLS_23 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_26 = __VLS_asFunctionalComponent(__VLS_25, new __VLS_25({
+const __VLS_24 = __VLS_asFunctionalComponent(__VLS_23, new __VLS_23({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     ...{ class: "picker-tools-toggle" },
     title: (__VLS_ctx.pickerToolsOpen ? 'Hide tools' : 'Show tools'),
 }));
-const __VLS_27 = __VLS_26({
+const __VLS_25 = __VLS_24({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     ...{ class: "picker-tools-toggle" },
     title: (__VLS_ctx.pickerToolsOpen ? 'Hide tools' : 'Show tools'),
-}, ...__VLS_functionalComponentArgsRest(__VLS_26));
+}, ...__VLS_functionalComponentArgsRest(__VLS_24));
+let __VLS_27;
+let __VLS_28;
 let __VLS_29;
-let __VLS_30;
-let __VLS_31;
-const __VLS_32 = {
+const __VLS_30 = {
     onClick: (...[$event]) => {
         __VLS_ctx.pickerToolsOpen = !__VLS_ctx.pickerToolsOpen;
     }
 };
-__VLS_28.slots.default;
-var __VLS_28;
+__VLS_26.slots.default;
+var __VLS_26;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "picker-tools" },
     ...{ class: ({ 'picker-tools--open': __VLS_ctx.pickerToolsOpen }) },
@@ -494,53 +409,53 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "w-[150px]" },
 });
-const __VLS_33 = {}.VInput;
+const __VLS_31 = {}.VInput;
 /** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
+const __VLS_32 = __VLS_asFunctionalComponent(__VLS_31, new __VLS_31({
     modelValue: (__VLS_ctx.sessionFilter),
     placeholder: (__VLS_ctx.$t('chat.picker.sessionFilterPlaceholder')),
 }));
-const __VLS_35 = __VLS_34({
+const __VLS_33 = __VLS_32({
     modelValue: (__VLS_ctx.sessionFilter),
     placeholder: (__VLS_ctx.$t('chat.picker.sessionFilterPlaceholder')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_34));
-const __VLS_37 = {}.VCheckbox;
+}, ...__VLS_functionalComponentArgsRest(__VLS_32));
+const __VLS_35 = {}.VCheckbox;
 /** @type {[typeof __VLS_components.VCheckbox, ]} */ ;
 // @ts-ignore
-const __VLS_38 = __VLS_asFunctionalComponent(__VLS_37, new __VLS_37({
+const __VLS_36 = __VLS_asFunctionalComponent(__VLS_35, new __VLS_35({
     modelValue: (__VLS_ctx.showArchived),
     label: (__VLS_ctx.$t('chat.picker.showArchived')),
 }));
-const __VLS_39 = __VLS_38({
+const __VLS_37 = __VLS_36({
     modelValue: (__VLS_ctx.showArchived),
     label: (__VLS_ctx.$t('chat.picker.showArchived')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_38));
-const __VLS_41 = {}.VButton;
+}, ...__VLS_functionalComponentArgsRest(__VLS_36));
+const __VLS_39 = {}.VButton;
 /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_42 = __VLS_asFunctionalComponent(__VLS_41, new __VLS_41({
+const __VLS_40 = __VLS_asFunctionalComponent(__VLS_39, new __VLS_39({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (!__VLS_ctx.selectedProjectName || __VLS_ctx.bootstrapping),
     loading: (__VLS_ctx.bootstrapping),
     title: (__VLS_ctx.$t('chat.picker.newSession')),
 }));
-const __VLS_43 = __VLS_42({
+const __VLS_41 = __VLS_40({
     ...{ 'onClick': {} },
     variant: "primary",
     disabled: (!__VLS_ctx.selectedProjectName || __VLS_ctx.bootstrapping),
     loading: (__VLS_ctx.bootstrapping),
     title: (__VLS_ctx.$t('chat.picker.newSession')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_42));
+}, ...__VLS_functionalComponentArgsRest(__VLS_40));
+let __VLS_43;
+let __VLS_44;
 let __VLS_45;
-let __VLS_46;
-let __VLS_47;
-const __VLS_48 = {
+const __VLS_46 = {
     onClick: (__VLS_ctx.bootstrapNew)
 };
-__VLS_44.slots.default;
-var __VLS_44;
+__VLS_42.slots.default;
+var __VLS_42;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "flex-1 min-h-0 overflow-y-auto px-6 py-4" },
 });
@@ -548,32 +463,32 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
     ...{ class: "max-w-3xl mx-auto flex flex-col gap-4" },
 });
 if (__VLS_ctx.bootstrapError) {
-    const __VLS_49 = {}.VAlert;
+    const __VLS_47 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_50 = __VLS_asFunctionalComponent(__VLS_49, new __VLS_49({
+    const __VLS_48 = __VLS_asFunctionalComponent(__VLS_47, new __VLS_47({
         variant: "error",
     }));
-    const __VLS_51 = __VLS_50({
+    const __VLS_49 = __VLS_48({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_50));
-    __VLS_52.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_48));
+    __VLS_50.slots.default;
     (__VLS_ctx.bootstrapError);
-    var __VLS_52;
+    var __VLS_50;
 }
 if (__VLS_ctx.sessionsError) {
-    const __VLS_53 = {}.VAlert;
+    const __VLS_51 = {}.VAlert;
     /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_54 = __VLS_asFunctionalComponent(__VLS_53, new __VLS_53({
+    const __VLS_52 = __VLS_asFunctionalComponent(__VLS_51, new __VLS_51({
         variant: "error",
     }));
-    const __VLS_55 = __VLS_54({
+    const __VLS_53 = __VLS_52({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_54));
-    __VLS_56.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_52));
+    __VLS_54.slots.default;
     (__VLS_ctx.sessionsError);
-    var __VLS_56;
+    var __VLS_54;
 }
 if (__VLS_ctx.sessionsLoading) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -582,17 +497,17 @@ if (__VLS_ctx.sessionsLoading) {
     (__VLS_ctx.$t('chat.picker.sessionsLoading'));
 }
 else if (!__VLS_ctx.sessionsLoading && __VLS_ctx.sessions.length === 0 && __VLS_ctx.selectedProjectName) {
-    const __VLS_57 = {}.VEmptyState;
+    const __VLS_55 = {}.VEmptyState;
     /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
     // @ts-ignore
-    const __VLS_58 = __VLS_asFunctionalComponent(__VLS_57, new __VLS_57({
+    const __VLS_56 = __VLS_asFunctionalComponent(__VLS_55, new __VLS_55({
         headline: (__VLS_ctx.$t('chat.picker.noSessions')),
         body: (__VLS_ctx.$t('chat.picker.noSessionsBody')),
     }));
-    const __VLS_59 = __VLS_58({
+    const __VLS_57 = __VLS_56({
         headline: (__VLS_ctx.$t('chat.picker.noSessions')),
         body: (__VLS_ctx.$t('chat.picker.noSessionsBody')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_58));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_56));
 }
 else if (__VLS_ctx.sessions.length > 0 && __VLS_ctx.filteredSessions.length === 0) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -706,25 +621,25 @@ else {
             (__VLS_ctx.$t('chat.picker.occupied'));
         }
         if (session.status === __VLS_ctx.SessionStatus.ARCHIVED) {
-            const __VLS_61 = {}.VButton;
+            const __VLS_59 = {}.VButton;
             /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
             // @ts-ignore
-            const __VLS_62 = __VLS_asFunctionalComponent(__VLS_61, new __VLS_61({
+            const __VLS_60 = __VLS_asFunctionalComponent(__VLS_59, new __VLS_59({
                 ...{ 'onClick': {} },
                 variant: "primary",
                 size: "sm",
                 disabled: (__VLS_ctx.reactivating === session.sessionId),
             }));
-            const __VLS_63 = __VLS_62({
+            const __VLS_61 = __VLS_60({
                 ...{ 'onClick': {} },
                 variant: "primary",
                 size: "sm",
                 disabled: (__VLS_ctx.reactivating === session.sessionId),
-            }, ...__VLS_functionalComponentArgsRest(__VLS_62));
+            }, ...__VLS_functionalComponentArgsRest(__VLS_60));
+            let __VLS_63;
+            let __VLS_64;
             let __VLS_65;
-            let __VLS_66;
-            let __VLS_67;
-            const __VLS_68 = {
+            const __VLS_66 = {
                 onClick: (...[$event]) => {
                     if (!!(__VLS_ctx.sessionsLoading))
                         return;
@@ -737,71 +652,42 @@ else {
                     __VLS_ctx.reactivateAndOpen(session);
                 }
             };
-            __VLS_64.slots.default;
+            __VLS_62.slots.default;
             (__VLS_ctx.$t('chat.sessionHeader.reactivate'));
-            var __VLS_64;
+            var __VLS_62;
         }
     }
 }
 if (__VLS_ctx.searchOpen) {
     /** @type {[typeof SessionSearchModal, ]} */ ;
     // @ts-ignore
-    const __VLS_69 = __VLS_asFunctionalComponent(SessionSearchModal, new SessionSearchModal({
+    const __VLS_67 = __VLS_asFunctionalComponent(SessionSearchModal, new SessionSearchModal({
         ...{ 'onClose': {} },
         ...{ 'onPick': {} },
     }));
-    const __VLS_70 = __VLS_69({
+    const __VLS_68 = __VLS_67({
         ...{ 'onClose': {} },
         ...{ 'onPick': {} },
-    }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_67));
+    let __VLS_70;
+    let __VLS_71;
     let __VLS_72;
-    let __VLS_73;
-    let __VLS_74;
-    const __VLS_75 = {
+    const __VLS_73 = {
         onClose: (...[$event]) => {
             if (!(__VLS_ctx.searchOpen))
                 return;
             __VLS_ctx.searchOpen = false;
         }
     };
-    const __VLS_76 = {
+    const __VLS_74 = {
         onPick: (__VLS_ctx.onSearchPick)
     };
-    var __VLS_71;
+    var __VLS_69;
 }
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
-/** @type {__VLS_StyleScopedClasses['p-4']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['uppercase']} */ ;
-/** @type {__VLS_StyleScopedClasses['tracking-wide']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
-/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
-/** @type {__VLS_StyleScopedClasses['transition-colors']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
@@ -934,6 +820,7 @@ const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
             SessionStatus: SessionStatus,
+            ProjectListSidebar: ProjectListSidebar,
             VAlert: VAlert,
             VButton: VButton,
             VCheckbox: VCheckbox,
@@ -943,6 +830,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             emit: emit,
             selectedProjectName: selectedProjectName,
             teleportReady: teleportReady,
+            groups: groups,
             projects: projects,
             projectsLoading: projectsLoading,
             projectsError: projectsError,
@@ -954,19 +842,16 @@ const __VLS_self = (await import('vue')).defineComponent({
             showArchived: showArchived,
             reactivating: reactivating,
             searchOpen: searchOpen,
-            projectFilter: projectFilter,
             sessionFilter: sessionFilter,
             pickerToolsOpen: pickerToolsOpen,
-            filteredProjectsByGroup: filteredProjectsByGroup,
-            filteredProjectsCount: filteredProjectsCount,
             filteredSessions: filteredSessions,
-            selectProject: selectProject,
             pickSession: pickSession,
             reactivateAndOpen: reactivateAndOpen,
             bootstrapNew: bootstrapNew,
             formatRelativeTime: formatRelativeTime,
             projectTitle: projectTitle,
-            groupLabel: groupLabel,
+            onProjectPick: onProjectPick,
+            onProjectListDataChanged: onProjectListDataChanged,
             sessionTitle: sessionTitle,
             colorBorderClass: colorBorderClass,
             onSearchPick: onSearchPick,

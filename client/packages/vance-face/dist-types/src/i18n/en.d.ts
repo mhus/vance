@@ -11,6 +11,32 @@ declare const _default: {
         profile: string;
         home: string;
         backToHome: string;
+        projectPicker: {
+            addGroup: string;
+            addProject: string;
+            addProjectToGroup: string;
+            createGroup: {
+                title: string;
+                name: string;
+                nameHelp: string;
+                titleLabel: string;
+                submit: string;
+            };
+            createProject: {
+                title: string;
+                name: string;
+                nameHelp: string;
+                titleLabel: string;
+                group: string;
+                groupNone: string;
+                kit: string;
+                submit: string;
+            };
+            error: {
+                forbidden: string;
+                generic: string;
+            };
+        };
     };
     header: {
         connection: {
@@ -233,9 +259,6 @@ declare const _default: {
         projectFilterNoMatch: string;
         searchPlaceholder: string;
         pathBack: string;
-        foldersTitle: string;
-        folderAll: string;
-        foldersEmptyHint: string;
         noProjectsHeadline: string;
         noProjectsBody: string;
         pickAProjectHeadline: string;

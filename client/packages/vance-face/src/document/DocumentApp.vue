@@ -5,6 +5,7 @@ import {
   type Crumb,
   EditorShell,
   type FocusZone,
+  ProjectListSidebar,
   VAlert,
   VButton,
   VCard,
@@ -521,75 +522,29 @@ const projectOptions = computed<{ value: string; label: string; group?: string }
   });
 });
 
-// ──────────────── Project sidebar (picker-style) ────────────────
+// ──────────────── Project sidebar ────────────────
 //
-// Same shape as ChatPickerView's project list: a grouped, filterable
-// nav cluster that drops into EditorShell's #sidebar slot. No
-// magnifying-glass button — documents has no cross-project content
-// search yet, and the in-list filter below covers the navigation
-// need on its own.
+// The grouped, filterable project list now lives in the shared
+// {@link ProjectListSidebar} component — see template below for
+// wiring. Only the focus-zone ref stays here; everything else
+// (filter state, grouping, sort) is internal to the component.
 
 const focusZone = ref<FocusZone>('main');
 
-const projectFilter = ref('');
-
-interface ProjectGroupBlock {
-  groupName: string | null;
-  groupLabel: string;
-  projects: ProjectSummary[];
+/**
+ * Reload the tenant projects list after a successful create from
+ * the sidebar (Add Group / Add Project). For new projects we also
+ * select them so the user lands right in the freshly created
+ * workspace; groups don't have a selection in the documents view.
+ */
+async function onProjectListDataChanged(
+  payload: { kind: 'group' | 'project'; name: string },
+): Promise<void> {
+  await projectsState.reload();
+  if (payload.kind === 'project') {
+    selectedProjectId.value = payload.name;
+  }
 }
-
-const projectsByGroup = computed<ProjectGroupBlock[]>(() => {
-  const groupTitleById = new Map<string, string>();
-  for (const g of projectsState.groups.value) {
-    groupTitleById.set(g.name, g.title?.trim() || g.name);
-  }
-  const byKey = new Map<string | null, ProjectSummary[]>();
-  for (const p of projectsState.projects.value) {
-    const key = p.projectGroupId ?? null;
-    const list = byKey.get(key) ?? [];
-    list.push(p);
-    byKey.set(key, list);
-  }
-  const result: ProjectGroupBlock[] = [];
-  for (const [groupName, list] of byKey.entries()) {
-    result.push({
-      groupName,
-      groupLabel: groupName
-        ? groupTitleById.get(groupName) ?? groupName
-        : t('documents.ungrouped'),
-      projects: list,
-    });
-  }
-  // Stable order: ungrouped first, then groups alphabetically.
-  result.sort((a, b) => {
-    if (a.groupName === null && b.groupName !== null) return -1;
-    if (a.groupName !== null && b.groupName === null) return 1;
-    if (!a.groupName || !b.groupName) return 0;
-    return a.groupLabel.localeCompare(b.groupLabel);
-  });
-  return result;
-});
-
-const filteredProjectsByGroup = computed<ProjectGroupBlock[]>(() => {
-  const needle = projectFilter.value.trim().toLowerCase();
-  if (!needle) return projectsByGroup.value;
-  const result: ProjectGroupBlock[] = [];
-  for (const block of projectsByGroup.value) {
-    const matching = block.projects.filter((p) => {
-      const title = (p.title ?? '').toLowerCase();
-      const name = p.name.toLowerCase();
-      return title.includes(needle) || name.includes(needle);
-    });
-    if (matching.length > 0) {
-      result.push({ ...block, projects: matching });
-    }
-  }
-  return result;
-});
-
-const filteredProjectsCount = computed<number>(() =>
-  filteredProjectsByGroup.value.reduce((n, b) => n + b.projects.length, 0));
 
 // ──────────────── Main sub-header: search + back ────────────────
 
@@ -684,46 +639,6 @@ async function changePage(p: number): Promise<void> {
 // the main file list to that prefix. The sidebar highlight tracks the
 // pathPrefix bidirectionally — the path-input field and the sidebar
 // stay in sync regardless of which one the user touched.
-
-/** First-level folders only — `recipes` yes, `recipes/sub` no.
- *  System folders (`_bin`, `_vance`, `_chatbox`, `_slart`, …) are
- *  hidden by default; they only surface when the user is already
- *  inside one (so they can navigate within it) or when "All" is
- *  active (the explicit project-root view). */
-const topLevelFolders = computed<string[]>(() => {
-  const prefix = docsState.pathPrefix.value.trim();
-  const showSystem = prefix === '' || prefix.startsWith('_');
-  return docsState.folders.value.filter((f) => {
-    if (f.includes('/')) return false;
-    if (showSystem) return true;
-    return !f.startsWith('_');
-  });
-});
-
-/**
- * Sidebar selection key derived from the current `pathPrefix`.
- * - `''` → "All" entry highlighted (no filter)
- * - `<folder>` → that top-level folder entry highlighted
- * - `null` → free-form prefix typed in the input, nothing highlighted
- */
-const selectedFolderKey = computed<string | null>(() => {
-  const p = docsState.pathPrefix.value.trim();
-  if (!p) return '';
-  if (p.endsWith('/')) {
-    const stripped = p.slice(0, -1);
-    return stripped.includes('/') ? null : stripped;
-  }
-  return null;
-});
-
-function selectFolder(folder: string | null): void {
-  // null === "All" (clear filter), otherwise the folder name without
-  // trailing slash. We always commit to pathPrefix with the slash so
-  // the prefix-match on the server doesn't accidentally span sibling
-  // folders that happen to share a prefix (e.g. "rec" matching
-  // "recipes" and "records").
-  applyPathFilter(folder == null ? '' : folder + '/', true);
-}
 
 /** {@code true} for documents that the picker would route to a
  *  dedicated app editor (Kanban, Calendar, …) instead of the
@@ -1953,96 +1868,32 @@ const formatBytes = (n: number): string => {
     @title-click="focusZone = 'sidebar'"
   >
     <!-- ─── Sidebar: project picker + folder navigation ──────────────
-         Project list at top mirrors ChatPickerView's pattern (grouped,
-         filterable). Folder navigation below is the existing tree;
-         it'll later move into the main area, but for step 1 it stays
-         in the sidebar to preserve functionality. ─── -->
+         Project list at top uses the shared {@link ProjectListSidebar}
+         component (same instance backs chat). Folder navigation below
+         is the existing tree; it'll later move into the main area, but
+         for now it stays in the sidebar to preserve functionality. ─── -->
     <template #sidebar>
-      <div class="p-4 flex flex-col gap-4">
-        <!-- Project picker -->
-        <div class="flex flex-col gap-2">
-          <div class="text-xs uppercase tracking-wide opacity-60 font-semibold px-2">
-            {{ $t('documents.projectsTitle') }}
-          </div>
-
-          <VInput
-            v-if="!projectsState.loading.value && !projectsState.error.value
-              && projectsState.projects.value.length > 0"
-            v-model="projectFilter"
-            :placeholder="$t('documents.projectFilterPlaceholder')"
-          />
-
-          <div v-if="projectsState.loading.value" class="text-sm opacity-60 px-2">
+      <div class="flex flex-col gap-2">
+        <ProjectListSidebar
+          v-model:selected-project="selectedProjectId"
+          :groups="projectsState.groups.value"
+          :projects="projectsState.projects.value"
+          :loading="projectsState.loading.value"
+          :error="projectsState.error.value"
+          :heading="$t('documents.projectsTitle')"
+          :filter-placeholder="$t('documents.projectFilterPlaceholder')"
+          :ungrouped-label="$t('documents.ungrouped')"
+          edit-enabled
+          @focus-main="focusZone = 'main'"
+          @data-changed="onProjectListDataChanged"
+        >
+          <template #loading>
             {{ $t('chat.picker.loading') }}
-          </div>
-          <VAlert v-else-if="projectsState.error.value" variant="error">
-            {{ projectsState.error.value }}
-          </VAlert>
-
-          <template v-else>
-            <div
-              v-for="block in filteredProjectsByGroup"
-              :key="block.groupName ?? '_ungrouped'"
-              class="flex flex-col gap-1"
-            >
-              <div class="text-xs opacity-50 px-2">{{ block.groupLabel }}</div>
-              <button
-                v-for="p in block.projects"
-                :key="p.name"
-                type="button"
-                class="text-left px-2 py-1.5 rounded text-sm transition-colors"
-                :class="selectedProjectId === p.name
-                  ? 'bg-primary/10 text-primary font-medium'
-                  : 'hover:bg-base-200'"
-                @pointerdown.stop="focusZone = 'main'"
-                @click="selectedProjectId = p.name"
-              >
-                {{ p.title || p.name }}
-              </button>
-            </div>
-
-            <div
-              v-if="projectFilter && filteredProjectsCount === 0"
-              class="text-xs opacity-60 px-2"
-            >
-              {{ $t('documents.projectFilterNoMatch', { filter: projectFilter }) }}
-            </div>
           </template>
-        </div>
-
-        <!-- Folder navigation (only when a project is selected) -->
-        <nav v-if="selectedProjectId" class="flex flex-col gap-1">
-          <h3 class="text-xs uppercase opacity-60 mb-2 px-2">
-            {{ $t('documents.foldersTitle') }}
-          </h3>
-          <button
-            type="button"
-            class="folder-item"
-            :class="{ 'folder-item--active': selectedFolderKey === '' }"
-            @pointerdown.stop="focusZone = 'main'"
-            @click="selectFolder(null)"
-          >
-            <span>{{ $t('documents.folderAll') }}</span>
-            <span class="folder-count">{{ docsState.totalCount.value }}</span>
-          </button>
-          <button
-            v-for="folder in topLevelFolders"
-            :key="folder"
-            type="button"
-            class="folder-item"
-            :class="{ 'folder-item--active': selectedFolderKey === folder }"
-            @pointerdown.stop="focusZone = 'main'"
-            @click="selectFolder(folder)"
-          >
-            <span>{{ folder }}/</span>
-          </button>
-          <p
-            v-if="topLevelFolders.length === 0"
-            class="text-xs opacity-60 italic mt-2 px-2"
-          >
-            {{ $t('documents.foldersEmptyHint', { example: 'notes/foo.md' }) }}
-          </p>
-        </nav>
+          <template #filter-no-match="{ filter }">
+            {{ $t('documents.projectFilterNoMatch', { filter }) }}
+          </template>
+        </ProjectListSidebar>
       </div>
     </template>
 
@@ -3174,33 +3025,6 @@ const formatBytes = (n: number): string => {
 </template>
 
 <style scoped>
-.folder-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  text-align: left;
-  color: inherit;
-  background: transparent;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.folder-item:hover {
-  background: rgba(127, 127, 127, 0.08);
-}
-.folder-item--active {
-  background: rgba(127, 127, 127, 0.14);
-  font-weight: 600;
-}
-.folder-count {
-  font-size: 0.7rem;
-  opacity: 0.6;
-}
-
 /* Sub-folder row in the main file list — clickable, descends into
  * that folder when activated. Sized to match the {@code <VDataList>}
  * row underneath visually. */

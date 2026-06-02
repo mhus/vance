@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
+  type FocusZone,
   MarkdownView,
   VAlert,
   VButton,
@@ -75,6 +76,11 @@ async function onExportSession(sessionId: string): Promise<void> {
   }
 }
 const help = useHelp();
+
+// Focus zone — sidebar (filter + sessions tree), main (the
+// selected session/process detail), right (help / docs). Driven by
+// user clicks via @pointerdown on sidebar rows / main pane.
+const focusZone = ref<FocusZone>('main');
 
 // ─── Filter state ───────────────────────────────────────────────────────
 const filterProjectId = ref<string | null>(null);
@@ -404,7 +410,18 @@ function clickProcessByMongoId(id: string | undefined | null): void {
 </script>
 
 <template>
-  <EditorShell :title="$t('insights.pageTitle')" :breadcrumbs="breadcrumbs" wide-right-panel>
+  <EditorShell
+    v-model:focus-zone="focusZone"
+    :title="$t('insights.pageTitle')"
+    :breadcrumbs="breadcrumbs"
+    :full-height="true"
+    :show-sidebar="true"
+    :show-right-panel="true"
+    focus-model="auto"
+    title-clickable
+    wide-right-panel
+    @title-click="focusZone = 'sidebar'"
+  >
     <!-- ─── Sidebar: filter + sessions tree ─── -->
     <template #sidebar>
       <div class="flex flex-col gap-3 p-2">
@@ -450,6 +467,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
                 class="session-label"
                 :class="{ 'session-label--active': isSelectedSession(s) }"
                 :title="s.firstUserMessage ?? s.sessionId"
+                @pointerdown.stop="focusZone = 'main'"
                 @click="selectSession(s)"
               >
                 <div class="flex items-center justify-between gap-2">
@@ -499,8 +517,12 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       </div>
     </template>
 
-    <!-- ─── Main pane ─── -->
-    <div class="p-6 flex flex-col gap-3 max-w-5xl">
+    <!-- ─── Main pane ───
+         {@code full-height} on EditorShell pins the main cell to
+         the viewport; the long timeline / chat tabs need their own
+         scroll container so they don't push past the bottom edge. -->
+    <div class="h-full min-h-0 overflow-y-auto">
+      <div class="p-6 flex flex-col gap-3 max-w-5xl">
       <VAlert v-if="combinedError" variant="error">
         <span>{{ combinedError }}</span>
       </VAlert>
@@ -1095,6 +1117,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
         </template>
       </template>
       </template>
+      </div>
     </div>
 
     <!-- ─── Right panel: help ─── -->

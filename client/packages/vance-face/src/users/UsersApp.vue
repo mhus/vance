@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   EditorShell,
+  type FocusZone,
   MarkdownView,
   VAlert,
   VButton,
@@ -58,6 +59,10 @@ type Selection =
 const selection = ref<Selection | null>(null);
 const banner = ref<string | null>(null);
 const formError = ref<string | null>(null);
+
+// Sidebar (users + teams tree) vs. main (detail form) vs. right
+// (help). Same focus convention as DocumentApp / ScopesApp etc.
+const focusZone = ref<FocusZone>('main');
 
 // ─── User form state ────────────────────────────────────────────────────
 const userForm = reactive({
@@ -432,7 +437,18 @@ function fmt(value: unknown): string {
 </script>
 
 <template>
-  <EditorShell :title="$t('users.pageTitle')" :breadcrumbs="breadcrumbs" wide-right-panel>
+  <EditorShell
+    v-model:focus-zone="focusZone"
+    :title="$t('users.pageTitle')"
+    :breadcrumbs="breadcrumbs"
+    :full-height="true"
+    :show-sidebar="true"
+    :show-right-panel="true"
+    focus-model="auto"
+    title-clickable
+    wide-right-panel
+    @title-click="focusZone = 'sidebar'"
+  >
     <!-- ─── Sidebar ─── -->
     <template #sidebar>
       <nav class="flex flex-col gap-3 p-2">
@@ -452,6 +468,7 @@ function fmt(value: unknown): string {
             type="button"
             class="row-item"
             :class="{ 'row-item--active': isSelectedUser(u) }"
+            @pointerdown.stop="focusZone = 'main'"
             @click="selectUser(u.name)"
           >
             <div class="flex items-center justify-between gap-2">
@@ -487,6 +504,7 @@ function fmt(value: unknown): string {
             type="button"
             class="row-item"
             :class="{ 'row-item--active': isSelectedTeam(team) }"
+            @pointerdown.stop="focusZone = 'main'"
             @click="selectTeam(team.name)"
           >
             <div class="flex items-center justify-between gap-2">
@@ -508,8 +526,12 @@ function fmt(value: unknown): string {
       </nav>
     </template>
 
-    <!-- ─── Main ─── -->
-    <div class="p-6 flex flex-col gap-3 max-w-3xl">
+    <!-- ─── Main ───
+         {@code full-height} on EditorShell pins the main cell to
+         the viewport height; the long detail forms need their own
+         scroll container so they don't push past the bottom edge. -->
+    <div class="h-full min-h-0 overflow-y-auto">
+      <div class="p-6 flex flex-col gap-3 max-w-3xl">
       <VAlert v-if="combinedError" variant="error">
         <span>{{ combinedError }}</span>
       </VAlert>
@@ -725,6 +747,7 @@ function fmt(value: unknown): string {
           </VCard>
         </template>
       </template>
+      </div>
     </div>
 
     <!-- ─── Right panel: help ─── -->

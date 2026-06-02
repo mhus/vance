@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import {
   CodeEditor,
   EditorShell,
+  type FocusZone,
   VAlert,
   VButton,
   VEmptyState,
@@ -31,6 +32,11 @@ const saveError = ref<string | null>(null);
 
 const showExecuteDialog = ref(false);
 const showHactar = ref(false);
+
+// Sidebar (project selector + file tree) vs. main (editor) vs.
+// right (validate panel). Same convention as other editors —
+// clicking a row in the file tree pulls focus to main.
+const focusZone = ref<FocusZone>('main');
 
 onMounted(async () => {
   await projectsState.reload();
@@ -140,27 +146,44 @@ const projectOptions = computed(() =>
 </script>
 
 <template>
-  <EditorShell title="Script Cortex" full-height help-path="script-cortex.md">
-    <template #topbar-extra>
-      <VSelect
-        v-if="projectOptions.length > 0"
-        v-model="selectedProjectId"
-        :options="projectOptions"
-        placeholder="Select project…"
-      />
-    </template>
-
+  <EditorShell
+    v-model:focus-zone="focusZone"
+    title="Script Cortex"
+    :full-height="true"
+    :show-sidebar="true"
+    :show-right-panel="!!activeTab"
+    focus-model="auto"
+    title-clickable
+    help-path="script-cortex.md"
+    @title-click="focusZone = 'sidebar'"
+  >
     <template #sidebar>
-      <FileTreeSidebar
-        v-if="selectedProjectId"
-        :root="store.fileTree"
-        :active-file-id="store.activeTabId"
-        @open-file="store.openFile"
-        @new-file="onNew"
-        @delete-file="onDelete"
-      />
-      <div v-else class="p-3 text-sm opacity-60">
-        Pick a project first.
+      <div class="flex flex-col h-full min-h-0">
+        <!-- Project selector — lives at the top of the sidebar
+             (replaces the old {@code #topbar-extra} dropdown so it
+             sits inside the sidebar zone with the rest of the
+             navigation). Sticky-like via a non-shrinking row. -->
+        <div class="p-3 border-b border-base-300 shrink-0">
+          <VSelect
+            v-if="projectOptions.length > 0"
+            v-model="selectedProjectId"
+            :options="projectOptions"
+            placeholder="Select project…"
+          />
+        </div>
+        <div class="flex-1 min-h-0 overflow-y-auto">
+          <FileTreeSidebar
+            v-if="selectedProjectId"
+            :root="store.fileTree"
+            :active-file-id="store.activeTabId"
+            @open-file="(id) => { focusZone = 'main'; store.openFile(id); }"
+            @new-file="onNew"
+            @delete-file="onDelete"
+          />
+          <div v-else class="p-3 text-sm opacity-60">
+            Pick a project first.
+          </div>
+        </div>
       </div>
     </template>
 
@@ -213,12 +236,14 @@ const projectOptions = computed(() =>
       </div>
     </div>
 
+    <!-- Right panel only when a file is open — visibility driven by
+         the {@code show-right-panel} prop on EditorShell so the
+         column collapses entirely when there's nothing to show.
+         The {@code v-if} sits on the inner content (not the slot
+         template) to keep Vue's slot-presence detection stable. -->
     <template #right-panel>
       <div v-if="activeTab" class="h-full overflow-y-auto">
         <ValidatePanel :file="activeTab" />
-      </div>
-      <div v-else class="p-3 text-sm opacity-60">
-        Open a file to see validation tools.
       </div>
     </template>
   </EditorShell>

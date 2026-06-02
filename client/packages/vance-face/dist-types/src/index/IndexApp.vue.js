@@ -166,6 +166,9 @@ debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
 let __VLS_components;
 let __VLS_directives;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
+// CSS variable injection 
+// CSS variable injection end 
 if (__VLS_ctx.mode === 'auto-login') {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "hero min-h-screen bg-base-200" },
@@ -341,19 +344,14 @@ else {
         ...{ class: "text-lg font-semibold mb-4" },
     });
     (__VLS_ctx.$t('index.sectionTitle'));
-    const __VLS_36 = {}.VCard;
-    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
-    // @ts-ignore
-    const __VLS_37 = __VLS_asFunctionalComponent(__VLS_36, new __VLS_36({}));
-    const __VLS_38 = __VLS_37({}, ...__VLS_functionalComponentArgsRest(__VLS_37));
-    __VLS_39.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.ul, __VLS_intrinsicElements.ul)({
-        ...{ class: "flex flex-col gap-3" },
+        ...{ class: "flex flex-col gap-2" },
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: "flex items-center justify-between gap-4" },
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ class: "tile-row" },
+        href: "/chat.html",
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "font-semibold" },
     });
@@ -362,26 +360,11 @@ else {
         ...{ class: "text-sm opacity-70" },
     });
     (__VLS_ctx.$t('index.chat.description'));
-    const __VLS_40 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
-        variant: "primary",
-        size: "sm",
-        href: "/chat.html",
-    }));
-    const __VLS_42 = __VLS_41({
-        variant: "primary",
-        size: "sm",
-        href: "/chat.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_41));
-    __VLS_43.slots.default;
-    (__VLS_ctx.$t('index.open'));
-    var __VLS_43;
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: "flex items-center justify-between gap-4" },
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ class: "tile-row" },
+        href: "/documents.html",
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "font-semibold" },
     });
@@ -390,26 +373,11 @@ else {
         ...{ class: "text-sm opacity-70" },
     });
     (__VLS_ctx.$t('index.documents.description'));
-    const __VLS_44 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_45 = __VLS_asFunctionalComponent(__VLS_44, new __VLS_44({
-        variant: "primary",
-        size: "sm",
-        href: "/documents.html",
-    }));
-    const __VLS_46 = __VLS_45({
-        variant: "primary",
-        size: "sm",
-        href: "/documents.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_45));
-    __VLS_47.slots.default;
-    (__VLS_ctx.$t('index.open'));
-    var __VLS_47;
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-        ...{ class: "flex items-center justify-between gap-4" },
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+        ...{ class: "tile-row" },
+        href: "/inbox.html",
     });
-    __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "font-semibold" },
     });
@@ -418,27 +386,12 @@ else {
         ...{ class: "text-sm opacity-70" },
     });
     (__VLS_ctx.$t('index.inbox.description'));
-    const __VLS_48 = {}.VButton;
-    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
-        variant: "primary",
-        size: "sm",
-        href: "/inbox.html",
-    }));
-    const __VLS_50 = __VLS_49({
-        variant: "primary",
-        size: "sm",
-        href: "/inbox.html",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_49));
-    __VLS_51.slots.default;
-    (__VLS_ctx.$t('index.open'));
-    var __VLS_51;
     if (__VLS_ctx.showExpertTiles) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-            ...{ class: "flex items-center justify-between gap-4" },
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ class: "tile-row" },
+            href: "/scopes.html",
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "font-semibold" },
         });
@@ -447,28 +400,13 @@ else {
             ...{ class: "text-sm opacity-70" },
         });
         (__VLS_ctx.$t('index.scopes.description'));
-        const __VLS_52 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
-            variant: "primary",
-            size: "sm",
-            href: "/scopes.html",
-        }));
-        const __VLS_54 = __VLS_53({
-            variant: "primary",
-            size: "sm",
-            href: "/scopes.html",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_53));
-        __VLS_55.slots.default;
-        (__VLS_ctx.$t('index.open'));
-        var __VLS_55;
     }
     if (__VLS_ctx.showExpertTiles) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-            ...{ class: "flex items-center justify-between gap-4" },
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ class: "tile-row" },
+            href: "/tools.html",
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "font-semibold" },
         });
@@ -477,28 +415,13 @@ else {
             ...{ class: "text-sm opacity-70" },
         });
         (__VLS_ctx.$t('index.tools.description'));
-        const __VLS_56 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
-            variant: "primary",
-            size: "sm",
-            href: "/tools.html",
-        }));
-        const __VLS_58 = __VLS_57({
-            variant: "primary",
-            size: "sm",
-            href: "/tools.html",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_57));
-        __VLS_59.slots.default;
-        (__VLS_ctx.$t('index.open'));
-        var __VLS_59;
     }
     if (__VLS_ctx.showExpertTiles) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-            ...{ class: "flex items-center justify-between gap-4" },
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ class: "tile-row" },
+            href: "/insights.html",
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "font-semibold" },
         });
@@ -507,56 +430,26 @@ else {
             ...{ class: "text-sm opacity-70" },
         });
         (__VLS_ctx.$t('index.insights.description'));
-        const __VLS_60 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
-            variant: "primary",
-            size: "sm",
-            href: "/insights.html",
-        }));
-        const __VLS_62 = __VLS_61({
-            variant: "primary",
-            size: "sm",
-            href: "/insights.html",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_61));
-        __VLS_63.slots.default;
-        (__VLS_ctx.$t('index.open'));
-        var __VLS_63;
     }
     if (__VLS_ctx.showExpertTiles) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-            ...{ class: "flex items-center justify-between gap-4" },
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ class: "tile-row" },
+            href: "/scripts.html",
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "font-semibold" },
         });
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-sm opacity-70" },
         });
-        const __VLS_64 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
-            variant: "primary",
-            size: "sm",
-            href: "/scripts.html",
-        }));
-        const __VLS_66 = __VLS_65({
-            variant: "primary",
-            size: "sm",
-            href: "/scripts.html",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_65));
-        __VLS_67.slots.default;
-        (__VLS_ctx.$t('index.open'));
-        var __VLS_67;
     }
     if (__VLS_ctx.showAdminTiles) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-            ...{ class: "flex items-center justify-between gap-4" },
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ class: "tile-row" },
+            href: "/users.html",
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "font-semibold" },
         });
@@ -565,28 +458,13 @@ else {
             ...{ class: "text-sm opacity-70" },
         });
         (__VLS_ctx.$t('index.users.description'));
-        const __VLS_68 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
-            variant: "primary",
-            size: "sm",
-            href: "/users.html",
-        }));
-        const __VLS_70 = __VLS_69({
-            variant: "primary",
-            size: "sm",
-            href: "/users.html",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_69));
-        __VLS_71.slots.default;
-        (__VLS_ctx.$t('index.open'));
-        var __VLS_71;
     }
     if (__VLS_ctx.showAdminTiles) {
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
-            ...{ class: "flex items-center justify-between gap-4" },
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+            ...{ class: "tile-row" },
+            href: "/tool-templates.html",
         });
-        __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({});
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "font-semibold" },
         });
@@ -595,24 +473,7 @@ else {
             ...{ class: "text-sm opacity-70" },
         });
         (__VLS_ctx.$t('toolTemplates.intro'));
-        const __VLS_72 = {}.VButton;
-        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
-        // @ts-ignore
-        const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
-            variant: "primary",
-            size: "sm",
-            href: "/tool-templates.html",
-        }));
-        const __VLS_74 = __VLS_73({
-            variant: "primary",
-            size: "sm",
-            href: "/tool-templates.html",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_73));
-        __VLS_75.slots.default;
-        (__VLS_ctx.$t('index.open'));
-        var __VLS_75;
     }
-    var __VLS_39;
     var __VLS_35;
 }
 /** @type {__VLS_StyleScopedClasses['hero']} */ ;
@@ -659,67 +520,40 @@ else {
 /** @type {__VLS_StyleScopedClasses['mb-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['gap-4']} */ ;
+/** @type {__VLS_StyleScopedClasses['tile-row']} */ ;
 /** @type {__VLS_StyleScopedClasses['font-semibold']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;

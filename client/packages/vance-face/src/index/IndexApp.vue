@@ -258,98 +258,85 @@ function readNextParam(): string | null {
   <EditorShell v-else :title="$t('common.home')">
     <div class="container mx-auto px-4 py-8 max-w-3xl">
       <h2 class="text-lg font-semibold mb-4">{{ $t('index.sectionTitle') }}</h2>
-      <VCard>
-        <ul class="flex flex-col gap-3">
+      <ul class="flex flex-col gap-2">
           <!-- Standard tier — always visible. -->
-          <li class="flex items-center justify-between gap-4">
-            <div>
+          <li>
+            <a class="tile-row" href="/chat.html">
               <div class="font-semibold">{{ $t('index.chat.title') }}</div>
               <div class="text-sm opacity-70">{{ $t('index.chat.description') }}</div>
-            </div>
-            <VButton variant="primary" size="sm" href="/chat.html">
-              {{ $t('index.open') }}
-            </VButton>
+            </a>
           </li>
-          <li class="flex items-center justify-between gap-4">
-            <div>
-              <div class="font-semibold">{{ $t('index.documents.title') }}</div>
-              <div class="text-sm opacity-70">{{ $t('index.documents.description') }}</div>
-            </div>
-            <VButton variant="primary" size="sm" href="/documents.html">
-              {{ $t('index.open') }}
-            </VButton>
+          <li>
+            <a class="tile-row" href="/documents.html">
+                <div class="font-semibold">{{ $t('index.documents.title') }}</div>
+                <div class="text-sm opacity-70">{{ $t('index.documents.description') }}</div>
+            </a>
           </li>
-          <li class="flex items-center justify-between gap-4">
-            <div>
-              <div class="font-semibold">{{ $t('index.inbox.title') }}</div>
-              <div class="text-sm opacity-70">{{ $t('index.inbox.description') }}</div>
-            </div>
-            <VButton variant="primary" size="sm" href="/inbox.html">
-              {{ $t('index.open') }}
-            </VButton>
+          <li>
+            <a class="tile-row" href="/inbox.html">
+                <div class="font-semibold">{{ $t('index.inbox.title') }}</div>
+                <div class="text-sm opacity-70">{{ $t('index.inbox.description') }}</div>
+            </a>
           </li>
 
           <!-- Expert tier — power-user surfaces (scopes / tools / insights). -->
-          <li v-if="showExpertTiles" class="flex items-center justify-between gap-4">
-            <div>
-              <div class="font-semibold">{{ $t('index.scopes.title') }}</div>
-              <div class="text-sm opacity-70">{{ $t('index.scopes.description') }}</div>
-            </div>
-            <VButton variant="primary" size="sm" href="/scopes.html">
-              {{ $t('index.open') }}
-            </VButton>
+          <li v-if="showExpertTiles">
+            <a class="tile-row" href="/scopes.html">
+                <div class="font-semibold">{{ $t('index.scopes.title') }}</div>
+                <div class="text-sm opacity-70">{{ $t('index.scopes.description') }}</div>
+            </a>
           </li>
-          <li v-if="showExpertTiles" class="flex items-center justify-between gap-4">
-            <div>
-              <div class="font-semibold">{{ $t('index.tools.title') }}</div>
-              <div class="text-sm opacity-70">{{ $t('index.tools.description') }}</div>
-            </div>
-            <VButton variant="primary" size="sm" href="/tools.html">
-              {{ $t('index.open') }}
-            </VButton>
+          <li v-if="showExpertTiles">
+            <a class="tile-row" href="/tools.html">
+                <div class="font-semibold">{{ $t('index.tools.title') }}</div>
+                <div class="text-sm opacity-70">{{ $t('index.tools.description') }}</div>
+            </a>
           </li>
-          <li v-if="showExpertTiles" class="flex items-center justify-between gap-4">
-            <div>
-              <div class="font-semibold">{{ $t('index.insights.title') }}</div>
-              <div class="text-sm opacity-70">{{ $t('index.insights.description') }}</div>
-            </div>
-            <VButton variant="primary" size="sm" href="/insights.html">
-              {{ $t('index.open') }}
-            </VButton>
+          <li v-if="showExpertTiles">
+            <a class="tile-row" href="/insights.html">
+                <div class="font-semibold">{{ $t('index.insights.title') }}</div>
+                <div class="text-sm opacity-70">{{ $t('index.insights.description') }}</div>
+            </a>
           </li>
-          <li v-if="showExpertTiles" class="flex items-center justify-between gap-4">
-            <div>
-              <div class="font-semibold">Script Cortex</div>
-              <div class="text-sm opacity-70">JavaScript-Scripte schreiben, validieren, ausführen.</div>
-            </div>
-            <VButton variant="primary" size="sm" href="/scripts.html">
-              {{ $t('index.open') }}
-            </VButton>
+          <li v-if="showExpertTiles">
+            <a class="tile-row" href="/scripts.html">
+                <div class="font-semibold">Script Cortex</div>
+                <div class="text-sm opacity-70">JavaScript-Scripte schreiben, validieren, ausführen.</div>
+            </a>
           </li>
 
           <!-- Admin tier — tenant-management surfaces. The brain still
                denies non-admins at the REST layer; this is just a
                clutter filter. -->
-          <li v-if="showAdminTiles" class="flex items-center justify-between gap-4">
-            <div>
-              <div class="font-semibold">{{ $t('index.users.title') }}</div>
-              <div class="text-sm opacity-70">{{ $t('index.users.description') }}</div>
-            </div>
-            <VButton variant="primary" size="sm" href="/users.html">
-              {{ $t('index.open') }}
-            </VButton>
+          <li v-if="showAdminTiles">
+            <a class="tile-row" href="/users.html">
+                <div class="font-semibold">{{ $t('index.users.title') }}</div>
+                <div class="text-sm opacity-70">{{ $t('index.users.description') }}</div>
+            </a>
           </li>
-          <li v-if="showAdminTiles" class="flex items-center justify-between gap-4">
-            <div>
-              <div class="font-semibold">{{ $t('toolTemplates.pageTitle') }}</div>
-              <div class="text-sm opacity-70">{{ $t('toolTemplates.intro') }}</div>
-            </div>
-            <VButton variant="primary" size="sm" href="/tool-templates.html">
-              {{ $t('index.open') }}
-            </VButton>
+          <li v-if="showAdminTiles">
+            <a class="tile-row" href="/tool-templates.html">
+                <div class="font-semibold">{{ $t('toolTemplates.pageTitle') }}</div>
+                <div class="text-sm opacity-70">{{ $t('toolTemplates.intro') }}</div>
+            </a>
           </li>
         </ul>
-      </VCard>
     </div>
   </EditorShell>
 </template>
+
+<style scoped>
+/* Each tile is a bordered card — same look as a document-picker row
+ * via VDataList. The whole tile is the link (block, no underline).
+ * Hover lifts the border to primary, matching the documents/inbox
+ * picker rows. {@code @apply} runs the Tailwind+DaisyUI tokens
+ * through the build so the colors track the active theme. */
+.tile-row {
+  @apply block w-full bg-base-100 border border-base-300 rounded-lg shadow-sm p-4
+         text-base-content no-underline cursor-pointer
+         transition-colors hover:border-primary;
+}
+.tile-row:focus-visible {
+  @apply outline outline-2 outline-primary outline-offset-2;
+}
+</style>

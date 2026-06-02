@@ -1,7 +1,12 @@
-package de.mhus.vance.brain.applications;
+package de.mhus.vance.addon.brain.slideshow;
 
+import de.mhus.vance.brain.applications.VanceApplication;
+import de.mhus.vance.brain.applications.VanceApplication.ArtefactResult;
+import de.mhus.vance.brain.applications.VanceApplication.CreateContext;
+import de.mhus.vance.brain.applications.VanceApplication.CreateResult;
+import de.mhus.vance.brain.applications.VanceApplication.RefreshContext;
+import de.mhus.vance.brain.applications.VanceApplication.RefreshResult;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
-import de.mhus.vance.brain.tools.slideshow.SlideshowFolderReader;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.kind.ApplicationCodec;

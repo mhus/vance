@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.slideshow;
+package de.mhus.vance.addon.brain.slideshow;
 
 import java.awt.Dimension;
 import java.io.IOException;

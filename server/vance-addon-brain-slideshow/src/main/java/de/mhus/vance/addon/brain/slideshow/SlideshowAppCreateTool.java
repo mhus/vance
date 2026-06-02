@@ -1,6 +1,5 @@
-package de.mhus.vance.brain.tools.slideshow;
+package de.mhus.vance.addon.brain.slideshow;
 
-import de.mhus.vance.brain.applications.SlideshowApplication;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.project.ProjectDocument;

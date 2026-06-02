@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.slideshow;
+package de.mhus.vance.addon.brain.slideshow;
 
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;

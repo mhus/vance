@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect } from '@vance/components';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
@@ -6,12 +7,6 @@ import type {
   ProjectSummary,
 } from '@vance/generated';
 import { brainFetch } from '@vance/shared';
-import VAlert from './VAlert.vue';
-import VButton from './VButton.vue';
-import VEmptyState from './VEmptyState.vue';
-import VInput from './VInput.vue';
-import VModal from './VModal.vue';
-import VSelect from './VSelect.vue';
 
 /**
  * Reusable project picker for editor sidebars. Renders the tenant's

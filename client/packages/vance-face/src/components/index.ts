@@ -1,9 +1,10 @@
-// Vance UI primitives — the only place that may use DaisyUI classes
-// (`btn`, `input`, `alert`, `card`, `dialog`, ...) directly. Editors compose
-// their views from these components.
-//
-// New primitives go here before they are used in any editor. See
-// specification/web-ui.md §7.3.
+// Composite UI building blocks that depend on vance-face internals
+// (composables, stores, kind registry). The V* primitives live in
+// @vance/components and are re-exported here so existing
+// `import { ... } from '@components'` paths in vance-face keep working.
+// Addons should import V* primitives directly from @vance/components.
+
+export * from '@vance/components';
 
 export { default as CodeEditor } from './CodeEditor.vue';
 export { default as EditorShell } from './EditorShell.vue';
@@ -12,23 +13,6 @@ export { default as MarkdownView } from './MarkdownView.vue';
 export { default as ProjectListSidebar } from './ProjectListSidebar.vue';
 export type { PickerNode } from './ProjectListSidebar.vue';
 export { default as SessionHeader } from './SessionHeader.vue';
-export { default as VAlert } from './VAlert.vue';
-export { default as VBackButton } from './VBackButton.vue';
-export { default as VButton } from './VButton.vue';
-export { default as VCard } from './VCard.vue';
-export { default as VCheckbox } from './VCheckbox.vue';
-export { default as VColorPicker } from './VColorPicker.vue';
-export { default as VDataList } from './VDataList.vue';
-export { default as VEmojiPicker } from './VEmojiPicker.vue';
-export { default as VEmptyState } from './VEmptyState.vue';
-export { default as VFileInput } from './VFileInput.vue';
-export { default as VInput } from './VInput.vue';
-export { default as VModal } from './VModal.vue';
-export { default as VPagination } from './VPagination.vue';
-export { default as VSelect } from './VSelect.vue';
-export { default as VTagEditor } from './VTagEditor.vue';
-export { default as VTextarea } from './VTextarea.vue';
-
 export { default as FormFields } from './FormFields.vue';
 export type { FormValue, FormValueObject } from './FormFields.vue';
 export { default as SettingFormView } from './SettingFormView.vue';

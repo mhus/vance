@@ -21,10 +21,6 @@ export * from './profile/ProfileDto';
 export * from './profile/ProfileSettingWriteRequest';
 export * from './profile/ProfileUpdateRequest';
 
-export * from './slideshow/SlideView';
-export * from './slideshow/SlideshowRebuildResponse';
-export * from './slideshow/SlideshowView';
-
 export * from './scripts/ScriptCreateRequest';
 export * from './scripts/ScriptDeepValidateResponse';
 export * from './scripts/ScriptDeepWarning';

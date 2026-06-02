@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
     "outDir": "./dist-types",
@@ -14,7 +14,9 @@
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "env.d.ts"],
   "references": [
+    { "path": "../components" },
     { "path": "../generated" },
-    { "path": "../shared" }
+    { "path": "../shared" },
+    { "path": "../../../server/vance-addon-brain-slideshow/client" }
   ]
 }

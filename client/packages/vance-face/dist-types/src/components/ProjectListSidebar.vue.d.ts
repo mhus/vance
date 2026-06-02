@@ -80,25 +80,25 @@ type __VLS_PublicProps = __VLS_Props & {
      */
     'selectedNode'?: PickerNode | null;
 };
-declare var __VLS_1: {}, __VLS_14: {}, __VLS_26: {
+declare var __VLS_1: {}, __VLS_16: {}, __VLS_30: {
     kind: string;
     item: ProjectGroupSummary;
-}, __VLS_28: {
+}, __VLS_32: {
     kind: string;
     item: ProjectSummary;
-}, __VLS_33: {
+}, __VLS_38: {
     filter: string;
 };
 type __VLS_Slots = {} & {
     'header-extra'?: (props: typeof __VLS_1) => any;
 } & {
-    loading?: (props: typeof __VLS_14) => any;
+    loading?: (props: typeof __VLS_16) => any;
 } & {
-    'row-suffix'?: (props: typeof __VLS_26) => any;
+    'row-suffix'?: (props: typeof __VLS_30) => any;
 } & {
-    'row-suffix'?: (props: typeof __VLS_28) => any;
+    'row-suffix'?: (props: typeof __VLS_32) => any;
 } & {
-    'filter-no-match'?: (props: typeof __VLS_33) => any;
+    'filter-no-match'?: (props: typeof __VLS_38) => any;
 };
 declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {
     "update:selectedProject": (value: string | null) => any;

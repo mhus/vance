@@ -10,7 +10,7 @@
 
     <artifactId>vance-addon-brain-slideshow</artifactId>
     <name>vance-addon-brain-slideshow</name>
-    <description>Slideshow Vance Application packaged as a first-party Brain addon. Bundles the SlideshowApplication, its REST controller, folder scanner and the slideshow_* server tools. Loaded by Spring Boot via META-INF/spring/.../AutoConfiguration.imports. Asymmetric dependency: addon imports vance-api/-shared/-brain; the brain modules never reference back.</description>
+    <description>Slideshow Vance Application packaged as a first-party Brain addon. Bundles the SlideshowApplication, its REST controller, folder scanner, server tools and the wire-contract DTOs (SlideView, SlideshowView, SlideshowRebuildResponse). The Maven build generates the matching TypeScript interfaces straight into the colocated client/ pnpm package, which also carries the Vue UI and REST helpers. Loaded by Spring Boot via META-INF/spring/.../AutoConfiguration.imports.</description>
     <packaging>jar</packaging>
 
     <dependencies>
@@ -33,5 +33,33 @@
             <scope>provided</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+              Generates TypeScript interfaces from this addon's @GenerateTypeScript-annotated
+              DTOs straight into the colocated client/ workspace package. Output is the
+              addon's own source tree — no shared @vance/generated coupling.
+            -->
+            <plugin>
+                <groupId>de.mhus.vance</groupId>
+                <artifactId>generate-java-to-ts-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-ts-dtos</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <configuration>
+                            <inputDirectory>${project.basedir}/src/main/java</inputDirectory>
+                            <outputDirectory>${project.basedir}/client/src/generated</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>

@@ -1,0 +1,36 @@
+{
+  "name": "@vance-addon/slideshow",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Client surface of the Slideshow Brain addon — TypeScript DTOs (generated from Java), REST helpers and the Vue editor component. Self-contained: source consumed by Vite at runtime (main → src/), pre-built .vue.d.ts emitted by vue-tsc for downstream type checking (types → dist/).",
+  "license": "SEE LICENSE IN ../../../client/LICENSE.txt",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    },
+    "./SlideshowApp.vue": {
+      "types": "./dist/SlideshowApp.vue.d.ts",
+      "import": "./src/SlideshowApp.vue"
+    }
+  },
+  "files": ["src", "dist"],
+  "scripts": {
+    "build": "vue-tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@vance/components": "workspace:*",
+    "@vance/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "vue": "^3.5.13",
+    "vue-tsc": "^2.1.10"
+  }
+}

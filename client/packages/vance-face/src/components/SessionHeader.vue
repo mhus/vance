@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { VButton, VColorPicker, VEmojiPicker, VTagEditor } from '@vance/components';
 import {
   SessionColor,
   SessionStatus,
@@ -14,10 +15,6 @@ import {
 } from '@vance/shared';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import VButton from './VButton.vue';
-import VColorPicker from './VColorPicker.vue';
-import VEmojiPicker from './VEmojiPicker.vue';
-import VTagEditor from './VTagEditor.vue';
 
 interface Props {
   sessionId: string;

@@ -1,12 +1,7 @@
+import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect } from '@vance/components';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { brainFetch } from '@vance/shared';
-import VAlert from './VAlert.vue';
-import VButton from './VButton.vue';
-import VEmptyState from './VEmptyState.vue';
-import VInput from './VInput.vue';
-import VModal from './VModal.vue';
-import VSelect from './VSelect.vue';
 const props = withDefaults(defineProps(), {
     loading: false,
     error: null,
@@ -409,84 +404,88 @@ if (__VLS_ctx.heading || __VLS_ctx.$slots['header-extra'] || __VLS_ctx.editEnabl
     });
     var __VLS_0 = {};
     if (__VLS_ctx.editEnabled) {
-        /** @type {[typeof VButton, typeof VButton, ]} */ ;
+        const __VLS_2 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_2 = __VLS_asFunctionalComponent(VButton, new VButton({
+        const __VLS_3 = __VLS_asFunctionalComponent(__VLS_2, new __VLS_2({
             ...{ 'onPointerdown': {} },
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             title: (__VLS_ctx.t('common.projectPicker.addGroup')),
         }));
-        const __VLS_3 = __VLS_2({
+        const __VLS_4 = __VLS_3({
             ...{ 'onPointerdown': {} },
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             title: (__VLS_ctx.t('common.projectPicker.addGroup')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_2));
-        let __VLS_5;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_3));
         let __VLS_6;
         let __VLS_7;
-        const __VLS_8 = {
+        let __VLS_8;
+        const __VLS_9 = {
             onPointerdown: () => { }
         };
-        const __VLS_9 = {
+        const __VLS_10 = {
             onClick: (__VLS_ctx.openCreateGroup)
         };
-        __VLS_4.slots.default;
-        var __VLS_4;
+        __VLS_5.slots.default;
+        var __VLS_5;
     }
 }
 if (__VLS_ctx.searchEnabled && !__VLS_ctx.loading && !__VLS_ctx.error && __VLS_ctx.projects.length > 0) {
-    /** @type {[typeof VInput, ]} */ ;
+    const __VLS_11 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
     // @ts-ignore
-    const __VLS_10 = __VLS_asFunctionalComponent(VInput, new VInput({
+    const __VLS_12 = __VLS_asFunctionalComponent(__VLS_11, new __VLS_11({
         modelValue: (__VLS_ctx.projectFilter),
         placeholder: (__VLS_ctx.filterPlaceholder),
     }));
-    const __VLS_11 = __VLS_10({
+    const __VLS_13 = __VLS_12({
         modelValue: (__VLS_ctx.projectFilter),
         placeholder: (__VLS_ctx.filterPlaceholder),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_10));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_12));
 }
 if (__VLS_ctx.loading) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "text-sm opacity-60 px-2" },
     });
-    var __VLS_13 = {};
+    var __VLS_15 = {};
 }
 else if (__VLS_ctx.error) {
-    /** @type {[typeof VAlert, typeof VAlert, ]} */ ;
+    const __VLS_17 = {}.VAlert;
+    /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_15 = __VLS_asFunctionalComponent(VAlert, new VAlert({
+    const __VLS_18 = __VLS_asFunctionalComponent(__VLS_17, new __VLS_17({
         variant: "error",
     }));
-    const __VLS_16 = __VLS_15({
+    const __VLS_19 = __VLS_18({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_15));
-    __VLS_17.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_18));
+    __VLS_20.slots.default;
     (__VLS_ctx.error);
-    var __VLS_17;
+    var __VLS_20;
 }
 else {
     if (__VLS_ctx.moveError) {
-        /** @type {[typeof VAlert, typeof VAlert, ]} */ ;
+        const __VLS_21 = {}.VAlert;
+        /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_18 = __VLS_asFunctionalComponent(VAlert, new VAlert({
+        const __VLS_22 = __VLS_asFunctionalComponent(__VLS_21, new __VLS_21({
             ...{ 'onClick': {} },
             variant: "error",
             ...{ class: "cursor-pointer" },
         }));
-        const __VLS_19 = __VLS_18({
+        const __VLS_23 = __VLS_22({
             ...{ 'onClick': {} },
             variant: "error",
             ...{ class: "cursor-pointer" },
-        }, ...__VLS_functionalComponentArgsRest(__VLS_18));
-        let __VLS_21;
-        let __VLS_22;
-        let __VLS_23;
-        const __VLS_24 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_22));
+        let __VLS_25;
+        let __VLS_26;
+        let __VLS_27;
+        const __VLS_28 = {
             onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.loading))
                     return;
@@ -497,10 +496,10 @@ else {
                 __VLS_ctx.moveError = null;
             }
         };
-        __VLS_20.slots.default;
+        __VLS_24.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
         (__VLS_ctx.moveError);
-        var __VLS_20;
+        var __VLS_24;
     }
     for (const [block] of __VLS_getVForSourceType((__VLS_ctx.filteredProjectsByGroup))) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -567,7 +566,7 @@ else {
                 ...{ class: "flex-1 truncate" },
             });
             (block.group.title || block.group.name);
-            var __VLS_25 = {
+            var __VLS_29 = {
                 kind: ('group'),
                 item: (block.group),
             };
@@ -662,56 +661,58 @@ else {
                 ...{ class: "flex-1 truncate" },
             });
             (p.title || p.name);
-            var __VLS_27 = {
+            var __VLS_31 = {
                 kind: ('project'),
                 item: (p),
             };
         }
     }
     if (__VLS_ctx.projects.length === 0 && __VLS_ctx.emptyHeadline) {
-        /** @type {[typeof VEmptyState, ]} */ ;
+        const __VLS_33 = {}.VEmptyState;
+        /** @type {[typeof __VLS_components.VEmptyState, ]} */ ;
         // @ts-ignore
-        const __VLS_29 = __VLS_asFunctionalComponent(VEmptyState, new VEmptyState({
+        const __VLS_34 = __VLS_asFunctionalComponent(__VLS_33, new __VLS_33({
             headline: (__VLS_ctx.emptyHeadline),
             body: (__VLS_ctx.emptyBody),
         }));
-        const __VLS_30 = __VLS_29({
+        const __VLS_35 = __VLS_34({
             headline: (__VLS_ctx.emptyHeadline),
             body: (__VLS_ctx.emptyBody),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_29));
+        }, ...__VLS_functionalComponentArgsRest(__VLS_34));
     }
     else if (__VLS_ctx.projectFilter && __VLS_ctx.filteredProjectsCount === 0) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs opacity-60 px-2" },
         });
-        var __VLS_32 = {
+        var __VLS_37 = {
             filter: (__VLS_ctx.projectFilter),
         };
     }
     if (__VLS_ctx.editEnabled && !__VLS_ctx.loading && !__VLS_ctx.error) {
-        /** @type {[typeof VButton, typeof VButton, ]} */ ;
+        const __VLS_39 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_34 = __VLS_asFunctionalComponent(VButton, new VButton({
+        const __VLS_40 = __VLS_asFunctionalComponent(__VLS_39, new __VLS_39({
             ...{ 'onPointerdown': {} },
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             block: true,
         }));
-        const __VLS_35 = __VLS_34({
+        const __VLS_41 = __VLS_40({
             ...{ 'onPointerdown': {} },
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             block: true,
-        }, ...__VLS_functionalComponentArgsRest(__VLS_34));
-        let __VLS_37;
-        let __VLS_38;
-        let __VLS_39;
-        const __VLS_40 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_40));
+        let __VLS_43;
+        let __VLS_44;
+        let __VLS_45;
+        const __VLS_46 = {
             onPointerdown: () => { }
         };
-        const __VLS_41 = {
+        const __VLS_47 = {
             onClick: (...[$event]) => {
                 if (!!(__VLS_ctx.loading))
                     return;
@@ -722,259 +723,273 @@ else {
                 __VLS_ctx.openCreateProject(null);
             }
         };
-        __VLS_36.slots.default;
+        __VLS_42.slots.default;
         (__VLS_ctx.t('common.projectPicker.addProject'));
-        var __VLS_36;
+        var __VLS_42;
     }
 }
-/** @type {[typeof VModal, typeof VModal, ]} */ ;
+const __VLS_48 = {}.VModal;
+/** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_42 = __VLS_asFunctionalComponent(VModal, new VModal({
+const __VLS_49 = __VLS_asFunctionalComponent(__VLS_48, new __VLS_48({
     modelValue: (__VLS_ctx.showCreateGroup),
     title: (__VLS_ctx.t('common.projectPicker.createGroup.title')),
     closeOnBackdrop: (!__VLS_ctx.creating),
 }));
-const __VLS_43 = __VLS_42({
+const __VLS_50 = __VLS_49({
     modelValue: (__VLS_ctx.showCreateGroup),
     title: (__VLS_ctx.t('common.projectPicker.createGroup.title')),
     closeOnBackdrop: (!__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_42));
-__VLS_44.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_49));
+__VLS_51.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.submitCreateGroup) },
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.creationError) {
-    /** @type {[typeof VAlert, typeof VAlert, ]} */ ;
+    const __VLS_52 = {}.VAlert;
+    /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_45 = __VLS_asFunctionalComponent(VAlert, new VAlert({
+    const __VLS_53 = __VLS_asFunctionalComponent(__VLS_52, new __VLS_52({
         variant: "error",
     }));
-    const __VLS_46 = __VLS_45({
+    const __VLS_54 = __VLS_53({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_45));
-    __VLS_47.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_53));
+    __VLS_55.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.creationError);
-    var __VLS_47;
+    var __VLS_55;
 }
-/** @type {[typeof VInput, ]} */ ;
+const __VLS_56 = {}.VInput;
+/** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_48 = __VLS_asFunctionalComponent(VInput, new VInput({
+const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
     modelValue: (__VLS_ctx.newGroupName),
     label: (__VLS_ctx.t('common.projectPicker.createGroup.name')),
     help: (__VLS_ctx.t('common.projectPicker.createGroup.nameHelp')),
     required: true,
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_49 = __VLS_48({
+const __VLS_58 = __VLS_57({
     modelValue: (__VLS_ctx.newGroupName),
     label: (__VLS_ctx.t('common.projectPicker.createGroup.name')),
     help: (__VLS_ctx.t('common.projectPicker.createGroup.nameHelp')),
     required: true,
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_48));
-/** @type {[typeof VInput, ]} */ ;
+}, ...__VLS_functionalComponentArgsRest(__VLS_57));
+const __VLS_60 = {}.VInput;
+/** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_51 = __VLS_asFunctionalComponent(VInput, new VInput({
+const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
     modelValue: (__VLS_ctx.newGroupTitle),
     label: (__VLS_ctx.t('common.projectPicker.createGroup.titleLabel')),
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_52 = __VLS_51({
+const __VLS_62 = __VLS_61({
     modelValue: (__VLS_ctx.newGroupTitle),
     label: (__VLS_ctx.t('common.projectPicker.createGroup.titleLabel')),
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_51));
+}, ...__VLS_functionalComponentArgsRest(__VLS_61));
 {
-    const { actions: __VLS_thisSlot } = __VLS_44.slots;
-    /** @type {[typeof VButton, typeof VButton, ]} */ ;
+    const { actions: __VLS_thisSlot } = __VLS_51.slots;
+    const __VLS_64 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_54 = __VLS_asFunctionalComponent(VButton, new VButton({
+    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_55 = __VLS_54({
+    const __VLS_66 = __VLS_65({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_54));
-    let __VLS_57;
-    let __VLS_58;
-    let __VLS_59;
-    const __VLS_60 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+    let __VLS_68;
+    let __VLS_69;
+    let __VLS_70;
+    const __VLS_71 = {
         onClick: (...[$event]) => {
             __VLS_ctx.showCreateGroup = false;
         }
     };
-    __VLS_56.slots.default;
+    __VLS_67.slots.default;
     (__VLS_ctx.t('common.cancel'));
-    var __VLS_56;
-    /** @type {[typeof VButton, typeof VButton, ]} */ ;
+    var __VLS_67;
+    const __VLS_72 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_61 = __VLS_asFunctionalComponent(VButton, new VButton({
+    const __VLS_73 = __VLS_asFunctionalComponent(__VLS_72, new __VLS_72({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
         disabled: (!__VLS_ctx.newGroupName.trim()),
     }));
-    const __VLS_62 = __VLS_61({
+    const __VLS_74 = __VLS_73({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
         disabled: (!__VLS_ctx.newGroupName.trim()),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
-    let __VLS_64;
-    let __VLS_65;
-    let __VLS_66;
-    const __VLS_67 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_73));
+    let __VLS_76;
+    let __VLS_77;
+    let __VLS_78;
+    const __VLS_79 = {
         onClick: (__VLS_ctx.submitCreateGroup)
     };
-    __VLS_63.slots.default;
+    __VLS_75.slots.default;
     (__VLS_ctx.t('common.projectPicker.createGroup.submit'));
-    var __VLS_63;
+    var __VLS_75;
 }
-var __VLS_44;
-/** @type {[typeof VModal, typeof VModal, ]} */ ;
+var __VLS_51;
+const __VLS_80 = {}.VModal;
+/** @type {[typeof __VLS_components.VModal, typeof __VLS_components.VModal, ]} */ ;
 // @ts-ignore
-const __VLS_68 = __VLS_asFunctionalComponent(VModal, new VModal({
+const __VLS_81 = __VLS_asFunctionalComponent(__VLS_80, new __VLS_80({
     modelValue: (__VLS_ctx.showCreateProject),
     title: (__VLS_ctx.t('common.projectPicker.createProject.title')),
     closeOnBackdrop: (!__VLS_ctx.creating),
 }));
-const __VLS_69 = __VLS_68({
+const __VLS_82 = __VLS_81({
     modelValue: (__VLS_ctx.showCreateProject),
     title: (__VLS_ctx.t('common.projectPicker.createProject.title')),
     closeOnBackdrop: (!__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_68));
-__VLS_70.slots.default;
+}, ...__VLS_functionalComponentArgsRest(__VLS_81));
+__VLS_83.slots.default;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
     ...{ onSubmit: (__VLS_ctx.submitCreateProject) },
     ...{ class: "flex flex-col gap-3" },
 });
 if (__VLS_ctx.creationError) {
-    /** @type {[typeof VAlert, typeof VAlert, ]} */ ;
+    const __VLS_84 = {}.VAlert;
+    /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_71 = __VLS_asFunctionalComponent(VAlert, new VAlert({
+    const __VLS_85 = __VLS_asFunctionalComponent(__VLS_84, new __VLS_84({
         variant: "error",
     }));
-    const __VLS_72 = __VLS_71({
+    const __VLS_86 = __VLS_85({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_71));
-    __VLS_73.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_85));
+    __VLS_87.slots.default;
     __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
     (__VLS_ctx.creationError);
-    var __VLS_73;
+    var __VLS_87;
 }
-/** @type {[typeof VInput, ]} */ ;
+const __VLS_88 = {}.VInput;
+/** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_74 = __VLS_asFunctionalComponent(VInput, new VInput({
+const __VLS_89 = __VLS_asFunctionalComponent(__VLS_88, new __VLS_88({
     modelValue: (__VLS_ctx.newProjectName),
     label: (__VLS_ctx.t('common.projectPicker.createProject.name')),
     help: (__VLS_ctx.t('common.projectPicker.createProject.nameHelp')),
     required: true,
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_75 = __VLS_74({
+const __VLS_90 = __VLS_89({
     modelValue: (__VLS_ctx.newProjectName),
     label: (__VLS_ctx.t('common.projectPicker.createProject.name')),
     help: (__VLS_ctx.t('common.projectPicker.createProject.nameHelp')),
     required: true,
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_74));
-/** @type {[typeof VInput, ]} */ ;
+}, ...__VLS_functionalComponentArgsRest(__VLS_89));
+const __VLS_92 = {}.VInput;
+/** @type {[typeof __VLS_components.VInput, ]} */ ;
 // @ts-ignore
-const __VLS_77 = __VLS_asFunctionalComponent(VInput, new VInput({
+const __VLS_93 = __VLS_asFunctionalComponent(__VLS_92, new __VLS_92({
     modelValue: (__VLS_ctx.newProjectTitle),
     label: (__VLS_ctx.t('common.projectPicker.createProject.titleLabel')),
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_78 = __VLS_77({
+const __VLS_94 = __VLS_93({
     modelValue: (__VLS_ctx.newProjectTitle),
     label: (__VLS_ctx.t('common.projectPicker.createProject.titleLabel')),
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_77));
-/** @type {[typeof VSelect, ]} */ ;
+}, ...__VLS_functionalComponentArgsRest(__VLS_93));
+const __VLS_96 = {}.VSelect;
+/** @type {[typeof __VLS_components.VSelect, ]} */ ;
 // @ts-ignore
-const __VLS_80 = __VLS_asFunctionalComponent(VSelect, new VSelect({
+const __VLS_97 = __VLS_asFunctionalComponent(__VLS_96, new __VLS_96({
     modelValue: (__VLS_ctx.newProjectGroupId),
     label: (__VLS_ctx.t('common.projectPicker.createProject.group')),
     options: (__VLS_ctx.groupSelectOptions),
     disabled: (__VLS_ctx.creating),
 }));
-const __VLS_81 = __VLS_80({
+const __VLS_98 = __VLS_97({
     modelValue: (__VLS_ctx.newProjectGroupId),
     label: (__VLS_ctx.t('common.projectPicker.createProject.group')),
     options: (__VLS_ctx.groupSelectOptions),
     disabled: (__VLS_ctx.creating),
-}, ...__VLS_functionalComponentArgsRest(__VLS_80));
+}, ...__VLS_functionalComponentArgsRest(__VLS_97));
 if (__VLS_ctx.showKitField) {
-    /** @type {[typeof VSelect, ]} */ ;
+    const __VLS_100 = {}.VSelect;
+    /** @type {[typeof __VLS_components.VSelect, ]} */ ;
     // @ts-ignore
-    const __VLS_83 = __VLS_asFunctionalComponent(VSelect, new VSelect({
+    const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
         modelValue: (__VLS_ctx.newProjectKitName),
         label: (__VLS_ctx.t('common.projectPicker.createProject.kit')),
         options: (__VLS_ctx.kitOptions),
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_84 = __VLS_83({
+    const __VLS_102 = __VLS_101({
         modelValue: (__VLS_ctx.newProjectKitName),
         label: (__VLS_ctx.t('common.projectPicker.createProject.kit')),
         options: (__VLS_ctx.kitOptions),
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_83));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_101));
 }
 {
-    const { actions: __VLS_thisSlot } = __VLS_70.slots;
-    /** @type {[typeof VButton, typeof VButton, ]} */ ;
+    const { actions: __VLS_thisSlot } = __VLS_83.slots;
+    const __VLS_104 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_86 = __VLS_asFunctionalComponent(VButton, new VButton({
+    const __VLS_105 = __VLS_asFunctionalComponent(__VLS_104, new __VLS_104({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
     }));
-    const __VLS_87 = __VLS_86({
+    const __VLS_106 = __VLS_105({
         ...{ 'onClick': {} },
         variant: "ghost",
         disabled: (__VLS_ctx.creating),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_86));
-    let __VLS_89;
-    let __VLS_90;
-    let __VLS_91;
-    const __VLS_92 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_105));
+    let __VLS_108;
+    let __VLS_109;
+    let __VLS_110;
+    const __VLS_111 = {
         onClick: (...[$event]) => {
             __VLS_ctx.showCreateProject = false;
         }
     };
-    __VLS_88.slots.default;
+    __VLS_107.slots.default;
     (__VLS_ctx.t('common.cancel'));
-    var __VLS_88;
-    /** @type {[typeof VButton, typeof VButton, ]} */ ;
+    var __VLS_107;
+    const __VLS_112 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_93 = __VLS_asFunctionalComponent(VButton, new VButton({
+    const __VLS_113 = __VLS_asFunctionalComponent(__VLS_112, new __VLS_112({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
         disabled: (!__VLS_ctx.newProjectName.trim()),
     }));
-    const __VLS_94 = __VLS_93({
+    const __VLS_114 = __VLS_113({
         ...{ 'onClick': {} },
         variant: "primary",
         loading: (__VLS_ctx.creating),
         disabled: (!__VLS_ctx.newProjectName.trim()),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_93));
-    let __VLS_96;
-    let __VLS_97;
-    let __VLS_98;
-    const __VLS_99 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_113));
+    let __VLS_116;
+    let __VLS_117;
+    let __VLS_118;
+    const __VLS_119 = {
         onClick: (__VLS_ctx.submitCreateProject)
     };
-    __VLS_95.slots.default;
+    __VLS_115.slots.default;
     (__VLS_ctx.t('common.projectPicker.createProject.submit'));
-    var __VLS_95;
+    var __VLS_115;
 }
-var __VLS_70;
+var __VLS_83;
 /** @type {__VLS_StyleScopedClasses['p-4']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -1051,7 +1066,7 @@ var __VLS_70;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-3']} */ ;
 // @ts-ignore
-var __VLS_1 = __VLS_0, __VLS_14 = __VLS_13, __VLS_26 = __VLS_25, __VLS_28 = __VLS_27, __VLS_33 = __VLS_32;
+var __VLS_1 = __VLS_0, __VLS_16 = __VLS_15, __VLS_30 = __VLS_29, __VLS_32 = __VLS_31, __VLS_38 = __VLS_37;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {

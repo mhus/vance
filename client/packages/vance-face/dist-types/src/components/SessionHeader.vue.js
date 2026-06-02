@@ -1,11 +1,8 @@
+import { VButton, VColorPicker, VEmojiPicker, VTagEditor } from '@vance/components';
 import { SessionColor, SessionStatus, } from '@vance/generated';
 import { archiveSession, deleteSession, listSessions, patchSessionMetadata, reactivateSession, } from '@vance/shared';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import VButton from './VButton.vue';
-import VColorPicker from './VColorPicker.vue';
-import VEmojiPicker from './VEmojiPicker.vue';
-import VTagEditor from './VTagEditor.vue';
 const props = defineProps();
 const emit = defineEmits();
 const { t } = useI18n();
@@ -191,25 +188,26 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
     ...{ class: "flex items-center gap-2 min-w-0 flex-1 pl-3" },
     ...{ class: (__VLS_ctx.colorAccentClass) },
 });
-/** @type {[typeof VEmojiPicker, ]} */ ;
+const __VLS_0 = {}.VEmojiPicker;
+/** @type {[typeof __VLS_components.VEmojiPicker, ]} */ ;
 // @ts-ignore
-const __VLS_0 = __VLS_asFunctionalComponent(VEmojiPicker, new VEmojiPicker({
+const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
     ...{ 'onUpdate:modelValue': {} },
     modelValue: (__VLS_ctx.session?.icon ?? null),
     disabled: (__VLS_ctx.isArchived || __VLS_ctx.saving),
 }));
-const __VLS_1 = __VLS_0({
+const __VLS_2 = __VLS_1({
     ...{ 'onUpdate:modelValue': {} },
     modelValue: (__VLS_ctx.session?.icon ?? null),
     disabled: (__VLS_ctx.isArchived || __VLS_ctx.saving),
-}, ...__VLS_functionalComponentArgsRest(__VLS_0));
-let __VLS_3;
+}, ...__VLS_functionalComponentArgsRest(__VLS_1));
 let __VLS_4;
 let __VLS_5;
-const __VLS_6 = {
+let __VLS_6;
+const __VLS_7 = {
     'onUpdate:modelValue': (__VLS_ctx.onIcon)
 };
-var __VLS_2;
+var __VLS_3;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
     ...{ class: "min-w-0 flex-1 flex items-center gap-2" },
 });
@@ -282,23 +280,24 @@ if (!__VLS_ctx.isArchived) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "absolute right-0 top-full mt-1 z-30 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg" },
         });
-        /** @type {[typeof VColorPicker, ]} */ ;
+        const __VLS_8 = {}.VColorPicker;
+        /** @type {[typeof __VLS_components.VColorPicker, ]} */ ;
         // @ts-ignore
-        const __VLS_7 = __VLS_asFunctionalComponent(VColorPicker, new VColorPicker({
+        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.session?.color),
         }));
-        const __VLS_8 = __VLS_7({
+        const __VLS_10 = __VLS_9({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.session?.color),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_7));
-        let __VLS_10;
-        let __VLS_11;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
         let __VLS_12;
-        const __VLS_13 = {
+        let __VLS_13;
+        let __VLS_14;
+        const __VLS_15 = {
             'onUpdate:modelValue': ((v) => { __VLS_ctx.onColor(v); __VLS_ctx.showColor = false; })
         };
-        var __VLS_9;
+        var __VLS_11;
     }
 }
 if (!__VLS_ctx.isArchived) {
@@ -326,104 +325,108 @@ if (!__VLS_ctx.isArchived) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "absolute right-0 top-full mt-1 z-30 w-72 p-3 rounded-md border border-base-300 bg-base-100 shadow-lg" },
         });
-        /** @type {[typeof VTagEditor, ]} */ ;
+        const __VLS_16 = {}.VTagEditor;
+        /** @type {[typeof __VLS_components.VTagEditor, ]} */ ;
         // @ts-ignore
-        const __VLS_14 = __VLS_asFunctionalComponent(VTagEditor, new VTagEditor({
+        const __VLS_17 = __VLS_asFunctionalComponent(__VLS_16, new __VLS_16({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.session?.tags ?? []),
             label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
             placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
         }));
-        const __VLS_15 = __VLS_14({
+        const __VLS_18 = __VLS_17({
             ...{ 'onUpdate:modelValue': {} },
             modelValue: (__VLS_ctx.session?.tags ?? []),
             label: (__VLS_ctx.t('chat.sessionHeader.tagsLabel')),
             placeholder: (__VLS_ctx.t('chat.sessionHeader.tagsPlaceholder')),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_14));
-        let __VLS_17;
-        let __VLS_18;
-        let __VLS_19;
-        const __VLS_20 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_17));
+        let __VLS_20;
+        let __VLS_21;
+        let __VLS_22;
+        const __VLS_23 = {
             'onUpdate:modelValue': (__VLS_ctx.onTags)
         };
-        var __VLS_16;
+        var __VLS_19;
     }
 }
 if (!__VLS_ctx.isArchived) {
-    /** @type {[typeof VButton, typeof VButton, ]} */ ;
+    const __VLS_24 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_21 = __VLS_asFunctionalComponent(VButton, new VButton({
+    const __VLS_25 = __VLS_asFunctionalComponent(__VLS_24, new __VLS_24({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         disabled: (__VLS_ctx.saving),
         title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
     }));
-    const __VLS_22 = __VLS_21({
+    const __VLS_26 = __VLS_25({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         disabled: (__VLS_ctx.saving),
         title: (__VLS_ctx.t('chat.sessionHeader.archiveTooltip')),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_21));
-    let __VLS_24;
-    let __VLS_25;
-    let __VLS_26;
-    const __VLS_27 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_25));
+    let __VLS_28;
+    let __VLS_29;
+    let __VLS_30;
+    const __VLS_31 = {
         onClick: (__VLS_ctx.onArchive)
     };
-    __VLS_23.slots.default;
-    var __VLS_23;
+    __VLS_27.slots.default;
+    var __VLS_27;
 }
 else {
-    /** @type {[typeof VButton, typeof VButton, ]} */ ;
+    const __VLS_32 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_28 = __VLS_asFunctionalComponent(VButton, new VButton({
+    const __VLS_33 = __VLS_asFunctionalComponent(__VLS_32, new __VLS_32({
         ...{ 'onClick': {} },
         variant: "primary",
         size: "sm",
         disabled: (__VLS_ctx.saving),
     }));
-    const __VLS_29 = __VLS_28({
+    const __VLS_34 = __VLS_33({
         ...{ 'onClick': {} },
         variant: "primary",
         size: "sm",
         disabled: (__VLS_ctx.saving),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_28));
-    let __VLS_31;
-    let __VLS_32;
-    let __VLS_33;
-    const __VLS_34 = {
+    }, ...__VLS_functionalComponentArgsRest(__VLS_33));
+    let __VLS_36;
+    let __VLS_37;
+    let __VLS_38;
+    const __VLS_39 = {
         onClick: (__VLS_ctx.onReactivate)
     };
-    __VLS_30.slots.default;
+    __VLS_35.slots.default;
     (__VLS_ctx.t('chat.sessionHeader.reactivate'));
-    var __VLS_30;
+    var __VLS_35;
 }
-/** @type {[typeof VButton, typeof VButton, ]} */ ;
+const __VLS_40 = {}.VButton;
+/** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
 // @ts-ignore
-const __VLS_35 = __VLS_asFunctionalComponent(VButton, new VButton({
+const __VLS_41 = __VLS_asFunctionalComponent(__VLS_40, new __VLS_40({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     disabled: (__VLS_ctx.saving),
     title: (__VLS_ctx.t('chat.sessionHeader.delete')),
 }));
-const __VLS_36 = __VLS_35({
+const __VLS_42 = __VLS_41({
     ...{ 'onClick': {} },
     variant: "ghost",
     size: "sm",
     disabled: (__VLS_ctx.saving),
     title: (__VLS_ctx.t('chat.sessionHeader.delete')),
-}, ...__VLS_functionalComponentArgsRest(__VLS_35));
-let __VLS_38;
-let __VLS_39;
-let __VLS_40;
-const __VLS_41 = {
+}, ...__VLS_functionalComponentArgsRest(__VLS_41));
+let __VLS_44;
+let __VLS_45;
+let __VLS_46;
+const __VLS_47 = {
     onClick: (__VLS_ctx.onDelete)
 };
-__VLS_37.slots.default;
-var __VLS_37;
+__VLS_43.slots.default;
+var __VLS_43;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;

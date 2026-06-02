@@ -3,6 +3,8 @@ export default {
   content: [
     './*.html',
     './src/**/*.{vue,ts}',
+    '../components/src/**/*.{vue,ts}',
+    '../../../server/vance-addon-brain-*/client/src/**/*.{vue,ts}',
   ],
   // 'class' instead of 'media' so dark: utilities follow the explicit
   // webui.theme choice. The themeWeb.ts boot path toggles `dark` on

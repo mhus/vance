@@ -1,8 +1,5 @@
 package de.mhus.vance.addon.brain.slideshow;
 
-import de.mhus.vance.api.slideshow.SlideView;
-import de.mhus.vance.api.slideshow.SlideshowRebuildResponse;
-import de.mhus.vance.api.slideshow.SlideshowView;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;

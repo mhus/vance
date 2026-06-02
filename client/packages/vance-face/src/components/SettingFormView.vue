@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { VAlert, VButton, VCard } from '@vance/components';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
@@ -16,9 +17,6 @@ import {
   type FormValue,
 } from '@vance/shared';
 import FormFields from './FormFields.vue';
-import VAlert from './VAlert.vue';
-import VButton from './VButton.vue';
-import VCard from './VCard.vue';
 
 /**
  * Wrapper around {@link FormFields} for a single Setting Form. Owns

@@ -1,0 +1,31 @@
+{
+  "name": "@vance/components",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared Vance UI primitives — the V* component family (VButton, VAlert, ...). This is the ONLY workspace package allowed to use DaisyUI utility classes directly (btn, input, alert, card, dialog, ...). Consumed by vance-face and by every Brain addon's client package.",
+  "license": "SEE LICENSE IN ../../LICENSE.txt",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "files": ["src", "dist"],
+  "scripts": {
+    "build": "vue-tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@vance/generated": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "vue": "^3.5.13",
+    "vue-tsc": "^2.1.10"
+  }
+}

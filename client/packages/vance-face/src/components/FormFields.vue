@@ -1,12 +1,8 @@
 <script setup lang="ts">
+import { VButton, VCheckbox, VInput, VSelect, VTextarea } from '@vance/components';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { FormChoiceDto, FormFieldDto } from '@vance/generated';
-import VButton from './VButton.vue';
-import VCheckbox from './VCheckbox.vue';
-import VInput from './VInput.vue';
-import VSelect from './VSelect.vue';
-import VTextarea from './VTextarea.vue';
 
 /**
  * Universal form renderer driven by {@link FormFieldDto} schemas.

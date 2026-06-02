@@ -1,10 +1,8 @@
+import { VAlert, VButton, VCard } from '@vance/components';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { applySettingForm, getSettingForm, resetSettingForm, RestError, validateSettingForm, } from '@vance/shared';
 import FormFields from './FormFields.vue';
-import VAlert from './VAlert.vue';
-import VButton from './VButton.vue';
-import VCard from './VCard.vue';
 const props = withDefaults(defineProps(), {
     projectId: undefined,
     reloadKey: undefined,
@@ -188,17 +186,18 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.d
     ...{ class: "flex flex-col gap-4 min-h-0" },
 });
 if (__VLS_ctx.loadError) {
-    /** @type {[typeof VAlert, typeof VAlert, ]} */ ;
+    const __VLS_0 = {}.VAlert;
+    /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
     // @ts-ignore
-    const __VLS_0 = __VLS_asFunctionalComponent(VAlert, new VAlert({
+    const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
         variant: "error",
     }));
-    const __VLS_1 = __VLS_0({
+    const __VLS_2 = __VLS_1({
         variant: "error",
-    }, ...__VLS_functionalComponentArgsRest(__VLS_0));
-    __VLS_2.slots.default;
+    }, ...__VLS_functionalComponentArgsRest(__VLS_1));
+    __VLS_3.slots.default;
     (__VLS_ctx.loadError);
-    var __VLS_2;
+    var __VLS_3;
 }
 if (__VLS_ctx.loading) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
@@ -217,11 +216,12 @@ else if (__VLS_ctx.form) {
     });
     (__VLS_ctx.form.description);
     if (__VLS_ctx.directMappedFields.length > 0) {
-        /** @type {[typeof VCard, typeof VCard, ]} */ ;
+        const __VLS_4 = {}.VCard;
+        /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
         // @ts-ignore
-        const __VLS_3 = __VLS_asFunctionalComponent(VCard, new VCard({}));
-        const __VLS_4 = __VLS_3({}, ...__VLS_functionalComponentArgsRest(__VLS_3));
-        __VLS_5.slots.default;
+        const __VLS_5 = __VLS_asFunctionalComponent(__VLS_4, new __VLS_4({}));
+        const __VLS_6 = __VLS_5({}, ...__VLS_functionalComponentArgsRest(__VLS_5));
+        __VLS_7.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-2" },
         });
@@ -253,14 +253,15 @@ else if (__VLS_ctx.form) {
             });
             (__VLS_ctx.sourceLabel(f.currentSource));
         }
-        var __VLS_5;
+        var __VLS_7;
     }
     if (__VLS_ctx.computedSettings.length > 0) {
-        /** @type {[typeof VCard, typeof VCard, ]} */ ;
+        const __VLS_8 = {}.VCard;
+        /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
         // @ts-ignore
-        const __VLS_6 = __VLS_asFunctionalComponent(VCard, new VCard({}));
-        const __VLS_7 = __VLS_6({}, ...__VLS_functionalComponentArgsRest(__VLS_6));
-        __VLS_8.slots.default;
+        const __VLS_9 = __VLS_asFunctionalComponent(__VLS_8, new __VLS_8({}));
+        const __VLS_10 = __VLS_9({}, ...__VLS_functionalComponentArgsRest(__VLS_9));
+        __VLS_11.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-2" },
         });
@@ -287,115 +288,120 @@ else if (__VLS_ctx.form) {
                 (__VLS_ctx.t('settingForms.conditional'));
             }
         }
-        var __VLS_8;
+        var __VLS_11;
     }
     if (__VLS_ctx.submitError) {
-        /** @type {[typeof VAlert, typeof VAlert, ]} */ ;
+        const __VLS_12 = {}.VAlert;
+        /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
         // @ts-ignore
-        const __VLS_9 = __VLS_asFunctionalComponent(VAlert, new VAlert({
+        const __VLS_13 = __VLS_asFunctionalComponent(__VLS_12, new __VLS_12({
             variant: "error",
         }));
-        const __VLS_10 = __VLS_9({
+        const __VLS_14 = __VLS_13({
             variant: "error",
-        }, ...__VLS_functionalComponentArgsRest(__VLS_9));
-        __VLS_11.slots.default;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_13));
+        __VLS_15.slots.default;
         (__VLS_ctx.submitError);
-        var __VLS_11;
+        var __VLS_15;
     }
     /** @type {[typeof FormFields, ]} */ ;
     // @ts-ignore
-    const __VLS_12 = __VLS_asFunctionalComponent(FormFields, new FormFields({
+    const __VLS_16 = __VLS_asFunctionalComponent(FormFields, new FormFields({
         modelValue: (__VLS_ctx.values),
         fields: (__VLS_ctx.form.fields ?? []),
         errors: (__VLS_ctx.errors),
         disabled: (__VLS_ctx.submitting),
     }));
-    const __VLS_13 = __VLS_12({
+    const __VLS_17 = __VLS_16({
         modelValue: (__VLS_ctx.values),
         fields: (__VLS_ctx.form.fields ?? []),
         errors: (__VLS_ctx.errors),
         disabled: (__VLS_ctx.submitting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_12));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_16));
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "flex gap-2 justify-end mt-2 flex-wrap" },
     });
     if (__VLS_ctx.form.clearable) {
-        /** @type {[typeof VButton, typeof VButton, ]} */ ;
+        const __VLS_19 = {}.VButton;
+        /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
         // @ts-ignore
-        const __VLS_15 = __VLS_asFunctionalComponent(VButton, new VButton({
+        const __VLS_20 = __VLS_asFunctionalComponent(__VLS_19, new __VLS_19({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             disabled: (__VLS_ctx.submitting),
         }));
-        const __VLS_16 = __VLS_15({
+        const __VLS_21 = __VLS_20({
             ...{ 'onClick': {} },
             variant: "ghost",
             size: "sm",
             disabled: (__VLS_ctx.submitting),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_15));
-        let __VLS_18;
-        let __VLS_19;
-        let __VLS_20;
-        const __VLS_21 = {
+        }, ...__VLS_functionalComponentArgsRest(__VLS_20));
+        let __VLS_23;
+        let __VLS_24;
+        let __VLS_25;
+        const __VLS_26 = {
             onClick: (__VLS_ctx.onReset)
         };
-        __VLS_17.slots.default;
+        __VLS_22.slots.default;
         (__VLS_ctx.t('settingForms.reset'));
-        var __VLS_17;
+        var __VLS_22;
     }
-    /** @type {[typeof VButton, typeof VButton, ]} */ ;
+    const __VLS_27 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
     // @ts-ignore
-    const __VLS_22 = __VLS_asFunctionalComponent(VButton, new VButton({
+    const __VLS_28 = __VLS_asFunctionalComponent(__VLS_27, new __VLS_27({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         loading: (__VLS_ctx.submitting),
     }));
-    const __VLS_23 = __VLS_22({
+    const __VLS_29 = __VLS_28({
         ...{ 'onClick': {} },
         variant: "ghost",
         size: "sm",
         loading: (__VLS_ctx.submitting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_22));
-    let __VLS_25;
-    let __VLS_26;
-    let __VLS_27;
-    const __VLS_28 = {
-        onClick: (__VLS_ctx.onValidate)
-    };
-    __VLS_24.slots.default;
-    (__VLS_ctx.t('settingForms.preview'));
-    var __VLS_24;
-    /** @type {[typeof VButton, typeof VButton, ]} */ ;
-    // @ts-ignore
-    const __VLS_29 = __VLS_asFunctionalComponent(VButton, new VButton({
-        ...{ 'onClick': {} },
-        variant: "primary",
-        size: "sm",
-        loading: (__VLS_ctx.submitting),
-    }));
-    const __VLS_30 = __VLS_29({
-        ...{ 'onClick': {} },
-        variant: "primary",
-        size: "sm",
-        loading: (__VLS_ctx.submitting),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_29));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_28));
+    let __VLS_31;
     let __VLS_32;
     let __VLS_33;
-    let __VLS_34;
-    const __VLS_35 = {
+    const __VLS_34 = {
+        onClick: (__VLS_ctx.onValidate)
+    };
+    __VLS_30.slots.default;
+    (__VLS_ctx.t('settingForms.preview'));
+    var __VLS_30;
+    const __VLS_35 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_36 = __VLS_asFunctionalComponent(__VLS_35, new __VLS_35({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        size: "sm",
+        loading: (__VLS_ctx.submitting),
+    }));
+    const __VLS_37 = __VLS_36({
+        ...{ 'onClick': {} },
+        variant: "primary",
+        size: "sm",
+        loading: (__VLS_ctx.submitting),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_36));
+    let __VLS_39;
+    let __VLS_40;
+    let __VLS_41;
+    const __VLS_42 = {
         onClick: (__VLS_ctx.onApply)
     };
-    __VLS_31.slots.default;
+    __VLS_38.slots.default;
     (__VLS_ctx.t('settingForms.apply'));
-    var __VLS_31;
+    var __VLS_38;
     if (__VLS_ctx.preview) {
-        /** @type {[typeof VCard, typeof VCard, ]} */ ;
+        const __VLS_43 = {}.VCard;
+        /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
         // @ts-ignore
-        const __VLS_36 = __VLS_asFunctionalComponent(VCard, new VCard({}));
-        const __VLS_37 = __VLS_36({}, ...__VLS_functionalComponentArgsRest(__VLS_36));
-        __VLS_38.slots.default;
+        const __VLS_44 = __VLS_asFunctionalComponent(__VLS_43, new __VLS_43({}));
+        const __VLS_45 = __VLS_44({}, ...__VLS_functionalComponentArgsRest(__VLS_44));
+        __VLS_46.slots.default;
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "text-xs uppercase tracking-wide opacity-60 font-semibold mb-2" },
         });
@@ -443,7 +449,7 @@ else if (__VLS_ctx.form) {
             });
             (__VLS_ctx.t('settingForms.noChanges'));
         }
-        var __VLS_38;
+        var __VLS_46;
     }
 }
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -544,10 +550,10 @@ var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
-            FormFields: FormFields,
             VAlert: VAlert,
             VButton: VButton,
             VCard: VCard,
+            FormFields: FormFields,
             t: t,
             form: form,
             loading: loading,

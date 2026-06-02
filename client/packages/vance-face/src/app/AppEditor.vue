@@ -18,7 +18,7 @@ interface DocumentSummary {
 // Lazy-load app sub-editors so the bundle stays slim.
 const KanbanBoard = defineAsyncComponent(() => import('./kanban/KanbanBoard.vue'));
 const CalendarPlanner = defineAsyncComponent(() => import('./calendar/CalendarPlanner.vue'));
-const SlideshowApp = defineAsyncComponent(() => import('./slideshow/SlideshowApp.vue'));
+const SlideshowApp = defineAsyncComponent(() => import('@vance-addon/slideshow/SlideshowApp.vue'));
 
 const projectId = ref<string>('');
 const folder = ref<string>('');

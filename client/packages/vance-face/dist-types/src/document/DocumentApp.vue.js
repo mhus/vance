@@ -281,8 +281,18 @@ onMounted(async () => {
         }
     }
 });
-watch(selectedProjectId, async (next) => {
+watch(selectedProjectId, async (next, prev) => {
     if (!next)
+        return;
+    // Initial bind in {@link onMounted}: project comes from the URL
+    // and the loader there has already honored {@code ?path=…} and
+    // {@code ?documentId=…}. Re-running this watcher would clobber
+    // those query params with {@link DEFAULT_PATH_PREFIX} — which is
+    // exactly what made browser-Back from /app.html drop the user
+    // back into the project root instead of the folder they came
+    // from. Only run the reset logic for user-initiated project
+    // switches (prev was a non-null project name).
+    if (prev == null)
         return;
     pushQueryParams({
         projectId: next,
@@ -1126,8 +1136,8 @@ function onChartChanged(updated) {
 // `recipes/foo.yaml`, not `_vance/recipes/foo.yaml`).
 const help = useHelp();
 const HELP_RULES = [
-    { prefix: 'recipes/', resource: 'recipe-field-docs.md' },
-    { prefix: 'strategies/', resource: 'strategy-field-docs.md' },
+    { prefix: '_vance/recipes/', resource: 'recipe-field-docs.md' },
+    { prefix: '_vance/strategies/', resource: 'strategy-field-docs.md' },
 ];
 const helpResource = computed(() => {
     const path = docsState.selected.value?.path ?? '';
@@ -1800,6 +1810,7 @@ const __VLS_1 = __VLS_asFunctionalComponent(__VLS_0, new __VLS_0({
     fullHeight: (true),
     focusModel: "auto",
     showSidebar: (true),
+    showRightPanel: (!!__VLS_ctx.helpResource),
     showFooter: (!!__VLS_ctx.docsState.selected.value),
     titleClickable: true,
 }));
@@ -1812,6 +1823,7 @@ const __VLS_2 = __VLS_1({
     fullHeight: (true),
     focusModel: "auto",
     showSidebar: (true),
+    showRightPanel: (!!__VLS_ctx.helpResource),
     showFooter: (!!__VLS_ctx.docsState.selected.value),
     titleClickable: true,
 }, ...__VLS_functionalComponentArgsRest(__VLS_1));
@@ -4829,9 +4841,9 @@ else {
     var __VLS_478;
 }
 var __VLS_390;
-if (__VLS_ctx.helpResource) {
-    {
-        const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
+{
+    const { 'right-panel': __VLS_thisSlot } = __VLS_3.slots;
+    if (__VLS_ctx.helpResource) {
         __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
             ...{ class: "p-4 flex flex-col gap-4" },
         });

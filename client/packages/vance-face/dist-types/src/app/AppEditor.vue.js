@@ -1,6 +1,7 @@
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 import { EditorShell, VAlert, VEmptyState } from '@/components';
 import { brainFetch } from '@vance/shared';
+import { useTenantProjects } from '@/composables/useTenantProjects';
 // Lazy-load app sub-editors so the bundle stays slim.
 const KanbanBoard = defineAsyncComponent(() => import('./kanban/KanbanBoard.vue'));
 const CalendarPlanner = defineAsyncComponent(() => import('./calendar/CalendarPlanner.vue'));
@@ -11,28 +12,69 @@ const appType = ref(null);
 const docTitle = ref('');
 const loading = ref(true);
 const error = ref(null);
+const projectsState = useTenantProjects();
+const projectTitle = computed(() => {
+    if (!projectId.value)
+        return '';
+    const match = projectsState.projects.value.find((p) => p.name === projectId.value);
+    return match?.title ?? projectId.value;
+});
 /**
- * Top-bar breadcrumbs. The app editor is a leaf — there's no "back"
- * button anywhere else in its chrome, so the breadcrumb is the only
- * navigation back to the Documents listing. Always show "Documents"
- * (project-scoped) and the folder-path crumbs as plain text.
+ * Build a URL that opens the Documents picker at a specific folder
+ * inside the current project. The picker honors {@code ?path=…} on
+ * mount, so this lands the user exactly where the app folder sits
+ * (mirrors {@link DocumentApp.applyPathFilter}).
+ */
+function documentsUrl(pathPrefix) {
+    const params = new URLSearchParams({ projectId: projectId.value });
+    if (pathPrefix)
+        params.set('path', pathPrefix);
+    return `/documents.html?${params.toString()}`;
+}
+/**
+ * Top-bar breadcrumbs. Mirrors the {@link DocumentApp}'s pattern:
+ * project title → each folder segment (clickable, drilling the
+ * Documents picker into that level) → the app title as a final,
+ * non-clickable leaf. The app editor itself has no internal
+ * navigation, so the breadcrumb is the only way back into the
+ * Documents view.
  */
 const breadcrumbs = computed(() => {
+    if (!projectId.value)
+        return [];
     const crumbs = [];
-    if (projectId.value) {
-        crumbs.push({
-            text: 'Documents',
-            onClick: () => {
-                const url = `/documents.html?projectId=${encodeURIComponent(projectId.value)}`;
-                window.location.assign(url);
-            },
-        });
+    // Project root → Documents picker at the project root.
+    crumbs.push({
+        text: projectTitle.value,
+        onClick: () => window.location.assign(documentsUrl('')),
+    });
+    // Folder segments. The app folder itself (the last segment) is
+    // also clickable — clicking it lands the picker inside the
+    // folder that contains the {@code _app.yaml}, so the user can
+    // see the file alongside the rest of the folder's content.
+    if (folder.value) {
+        const segments = folder.value.split('/').filter((s) => s.length > 0);
+        let acc = '';
+        for (const seg of segments) {
+            acc += seg + '/';
+            const target = acc;
+            crumbs.push({
+                text: seg,
+                onClick: () => window.location.assign(documentsUrl(target)),
+            });
+        }
     }
-    if (folder.value)
-        crumbs.push(folder.value);
+    // App title — final crumb, non-clickable (the user is here).
+    if (docTitle.value && docTitle.value !== folder.value) {
+        crumbs.push(docTitle.value);
+    }
     return crumbs;
 });
 onMounted(async () => {
+    // Fire-and-forget — breadcrumbs upgrade to titled crumbs once
+    // the project list lands. The app sub-editor render path doesn't
+    // depend on it, so we don't block on the request.
+    void projectsState.reload();
     try {
         const params = new URLSearchParams(window.location.search);
         const queryProject = params.get('projectId') ?? '';

@@ -385,8 +385,17 @@ onMounted(async () => {
   }
 });
 
-watch(selectedProjectId, async (next) => {
+watch(selectedProjectId, async (next, prev) => {
   if (!next) return;
+  // Initial bind in {@link onMounted}: project comes from the URL
+  // and the loader there has already honored {@code ?path=…} and
+  // {@code ?documentId=…}. Re-running this watcher would clobber
+  // those query params with {@link DEFAULT_PATH_PREFIX} — which is
+  // exactly what made browser-Back from /app.html drop the user
+  // back into the project root instead of the folder they came
+  // from. Only run the reset logic for user-initiated project
+  // switches (prev was a non-null project name).
+  if (prev == null) return;
   pushQueryParams({
     projectId: next,
     path: DEFAULT_PATH_PREFIX,
@@ -1299,8 +1308,8 @@ interface HelpRule {
 }
 
 const HELP_RULES: HelpRule[] = [
-  { prefix: 'recipes/', resource: 'recipe-field-docs.md' },
-  { prefix: 'strategies/', resource: 'strategy-field-docs.md' },
+  { prefix: '_vance/recipes/', resource: 'recipe-field-docs.md' },
+  { prefix: '_vance/strategies/', resource: 'strategy-field-docs.md' },
 ];
 
 const helpResource = computed<string | null>(() => {
@@ -1938,6 +1947,7 @@ const formatBytes = (n: number): string => {
     :full-height="true"
     focus-model="auto"
     :show-sidebar="true"
+    :show-right-panel="!!helpResource"
     :show-footer="!!docsState.selected.value"
     title-clickable
     @title-click="focusZone = 'sidebar'"
@@ -3098,11 +3108,13 @@ const formatBytes = (n: number): string => {
     </VModal>
 
     <!-- ─── Contextual help — shown only when the selected document
-         lives under a known path prefix (e.g. recipes/, strategies/).
-         Vue 3 renders the slot only when the v-if passes, so the
-         right aside disappears completely when no help applies. ─── -->
-    <template v-if="helpResource" #right-panel>
-      <div class="p-4 flex flex-col gap-4">
+         lives under a known path prefix (e.g. _vance/recipes/,
+         _vance/strategies/). The slot is registered unconditionally
+         so Vue's slot-presence detection sees it; the {@code v-if}
+         lives on the content and the {@code show-right-panel} prop
+         on EditorShell hides the rail when no help applies. ─── -->
+    <template #right-panel>
+      <div v-if="helpResource" class="p-4 flex flex-col gap-4">
         <h3 class="text-xs uppercase opacity-60 mb-2">
           {{ $t('documents.help.title') }}
         </h3>

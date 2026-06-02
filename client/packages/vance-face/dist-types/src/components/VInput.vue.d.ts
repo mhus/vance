@@ -9,9 +9,7 @@ interface Props {
     disabled?: boolean;
     autocomplete?: string;
 }
-declare const _default: import("vue").DefineComponent<Props, {
-    focus(): void;
-}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
+declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
     "update:modelValue": (value: string) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
     "onUpdate:modelValue"?: ((value: string) => any) | undefined;

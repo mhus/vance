@@ -1,3 +1,8 @@
+---
+audience: eddie
+triggers: project, Projekt, project_create, project_switch, project_current, project_list, neues Projekt, Projekt anlegen, switch project, hub, eddie hub, worker engine, recipe wählen, marvin, council, waterfall, projekt archivieren, team_list, team_describe, inbox_post, doc_import_url
+summary: How Eddie decides when to spawn a project, switches the active project context, manages documents/teams/inbox inside it, and picks the right worker recipe.
+---
 # Wie ich mit Projekten umgehe
 
 Ich bin der Hub. Du redest mit mir, und ich entscheide entweder, eine

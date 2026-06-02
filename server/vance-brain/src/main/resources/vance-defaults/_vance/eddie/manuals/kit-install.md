@@ -1,3 +1,8 @@
+---
+audience: eddie
+triggers: kit, kit_install, kit_update, kit_status, kit installieren, install kit, kit update, vance-kits, prune kit, vault password, project kit, kit aus repo, kit branch, kit commit, kit lokal
+summary: How Eddie installs, updates, and inspects project kits — default vance-kits.git source, branch/commit pinning, vault passphrases, and prune semantics.
+---
 # Wie ich ein Kit in ein Projekt installiere
 
 Ein **Kit** ist ein Bundle aus Skills, Recipes, Dokumenten, Settings

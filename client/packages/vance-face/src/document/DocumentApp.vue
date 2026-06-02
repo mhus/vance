@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   type Crumb,
   EditorShell,
   type FocusZone,
   VAlert,
-  VBackButton,
   VButton,
   VCard,
   VCheckbox,
@@ -200,6 +199,12 @@ const isDirty = computed<boolean>(() => {
 // button) when there are unsaved edits. Three actions: Save (apply +
 // leave), Discard (just leave), Cancel (stay on detail view).
 const showDiscardModal = ref(false);
+
+// Revert-confirm modal — gates the footer's "discard changes" button.
+// Two actions: Confirm (re-fetch from server, drop local edits) or
+// Cancel (close modal, keep edits). Only reachable while {@link isDirty}
+// is true, so the body always assumes there's something to lose.
+const showRevertModal = ref(false);
 
 // Collapsed-state for the detail-view properties panel — wraps front
 // matter, auto-summary, version archive, and the title/path/mime
@@ -632,13 +637,11 @@ function navigateIntoFolder(folder: string): void {
 const showNewFolderModal = ref(false);
 const newFolderName = ref('');
 const newFolderError = ref<string | null>(null);
-const newFolderNameInputRef = ref<{ focus: () => void } | null>(null);
 
 function openNewFolderModal(): void {
   newFolderName.value = '';
   newFolderError.value = null;
   showNewFolderModal.value = true;
-  void nextTick(() => newFolderNameInputRef.value?.focus());
 }
 
 function submitNewFolder(): void {
@@ -713,15 +716,32 @@ function selectFolder(folder: string | null): void {
   applyPathFilter(folder == null ? '' : folder + '/', true);
 }
 
+/** {@code true} for documents that the picker would route to a
+ *  dedicated app editor (Kanban, Calendar, …) instead of the
+ *  generic file editor. Used to surface the "edit as file" escape
+ *  hatch in the list row. */
+function isAppDocument(doc: DocumentSummary): boolean {
+  return doc.kind === 'application' && !!doc.path?.endsWith('/_app.yaml');
+}
+
 async function openDocument(doc: DocumentSummary): Promise<void> {
   if (!doc.id) return;
   // App-manifest files redirect to the dedicated app editor — the
   // Kanban board / Calendar planner / etc. don't render in the
   // generic Document viewer at all.
-  if (doc.kind === 'application' && doc.path?.endsWith('/_app.yaml')) {
+  if (isAppDocument(doc)) {
     window.location.assign(`/app.html?documentId=${encodeURIComponent(doc.id)}`);
     return;
   }
+  await openDocumentInEditor(doc);
+}
+
+/** Bypass the app-editor redirect and load the document into the
+ *  generic file editor. Wired to the per-row "edit as file" button
+ *  for {@link isAppDocument}-matching rows so the user can still
+ *  hand-edit a malformed {@code _app.yaml}. */
+async function openDocumentInEditor(doc: DocumentSummary): Promise<void> {
+  if (!doc.id) return;
   await docsState.loadOne(doc.id);
   fillEditor();
 }
@@ -1328,6 +1348,30 @@ function discardAndBack(): void {
   backToList();
 }
 
+/**
+ * Footer "discard changes" action: open the revert-confirm modal
+ * (no-op when there are no unsaved edits — the button is hidden in
+ * that case but guard anyway).
+ */
+function requestRevert(): void {
+  if (!isDirty.value) return;
+  showRevertModal.value = true;
+}
+
+/**
+ * Re-fetches the selected document from the server and resets every
+ * edit field via {@link fillEditor}. Used as the confirmed action
+ * of the revert modal. On error keeps the modal closed and lets the
+ * inline {@code docsState.error} surface the failure.
+ */
+async function revertChanges(): Promise<void> {
+  showRevertModal.value = false;
+  const sel = docsState.selected.value;
+  if (!sel) return;
+  await docsState.loadOne(sel.id);
+  fillEditor();
+}
+
 /** Discard-modal action: persist the edits, then return to the list
  *  if the server accepted them. On error stay on the detail view so
  *  the user can read the message (mirrors {@link save}). */
@@ -1381,8 +1425,6 @@ interface CreateModalPrefill {
   mimeType?: string;
 }
 
-const createNameInputRef = ref<{ focus: () => void } | null>(null);
-
 function openCreateModal(prefill?: CreateModalPrefill): void {
   createMode.value = 'inline';
   // Path stays read-only in the dialog. If a prefill brings a
@@ -1411,7 +1453,6 @@ function openCreateModal(prefill?: CreateModalPrefill): void {
   createError.value = null;
   uploadProgress.value = [];
   showCreateModal.value = true;
-  void nextTick(() => createNameInputRef.value?.focus());
 }
 
 /**
@@ -1897,6 +1938,7 @@ const formatBytes = (n: number): string => {
     :full-height="true"
     focus-model="auto"
     :show-sidebar="true"
+    :show-footer="!!docsState.selected.value"
     title-clickable
     @title-click="focusZone = 'sidebar'"
   >
@@ -2034,6 +2076,56 @@ const formatBytes = (n: number): string => {
         >+</VButton>
       </div>
 
+      <!-- Full-width sub-header for the detail view: mirrors the
+           picker sub-header (back-button + identity strip). Back
+           returns to the list; the right side carries size, MIME
+           and creator — the basic identity tuple the user expects
+           at the top of every document. Status badges (kind, dirty,
+           versions) and the props toggle stay on the card's
+           metadata row below.
+
+           Layout uses {@code flex-wrap}: when there's not enough
+           horizontal room (long name, narrow main zone) the filename
+           and/or the metadata strip wrap to a second row instead of
+           clipping. The back-button + icon + title group is a
+           single flex child, so the wrap never splits the title
+           away from the back-button. The path collapses to its
+           filename (basename) — full path can be inspected via
+           the props panel. -->
+      <div
+        v-else-if="selectedProjectId && docsState.selected.value"
+        class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-x-3 gap-y-1 flex-wrap"
+      >
+        <div class="flex items-center gap-3 min-w-0 flex-1 basis-[16rem]">
+          <VButton
+            variant="ghost"
+            size="sm"
+            :title="$t('documents.backToList')"
+            @click="requestBackToList"
+          >←</VButton>
+          <DocumentIcon
+            :path="docsState.selected.value.path"
+            :mime-type="docsState.selected.value.mimeType"
+            :kind="docsState.selected.value.kind"
+          />
+          <span class="font-semibold truncate">
+            {{ docsState.selected.value.title || docsState.selected.value.name }}
+          </span>
+        </div>
+        <span class="font-mono text-sm opacity-60 truncate shrink-0 max-w-full">
+          {{ docsState.selected.value.name }}
+        </span>
+        <div class="text-xs opacity-70 flex items-center gap-3 shrink-0">
+          <span>{{ formatBytes(docsState.selected.value.size) }}</span>
+          <span v-if="docsState.selected.value.mimeType">
+            {{ docsState.selected.value.mimeType }}
+          </span>
+          <span v-if="docsState.selected.value.createdBy">
+            {{ $t('documents.detail.sizeBy', { user: docsState.selected.value.createdBy }) }}
+          </span>
+        </div>
+      </div>
+
       <!-- Scrollable content area — each branch (empty states, detail,
            list) lives here. The sub-header above stays put. -->
       <div class="flex-1 min-h-0 overflow-y-auto">
@@ -2054,32 +2146,12 @@ const formatBytes = (n: number): string => {
         :body="$t('documents.pickAProjectBody')"
       />
 
-      <!-- Detail / edit view -->
+      <!-- Detail / edit view. Identity (back, name, path, size,
+           MIME, creator) lives in the full-width sub-header above;
+           the card here carries only status badges and content. -->
       <template v-else-if="docsState.selected.value">
-        <div class="mb-4">
-          <VBackButton :label="$t('documents.backToList')" @click="requestBackToList" />
-        </div>
-
         <VCard>
-          <template #header>
-            <span class="flex items-center gap-2">
-              <DocumentIcon
-                :path="docsState.selected.value.path"
-                :mime-type="docsState.selected.value.mimeType"
-                :kind="docsState.selected.value.kind"
-              />
-              <span class="font-mono text-sm">{{ docsState.selected.value.path }}</span>
-            </span>
-          </template>
-
           <div class="text-xs opacity-60 flex flex-wrap gap-3 items-center">
-            <span>{{ formatBytes(docsState.selected.value.size) }}</span>
-            <span v-if="docsState.selected.value.mimeType">
-              {{ docsState.selected.value.mimeType }}
-            </span>
-            <span v-if="docsState.selected.value.createdBy">
-              {{ $t('documents.detail.sizeBy', { user: docsState.selected.value.createdBy }) }}
-            </span>
             <span
               v-if="docsState.selected.value.kind"
               class="badge badge-info badge-sm"
@@ -2625,34 +2697,6 @@ const formatBytes = (n: number): string => {
             />
           </div>
 
-          <template #actions>
-            <!-- Destructive action separated to the left edge.
-                 `mr-auto` overrides the `justify-end` inherited from
-                 .card-actions and pushes Delete fully left, the rest
-                 stay clustered right. -->
-            <VButton
-              class="mr-auto"
-              variant="danger"
-              :disabled="saving || deleting"
-              @click="openDeleteModal"
-            >{{ isSelectedInTrash
-              ? $t('documents.detail.deletePermanent')
-              : $t('documents.detail.delete') }}</VButton>
-            <VButton
-              variant="ghost"
-              :href="downloadUrl(docsState.selected.value)"
-              :download="docsState.selected.value.name || 'document'"
-            >{{ $t('documents.detail.download') }}</VButton>
-            <VButton variant="ghost" :disabled="saving" @click="requestBackToList">
-              {{ $t('documents.detail.cancel') }}
-            </VButton>
-            <VButton variant="secondary" :loading="saving" @click="apply">
-              {{ $t('documents.detail.apply') }}
-            </VButton>
-            <VButton variant="primary" :loading="saving" @click="save">
-              {{ $t('documents.detail.save') }}
-            </VButton>
-          </template>
         </VCard>
       </template>
 
@@ -2719,7 +2763,7 @@ const formatBytes = (n: number): string => {
                     :title="`kind: ${item.kind}`"
                   >{{ item.kind }}</span>
                 </div>
-                <div class="text-xs opacity-60 truncate font-mono">{{ item.path }}</div>
+                <div class="text-xs opacity-60 truncate font-mono">{{ item.name }}</div>
                 <div v-if="item.tags && item.tags.length" class="mt-1 flex gap-1 flex-wrap">
                   <span
                     v-for="tag in item.tags"
@@ -2734,6 +2778,21 @@ const formatBytes = (n: number): string => {
                   {{ $t('documents.storedNote') }}
                 </div>
               </div>
+              <!-- App-manifest escape hatch: clicking the row would
+                   redirect into the dedicated app face (Kanban,
+                   Calendar, …). This button opens the same document
+                   in the generic file editor so the user can still
+                   tweak / fix the {@code _app.yaml} directly.
+                   {@code @click.stop} keeps the row's
+                   {@code @select} from also firing. -->
+              <VButton
+                v-if="isAppDocument(item)"
+                variant="ghost"
+                size="sm"
+                class="shrink-0"
+                :title="$t('documents.editAsFile')"
+                @click.stop="openDocumentInEditor(item)"
+              >✏️</VButton>
             </div>
           </template>
         </VDataList>
@@ -2801,7 +2860,6 @@ const formatBytes = (n: number): string => {
           {{ docsState.pathPrefix.value || '/' }}
         </div>
         <VInput
-          ref="newFolderNameInputRef"
           v-model="newFolderName"
           :label="$t('documents.newFolderDialog.nameLabel')"
           :placeholder="$t('documents.newFolderDialog.namePlaceholder')"
@@ -2847,6 +2905,29 @@ const formatBytes = (n: number): string => {
       </template>
     </VModal>
 
+    <!-- Revert-confirm modal: opened by the footer's "Discard changes"
+         button. Confirming re-fetches the document from the server and
+         drops all local edits. -->
+    <VModal
+      v-model="showRevertModal"
+      :title="$t('documents.revertConfirm.title')"
+      :close-on-backdrop="!docsState.loading.value"
+    >
+      <p>{{ $t('documents.revertConfirm.body') }}</p>
+      <template #actions>
+        <VButton
+          variant="ghost"
+          :disabled="docsState.loading.value"
+          @click="showRevertModal = false"
+        >{{ $t('documents.revertConfirm.cancel') }}</VButton>
+        <VButton
+          variant="danger"
+          :loading="docsState.loading.value"
+          @click="revertChanges"
+        >{{ $t('documents.revertConfirm.confirm') }}</VButton>
+      </template>
+    </VModal>
+
     <!-- Create modal: lives outside the list/detail branches so it stays
          mounted across view switches and its open-state is independent. -->
     <VModal
@@ -2885,7 +2966,6 @@ const formatBytes = (n: number): string => {
             readonly
           />
           <VInput
-            ref="createNameInputRef"
             v-model="createName"
             :label="$t('documents.create.nameLabel')"
             :placeholder="$t('documents.create.namePlaceholder')"
@@ -3036,6 +3116,46 @@ const formatBytes = (n: number): string => {
           {{ $t('documents.help.empty') }}
         </div>
         <MarkdownView v-else :source="help.content.value" />
+      </div>
+    </template>
+
+    <!-- Footer rail: document-detail actions. Trash is pulled to the
+         far left (destructive separator), Download / Apply / Save
+         cluster on the right. Cancel is intentionally omitted —
+         the sub-header's back-button already serves that role. -->
+    <template #footer>
+      <div
+        v-if="docsState.selected.value"
+        class="px-6 py-3 flex items-center gap-2 bg-base-100"
+      >
+        <VButton
+          variant="danger"
+          :disabled="saving || deleting"
+          @click="openDeleteModal"
+        >{{ isSelectedInTrash
+          ? $t('documents.detail.deletePermanent')
+          : $t('documents.detail.delete') }}</VButton>
+        <span class="flex-1"></span>
+        <VButton
+          variant="ghost"
+          :href="downloadUrl(docsState.selected.value)"
+          :download="docsState.selected.value.name || 'document'"
+        >{{ $t('documents.detail.download') }}</VButton>
+        <!-- "Discard changes" replaces the old Cancel button while the
+             document is dirty. Clicking opens a confirmation modal so
+             the unsaved work isn't dropped accidentally. -->
+        <VButton
+          v-if="isDirty"
+          variant="ghost"
+          :disabled="saving"
+          @click="requestRevert"
+        >{{ $t('documents.detail.revert') }}</VButton>
+        <VButton variant="secondary" :loading="saving" @click="apply">
+          {{ $t('documents.detail.apply') }}
+        </VButton>
+        <VButton variant="primary" :loading="saving" @click="save">
+          {{ $t('documents.detail.save') }}
+        </VButton>
       </div>
     </template>
   </EditorShell>

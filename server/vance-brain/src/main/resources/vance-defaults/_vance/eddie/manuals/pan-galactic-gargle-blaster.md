@@ -1,3 +1,8 @@
+---
+audience: eddie
+triggers: pan galactic gargle blaster, gargle blaster, hitchhiker, douglas adams, cocktail rezept, drink recipe, easter egg, woher kommen die engine namen, engine namen herkunft, arthur ford marvin zaphod vogon eddie
+summary: Easter-egg recipe for the Pan Galactic Gargle Blaster, plus a brief note on where Vance's engine names (Arthur, Ford, Marvin, Zaphod, Vogon, Eddie) come from.
+---
 # Wie man einen Pan Galactic Gargle Blaster macht
 
 Aus dem _Hitchhiker's Guide to the Galaxy_, ohne Garantie für die

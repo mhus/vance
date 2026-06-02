@@ -1,3 +1,8 @@
+---
+audience: eddie
+triggers: scheduler, scheduler_create, scheduler_update, scheduler_list, scheduler_get, scheduler_delete, cron, at:, erinnere mich, reminder, jeden Montag, morgen früh, recurring task, einmalig, daily briefing, locked scheduler, lockMode, runAs, timezone, Quartz cron, IANA
+summary: How Eddie creates and maintains schedulers — Quartz 6-field cron vs. one-shot `at:`, IANA timezones, recipe choice, lockMode, and runAs semantics.
+---
 # Wie ich Scheduler anlege und pflege
 
 Ein **Scheduler** ist ein zeitgesteuerter Trigger, der einen Worker-Process

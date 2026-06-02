@@ -1810,6 +1810,43 @@ public class DocumentService {
         DocumentHeader header = parsed.get();
         doc.setKind(header.getKind());
         doc.setHeaders(new java.util.LinkedHashMap<>(header.getValues()));
+        applySystemTags(doc);
+    }
+
+    /**
+     * Merge system-derived tags into {@code doc.tags} so that the
+     * picker list, search, and tag-based queries can identify
+     * special documents without parsing the body. User-set tags are
+     * preserved; only missing system tags are appended.
+     *
+     * <p>For now this covers {@code kind: application} documents
+     * (like a folder's {@code _app.yaml}) — they get an
+     * {@code application} tag and a second tag carrying the {@code app}
+     * type (e.g. {@code kanban}, {@code calendar}). Other kinds may
+     * follow the same pattern; this method is the single hook.
+     */
+    private static void applySystemTags(DocumentDocument doc) {
+        String kind = doc.getKind();
+        if (kind == null || kind.isBlank()) return;
+        List<String> tags = doc.getTags();
+        if (tags == null) {
+            tags = new ArrayList<>();
+            doc.setTags(tags);
+        }
+        if ("application".equals(kind)) {
+            addTagIfMissing(tags, "application");
+            String app = doc.getHeaders() == null ? null : doc.getHeaders().get("app");
+            if (app != null && !app.isBlank()) {
+                addTagIfMissing(tags, app.trim());
+            }
+        }
+    }
+
+    private static void addTagIfMissing(List<String> tags, String value) {
+        for (String existing : tags) {
+            if (value.equals(existing)) return;
+        }
+        tags.add(value);
     }
 
     private static String normalizePath(String path) {

@@ -259,6 +259,7 @@ declare const _default: {
         createFirstDocument: string;
         ungrouped: string;
         storedNote: string;
+        editAsFile: string;
         detail: {
             sizeBy: string;
             kindBadgeTooltip: string;
@@ -312,6 +313,7 @@ declare const _default: {
             deletePermanent: string;
             download: string;
             cancel: string;
+            revert: string;
             apply: string;
             save: string;
             summary: {
@@ -528,6 +530,12 @@ declare const _default: {
             save: string;
             discard: string;
             cancel: string;
+        };
+        revertConfirm: {
+            title: string;
+            body: string;
+            cancel: string;
+            confirm: string;
         };
         help: {
             title: string;

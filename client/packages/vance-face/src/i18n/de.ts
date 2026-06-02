@@ -286,6 +286,7 @@ export default {
     createFirstDocument: 'Erstes Dokument anlegen',
     ungrouped: 'Ohne Gruppe',
     storedNote: 'extern gespeichert',
+    editAsFile: 'Als Datei bearbeiten (statt App öffnen)',
     detail: {
       sizeBy: 'von {user}',
       kindBadgeTooltip: 'Dokumentart, aus der Front-Matter gelesen',
@@ -343,6 +344,7 @@ export default {
       deletePermanent: 'Endgültig löschen',
       download: 'Herunterladen',
       cancel: 'Abbrechen',
+      revert: 'Änderungen verwerfen',
       apply: 'Anwenden',
       save: 'Speichern',
       summary: {
@@ -568,6 +570,13 @@ export default {
       save: 'Speichern und zurück',
       discard: 'Verwerfen',
       cancel: 'Hier bleiben',
+    },
+    revertConfirm: {
+      title: 'Änderungen verwerfen?',
+      body:
+        'Das Dokument wird vom Server neu geladen. Alle nicht gespeicherten Änderungen gehen verloren.',
+      cancel: 'Abbrechen',
+      confirm: 'Verwerfen und neu laden',
     },
     help: {
       title: 'Feld-Referenz',

@@ -1,21 +1,9 @@
-import { ref } from 'vue';
 const __VLS_props = withDefaults(defineProps(), {
     type: 'text',
     required: false,
     disabled: false,
 });
 const __VLS_emit = defineEmits();
-const inputRef = ref(null);
-/** Imperative focus — callers grab a {@code ref="…"} and call this
- *  to programmatically focus the input. Useful when a wrapping modal
- *  keeps its content mounted across open/close cycles so the native
- *  {@code autofocus} attribute fires only on first paint. */
-const __VLS_exposed = {
-    focus() {
-        inputRef.value?.focus();
-    },
-};
-defineExpose(__VLS_exposed);
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
     type: 'text',
@@ -39,7 +27,6 @@ if (__VLS_ctx.label) {
 }
 __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
     ...{ onInput: ((e) => __VLS_ctx.$emit('update:modelValue', e.target.value)) },
-    ref: "inputRef",
     type: (__VLS_ctx.type),
     value: (__VLS_ctx.modelValue),
     placeholder: (__VLS_ctx.placeholder),
@@ -48,7 +35,6 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.input)({
     autocomplete: (__VLS_ctx.autocomplete),
     ...{ class: (['input', 'input-bordered', 'w-full', { 'input-error': !!__VLS_ctx.error }]) },
 });
-/** @type {typeof __VLS_ctx.inputRef} */ ;
 if (__VLS_ctx.error || __VLS_ctx.help) {
     __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
         ...{ class: "label" },
@@ -71,9 +57,7 @@ if (__VLS_ctx.error || __VLS_ctx.help) {
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
-        return {
-            inputRef: inputRef,
-        };
+        return {};
     },
     __typeEmits: {},
     __typeProps: {},
@@ -81,9 +65,7 @@ const __VLS_self = (await import('vue')).defineComponent({
 });
 export default (await import('vue')).defineComponent({
     setup() {
-        return {
-            ...__VLS_exposed,
-        };
+        return {};
     },
     __typeEmits: {},
     __typeProps: {},

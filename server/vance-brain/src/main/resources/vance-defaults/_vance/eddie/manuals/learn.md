@@ -1,3 +1,8 @@
+---
+audience: eddie
+triggers: LEARN, learn action, persona, fact, remember user, merk dir, vergiss nicht, ab jetzt redest du, user preference, user style, persona update, append fact, system prompt persona, How to talk to this user, What I know about this user
+summary: Eddie's LEARN action — when to save persona-style cues vs. atomic facts about the user, and which mode (replace/append) to pick.
+---
 # LEARN — saving things about the user
 
 Eddie's `LEARN` action stores facts about the user in your personal

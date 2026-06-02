@@ -289,6 +289,7 @@ export default {
     createFirstDocument: 'Create first document',
     ungrouped: 'Ungrouped',
     storedNote: 'stored',
+    editAsFile: 'Edit as file (skip app)',
     detail: {
       sizeBy: 'by {user}',
       kindBadgeTooltip: 'Document kind, parsed from front matter',
@@ -346,6 +347,7 @@ export default {
       deletePermanent: 'Delete permanently',
       download: 'Download',
       cancel: 'Cancel',
+      revert: 'Discard changes',
       apply: 'Apply',
       save: 'Save',
       summary: {
@@ -571,6 +573,13 @@ export default {
       save: 'Save and leave',
       discard: 'Discard',
       cancel: 'Stay here',
+    },
+    revertConfirm: {
+      title: 'Discard changes?',
+      body:
+        'The document will be reloaded from the server. Any unsaved changes will be lost.',
+      cancel: 'Cancel',
+      confirm: 'Discard and reload',
     },
     help: {
       title: 'Field reference',

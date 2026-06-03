@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
@@ -65,8 +66,10 @@ public class AddonService {
     /**
      * Create a new addon row. Fails if {@code name} already exists —
      * use {@link #ensure(String, String)} for idempotent seeding.
+     * {@code checksum} is optional; pass {@code null} to skip the
+     * post-download verification.
      */
-    public AddonDocument create(String name, String path) {
+    public AddonDocument create(String name, String path, @Nullable String checksum) {
         if (repository.existsByName(name)) {
             throw new IllegalArgumentException("Addon '" + name + "' already exists");
         }
@@ -74,9 +77,11 @@ public class AddonService {
                 .name(name)
                 .path(path)
                 .enabled(true)
+                .checksum(checksum)
                 .build();
         AddonDocument saved = repository.save(doc);
-        log.info("AddonService created addon '{}' path='{}'", name, path);
+        log.info("AddonService created addon '{}' path='{}' checksum={}",
+                name, path, checksum != null);
         return saved;
     }
 
@@ -94,6 +99,22 @@ public class AddonService {
         doc.setPath(path);
         AddonDocument saved = repository.save(doc);
         log.info("AddonService updated addon '{}' path → '{}'", name, path);
+        return saved;
+    }
+
+    /**
+     * Set or clear the {@code sha256:<hex>} verification checksum.
+     * Pass {@code null} to clear (download will then be unverified).
+     */
+    public AddonDocument updateChecksum(String name, @Nullable String checksum) {
+        AddonDocument doc = repository.findByName(name)
+                .orElseThrow(() -> new IllegalArgumentException("Addon '" + name + "' not found"));
+        if (java.util.Objects.equals(doc.getChecksum(), checksum)) {
+            return doc;
+        }
+        doc.setChecksum(checksum);
+        AddonDocument saved = repository.save(doc);
+        log.info("AddonService updated addon '{}' checksum={}", name, checksum != null ? "set" : "cleared");
         return saved;
     }
 

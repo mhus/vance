@@ -1,4 +1,4 @@
-import './virtualExposes-BCEiSN3h.js';
+import './virtualExposes-DFAxoDiO.js';
 import '../remoteEntry.js';
 import './_virtual_mf___mfe_internal__vance_addon_slideshow__loadShare__vue__loadShare__.mjs-CtZISMkN.js';
 import './SettingType-DY2mUbjQ.js';

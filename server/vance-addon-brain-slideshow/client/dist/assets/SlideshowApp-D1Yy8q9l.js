@@ -129,10 +129,16 @@ const _sfc_main$1 = /* @__PURE__ */ __mf_93({
   }
 });
 
+const GLOBAL_KEY = '__VANCE_PLATFORM__';
+function readBindings() {
+    return globalThis[GLOBAL_KEY] ?? null;
+}
 function require_() {
-    {
+    const bindings = readBindings();
+    if (bindings === null) {
         throw new Error('@vance/shared: platform not configured — call configurePlatform({ storage, rest }) at app startup.');
     }
+    return bindings;
 }
 /**
  * Resolve the host-provided storage bindings. Throws if

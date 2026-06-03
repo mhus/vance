@@ -6,4 +6,5 @@
 export interface AddonDto {
   name: string;
   path: string;
+  checksum?: string;
 }

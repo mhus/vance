@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Public read view of an addon. Returned by
@@ -27,4 +28,13 @@ public class AddonDto {
 
     /** Source location: either {@code bundled:<id>} or an external URL. */
     private String path;
+
+    /**
+     * Optional SHA-256 of the source {@code .vab}, format
+     * {@code "sha256:<hex>"}. The face container verifies its own
+     * download against this — it caches the {@code .vab} per addon
+     * just like the brain does, but in its own container-local
+     * cache directory.
+     */
+    private @Nullable String checksum;
 }

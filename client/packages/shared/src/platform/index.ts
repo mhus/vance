@@ -9,7 +9,40 @@ interface PlatformBindings {
   rest: RestConfig;
 }
 
-let bindings: PlatformBindings | null = null;
+// Cross-bundle shared state.
+//
+// `@vance/shared` is bundled into every consumer that imports it —
+// the vance-face host bundle, plus a separate copy inside each
+// Module-Federation addon remote. ESM module-scope variables are
+// per-instance, so the host calling `configurePlatform({...})`
+// configures only the host's copy; an addon's `getRestConfig()`
+// reaches into its OWN copy and finds it unconfigured.
+//
+// `globalThis` is the one storage location every copy reaches into
+// from the same browser tab / RN app. Stashing the bindings there
+// turns the per-copy state into a singleton without coupling addons
+// to vance-face — the addon code still just does
+// `import { brainFetch } from '@vance/shared'`, no knowledge of the
+// host required. configurePlatform writes; getStorage/getRestConfig
+// read.
+//
+// Symbol.for() would also work and is even less collision-prone, but
+// the well-known string key keeps debugging trivial (devtools shows
+// `window.__VANCE_PLATFORM__` directly).
+declare global {
+  // eslint-disable-next-line no-var
+  var __VANCE_PLATFORM__: PlatformBindings | null | undefined;
+}
+
+const GLOBAL_KEY = '__VANCE_PLATFORM__' as const;
+
+function readBindings(): PlatformBindings | null {
+  return globalThis[GLOBAL_KEY] ?? null;
+}
+
+function writeBindings(value: PlatformBindings | null): void {
+  globalThis[GLOBAL_KEY] = value;
+}
 
 /**
  * Bind the host platform's KV stores and REST configuration once at
@@ -24,10 +57,11 @@ let bindings: PlatformBindings | null = null;
  * on each access.
  */
 export function configurePlatform(opts: PlatformBindings): void {
-  bindings = opts;
+  writeBindings(opts);
 }
 
 function require_(): PlatformBindings {
+  const bindings = readBindings();
   if (bindings === null) {
     throw new Error(
       '@vance/shared: platform not configured — call configurePlatform({ storage, rest }) at app startup.',
@@ -62,5 +96,5 @@ export function getRestConfig(): RestConfig {
  * cases to start each test with a fresh in-memory KV.
  */
 export function __resetPlatform(): void {
-  bindings = null;
+  writeBindings(null);
 }

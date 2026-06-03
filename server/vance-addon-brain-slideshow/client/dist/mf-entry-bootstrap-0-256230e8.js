@@ -14,4 +14,4 @@ const __mfImport = (src) =>
 (async () => {
   const { initHost } = await __mfImport("/assets/hostInit-Ho24h_jg.js");
   await initHost();
-})().then(() => __mfImport("/assets/index-DaVlNtp0.js"));
+})().then(() => __mfImport("/assets/index-DSI-dFi_.js"));

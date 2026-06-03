@@ -56,7 +56,7 @@ const cssAssetMap = {};
         "./SlideshowApp": async () => {
           await injectCssAssets("./SlideshowApp");
           const importModule = await importExposedModule(
-            () => __vitePreload(() => import('./SlideshowApp-DzIZNpMu.js'),true?[]:void 0)
+            () => __vitePreload(() => import('./SlideshowApp-D1Yy8q9l.js'),true?[]:void 0)
           );
           const exportModule = {};
           Object.assign(exportModule, importModule);

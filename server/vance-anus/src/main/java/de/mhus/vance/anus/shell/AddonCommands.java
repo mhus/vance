@@ -34,11 +34,12 @@ public class AddonCommands {
             return "(no addons)";
         }
         return Tables.render(
-                List.of("NAME", "PATH", "ENABLED", "CREATED"),
+                List.of("NAME", "PATH", "ENABLED", "CHECKSUM", "CREATED"),
                 List.<Function<AddonDocument, @Nullable Object>>of(
                         AddonDocument::getName,
                         AddonDocument::getPath,
                         AddonDocument::isEnabled,
+                        a -> a.getChecksum() != null ? "set" : "-",
                         AddonDocument::getCreatedAt),
                 all);
     }
@@ -52,11 +53,13 @@ public class AddonCommands {
 
     @ShellMethod(key = "addon create",
             value = "Create a new addon row. Fails if the name already exists — "
-                    + "use 'addon update' to change the path of an existing row.")
+                    + "use 'addon update' to change the path of an existing row. "
+                    + "Optional --checksum (format 'sha256:<hex>') is verified on download.")
     public String create(
             @ShellOption(value = {"--name", "-n"}) String name,
-            @ShellOption(value = {"--path", "-p"}) String path) {
-        AddonDocument addon = addonService.create(name, path);
+            @ShellOption(value = {"--path", "-p"}) String path,
+            @ShellOption(value = {"--checksum", "-c"}, defaultValue = ShellOption.NULL) @Nullable String checksum) {
+        AddonDocument addon = addonService.create(name, path, checksum);
         return "Created addon:\n" + renderOne(addon);
     }
 
@@ -65,6 +68,17 @@ public class AddonCommands {
             @ShellOption(value = {"--name", "-n"}) String name,
             @ShellOption(value = {"--path", "-p"}) String path) {
         AddonDocument addon = addonService.updatePath(name, path);
+        return "Updated addon:\n" + renderOne(addon);
+    }
+
+    @ShellMethod(key = "addon set-checksum",
+            value = "Set or clear the expected SHA-256 of the source .vab. "
+                    + "Format: 'sha256:<hex>'. Pass an empty string to clear.")
+    public String setChecksum(
+            @ShellOption(value = {"--name", "-n"}) String name,
+            @ShellOption(value = {"--checksum", "-c"}) String checksum) {
+        String value = checksum.isBlank() ? null : checksum;
+        AddonDocument addon = addonService.updateChecksum(name, value);
         return "Updated addon:\n" + renderOne(addon);
     }
 
@@ -99,6 +113,7 @@ public class AddonCommands {
         return "  name:      " + doc.getName() + "\n"
                 + "  path:      " + doc.getPath() + "\n"
                 + "  enabled:   " + doc.isEnabled() + "\n"
+                + "  checksum:  " + (doc.getChecksum() != null ? doc.getChecksum() : "(none)") + "\n"
                 + "  createdAt: " + doc.getCreatedAt();
     }
 }

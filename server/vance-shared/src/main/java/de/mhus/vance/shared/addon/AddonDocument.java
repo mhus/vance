@@ -66,6 +66,16 @@ public class AddonDocument {
      */
     private boolean enabled = true;
 
+    /**
+     * Optional SHA-256 of the source {@code .vab}, format
+     * {@code "sha256:<hex>"}. Only relevant for URL-sourced addons —
+     * the entrypoint downloads the bundle, hashes the bytes and
+     * refuses to unpack on mismatch. For {@code bundled:...} rows
+     * this stays {@code null} (the bundle is already known-good
+     * since it shipped in the image).
+     */
+    private @Nullable String checksum;
+
     @CreatedDate
     private @Nullable Instant createdAt;
 }

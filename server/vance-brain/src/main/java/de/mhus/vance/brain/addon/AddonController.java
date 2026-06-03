@@ -36,6 +36,7 @@ public class AddonController {
         return AddonDto.builder()
                 .name(doc.getName())
                 .path(doc.getPath())
+                .checksum(doc.getChecksum())
                 .build();
     }
 }

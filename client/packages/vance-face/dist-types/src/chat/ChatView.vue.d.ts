@@ -31,9 +31,9 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {
     }) => any;
     leave: () => any;
     hub: () => any;
+    "speak-message": (content: string) => any;
     "note-activity": () => any;
     "history-loaded": () => any;
-    "speak-message": (content: string) => any;
     "ask-user-pick": (label: string) => any;
     "wizard-deep-link": (detail: {
         name: string;
@@ -46,9 +46,9 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {
     }) => any) | undefined;
     onLeave?: (() => any) | undefined;
     onHub?: (() => any) | undefined;
+    "onSpeak-message"?: ((content: string) => any) | undefined;
     "onNote-activity"?: (() => any) | undefined;
     "onHistory-loaded"?: (() => any) | undefined;
-    "onSpeak-message"?: ((content: string) => any) | undefined;
     "onAsk-user-pick"?: ((label: string) => any) | undefined;
     "onWizard-deep-link"?: ((detail: {
         name: string;

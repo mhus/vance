@@ -17,7 +17,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from './documentHeaderCodec';
+} from '@vance/shared';
 
 export type ChartType =
   | 'line'

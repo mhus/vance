@@ -305,6 +305,34 @@ importers:
         specifier: ~5.9.3
         version: 5.9.3
 
+  server/vance-addon-brain-calendar/client:
+    dependencies:
+      '@vance/components':
+        specifier: workspace:*
+        version: link:../../../client/packages/components
+      '@vance/kind-registry':
+        specifier: workspace:*
+        version: link:../../../client/packages/kind-registry
+      '@vance/shared':
+        specifier: workspace:*
+        version: link:../../../client/packages/shared
+    devDependencies:
+      '@module-federation/vite':
+        specifier: ^1.4.0
+        version: 1.16.2(typescript@5.6.3)(vite@5.4.21(@types/node@22.19.19)(lightningcss@1.32.0)(terser@5.48.0))(vue-tsc@2.2.12(typescript@5.6.3))
+      '@vitejs/plugin-vue':
+        specifier: ^5.2.1
+        version: 5.2.4(vite@5.4.21(@types/node@22.19.19)(lightningcss@1.32.0)(terser@5.48.0))(vue@3.5.35(typescript@5.6.3))
+      vite:
+        specifier: ^5.4.11
+        version: 5.4.21(@types/node@22.19.19)(lightningcss@1.32.0)(terser@5.48.0)
+      vue:
+        specifier: ^3.5.13
+        version: 3.5.35(typescript@5.6.3)
+      vue-tsc:
+        specifier: ^2.1.10
+        version: 2.2.12(typescript@5.6.3)
+
   server/vance-addon-brain-kanban/client:
     dependencies:
       '@vance/components':

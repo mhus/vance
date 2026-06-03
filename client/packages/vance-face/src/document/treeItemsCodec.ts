@@ -11,7 +11,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from './documentHeaderCodec';
+} from '@vance/shared';
 
 /** A tree item. Extra fields are preserved across round-trip for
  *  json/yaml; markdown can only carry `text` + nesting. */

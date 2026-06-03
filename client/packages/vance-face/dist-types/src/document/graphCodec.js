@@ -8,7 +8,7 @@
 // convention used by Cytoscape, GraphML/GEXF, vue-flow internally,
 // and the JSON Graph Spec. Edges that point to unknown ids are
 // preserved across round-trip but the renderer skips them.
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from '@vance/shared';
 export class GraphCodecError extends Error {
     cause;
     constructor(message, cause) {

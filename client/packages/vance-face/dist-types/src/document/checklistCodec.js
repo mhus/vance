@@ -8,7 +8,7 @@
 // `priority` field in JSON/YAML.
 //
 // See `specification/doc-kind-checklist.md` for the schema.
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from '@vance/shared';
 /** Reserved per-item extra key that preserves a non-standard Markdown
  *  checkbox char across a round-trip. */
 export const STATUS_CHAR_EXTRA_KEY = '_statusChar';

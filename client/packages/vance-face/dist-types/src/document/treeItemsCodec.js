@@ -5,7 +5,7 @@
 //
 // See `specification/doc-kind-tree.md` for the schema and the
 // markdown indent-nesting rules.
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from '@vance/shared';
 export class TreeCodecError extends Error {
     cause;
     constructor(message, cause) {

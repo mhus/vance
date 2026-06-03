@@ -17,7 +17,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from './documentHeaderCodec';
+} from '@vance/shared';
 
 /** Deck-level header. All fields optional — Marpit defaults take over
  *  when a field is missing. */

@@ -17,7 +17,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from './documentHeaderCodec';
+} from '@vance/shared';
 
 export type DiagramTheme = 'default' | 'dark' | 'forest' | 'neutral' | 'base';
 export type DiagramLook = 'classic' | 'handDrawn';

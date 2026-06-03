@@ -10,15 +10,6 @@ export * from './addon/AddonDto';
 
 export * from './attachment/AttachmentRef';
 
-export * from './calendar/CalendarArtefactSummary';
-export * from './calendar/CalendarConflictView';
-export * from './calendar/CalendarEventCreateRequest';
-export * from './calendar/CalendarEventUpdateRequest';
-export * from './calendar/CalendarEventView';
-export * from './calendar/CalendarLaneView';
-export * from './calendar/CalendarPlannerView';
-export * from './calendar/CalendarRebuildResponse';
-
 export * from './profile/ProfileDto';
 export * from './profile/ProfileSettingWriteRequest';
 export * from './profile/ProfileUpdateRequest';

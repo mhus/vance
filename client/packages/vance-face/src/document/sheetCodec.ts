@@ -12,7 +12,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from './documentHeaderCodec';
+} from '@vance/shared';
 
 export interface SheetCell {
   /** A1-Adresse, kanonisch uppercase (`A1`, `B5`, `AB99`). */

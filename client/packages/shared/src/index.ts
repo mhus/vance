@@ -1,4 +1,5 @@
 export * from './auth/index';
+export * from './documentHeaderCodec';
 export * from './rest/index';
 export * from './platform/index';
 export * from './speech/index';

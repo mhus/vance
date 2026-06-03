@@ -7,7 +7,7 @@
 // JSON and YAML only — Markdown makes no sense for an app manifest.
 //
 // Mirrors the server-side `ApplicationCodec` in `vance-shared`.
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, } from '@vance/shared';
 export class ApplicationCodecError extends Error {
     cause;
     constructor(message, cause) {

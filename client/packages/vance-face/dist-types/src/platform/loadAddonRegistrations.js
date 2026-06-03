@@ -25,6 +25,7 @@
 const importers = {
     slideshow: () => import(/* @vite-ignore */ 'vance_addon_slideshow/register'),
     kanban: () => import(/* @vite-ignore */ 'vance_addon_kanban/register'),
+    calendar: () => import(/* @vite-ignore */ 'vance_addon_calendar/register'),
 };
 export async function loadAddonRegistrations() {
     let addons;

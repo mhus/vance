@@ -15,16 +15,18 @@ interface DocumentSummary {
   projectId: string;
 }
 
-// Lazy-load app sub-editors so the bundle stays slim.
+// Lazy-load app sub-editors so the bundle stays slim. All three apps
+// ship as federation remotes (see vance-face's vite.config.ts + env.d.ts
+// module declarations). Vite-ignore is needed because the resolver
+// doesn't know about federation remotes at build time; the federation
+// plugin rewrites these imports to runtime fetches of
+// /addons/<id>/remoteEntry.js.
 const KanbanBoard = defineAsyncComponent(
   () => import(/* @vite-ignore */ 'vance_addon_kanban/KanbanBoard'),
 );
-const CalendarPlanner = defineAsyncComponent(() => import('./calendar/CalendarPlanner.vue'));
-// Loaded via Module Federation at runtime — see vance-face's vite.config.ts
-// federation host config + env.d.ts module declaration. Vite-ignore is
-// needed because the resolver doesn't know about federation remotes at
-// build time; the federation plugin rewrites this import to a runtime
-// fetch of /addons/vance-addon-brain-slideshow/remoteEntry.js.
+const CalendarPlanner = defineAsyncComponent(
+  () => import(/* @vite-ignore */ 'vance_addon_calendar/CalendarPlanner'),
+);
 const SlideshowApp = defineAsyncComponent(
   () => import(/* @vite-ignore */ 'vance_addon_slideshow/SlideshowApp'),
 );

@@ -20,7 +20,7 @@ import {
   parseYamlBody,
   unwrapJsonMeta,
   wrapJsonMeta,
-} from './documentHeaderCodec';
+} from '@vance/shared';
 
 /** A single record. `values` holds the schema-field-keyed strings.
  *  `extra` keeps unknown json/yaml keys for round-trip; `overflow`

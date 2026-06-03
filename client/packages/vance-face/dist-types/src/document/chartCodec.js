@@ -11,7 +11,7 @@
 // object-form point ({x, y}) is re-emitted as an object, a tuple-form
 // point ([x, y]) as a tuple. The codec does not normalise between the
 // two.
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from '@vance/shared';
 const CHART_TYPES = new Set([
     'line', 'bar', 'area', 'scatter', 'pie', 'donut', 'candlestick', 'heatmap',
 ]);

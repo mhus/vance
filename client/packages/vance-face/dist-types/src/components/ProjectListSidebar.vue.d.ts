@@ -118,8 +118,6 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
         name: string;
     }) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
-    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
-    "onUpdate:selectedNode"?: ((value: PickerNode | null) => any) | undefined;
     "onProject-pick"?: ((payload: {
         name: string;
         title: string;
@@ -133,9 +131,11 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
         kind: "group" | "project";
         name: string;
     }) => any) | undefined;
+    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
+    "onUpdate:selectedNode"?: ((value: PickerNode | null) => any) | undefined;
 }>, {
-    error: string | null;
     loading: boolean;
+    error: string | null;
     heading: string;
     searchEnabled: boolean;
     editEnabled: boolean;

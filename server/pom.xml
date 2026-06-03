@@ -26,6 +26,7 @@
         <module>vance-anus</module>
         <module>vance-addon-brain-slideshow</module>
         <module>vance-addon-brain-kanban</module>
+        <module>vance-addon-brain-calendar</module>
         <module>vance-brain-all</module>
     </modules>
 

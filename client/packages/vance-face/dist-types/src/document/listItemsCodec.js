@@ -10,7 +10,7 @@
 // extra fields (see `parseListMarkdown` notes).
 //
 // See `specification/doc-kind-items.md` for the schema.
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from '@vance/shared';
 export class ListCodecError extends Error {
     cause;
     constructor(message, cause) {

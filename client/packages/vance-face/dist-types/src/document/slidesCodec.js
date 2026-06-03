@@ -11,7 +11,7 @@
 //
 // See `specification/doc-kind-slides.md` for the schema.
 import yaml from 'js-yaml';
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from '@vance/shared';
 export class SlidesCodecError extends Error {
     cause;
     constructor(message, cause) {

@@ -11,7 +11,7 @@
 // See `specification/doc-kind-diagram.md` for the schema. Mirrors the
 // server-side `DiagramCodec` in `vance-shared`.
 import yaml from 'js-yaml';
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from '@vance/shared';
 const THEMES = new Set([
     'default', 'dark', 'forest', 'neutral', 'base',
 ]);

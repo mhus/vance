@@ -1,4 +1,3 @@
-export * from './calendar';
 export * from './linkPreview';
 export * from './restClient';
 export * from './sessions';

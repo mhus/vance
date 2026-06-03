@@ -6,7 +6,7 @@
 // formatting appear on disk. Formulas live as plain strings (lead
 // with `=`) and round-trip stably; v1 does not evaluate them, see
 // spec §6.1 for v2 client-eval and §6.2 for v3 server-eval.
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from '@vance/shared';
 export class SheetCodecError extends Error {
     cause;
     constructor(message, cause) {

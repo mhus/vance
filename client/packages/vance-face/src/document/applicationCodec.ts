@@ -12,7 +12,7 @@ import {
   dumpYamlBody,
   parseYamlBody,
   unwrapJsonMeta,
-} from './documentHeaderCodec';
+} from '@vance/shared';
 
 export interface ApplicationDocument {
   /** Always `'application'`. */

@@ -50,6 +50,11 @@ const addonRemotes: Record<string, any> = {
     entry: '/addons/kanban/remoteEntry.js',
     type: 'module',
   },
+  vance_addon_calendar: {
+    name: 'vance_addon_calendar',
+    entry: '/addons/calendar/remoteEntry.js',
+    type: 'module',
+  },
 };
 
 /**

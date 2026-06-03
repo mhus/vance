@@ -29,6 +29,11 @@
             <artifactId>vance-addon-brain-kanban</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-calendar</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

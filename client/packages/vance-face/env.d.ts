@@ -22,6 +22,18 @@ declare module 'vance_addon_kanban/KanbanBoard' {
   export default component;
 }
 
+declare module 'vance_addon_calendar/CalendarPlanner' {
+  import type { DefineComponent } from 'vue';
+  const component: DefineComponent<{ projectId: string; folder: string; title?: string }>;
+  export default component;
+}
+
+declare module 'vance_addon_calendar/CalendarView' {
+  import type { DefineComponent } from 'vue';
+  const component: DefineComponent<Record<string, unknown>>;
+  export default component;
+}
+
 // Optional ./register exposes — addons that contribute Kind codecs or
 // other host-side side effects implement these. Loaded at boot by
 // vance-face/src/platform/loadAddonRegistrations.ts. The function may
@@ -30,6 +42,9 @@ declare module 'vance_addon_slideshow/register' {
   export function register(): void;
 }
 declare module 'vance_addon_kanban/register' {
+  export function register(): void;
+}
+declare module 'vance_addon_calendar/register' {
   export function register(): void;
 }
 

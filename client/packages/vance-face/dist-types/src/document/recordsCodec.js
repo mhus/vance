@@ -14,7 +14,7 @@
 // fences. Header row becomes the schema (unless an explicit front-
 // matter `schema:` is present), the alignment-divider row is skipped,
 // and remaining pipe-rows become items.
-import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from './documentHeaderCodec';
+import { dumpYamlBody, parseYamlBody, unwrapJsonMeta, wrapJsonMeta, } from '@vance/shared';
 export class RecordsCodecError extends Error {
     cause;
     constructor(message, cause) {

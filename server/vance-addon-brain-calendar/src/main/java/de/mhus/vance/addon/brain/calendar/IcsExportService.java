@@ -1,7 +1,5 @@
 package de.mhus.vance.addon.brain.calendar;
 
-import de.mhus.vance.addon.brain.calendar.CalendarDocument;
-import de.mhus.vance.addon.brain.calendar.CalendarEvent;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;

@@ -1,16 +1,5 @@
 package de.mhus.vance.addon.brain.calendar;
 
-import de.mhus.vance.addon.brain.calendar.CalendarArtefactSummary;
-import de.mhus.vance.addon.brain.calendar.CalendarConflictView;
-import de.mhus.vance.addon.brain.calendar.CalendarEventView;
-import de.mhus.vance.addon.brain.calendar.CalendarLaneView;
-import de.mhus.vance.addon.brain.calendar.CalendarPlannerView;
-import de.mhus.vance.addon.brain.calendar.CalendarFolderReader;
-import de.mhus.vance.addon.brain.calendar.CalendarLinkBuilder;
-import de.mhus.vance.addon.brain.calendar.ConflictDetector;
-import de.mhus.vance.addon.brain.calendar.RecurrenceExpander;
-import de.mhus.vance.addon.brain.calendar.CalendarEvent;
-import de.mhus.vance.addon.brain.calendar.CalendarsAppConfig;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;

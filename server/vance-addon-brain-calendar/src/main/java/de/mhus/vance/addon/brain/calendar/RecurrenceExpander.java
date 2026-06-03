@@ -1,6 +1,5 @@
 package de.mhus.vance.addon.brain.calendar;
 
-import de.mhus.vance.addon.brain.calendar.CalendarEvent;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;

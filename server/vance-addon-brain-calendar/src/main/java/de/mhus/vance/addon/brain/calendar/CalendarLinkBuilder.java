@@ -1,6 +1,5 @@
 package de.mhus.vance.addon.brain.calendar;
 
-import de.mhus.vance.addon.brain.calendar.CalendarEvent;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;

@@ -15,6 +15,11 @@ import { federation } from '@module-federation/vite';
  * assembly copies this dist/ tree into the bundle's face/ directory.
  */
 export default defineConfig({
+  // Federation remote served from `/addons/<id>/` — see comment in
+  // vance-addon-brain-calendar/client/vite.config.ts for why empty
+  // base is required (avoids Vite's `'/'+dep` chunk preload paths
+  // 404'ing because the addon isn't mounted at the host root).
+  base: '',
   plugins: [
     vue(),
     federation({
@@ -45,7 +50,11 @@ export default defineConfig({
   build: {
     target: 'esnext',
     minify: false,
-    cssCodeSplit: false,
+    // cssCodeSplit MUST be true (Vite default): federation injects CSS
+    // per expose via the virtualExposes.js cssAssetMap. With
+    // cssCodeSplit:false the map is empty and the host never sees
+    // the addon's styles.
+    cssCodeSplit: true,
     rollupOptions: {
       // Federation entry is auto-injected by the plugin — no manual
       // input here.

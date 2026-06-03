@@ -17,6 +17,14 @@ import { federation } from '@module-federation/vite';
  * same store.
  */
 export default defineConfig({
+  // Federation remotes are served from `/addons/<id>/` at runtime (face
+  // nginx symlink in prod, vite middleware in dev). An absolute base
+  // would emit `<link rel=modulepreload href="/assets/X.js">` and try
+  // to fetch chunks from the root — 404 when the host is vance-face.
+  // Empty base → Vite emits relative URLs that resolve against each
+  // chunk's own URL, so `/addons/<id>/assets/<chunk>.js` correctly
+  // sibling-imports `<chunk2>.js` no matter where the host mounts us.
+  base: '',
   plugins: [
     vue(),
     federation({
@@ -36,6 +44,11 @@ export default defineConfig({
   build: {
     target: 'esnext',
     minify: false,
-    cssCodeSplit: false,
+    // cssCodeSplit MUST be true (Vite default): federation injects CSS
+    // by walking the per-expose cssAssetMap in virtualExposes.js. With
+    // cssCodeSplit:false Vite bundles all CSS into a single global file
+    // and the map is empty, so the host never sees the addon's styles
+    // — the editor renders as plain DOM.
+    cssCodeSplit: true,
   },
 });

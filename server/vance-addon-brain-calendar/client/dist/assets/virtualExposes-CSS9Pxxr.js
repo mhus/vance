@@ -1,0 +1,101 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./CodeEditor-CGkeot8N.css","./CalendarView-UChuAuu4.css"])))=>i.map(i=>d[i]);
+import { _ as __vitePreload } from './preload-helper-C6a2snJ8.js';
+
+const cssAssetMap = {};
+    const injectedCssHrefs = new Set();
+    let exposeLoadQueue = Promise.resolve();
+
+    async function importExposedModule(loader) {
+      const currentLoad = exposeLoadQueue.then(loader, loader);
+      exposeLoadQueue = currentLoad.then(
+        () => undefined,
+        () => undefined
+      );
+      return currentLoad;
+    }
+
+    async function injectCssAssets(exposeKey) {
+      if (typeof document === "undefined") {
+        return;
+      }
+
+      // Replaced at build time with expose -> css asset paths.
+      const cssAssets = cssAssetMap[exposeKey] || [];
+
+      await Promise.all(
+        cssAssets.map((cssAsset) => {
+          const href = new URL(cssAsset, import.meta.url).href;
+
+          // Same expose can be resolved multiple times in one page.
+          if (injectedCssHrefs.has(href)) {
+            return Promise.resolve();
+          }
+          injectedCssHrefs.add(href);
+
+          const existingLink = document.querySelector(
+            `link[rel="stylesheet"][data-mf-href="${href}"]`
+          );
+          if (existingLink) {
+            return Promise.resolve();
+          }
+
+          return new Promise((resolve, reject) => {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = href;
+            link.setAttribute("data-mf-href", href);
+            link.onload = () => resolve();
+            link.onerror = () => reject(new Error(`[Module Federation] Failed to load CSS asset: ${href}`));
+            document.head.appendChild(link);
+          });
+        })
+      );
+    }
+
+    const virtual_mfExposes___mfe_internal__vance_addon_calendar__remoteEntry_js = {
+    
+        "./CalendarPlanner": async () => {
+          await injectCssAssets("./CalendarPlanner");
+          const importModule = await importExposedModule(
+            () => __vitePreload(() => import('./CalendarPlanner-Bx3ak1xu.js'),true?__vite__mapDeps([0]):void 0,import.meta.url)
+          );
+          const exportModule = {};
+          Object.assign(exportModule, importModule);
+          Object.defineProperty(exportModule, "__esModule", {
+            value: true,
+            enumerable: false
+          });
+          return exportModule
+        }
+      ,
+        "./CalendarView": async () => {
+          await injectCssAssets("./CalendarView");
+          const importModule = await importExposedModule(
+            () => __vitePreload(() => import('./CalendarView-Cm3RQWKv.js'),true?__vite__mapDeps([1]):void 0,import.meta.url)
+          );
+          const exportModule = {};
+          Object.assign(exportModule, importModule);
+          Object.defineProperty(exportModule, "__esModule", {
+            value: true,
+            enumerable: false
+          });
+          return exportModule
+        }
+      ,
+        "./register": async () => {
+          await injectCssAssets("./register");
+          const importModule = await importExposedModule(
+            () => __vitePreload(() => import('./register-MHt9Qy_q.js'),true?[]:void 0,import.meta.url)
+          );
+          const exportModule = {};
+          Object.assign(exportModule, importModule);
+          Object.defineProperty(exportModule, "__esModule", {
+            value: true,
+            enumerable: false
+          });
+          return exportModule
+        }
+      
+  };
+
+export { virtual_mfExposes___mfe_internal__vance_addon_calendar__remoteEntry_js as default };

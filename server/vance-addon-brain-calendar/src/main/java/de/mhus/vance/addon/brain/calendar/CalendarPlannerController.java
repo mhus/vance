@@ -1,22 +1,10 @@
 package de.mhus.vance.addon.brain.calendar;
 
-import de.mhus.vance.addon.brain.calendar.CalendarArtefactSummary;
-import de.mhus.vance.addon.brain.calendar.CalendarEventCreateRequest;
-import de.mhus.vance.addon.brain.calendar.CalendarEventUpdateRequest;
-import de.mhus.vance.addon.brain.calendar.CalendarEventView;
-import de.mhus.vance.addon.brain.calendar.CalendarPlannerView;
-import de.mhus.vance.addon.brain.calendar.CalendarRebuildResponse;
-import de.mhus.vance.addon.brain.calendar.CalendarsApplication;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.permission.RequestAuthority;
-import de.mhus.vance.addon.brain.calendar.CalendarFolderReader;
-import de.mhus.vance.addon.brain.calendar.CalendarLinkBuilder;
 import de.mhus.vance.shared.access.AccessFilterBase;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
-import de.mhus.vance.addon.brain.calendar.CalendarCodec;
-import de.mhus.vance.addon.brain.calendar.CalendarDocument;
-import de.mhus.vance.addon.brain.calendar.CalendarEvent;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
 import jakarta.servlet.http.HttpServletRequest;

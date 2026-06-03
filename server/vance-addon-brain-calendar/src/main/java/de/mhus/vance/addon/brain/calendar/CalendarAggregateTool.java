@@ -1,7 +1,6 @@
 package de.mhus.vance.addon.brain.calendar;
 
 import de.mhus.vance.brain.tools.eddie.EddieContext;
-import de.mhus.vance.addon.brain.calendar.CalendarEvent;
 import de.mhus.vance.shared.project.ProjectDocument;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;

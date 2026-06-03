@@ -2,7 +2,6 @@ package de.mhus.vance.addon.brain.calendar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import de.mhus.vance.addon.brain.calendar.CalendarEvent;
 import java.util.LinkedHashMap;
 import java.util.List;
 import org.junit.jupiter.api.Test;

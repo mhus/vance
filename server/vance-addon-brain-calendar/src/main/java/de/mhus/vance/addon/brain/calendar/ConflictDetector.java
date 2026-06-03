@@ -1,6 +1,5 @@
 package de.mhus.vance.addon.brain.calendar;
 
-import de.mhus.vance.addon.brain.calendar.CalendarsAppConfig;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;

@@ -1,4 +1,4 @@
-import { _ as __vitePreload } from './assets/preload-helper-BelkbqnE.js';
+import { _ as __vitePreload } from './assets/preload-helper-C6a2snJ8.js';
 
 //#region src/constant.ts
 const MANIFEST_EXT = ".json";
@@ -3602,7 +3602,7 @@ const __mfModuleCache = globalThis[__mfCacheGlobalKey];
 
   async function getLocalSharedImportMap() {
     if (!localSharedImportMapPromise) {
-      localSharedImportMapPromise = retrySharedInit(() => __vitePreload(() => import('./assets/_virtual_mf-localSharedImportMap___mfe_internal__vance_addon_calendar-xuwXN56T.js'),true?[]:void 0))
+      localSharedImportMapPromise = retrySharedInit(() => __vitePreload(() => import('./assets/_virtual_mf-localSharedImportMap___mfe_internal__vance_addon_calendar-Dy5IR0nD.js'),true?[]:void 0,import.meta.url))
         .catch((e) => { localSharedImportMapPromise = undefined; throw e; });
     }
     return localSharedImportMapPromise
@@ -3610,7 +3610,7 @@ const __mfModuleCache = globalThis[__mfCacheGlobalKey];
 
   async function getExposesMap() {
     if (!exposesMapPromise) {
-      exposesMapPromise = retrySharedInit(() => __vitePreload(() => import('./assets/virtualExposes-DBMcYtxn.js'),true?[]:void 0))
+      exposesMapPromise = retrySharedInit(() => __vitePreload(() => import('./assets/virtualExposes-CSS9Pxxr.js'),true?[]:void 0,import.meta.url))
         .then((mod) => mod.default ?? mod)
         .catch((e) => { exposesMapPromise = undefined; throw e; });
     }
@@ -3620,7 +3620,7 @@ const __mfModuleCache = globalThis[__mfCacheGlobalKey];
   async function init(shared = {}, initScope = []) {
     const {usedShared, usedRemotes} = await getLocalSharedImportMap();
     if (__mfModuleCache.share["vue"] === undefined) {
-        const mod = await __vitePreload(() => import('./assets/_virtual_mf___mfe_internal__vance_addon_calendar__loadShare__vue__loadShare__.mjs-DvmOVNPO.js').then(n => n._),true?[]:void 0);
+        const mod = await __vitePreload(() => import('./assets/_virtual_mf___mfe_internal__vance_addon_calendar__loadShare__vue__loadShare__.mjs-DvmOVNPO.js').then(n => n._),true?[]:void 0,import.meta.url);
         const __mfNormalizeRuntimeShare = (mod) => {
             let current = mod;
             for (let i = 0; i < 5; i++) {

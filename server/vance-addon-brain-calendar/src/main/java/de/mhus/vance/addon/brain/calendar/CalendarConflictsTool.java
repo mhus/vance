@@ -1,6 +1,5 @@
 package de.mhus.vance.addon.brain.calendar;
 
-import de.mhus.vance.addon.brain.calendar.CalendarsApplication;
 import de.mhus.vance.brain.applications.VanceApplication;
 import de.mhus.vance.brain.tools.eddie.EddieContext;
 import de.mhus.vance.shared.project.ProjectDocument;

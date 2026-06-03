@@ -1,19 +1,11 @@
 package de.mhus.vance.addon.brain.calendar;
 
 import de.mhus.vance.brain.applications.VanceApplication;
-import de.mhus.vance.addon.brain.calendar.CalendarFolderReader;
-import de.mhus.vance.addon.brain.calendar.ConflictDetector;
-import de.mhus.vance.addon.brain.calendar.GanttRenderer;
-import de.mhus.vance.addon.brain.calendar.RecurrenceExpander;
 import de.mhus.vance.brain.tools.document.DocumentLinkBuilder;
 import de.mhus.vance.shared.document.DocumentDocument;
 import de.mhus.vance.shared.document.DocumentService;
 import de.mhus.vance.shared.document.kind.ApplicationCodec;
 import de.mhus.vance.shared.document.kind.ApplicationDocument;
-import de.mhus.vance.addon.brain.calendar.CalendarCodec;
-import de.mhus.vance.addon.brain.calendar.CalendarDocument;
-import de.mhus.vance.addon.brain.calendar.CalendarEvent;
-import de.mhus.vance.addon.brain.calendar.CalendarsAppConfig;
 import de.mhus.vance.shared.document.kind.RecordsCodec;
 import de.mhus.vance.shared.document.kind.RecordsDocument;
 import de.mhus.vance.shared.document.kind.RecordsItem;

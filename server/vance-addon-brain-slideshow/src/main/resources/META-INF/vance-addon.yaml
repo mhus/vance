@@ -1,0 +1,7 @@
+# Vance Brain addon manifest. Read by the brain bootstrap entrypoint
+# (Docker ENTRYPOINT shell script) to determine where to unpack this
+# bundle on the shared /shared/addons/<id>/<version>/ volume. Spring
+# Boot itself only needs the AutoConfiguration.imports descriptor
+# inside the JAR — this file is purely for the bootstrap.
+id: slideshow
+version: @project.version@

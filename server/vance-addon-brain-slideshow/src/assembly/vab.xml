@@ -1,0 +1,61 @@
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.1.1"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.1.1 https://maven.apache.org/xsd/assembly-2.1.1.xsd">
+    <!--
+      Descriptor for the Slideshow addon's .vab bundle. Layout matches
+      planning/addon-system.md §1.5 with one consistency rename of
+      backend/ → brain/ — the Vance side that consumes this code is the
+      Brain, paired with face/ on the other end.
+
+        META-INF/
+          vance-addon.yaml      ← bootstrap reads this (id, version)
+          spring/...imports     ← informational; Spring reads from JAR
+        brain/lib/
+          *.jar                 ← brain loader.path scans this
+        face/
+          remoteEntry.js + …    ← nginx symlinks this under /addons/<id>/
+
+      The maven-antrun-plugin renames the produced .zip to .vab in the
+      same package phase (assembly-plugin cannot set its own extension).
+    -->
+    <id>vab</id>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <includeBaseDirectory>false</includeBaseDirectory>
+
+    <files>
+        <file>
+            <source>${project.build.directory}/${project.build.finalName}.jar</source>
+            <outputDirectory>brain/lib</outputDirectory>
+        </file>
+        <file>
+            <source>${project.build.outputDirectory}/META-INF/vance-addon.yaml</source>
+            <outputDirectory>META-INF</outputDirectory>
+        </file>
+    </files>
+
+    <fileSets>
+        <fileSet>
+            <directory>${project.build.outputDirectory}/META-INF/spring</directory>
+            <outputDirectory>META-INF/spring</outputDirectory>
+        </fileSet>
+
+        <!--
+          Federation remote: the addon's frontend bundle produced by
+          `vite build` in client/. The brain bootstrap symlinks
+          /shared/addons/<id>/<ver>/face into nginx's serve root, so
+          remoteEntry.js becomes reachable at /addons/<id>-<ver>/remoteEntry.js.
+          The dev-only index.html stub is excluded — production has no
+          standalone HTML entry for the remote.
+        -->
+        <fileSet>
+            <directory>${project.basedir}/client/dist</directory>
+            <outputDirectory>face</outputDirectory>
+            <excludes>
+                <exclude>index.html</exclude>
+                <exclude>@mf-types/**</exclude>
+            </excludes>
+        </fileSet>
+    </fileSets>
+</assembly>

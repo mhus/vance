@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>@vance-addon/slideshow dev</title>
+  </head>
+  <body>
+    <!--
+      Dev-server bootstrap for the slideshow addon's federation remote.
+      Has no production purpose — the .vab assembly skips this file and
+      only packs the federation runtime artefacts (remoteEntry.js +
+      chunks) into the bundle. In dev (pnpm --filter @vance-addon/slideshow dev),
+      vance-face's host config points at this server's remoteEntry.js.
+    -->
+    <script type="module" src="/src/index.ts"></script>
+  </body>
+</html>

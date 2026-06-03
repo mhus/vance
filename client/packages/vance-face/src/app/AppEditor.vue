@@ -18,7 +18,14 @@ interface DocumentSummary {
 // Lazy-load app sub-editors so the bundle stays slim.
 const KanbanBoard = defineAsyncComponent(() => import('./kanban/KanbanBoard.vue'));
 const CalendarPlanner = defineAsyncComponent(() => import('./calendar/CalendarPlanner.vue'));
-const SlideshowApp = defineAsyncComponent(() => import('@vance-addon/slideshow/SlideshowApp.vue'));
+// Loaded via Module Federation at runtime — see vance-face's vite.config.ts
+// federation host config + env.d.ts module declaration. Vite-ignore is
+// needed because the resolver doesn't know about federation remotes at
+// build time; the federation plugin rewrites this import to a runtime
+// fetch of /addons/vance-addon-brain-slideshow/remoteEntry.js.
+const SlideshowApp = defineAsyncComponent(
+  () => import(/* @vite-ignore */ 'vance_addon_slideshow/SlideshowApp'),
+);
 
 const projectId = ref<string>('');
 const folder = ref<string>('');

@@ -1,0 +1,10 @@
+{
+  "latestErrorEvent": {
+    "code": "TYPE-001",
+    "message": "Failed to generate type declaration. Execute the below cmd to reproduce and fix the error. #TYPE-001\nargs: {\"cmd\":\"npx vue-tsc --project /Users/hummel/sources/mhus/vance-wb/repos/vance/server/vance-addon-brain-slideshow/client/node_modules/.federation/tsconfig.1a2b87c1128be7f22c551f52c45b2e62.json\"}\nView the docs to see how to solve: https://module-federation.io/guide/troubleshooting/type#type-001",
+    "args": {
+      "cmd": "npx vue-tsc --project /Users/hummel/sources/mhus/vance-wb/repos/vance/server/vance-addon-brain-slideshow/client/node_modules/.federation/tsconfig.1a2b87c1128be7f22c551f52c45b2e62.json"
+    },
+    "timestamp": 1780470335321
+  }
+}

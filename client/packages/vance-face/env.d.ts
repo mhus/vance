@@ -6,6 +6,16 @@ declare module '*.vue' {
   export default component;
 }
 
+// Module Federation remotes. Each first-party addon exposes its editor
+// component(s) under a federation name (see the addon's vite.config.ts).
+// Stub declarations let vance-face's vue-tsc type-check imports that
+// resolve to URLs at runtime, not workspace files.
+declare module 'vance_addon_slideshow/SlideshowApp' {
+  import type { DefineComponent } from 'vue';
+  const component: DefineComponent<{ projectId: string; folder: string; title?: string }>;
+  export default component;
+}
+
 interface ImportMetaEnv {
   readonly VITE_BRAIN_URL?: string;
   readonly VITE_VANCE_COLOR_WORKER?: string;

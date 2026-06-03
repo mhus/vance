@@ -13,6 +13,17 @@
     <description>Slideshow Vance Application packaged as a first-party Brain addon. Bundles the SlideshowApplication, its REST controller, folder scanner, server tools and the wire-contract DTOs (SlideView, SlideshowView, SlideshowRebuildResponse). The Maven build generates the matching TypeScript interfaces straight into the colocated client/ pnpm package, which also carries the Vue UI and REST helpers. Loaded by Spring Boot via META-INF/spring/.../AutoConfiguration.imports.</description>
     <packaging>jar</packaging>
 
+    <properties>
+        <!--
+          Skips the federation-remote build of @vance-addon/slideshow
+          that bakes into the .vab bundle's face/ tree. Default: run it,
+          so a fresh `mvn package` keeps the Web-UI artefact in sync
+          with the addon source. CI / headless environments without
+          pnpm on PATH can pass -Dskip.pnpm=true.
+        -->
+        <skip.pnpm>false</skip.pnpm>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>de.mhus.vance</groupId>
@@ -35,6 +46,27 @@
     </dependencies>
 
     <build>
+        <!--
+          Filter META-INF/vance-addon.yaml so ${project.version} is
+          substituted; everything else under src/main/resources is
+          copied verbatim (binary-safe, no surprise expansion).
+        -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>META-INF/vance-addon.yaml</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>META-INF/vance-addon.yaml</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <!--
               Generates TypeScript interfaces from this addon's @GenerateTypeScript-annotated
@@ -55,6 +87,91 @@
                         <configuration>
                             <inputDirectory>${project.basedir}/src/main/java</inputDirectory>
                             <outputDirectory>${project.basedir}/client/src/generated</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              Federation-remote build of the addon's client/ pnpm
+              package. Runs in prepare-package so the dist/ tree exists
+              when the assembly below copies it into the .vab face/.
+              Mirrors vance-api's pnpm step; skippable via -Dskip.pnpm=true.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>build-addon-face</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>pnpm</executable>
+                            <workingDirectory>${project.basedir}/../..</workingDirectory>
+                            <arguments>
+                                <argument>--filter</argument>
+                                <argument>@vance-addon/slideshow</argument>
+                                <argument>build</argument>
+                            </arguments>
+                            <skip>${skip.pnpm}</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              Build the .vab bundle in the package phase. Layout per
+              planning/addon-system.md §1.5 — see src/assembly/vab.xml.
+              Output is target/${artifactId}-${version}.zip; the antrun
+              execution below renames it to .vab.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>vab</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>src/assembly/vab.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <finalName>${project.artifactId}-${project.version}</finalName>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!--
+              maven-assembly-plugin can only emit a .zip; the file
+              extension is hardcoded per format. Rename it to .vab so
+              the bootstrap script's /default-addons/*.vab glob picks
+              it up. Runs after assembly (plugin order within the same
+              phase respects pom declaration order).
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>rename-vab</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <move file="${project.build.directory}/${project.artifactId}-${project.version}.zip"
+                                      tofile="${project.build.directory}/${project.artifactId}-${project.version}.vab"/>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>

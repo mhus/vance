@@ -2,7 +2,7 @@
   "name": "@vance-addon/slideshow",
   "version": "1.0.0",
   "private": true,
-  "description": "Client surface of the Slideshow Brain addon — TypeScript DTOs (generated from Java), REST helpers and the Vue editor component. Self-contained: source consumed by Vite at runtime (main → src/), pre-built .vue.d.ts emitted by vue-tsc for downstream type checking (types → dist/).",
+  "description": "Client surface of the Slideshow Brain addon — TypeScript DTOs (generated from Java), REST helpers and the Vue editor component. Self-contained: source consumed by Vite at runtime (main → src/), pre-built .vue.d.ts emitted by vue-tsc for downstream type checking (types → dist/). In production, dist/ also contains the federation remoteEntry.js for loader.path-style dynamic injection at runtime.",
   "license": "SEE LICENSE IN ../../../client/LICENSE.txt",
   "type": "module",
   "main": "./src/index.ts",
@@ -19,7 +19,8 @@
   },
   "files": ["src", "dist"],
   "scripts": {
-    "build": "vue-tsc -b",
+    "build": "vue-tsc -b && vite build",
+    "dev": "vite",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
@@ -30,6 +31,9 @@
     "vue": "^3.5.0"
   },
   "devDependencies": {
+    "@module-federation/vite": "^1.4.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^5.4.11",
     "vue": "^3.5.13",
     "vue-tsc": "^2.1.10"
   }

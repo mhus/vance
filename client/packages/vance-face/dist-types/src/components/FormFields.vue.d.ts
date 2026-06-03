@@ -37,9 +37,9 @@ declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, imp
     "onUpdate:modelValue"?: ((value: Record<string, FormValue>) => any) | undefined;
 }>, {
     disabled: boolean;
+    pathPrefix: string;
     errors: Record<string, string>;
     preferredLang: string;
-    pathPrefix: string;
 }, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=FormFields.vue.d.ts.map

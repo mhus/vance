@@ -24,6 +24,11 @@
             <artifactId>vance-addon-brain-slideshow</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>de.mhus.vance</groupId>
+            <artifactId>vance-addon-brain-kanban</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

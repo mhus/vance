@@ -16,6 +16,23 @@ declare module 'vance_addon_slideshow/SlideshowApp' {
   export default component;
 }
 
+declare module 'vance_addon_kanban/KanbanBoard' {
+  import type { DefineComponent } from 'vue';
+  const component: DefineComponent<{ projectId: string; folder: string; title?: string }>;
+  export default component;
+}
+
+// Optional ./register exposes — addons that contribute Kind codecs or
+// other host-side side effects implement these. Loaded at boot by
+// vance-face/src/platform/loadAddonRegistrations.ts. The function may
+// be absent at runtime; the loader handles that.
+declare module 'vance_addon_slideshow/register' {
+  export function register(): void;
+}
+declare module 'vance_addon_kanban/register' {
+  export function register(): void;
+}
+
 interface ImportMetaEnv {
   readonly VITE_BRAIN_URL?: string;
   readonly VITE_VANCE_COLOR_WORKER?: string;

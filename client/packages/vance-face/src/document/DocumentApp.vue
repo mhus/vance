@@ -47,9 +47,6 @@ const SlidesView = defineAsyncComponent(() => import('./SlidesView.vue'));
 // Mermaid (~700 KB minified gzipped) ships only when a diagram
 // document is opened — keep the documents bundle lean.
 const DiagramView = defineAsyncComponent(() => import('./DiagramView.vue'));
-// Calendar renderer ships month + agenda views; lazy so the
-// document bundle stays slim when no calendar is opened.
-const CalendarView = defineAsyncComponent(() => import('./CalendarView.vue'));
 // ONLYOFFICE / Collabora editor — only relevant for DOCX/XLSX
 // documents when a tenant has configured `office.*`. Pulled in
 // lazily so the documents bundle isn't paying for it.
@@ -115,12 +112,7 @@ import {
   DiagramCodecError,
   type DiagramDocument,
 } from './diagramCodec';
-import {
-  isCalendarMime,
-  parseCalendar,
-  CalendarCodecError,
-  type CalendarDocument,
-} from './calendarCodec';
+import { resolveKind, type KindEntry } from '@vance/kind-registry';
 import type {
   DocumentDto,
   DocumentSummary,
@@ -840,11 +832,17 @@ const isDiagramDocument = computed<boolean>(() => {
 
 // Calendar documents: kind: calendar + json/yaml. v1 is read-only
 // (month + agenda); edits go through the Raw tab. Spec doc-kind-calendar.md.
+//
+// Registry-driven: the Kind comes from `@vance/kind-registry` (host
+// built-in for now, addon-contributed once Calendar moves). The host
+// looks up the entry once and stays generic — no Calendar-specific
+// imports in this file.
+const calendarKind = computed<KindEntry | undefined>(() => resolveKind('calendar'));
 const isCalendarDocument = computed<boolean>(() => {
   const sel = docsState.selected.value;
-  if (!sel?.inline) return false;
-  if ((sel.kind ?? '').toLowerCase() !== 'calendar') return false;
-  return isCalendarMime(sel.mimeType);
+  const kind = calendarKind.value;
+  if (!sel?.inline || !kind) return false;
+  return kind.matches(sel.kind, sel.mimeType);
 });
 
 // Markdown documents get a Preview / Raw tab pair. Preview goes
@@ -1071,19 +1069,21 @@ const parsedDiagram = computed<ParsedDiagram>(() => {
 });
 
 interface ParsedCalendar {
-  doc: CalendarDocument | null;
+  doc: unknown | null;
   error: string | null;
 }
 
 const parsedCalendar = computed<ParsedCalendar>(() => {
-  if (!isCalendarDocument.value) return { doc: null, error: null };
+  const kind = calendarKind.value;
+  if (!isCalendarDocument.value || !kind?.parse) return { doc: null, error: null };
   try {
     const sel = docsState.selected.value;
-    const doc = parseCalendar(editInlineText.value, sel?.mimeType ?? '');
+    const doc = kind.parse(editInlineText.value, sel?.mimeType ?? '');
     return { doc, error: null };
   } catch (e) {
-    if (e instanceof CalendarCodecError) {
-      return { doc: null, error: e.message };
+    const isCodecErr = kind.isParseError ? kind.isParseError(e) : true;
+    if (isCodecErr) {
+      return { doc: null, error: e instanceof Error ? e.message : String(e) };
     }
     return { doc: null, error: e instanceof Error ? e.message : String(e) };
   }
@@ -2351,13 +2351,13 @@ const formatBytes = (n: number): string => {
                   @click="contentTab = 'raw'"
                 >{{ $t('documents.detail.tabRaw') }}</button>
               </div>
-              <div v-else-if="isCalendarDocument" class="content-tabs">
+              <div v-else-if="isCalendarDocument && calendarKind" class="content-tabs">
                 <button
                   type="button"
                   class="content-tab"
                   :class="{ 'content-tab--active': contentTab === 'calendar' }"
                   @click="contentTab = 'calendar'"
-                >{{ $t('documents.detail.tabCalendar') }}</button>
+                >{{ $t(calendarKind.tabLabelKey ?? 'documents.detail.tabCalendar') }}</button>
                 <button
                   type="button"
                   class="content-tab"
@@ -2481,11 +2481,12 @@ const formatBytes = (n: number): string => {
                 <DiagramView v-else-if="parsedDiagram.doc" :doc="parsedDiagram.doc" />
               </template>
 
-              <template v-else-if="isCalendarDocument && contentTab === 'calendar'">
+              <template v-else-if="isCalendarDocument && contentTab === 'calendar' && calendarKind">
                 <VAlert v-if="parsedCalendar.error" variant="warning">
-                  <span>{{ $t('documents.detail.calendarParseError', { message: parsedCalendar.error }) }}</span>
+                  <span>{{ $t(calendarKind.parseErrorKey ?? 'documents.detail.calendarParseError', { message: parsedCalendar.error }) }}</span>
                 </VAlert>
-                <CalendarView
+                <component
+                  :is="calendarKind.view"
                   v-else-if="parsedCalendar.doc"
                   mode="embedded"
                   :doc="parsedCalendar.doc"

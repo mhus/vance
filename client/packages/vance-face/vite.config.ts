@@ -45,6 +45,11 @@ const addonRemotes: Record<string, any> = {
     entry: '/addons/slideshow/remoteEntry.js',
     type: 'module',
   },
+  vance_addon_kanban: {
+    name: 'vance_addon_kanban',
+    entry: '/addons/kanban/remoteEntry.js',
+    type: 'module',
+  },
 };
 
 /**

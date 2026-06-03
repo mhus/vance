@@ -4,7 +4,6 @@
 // `import { ... } from '@components'` paths in vance-face keep working.
 // Addons should import V* primitives directly from @vance/components.
 export * from '@vance/components';
-export { default as CodeEditor } from './CodeEditor.vue';
 export { default as EditorShell } from './EditorShell.vue';
 export { default as MarkdownView } from './MarkdownView.vue';
 export { default as ProjectListSidebar } from './ProjectListSidebar.vue';

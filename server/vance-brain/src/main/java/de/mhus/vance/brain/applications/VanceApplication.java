@@ -9,9 +9,9 @@ import org.jspecify.annotations.Nullable;
  * Contract for a Vance "application" — a self-contained domain
  * workspace identified by an {@code _app.yaml} manifest in a folder
  * (à la macOS {@code .app} bundles). Each implementation handles one
- * value of {@code $meta.app}: {@link CalendarsApplication} for
- * {@code app: calendar}, future {@code KanbanApplication} for
- * {@code app: kanban}, etc.
+ * value of {@code $meta.app}. Built-in: {@link CalendarsApplication}
+ * for {@code app: calendar}. First-party addons supply more
+ * (slideshow, kanban, ...) via Spring auto-configuration.
  *
  * <p>The interface is intentionally narrow — {@link #refresh} is the
  * single hot-path operation that the generic {@code app_rebuild} tool
@@ -21,6 +21,14 @@ import org.jspecify.annotations.Nullable;
  * ({@code calendar_conflicts}, {@code gantt_from_calendars}, …).
  */
 public interface VanceApplication {
+
+    /**
+     * Filename of the per-folder manifest that identifies a folder as a
+     * Vance application. The generic {@code app_rebuild} dispatcher and
+     * the individual app implementations (slideshow, calendar, kanban,
+     * ...) all look for this file inside the target folder.
+     */
+    String APP_MANIFEST = "_app.yaml";
 
     /** Discriminator that matches {@code $meta.app} in the manifest. */
     String appName();

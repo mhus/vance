@@ -27,9 +27,6 @@ const SlidesView = defineAsyncComponent(() => import('./SlidesView.vue'));
 // Mermaid (~700 KB minified gzipped) ships only when a diagram
 // document is opened — keep the documents bundle lean.
 const DiagramView = defineAsyncComponent(() => import('./DiagramView.vue'));
-// Calendar renderer ships month + agenda views; lazy so the
-// document bundle stays slim when no calendar is opened.
-const CalendarView = defineAsyncComponent(() => import('./CalendarView.vue'));
 // ONLYOFFICE / Collabora editor — only relevant for DOCX/XLSX
 // documents when a tenant has configured `office.*`. Pulled in
 // lazily so the documents bundle isn't paying for it.
@@ -43,7 +40,7 @@ import { isChartMime, parseChart, serializeChart, ChartCodecError, } from './cha
 import { isSheetMime, parseSheet, serializeSheet, SheetCodecError, } from './sheetCodec';
 import { isSlidesMime, parseSlides, SlidesCodecError, } from './slidesCodec';
 import { isDiagramMime, parseDiagram, DiagramCodecError, } from './diagramCodec';
-import { isCalendarMime, parseCalendar, CalendarCodecError, } from './calendarCodec';
+import { resolveKind } from '@vance/kind-registry';
 const PAGE_SIZE = 20;
 const { t } = useI18n();
 const projectsState = useTenantProjects();
@@ -714,13 +711,18 @@ const isDiagramDocument = computed(() => {
 });
 // Calendar documents: kind: calendar + json/yaml. v1 is read-only
 // (month + agenda); edits go through the Raw tab. Spec doc-kind-calendar.md.
+//
+// Registry-driven: the Kind comes from `@vance/kind-registry` (host
+// built-in for now, addon-contributed once Calendar moves). The host
+// looks up the entry once and stays generic — no Calendar-specific
+// imports in this file.
+const calendarKind = computed(() => resolveKind('calendar'));
 const isCalendarDocument = computed(() => {
     const sel = docsState.selected.value;
-    if (!sel?.inline)
+    const kind = calendarKind.value;
+    if (!sel?.inline || !kind)
         return false;
-    if ((sel.kind ?? '').toLowerCase() !== 'calendar')
-        return false;
-    return isCalendarMime(sel.mimeType);
+    return kind.matches(sel.kind, sel.mimeType);
 });
 // Markdown documents get a Preview / Raw tab pair. Preview goes
 // through {@code MarkdownView} (same renderer as chat bubbles,
@@ -907,16 +909,18 @@ const parsedDiagram = computed(() => {
     }
 });
 const parsedCalendar = computed(() => {
-    if (!isCalendarDocument.value)
+    const kind = calendarKind.value;
+    if (!isCalendarDocument.value || !kind?.parse)
         return { doc: null, error: null };
     try {
         const sel = docsState.selected.value;
-        const doc = parseCalendar(editInlineText.value, sel?.mimeType ?? '');
+        const doc = kind.parse(editInlineText.value, sel?.mimeType ?? '');
         return { doc, error: null };
     }
     catch (e) {
-        if (e instanceof CalendarCodecError) {
-            return { doc: null, error: e.message };
+        const isCodecErr = kind.isParseError ? kind.isParseError(e) : true;
+        if (isCodecErr) {
+            return { doc: null, error: e instanceof Error ? e.message : String(e) };
         }
         return { doc: null, error: e instanceof Error ? e.message : String(e) };
     }
@@ -2944,7 +2948,7 @@ else if (__VLS_ctx.docsState.selected.value) {
             });
             (__VLS_ctx.$t('documents.detail.tabRaw'));
         }
-        else if (__VLS_ctx.isCalendarDocument) {
+        else if (__VLS_ctx.isCalendarDocument && __VLS_ctx.calendarKind) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "content-tabs" },
             });
@@ -2976,7 +2980,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
                             return;
-                        if (!(__VLS_ctx.isCalendarDocument))
+                        if (!(__VLS_ctx.isCalendarDocument && __VLS_ctx.calendarKind))
                             return;
                         __VLS_ctx.contentTab = 'calendar';
                     } },
@@ -2984,7 +2988,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                 ...{ class: "content-tab" },
                 ...{ class: ({ 'content-tab--active': __VLS_ctx.contentTab === 'calendar' }) },
             });
-            (__VLS_ctx.$t('documents.detail.tabCalendar'));
+            (__VLS_ctx.$t(__VLS_ctx.calendarKind.tabLabelKey ?? 'documents.detail.tabCalendar'));
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onClick: (...[$event]) => {
                         if (!!(!__VLS_ctx.projectsState.loading.value && __VLS_ctx.projectOptions.length === 0))
@@ -3013,7 +3017,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
                             return;
-                        if (!(__VLS_ctx.isCalendarDocument))
+                        if (!(__VLS_ctx.isCalendarDocument && __VLS_ctx.calendarKind))
                             return;
                         __VLS_ctx.contentTab = 'raw';
                     } },
@@ -3055,7 +3059,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
                             return;
-                        if (!!(__VLS_ctx.isCalendarDocument))
+                        if (!!(__VLS_ctx.isCalendarDocument && __VLS_ctx.calendarKind))
                             return;
                         if (!(__VLS_ctx.isTreeDocument))
                             return;
@@ -3094,7 +3098,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
                             return;
-                        if (!!(__VLS_ctx.isCalendarDocument))
+                        if (!!(__VLS_ctx.isCalendarDocument && __VLS_ctx.calendarKind))
                             return;
                         if (!(__VLS_ctx.isTreeDocument))
                             return;
@@ -3138,7 +3142,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
                             return;
-                        if (!!(__VLS_ctx.isCalendarDocument))
+                        if (!!(__VLS_ctx.isCalendarDocument && __VLS_ctx.calendarKind))
                             return;
                         if (!!(__VLS_ctx.isTreeDocument))
                             return;
@@ -3179,7 +3183,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                             return;
                         if (!!(__VLS_ctx.isDiagramDocument))
                             return;
-                        if (!!(__VLS_ctx.isCalendarDocument))
+                        if (!!(__VLS_ctx.isCalendarDocument && __VLS_ctx.calendarKind))
                             return;
                         if (!!(__VLS_ctx.isTreeDocument))
                             return;
@@ -3494,7 +3498,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                 }, ...__VLS_functionalComponentArgsRest(__VLS_209));
             }
         }
-        else if (__VLS_ctx.isCalendarDocument && __VLS_ctx.contentTab === 'calendar') {
+        else if (__VLS_ctx.isCalendarDocument && __VLS_ctx.contentTab === 'calendar' && __VLS_ctx.calendarKind) {
             if (__VLS_ctx.parsedCalendar.error) {
                 const __VLS_212 = {}.VAlert;
                 /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
@@ -3507,12 +3511,11 @@ else if (__VLS_ctx.docsState.selected.value) {
                 }, ...__VLS_functionalComponentArgsRest(__VLS_213));
                 __VLS_215.slots.default;
                 __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
-                (__VLS_ctx.$t('documents.detail.calendarParseError', { message: __VLS_ctx.parsedCalendar.error }));
+                (__VLS_ctx.$t(__VLS_ctx.calendarKind.parseErrorKey ?? 'documents.detail.calendarParseError', { message: __VLS_ctx.parsedCalendar.error }));
                 var __VLS_215;
             }
             else if (__VLS_ctx.parsedCalendar.doc) {
-                const __VLS_216 = {}.CalendarView;
-                /** @type {[typeof __VLS_components.CalendarView, ]} */ ;
+                const __VLS_216 = ((__VLS_ctx.calendarKind.view));
                 // @ts-ignore
                 const __VLS_217 = __VLS_asFunctionalComponent(__VLS_216, new __VLS_216({
                     mode: "embedded",
@@ -5196,7 +5199,6 @@ const __VLS_self = (await import('vue')).defineComponent({
             SheetView: SheetView,
             SlidesView: SlidesView,
             DiagramView: DiagramView,
-            CalendarView: CalendarView,
             OfficeEditor: OfficeEditor,
             projectsState: projectsState,
             docsState: docsState,
@@ -5265,6 +5267,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             isSheetDocument: isSheetDocument,
             isSlidesDocument: isSlidesDocument,
             isDiagramDocument: isDiagramDocument,
+            calendarKind: calendarKind,
             isCalendarDocument: isCalendarDocument,
             isOfficeEditableDocument: isOfficeEditableDocument,
             isMarkdownDocument: isMarkdownDocument,

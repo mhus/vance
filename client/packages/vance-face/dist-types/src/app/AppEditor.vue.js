@@ -3,7 +3,7 @@ import { EditorShell, VAlert, VEmptyState } from '@/components';
 import { brainFetch } from '@vance/shared';
 import { useTenantProjects } from '@/composables/useTenantProjects';
 // Lazy-load app sub-editors so the bundle stays slim.
-const KanbanBoard = defineAsyncComponent(() => import('./kanban/KanbanBoard.vue'));
+const KanbanBoard = defineAsyncComponent(() => import(/* @vite-ignore */ 'vance_addon_kanban/KanbanBoard'));
 const CalendarPlanner = defineAsyncComponent(() => import('./calendar/CalendarPlanner.vue'));
 // Loaded via Module Federation at runtime — see vance-face's vite.config.ts
 // federation host config + env.d.ts module declaration. Vite-ignore is

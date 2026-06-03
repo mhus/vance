@@ -22,6 +22,7 @@ export default defineConfig({
       filename: 'remoteEntry.js',
       exposes: {
         './SlideshowApp': './src/SlideshowApp.vue',
+        './register': './src/register.ts',
       },
       // Only npm singletons are shared (the host configures the same
       // set in vance-face's vite.config.ts). Workspace packages

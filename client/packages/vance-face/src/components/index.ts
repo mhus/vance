@@ -6,7 +6,6 @@
 
 export * from '@vance/components';
 
-export { default as CodeEditor } from './CodeEditor.vue';
 export { default as EditorShell } from './EditorShell.vue';
 export type { Crumb, FocusZone } from './EditorShell.vue';
 export { default as MarkdownView } from './MarkdownView.vue';

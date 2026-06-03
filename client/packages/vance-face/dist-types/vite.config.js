@@ -43,6 +43,11 @@ const addonRemotes = {
         entry: '/addons/slideshow/remoteEntry.js',
         type: 'module',
     },
+    vance_addon_kanban: {
+        name: 'vance_addon_kanban',
+        entry: '/addons/kanban/remoteEntry.js',
+        type: 'module',
+    },
 };
 /**
  * Dev-server middleware that resolves `/addons/<id>/<path>` to the

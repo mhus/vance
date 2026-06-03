@@ -1,4 +1,4 @@
-import { a as __vitePreload } from './assets/_virtual_mf___mfe_internal__vance_addon_slideshow__loadShare___mf_0_vance_mf_1_components__loadShare__.mjs-BqfXZy3L.js';
+import { _ as __vitePreload } from './assets/preload-helper-BelkbqnE.js';
 
 //#region src/constant.ts
 const MANIFEST_EXT = ".json";
@@ -3602,7 +3602,7 @@ const __mfModuleCache = globalThis[__mfCacheGlobalKey];
 
   async function getLocalSharedImportMap() {
     if (!localSharedImportMapPromise) {
-      localSharedImportMapPromise = retrySharedInit(() => __vitePreload(() => import('./assets/_virtual_mf-localSharedImportMap___mfe_internal__vance_addon_slideshow-BO7SJC7B.js'),true?[]:void 0))
+      localSharedImportMapPromise = retrySharedInit(() => __vitePreload(() => import('./assets/_virtual_mf-localSharedImportMap___mfe_internal__vance_addon_slideshow-BrbhRTGL.js'),true?[]:void 0))
         .catch((e) => { localSharedImportMapPromise = undefined; throw e; });
     }
     return localSharedImportMapPromise
@@ -3610,7 +3610,7 @@ const __mfModuleCache = globalThis[__mfCacheGlobalKey];
 
   async function getExposesMap() {
     if (!exposesMapPromise) {
-      exposesMapPromise = retrySharedInit(() => __vitePreload(() => import('./assets/virtualExposes-Ba52lgW9.js'),true?[]:void 0))
+      exposesMapPromise = retrySharedInit(() => __vitePreload(() => import('./assets/virtualExposes-BCEiSN3h.js'),true?[]:void 0))
         .then((mod) => mod.default ?? mod)
         .catch((e) => { exposesMapPromise = undefined; throw e; });
     }
@@ -3619,50 +3619,8 @@ const __mfModuleCache = globalThis[__mfCacheGlobalKey];
 
   async function init(shared = {}, initScope = []) {
     const {usedShared, usedRemotes} = await getLocalSharedImportMap();
-    if (__mfModuleCache.share["@vance/components"] === undefined) {
-        const mod = await __vitePreload(() => import('./assets/_virtual_mf___mfe_internal__vance_addon_slideshow__loadShare___mf_0_vance_mf_1_components__loadShare__.mjs-BqfXZy3L.js').then(n => n._),true?[]:void 0);
-        const __mfNormalizeRuntimeShare = (mod) => {
-            let current = mod;
-            for (let i = 0; i < 5; i++) {
-              const defaultExport = current?.default;
-              if (!defaultExport || typeof defaultExport !== "object" || Object.keys(defaultExport).length === 0) break;
-              const namedValues = Object.keys(current).filter((key) => key !== "default").map((key) => current[key]);
-              if (namedValues.length > 0 && namedValues.some((value) => value !== undefined)) break;
-              current = defaultExport;
-            }
-            return current;
-          };
-        const normalizedModule = __mfNormalizeRuntimeShare(mod);
-        const exportModule = normalizedModule === mod ? {...mod} : normalizedModule;
-        Object.defineProperty(exportModule, "__esModule", {
-          value: true,
-          enumerable: false
-        });
-        __mfModuleCache.share["@vance/components"] = exportModule;
-      }
-if (__mfModuleCache.share["@vance/shared"] === undefined) {
-        const mod = await __vitePreload(() => import('./assets/_virtual_mf___mfe_internal__vance_addon_slideshow__loadShare___mf_0_vance_mf_1_shared__loadShare__.mjs-CZrqzurX.js').then(n => n._),true?[]:void 0);
-        const __mfNormalizeRuntimeShare = (mod) => {
-            let current = mod;
-            for (let i = 0; i < 5; i++) {
-              const defaultExport = current?.default;
-              if (!defaultExport || typeof defaultExport !== "object" || Object.keys(defaultExport).length === 0) break;
-              const namedValues = Object.keys(current).filter((key) => key !== "default").map((key) => current[key]);
-              if (namedValues.length > 0 && namedValues.some((value) => value !== undefined)) break;
-              current = defaultExport;
-            }
-            return current;
-          };
-        const normalizedModule = __mfNormalizeRuntimeShare(mod);
-        const exportModule = normalizedModule === mod ? {...mod} : normalizedModule;
-        Object.defineProperty(exportModule, "__esModule", {
-          value: true,
-          enumerable: false
-        });
-        __mfModuleCache.share["@vance/shared"] = exportModule;
-      }
-if (__mfModuleCache.share["vue"] === undefined) {
-        const mod = await __vitePreload(() => import('./assets/_virtual_mf___mfe_internal__vance_addon_slideshow__loadShare__vue__loadShare__.mjs-2_nCHSZU.js').then(n => n._),true?[]:void 0);
+    if (__mfModuleCache.share["vue"] === undefined) {
+        const mod = await __vitePreload(() => import('./assets/_virtual_mf___mfe_internal__vance_addon_slideshow__loadShare__vue__loadShare__.mjs-CtZISMkN.js').then(n => n._),true?[]:void 0);
         const __mfNormalizeRuntimeShare = (mod) => {
             let current = mod;
             for (let i = 0; i < 5; i++) {

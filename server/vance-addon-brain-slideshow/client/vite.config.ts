@@ -23,10 +23,14 @@ export default defineConfig({
       exposes: {
         './SlideshowApp': './src/SlideshowApp.vue',
       },
+      // Only npm singletons are shared (the host configures the same
+      // set in vance-face's vite.config.ts). Workspace packages
+      // (@vance/components, @vance/shared) are intentionally bundled
+      // into this remote's own chunks — declaring them as shared
+      // triggers a circular top-level-await between loadShare__<pkg>
+      // and the impl chunk that deadlocks app boot.
       shared: {
         vue: { singleton: true, requiredVersion: '^3.5.0' },
-        '@vance/components': { singleton: true },
-        '@vance/shared': { singleton: true },
       },
       // Skip Module Federation's own .d.ts generator — we emit types
       // via vue-tsc in the same build script (`vue-tsc -b && vite build`).

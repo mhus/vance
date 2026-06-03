@@ -32,8 +32,19 @@ const editorEntries = {
 // a vance-face rebuild. URL path matches the convention the face Docker
 // image's entrypoint sets up: nginx symlinks /shared/addons/<id>/<ver>/face
 // → /usr/share/nginx/html/addons/<id>/.
-const addonRemotes: Record<string, string> = {
-  vance_addon_slideshow: '/addons/slideshow/remoteEntry.js',
+// `type: 'module'` tells the Federation runtime to load the remoteEntry
+// via <script type="module"> instead of a classic script. Without it
+// the host throws "Cannot use import statement outside a module"
+// because Vite emits the remoteEntry with top-level `import`s.
+// The Record<string, string> shape in the @module-federation/vite TS
+// surface doesn't expose the object form — but the plugin's actual
+// schema (RemoteObjectConfig) supports it; cast through `any`.
+const addonRemotes: Record<string, any> = {
+  vance_addon_slideshow: {
+    name: 'vance_addon_slideshow',
+    entry: '/addons/slideshow/remoteEntry.js',
+    type: 'module',
+  },
 };
 
 /**
@@ -114,14 +125,17 @@ export default defineConfig({
     federation({
       name: 'vance_face',
       remotes: addonRemotes,
-      // Singletons addons rely on. The shared block must mirror the
-      // remote's `shared:` declarations (slideshow's vite.config.ts).
-      // pinia + vue-i18n appear here for parity with future addons —
-      // slideshow doesn't import them itself.
+      // Only true npm singletons are shared — vue, pinia, vue-i18n.
+      // The workspace packages @vance/components and @vance/shared
+      // are intentionally NOT shared: declaring them creates a circular
+      // top-level-await chain between loadShare__<pkg> and the impl
+      // chunk that deadlocks the host boot. Each remote (addon) bundles
+      // its own copy instead — a few KB of duplication, but reliable.
+      // If we ever need cross-remote singleton enforcement for V*, the
+      // proper fix is to publish @vance/components as a real npm
+      // package and share it like vue.
       shared: {
         vue: { singleton: true, requiredVersion: '^3.5.0' },
-        '@vance/components': { singleton: true },
-        '@vance/shared': { singleton: true },
         pinia: { singleton: true },
         'vue-i18n': { singleton: true },
       },

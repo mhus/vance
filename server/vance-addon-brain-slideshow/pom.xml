@@ -145,6 +145,14 @@
                             </descriptors>
                             <appendAssemblyId>false</appendAssemblyId>
                             <finalName>${project.artifactId}-${project.version}</finalName>
+                            <!--
+                              Do not register the assembly as a Maven attached
+                              artifact: antrun rename-vab below moves the .zip
+                              to .vab, so install:install would fail looking
+                              for the .zip. The .vab is consumed via file glob
+                              in /default-addons/, not via the Maven repo.
+                            -->
+                            <attach>false</attach>
                         </configuration>
                     </execution>
                 </executions>

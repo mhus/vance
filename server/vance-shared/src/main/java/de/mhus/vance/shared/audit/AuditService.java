@@ -234,6 +234,15 @@ public class AuditService {
                 .build());
     }
 
+    public void anusSudoArm() {
+        record(AuditEventDto.builder()
+                .action("anus.sudo.arm")
+                .severity(AuditSeverity.WARN)  // unattended admin access — always WARN
+                .outcome("success")
+                .target("shell:anus")
+                .build());
+    }
+
     // === Settings ===
 
     public void settingsUpdate(

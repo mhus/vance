@@ -3,7 +3,9 @@ package de.mhus.vance.anus;
 import de.mhus.vance.anus.access.AccessProperties;
 import de.mhus.vance.anus.brain.AnusBrainProperties;
 import de.mhus.vance.anus.devmode.DevModeProperties;
+import de.mhus.vance.anus.sudo.SudoBootstrap;
 import de.mhus.vance.shared.workspace.WorkspaceProperties;
+import org.springframework.boot.Banner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -36,9 +38,39 @@ import org.springframework.data.mongodb.repository.config.EnableMongoRepositorie
 public class VanceAnusApplication {
 
     public static void main(String[] args) {
+        // Strip --sudo flags before Spring Boot sees them — otherwise Spring
+        // Shell's NonInteractiveShellRunner would try to run "--sudo" as a
+        // shell command. SudoBootstrap stashes the parsed commands in a
+        // static holder that SudoShellRunner reads back inside the context.
+        String[] remaining;
+        try {
+            remaining = SudoBootstrap.parse(args);
+        } catch (IllegalArgumentException e) {
+            System.err.println("anus: " + e.getMessage());
+            System.exit(2);
+            return;
+        }
         SpringApplication app = new SpringApplication(VanceAnusApplication.class);
         app.setWebApplicationType(WebApplicationType.NONE);
         app.setLogStartupInfo(false);
-        System.exit(SpringApplication.exit(app.run(args)));
+        if (SudoBootstrap.isSudoMode()) {
+            // One-shot mode: stdout belongs to the calling script. The
+            // ASCII banner would clutter pipes and logs for no benefit.
+            app.setBannerMode(Banner.Mode.OFF);
+        }
+        try {
+            System.exit(SpringApplication.exit(app.run(remaining)));
+        } catch (RuntimeException e) {
+            // In --sudo mode a failing command bubbles up here as the
+            // Spring-Shell runner wraps it via SpringApplication's
+            // ThrowingConsumer. The stack trace is already on stderr; we
+            // just need to exit non-zero so the calling script notices.
+            // Interactive mode never reaches this branch — the JLine REPL
+            // catches per-line errors and stays in the loop.
+            if (SudoBootstrap.isSudoMode()) {
+                System.exit(1);
+            }
+            throw e;
+        }
     }
 }

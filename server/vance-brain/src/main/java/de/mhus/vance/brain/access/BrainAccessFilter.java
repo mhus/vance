@@ -102,6 +102,14 @@ public class BrainAccessFilter extends AccessFilterBase {
             // tenant-mismatch check below from rejecting the no-tenant URL shape.
             return false;
         }
+        if (requestUri.startsWith("/face/")) {
+            // Face-bootstrap discovery endpoints (addon list, future
+            // manifest, ...) — the browser hits these before the user
+            // is logged in, so they must be reachable without a JWT.
+            // The data behind /face/ is intentionally system-wide
+            // and non-sensitive (addon names + source paths).
+            return false;
+        }
         if (TOKEN_MINT_PATH.matcher(requestUri).matches()) {
             return false;
         }

@@ -6,6 +6,8 @@ export * from './access/AccessTokenResponse';
 export * from './access/RefreshTokenResponse';
 export * from './access/WebUiSessionData';
 
+export * from './addon/AddonDto';
+
 export * from './attachment/AttachmentRef';
 
 export * from './calendar/CalendarArtefactSummary';

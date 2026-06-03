@@ -40,6 +40,13 @@ public class AccessService {
     private final boolean usingDefault;
 
     @Nullable private volatile Instant authorizedUntil;
+    /**
+     * Marks the window as armed by {@code --sudo} rather than a password
+     * login. Suppresses the default-password warning (irrelevant in one-shot
+     * mode — the process exits after the requested commands) and lets the
+     * audit trail distinguish unattended sudo runs from interactive logins.
+     */
+    private volatile boolean sudoMode;
 
     public AccessService(AccessProperties properties, AuditService auditService) {
         this.properties = properties;
@@ -61,9 +68,34 @@ public class AccessService {
         }
     }
 
-    /** {@code true} iff the service is running on the built-in v1 default password. */
+    /**
+     * {@code true} iff the service is running on the built-in v1 default
+     * password AND the shell is in interactive mode. In {@code --sudo}
+     * one-shot mode the warning is meaningless: the process exits after the
+     * requested commands, there is no shell to leave open.
+     */
     public boolean isUsingDefaultPassword() {
-        return usingDefault;
+        return usingDefault && !sudoMode;
+    }
+
+    /** {@code true} iff the current authorisation window was armed by {@code --sudo}. */
+    public boolean isSudoMode() {
+        return sudoMode;
+    }
+
+    /**
+     * Arms the authorisation window without a password check, for the
+     * {@code --sudo} one-shot mode. The caller is the Anus bootstrap, which
+     * has already proven it can launch the process — no further credential
+     * gate is meaningful here. Recorded in the audit log under
+     * {@code anus.sudo.arm} so unattended runs are distinguishable from
+     * interactive logins.
+     */
+    public synchronized void armForSudo() {
+        sudoMode = true;
+        extendWindow();
+        log.info("Anus armed for --sudo execution — window armed for {}", properties.getTimeout());
+        auditService.anusSudoArm();
     }
 
     /**

@@ -128,6 +128,49 @@ class AccessServiceTest {
     }
 
     @Test
+    void armForSudo_armsWindowWithoutPasswordCheck() {
+        assertThat(service.isAuthorized()).isFalse();
+        assertThat(service.isSudoMode()).isFalse();
+
+        service.armForSudo();
+
+        assertThat(service.isAuthorized()).isTrue();
+        assertThat(service.isSudoMode()).isTrue();
+        // requireAuthorized() must succeed after sudo-arm — same gate as login.
+        service.requireAuthorized();
+    }
+
+    @Test
+    void armForSudo_suppressesDefaultPasswordWarning() {
+        AccessProperties empty = new AccessProperties();
+        empty.setPasswordHash(null);
+        AccessService fallback = new AccessService(empty, auditService);
+
+        // Before sudo-arm: warning is on (fresh install on the v1 default).
+        assertThat(fallback.isUsingDefaultPassword()).isTrue();
+
+        fallback.armForSudo();
+
+        // In sudo-mode the warning is irrelevant — process exits after the
+        // requested commands, there is no shell left to leave open.
+        assertThat(fallback.isUsingDefaultPassword()).isFalse();
+    }
+
+    @Test
+    void armForSudo_thenLogout_clearsWindowAndStaysQuiet() {
+        service.armForSudo();
+        assertThat(service.isAuthorized()).isTrue();
+
+        service.logout();
+
+        assertThat(service.isAuthorized()).isFalse();
+        // sudoMode is a one-way arm marker for the current window — once
+        // logout drops the window, requireAuthorized() must throw again.
+        assertThatThrownBy(() -> service.requireAuthorized())
+                .isInstanceOf(NotAuthorizedException.class);
+    }
+
+    @Test
     void requireAuthorized_afterTimeout_throwsAndClearsState() {
         props.setTimeout(Duration.ofMillis(50));
         service.login(SECRET);

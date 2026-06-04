@@ -785,7 +785,7 @@ public class EddieEngine extends StructuredActionEngine {
             AiChatConfig config = chatBundle.primaryConfig();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     process.getTenantId(), process.getProjectId(),
-                    config.provider(), config.modelName());
+                    config.providerInstance(), config.provider(), config.modelName());
             ModelSize effectiveSize = ModelSize.parseOrAuto(
                     paramString(process, "modelSize", null), modelInfo.size());
 

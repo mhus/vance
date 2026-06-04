@@ -198,6 +198,17 @@ openai:
     defaultMaxOutputTokens: 8192
     size: LARGE
 
+  # ── Gemma (Google, open-weight) ───────────────────────────────
+  # Served via OpenAI-wire gateways (sipgate.ai, etc.). Model id
+  # follows the HuggingFace path convention `google/<name>`.
+  google/gemma-4-31B-it:
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 8192
+    # 31B instruction-tuned — sits in the fast / allround tier alongside
+    # gpt-oss-20b and deepseek-v4-flash. Bump to LARGE if you start
+    # using it for serious reasoning work.
+    size: SMALL
+
   # ── Qwen (Alibaba, open-weight) ───────────────────────────────
   qwen3.5-9b:
     contextWindowTokens: 262000

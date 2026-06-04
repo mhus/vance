@@ -210,6 +210,54 @@ class ModelCatalogTest {
         assertThat(info.contextWindowTokens()).isEqualTo(200_000);
     }
 
+    // ──── Named provider instance fallback ─────────────────────────────
+
+    @Test
+    void namedInstance_withOwnSection_winsOverProtocolFallback() {
+        // Tenant declares an instance "deepseek-direct" with its own metadata.
+        stubDocument(TENANT, VANCE, """
+                deepseek-direct:
+                  deepseek-v4-flash:
+                    contextWindowTokens: 1048576
+                    defaultMaxOutputTokens: 8192
+                    size: SMALL
+                """);
+
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "deepseek-direct", "openai", "deepseek-v4-flash");
+
+        assertThat(info.contextWindowTokens()).isEqualTo(1_048_576);
+        assertThat(info.size()).isEqualTo(ModelSize.SMALL);
+    }
+
+    @Test
+    void namedInstance_missingSection_fallsBackToProtocolType() {
+        // Tenant declares the instance binding but no per-instance YAML.
+        // The fallback lookup uses the protocol type (openai) and finds
+        // the bundled entry for gpt-4o-mini.
+        stubMissing(TENANT, VANCE);
+
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "my-openai-route", "openai", "gpt-4o-mini");
+
+        // Came from the bundled openai:gpt-4o-mini entry.
+        assertThat(info.contextWindowTokens()).isEqualTo(128_000);
+        assertThat(info.size()).isEqualTo(ModelSize.SMALL);
+    }
+
+    @Test
+    void namedInstance_unknownEverywhere_returnsConservativeFallback() {
+        // No instance section, model name also unknown under protocol type.
+        stubMissing(TENANT, VANCE);
+
+        ModelInfo info = catalog.lookupOrDefault(
+                TENANT, null, "exotic-instance", "openai", "fictional-model");
+
+        // Conservative fallback (8K context, the FALLBACK_TEMPLATE values).
+        assertThat(info.contextWindowTokens()).isEqualTo(8192);
+        assertThat(info.provider()).isEqualTo("exotic-instance");
+    }
+
     // ──── Helpers ──────────────────────────────────────────────────────
 
     private void stubDocument(String tenantId, String projectId, String yaml) {

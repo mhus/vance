@@ -524,8 +524,11 @@ public class MemoryCompactionService {
                 tenantId, /*projectId*/ null, processId, SETTING_AI_MODEL);
         String model = (modelCascade == null || modelCascade.isBlank())
                 ? DEFAULT_MODEL : modelCascade;
+        // Compaction reads provider/model from settings directly (no recipe
+        // alias), so instance defaults to the protocol wire-name. Named
+        // instances aren't reachable here without going through the resolver.
         String apiKey = ChatBehaviorBuilder.resolveApiKey(
-                provider, tenantId, /*projectId*/ null, processId, settingService);
+                provider, provider, tenantId, /*projectId*/ null, processId, settingService);
         String baseUrl = ChatBehaviorBuilder.resolveBaseUrl(
                 provider, tenantId, /*projectId*/ null, processId, settingService);
         return new AiChatConfig(provider, model, apiKey, baseUrl);

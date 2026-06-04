@@ -665,7 +665,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             ContextToolsApi tools = ctx.tools();
             ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                     process.getTenantId(), process.getProjectId(),
-                    config.provider(), config.modelName());
+                    config.providerInstance(), config.provider(), config.modelName());
             // params.modelSize: SMALL/LARGE force the prompt variant
             // independently of the catalog; AUTO/missing falls back
             // to the catalog's classification.

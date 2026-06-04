@@ -59,7 +59,7 @@ public class LmStudioProvider implements AiModelProvider {
         }
         ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                 options.getTenantId(), options.getProjectId(),
-                NAME, config.modelName());
+                config.providerInstance(), NAME, config.modelName());
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();

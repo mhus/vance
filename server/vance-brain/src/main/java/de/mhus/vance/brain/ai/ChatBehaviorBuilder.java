@@ -37,28 +37,32 @@ public final class ChatBehaviorBuilder {
     private static final Logger log = LoggerFactory.getLogger(ChatBehaviorBuilder.class);
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
     /**
-     * Per-tenant/-project override for the OpenAI-shaped adapter's base URL.
+     * Per-tenant/-project override for the provider-instance base URL.
      * Lets a tenant route through cortecs.ai, OpenRouter, vLLM, or any other
      * OpenAI-wire gateway without touching {@code application.yml}. Empty /
      * missing → Spring boot-time default ({@code vance.ai.<provider>.base-url}).
+     *
+     * <p>Keyed on the <em>instance</em> name, not the protocol — so two named
+     * instances of the same protocol (e.g. real OpenAI + a deepseek-direct
+     * instance) read their own base URL each.
      */
     private static final String SETTING_PROVIDER_BASE_URL_FMT = "ai.provider.%s.baseUrl";
 
     private ChatBehaviorBuilder() {}
 
     /**
-     * Reads the optional per-tenant base-URL override for {@code provider}
-     * via the project cascade ({@code process → project → _vance}). Returns
-     * {@code null} when nothing is configured — the provider then keeps its
-     * Spring boot-time default.
+     * Reads the optional per-tenant base-URL override for the given provider
+     * <em>instance</em> via the project cascade ({@code process → project →
+     * _vance}). Returns {@code null} when nothing is configured — the provider
+     * then keeps its Spring boot-time default.
      */
     public static @Nullable String resolveBaseUrl(
-            String provider,
+            String providerInstance,
             String tenantId,
             @Nullable String projectId,
             @Nullable String processId,
             SettingService settings) {
-        String key = String.format(SETTING_PROVIDER_BASE_URL_FMT, provider);
+        String key = String.format(SETTING_PROVIDER_BASE_URL_FMT, providerInstance);
         String value = settings.getStringValueCascade(tenantId, projectId, processId, key);
         return (value == null || value.isBlank()) ? null : value.trim();
     }
@@ -118,39 +122,48 @@ public final class ChatBehaviorBuilder {
             AiModelResolver resolver) {
         AiModelResolver.Resolved resolved = resolver.resolveOrDefault(spec, tenantId, projectId, processId);
         String apiKey = resolveApiKey(
-                resolved.provider(), tenantId, projectId, processId, settings);
+                resolved.provider(), resolved.providerInstance(),
+                tenantId, projectId, processId, settings);
         String baseUrl = resolveBaseUrl(
-                resolved.provider(), tenantId, projectId, processId, settings);
-        return new AiChatConfig(resolved.provider(), resolved.modelName(), apiKey, baseUrl);
+                resolved.providerInstance(), tenantId, projectId, processId, settings);
+        return new AiChatConfig(
+                resolved.provider(), resolved.providerInstance(),
+                resolved.modelName(), apiKey, baseUrl);
     }
 
     /**
-     * Reads the API-key for {@code provider} via the project cascade,
-     * decrypts it, and returns the plaintext. For keyless providers
+     * Reads the API-key for the given provider instance via the project
+     * cascade, decrypts it, and returns the plaintext. For keyless providers
      * (Ollama, LM Studio — see {@link ProviderType#requiresApiKey()})
      * the setting lookup is skipped and a placeholder is returned —
      * the providers don't read the field, but {@link AiChatConfig}'s
      * record contract still requires a non-blank value.
      *
+     * <p>{@code providerType} drives the {@code requiresApiKey} check;
+     * {@code providerInstance} is the lookup label for the setting path
+     * {@code ai.provider.<instance>.apiKey} — different named instances of
+     * the same protocol read different keys.
+     *
      * @throws IllegalStateException when the provider does require a
      *         key and none is set in any cascade layer.
      */
     public static String resolveApiKey(
-            String provider,
+            String providerType,
+            String providerInstance,
             String tenantId,
             @Nullable String projectId,
             @Nullable String processId,
             SettingService settings) {
-        ProviderType type = ProviderType.fromWireName(provider).orElse(null);
+        ProviderType type = ProviderType.fromWireName(providerType).orElse(null);
         if (type != null && !type.requiresApiKey()) {
             return KEYLESS_PLACEHOLDER;
         }
-        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, provider);
+        String apiKeySetting = String.format(SETTING_PROVIDER_API_KEY_FMT, providerInstance);
         String apiKey = settings.getDecryptedPasswordCascade(
                 tenantId, projectId, processId, apiKeySetting);
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException(
-                    "No API key configured for provider '" + provider
+                    "No API key configured for provider instance '" + providerInstance
                             + "' (tenant='" + tenantId
                             + "', setting='" + apiKeySetting + "')");
         }

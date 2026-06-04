@@ -180,6 +180,88 @@ class AiModelResolverTest {
                 .hasMessageContaining("cycle");
     }
 
+    // ──── Named Provider Instances ───────────────────────────────────────
+
+    @Test
+    void resolve_namedInstance_resolvesViaInstanceType() {
+        // `deepseek-direct` is not a ProviderType, but settings declare it
+        // as an instance of the openai protocol.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
+                .thenReturn("openai");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "deepseek-direct:deepseek-v4-flash", "acme", "proj", null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.providerInstance()).isEqualTo("deepseek-direct");
+        assertThat(r.modelName()).isEqualTo("deepseek-v4-flash");
+    }
+
+    @Test
+    void resolve_directProviderModel_instanceEqualsProvider() {
+        // Backward-compat: direct ProviderType spec yields instance == provider.
+        AiModelResolver.Resolved r = resolver.resolve(
+                "openai:gpt-4o-mini", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.providerInstance()).isEqualTo("openai");
+        assertThat(r.modelName()).isEqualTo("gpt-4o-mini");
+    }
+
+    @Test
+    void resolve_namedInstance_unknownType_throws() {
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.provider.bogus-instance.type")))
+                .thenReturn("not-a-real-provider");
+
+        assertThatThrownBy(() -> resolver.resolve(
+                "bogus-instance:some-model", "acme", null, null))
+                .isInstanceOf(AiModelResolver.UnknownModelException.class)
+                .hasMessageContaining("bogus-instance")
+                .hasMessageContaining("not-a-real-provider");
+    }
+
+    @Test
+    void resolve_namedInstance_winsOverAliasLookup() {
+        // If a prefix has BOTH ai.provider.<prefix>.type AND
+        // ai.alias.<prefix>.<rest>, the instance binding wins — that's the
+        // documented order: ProviderType → instance → alias.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
+                .thenReturn("openai");
+        // Alias setting still being stubbed shouldn't be consulted.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.deepseek-direct.deepseek-v4-flash")))
+                .thenReturn("gemini:should-not-be-used");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "deepseek-direct:deepseek-v4-flash", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.providerInstance()).isEqualTo("deepseek-direct");
+        assertThat(r.modelName()).isEqualTo("deepseek-v4-flash");
+    }
+
+    @Test
+    void resolve_aliasInto_namedInstance() {
+        // default:analyze → deepseek-direct:deepseek-v4-flash, where
+        // deepseek-direct is a named instance of openai.
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.alias.default.analyze")))
+                .thenReturn("deepseek-direct:deepseek-v4-flash");
+        when(settingService.getStringValueCascade(
+                any(), any(), any(), eq("ai.provider.deepseek-direct.type")))
+                .thenReturn("openai");
+
+        AiModelResolver.Resolved r = resolver.resolve(
+                "default:analyze", "acme", null, null);
+
+        assertThat(r.provider()).isEqualTo("openai");
+        assertThat(r.providerInstance()).isEqualTo("deepseek-direct");
+        assertThat(r.modelName()).isEqualTo("deepseek-v4-flash");
+    }
+
     // ──── Validation ─────────────────────────────────────────────────────
 
     @Test

@@ -124,6 +124,31 @@ public class ModelCatalog {
                 .orElseGet(() -> fallback(provider, modelName));
     }
 
+    /**
+     * Cascade-aware lookup with a fallback from a named provider instance to
+     * its underlying protocol type. Tries {@code (instance, modelName)} first;
+     * if that misses and {@code instance != protocolType}, tries
+     * {@code (protocolType, modelName)} — so a tenant who declares a custom
+     * instance (e.g. {@code deepseek-direct} on the openai wire) doesn't have
+     * to copy every bundled model entry into a new YAML section. Falls back to
+     * the WARN-on-miss default after both tries.
+     */
+    public ModelInfo lookupOrDefault(
+            @Nullable String tenantId, @Nullable String projectId,
+            String providerInstance, String protocolType, String modelName) {
+        Optional<ModelInfo> direct = lookup(tenantId, projectId, providerInstance, modelName);
+        if (direct.isPresent()) {
+            return direct.get();
+        }
+        if (!providerInstance.equals(protocolType)) {
+            Optional<ModelInfo> viaType = lookup(tenantId, projectId, protocolType, modelName);
+            if (viaType.isPresent()) {
+                return viaType.get();
+            }
+        }
+        return fallback(providerInstance, modelName);
+    }
+
     // ──────────────────── Bundled-only convenience ────────────────────
 
     /** Bundled-only lookup. Equivalent to {@code lookup(null, null, ...)}. */

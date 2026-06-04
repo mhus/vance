@@ -25,9 +25,16 @@ import org.springframework.stereotype.Service;
  * Given input {@code <prefix>:<rest>}:
  * <ol>
  *   <li>If {@code prefix} is a registered AI provider, return
- *       {@code (prefix, rest)} directly. Lets callers keep using
+ *       {@code (prefix, prefix, rest)} directly — instance equals the
+ *       protocol wire-name. Lets callers keep using
  *       {@code anthropic:claude-sonnet-4-5} when they really mean
  *       it.</li>
+ *   <li>Otherwise if {@code ai.provider.<prefix>.type} is set, treat
+ *       {@code prefix} as a <em>named provider instance</em>: return
+ *       {@code (type, prefix, rest)}. The same protocol can back
+ *       multiple instances with different credentials / base URLs
+ *       (e.g. a {@code deepseek-direct} instance on top of the
+ *       OpenAI wire). Unknown {@code type} fails fast.</li>
  *   <li>Otherwise look up
  *       {@code ai.alias.<prefix>.<rest>} in the tenant's settings
  *       and recurse with that value.</li>
@@ -57,6 +64,7 @@ import org.springframework.stereotype.Service;
 public class AiModelResolver {
 
     private static final String ALIAS_KEY_PREFIX = "ai.alias.";
+    private static final String PROVIDER_TYPE_KEY_FMT = "ai.provider.%s.type";
     private static final String DEFAULT_PROVIDER_KEY = "ai.default.provider";
     private static final String DEFAULT_MODEL_KEY = "ai.default.model";
     private static final String DEFAULT_NAMESPACE = "default";
@@ -65,8 +73,26 @@ public class AiModelResolver {
     private final AiModelService aiModelService;
     private final SettingService settingService;
 
-    /** Materialised endpoint of the resolution. */
-    public record Resolved(String provider, String modelName) {}
+    /**
+     * Materialised endpoint of the resolution.
+     *
+     * @param provider         protocol wire-name ({@link ProviderType#wireName()}) —
+     *                         drives adapter dispatch in {@link AiModelService}.
+     * @param providerInstance instance label — used by {@code ChatBehaviorBuilder}
+     *                         to read {@code ai.provider.<instance>.apiKey}/
+     *                         {@code .baseUrl}, and by {@code ModelCatalog} to
+     *                         look up metadata. Equals {@code provider} for direct
+     *                         ProviderType specs; differs only when the spec
+     *                         referenced a {@link Resolved named instance}
+     *                         configured via {@code ai.provider.<instance>.type}.
+     * @param modelName        wire model name handed to the provider API.
+     */
+    public record Resolved(String provider, String providerInstance, String modelName) {
+        /** Back-compat factory for direct ProviderType specs where instance == provider. */
+        public static Resolved direct(String provider, String modelName) {
+            return new Resolved(provider, provider, modelName);
+        }
+    }
 
     /**
      * Resolves a non-null model spec. Falls through to the tenant
@@ -139,7 +165,27 @@ public class AiModelResolver {
 
         // Direct provider+model — done.
         if (aiModelService.hasProvider(prefix)) {
-            return new Resolved(prefix, rest);
+            return Resolved.direct(prefix, rest);
+        }
+
+        // Named provider instance — `ai.provider.<prefix>.type` binds the
+        // free-form instance label to a concrete ProviderType wire-name.
+        // Lets tenants configure multiple OpenAI-compatible endpoints
+        // (e.g. real OpenAI plus a deepseek-direct instance) without
+        // overloading the protocol wire-name.
+        String instanceTypeKey = String.format(PROVIDER_TYPE_KEY_FMT, prefix);
+        @Nullable String instanceType = settingService.getStringValueCascade(
+                tenantId, projectId, processId, instanceTypeKey);
+        if (instanceType != null && !instanceType.isBlank()) {
+            String typeWireName = instanceType.trim();
+            if (!aiModelService.hasProvider(typeWireName)) {
+                throw new UnknownModelException(
+                        "Provider instance '" + prefix + "' declares unknown type '"
+                                + typeWireName + "' (setting '" + instanceTypeKey
+                                + "'). Known providers: " + aiModelService.listProviders());
+            }
+            log.debug("AiModelResolver: instance '{}' → type '{}'", prefix, typeWireName);
+            return new Resolved(typeWireName, prefix, rest);
         }
 
         // Alias lookup — project cascade.
@@ -183,7 +229,7 @@ public class AiModelResolver {
                             + "' has no '" + DEFAULT_PROVIDER_KEY + "' / '"
                             + DEFAULT_MODEL_KEY + "' settings");
         }
-        return new Resolved(provider, model);
+        return Resolved.direct(provider, model);
     }
 
     /** Thrown when a model spec cannot be resolved. */

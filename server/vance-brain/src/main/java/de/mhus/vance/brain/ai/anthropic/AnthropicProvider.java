@@ -73,7 +73,7 @@ public class AnthropicProvider implements AiModelProvider {
         }
         ModelInfo modelInfo = modelCatalog.lookupOrDefault(
                 options.getTenantId(), options.getProjectId(),
-                NAME, config.modelName());
+                config.providerInstance(), NAME, config.modelName());
         AiChatOptions effective = applyCapabilityGates(
                 applyGlobalCacheKill(options), modelInfo);
         int maxTokens = effective.getMaxTokens() != null

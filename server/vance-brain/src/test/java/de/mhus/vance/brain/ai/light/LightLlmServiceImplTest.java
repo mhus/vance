@@ -72,7 +72,7 @@ class LightLlmServiceImplTest {
         when(aiModelService.createChat(any(ChatBehavior.class), any(AiChatOptions.class)))
                 .thenReturn(scriptedChat);
         when(aiModelResolver.resolveOrDefault(any(), any(), any(), any()))
-                .thenReturn(new AiModelResolver.Resolved("openai", "gpt-4o-mini"));
+                .thenReturn(AiModelResolver.Resolved.direct("openai", "gpt-4o-mini"));
         when(settingService.getDecryptedPasswordCascade(any(), any(), any(), any()))
                 .thenReturn("fake-api-key");
         when(settingService.getBooleanValueCascade(any(), any(), any(), any(), anyBoolean()))

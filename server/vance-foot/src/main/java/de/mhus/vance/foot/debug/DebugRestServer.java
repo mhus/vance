@@ -15,6 +15,7 @@ import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.time.Duration;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -211,8 +212,15 @@ public final class DebugRestServer {
                 return;
             }
             terminal.echoInput(req.line);
+            // Honour an explicit per-call timeout if the caller passed
+            // one (typically tests driving slow local models). Falls
+            // back to the bundled REPL default — the same number an
+            // interactive user would experience.
+            Duration timeout = req.timeoutMs != null && req.timeoutMs > 0
+                    ? Duration.ofMillis(req.timeoutMs)
+                    : ChatInputService.DEFAULT_CHAT_TIMEOUT;
             ChatInputService.InputResult result =
-                    chatInputService.sendChat(req.line, ChatInputService.DEFAULT_CHAT_TIMEOUT);
+                    chatInputService.sendChat(req.line, timeout);
             writeJson(exchange, 200, toJson(result));
         }
     }
@@ -283,8 +291,14 @@ public final class DebugRestServer {
         }
     }
 
-    /** Wire shape for {@code POST /debug/command}. */
+    /**
+     * Wire shape for {@code POST /debug/command} / {@code /input} /
+     * {@code /chat}. {@code timeoutMs} is only honoured by the chat
+     * path (see {@link ChatHandler}); the command path runs synchronous
+     * slash-dispatch and ignores it.
+     */
     static final class CommandRequest {
         public @Nullable String line;
+        public @Nullable Long timeoutMs;
     }
 }

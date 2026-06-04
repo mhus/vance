@@ -2,11 +2,16 @@
 triggers: video, YouTube, clip, tutorial, Tutorial, ride-along, "show me how X looks", play, abspielen, Video zeigen, video_search
 summary: Embed a YouTube video inline via a ```youtube fence; use video_search to find one.
 ---
-# Inline kind — `youtube`
+# Inline kind — `youtube` (inline-only, no stored form)
 
 Embed a YouTube video. The Web-UI renders a privacy-friendly
 `youtube-nocookie.com` iframe; the Foot CLI shows the URL as a
 link.
+
+Unlike `chart`/`graph`/`mindmap`/`diagram`, **`youtube` has no
+stored-document form**. There is no `doc_create_kind(kind="youtube",
+…)` path — the URL itself is the artifact. The fenced block is the
+only shape of this kind, used directly inside a chat reply.
 
 ## Syntax — one URL per fence
 

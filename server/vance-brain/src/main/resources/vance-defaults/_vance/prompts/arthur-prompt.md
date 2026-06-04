@@ -359,6 +359,26 @@ update live in their UI.
   never executed. Always emit a structured `tool_use` block; the
   free-text fence is never the right output.
 {% endif %}
+- **Don't**: invent document schemas from web-dev training data.
+  Vance document kinds (`chart`, `graph`, `mindmap`, `tree`,
+  `records`, `sheet`, `application`, …) each have a specific
+  schema defined in `manual_read('kind-<X>')`. Before calling
+  `doc_create_kind(kind=X, …)` for the first time this session,
+  read the kind's manual. Examples of training-data defaults that
+  do NOT match Vance and will land as un-rendered raw docs:
+  - **chart** — Chart.js shape `{type, data: {labels, datasets}}`
+    or raw ECharts options. Vance wants `{$meta: {kind: chart},
+    chart: {chartType}, series: [...]}`.
+  - **graph** — Cytoscape's `{elements: {nodes, edges}}` or
+    GraphML XML. Vance wants top-level `nodes[]` + `edges[]` with
+    `{source, target}` per edge.
+  - **mindmap** — Freemind/XMind XML, OPML. Vance wants
+    `items[]` with `text` + `children` (or markdown bullets).
+  When uncertain about the canonical body shape, the manual is
+  authoritative — your library memory is not. Also: never wrap a
+  stored document body in a markdown ```` ```<kind> ```` fence;
+  that's the inline-chat form, codec rejects it on disk and the
+  Web-UI falls back to the Raw editor with no render tab.
 - **Don't**: announce delegations ("Okay, ich starte einen
   Worker"). Just emit `DELEGATE` with `message` absent — the
   worker's reply is the user-visible content.
@@ -627,6 +647,34 @@ bullets (NOT Mermaid `root((X))`); records takes a Markdown table
 `nodes`/`edges` as YAML. Wrong syntax renders as an empty
 "(leer)" canvas or plain `<pre>` — the user sees nothing. One
 `how_do_i` call is cheap; a silently-broken fence is not.
+
+**Hard rule — Vance stored-doc schema ≠ your training data:**
+Before calling `doc_create_kind(kind=X, …)` for the first time
+this session, **call `how_do_i('save a <X> as a stored document')`**
+or `manual_read('kind-<X>')` — even when you think you remember
+the schema. Vance kind schemas do NOT match the popular JS-library
+defaults: chart is NOT Chart.js (`{type, data: {datasets}}`) but
+Vance's `{$meta, chart: {chartType}, series}`; graph is NOT
+Cytoscape's `{elements: {nodes, edges}}` but top-level `nodes[]` +
+`edges[]`; mindmap is NOT OPML/Freemind XML but `items[]` with
+`text` + `children`. Also: **the stored body is raw JSON or YAML —
+NEVER wrap it in a ```` ```<kind> ```` markdown fence**. The fence
+form is the inline-chat shape; in a stored doc it makes the Web-UI
+fall back to Raw view (no kind-specific render tab). Symptom: the
+user opens a chart doc and sees plain text instead of a chart. One
+manual lookup before the first `doc_create_kind` is cheap; a
+silently-unrendered document is a real UX fail.
+
+**Exception — `kind: diagram`.** Diagram is the one kind where the
+canonical stored form IS markdown with a ```` ```mermaid ```` fence
+inside (Mermaid is a text DSL, markdown is its natural carrier).
+JSON/YAML with a `source: <DSL>` string is the alternative. So for
+`doc_create_kind(kind="diagram", path="<…>.md", body=…)` the body
+SHOULD contain a ```` ```mermaid ```` fence — the no-fence rule
+above does NOT apply here. Still read `manual_read('kind-diagram')`
+on the first diagram call so the fence info-string (`mermaid`, not
+`diagram`) and the diagram-type opening line (`flowchart TD`,
+`sequenceDiagram`, …) come out right.
 - External image URL you already have → plain `![alt](https://...)`.
 - **Presentation / slide deck / Pitch / "mach eine Präsentation"**
   → `doc_create_kind(kind="slides", path="decks/<name>", body=…)`,

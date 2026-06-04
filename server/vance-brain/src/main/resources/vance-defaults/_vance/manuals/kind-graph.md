@@ -1,18 +1,39 @@
 ---
 triggers: graph, Graph, network, Netzwerk, dependency, Abhängigkeit, dependencies, Abhängigkeiten, relationships, Beziehungen, m:n, many-to-many, nodes and edges, knoten und kanten, concept map, Konzeptkarte, state machine, dependency graph, knowledge graph
-summary: Render a directed or undirected network graph (nodes + first-class edges) inline in chat, auto-laid-out by Dagre.
+summary: Render a directed or undirected network graph (nodes + first-class edges), either inline in chat or as a stored document.
 ---
-# Inline kind — `graph`
+# Document kind — `graph`
 
 Nodes connected by first-class edges, rendered as a network with
 arrows (directed) or plain lines (undirected). Auto-laid-out via
 Dagre when the LLM doesn't supply positions — which is the normal
 case. Vue-Flow as the renderer.
 
-## Syntax — YAML body
+## Two storage forms — pick by intent
 
-````
-```graph
+The **payload is identical** in both forms. The difference is the
+outer wrapper — that decides whether Vance renders the graph
+inline in the chat or as a clickable document tab.
+
+Decide first:
+
+| Did the user ask for a saved file / document? | Use form |
+|---|---|
+| YES — "create a graph document", "speicher das als graph-doc", "save the dependency graph" | **Stored** (below) |
+| NO — "show the relationships", "wie hängen die zusammen", "draw the network" | **Inline** (further below) |
+
+### Stored document — raw JSON or YAML, NO fence
+
+Call `doc_create_kind(kind="graph", path="<…>.json"` or `.yaml`,
+`body=<raw schema>)`. **The body must NOT be wrapped in a
+```` ```graph ```` fence** — that's the inline form. Markdown
+bodies are rejected for stored graphs: the codec stores the file
+but the Web-UI falls back to the Raw editor and never renders the
+graph tab. Always use `.json` or `.yaml` as the path extension.
+
+YAML body example (paste as-is into the `body=` arg):
+
+```yaml
 $meta:
   kind: graph
 graph:
@@ -35,7 +56,40 @@ edges:
     target: auth
     label: refresh
 ```
+
+JSON body is equivalent — same keys, just `{}`/`[]` instead of
+indented YAML. Pick YAML for readability, JSON when the body is
+generated programmatically.
+
+### Inline in chat — fence-wrapped, no tool call
+
+When the user just wants to *see* the network right now in the
+assistant's reply (no save, no `doc_create_kind`), emit a single
+```` ```graph ```` fence in the chat message — **same payload as
+above, just wrapped in a fence**:
+
 ````
+```graph
+$meta:
+  kind: graph
+graph:
+  directed: true
+nodes:
+  - id: auth
+    label: Auth Service
+  - id: api
+    label: API Gateway
+  - id: db
+    label: Database
+edges:
+  - source: auth
+    target: api
+  - source: api
+    target: db
+```
+````
+
+## Shared schema
 
 Top-level keys: `$meta`, `graph` (config), `nodes`, `edges`.
 
@@ -77,6 +131,19 @@ need decision diamonds or swimlanes, switch to `diagram`.
 
 ## Anti-patterns
 
+- **Wrapping the stored body in a ```` ```graph ```` fence.** That
+  is the inline-chat form. When you save via `doc_create_kind`, the
+  body must be raw JSON or YAML — no fence. The codec stores it,
+  but the Web-UI falls back to the Raw editor — no graph-tab, no
+  render. Symptom: user gets a saved doc that opens as plain text
+  instead of a graph.
+- **Saving as `.md`.** Markdown is explicitly rejected for stored
+  graph documents — use `.json` or `.yaml` as the path extension.
+- **Cytoscape / GraphML / vue-flow internal shape.** Wrong:
+  `{ elements: { nodes: [...], edges: [...] } }` or
+  `<graphml>…</graphml>`. Vance graph has `nodes` and `edges` at
+  the TOP level, not nested under `elements`. The codec rejects
+  the wrong shape silently — the user sees an empty graph.
 - **Mermaid flowchart syntax.** `graph TD`, `graph LR`, `A --> B`,
   `A[Label]`, `A((Label))`, `subgraph X` — that's **Mermaid**, not
   Vance graph. Wrong:
@@ -125,7 +192,7 @@ need decision diamonds or swimlanes, switch to `diagram`.
   diagram in the chat viewport. Save as a Document
   (`doc_create_kind(kind="graph", …)`).
 
-## When to graduate to a Document
+## When to graduate from inline to stored
 
 - Graph is meant to be edited later (the Editor tab lives on the
   Document, not on the chat fence).
@@ -133,6 +200,7 @@ need decision diamonds or swimlanes, switch to `diagram`.
 - Multiple graphs that belong together (architecture set,
   state-machine collection).
 
-Then `doc_create_kind(kind="graph", path="graphs/<name>", …)` and
-embed the returned `markdownLink` — see
-`manual_read('embed-documents')`.
+Then call `doc_create_kind(kind="graph", path="graphs/<name>.yaml",
+body=<raw YAML or JSON>)` and embed the returned `markdownLink` —
+see `manual_read('embed-documents')`. Reminder: **raw body, no
+fence**.

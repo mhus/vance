@@ -1,14 +1,71 @@
 ---
 triggers: mindmap, Mindmap, mind map, radial, brainstorm, Brainstorming, idea map, Ideenkarte, concept map, outline (radial), markmap, big picture, structure visually
-summary: Render a bullet hierarchy as a radial mindmap (markmap) inline in chat.
+summary: Render a bullet hierarchy as a radial mindmap (markmap), either inline in chat or as a stored document.
 ---
-# Inline kind — `mindmap`
+# Document kind — `mindmap`
 
 Bullet hierarchy rendered as a radial mindmap (markmap). Edit happens
-in the sibling Tree view; the mindmap fence is the *show-it-now*
-form.
+in the sibling Tree view; the chat fence is the *show-it-now* form.
 
-## Syntax — nested bullets
+## Two storage forms — pick by intent
+
+The **hierarchy is identical** in both forms. The difference is the
+outer wrapper — that decides whether Vance renders the mindmap
+inline in the chat or as a clickable document tab.
+
+Decide first:
+
+| Did the user ask for a saved file / document? | Use form |
+|---|---|
+| YES — "create a mindmap document", "speicher die Mindmap", "save the brainstorm" | **Stored** (below) |
+| NO — "show me a mindmap", "mach mir eine Mindmap zu X", "structure this as a radial map" | **Inline** (further below) |
+
+### Stored document — raw markdown OR YAML/JSON, NO fence
+
+Mindmap accepts three on-disk formats. **None of them wraps the
+body in a ```` ```mindmap ```` fence** — that's the inline-chat
+shape only.
+
+Call `doc_create_kind(kind="mindmap", path="<…>", body=<raw>)`.
+
+**Markdown form** (path `<…>.md`) — nested bullets, two-space
+indent per level. Most readable for humans, canonical for
+markmap.
+
+```markdown
+- Vance
+  - Brain
+    - Engines
+  - Foot
+  - Face
+```
+
+**YAML form** (path `<…>.yaml`) — structured `items[]` hierarchy:
+
+```yaml
+$meta:
+  kind: mindmap
+items:
+  - text: Vance
+    children:
+      - text: Brain
+        children:
+          - text: Engines
+      - text: Foot
+      - text: Face
+```
+
+**JSON form** (path `<…>.json`) — same `items[]` shape as YAML,
+just `{}`/`[]` syntax. Pick markdown for human-readable mindmaps,
+YAML/JSON when the model needs to attach per-node metadata
+(`color`, `icon`, `link`, `tags`).
+
+### Inline in chat — fence-wrapped bullets, no tool call
+
+When the user just wants to *see* the mindmap right now in the
+assistant's reply (no save, no `doc_create_kind`), emit a single
+```` ```mindmap ```` fence in the chat message — **bullet form
+only**:
 
 ````
 ```mindmap
@@ -22,6 +79,24 @@ form.
 
 Two-space indent per level. The first level becomes the root node.
 Multiple top-level bullets render as a forest (parallel trees).
+
+## Shared schema (YAML/JSON form)
+
+Item fields:
+
+| Field | Type | Required | Note |
+|---|---|---|---|
+| `text` | string | yes | Node topic |
+| `children` | `Item[]` | no | Recursive — leaf if absent/empty |
+| `color` | string (hex) | no | Line + text colour, inherited by children |
+| `background` | string (hex) | no | Bubble background |
+| `icon` | string | no | Single glyph (emoji or short text) |
+| `link` | string (URL) | no | Click target |
+| `tags` | string[] | no | Tag chips on the node |
+
+In markdown form, only the `text` and `children` parts are
+expressible (one bullet per node). For metadata-rich mindmaps use
+the YAML/JSON form.
 
 ## When to use this
 
@@ -45,6 +120,11 @@ brainstorming, outlining, "give me the big picture".
 
 ## Anti-patterns
 
+- **Wrapping the stored body in a ```` ```mindmap ```` fence.**
+  That is the inline-chat form. When you save via `doc_create_kind`,
+  the body is raw markdown bullets or a raw `items[]` YAML/JSON
+  structure — never fence-wrapped. Symptom: user gets a saved doc
+  that opens as plain text instead of a radial mindmap.
 - **Mermaid-mindmap syntax.** `root((X))`, `root[X]`, `root(X)`, or
   plain indent without bullets is **Mermaid mindmap grammar** — not
   this kind. Use bullets with `-`. Wrong:
@@ -66,20 +146,30 @@ brainstorming, outlining, "give me the big picture".
   The renderer auto-recovers Mermaid-style input as a best-effort
   fallback, but the canonical form is bullets — do not rely on the
   fallback.
+- **OPML / Freemind / XMind XML.** `<opml>…<outline …/></opml>`,
+  Freemind's `<map><node>` tags — those are different mindmap
+  ecosystems. Vance uses either bullet markdown or `items[]`
+  JSON/YAML.
+- **Tree-drawing characters as the canonical form.** `├──`,
+  `└──`, `│` is a visual rendering, not a parse-able hierarchy.
+  Even though the structural check accepts it, prefer real bullets
+  (`- `) so the editor can round-trip the file.
 - **Tab indents.** Use spaces (two per level). Tabs are treated as
   four spaces, which collides with the expected two-per-level depth.
-- **Markdown headings inside.** `#`/`##` lines aren't recognised —
-  the renderer only reads bullets. Use nesting for hierarchy.
+- **Markdown headings inside.** `#`/`##` lines aren't recognised
+  by the markmap renderer — the renderer only reads bullets. Use
+  nesting for hierarchy.
 - **More than ~50 nodes inline.** Becomes unreadable in the chat
   viewport. Save as a Document
   (`doc_create_kind(kind="mindmap", …)`).
 
-## When to graduate to a Document
+## When to graduate from inline to stored
 
 - Mindmap is meant to be edited later (the Tree-tab editor lives on
   the Document, not on the chat fence).
 - More than ~30–50 nodes.
 - Multiple mindmaps that belong together.
 
-Then `doc_create_kind(kind="mindmap", path="mindmaps/<name>", …)`
-and embed the returned `markdownLink`.
+Then call `doc_create_kind(kind="mindmap", path="mindmaps/<name>.md",
+body=<raw markdown bullets or raw YAML/JSON items hierarchy>)` and
+embed the returned `markdownLink`. Reminder: **raw body, no fence**.

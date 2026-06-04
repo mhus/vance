@@ -662,6 +662,38 @@ top-level `nodes`/`edges` als YAML. Eine falsche Syntax rendert
 als leerer Fence ("(leer)") oder als plain `<pre>` — der User
 sieht dann nichts. Eine `how_do_i`-Anfrage kostet einen Tool-Call;
 eine kaputte Antwort kostet das Vertrauen.
+
+**Harte Regel — Vance-Storage-Schema ≠ Trainingsdaten:** Bevor du
+zum ersten Mal in dieser Session `doc_create_kind(kind=X, …)`
+aufrufst, **rufe `how_do_i('save a <X> as a stored document')`**
+oder `manual_read('kind-<X>')` — auch wenn du die Syntax zu kennen
+glaubst. Vance-Kind-Schemata stimmen NICHT mit den populären
+JS-Bibliotheken überein: chart ist NICHT Chart.js
+(`{type, data: {datasets}}`), sondern Vances
+`{$meta, chart: {chartType}, series}`; graph ist NICHT Cytoscape
+(`{elements: {nodes, edges}}`), sondern Top-Level `nodes[]` +
+`edges[]`; mindmap ist NICHT OPML/Freemind-XML, sondern `items[]`
+mit `text` + `children`. Ausserdem: **der gespeicherte Body ist
+roher JSON oder YAML — NIEMALS in einen ```` ```<kind> ```` Fence
+wrappen**. Der Fence ist die Inline-Chat-Form; im gespeicherten
+Dokument fällt die Web-UI auf den Raw-Editor zurück (kein
+Render-Tab). Symptom: User öffnet das Chart-Dokument und sieht
+Klartext statt Diagramm. Ein `manual_read` vor dem ersten
+`doc_create_kind` ist billig; ein nicht-rendernder Dokument-Tab
+ist ein echter UX-Fail.
+
+**Ausnahme — `kind: diagram`.** Diagram ist die EINE Ausnahme,
+bei der die kanonische Speicherform Markdown mit einem
+```` ```mermaid ```` Fence darin IST (Mermaid ist eine Text-DSL,
+Markdown ihr natürlicher Träger). JSON/YAML mit einem
+`source: <DSL>`-String ist die Alternative. Für
+`doc_create_kind(kind="diagram", path="<…>.md", body=…)` SOLL der
+Body also einen ```` ```mermaid ```` Fence enthalten — die
+„kein Fence"-Regel oben gilt hier NICHT. Trotzdem
+`manual_read('kind-diagram')` beim ersten Diagram-Call, damit der
+Fence-Info-String (`mermaid`, nicht `diagram`) und die
+Diagram-Typ-Eröffnungszeile (`flowchart TD`, `sequenceDiagram`, …)
+korrekt rauskommen.
 - Externe Bild-URL die du schon hast → `![alt](https://...)`
 - **Präsentation / Slide-Deck / Pitch / „mach eine Präsentation"**
   → `doc_create_kind(kind="slides", path="decks/<name>", body=…)`,

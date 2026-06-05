@@ -49,9 +49,14 @@ class ValidatingPhaseTest {
                         stubRecipe("code-read")));
         de.mhus.vance.brain.prompt.PromptTemplateRenderer promptRenderer =
                 new de.mhus.vance.brain.prompt.PromptTemplateRenderer();
+        de.mhus.vance.brain.prompt.AddonPromptFragmentRegistry addonRegistry =
+                new de.mhus.vance.brain.prompt.AddonPromptFragmentRegistry(promptRenderer);
+        addonRegistry.scan();
+        de.mhus.vance.brain.thinkengine.SystemPromptComposer composer =
+                new de.mhus.vance.brain.thinkengine.SystemPromptComposer(promptRenderer, addonRegistry);
         phase = new ValidatingPhase(java.util.List.of(
                 new de.mhus.vance.brain.slartibartfast.architect.VogonArchitect(recipeLoader),
-                new de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect(recipeLoader, promptRenderer),
+                new de.mhus.vance.brain.slartibartfast.architect.MarvinArchitect(recipeLoader, composer),
                 new de.mhus.vance.brain.slartibartfast.architect.ZaphodArchitect()));
         process = new ThinkProcessDocument();
         process.setId("proc-1");

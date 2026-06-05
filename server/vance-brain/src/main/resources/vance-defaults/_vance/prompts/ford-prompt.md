@@ -14,6 +14,10 @@ End every turn with one `respond` tool call carrying the
 user-facing reply in `message`. Set `awaiting_user_input=true`
 when you expect a reply, `false` when you've kicked off
 background work. No plain assistant text outside `respond`.
+{% if addonSections %}
+
+{{ addonSections }}
+{% endif %}
 {% else %}
 You are a minimal Ford assistant in a Vance session.
 Keep answers short and helpful. Tools are available — call
@@ -100,4 +104,8 @@ For the *how*:
   `kind-diagram`, `kind-chart`, `kind-mindmap`, `kind-youtube`)
 - `manual_read('embed-images')` — external image URLs and the
   `image_search` tool
+{% if addonSections %}
+
+{{ addonSections }}
+{% endif %}
 {% endif %}

@@ -236,4 +236,16 @@ public final class PromptContextBuilder {
     public Map<String, Object> build() {
         return Map.copyOf(map);
     }
+
+    /**
+     * Read-only accessor used by {@link de.mhus.vance.brain.thinkengine.SystemPromptComposer}
+     * to pull the {@code engine} name (and similar already-set values)
+     * out of an in-progress builder without forcing the caller to pass
+     * the engine name twice. Returns {@code null} when the key is
+     * unset. Not part of the template-author contract — engines and
+     * the composer are the only intended callers.
+     */
+    public @Nullable Object peek(String key) {
+        return map.get(key);
+    }
 }

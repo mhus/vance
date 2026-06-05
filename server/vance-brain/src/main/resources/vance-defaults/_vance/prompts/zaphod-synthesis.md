@@ -35,3 +35,7 @@ die ausführliche Form, die als Dokument abgelegt wird.
 
 Sprache: schreibe in der Sprache der ursprünglichen Frage. Bei
 deutscher Frage → deutsche Synthese.
+{% if addonSections %}
+
+{{ addonSections }}
+{% endif %}

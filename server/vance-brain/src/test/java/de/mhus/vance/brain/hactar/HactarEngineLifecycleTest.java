@@ -22,7 +22,9 @@ import de.mhus.vance.brain.ai.AiChatConfig;
 import de.mhus.vance.brain.ai.ChatBehavior;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.prompt.AddonPromptFragmentRegistry;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.api.skills.SkillReferenceDocLoadMode;
 import de.mhus.vance.api.skills.SkillScope;
 import de.mhus.vance.brain.script.JsValidationService;
@@ -100,6 +102,7 @@ class HactarEngineLifecycleTest {
     private EngineChatFactory engineChatFactory;
     private EnginePromptResolver enginePromptResolver;
     private PromptTemplateRenderer promptTemplateRenderer;
+    private SystemPromptComposer composer;
     private LlmCallTracker llmCallTracker;
     private ToolDispatcher toolDispatcher;
     private ScriptExecutor scriptExecutor;
@@ -165,6 +168,10 @@ class HactarEngineLifecycleTest {
         // Real renderer — Pebble has no I/O, cheap to construct, and
         // exercises the exact rendering path the production code uses.
         promptTemplateRenderer = new PromptTemplateRenderer();
+        AddonPromptFragmentRegistry addonRegistry =
+                new AddonPromptFragmentRegistry(promptTemplateRenderer);
+        addonRegistry.scan();
+        composer = new SystemPromptComposer(promptTemplateRenderer, addonRegistry);
 
         chatModel = new ScriptedChatModel();
         AiChat aiChat = mock(AiChat.class);
@@ -200,7 +207,7 @@ class HactarEngineLifecycleTest {
         de.mhus.vance.brain.hactar.phases.FramingPhase framingPhase =
                 new de.mhus.vance.brain.hactar.phases.FramingPhase(
                         engineChatFactory, enginePromptResolver,
-                        promptTemplateRenderer, llmCallTracker, contextRenderer);
+                        composer, llmCallTracker, contextRenderer);
         de.mhus.vance.brain.hactar.phases.ReviewingPhase reviewingPhase =
                 new de.mhus.vance.brain.hactar.phases.ReviewingPhase(
                         thinkProcessService, recipeResolver, laneScheduler,
@@ -208,7 +215,7 @@ class HactarEngineLifecycleTest {
         de.mhus.vance.brain.hactar.phases.DraftingPhase draftingPhase =
                 new de.mhus.vance.brain.hactar.phases.DraftingPhase(
                         engineChatFactory, enginePromptResolver,
-                        promptTemplateRenderer, llmCallTracker, contextRenderer);
+                        composer, llmCallTracker, contextRenderer);
         de.mhus.vance.brain.hactar.phases.ValidatingPhase validatingPhase =
                 new de.mhus.vance.brain.hactar.phases.ValidatingPhase(
                         jsValidationService);

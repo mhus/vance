@@ -182,7 +182,7 @@ public class Ford implements ThinkEngine {
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
-    private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
+    private final de.mhus.vance.brain.thinkengine.SystemPromptComposer composer;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final FordProperties fordProperties;
     private final MemoryService memoryService;
@@ -950,15 +950,15 @@ public class Ford implements ThinkEngine {
             ModelInfo modelInfo, ModelSize tier, List<ResolvedSkill> activeSkills,
             ContextToolsApi tools) {
         List<ChatMessage> messages = new ArrayList<>();
-        java.util.Map<String, Object> ctx = de.mhus.vance.brain.prompt.PromptContextBuilder
-                .forProcess(process, modelInfo)
-                .tier(tier)
-                .engine(NAME)
-                .withRootDirTypes(workspaceService.getRootDirTypes(
-                        process.getTenantId(), process.getProjectId()))
-                .build();
-        String base = SystemPrompts.compose(process,
-                engineDefaultPrompt(process), promptTemplateRenderer, ctx);
+        de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
+                de.mhus.vance.brain.prompt.PromptContextBuilder
+                        .forProcess(process, modelInfo)
+                        .tier(tier)
+                        .engine(NAME)
+                        .withRootDirTypes(workspaceService.getRootDirTypes(
+                                process.getTenantId(), process.getProjectId()));
+        String base = composer.compose(process,
+                engineDefaultPrompt(process), ctxBuilder);
         String memoryBlock = memoryContextLoader.composeBlock(process);
         if (memoryBlock != null && !memoryBlock.isBlank()) {
             base = base + "\n\n" + memoryBlock;
@@ -977,7 +977,7 @@ public class Ford implements ThinkEngine {
             }
             messages.add(SystemMessage.from(hb.toString()));
         }
-        String skillSection = skillPromptComposer.compose(activeSkills, ctx);
+        String skillSection = skillPromptComposer.compose(activeSkills, ctxBuilder.build());
         if (skillSection != null && !skillSection.isBlank()) {
             messages.add(SystemMessage.from(skillSection));
         }

@@ -7,7 +7,7 @@ import de.mhus.vance.api.hactar.HactarStatus;
 import de.mhus.vance.brain.ai.EngineChatFactory;
 import de.mhus.vance.brain.progress.LlmCallTracker;
 import de.mhus.vance.brain.prompt.PromptContextBuilder;
-import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.skill.ResolvedSkill;
 import de.mhus.vance.brain.thinkengine.EnginePromptResolver;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
@@ -52,7 +52,7 @@ public class FramingPhase {
 
     private final EngineChatFactory engineChatFactory;
     private final EnginePromptResolver enginePromptResolver;
-    private final PromptTemplateRenderer promptTemplateRenderer;
+    private final SystemPromptComposer composer;
     private final LlmCallTracker llmCallTracker;
     private final HactarContextRenderer contextRenderer;
 
@@ -82,7 +82,8 @@ public class FramingPhase {
         ctxMap.put("recoveryHint",
                 state.getFramingRecoveryCount() > 0 && state.getReviewerNotes() != null
                         ? state.getReviewerNotes() : "");
-        String renderedSystem = promptTemplateRenderer.render(systemTpl, ctxMap);
+        ctxMap.put("addonSections", composer.renderAddons(ENGINE_NAME, ctxMap));
+        String renderedSystem = composer.render(systemTpl, ctxMap);
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(SystemMessage.from(renderedSystem == null ? "" : renderedSystem));

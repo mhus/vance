@@ -167,7 +167,7 @@ public class ZaphodEngine implements ThinkEngine {
     private final RecipeResolver recipeResolver;
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
-    private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
+    private final de.mhus.vance.brain.thinkengine.SystemPromptComposer composer;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final ProcessEventEmitter eventEmitter;
     private final LaneScheduler laneScheduler;
@@ -514,12 +514,13 @@ public class ZaphodEngine implements ThinkEngine {
             String basePath = paramString(process, "promptDocument", SYNTHESIS_PROMPT_PATH);
             String synthTpl = enginePromptResolver.resolve(
                     process, basePath, SYNTHESIS_SYSTEM_PROMPT);
-            java.util.Map<String, Object> synthCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
-                    .forProcess(process, null)
-                    .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
-                    .engine(NAME)
-                    .build();
-            String renderedSystem = promptTemplateRenderer.render(synthTpl, synthCtx);
+            de.mhus.vance.brain.prompt.PromptContextBuilder synthCtxBuilder =
+                    de.mhus.vance.brain.prompt.PromptContextBuilder
+                            .forProcess(process, null)
+                            .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
+                            .engine(NAME);
+            composer.withAddons(NAME, synthCtxBuilder);
+            String renderedSystem = composer.render(synthTpl, synthCtxBuilder.build());
             String langBlock = languageContextResolver.formatBlock(process);
             if (!langBlock.isEmpty()) {
                 renderedSystem = renderedSystem + "\n\n" + langBlock;

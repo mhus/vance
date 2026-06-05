@@ -5,7 +5,7 @@ import de.mhus.vance.api.slartibartfast.OutputSchemaType;
 import de.mhus.vance.api.slartibartfast.RecipeDraft;
 import de.mhus.vance.api.slartibartfast.ValidationCheck;
 import de.mhus.vance.brain.prompt.PromptTemplateException;
-import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
+import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
 import de.mhus.vance.shared.thinkprocess.ThinkProcessDocument;
@@ -178,7 +178,7 @@ public class MarvinArchitect implements SchemaArchitect {
             """;
 
     private final RecipeLoader recipeLoader;
-    private final PromptTemplateRenderer promptTemplateRenderer;
+    private final SystemPromptComposer composer;
 
     @Override
     public OutputSchemaType type() {
@@ -248,7 +248,7 @@ public class MarvinArchitect implements SchemaArchitect {
                         + " chars)").build());
 
         try {
-            promptTemplateRenderer.compile(ppStr);
+            composer.compile(ppStr);
             report.add(ValidationCheck.builder()
                     .rule(RULE_PROMPT_PREFIX_TEMPLATE_VALID).passed(true)
                     .message("promptPrefix is a valid Pebble template")

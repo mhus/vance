@@ -76,3 +76,7 @@ section. Do not invent other names.
 
 {{ skillGuidance }}
 {% endif %}
+{% if addonSections %}
+
+{{ addonSections }}
+{% endif %}

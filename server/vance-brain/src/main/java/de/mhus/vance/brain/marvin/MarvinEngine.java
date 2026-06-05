@@ -147,7 +147,7 @@ public class MarvinEngine implements ThinkEngine {
     private final de.mhus.vance.brain.progress.LlmCallTracker llmCallTracker;
     private final de.mhus.vance.brain.progress.ProgressEmitter progressEmitter;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
-    private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
+    private final de.mhus.vance.brain.thinkengine.SystemPromptComposer composer;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final ObjectMapper objectMapper;
     private final ProcessEventEmitter eventEmitter;
@@ -725,14 +725,15 @@ public class MarvinEngine implements ThinkEngine {
 
         String systemPrompt = enginePromptResolver.resolve(
                 process, WORKER_SYSTEM_PROMPT_PATH, FALLBACK_WORKER_SYSTEM_PROMPT);
-        Map<String, Object> sysCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
-                .forProcess(process, null)
-                .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
-                .engine(NAME)
-                .withRootDirTypes(workspaceService.getRootDirTypes(
-                        process.getTenantId(), process.getProjectId()))
-                .build();
-        String renderedSystem = promptTemplateRenderer.render(systemPrompt, sysCtx);
+        de.mhus.vance.brain.prompt.PromptContextBuilder sysCtxBuilder =
+                de.mhus.vance.brain.prompt.PromptContextBuilder
+                        .forProcess(process, null)
+                        .tier(de.mhus.vance.brain.ai.ModelSize.LARGE)
+                        .engine(NAME)
+                        .withRootDirTypes(workspaceService.getRootDirTypes(
+                                process.getTenantId(), process.getProjectId()));
+        composer.withAddons(NAME, sysCtxBuilder);
+        String renderedSystem = composer.render(systemPrompt, sysCtxBuilder.build());
 
         String planSnapshot = planSnapshotRenderer.render(
                 nodeService.listAll(process.getId()), node.getId());
@@ -1699,7 +1700,7 @@ public class MarvinEngine implements ThinkEngine {
     private String renderPostActionTemplate(
             String template, Map<String, Object> ctx) {
         try {
-            String rendered = promptTemplateRenderer.render(template, ctx);
+            String rendered = composer.render(template, ctx);
             return rendered == null ? "" : rendered;
         } catch (RuntimeException e) {
             throw new IllegalArgumentException(

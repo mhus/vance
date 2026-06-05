@@ -124,3 +124,7 @@ the goal's language.
 ## Goal
 
 {{ goal }}
+{% if addonSections %}
+
+{{ addonSections }}
+{% endif %}

@@ -97,3 +97,7 @@ amount of re-work could fix the gap.
 Always end your reply with a single JSON object. Keep `reason`
 to one short sentence. Do not embed schema examples — emit the
 actual filled-in object.
+{% if addonSections %}
+
+{{ addonSections }}
+{% endif %}

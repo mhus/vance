@@ -194,8 +194,6 @@ public class EddieEngine extends StructuredActionEngine {
     private final ModelCatalog modelCatalog;
     private final EngineChatFactory engineChatFactory;
     private final EnginePromptResolver enginePromptResolver;
-    private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
-    private final de.mhus.vance.brain.prompt.AddonPromptFragmentRegistry addonPromptFragmentRegistry;
     private final MemoryContextLoader memoryContextLoader;
     private final EddieActivityService activityService;
     private final de.mhus.vance.shared.session.SessionService sessionService;
@@ -239,12 +237,11 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.shared.jwt.JwtService jwtService,
             de.mhus.vance.shared.access.ProfileRegistry profileRegistry,
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
-            de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
-            de.mhus.vance.brain.prompt.AddonPromptFragmentRegistry addonPromptFragmentRegistry,
+            de.mhus.vance.brain.thinkengine.SystemPromptComposer composer,
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
             de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter,
             de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService) {
-        super(streamingProperties, llmCallTracker, objectMapper);
+        super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
         this.engineChatFactory = engineChatFactory;
@@ -259,8 +256,6 @@ public class EddieEngine extends StructuredActionEngine {
         this.jwtService = jwtService;
         this.profileRegistry = profileRegistry;
         this.planModeService = planModeService;
-        this.promptTemplateRenderer = promptTemplateRenderer;
-        this.addonPromptFragmentRegistry = addonPromptFragmentRegistry;
         this.workspaceService = workspaceService;
         this.historyStrengthFilter = historyStrengthFilter;
         this.memoryCompactionService = memoryCompactionService;
@@ -2127,25 +2122,17 @@ public class EddieEngine extends StructuredActionEngine {
                         .voiceMode(voiceMode)
                         .withRootDirTypes(workspaceService.getRootDirTypes(
                                 process.getTenantId(), process.getProjectId()));
-        // Render addon fragments against the base context first so they
-        // can branch on the same Pebble variables (tier, provider, ...),
-        // then feed the joined block back into the builder so the engine
-        // default sees it as {{ addonSections }}.
-        String addonSections = addonPromptFragmentRegistry.renderAndJoin(
-                NAME, ctxBuilder.build(), promptTemplateRenderer);
-        java.util.Map<String, Object> promptCtx = ctxBuilder
-                .addonSections(addonSections).build();
         // Fall back to the engine's cascade-resolved default prompt
         // (project → _vance → classpath) rather than the short
         // GREETING when the recipe didn't pin a promptOverride. The
         // recipe normally has no promptPrefix — the prompt belongs
         // in the .md cascade, not the YAML — so this path is the
         // common case for Eddie chat-process spawns.
-        String base = SystemPrompts.compose(process,
+        String base = composer.compose(process,
                 process.getPromptOverride() == null
                         ? engineDefaultPrompt(process)
                         : process.getPromptOverride(),
-                promptTemplateRenderer, promptCtx);
+                ctxBuilder);
         messages.add(SystemMessage.from(base));
         String userBlock = composeUserContextBlock(process);
         if (userBlock != null && !userBlock.isBlank()) {

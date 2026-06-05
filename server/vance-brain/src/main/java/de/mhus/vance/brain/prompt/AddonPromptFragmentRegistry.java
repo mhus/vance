@@ -64,7 +64,7 @@ public class AddonPromptFragmentRegistry {
     private Map<String, List<AddonPromptFragment>> byEngine = Map.of();
 
     @PostConstruct
-    void scan() {
+    public void scan() {
         PathMatchingResourcePatternResolver resolver =
                 new PathMatchingResourcePatternResolver(getClass().getClassLoader());
         Resource[] resources;

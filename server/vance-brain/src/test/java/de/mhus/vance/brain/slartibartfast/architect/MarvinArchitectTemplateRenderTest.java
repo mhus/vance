@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
+import de.mhus.vance.brain.prompt.AddonPromptFragmentRegistry;
 import de.mhus.vance.brain.prompt.PromptTemplateRenderer;
 import de.mhus.vance.brain.recipe.RecipeLoader;
+import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,9 +26,12 @@ class MarvinArchitectTemplateRenderTest {
 
     @BeforeEach
     void setUp() {
+        PromptTemplateRenderer renderer = new PromptTemplateRenderer();
+        AddonPromptFragmentRegistry registry = new AddonPromptFragmentRegistry(renderer);
+        registry.scan();
         architect = new MarvinArchitect(
                 mock(RecipeLoader.class),
-                new PromptTemplateRenderer());
+                new SystemPromptComposer(renderer, registry));
     }
 
     @Test

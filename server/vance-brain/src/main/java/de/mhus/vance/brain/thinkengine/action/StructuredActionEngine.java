@@ -9,6 +9,7 @@ import de.mhus.vance.brain.events.ChunkBatcher;
 import de.mhus.vance.brain.events.ClientEventPublisher;
 import de.mhus.vance.brain.events.StreamingProperties;
 import de.mhus.vance.brain.progress.LlmCallTracker;
+import de.mhus.vance.brain.thinkengine.SystemPromptComposer;
 import de.mhus.vance.brain.thinkengine.ThinkEngine;
 import de.mhus.vance.brain.thinkengine.ThinkEngineContext;
 import de.mhus.vance.brain.tools.ContextToolsApi;
@@ -107,14 +108,24 @@ public abstract class StructuredActionEngine implements ThinkEngine {
     private final StreamingProperties streamingProperties;
     private final LlmCallTracker llmCallTracker;
     private final ObjectMapper objectMapper;
+    /**
+     * System-prompt builder shared by every single-action engine.
+     * Bundles the Pebble renderer and the addon-fragment registry so
+     * subclasses inject one bean and call
+     * {@code composer.compose(process, engineDefault, ctxBuilder)} in
+     * one line — addon fragments for the engine are merged automatically.
+     */
+    protected final SystemPromptComposer composer;
 
     protected StructuredActionEngine(
             StreamingProperties streamingProperties,
             LlmCallTracker llmCallTracker,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            SystemPromptComposer composer) {
         this.streamingProperties = streamingProperties;
         this.llmCallTracker = llmCallTracker;
         this.objectMapper = objectMapper;
+        this.composer = composer;
     }
 
     // ─────────────────────────────────────────────

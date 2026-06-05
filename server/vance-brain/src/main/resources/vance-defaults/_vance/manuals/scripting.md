@@ -26,7 +26,7 @@ receives a host object `vance` with three bindings:
   you can call yourself, including API tools
   (`gmail_rest__gmail_users_messages_batchModify`,
   `jira_rest__searchAndReconsileIssuesUsingJqlPost`,
-  `doc_create_text`, etc.). Return value is the tool result as a
+  `doc_create`, etc.). Return value is the tool result as a
   JS object. So a script reaches anything network / API /
   filesystem your tool surface reaches — the script itself has no
   direct socket.
@@ -49,7 +49,7 @@ Run a script that already lives as a Document (`script_run_doc`)
 or in a workspace RootDir (`script_run_workspace`). Same
 `vance.tools` surface. Use these when the script should be
 **re-runnable later** (hooks, scheduler, multiple invocations) —
-then `doc_create_text` first, then `script_run_doc`. For
+then `doc_create(kind="text", …)` first, then `script_run_doc`. For
 **one-shot inline**, stay with `execute_javascript` — no doc
 detour.
 

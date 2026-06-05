@@ -1008,8 +1008,8 @@ public class MarvinEngine implements ThinkEngine {
                     the result deterministically.
                     Respond with JSON:
                     {"result":"<markdown final answer>",
-                     "postActions":[{"tool":"doc_write_text",
-                                     "args":{"path":"...","content":"{{ node.result }}"}}],
+                     "postActions":[{"tool":"doc_create",
+                                     "args":{"path":"...","kind":"text","content":"{{ node.result }}"}}],
                      "reason":"<one-line>"}
                     """;
             case VALIDATE -> """
@@ -1618,8 +1618,8 @@ public class MarvinEngine implements ThinkEngine {
             }
             try {
                 switch (tool.trim()) {
-                    case "doc_write_text", "doc_create_text" ->
-                            execDocWriteText(process, node, a.args(), renderContext);
+                    case "doc_create", "doc_write_text", "doc_create_text" ->
+                            execDocCreate(process, node, a.args(), renderContext);
                     default -> log.warn("Marvin id='{}' postAction tool='{}' unknown — skipping",
                             process.getId(), tool);
                 }
@@ -1630,7 +1630,7 @@ public class MarvinEngine implements ThinkEngine {
         }
     }
 
-    private void execDocWriteText(
+    private void execDocCreate(
             ThinkProcessDocument process,
             MarvinNodeDocument node,
             Map<String, Object> args,
@@ -1638,13 +1638,13 @@ public class MarvinEngine implements ThinkEngine {
         String rawPath = optString(args, "path");
         if (rawPath == null || rawPath.isBlank()) {
             throw new IllegalArgumentException(
-                    "doc_write_text postAction requires non-blank args.path");
+                    "doc_create postAction requires non-blank args.path");
         }
         Object contentObj = args == null ? null : args.get("content");
         String rawContent = contentObj instanceof String cs ? cs : null;
         if (rawContent == null) {
             throw new IllegalArgumentException(
-                    "doc_write_text postAction requires args.content (string)");
+                    "doc_create postAction requires args.content (string)");
         }
         String path = renderPostActionTemplate(rawPath, renderContext);
         String content = renderPostActionTemplate(rawContent, renderContext);
@@ -1658,14 +1658,14 @@ public class MarvinEngine implements ThinkEngine {
         if (existing.isPresent()) {
             documentService.update(
                     existing.get().getId(), title, /*tags*/ null, content, /*newPath*/ null);
-            log.info("Marvin id='{}' postAction doc_write_text node='{}' updated path='{}' ({} chars)",
+            log.info("Marvin id='{}' postAction doc_create node='{}' updated path='{}' ({} chars)",
                     process.getId(), node.getId(), path, content.length());
         } else {
             documentService.createText(
                     tenantId, projectId, path, title,
                     List.of("marvin", "post-action"), content,
                     "marvin:" + process.getId());
-            log.info("Marvin id='{}' postAction doc_write_text node='{}' created path='{}' ({} chars)",
+            log.info("Marvin id='{}' postAction doc_create node='{}' created path='{}' ({} chars)",
                     process.getId(), node.getId(), path, content.length());
         }
     }

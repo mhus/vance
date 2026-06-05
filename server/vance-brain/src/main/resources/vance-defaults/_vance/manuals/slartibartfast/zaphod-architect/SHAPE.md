@@ -62,8 +62,8 @@ Each entry in `params.heads` MUST carry:
 
 The Zaphod synthesizer is a direct LLM call with **structured
 JSON output** (`{title, summary, synthesisMarkdown}`). It does
-NOT have access to file-writing tools like `doc_create_text`,
-`doc_write_text` or `doc_create_kind`. The engine itself parses
+NOT have access to file-writing tools like `doc_create`. The
+engine itself parses
 the structured reply and writes the synthesis to a project
 document at the resolved output path.
 

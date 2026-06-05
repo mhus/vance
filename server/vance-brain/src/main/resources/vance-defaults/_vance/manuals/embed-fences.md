@@ -86,7 +86,7 @@ Do not force them into a Vance kind.
 **Slides are also not a fence kind.** A ` ```slides` fence renders
 as plain `<pre>`; slide decks live as Documents only. When the user
 asks for a presentation, deck, or slide show, create a Document via
-`doc_create_kind(kind="slides", …)` — see
+`doc_create(kind="slides", …)` — see
 `manual_read('embed-documents')`.
 
 **Diagrams beyond Mermaid** — d2, PlantUML, draw.io — are not

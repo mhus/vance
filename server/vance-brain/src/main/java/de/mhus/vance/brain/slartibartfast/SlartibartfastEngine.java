@@ -393,7 +393,7 @@ public class SlartibartfastEngine implements ThinkEngine {
     /**
      * Pull lifted-path file references out of {@code acceptanceCriteria}.
      * The {@link PathCriteriaLifter} writes criteria of the form
-     * "The recipe must persist its output at `<path>` via doc_write_text."
+     * "The recipe must persist its output at `<path>` via doc_create."
      * — we extract everything inside back-ticks that matches a known
      * file extension. Matching is intentionally lenient (substring) so
      * user-stated criteria that mention a path verbatim are picked up

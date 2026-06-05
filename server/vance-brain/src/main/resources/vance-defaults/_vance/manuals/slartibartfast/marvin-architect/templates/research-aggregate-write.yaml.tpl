@@ -30,9 +30,10 @@ promptPrefix: |
   folgende postActions im JSON zurück, damit der Bericht
   persistiert wird:
     [
-      {"tool":"doc_write_text",
+      {"tool":"doc_create",
        "args":{
          "path":"{{ params.outputPathTpl }}",
+         "kind":"text",
          "content":"{% verbatim %}{{ node.result }}{% endverbatim %}"{% if params.outputTitleTpl %},
          "title":"{{ params.outputTitleTpl }}"{% endif %}}}
     ]

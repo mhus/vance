@@ -132,7 +132,7 @@ public class ProposingPhase {
         // essay-kit, …) can inject recipe-shape conventions via the
         // engineParams.proposingHints param. Slart's bundled prompt
         // stays generic; the kit owns its task-specific additions
-        // (typical example: "persist artifacts via doc_create_text"
+        // (typical example: "persist artifacts via doc_create"
         // patterns). Appended verbatim under a labelled header so
         // the LLM can distinguish engine-defined contract from
         // kit-supplied extension.

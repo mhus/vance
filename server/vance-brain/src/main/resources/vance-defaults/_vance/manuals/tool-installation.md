@@ -222,7 +222,7 @@ If the user asks "what can I install?" or "welche Tools gibt's?":
   initialise a project from a kit. Tool-templates are additive into
   *existing* projects.
 - **One-off documents** — if the user wants to drop a single document,
-  use `doc_write_text` directly. Templates carry input schemas; the
+  use `doc_create(kind="text", …)` directly. Templates carry input schemas; the
   overhead isn't worth it for a single file.
 - **OAuth-only setup** — if the user has the YAML at hand and just
   wants to register a provider, hit the OAuth admin endpoint directly.

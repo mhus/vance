@@ -24,7 +24,7 @@ Decide first:
 ### Inline in chat — fence-wrapped, no tool call
 
 When the user wants to *see* the chart right now in the assistant's
-reply (no save, no `doc_create_kind`), **emit a single
+reply (no save, no `doc_create`), **emit a single
 ```` ```chart ```` fence in the chat message**. The fenced YAML body
 carries the same schema as the stored form below.
 
@@ -53,7 +53,7 @@ render.
 ### Stored document — raw JSON or YAML, NO fence
 
 When the user wants to *save* the chart to a file via
-`doc_create_kind(kind="chart", path="<…>.json"` or `.yaml`,
+`doc_create(kind="chart", path="<…>.json"` or `.yaml`,
 `body=<raw schema>)`, **the body must NOT be wrapped in a
 ```` ```chart ```` fence** — that's the inline-only form. Markdown
 bodies are rejected for stored charts: the codec stores the file
@@ -110,12 +110,12 @@ a chart". The data is small enough to embed inline.
 When the user asks to **save** or **create a chart document** —
 "speicher das als chart-doc", "erstelle ein chart-Dokument", any
 phrasing that implies persistence — use the stored form via
-`doc_create_kind`.
+`doc_create`.
 
 ## Anti-patterns
 
 - **Wrapping the stored body in a ```` ```chart ```` fence.** That
-  is the inline-chat form. When you save via `doc_create_kind`, the
+  is the inline-chat form. When you save via `doc_create`, the
   body must be raw JSON or YAML — no fence. The codec will accept a
   fence-wrapped body (kind discrimination still works), but the
   Web-UI falls back to the Raw editor — no chart-tab, no render.
@@ -149,6 +149,6 @@ phrasing that implies persistence — use the stored form via
 - The chart is referenced repeatedly across sessions.
 - Output is part of a larger report.
 
-Then call `doc_create_kind(kind="chart", path="…", body=<raw YAML or
+Then call `doc_create(kind="chart", path="…", content=<raw YAML or
 JSON>)` and embed the returned `markdownLink` — see
-`manual_read('embed-documents')`. Reminder: **raw body, no fence**.
+`manual_read('embed-documents')`. Reminder: **raw content, no fence**.

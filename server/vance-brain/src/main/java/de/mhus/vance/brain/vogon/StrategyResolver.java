@@ -503,7 +503,42 @@ public class StrategyResolver {
             }
             case "exitLoop" -> new BranchAction.ExitLoop(parseExitOutcome(value, trail));
             case "exitStrategy" -> new BranchAction.ExitStrategy(parseExitOutcome(value, trail));
+            case "doc_create" -> {
+                // Canonical doc_create — dispatches to text or kind branch
+                // based on whether `kind` is set. Routing keeps the legacy
+                // BranchAction types so the Vogon executor stays untouched.
+                if (!(value instanceof Map<?, ?> m)) {
+                    throw new IllegalStateException(
+                            trail + " must be a map with 'path' and 'kind'");
+                }
+                Map<String, Object> dm = toStringMap(m);
+                String kind = optString(dm.get("kind"));
+                if (kind == null || kind.isBlank() || "text".equalsIgnoreCase(kind)) {
+                    yield new BranchAction.DocCreateText(
+                            requireString(dm, "path", trail),
+                            requireString(dm, "content", trail),
+                            optString(dm.get("title")),
+                            asStringList(dm.get("tags")),
+                            optBool(dm.get("overwrite"), true));
+                }
+                List<Map<String, Object>> items = null;
+                if (dm.get("items") instanceof List<?> il) {
+                    items = new ArrayList<>();
+                    for (Object it : il) {
+                        if (it instanceof Map<?, ?> im) items.add(toStringMap(im));
+                    }
+                }
+                yield new BranchAction.DocCreateKind(
+                        requireString(dm, "path", trail),
+                        kind,
+                        optString(dm.get("title")),
+                        asStringList(dm.get("tags")),
+                        items,
+                        optString(dm.get("itemsFromOutput")),
+                        optBool(dm.get("overwrite"), true));
+            }
             case "doc_create_text" -> {
+                // Legacy alias — routes to doc_create with kind=text.
                 if (!(value instanceof Map<?, ?> m)) {
                     throw new IllegalStateException(
                             trail + " must be a map with 'path' and 'content'");
@@ -517,6 +552,7 @@ public class StrategyResolver {
                         optBool(dm.get("overwrite"), true));
             }
             case "doc_create_kind" -> {
+                // Legacy alias — kind already explicit in the args.
                 if (!(value instanceof Map<?, ?> m)) {
                     throw new IllegalStateException(
                             trail + " must be a map with 'path' and 'kind'");

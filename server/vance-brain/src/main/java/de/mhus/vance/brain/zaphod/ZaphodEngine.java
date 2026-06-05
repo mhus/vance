@@ -106,10 +106,9 @@ public class ZaphodEngine implements ThinkEngine {
             HARD OUTPUT CONTRACT:
             - Liefere GENAU ein JSON-Objekt, kein Markdown-Wrapper,
               kein Text davor oder danach.
-            - KEINE Pseudo-Tool-Aufrufe wie `doc_create_kind(...)`
-              oder `doc_write_text(...)`. Du hast KEINE Tools — die
-              Engine persistiert das Dokument deterministisch aus
-              `synthesisMarkdown`.
+            - KEINE Pseudo-Tool-Aufrufe wie `doc_create(...)`.
+              Du hast KEINE Tools — die Engine persistiert das
+              Dokument deterministisch aus `synthesisMarkdown`.
 
             Schema (alle Felder Pflicht):
                 {
@@ -672,7 +671,8 @@ public class ZaphodEngine implements ThinkEngine {
         String markdown = requireSynthesisString(root, "synthesisMarkdown");
         // Defensive: refuse pseudo-tool-call bodies that some LLMs
         // produce despite the explicit "no doc_*" instruction.
-        if (markdown.startsWith("doc_create_kind(")
+        if (markdown.startsWith("doc_create(")
+                || markdown.startsWith("doc_create_kind(")
                 || markdown.startsWith("doc_write_text(")
                 || markdown.startsWith("doc_create_text(")) {
             throw new IllegalStateException(

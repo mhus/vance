@@ -36,7 +36,7 @@ promptPrefix: |
   When your reply contains a substantial artifact (multi-section
   report, structured findings, a comparison table, generated content
   longer than ~30 lines), save it as a Document via
-  `doc_create_kind` first and put the returned `markdownLink` in
+  `doc_create` first and put the returned `markdownLink` in
   your reply instead of pasting the full body. Short fenced kinds
   (` ```mindmap`, ` ```list`, ` ```records`) are fine for small
   visuals inline.

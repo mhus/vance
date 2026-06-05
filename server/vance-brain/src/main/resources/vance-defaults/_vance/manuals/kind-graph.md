@@ -25,7 +25,7 @@ Decide first:
 ### Inline in chat — fence-wrapped, no tool call
 
 When the user wants to *see* the network right now in the assistant's
-reply (no save, no `doc_create_kind`), **emit a single
+reply (no save, no `doc_create`), **emit a single
 ```` ```graph ```` fence in the chat message**. The fenced YAML body
 carries the same schema as the stored form below.
 
@@ -57,7 +57,7 @@ render.
 ### Stored document — raw JSON or YAML, NO fence
 
 When the user wants to *save* the graph to a file via
-`doc_create_kind(kind="graph", path="<…>.json"` or `.yaml`,
+`doc_create(kind="graph", path="<…>.json"` or `.yaml`,
 `body=<raw schema>)`, **the body must NOT be wrapped in a
 ```` ```graph ```` fence** — that's the inline-only form. Markdown
 bodies are rejected for stored graphs: the codec stores the file
@@ -137,7 +137,7 @@ need decision diamonds or swimlanes, switch to `diagram`.
 ## Anti-patterns
 
 - **Wrapping the stored body in a ```` ```graph ```` fence.** That
-  is the inline-chat form. When you save via `doc_create_kind`, the
+  is the inline-chat form. When you save via `doc_create`, the
   body must be raw JSON or YAML — no fence. The codec stores it,
   but the Web-UI falls back to the Raw editor — no graph-tab, no
   render. Symptom: user gets a saved doc that opens as plain text
@@ -195,7 +195,7 @@ need decision diamonds or swimlanes, switch to `diagram`.
   the editor where the user explicitly drags.
 - **More than ~25 nodes / 40 edges inline.** Becomes a noodle
   diagram in the chat viewport. Save as a Document
-  (`doc_create_kind(kind="graph", …)`).
+  (`doc_create(kind="graph", …)`).
 
 ## When to graduate from inline to stored
 
@@ -205,7 +205,7 @@ need decision diamonds or swimlanes, switch to `diagram`.
 - Multiple graphs that belong together (architecture set,
   state-machine collection).
 
-Then call `doc_create_kind(kind="graph", path="graphs/<name>.yaml",
-body=<raw YAML or JSON>)` and embed the returned `markdownLink` —
-see `manual_read('embed-documents')`. Reminder: **raw body, no
+Then call `doc_create(kind="graph", path="graphs/<name>.yaml",
+content=<raw YAML or JSON>)` and embed the returned `markdownLink` —
+see `manual_read('embed-documents')`. Reminder: **raw content, no
 fence**.

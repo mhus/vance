@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component;
  * glues them together (default: blank line); optional {@code header}
  * and {@code footer} let the caller frame the output without needing
  * a follow-up edit. The target path must be unique within its project
- * (no overwrite) — same contract as {@code doc_create_text}.
+ * (no overwrite) — unlike {@code doc_create} this does NOT upsert.
  */
 @Component
 @RequiredArgsConstructor
@@ -88,7 +88,7 @@ public class DocConcatTool implements Tool {
                 + "one new target document. Pass `sources` (ordered path "
                 + "list) and `target` path. Optional `separator`, `header`, "
                 + "`footer`, `title`, `tags`. The target path must not "
-                + "exist yet — same uniqueness rule as doc_create_text.";
+                + "exist yet — unlike doc_create this does NOT upsert.";
     }
 
     @Override

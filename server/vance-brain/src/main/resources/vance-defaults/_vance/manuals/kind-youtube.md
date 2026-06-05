@@ -9,7 +9,7 @@ Embed a YouTube video. The Web-UI renders a privacy-friendly
 link.
 
 Unlike `chart`/`graph`/`mindmap`/`diagram`, **`youtube` has no
-stored-document form**. There is no `doc_create_kind(kind="youtube",
+stored-document form**. There is no `doc_create(kind="youtube",
 …)` path — the URL itself is the artifact. The fenced block is the
 only shape of this kind, used directly inside a chat reply.
 

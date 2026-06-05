@@ -286,7 +286,7 @@ public class VogonArchitect implements SchemaArchitect {
         msg.append("Vogon strategy references unknown recipe(s) as "
                 + "worker: ").append(unknown).append(".\n\n");
         msg.append("Common mistake: using a TOOL name (e.g. doc_edit, "
-                + "doc_create_text, web_search, scratch_write) where a "
+                + "doc_create, web_search, scratch_write) where a "
                 + "RECIPE name is required. Tools are called inside a "
                 + "worker's turn; the worker itself must be a recipe "
                 + "with an engine bound to it.\n\n");

@@ -57,7 +57,7 @@ public class WorkspaceWriteTool implements Tool {
                 + "a sandbox — files here are not searchable knowledge "
                 + "and may be discarded when the project suspends. "
                 + "NOT for: lasting knowledge the user will want to "
-                + "find/read later (use doc_create_text), or files on "
+                + "find/read later (use doc_create), or files on "
                 + "the user's own machine (use client_file_write). "
                 + "Use relative paths; parent directories are created "
                 + "automatically. Promote a scratch file to a real "

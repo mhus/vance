@@ -23,7 +23,7 @@ Decide first:
 ### Inline in chat — fence-wrapped bullets, no tool call
 
 When the user wants to *see* the mindmap right now in the assistant's
-reply (no save, no `doc_create_kind`), **emit a single
+reply (no save, no `doc_create`), **emit a single
 ```` ```mindmap ```` fence in the chat message** — bullet form, two-
 space indent per level. The first level becomes the root node;
 multiple top-level bullets render as a forest (parallel trees).
@@ -45,7 +45,7 @@ render.
 ### Stored document — raw markdown OR YAML/JSON, NO fence
 
 When the user wants to *save* the mindmap to a file via
-`doc_create_kind(kind="mindmap", path="<…>", body=<raw>)`, the body
+`doc_create(kind="mindmap", path="<…>", content=<raw>)`, the content
 accepts three on-disk formats. **None of them wraps the body in a
 ```` ```mindmap ```` fence** — that's the inline-chat shape only.
 
@@ -122,7 +122,7 @@ brainstorming, outlining, "give me the big picture".
 ## Anti-patterns
 
 - **Wrapping the stored body in a ```` ```mindmap ```` fence.**
-  That is the inline-chat form. When you save via `doc_create_kind`,
+  That is the inline-chat form. When you save via `doc_create`,
   the body is raw markdown bullets or a raw `items[]` YAML/JSON
   structure — never fence-wrapped. Symptom: user gets a saved doc
   that opens as plain text instead of a radial mindmap.
@@ -162,7 +162,7 @@ brainstorming, outlining, "give me the big picture".
   nesting for hierarchy.
 - **More than ~50 nodes inline.** Becomes unreadable in the chat
   viewport. Save as a Document
-  (`doc_create_kind(kind="mindmap", …)`).
+  (`doc_create(kind="mindmap", …)`).
 
 ## When to graduate from inline to stored
 
@@ -171,6 +171,6 @@ brainstorming, outlining, "give me the big picture".
 - More than ~30–50 nodes.
 - Multiple mindmaps that belong together.
 
-Then call `doc_create_kind(kind="mindmap", path="mindmaps/<name>.md",
-body=<raw markdown bullets or raw YAML/JSON items hierarchy>)` and
-embed the returned `markdownLink`. Reminder: **raw body, no fence**.
+Then call `doc_create(kind="mindmap", path="mindmaps/<name>.md",
+content=<raw markdown bullets or raw YAML/JSON items hierarchy>)` and
+embed the returned `markdownLink`. Reminder: **raw content, no fence**.

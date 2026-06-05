@@ -117,8 +117,7 @@ public class ZaphodArchitect implements SchemaArchitect {
             ── CRITICAL: synthesizer has NO TOOLS ──
 
             The synthesizer is a direct LLM call with structured
-            JSON output — it does NOT have access to
-            `doc_create_text`, `doc_write_text`, `doc_create_kind`
+            JSON output — it does NOT have access to `doc_create`
             or any other file-writing tool. The Zaphod engine
             persists the synthesis document deterministically from
             the LLM's structured reply.
@@ -127,7 +126,7 @@ public class ZaphodArchitect implements SchemaArchitect {
             synthesizer to "create a document", "save the answer
             as a file", "write to <path>", or anything similar.
             Those instructions cause the LLM to hallucinate
-            pseudo-tool-call text ("doc_create_kind(path=…)") in
+            pseudo-tool-call text ("doc_create(path=…)") in
             its reply body, which the engine then has to recover
             from.
 
@@ -276,7 +275,7 @@ public class ZaphodArchitect implements SchemaArchitect {
         // and the synthesizer turn — not by tool calls embedded in
         // the Slart-emitted recipe yaml. The generic substring-based
         // path check would always fail by construction (no
-        // doc_write_text in heads/persona or synthesisPrompt by
+        // doc_create in heads/persona or synthesisPrompt by
         // design). Until a council-specific path check exists, we
         // skip it for ZAPHOD_RECIPE.
         return false;

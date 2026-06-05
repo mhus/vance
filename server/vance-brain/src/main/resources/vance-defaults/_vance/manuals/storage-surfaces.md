@@ -19,7 +19,7 @@ depends on lifetime and audience, not on what the user typed.
 
 ### Document — long-lived knowledge
 
-Tools: `doc_create_text`, `doc_create_kind`, `doc_edit`, `doc_*`.
+Tools: `doc_create`, `doc_edit`, `doc_*`.
 
 The project's indexed, searchable, auto-summarised, tagged
 knowledge base. Default for **anything the user will want to find

@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
  * canonical Markdown link form.
  *
  * <p>Shared by {@link DocumentLinkTool} (explicit LLM tool call) and
- * by document-producing tools ({@code doc_create_kind} et al.) that
+ * by document-producing tools ({@code doc_create} et al.) that
  * include a {@code markdownLink} field in their result so the LLM
  * can embed the link without a second tool round-trip.
  *

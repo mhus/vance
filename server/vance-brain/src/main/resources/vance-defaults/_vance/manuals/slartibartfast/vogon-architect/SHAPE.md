@@ -35,7 +35,7 @@ Each phase declares:
 - `name`: phase identifier (kebab-case).
 - `worker`: name of an existing project recipe — typically `ford`,
   `marvin-worker`, `analyze`, `code-read`, or a task-specific
-  recipe from the project. Tool names (e.g. `doc_write_text`) are
+  recipe from the project. Tool names (e.g. `doc_create`) are
   NOT valid worker values; the validator rejects them.
 - `workerInput`: the prompt the worker receives.
 - `gate.requires`: list of completion markers that must be set
@@ -45,7 +45,7 @@ Optional per-phase:
 - `scorer`: branch decision based on output quality.
 - `loop`: repeat the phase until a condition is met.
 - `postActions`: tool calls run after the worker (typically
-  `doc_create_text` / `doc_write_text` to persist artefacts).
+  `doc_create` to persist artefacts).
 
 ## Phase chaining
 
@@ -60,8 +60,8 @@ via `doc_read` (full) or `doc_summary` (1-3 sentence recap).
 **any phase that produces a meaningful artefact** (essay outline,
 chapter text, research synthesis, refactor plan, …) the recipe
 MUST include a `postActions` block that persists the worker's
-output to a known project path via `doc_create_text` or
-`doc_write_text`. Without postActions, the phase's output lives
+output to a known project path via `doc_create`.
+Without postActions, the phase's output lives
 only as an inline string in the Vogon state — workers in later
 phases see at best a 1-3 sentence summary in the discovery block,
 NOT the full content. Pipelines that need the full predecessor
@@ -76,9 +76,10 @@ post-Actions by default, not wait for validator pressure.
 
 ```
 postActions:
-  - tool: doc_create_text
+  - tool: doc_create
     args:
       path: essay/outline.md
+      kind: text
       content: ${worker.reply}
       title: "Essay-Outline"
 ```
@@ -116,9 +117,10 @@ research synthesis), add a Lector-style review loop:
   workerInput: |
     Write chapter 1 …
   postActions:
-    - tool: doc_write_text       # write_text so revisions overwrite
+    - tool: doc_create            # doc_create upserts so revisions overwrite
       args:
         path: essay/chapters/01.md
+        kind: text
         content: ${worker.reply}
   loop:
     maxIterations: 3
@@ -158,9 +160,10 @@ phases:
       Create a 3-chapter outline. Plot, key characters,
       satirical points per chapter.
     postActions:
-      - tool: doc_create_text
+      - tool: doc_create
         args:
           path: essay/outline.md
+          kind: text
           content: ${worker.reply}
           title: "Essay-Outline"
     gate: { requires: [generate-outline_completed] }
@@ -171,9 +174,10 @@ phases:
       Read essay/outline.md via doc_read. Write chapter 1
       (200-500 words). Style: Douglas Adams.
     postActions:
-      - tool: doc_write_text
+      - tool: doc_create
         args:
           path: essay/chapters/01.md
+          kind: text
           content: ${worker.reply}
     gate: { requires: [draft-chapter-1_completed] }
 
@@ -187,9 +191,10 @@ phases:
       Consolidate into essay/final-essay.md with chapter
       headings. Add a short intro paragraph.
     postActions:
-      - tool: doc_create_text
+      - tool: doc_create
         args:
           path: essay/final-essay.md
+          kind: text
           content: ${worker.reply}
           title: "Adams-Style Essay"
     gate: { requires: [assemble-essay_completed] }

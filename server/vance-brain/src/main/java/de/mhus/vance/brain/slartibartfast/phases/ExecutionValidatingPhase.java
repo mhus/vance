@@ -240,7 +240,7 @@ public class ExecutionValidatingPhase {
                 + "combine:\n");
         sb.append("- Add a dedicated phase that uses worker 'ford' "
                 + "with a workerInput that explicitly says "
-                + "\"doc_create_text path=<MISSING-PATH> content=...\"; "
+                + "\"doc_create kind=text path=<MISSING-PATH> content=...\"; "
                 + "name the phase so its purpose is obvious "
                 + "(e.g. 'write-sources', 'write-introduction').\n");
         sb.append("- Extend an existing phase's workerInput to also "
@@ -257,7 +257,7 @@ public class ExecutionValidatingPhase {
         sb.append("- Ensure the final consolidation/assembly phase "
                 + "(if planned) actually writes essay/final-essay.md "
                 + "(or whatever the kit's OUTPUT manual specifies) "
-                + "via doc_create_text; it's the most common phase "
+                + "via doc_create; it's the most common phase "
                 + "to silently skip.\n");
         sb.append("\nKEEP what worked: phases that DID produce their "
                 + "artifacts. Only rewrite the broken parts.");

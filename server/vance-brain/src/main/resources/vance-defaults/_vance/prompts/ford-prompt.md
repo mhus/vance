@@ -96,7 +96,7 @@ mindmap) → fenced block in the message directly.
 
 For the *how*:
 
-- `manual_read('embed-documents')` — `doc_create_kind` workflow,
+- `manual_read('embed-documents')` — `doc_create` workflow,
   `markdownLink`-Felder in Tool-Responses, when to embed vs.
   reference
 - `manual_read('embed-fences')` — router for small-inline kinds

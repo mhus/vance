@@ -111,8 +111,9 @@ public interface SchemaArchitect {
      *  check apply to this schema? The check (in
      *  {@code ValidatingPhase}) reads each acceptance criterion
      *  that names a file-path and verifies the recipe yaml
-     *  contains a {@code doc_write_text} / {@code doc_create_text}
-     *  call against that path. Returns true by default — accurate
+     *  contains a {@code doc_create} (or deprecated alias
+     *  {@code doc_write_text} / {@code doc_create_text}) call
+     *  against that path. Returns true by default — accurate
      *  for Vogon (the strategyPlanYaml carries workerInputs with
      *  tool calls) and Marvin (the promptPrefix's KIND blocks
      *  carry taskSpec with paths). Zaphod overrides to false

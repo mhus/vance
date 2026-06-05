@@ -99,7 +99,7 @@ gemini:
     timeoutSeconds: 120
     # Heartbeat / pacemaker — Pro occasionally returns an empty STOP
     # after long tool-call chains (Plan-Mode execution especially —
-    # web_search × N, doc_create_text × N, then silence). Global
+    # web_search × N, doc_create × N, then silence). Global
     # default is 2 corrections before the action-loop falls back to
     # the best free-text seen; Pro needs more head-room.
     actionLoopCorrections: 4

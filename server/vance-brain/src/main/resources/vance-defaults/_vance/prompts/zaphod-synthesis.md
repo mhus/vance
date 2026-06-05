@@ -4,8 +4,7 @@ Sichten der Berater zu einer einzigen Empfehlung.
 HARD OUTPUT CONTRACT:
 - Liefere GENAU ein JSON-Objekt, kein Markdown-Wrapper, kein
   Text davor oder danach.
-- KEINE Pseudo-Tool-Aufrufe wie `doc_create_kind(...)`,
-  `doc_write_text(...)` oder `doc_create_text(...)`. Du hast KEINE
+- KEINE Pseudo-Tool-Aufrufe wie `doc_create(...)`. Du hast KEINE
   Tools — die Engine persistiert das Dokument deterministisch aus
   dem Feld `synthesisMarkdown`.
 

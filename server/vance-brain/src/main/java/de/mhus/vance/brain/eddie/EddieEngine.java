@@ -134,7 +134,7 @@ public class EddieEngine extends StructuredActionEngine {
 
     /**
      * Aligned with Arthur's recipe (6) — Eddie's "self-work" path
-     * (web_search → web_fetch → doc_create_text → ANSWER) already
+     * (web_search → web_fetch → doc_create → ANSWER) already
      * eats 4 iterations; with Plan-Mode actions now in her schema
      * and the occasional discovery tool (find_tools / describe_tool)
      * pre-amble, 4 leaves no slack for the final ANSWER and the
@@ -666,7 +666,7 @@ public class EddieEngine extends StructuredActionEngine {
                 + "COMPLETED**. If it's [ ] PENDING, your next TODO_UPDATE "
                 + "should set it IN_PROGRESS. If it's [~] IN_PROGRESS, do "
                 + "the actual work for that step now — typically "
-                + "`web_search` for research items, `doc_create_text` / "
+                + "`web_search` for research items, `doc_create` / "
                 + "`doc_edit` to persist results, `DELEGATE_PROJECT` / "
                 + "`STEER_PROJECT` for substantial worker hand-off — "
                 + "then TODO_UPDATE it to COMPLETED in the same turn "
@@ -1184,7 +1184,7 @@ public class EddieEngine extends StructuredActionEngine {
                     .append(firstActive.getId())
                     .append(") is already IN_PROGRESS. Do NOT emit TODO_UPDATE "
                     + "for it again — that's a no-op. Instead, call read/write "
-                    + "tools (web_search, doc_read, doc_create_text, doc_edit, "
+                    + "tools (web_search, doc_read, doc_create, doc_edit, "
                     + "etc.) or DELEGATE_PROJECT / STEER_PROJECT to make real "
                     + "progress. Once the work is done, emit TODO_UPDATE to "
                     + "mark it COMPLETED and pick the next item.");
@@ -1193,7 +1193,7 @@ public class EddieEngine extends StructuredActionEngine {
                     .append(firstActive.getId())
                     .append(" to IN_PROGRESS, then in the same or next "
                     + "iteration call the read/write tools to do the actual "
-                    + "work (web_search, doc_create_text, …) or "
+                    + "work (web_search, doc_create, …) or "
                     + "DELEGATE_PROJECT / STEER_PROJECT for hand-off. "
                     + "NEVER re-emit START_EXECUTION.");
         }
@@ -2274,8 +2274,8 @@ public class EddieEngine extends StructuredActionEngine {
                     .append(userProject)
                     .append("`. Always pass `projectId=\"")
                     .append(userProject)
-                    .append("\"` to `doc_create_text`, `doc_edit`, "
-                    + "`doc_write_text`, `scratch_write`, etc. — the "
+                    .append("\"` to `doc_create`, `doc_edit`, "
+                    + "`scratch_write`, etc. — the "
                     + "default routes to `_tenant` and gets rejected "
                     + "because the hub is SYSTEM-protected.");
         }

@@ -55,7 +55,8 @@ public class ValidatingPhase {
      * Every acceptance criterion that names a file-path must be
      * backed by at least one recipe phase whose {@code workerInput}
      * contains both a recognised write-tool name (currently
-     * {@code doc_create_text} or {@code doc_write_text}) and the
+     * {@code doc_create} — or the deprecated aliases
+     * {@code doc_create_text} / {@code doc_write_text}) and the
      * path itself. Catches Slart's failure mode where the generated
      * Vogon recipe runs all content phases as in-chat drafts and
      * never persists to the kit-declared OUTPUT path (the recurring
@@ -65,19 +66,19 @@ public class ValidatingPhase {
             "path-criteria-have-doc-write-phase";
 
     /** Recipe-phase workerInputs satisfying RULE_PATH_OUTPUTS_PERSISTED
-     *  may use either of these tool names — {@code doc_create_text}
-     *  for first-write-only semantics, {@code doc_write_text} for
-     *  upsert (overwrite-on-retry). Both end up calling
-     *  DocumentService underneath. */
+     *  may use any of these tool names — {@code doc_create} (canonical,
+     *  upsert) or the deprecated aliases {@code doc_create_text} /
+     *  {@code doc_write_text}. All three route to
+     *  {@code DocumentService} underneath. */
     private static final java.util.List<String> WRITE_TOOL_NAMES =
-            java.util.List.of("doc_write_text", "doc_create_text");
+            java.util.List.of("doc_create", "doc_write_text", "doc_create_text");
 
     /** Matches a path inside a criterion text, same shape as
      *  {@link de.mhus.vance.brain.slartibartfast.PathCriteriaLifter#PATH_PATTERN}
      *  but slimmer: VALIDATING only cares about extracting the path
      *  back out of a previously-lifted criterion. The lifter's
      *  criterion text is stable ("…persist its output at `<path>`
-     *  via doc_create_text."), so a back-tick capture is enough.
+     *  via doc_create."), so a back-tick capture is enough.
      */
     private static final java.util.regex.Pattern CRITERION_PATH_PATTERN =
             java.util.regex.Pattern.compile(

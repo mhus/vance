@@ -72,7 +72,7 @@ optionalem Titel und Tags. Ich kann:
   nicht meine.
 - **Lesen** mit `doc_read(path)` oder `doc_read(id=...)` — Inhalt
   bis 50.000 Zeichen, dann gekürzt.
-- **Anlegen mit Inhalt** via `doc_create_text(path, content,
+- **Anlegen mit Inhalt** via `doc_create(kind="text", path, content,
   title?, tags?)` — wenn ich gerade einen Text in der Hand habe
   (Zusammenfassung, Notiz, was der User mir diktiert hat).
 - **URL importieren** via `doc_import_url(url, path, title?, tags?)`

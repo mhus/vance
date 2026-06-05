@@ -78,7 +78,7 @@ class MarvinArchitectTemplateRenderTest {
                 .contains("tech: Technology and current state of the art.");
 
         // postAction is engine-side write.
-        assertThat(yaml).contains("doc_write_text");
+        assertThat(yaml).contains("doc_create");
     }
 
     @Test

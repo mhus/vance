@@ -87,7 +87,7 @@ Info).
 
 - **Don't paste records data inline as a code-block.** The user
   asked for Excel; call the tool. If you need the records first,
-  use `doc_create_kind(kind="records", ...)` or `records_add_row`
+  use `doc_create(kind="records", ...)` or `records_add_row`
   to build them, then call `xlsx_from_records`.
 - **Don't call this for non-records documents.** The tool rejects
   documents whose codec doesn't support the records shape (i.e.

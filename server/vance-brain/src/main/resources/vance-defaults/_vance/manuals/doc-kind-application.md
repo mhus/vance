@@ -134,7 +134,7 @@ v1 ignoriert sekundäre Blocks — sie werden round-trip-stabil als `extra` durc
 - **Don't write the manifest with the wrong `kind`.** `kind: calendar-suite`, `kind: app`, `kind: project` werden alle nicht erkannt. Es muss exakt `kind: application` sein.
 - **Don't omit `$meta.app`.** Ohne den Discriminator landet die App in einem undefined state — tools werfen "App folder has no $meta.app value".
 - **Don't move generated paths around.** `gantt.outputPath` und `conflicts.outputPath` *können* angepasst werden, aber `_gantt.md` / `_conflicts.yaml` sind die etablierte Konvention. Anpassen nur wenn der User explizit darauf besteht.
-- **Don't hand-build the manifest from scratch** wenn `doc_create_kind(kind="application", …)` ein passendes Stub-Template hat. Im Web-UI gibt's eines unter "New Document → kind: application".
+- **Don't hand-build the manifest from scratch** wenn `doc_create(kind="application", …)` ein passendes Stub-Template hat. Im Web-UI gibt's eines unter "New Document → kind: application".
 
 ## Related
 

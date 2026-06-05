@@ -1,6 +1,6 @@
 ---
 triggers: JavaScript vs Python, choose language, which language, JS oder Python, script language, compute, loop over, batch operation, "write a script", "schreib ein Script"
-summary: How to pick between execute_javascript and python_run for a scripting task — default JS, Python only when its libraries earn it.
+summary: How to pick between execute_javascript and execute_python for a scripting task — default JS, Python only when its libraries earn it.
 ---
 # Scripting — JavaScript or Python?
 
@@ -53,15 +53,34 @@ then `doc_create(kind="text", …)` first, then `script_run_doc`. For
 **one-shot inline**, stay with `execute_javascript` — no doc
 detour.
 
+### `execute_python` — Python analog of `execute_javascript`
+
+One-shot Python execution: pass `code`, get the result. The tool
+ensures a default Python RootDir (`_python` with venv) on first
+call — idempotent thereafter — so you don't manage RootDirs
+explicitly. Same mental model as `execute_javascript`. Use this
+for one-shot Python: data transforms, math that needs numpy,
+quick HTML parsing with bs4. The venv is reused across calls in
+the session, so `python_install`-installed packages stay
+available.
+
+```
+execute_python(code="import numpy as np; print(np.array([1,2,3]).mean())")
+   → "2.0"
+```
+
+Cost: first call spends 5–30 s on venv setup; subsequent calls
+are fast. **No `vance.tools` surface** — Python runs as an
+external process, can't call other Vance tools from inside.
+
 ### `python_run` (+ `python_create`, `python_install`)
 
-Full Python in a venv inside the scratch area. Use when you need
-a library (pandas, requests, beautifulsoup, numpy …) or when a
-script is long enough that Python's ecosystem actually buys
-something. Cost: first call spends 5–30 s on venv + pip install.
-Reuse the venv across calls — don't recreate it per script.
-**No `vance.tools` surface** — Python is isolated, it can't call
-other Vance tools from inside.
+For **persisted multi-file Python projects**: explicit
+`python_create(dirName=…)` followed by `scratch_write` of the
+files and `python_run(file=…, dirName=…)` to execute. Use when
+your Python work spans multiple files or you want the project
+checked into git (RootDir suspend/resume cycles). For
+single-snippet calculations stay with `execute_python`.
 
 ## Decision rule
 
@@ -80,9 +99,10 @@ out to be a three-line transform.
 - Spawning a worker to run a one-shot script. Workers re-spawn
   `process_create` and stall the chain — use `execute_javascript`
   inline instead.
-- Recreating the venv on every `python_run` call. Idempotent
-  `python_create` is fine; explicit re-install of the same packages
-  isn't.
+- Recreating the venv on every Python call. `execute_python`
+  reuses the default `_python` RootDir; `python_create` is
+  idempotent by label. Explicit re-install of the same packages
+  isn't needed.
 - Reaching for Python because "it's more powerful" when the task
   is `arr.map(x => x.foo)` — JS is the cheap default.
 - Using `script_run_doc` for a one-shot. Persist only when the

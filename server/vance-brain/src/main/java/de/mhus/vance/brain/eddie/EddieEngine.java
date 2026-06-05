@@ -207,6 +207,8 @@ public class EddieEngine extends StructuredActionEngine {
     private final de.mhus.vance.shared.workspace.WorkspaceService workspaceService;
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
+    private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
+    private final ObjectMapper objectMapper;
 
     /**
      * Per-process flag tracking whether the in-flight turn was
@@ -240,7 +242,9 @@ public class EddieEngine extends StructuredActionEngine {
             de.mhus.vance.brain.thinkengine.SystemPromptComposer composer,
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
             de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter,
-            de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService) {
+            de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService,
+            @org.springframework.context.annotation.Lazy
+                    de.mhus.vance.brain.discovery.DiscoveryService discoveryService) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.modelCatalog = modelCatalog;
@@ -259,6 +263,8 @@ public class EddieEngine extends StructuredActionEngine {
         this.workspaceService = workspaceService;
         this.historyStrengthFilter = historyStrengthFilter;
         this.memoryCompactionService = memoryCompactionService;
+        this.discoveryService = discoveryService;
+        this.objectMapper = objectMapper;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -986,7 +992,8 @@ public class EddieEngine extends StructuredActionEngine {
     private static final Set<String> CONTINUING_ACTIONS = Set.of(
             de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_PLAN,
             de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_START_EXECUTION,
-            de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_TODO_UPDATE);
+            de.mhus.vance.brain.thinkengine.plan.PlanModeActionSchema.TYPE_TODO_UPDATE,
+            EddieActionSchema.TYPE_DISCOVER);
 
     @Override
     protected boolean isTerminalAction(EngineAction action) {
@@ -998,6 +1005,12 @@ public class EddieEngine extends StructuredActionEngine {
             EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
+        // DISCOVER short-circuits the standard dispatch — synchronous
+        // lookup, JSON feedback into the next action-loop iteration.
+        // Mirror of Arthur's DISCOVER handler.
+        if (EddieActionSchema.TYPE_DISCOVER.equals(action.type())) {
+            return handleDiscover(action, process, ctx);
+        }
         // Reuse the same dispatch as terminal actions — the plan-mode
         // handlers are idempotent and persist new state. Discard the
         // ActionTurnOutcome (chatMessage / awaiting) since continuing
@@ -1996,6 +2009,82 @@ public class EddieEngine extends StructuredActionEngine {
             message = "Das geht so leider nicht — " + action.reason();
         }
         return new ActionTurnOutcome(message, /*awaitingUserInput*/ true);
+    }
+
+    /**
+     * DISCOVER handler — synchronous lookup against
+     * {@link de.mhus.vance.brain.discovery.DiscoveryService} for a
+     * user-mentioned term. Returns the JSON-formatted result as the
+     * tool-result so the next action-loop iteration sees it. Mirror
+     * of Arthur's DISCOVER handler — same JSON shape (loaded /
+     * alternatives / hint) so the LLM reads it the same way.
+     */
+    private String handleDiscover(
+            EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        Object raw = action.params().get(EddieActionSchema.PARAM_INTENT);
+        if (!(raw instanceof String intent) || intent.isBlank()) {
+            return "DISCOVER: missing 'intent' — emit a non-blank "
+                    + "user-mentioned term or phrase.";
+        }
+        try {
+            de.mhus.vance.brain.discovery.DiscoveryResult result =
+                    discoveryService.discover(
+                            intent,
+                            process.getTenantId(),
+                            process.getProjectId(),
+                            process.getId());
+            String json = serializeDiscoveryResult(result);
+            log.info("Eddie id='{}' DISCOVER intent='{}' loaded={} alternatives={}",
+                    process.getId(), intent,
+                    result.getLoaded() != null ? result.getLoaded().getName() : null,
+                    result.getAlternatives() == null ? 0
+                            : result.getAlternatives().size());
+            return json;
+        } catch (RuntimeException e) {
+            log.warn("Eddie id='{}' DISCOVER intent='{}' failed: {}",
+                    process.getId(), intent, e.toString());
+            return "DISCOVER failed: " + e.getMessage()
+                    + " — fall back to manual_list / manual_read or just answer "
+                    + "with what you know.";
+        }
+    }
+
+    private String serializeDiscoveryResult(
+            de.mhus.vance.brain.discovery.DiscoveryResult result) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("intent", result.getIntent());
+        out.put("loaded", result.getLoaded() == null
+                ? null : discoveryMatchToMap(result.getLoaded()));
+        java.util.List<java.util.Map<String, Object>> alternatives =
+                new java.util.ArrayList<>();
+        if (result.getAlternatives() != null) {
+            for (de.mhus.vance.brain.discovery.DiscoveryResult.Match m
+                    : result.getAlternatives()) {
+                alternatives.add(discoveryMatchToMap(m));
+            }
+        }
+        out.put("alternatives", alternatives);
+        out.put("hint", result.getHint());
+        try {
+            return objectMapper.writeValueAsString(out);
+        } catch (RuntimeException e) {
+            log.warn("Eddie DISCOVER: JSON serialize failed: {}", e.toString());
+            return out.toString();
+        }
+    }
+
+    private static java.util.Map<String, Object> discoveryMatchToMap(
+            de.mhus.vance.brain.discovery.DiscoveryResult.Match m) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("type", m.getType());
+        out.put("name", m.getName());
+        if (m.getSource() != null) out.put("source", m.getSource());
+        if (m.getSummary() != null) out.put("summary", m.getSummary());
+        if (m.getScore() != null) out.put("score", m.getScore());
+        if (m.getContent() != null) out.put("content", m.getContent());
+        return out;
     }
 
     /**

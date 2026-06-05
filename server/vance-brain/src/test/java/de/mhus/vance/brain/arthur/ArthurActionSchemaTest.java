@@ -47,10 +47,12 @@ class ArthurActionSchemaTest {
         Set<String> exploring = ArthurActionSchema.typesForMode(ProcessMode.EXPLORING);
         // LEARN is a side-effect on user-memory, not on the project,
         // so it stays available in EXPLORING even though "write" tools
-        // are blocked.
+        // are blocked. DISCOVER is read-only (lookup against the
+        // knowledge surface) and so also stays available.
         assertThat(exploring).containsExactlyInAnyOrder(
                 ArthurActionSchema.TYPE_ANSWER,
                 ArthurActionSchema.TYPE_LEARN,
+                ArthurActionSchema.TYPE_DISCOVER,
                 ArthurActionSchema.TYPE_PROPOSE_PLAN,
                 ArthurActionSchema.TYPE_START_PLAN);
     }

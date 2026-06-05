@@ -78,6 +78,20 @@ public final class ArthurActionSchema {
     public static final String TYPE_REJECT     = "REJECT";
 
     /**
+     * Looks up a user-mentioned term / intent in the Vance knowledge
+     * surface (manuals, skills, server tools) before deciding what to
+     * do. CONTINUING action — the engine calls {@code DiscoveryService},
+     * injects the result as the action tool's tool-result, and the
+     * action-loop iterates again so the LLM can pick a real action
+     * (ANSWER / DELEGATE / …) with the discovery result in hand. Use
+     * for **user-introduced terminology** the LLM doesn't recognise
+     * (jargon, invented features, ambiguous metaphors). For LLM-side
+     * lookups (verify a fence syntax before drafting), the read-only
+     * {@code how_do_i} tool stays available.
+     */
+    public static final String TYPE_DISCOVER   = "DISCOVER";
+
+    /**
      * Persists something about the user into the cross-engine per-user
      * memory store. Mirrors Eddie's {@code LEARN} — same {@code scope}
      * (persona|fact) + {@code mode} (replace|append) semantics, same
@@ -103,7 +117,7 @@ public final class ArthurActionSchema {
 
     public static final Set<String> SUPPORTED_TYPES = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN,
+            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER,
             TYPE_START_PLAN, TYPE_PROPOSE_PLAN, TYPE_START_EXECUTION,
             TYPE_TODO_UPDATE);
 
@@ -117,7 +131,7 @@ public final class ArthurActionSchema {
      */
     public static final Set<String> TYPES_FOR_NORMAL = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_START_PLAN);
+            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER, TYPE_START_PLAN);
 
     /**
      * Action types allowed in {@code EXPLORING} mode — read-only
@@ -126,7 +140,8 @@ public final class ArthurActionSchema {
      * user memory, not on the project workspace.
      */
     public static final Set<String> TYPES_FOR_EXPLORING = Set.of(
-            TYPE_ANSWER, TYPE_LEARN, TYPE_PROPOSE_PLAN, TYPE_START_PLAN);
+            TYPE_ANSWER, TYPE_LEARN, TYPE_DISCOVER,
+            TYPE_PROPOSE_PLAN, TYPE_START_PLAN);
 
     /**
      * Action types allowed in {@code PLANNING} mode — interpreting
@@ -142,7 +157,8 @@ public final class ArthurActionSchema {
      */
     public static final Set<String> TYPES_FOR_EXECUTING = Set.of(
             TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE, TYPE_RELAY,
-            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_START_PLAN, TYPE_TODO_UPDATE);
+            TYPE_WAIT, TYPE_REJECT, TYPE_LEARN, TYPE_DISCOVER,
+            TYPE_START_PLAN, TYPE_TODO_UPDATE);
 
     public static Set<String> typesForMode(
             de.mhus.vance.api.thinkprocess.ProcessMode mode) {
@@ -188,6 +204,11 @@ public final class ArthurActionSchema {
     public static final String PARAM_NOTES   = "notes";
     public static final String PARAM_UPDATES = "updates";
 
+    /** DISCOVER intent — the user-mentioned term / question / phrase
+     *  that the LLM doesn't recognise. Passed to
+     *  {@code DiscoveryService.discover}. */
+    public static final String PARAM_INTENT  = "intent";
+
     /**
      * JSON schema (flat) covering all action types. Per-type
      * required-field validation lives in
@@ -201,7 +222,7 @@ public final class ArthurActionSchema {
         typeProp.put("enum", List.of(
                 TYPE_ANSWER, TYPE_ASK_USER, TYPE_DELEGATE,
                 TYPE_RELAY, TYPE_WAIT, TYPE_REJECT, TYPE_LEARN,
-                TYPE_START_PLAN, TYPE_PROPOSE_PLAN,
+                TYPE_DISCOVER, TYPE_START_PLAN, TYPE_PROPOSE_PLAN,
                 TYPE_START_EXECUTION, TYPE_TODO_UPDATE));
         typeProp.put("description",
                 "Which branch this turn takes. ANSWER = direct reply. "
@@ -210,10 +231,13 @@ public final class ArthurActionSchema {
                         + "reply as your own answer. WAIT = async work running. "
                         + "REJECT = out of scope. LEARN = persist something "
                         + "about the user (persona summary or specific fact) "
-                        + "into the cross-engine per-user memory. START_PLAN = "
-                        + "enter EXPLORING mode for plan-then-confirm-then-execute. "
-                        + "PROPOSE_PLAN = submit plan + TodoList for user "
-                        + "approval (EXPLORING/PLANNING). "
+                        + "into the cross-engine per-user memory. DISCOVER = "
+                        + "look up a user-mentioned term in Vance's manuals / "
+                        + "skills / tools BEFORE deciding what to do — picks "
+                        + "the right downstream action with the result in hand. "
+                        + "START_PLAN = enter EXPLORING mode for plan-then-"
+                        + "confirm-then-execute. PROPOSE_PLAN = submit plan + "
+                        + "TodoList for user approval (EXPLORING/PLANNING). "
                         + "START_EXECUTION = begin work after user accepted "
                         + "the plan (PLANNING). TODO_UPDATE = update TodoList "
                         + "item statuses (EXECUTING). The system prompt tells "
@@ -392,6 +416,19 @@ public final class ArthurActionSchema {
                         + "the options are a UI shortcut, not a "
                         + "constraint.");
 
+        Map<String, Object> intentProp = new LinkedHashMap<>();
+        intentProp.put("type", "string");
+        intentProp.put("description",
+                "DISCOVER-only: the user-mentioned term / phrase / "
+                        + "intent to look up in the Vance knowledge "
+                        + "surface (manuals, skills, server tools). "
+                        + "Required for DISCOVER. One short sentence "
+                        + "or noun-phrase, e.g. \"frobnication summary\" "
+                        + "or \"how to attach a calendar\". The engine "
+                        + "runs the discovery synchronously and injects "
+                        + "the result back so you can pick a downstream "
+                        + "action with the result in hand.");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("type", typeProp);
         properties.put("reason", reasonProp);
@@ -410,6 +447,7 @@ public final class ArthurActionSchema {
         properties.put(PARAM_NOTES, notesProp);
         properties.put(PARAM_UPDATES, updatesProp);
         properties.put(PARAM_OPTIONS, optionsProp);
+        properties.put(PARAM_INTENT, intentProp);
 
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("type", "object");

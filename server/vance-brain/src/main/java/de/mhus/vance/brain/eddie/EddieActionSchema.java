@@ -74,6 +74,20 @@ public final class EddieActionSchema {
     public static final String TYPE_REJECT           = "REJECT";
 
     /**
+     * Looks up a user-mentioned term / intent in the Vance knowledge
+     * surface (manuals, skills, server tools, kit-installed apps)
+     * before deciding what to do. CONTINUING action — the engine
+     * calls {@code DiscoveryService}, injects the result as the
+     * action tool's tool-result, and the action-loop iterates again
+     * so Eddie can pick a real action (ANSWER / DELEGATE_PROJECT /
+     * STEER_PROJECT / …) with the discovery in hand. Use for
+     * **user-introduced terminology** Eddie doesn't recognise. The
+     * read-only {@code how_do_i} tool stays available for proactive
+     * mid-turn syntax / capability lookups.
+     */
+    public static final String TYPE_DISCOVER         = "DISCOVER";
+
+    /**
      * Eddie's own action types — used for the schema enum and the
      * structured-action validator. Plan-Mode types from
      * {@link PlanModeActionSchema#ALL_TYPES} are unioned into
@@ -86,7 +100,7 @@ public final class EddieActionSchema {
             TYPE_ANSWER, TYPE_ASK_USER,
             TYPE_DELEGATE_PROJECT, TYPE_STEER_PROJECT,
             TYPE_RELAY, TYPE_RELAY_INBOX,
-            TYPE_LEARN,
+            TYPE_LEARN, TYPE_DISCOVER,
             TYPE_MEDIATE,
             TYPE_WAIT, TYPE_REJECT);
 
@@ -181,6 +195,10 @@ public final class EddieActionSchema {
      */
     public static final String PARAM_OPTIONS      = "options";
 
+    /** DISCOVER intent — the user-mentioned term / question / phrase
+     *  Eddie doesn't recognise. Passed to {@code DiscoveryService.discover}. */
+    public static final String PARAM_INTENT       = "intent";
+
     /**
      * Schema (flat) covering all action types. Per-type required-field
      * validation lives in {@code EddieEngine.handleAction}, where the
@@ -197,7 +215,7 @@ public final class EddieActionSchema {
                 TYPE_ANSWER, TYPE_ASK_USER,
                 TYPE_DELEGATE_PROJECT, TYPE_STEER_PROJECT,
                 TYPE_RELAY, TYPE_RELAY_INBOX,
-                TYPE_LEARN,
+                TYPE_LEARN, TYPE_DISCOVER,
                 TYPE_MEDIATE,
                 TYPE_WAIT, TYPE_REJECT,
                 // Plan-Mode types — handled by the shared PlanModeService.
@@ -215,7 +233,11 @@ public final class EddieActionSchema {
                         + "RELAY_INBOX = save a worker reply to the user's "
                         + "inbox + announce it briefly. LEARN = persist "
                         + "something about the user (persona summary or "
-                        + "specific fact) into per-user memory. MEDIATE = "
+                        + "specific fact) into per-user memory. DISCOVER = "
+                        + "look up a user-mentioned term in Vance's manuals / "
+                        + "skills / tools / kit-installed apps BEFORE deciding "
+                        + "what to do — picks the right downstream action with "
+                        + "the result in hand. MEDIATE = "
                         + "hand the user-WS over to a worker session for a "
                         + "direct conversation (use when the user needs "
                         + "client-side tools the worker has but Eddie can't "
@@ -465,6 +487,20 @@ public final class EddieActionSchema {
                         + "instead of picking — the options are a UI "
                         + "shortcut, not a constraint.");
 
+        Map<String, Object> intentProp = new LinkedHashMap<>();
+        intentProp.put("type", "string");
+        intentProp.put("description",
+                "DISCOVER-only: the user-mentioned term / phrase / "
+                        + "intent to look up in the Vance knowledge "
+                        + "surface (manuals, skills, server tools, "
+                        + "kit-installed apps). Required for DISCOVER. "
+                        + "One short sentence or noun-phrase, e.g. "
+                        + "\"frobnication overview\" or \"connect my "
+                        + "horoscope\". The engine runs the discovery "
+                        + "synchronously and injects the result back so "
+                        + "you can pick a downstream action with the "
+                        + "result in hand.");
+
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("type", typeProp);
         properties.put("reason", reasonProp);
@@ -484,6 +520,7 @@ public final class EddieActionSchema {
         properties.put(PARAM_SCOPE, scopeProp);
         properties.put(PARAM_MODE, modeProp);
         properties.put(PARAM_OPTIONS, optionsProp);
+        properties.put(PARAM_INTENT, intentProp);
         // Plan-Mode params from PlanModeActionSchema.
         properties.put(PlanModeActionSchema.PARAM_GOAL, planGoalProp);
         properties.put(PlanModeActionSchema.PARAM_PLAN, planProp);

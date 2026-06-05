@@ -174,7 +174,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
      * waiting for user approval — the chain pauses there.
      */
     private static final Set<String> CONTINUING_ACTIONS = Set.of(
-            ArthurActionSchema.TYPE_TODO_UPDATE);
+            ArthurActionSchema.TYPE_TODO_UPDATE,
+            ArthurActionSchema.TYPE_DISCOVER);
 
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
@@ -222,6 +223,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter;
     private final de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService;
     private final UserMemoryService userMemoryService;
+    private final de.mhus.vance.brain.discovery.DiscoveryService discoveryService;
+    private final ObjectMapper objectMapper;
 
     /**
      * Per-process flag tracking whether the in-flight turn was triggered
@@ -275,7 +278,9 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.shared.chat.ChatMessageService chatMessageService,
             de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter,
             de.mhus.vance.brain.memory.MemoryCompactionService memoryCompactionService,
-            UserMemoryService userMemoryService) {
+            UserMemoryService userMemoryService,
+            @org.springframework.context.annotation.Lazy
+                    de.mhus.vance.brain.discovery.DiscoveryService discoveryService) {
         super(streamingProperties, llmCallTracker, objectMapper, composer);
         this.thinkProcessService = thinkProcessService;
         this.arthurProperties = arthurProperties;
@@ -294,6 +299,8 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.historyStrengthFilter = historyStrengthFilter;
         this.memoryCompactionService = memoryCompactionService;
         this.userMemoryService = userMemoryService;
+        this.discoveryService = discoveryService;
+        this.objectMapper = objectMapper;
     }
 
     // ──────────────────── Metadata ────────────────────
@@ -1167,6 +1174,15 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.action.EngineAction action,
             ThinkProcessDocument process,
             ThinkEngineContext ctx) {
+        // DISCOVER short-circuits the standard handleAction dispatch —
+        // it never touches process.todos or the chat, just runs a
+        // synchronous lookup and feeds the JSON result back to the LLM
+        // as the action's tool-result. Next iteration of the action
+        // loop the LLM picks a real action (ANSWER / DELEGATE / …)
+        // with the discovery in hand.
+        if (ArthurActionSchema.TYPE_DISCOVER.equals(action.type())) {
+            return handleDiscover(action, process, ctx);
+        }
         // Reuse the same dispatch as terminal actions — handleTodoUpdate
         // is idempotent and persists the new state in process.todos.
         // Discard the ActionTurnOutcome (chatMessage / awaiting) since
@@ -1182,6 +1198,85 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             return renderTodoUpdateFeedback(process);
         }
         return "Action " + action.type() + " applied.";
+    }
+
+    /**
+     * DISCOVER handler — synchronous lookup against the central
+     * {@link de.mhus.vance.brain.discovery.DiscoveryService} for a
+     * user-mentioned term. Returns the JSON-formatted result as the
+     * tool-result for the action call so the next action-loop
+     * iteration sees it in the prompt.
+     *
+     * <p>Mirrors the response shape of {@code how_do_i} — same
+     * {@code loaded} / {@code alternatives} / {@code hint} keys — so
+     * the LLM already knows how to read it from manuals and prompts.
+     */
+    private String handleDiscover(
+            de.mhus.vance.brain.thinkengine.action.EngineAction action,
+            ThinkProcessDocument process,
+            ThinkEngineContext ctx) {
+        Object raw = action.params().get(ArthurActionSchema.PARAM_INTENT);
+        if (!(raw instanceof String intent) || intent.isBlank()) {
+            return "DISCOVER: missing 'intent' — emit a non-blank "
+                    + "user-mentioned term or phrase.";
+        }
+        try {
+            de.mhus.vance.brain.discovery.DiscoveryResult result =
+                    discoveryService.discover(
+                            intent,
+                            process.getTenantId(),
+                            process.getProjectId(),
+                            process.getId());
+            String json = serializeDiscoveryResult(result);
+            log.info("Arthur id='{}' DISCOVER intent='{}' loaded={} alternatives={}",
+                    process.getId(), intent,
+                    result.getLoaded() != null ? result.getLoaded().getName() : null,
+                    result.getAlternatives() == null ? 0
+                            : result.getAlternatives().size());
+            return json;
+        } catch (RuntimeException e) {
+            log.warn("Arthur id='{}' DISCOVER intent='{}' failed: {}",
+                    process.getId(), intent, e.toString());
+            return "DISCOVER failed: " + e.getMessage()
+                    + " — fall back to manual_list / manual_read or just answer "
+                    + "with what you know.";
+        }
+    }
+
+    private String serializeDiscoveryResult(
+            de.mhus.vance.brain.discovery.DiscoveryResult result) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("intent", result.getIntent());
+        out.put("loaded", result.getLoaded() == null
+                ? null : matchToMap(result.getLoaded()));
+        java.util.List<java.util.Map<String, Object>> alternatives =
+                new java.util.ArrayList<>();
+        if (result.getAlternatives() != null) {
+            for (de.mhus.vance.brain.discovery.DiscoveryResult.Match m
+                    : result.getAlternatives()) {
+                alternatives.add(matchToMap(m));
+            }
+        }
+        out.put("alternatives", alternatives);
+        out.put("hint", result.getHint());
+        try {
+            return objectMapper.writeValueAsString(out);
+        } catch (RuntimeException e) {
+            log.warn("Arthur DISCOVER: JSON serialize failed: {}", e.toString());
+            return out.toString();
+        }
+    }
+
+    private static java.util.Map<String, Object> matchToMap(
+            de.mhus.vance.brain.discovery.DiscoveryResult.Match m) {
+        java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("type", m.getType());
+        out.put("name", m.getName());
+        if (m.getSource() != null) out.put("source", m.getSource());
+        if (m.getSummary() != null) out.put("summary", m.getSummary());
+        if (m.getScore() != null) out.put("score", m.getScore());
+        if (m.getContent() != null) out.put("content", m.getContent());
+        return out;
     }
 
     /**

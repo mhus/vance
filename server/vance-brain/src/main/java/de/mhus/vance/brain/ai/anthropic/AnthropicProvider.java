@@ -2,17 +2,15 @@ package de.mhus.vance.brain.ai.anthropic;
 
 import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
-import de.mhus.vance.brain.ai.AiChat;
+import de.mhus.vance.brain.ai.AbstractChatProvider;
 import de.mhus.vance.brain.ai.AiChatConfig;
-import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
-import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.CacheBoundary;
+import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
-import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -22,10 +20,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Anthropic backend for {@link AiModelProvider}, built on top of
- * {@link AnthropicDirectChatModel} so prompt caching and beta headers
- * are reachable. Replaces the langchain4j-anthropic implementation
- * (the latter doesn't expose {@code cache_control}).
+ * Anthropic backend, built on top of {@link AnthropicDirectChatModel}
+ * so prompt caching and beta headers are reachable. Replaces the
+ * langchain4j-anthropic implementation (the latter doesn't expose
+ * {@code cache_control}).
  *
  * <p>Per-call sync + streaming pair share the same {@link AnthropicClient}
  * — the SDK is thread-safe and reusing the client keeps the connection
@@ -34,26 +32,26 @@ import org.springframework.stereotype.Component;
  * <p>Honors the global {@code vance.ai.cache.enabled} switch
  * (default {@code true}). When set to {@code false}, the provider
  * downgrades any inbound {@link AiChatOptions#getCacheBoundary()} to
- * {@link CacheBoundary#NONE} before constructing the chat — engines
- * keep using {@code AiChatOptions} as usual, the operator-level kill
- * switch wins.
+ * {@link CacheBoundary#NONE} via {@link #applyOptionGates} before
+ * constructing the chat — engines keep using {@code AiChatOptions} as
+ * usual, the operator-level kill switch wins.
+ *
+ * <p>Cross-cutting orchestration lives in {@link AbstractChatProvider}.
  */
 @Component
 @Slf4j
-public class AnthropicProvider implements AiModelProvider {
-
-    public static final String NAME = ProviderType.ANTHROPIC.wireName();
+public class AnthropicProvider extends AbstractChatProvider {
 
     /** Anthropic's API requires maxTokens; pick a safe upper bound when callers omit it. */
     private static final int DEFAULT_MAX_TOKENS = 4096;
 
     private final boolean cacheEnabled;
-    private final ModelCatalog modelCatalog;
 
     public AnthropicProvider(
             ModelCatalog modelCatalog,
+            LlmResponseSanitizer responseSanitizer,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
-        this.modelCatalog = modelCatalog;
+        super(modelCatalog, responseSanitizer);
         this.cacheEnabled = cacheEnabled;
         if (!cacheEnabled) {
             log.info("Anthropic prompt caching DISABLED via vance.ai.cache.enabled=false");
@@ -65,47 +63,38 @@ public class AnthropicProvider implements AiModelProvider {
         return ProviderType.ANTHROPIC;
     }
 
+    /**
+     * Combined option-gate pass: capability-driven thinking downgrade
+     * + global cache kill. Both operations return a fresh
+     * {@link AiChatOptions} (immutable contract preserved).
+     */
     @Override
-    public AiChat createChat(AiChatConfig config, AiChatOptions options) {
-        if (!NAME.equals(config.provider())) {
-            throw new AiChatException(
-                    "AnthropicProvider received config for provider '" + config.provider() + "'");
-        }
-        ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                options.getTenantId(), options.getProjectId(),
-                config.providerInstance(), NAME, config.modelName());
-        AiChatOptions effective = applyCapabilityGates(
-                applyGlobalCacheKill(options), modelInfo);
+    protected AiChatOptions applyOptionGates(AiChatOptions options, ModelInfo modelInfo) {
+        return applyCapabilityGates(applyGlobalCacheKill(options), modelInfo);
+    }
+
+    @Override
+    protected BuiltChat buildModels(
+            AiChatConfig config, AiChatOptions effective, ModelInfo modelInfo) {
         int maxTokens = effective.getMaxTokens() != null
                 ? effective.getMaxTokens()
                 : DEFAULT_MAX_TOKENS;
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(effective.getTimeoutSeconds()));
-        try {
-            AnthropicClient client = AnthropicOkHttpClient.builder()
-                    .apiKey(config.apiKey())
-                    .timeout(timeout)
-                    .build();
-            ChatModel sync = new AnthropicDirectChatModel(
-                    client, config.modelName(), maxTokens, effective);
-            StreamingChatModel streaming = new AnthropicDirectStreamingChatModel(
-                    client, config.modelName(), maxTokens, effective);
-            log.debug("Built Anthropic chat: model='{}', maxTokens={}, "
-                            + "cacheBoundary={}, ttl={}, thinking={}",
-                    config.modelName(), maxTokens,
-                    effective.getCacheBoundary(), effective.getCacheTtl(),
-                    effective.getThinkingLevel());
-            return new StandardAiChat(
-                    config.fullName(),
-                    ProviderType.ANTHROPIC,
-                    modelInfo.capabilities(),
-                    sync,
-                    streaming,
-                    effective);
-        } catch (RuntimeException e) {
-            throw new AiChatException(
-                    "Failed to build Anthropic chat for " + config.fullName(), e);
-        }
+        AnthropicClient client = AnthropicOkHttpClient.builder()
+                .apiKey(config.apiKey())
+                .timeout(timeout)
+                .build();
+        ChatModel sync = new AnthropicDirectChatModel(
+                client, config.modelName(), maxTokens, effective);
+        StreamingChatModel streaming = new AnthropicDirectStreamingChatModel(
+                client, config.modelName(), maxTokens, effective);
+        log.debug("Built Anthropic chat: model='{}', maxTokens={}, "
+                        + "cacheBoundary={}, ttl={}, thinking={}",
+                config.modelName(), maxTokens,
+                effective.getCacheBoundary(), effective.getCacheTtl(),
+                effective.getThinkingLevel());
+        return new BuiltChat(sync, streaming);
     }
 
     /**

@@ -1,17 +1,15 @@
 package de.mhus.vance.brain.ai.openai;
 
-import de.mhus.vance.brain.ai.AiChat;
+import de.mhus.vance.brain.ai.AbstractChatProvider;
 import de.mhus.vance.brain.ai.AiChatConfig;
-import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
-import de.mhus.vance.brain.ai.AiModelProvider;
 import de.mhus.vance.brain.ai.CacheBoundary;
 import de.mhus.vance.brain.ai.CacheTtl;
+import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
-import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
@@ -28,14 +26,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * OpenAI backend for {@link AiModelProvider}.
+ * OpenAI backend.
  *
- * <p>Builds {@link OpenAiChatModel} (sync) and
- * {@link OpenAiStreamingChatModel} (streaming) with identical parameters,
- * wraps them in a shared {@link StandardAiChat}.
- *
- * <p>The base URL is configurable via {@code vance.ai.openai.base-url} so
- * the same provider can target OpenAI proper or any OpenAI-compatible
+ * <p>Builds {@link OpenAiChatModel} (sync) + {@link OpenAiStreamingChatModel}
+ * (streaming). The base URL is configurable via {@code vance.ai.openai.base-url}
+ * so the same provider can target OpenAI proper or any OpenAI-compatible
  * gateway. Note: LM Studio has its own provider; this one is reserved
  * for OpenAI-proper and explicit OpenAI-protocol bridges (not a generic
  * "anything-OpenAI-shaped" catch-all).
@@ -59,25 +54,23 @@ import org.springframework.stereotype.Component;
  * Both fields are dropped when {@link AiChatOptions#getCacheBoundary()}
  * is {@link CacheBoundary#NONE} or the global
  * {@code vance.ai.cache.enabled} switch is {@code false} — that's the
- * symmetric kill-switch with the Anthropic provider, even though
- * OpenAI's server-side prefix cache can't truly be disabled from the
- * client side (it just stops being optimised).
+ * symmetric kill-switch with the Anthropic provider.
+ *
+ * <p>Cross-cutting orchestration lives in {@link AbstractChatProvider}.
  */
 @Component
 @Slf4j
-public class OpenAiProvider implements AiModelProvider {
-
-    public static final String NAME = ProviderType.OPENAI.wireName();
+public class OpenAiProvider extends AbstractChatProvider {
 
     private final String defaultBaseUrl;
     private final boolean cacheEnabled;
-    private final ModelCatalog modelCatalog;
 
     public OpenAiProvider(
             ModelCatalog modelCatalog,
+            LlmResponseSanitizer responseSanitizer,
             @Value("${vance.ai.openai.base-url:https://api.openai.com/v1}") String baseUrl,
             @Value("${vance.ai.cache.enabled:true}") boolean cacheEnabled) {
-        this.modelCatalog = modelCatalog;
+        super(modelCatalog, responseSanitizer);
         this.defaultBaseUrl = baseUrl;
         this.cacheEnabled = cacheEnabled;
         if (!cacheEnabled) {
@@ -92,14 +85,8 @@ public class OpenAiProvider implements AiModelProvider {
     }
 
     @Override
-    public AiChat createChat(AiChatConfig config, AiChatOptions options) {
-        if (!NAME.equals(config.provider())) {
-            throw new AiChatException(
-                    "OpenAiProvider received config for provider '" + config.provider() + "'");
-        }
-        ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                options.getTenantId(), options.getProjectId(),
-                config.providerInstance(), NAME, config.modelName());
+    protected BuiltChat buildModels(
+            AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         Map<String, Object> cacheParams = buildCacheParameters(config, options, cacheEnabled);
@@ -107,67 +94,54 @@ public class OpenAiProvider implements AiModelProvider {
         // Per-tenant override (cortecs / OpenRouter / vLLM) wins over the Spring
         // boot-time default. Empty / unset falls back to vance.ai.openai.base-url.
         String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
-        try {
-            OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
-                    .baseUrl(baseUrl)
-                    .apiKey(config.apiKey())
-                    .modelName(config.modelName())
-                    .temperature(options.getTemperature())
-                    .maxTokens(options.getMaxTokens())
-                    .topP(options.getTopP())
-                    .frequencyPenalty(options.getFrequencyPenalty())
-                    .presencePenalty(options.getPresencePenalty())
-                    .seed(seed)
-                    .stop(options.getStopSequences())
-                    .timeout(timeout)
-                    .logRequests(options.getLogRequests())
-                    .logResponses(options.getLogRequests());
-            OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder streamBuilder =
-                    OpenAiStreamingChatModel.builder()
-                            .baseUrl(baseUrl)
-                            .apiKey(config.apiKey())
-                            .modelName(config.modelName())
-                            .temperature(options.getTemperature())
-                            .maxTokens(options.getMaxTokens())
-                            .topP(options.getTopP())
-                            .frequencyPenalty(options.getFrequencyPenalty())
-                            .presencePenalty(options.getPresencePenalty())
-                            .seed(seed)
-                            .stop(options.getStopSequences())
-                            .timeout(timeout)
-                            .logRequests(options.getLogRequests())
-                            .logResponses(options.getLogRequests());
-            if (!cacheParams.isEmpty()) {
-                syncBuilder.customParameters(cacheParams);
-                streamBuilder.customParameters(cacheParams);
-            }
-            ThinkingLevel effectiveLevel = gateThinkingLevel(
-                    options.getThinkingLevel(), modelInfo);
-            String reasoningEffort = mapReasoningEffort(effectiveLevel);
-            if (reasoningEffort != null) {
-                OpenAiChatRequestParameters defaults = OpenAiChatRequestParameters.builder()
-                        .reasoningEffort(reasoningEffort)
-                        .build();
-                syncBuilder.defaultRequestParameters(defaults);
-                streamBuilder.defaultRequestParameters(defaults);
-            }
-            OpenAiChatModel sync = syncBuilder.build();
-            OpenAiStreamingChatModel streaming = streamBuilder.build();
-            log.debug("Built OpenAI chat pair: model='{}', baseUrl='{}', maxTokens={}, "
-                            + "temperature={}, cacheParams={}, reasoningEffort={}",
-                    config.modelName(), baseUrl, options.getMaxTokens(),
-                    options.getTemperature(), cacheParams.keySet(), reasoningEffort);
-            return new StandardAiChat(
-                    config.fullName(),
-                    ProviderType.OPENAI,
-                    modelInfo.capabilities(),
-                    sync,
-                    streaming,
-                    options);
-        } catch (RuntimeException e) {
-            throw new AiChatException(
-                    "Failed to build OpenAI chat for " + config.fullName(), e);
+        OpenAiChatModel.OpenAiChatModelBuilder syncBuilder = OpenAiChatModel.builder()
+                .baseUrl(baseUrl)
+                .apiKey(config.apiKey())
+                .modelName(config.modelName())
+                .temperature(options.getTemperature())
+                .maxTokens(options.getMaxTokens())
+                .topP(options.getTopP())
+                .frequencyPenalty(options.getFrequencyPenalty())
+                .presencePenalty(options.getPresencePenalty())
+                .seed(seed)
+                .stop(options.getStopSequences())
+                .timeout(timeout)
+                .logRequests(options.getLogRequests())
+                .logResponses(options.getLogRequests());
+        OpenAiStreamingChatModel.OpenAiStreamingChatModelBuilder streamBuilder =
+                OpenAiStreamingChatModel.builder()
+                        .baseUrl(baseUrl)
+                        .apiKey(config.apiKey())
+                        .modelName(config.modelName())
+                        .temperature(options.getTemperature())
+                        .maxTokens(options.getMaxTokens())
+                        .topP(options.getTopP())
+                        .frequencyPenalty(options.getFrequencyPenalty())
+                        .presencePenalty(options.getPresencePenalty())
+                        .seed(seed)
+                        .stop(options.getStopSequences())
+                        .timeout(timeout)
+                        .logRequests(options.getLogRequests())
+                        .logResponses(options.getLogRequests());
+        if (!cacheParams.isEmpty()) {
+            syncBuilder.customParameters(cacheParams);
+            streamBuilder.customParameters(cacheParams);
         }
+        ThinkingLevel effectiveLevel = gateThinkingLevel(
+                options.getThinkingLevel(), modelInfo);
+        String reasoningEffort = mapReasoningEffort(effectiveLevel);
+        if (reasoningEffort != null) {
+            OpenAiChatRequestParameters defaults = OpenAiChatRequestParameters.builder()
+                    .reasoningEffort(reasoningEffort)
+                    .build();
+            syncBuilder.defaultRequestParameters(defaults);
+            streamBuilder.defaultRequestParameters(defaults);
+        }
+        log.debug("Built OpenAI chat pair: model='{}', baseUrl='{}', maxTokens={}, "
+                        + "temperature={}, cacheParams={}, reasoningEffort={}",
+                config.modelName(), baseUrl, options.getMaxTokens(),
+                options.getTemperature(), cacheParams.keySet(), reasoningEffort);
+        return new BuiltChat(syncBuilder.build(), streamBuilder.build());
     }
 
     /**

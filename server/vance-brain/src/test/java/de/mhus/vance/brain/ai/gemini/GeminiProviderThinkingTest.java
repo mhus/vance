@@ -19,7 +19,8 @@ class GeminiProviderThinkingTest {
                 : EnumSet.copyOf(java.util.Arrays.asList(caps));
         return new ModelInfo("gemini", "test-model", 1_000_000, 8192, ModelSize.LARGE, set,
                 ModelInfo.DEFAULT_TIMEOUT_SECONDS,
-                ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS);
+                ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
+                false);
     }
 
     @Test

@@ -349,6 +349,9 @@ ollama:
     defaultMaxOutputTokens: 4096
     size: SMALL
     timeoutSeconds: 180
+    # qwen3 emits <think>…</think>; strip from user-visible content.
+    # See the qwen3:30b entry below for the full rationale.
+    stripThinkTags: true
 
   # ── Medium reasoning tier ─────────────────────────────────────
   "gpt-oss:20b":
@@ -356,6 +359,10 @@ ollama:
     defaultMaxOutputTokens: 4096
     size: SMALL
     timeoutSeconds: 240
+    # gpt-oss uses OpenAI's harmony format — emits <|channel|>analysis
+    # / commentary / final segments. Strip the analysis/commentary
+    # parts so only the final user-visible content reaches chat_messages.
+    stripThinkTags: true
   "mistral-small3.2:24b":
     contextWindowTokens: 131072
     defaultMaxOutputTokens: 4096
@@ -373,6 +380,15 @@ ollama:
     defaultMaxOutputTokens: 4096
     size: LARGE
     timeoutSeconds: 300
+    # qwen3 is a reasoning model — it emits <think>…</think> blocks
+    # by default even when `think=false` is passed (the flag isn't
+    # reliably honoured on local Ollama). The blocks belong in the
+    # LlmTrace for audit but MUST be stripped from the user-visible
+    # chat content and from history-replay, otherwise the model's
+    # "thinking" leaks into rendered fences and into the next-turn
+    # context. The brain's LlmResponseSanitizer enforces this when
+    # the flag is true.
+    stripThinkTags: true
 
   # qwen3.6:35b is the next-gen MoE (35B params, 3B active) with
   # full 256K native context, tools + thinking + vision. ~24 GB
@@ -383,3 +399,4 @@ ollama:
     size: LARGE
     capabilities: [vision]
     timeoutSeconds: 300
+    stripThinkTags: true

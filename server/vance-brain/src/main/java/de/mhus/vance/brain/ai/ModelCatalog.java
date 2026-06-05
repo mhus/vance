@@ -70,7 +70,8 @@ public class ModelCatalog {
     private static final ModelInfo FALLBACK_TEMPLATE = new ModelInfo(
             "?", "?", 8192, 4096, ModelSize.LARGE, Set.of(),
             ModelInfo.DEFAULT_TIMEOUT_SECONDS,
-            ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS);
+            ModelInfo.DEFAULT_ACTION_LOOP_CORRECTIONS,
+            false);
 
     private final DocumentService documentService;
 
@@ -325,8 +326,10 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.timeoutSeconds());
         int corrections = readInt(spec.get("actionLoopCorrections"),
                 FALLBACK_TEMPLATE.actionLoopCorrections());
+        boolean stripThinkTags = readBoolean(spec.get("stripThinkTags"),
+                FALLBACK_TEMPLATE.stripThinkTags());
         return new ModelInfo(provider, modelName, ctx, out, size, caps,
-                timeout, corrections);
+                timeout, corrections, stripThinkTags);
     }
 
     private static ModelInfo fallback(@Nullable String provider, @Nullable String modelName) {
@@ -342,7 +345,18 @@ public class ModelCatalog {
                 FALLBACK_TEMPLATE.size(),
                 FALLBACK_TEMPLATE.capabilities(),
                 FALLBACK_TEMPLATE.timeoutSeconds(),
-                FALLBACK_TEMPLATE.actionLoopCorrections());
+                FALLBACK_TEMPLATE.actionLoopCorrections(),
+                FALLBACK_TEMPLATE.stripThinkTags());
+    }
+
+    private static boolean readBoolean(@Nullable Object raw, boolean fallback) {
+        if (raw instanceof Boolean b) return b;
+        if (raw instanceof String s) {
+            String t = s.trim().toLowerCase(java.util.Locale.ROOT);
+            if (t.equals("true") || t.equals("yes") || t.equals("1")) return true;
+            if (t.equals("false") || t.equals("no") || t.equals("0")) return false;
+        }
+        return fallback;
     }
 
     private static int readInt(@Nullable Object raw, int fallback) {

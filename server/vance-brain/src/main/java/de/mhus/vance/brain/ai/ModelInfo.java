@@ -26,7 +26,8 @@ public record ModelInfo(
         ModelSize size,
         Set<ModelCapability> capabilities,
         int timeoutSeconds,
-        int actionLoopCorrections) {
+        int actionLoopCorrections,
+        boolean stripThinkTags) {
 
     /**
      * Conservative per-call timeout used when neither the catalog

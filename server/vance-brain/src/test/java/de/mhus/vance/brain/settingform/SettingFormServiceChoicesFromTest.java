@@ -127,6 +127,6 @@ class SettingFormServiceChoicesFromTest {
 
     private static ModelInfo model(String provider, String name, ModelSize size) {
         return new ModelInfo(provider, name, 200000, 8192, size,
-                Set.<ModelCapability>of(), 60, 2);
+                Set.<ModelCapability>of(), 60, 2, false);
     }
 }

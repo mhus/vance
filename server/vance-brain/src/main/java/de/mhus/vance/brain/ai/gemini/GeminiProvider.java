@@ -1,15 +1,13 @@
 package de.mhus.vance.brain.ai.gemini;
 
-import de.mhus.vance.brain.ai.AiChat;
+import de.mhus.vance.brain.ai.AbstractChatProvider;
 import de.mhus.vance.brain.ai.AiChatConfig;
-import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
-import de.mhus.vance.brain.ai.AiModelProvider;
+import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCapability;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
-import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.googleai.GeminiThinkingConfig;
 import dev.langchain4j.model.googleai.GoogleAiGeminiChatModel;
@@ -20,11 +18,10 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /**
- * Google Gemini backend for {@link AiModelProvider}.
+ * Google Gemini backend.
  *
- * <p>Builds {@link GoogleAiGeminiChatModel} (sync) and
- * {@link GoogleAiGeminiStreamingChatModel} (streaming) with identical
- * parameters, wraps them in a shared {@link StandardAiChat}. Gemini field
+ * <p>Builds {@link GoogleAiGeminiChatModel} (sync) +
+ * {@link GoogleAiGeminiStreamingChatModel} (streaming). Gemini field
  * names differ slightly from Anthropic's (maxOutputTokens,
  * logRequestsAndResponses) — handled here, hidden from callers.
  *
@@ -33,27 +30,22 @@ import org.springframework.stereotype.Component;
  * automatically when a request shares a prefix with a recent one
  * (≥ 1024 tokens for Flash, 4096 for Pro). There is intentionally
  * <b>no client-side lever</b> here: the per-call
- * {@link de.mhus.vance.brain.ai.AiChatOptions#getCacheBoundary()} and
- * {@link de.mhus.vance.brain.ai.AiChatOptions#getCacheTtl()} are
- * silently ignored — Gemini doesn't expose comparable controls. The
- * explicit {@code cachedContents.create} API exists but requires its
- * own resource lifecycle (TTL, refresh, delete) and is impractical for
- * Vance's short-lived sessions with dynamic system prompts.
+ * {@link AiChatOptions#getCacheBoundary()} and
+ * {@link AiChatOptions#getCacheTtl()} are silently ignored — Gemini
+ * doesn't expose comparable controls.
  *
  * <p>The kill-switch {@code vance.ai.cache.enabled=false} is therefore
  * unenforceable here and not consulted; Anthropic and OpenAI still
  * honour it.
+ *
+ * <p>Cross-cutting orchestration lives in {@link AbstractChatProvider}.
  */
 @Component
 @Slf4j
-public class GeminiProvider implements AiModelProvider {
+public class GeminiProvider extends AbstractChatProvider {
 
-    public static final String NAME = ProviderType.GEMINI.wireName();
-
-    private final ModelCatalog modelCatalog;
-
-    public GeminiProvider(ModelCatalog modelCatalog) {
-        this.modelCatalog = modelCatalog;
+    public GeminiProvider(ModelCatalog modelCatalog, LlmResponseSanitizer responseSanitizer) {
+        super(modelCatalog, responseSanitizer);
     }
 
     @Override
@@ -62,70 +54,51 @@ public class GeminiProvider implements AiModelProvider {
     }
 
     @Override
-    public AiChat createChat(AiChatConfig config, AiChatOptions options) {
-        if (!NAME.equals(config.provider())) {
-            throw new AiChatException(
-                    "GeminiProvider received config for provider '" + config.provider() + "'");
-        }
-        ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                options.getTenantId(), options.getProjectId(),
-                config.providerInstance(), NAME, config.modelName());
+    protected BuiltChat buildModels(
+            AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         ThinkingLevel effectiveLevel = gateThinkingLevel(
                 options.getThinkingLevel(), modelInfo);
         @Nullable GeminiThinkingConfig thinking = mapThinking(effectiveLevel);
         Integer seed = options.getSeed() == null ? null : options.getSeed().intValue();
-        try {
-            GoogleAiGeminiChatModel.GoogleAiGeminiChatModelBuilder syncBuilder =
-                    GoogleAiGeminiChatModel.builder()
-                            .apiKey(config.apiKey())
-                            .modelName(config.modelName())
-                            .temperature(options.getTemperature())
-                            .maxOutputTokens(options.getMaxTokens())
-                            .topP(options.getTopP())
-                            .topK(options.getTopK())
-                            .frequencyPenalty(options.getFrequencyPenalty())
-                            .presencePenalty(options.getPresencePenalty())
-                            .seed(seed)
-                            .stopSequences(options.getStopSequences())
-                            .timeout(timeout)
-                            .logRequestsAndResponses(options.getLogRequests());
-            GoogleAiGeminiStreamingChatModel.GoogleAiGeminiStreamingChatModelBuilder streamBuilder =
-                    GoogleAiGeminiStreamingChatModel.builder()
-                            .apiKey(config.apiKey())
-                            .modelName(config.modelName())
-                            .temperature(options.getTemperature())
-                            .maxOutputTokens(options.getMaxTokens())
-                            .topP(options.getTopP())
-                            .topK(options.getTopK())
-                            .frequencyPenalty(options.getFrequencyPenalty())
-                            .presencePenalty(options.getPresencePenalty())
-                            .seed(seed)
-                            .stopSequences(options.getStopSequences())
-                            .timeout(timeout)
-                            .logRequestsAndResponses(options.getLogRequests());
-            if (thinking != null) {
-                syncBuilder.thinkingConfig(thinking);
-                streamBuilder.thinkingConfig(thinking);
-            }
-            GoogleAiGeminiChatModel sync = syncBuilder.build();
-            GoogleAiGeminiStreamingChatModel streaming = streamBuilder.build();
-            log.debug("Built Gemini chat pair: model='{}', maxOutputTokens={}, "
-                            + "temperature={}, thinkingLevel={}",
-                    config.modelName(), options.getMaxTokens(),
-                    options.getTemperature(), options.getThinkingLevel());
-            return new StandardAiChat(
-                    config.fullName(),
-                    ProviderType.GEMINI,
-                    modelInfo.capabilities(),
-                    sync,
-                    streaming,
-                    options);
-        } catch (RuntimeException e) {
-            throw new AiChatException(
-                    "Failed to build Gemini chat for " + config.fullName(), e);
+        GoogleAiGeminiChatModel.GoogleAiGeminiChatModelBuilder syncBuilder =
+                GoogleAiGeminiChatModel.builder()
+                        .apiKey(config.apiKey())
+                        .modelName(config.modelName())
+                        .temperature(options.getTemperature())
+                        .maxOutputTokens(options.getMaxTokens())
+                        .topP(options.getTopP())
+                        .topK(options.getTopK())
+                        .frequencyPenalty(options.getFrequencyPenalty())
+                        .presencePenalty(options.getPresencePenalty())
+                        .seed(seed)
+                        .stopSequences(options.getStopSequences())
+                        .timeout(timeout)
+                        .logRequestsAndResponses(options.getLogRequests());
+        GoogleAiGeminiStreamingChatModel.GoogleAiGeminiStreamingChatModelBuilder streamBuilder =
+                GoogleAiGeminiStreamingChatModel.builder()
+                        .apiKey(config.apiKey())
+                        .modelName(config.modelName())
+                        .temperature(options.getTemperature())
+                        .maxOutputTokens(options.getMaxTokens())
+                        .topP(options.getTopP())
+                        .topK(options.getTopK())
+                        .frequencyPenalty(options.getFrequencyPenalty())
+                        .presencePenalty(options.getPresencePenalty())
+                        .seed(seed)
+                        .stopSequences(options.getStopSequences())
+                        .timeout(timeout)
+                        .logRequestsAndResponses(options.getLogRequests());
+        if (thinking != null) {
+            syncBuilder.thinkingConfig(thinking);
+            streamBuilder.thinkingConfig(thinking);
         }
+        log.debug("Built Gemini chat pair: model='{}', maxOutputTokens={}, "
+                        + "temperature={}, thinkingLevel={}",
+                config.modelName(), options.getMaxTokens(),
+                options.getTemperature(), options.getThinkingLevel());
+        return new BuiltChat(syncBuilder.build(), streamBuilder.build());
     }
 
     /**

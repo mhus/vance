@@ -1,14 +1,12 @@
 package de.mhus.vance.brain.ai.ollama;
 
-import de.mhus.vance.brain.ai.AiChat;
+import de.mhus.vance.brain.ai.AbstractChatProvider;
 import de.mhus.vance.brain.ai.AiChatConfig;
-import de.mhus.vance.brain.ai.AiChatException;
 import de.mhus.vance.brain.ai.AiChatOptions;
-import de.mhus.vance.brain.ai.AiModelProvider;
+import de.mhus.vance.brain.ai.LlmResponseSanitizer;
 import de.mhus.vance.brain.ai.ModelCatalog;
 import de.mhus.vance.brain.ai.ModelInfo;
 import de.mhus.vance.brain.ai.ProviderType;
-import de.mhus.vance.brain.ai.StandardAiChat;
 import de.mhus.vance.brain.ai.ThinkingLevel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.ollama.OllamaStreamingChatModel;
@@ -18,33 +16,35 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Ollama backend for {@link AiModelProvider} — self-hosted Ollama
- * servers (default {@code http://localhost:11434}).
+ * Ollama backend — self-hosted Ollama servers (default
+ * {@code http://localhost:11434}).
  *
  * <p>Builds {@link OllamaChatModel} (sync) and
- * {@link OllamaStreamingChatModel} (streaming) and wraps them in a
- * shared {@link StandardAiChat}. Ollama uses {@code numPredict} where
- * other providers use {@code maxTokens} — translated transparently
- * here.
+ * {@link OllamaStreamingChatModel} (streaming). Ollama uses
+ * {@code numPredict} where other providers use {@code maxTokens} —
+ * translated transparently in {@link #buildModels}.
  *
  * <p>Local Ollama doesn't authenticate. The {@link AiChatConfig#apiKey()}
  * is required by the config record (uniform contract with other
  * providers) but not forwarded to the model. Operators put a
  * placeholder string in the {@code ai.provider.ollama.apiKey} setting.
+ *
+ * <p>Cross-cutting orchestration (config validation,
+ * {@link ModelCatalog} lookup, {@link LlmResponseSanitizer}-wired
+ * {@code StandardAiChat} construction, {@code AiChatException} wrap)
+ * lives in {@link AbstractChatProvider}.
  */
 @Component
 @Slf4j
-public class OllamaProvider implements AiModelProvider {
-
-    public static final String NAME = ProviderType.OLLAMA.wireName();
+public class OllamaProvider extends AbstractChatProvider {
 
     private final String defaultBaseUrl;
-    private final ModelCatalog modelCatalog;
 
     public OllamaProvider(
             ModelCatalog modelCatalog,
+            LlmResponseSanitizer responseSanitizer,
             @Value("${vance.ai.ollama.base-url:http://localhost:11434}") String baseUrl) {
-        this.modelCatalog = modelCatalog;
+        super(modelCatalog, responseSanitizer);
         this.defaultBaseUrl = baseUrl;
     }
 
@@ -54,14 +54,8 @@ public class OllamaProvider implements AiModelProvider {
     }
 
     @Override
-    public AiChat createChat(AiChatConfig config, AiChatOptions options) {
-        if (!NAME.equals(config.provider())) {
-            throw new AiChatException(
-                    "OllamaProvider received config for provider '" + config.provider() + "'");
-        }
-        ModelInfo modelInfo = modelCatalog.lookupOrDefault(
-                options.getTenantId(), options.getProjectId(),
-                config.providerInstance(), NAME, config.modelName());
+    protected BuiltChat buildModels(
+            AiChatConfig config, AiChatOptions options, ModelInfo modelInfo) {
         Duration timeout = Duration.ofSeconds(
                 modelInfo.effectiveTimeoutSeconds(options.getTimeoutSeconds()));
         boolean think = options.getThinkingLevel() != ThinkingLevel.OFF;
@@ -74,53 +68,42 @@ public class OllamaProvider implements AiModelProvider {
         // Per-tenant override (custom Ollama host) wins over the Spring
         // boot-time default. Empty / unset falls back to vance.ai.ollama.base-url.
         String baseUrl = config.baseUrl() != null ? config.baseUrl() : defaultBaseUrl;
-        try {
-            OllamaChatModel sync = OllamaChatModel.builder()
-                    .baseUrl(baseUrl)
-                    .modelName(config.modelName())
-                    .temperature(options.getTemperature())
-                    .numCtx(numCtx)
-                    .numPredict(options.getMaxTokens())
-                    .topP(options.getTopP())
-                    .topK(options.getTopK())
-                    .seed(seed)
-                    .stop(options.getStopSequences())
-                    .timeout(timeout)
-                    .think(think)
-                    .returnThinking(think)
-                    .logRequests(options.getLogRequests())
-                    .logResponses(options.getLogRequests())
-                    .build();
-            OllamaStreamingChatModel streaming = OllamaStreamingChatModel.builder()
-                    .baseUrl(baseUrl)
-                    .modelName(config.modelName())
-                    .temperature(options.getTemperature())
-                    .numCtx(numCtx)
-                    .numPredict(options.getMaxTokens())
-                    .topP(options.getTopP())
-                    .topK(options.getTopK())
-                    .seed(seed)
-                    .stop(options.getStopSequences())
-                    .timeout(timeout)
-                    .think(think)
-                    .returnThinking(think)
-                    .logRequests(options.getLogRequests())
-                    .logResponses(options.getLogRequests())
-                    .build();
-            log.debug("Built Ollama chat pair: model='{}', baseUrl='{}', numCtx={}, "
-                            + "numPredict={}, temperature={}, think={}",
-                    config.modelName(), baseUrl, numCtx, options.getMaxTokens(),
-                    options.getTemperature(), think);
-            return new StandardAiChat(
-                    config.fullName(),
-                    ProviderType.OLLAMA,
-                    modelInfo.capabilities(),
-                    sync,
-                    streaming,
-                    options);
-        } catch (RuntimeException e) {
-            throw new AiChatException(
-                    "Failed to build Ollama chat for " + config.fullName(), e);
-        }
+        OllamaChatModel sync = OllamaChatModel.builder()
+                .baseUrl(baseUrl)
+                .modelName(config.modelName())
+                .temperature(options.getTemperature())
+                .numCtx(numCtx)
+                .numPredict(options.getMaxTokens())
+                .topP(options.getTopP())
+                .topK(options.getTopK())
+                .seed(seed)
+                .stop(options.getStopSequences())
+                .timeout(timeout)
+                .think(think)
+                .returnThinking(think)
+                .logRequests(options.getLogRequests())
+                .logResponses(options.getLogRequests())
+                .build();
+        OllamaStreamingChatModel streaming = OllamaStreamingChatModel.builder()
+                .baseUrl(baseUrl)
+                .modelName(config.modelName())
+                .temperature(options.getTemperature())
+                .numCtx(numCtx)
+                .numPredict(options.getMaxTokens())
+                .topP(options.getTopP())
+                .topK(options.getTopK())
+                .seed(seed)
+                .stop(options.getStopSequences())
+                .timeout(timeout)
+                .think(think)
+                .returnThinking(think)
+                .logRequests(options.getLogRequests())
+                .logResponses(options.getLogRequests())
+                .build();
+        log.debug("Built Ollama chat pair: model='{}', baseUrl='{}', numCtx={}, "
+                        + "numPredict={}, temperature={}, think={}, stripThinkTags={}",
+                config.modelName(), baseUrl, numCtx, options.getMaxTokens(),
+                options.getTemperature(), think, modelInfo.stripThinkTags());
+        return new BuiltChat(sync, streaming);
     }
 }

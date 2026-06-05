@@ -62,7 +62,7 @@ public class StandardAiChat implements AiChat {
             ChatModel sync,
             StreamingChatModel streaming,
             AiChatOptions options) {
-        this(name, providerType, Set.of(), sync, streaming, options);
+        this(name, providerType, Set.of(), sync, streaming, options, false, null);
     }
 
     public StandardAiChat(
@@ -72,24 +72,65 @@ public class StandardAiChat implements AiChat {
             ChatModel sync,
             StreamingChatModel streaming,
             AiChatOptions options) {
+        this(name, providerType, modelCapabilities, sync, streaming, options, false, null);
+    }
+
+    /**
+     * Full constructor — providers pass the resolved
+     * {@link ModelInfo#stripThinkTags()} flag and the
+     * {@link LlmResponseSanitizer} bean. Both are inert when
+     * {@code stripThinkTags=false} so the existing zero-config
+     * call sites keep behaving exactly as before.
+     */
+    public StandardAiChat(
+            String name,
+            ProviderType providerType,
+            Set<ModelCapability> modelCapabilities,
+            ChatModel sync,
+            StreamingChatModel streaming,
+            AiChatOptions options,
+            boolean stripThinkTags,
+            @Nullable LlmResponseSanitizer sanitizer) {
         this.name = name;
         this.providerType = providerType;
         this.modelCapabilities = modelCapabilities == null
                 ? Set.of()
                 : Set.copyOf(modelCapabilities);
-        // Wrap with trace-logging proxies up-front so every engine
-        // (Arthur/Ford/Marvin/...) and every caller (engines,
-        // memory-compaction, future tools) gets the same input/output
-        // trace under logger {@code de.mhus.vance.brain.ai.trace}.
-        // The wrappers are zero-cost when trace is disabled. When the
-        // engine attached an llmTraceWriter via options, the same
-        // wrappers also forward the round-trip for persistent storage.
+        // Decorator stack — innermost first:
+        //   provider ChatModel  (raw)
+        //     ↑
+        //   LoggingChatModel    (trace + stats see raw)
+        //     ↑
+        //   SanitizingChatModel (engines see cleaned; ONLY when the
+        //                       model carries stripThinkTags=true)
+        //
+        // The sanitizer wrap is skipped when the flag is false so
+        // straightforward (non-reasoning) models keep the old
+        // call-graph exactly.
         this.sync = sync == null
                 ? null
-                : new LoggingChatModel(
-                        name, sync, options.getLlmTraceWriter(), options.getMetricService());
+                : maybeSanitize(
+                        new LoggingChatModel(
+                                name, sync,
+                                options.getLlmTraceWriter(),
+                                options.getMetricService()),
+                        sanitizer, stripThinkTags);
         this.streaming = wrapStreaming(name, streaming, options);
         this.options = options;
+    }
+
+    /**
+     * Wraps {@code chat} with {@link SanitizingChatModel} when the
+     * active model is marked {@code stripThinkTags} AND a sanitizer
+     * bean is available. Otherwise returns the input unchanged —
+     * the decorator vanishes from the call-graph.
+     */
+    private static ChatModel maybeSanitize(
+            ChatModel chat,
+            @Nullable LlmResponseSanitizer sanitizer,
+            boolean enabled) {
+        if (!enabled || sanitizer == null) return chat;
+        return new SanitizingChatModel(chat, sanitizer, true);
     }
 
     /**

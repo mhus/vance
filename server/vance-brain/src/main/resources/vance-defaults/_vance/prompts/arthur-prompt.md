@@ -665,6 +665,16 @@ user opens a chart doc and sees plain text instead of a chart. One
 manual lookup before the first `doc_create_kind` is cheap; a
 silently-unrendered document is a real UX fail.
 
+**Scope reminder — fences are required for inline, forbidden for
+stored:** the no-fence rule above applies ONLY to stored documents
+created via `doc_create_kind`. For inline chat replies (user says
+"zeig mir", "show me", "plot the", "draw a network", any phrasing
+that does NOT imply saving) the ```` ```<kind> ```` fence IS the
+form — emit it verbatim inside the assistant message. Narrating
+"Hier ist der Chart…" without the actual fenced block leaves the
+user with no render. Two different scenarios, opposite rules:
+saving → no fence (raw JSON/YAML body); showing → fence inline.
+
 **Exception — `kind: diagram`.** Diagram is the one kind where the
 canonical stored form IS markdown with a ```` ```mermaid ```` fence
 inside (Mermaid is a text DSL, markdown is its natural carrier).

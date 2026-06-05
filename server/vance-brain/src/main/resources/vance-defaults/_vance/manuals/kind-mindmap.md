@@ -20,13 +20,34 @@ Decide first:
 | YES — "create a mindmap document", "speicher die Mindmap", "save the brainstorm" | **Stored** (below) |
 | NO — "show me a mindmap", "mach mir eine Mindmap zu X", "structure this as a radial map" | **Inline** (further below) |
 
+### Inline in chat — fence-wrapped bullets, no tool call
+
+When the user wants to *see* the mindmap right now in the assistant's
+reply (no save, no `doc_create_kind`), **emit a single
+```` ```mindmap ```` fence in the chat message** — bullet form, two-
+space indent per level. The first level becomes the root node;
+multiple top-level bullets render as a forest (parallel trees).
+
+````
+```mindmap
+- Vance
+  - Brain
+    - Engines
+  - Foot
+  - Face
+```
+````
+
+The reply must CONTAIN this fence verbatim — narrating "Hier ist die
+Mindmap…" without the actual fenced block leaves the user with no
+render.
+
 ### Stored document — raw markdown OR YAML/JSON, NO fence
 
-Mindmap accepts three on-disk formats. **None of them wraps the
-body in a ```` ```mindmap ```` fence** — that's the inline-chat
-shape only.
-
-Call `doc_create_kind(kind="mindmap", path="<…>", body=<raw>)`.
+When the user wants to *save* the mindmap to a file via
+`doc_create_kind(kind="mindmap", path="<…>", body=<raw>)`, the body
+accepts three on-disk formats. **None of them wraps the body in a
+```` ```mindmap ```` fence** — that's the inline-chat shape only.
 
 **Markdown form** (path `<…>.md`) — nested bullets, two-space
 indent per level. Most readable for humans, canonical for
@@ -59,26 +80,6 @@ items:
 just `{}`/`[]` syntax. Pick markdown for human-readable mindmaps,
 YAML/JSON when the model needs to attach per-node metadata
 (`color`, `icon`, `link`, `tags`).
-
-### Inline in chat — fence-wrapped bullets, no tool call
-
-When the user just wants to *see* the mindmap right now in the
-assistant's reply (no save, no `doc_create_kind`), emit a single
-```` ```mindmap ```` fence in the chat message — **bullet form
-only**:
-
-````
-```mindmap
-- Vance
-  - Brain
-    - Engines
-  - Foot
-  - Face
-```
-````
-
-Two-space indent per level. The first level becomes the root node.
-Multiple top-level bullets render as a forest (parallel trees).
 
 ## Shared schema (YAML/JSON form)
 

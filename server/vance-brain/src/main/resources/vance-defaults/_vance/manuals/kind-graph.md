@@ -22,11 +22,44 @@ Decide first:
 | YES — "create a graph document", "speicher das als graph-doc", "save the dependency graph" | **Stored** (below) |
 | NO — "show the relationships", "wie hängen die zusammen", "draw the network" | **Inline** (further below) |
 
+### Inline in chat — fence-wrapped, no tool call
+
+When the user wants to *see* the network right now in the assistant's
+reply (no save, no `doc_create_kind`), **emit a single
+```` ```graph ```` fence in the chat message**. The fenced YAML body
+carries the same schema as the stored form below.
+
+````
+```graph
+$meta:
+  kind: graph
+graph:
+  directed: true
+nodes:
+  - id: auth
+    label: Auth Service
+  - id: api
+    label: API Gateway
+  - id: db
+    label: Database
+edges:
+  - source: auth
+    target: api
+  - source: api
+    target: db
+```
+````
+
+The reply must CONTAIN this fence verbatim — narrating "Hier ist der
+Graph…" without the actual fenced block leaves the user with no
+render.
+
 ### Stored document — raw JSON or YAML, NO fence
 
-Call `doc_create_kind(kind="graph", path="<…>.json"` or `.yaml`,
-`body=<raw schema>)`. **The body must NOT be wrapped in a
-```` ```graph ```` fence** — that's the inline form. Markdown
+When the user wants to *save* the graph to a file via
+`doc_create_kind(kind="graph", path="<…>.json"` or `.yaml`,
+`body=<raw schema>)`, **the body must NOT be wrapped in a
+```` ```graph ```` fence** — that's the inline-only form. Markdown
 bodies are rejected for stored graphs: the codec stores the file
 but the Web-UI falls back to the Raw editor and never renders the
 graph tab. Always use `.json` or `.yaml` as the path extension.
@@ -60,34 +93,6 @@ edges:
 JSON body is equivalent — same keys, just `{}`/`[]` instead of
 indented YAML. Pick YAML for readability, JSON when the body is
 generated programmatically.
-
-### Inline in chat — fence-wrapped, no tool call
-
-When the user just wants to *see* the network right now in the
-assistant's reply (no save, no `doc_create_kind`), emit a single
-```` ```graph ```` fence in the chat message — **same payload as
-above, just wrapped in a fence**:
-
-````
-```graph
-$meta:
-  kind: graph
-graph:
-  directed: true
-nodes:
-  - id: auth
-    label: Auth Service
-  - id: api
-    label: API Gateway
-  - id: db
-    label: Database
-edges:
-  - source: auth
-    target: api
-  - source: api
-    target: db
-```
-````
 
 ## Shared schema
 

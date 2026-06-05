@@ -682,6 +682,18 @@ Klartext statt Diagramm. Ein `manual_read` vor dem ersten
 `doc_create_kind` ist billig; ein nicht-rendernder Dokument-Tab
 ist ein echter UX-Fail.
 
+**Scope-Reminder — Fence für Inline Pflicht, für Stored verboten:**
+die No-Fence-Regel oben gilt NUR für gespeicherte Dokumente via
+`doc_create_kind`. Für Inline-Chat-Antworten (User sagt „zeig
+mir", „show me", „plot the", „zeichne …", irgendeine Phrasierung
+die NICHT speichern impliziert) IST der ```` ```<kind> ```` Fence
+die Form — emittiere ihn verbatim in der Assistant-Message. Eine
+narrative Antwort wie „Hier ist die Mindmap…" ohne den
+tatsächlichen Fence-Block lässt den User mit nichts zu rendern
+zurück. Zwei verschiedene Szenarien, gegenteilige Regeln:
+Speichern → kein Fence (raw JSON/YAML im Body); Zeigen → Fence
+inline.
+
 **Ausnahme — `kind: diagram`.** Diagram ist die EINE Ausnahme,
 bei der die kanonische Speicherform Markdown mit einem
 ```` ```mermaid ```` Fence darin IST (Mermaid ist eine Text-DSL,

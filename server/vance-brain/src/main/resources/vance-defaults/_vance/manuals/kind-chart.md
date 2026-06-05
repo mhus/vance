@@ -21,11 +21,41 @@ Decide first:
 | YES — "create a chart document", "speicher das als chart-doc" | **Stored** (below) |
 | NO — "show me a chart", "plot the revenue", "zeig die Verteilung" | **Inline** (further below) |
 
+### Inline in chat — fence-wrapped, no tool call
+
+When the user wants to *see* the chart right now in the assistant's
+reply (no save, no `doc_create_kind`), **emit a single
+```` ```chart ```` fence in the chat message**. The fenced YAML body
+carries the same schema as the stored form below.
+
+````
+```chart
+$meta:
+  kind: chart
+chart:
+  chartType: bar
+  title: Sales Q1
+xAxis: { type: category }
+yAxis: { type: value }
+series:
+  - name: Revenue
+    data:
+      - { x: Jan, y: 12000 }
+      - { x: Feb, y: 14500 }
+      - { x: Mar, y: 13200 }
+```
+````
+
+The reply must CONTAIN this fence verbatim — narrating "Hier ist der
+Chart…" without the actual fenced block leaves the user with no
+render.
+
 ### Stored document — raw JSON or YAML, NO fence
 
-Call `doc_create_kind(kind="chart", path="<…>.json"` or `.yaml`,
-`body=<raw schema>)`. **The body must NOT be wrapped in a
-```` ```chart ```` fence** — that's the inline form. Markdown
+When the user wants to *save* the chart to a file via
+`doc_create_kind(kind="chart", path="<…>.json"` or `.yaml`,
+`body=<raw schema>)`, **the body must NOT be wrapped in a
+```` ```chart ```` fence** — that's the inline-only form. Markdown
 bodies are rejected for stored charts: the codec stores the file
 but the Web-UI falls back to the Raw editor and never renders the
 chart tab. Always use `.json` or `.yaml` as the path extension.
@@ -52,31 +82,6 @@ JSON body is equivalent — same keys, just `{}`/`[]` instead of
 indented YAML. Pick YAML for readability, JSON when the body is
 generated programmatically or needs to be embedded somewhere
 strict.
-
-### Inline in chat — fence-wrapped, no tool call
-
-When the user just wants to *see* the chart right now in the
-assistant's reply (no save, no `doc_create_kind`), emit a single
-```` ```chart ```` fence in the chat message — **same payload as
-above, just wrapped in a fence**:
-
-````
-```chart
-$meta:
-  kind: chart
-chart:
-  chartType: bar
-  title: Sales Q1
-xAxis: { type: category }
-yAxis: { type: value }
-series:
-  - name: Revenue
-    data:
-      - { x: Jan, y: 12000 }
-      - { x: Feb, y: 14500 }
-      - { x: Mar, y: 13200 }
-```
-````
 
 ## Shared schema
 

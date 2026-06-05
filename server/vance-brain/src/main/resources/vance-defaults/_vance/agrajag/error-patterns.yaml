@@ -91,6 +91,26 @@ patterns:
     signature: schema-violation
     classification: UNCLEAR
 
+  # `manual_read` raises a clear "Manual not found:" ToolException
+  # when the LLM asks for a manual that does not exist in the cascade
+  # (typical with addon-only manuals like `doc-kind-calendar` or
+  # `app-kanban` that are NOT in the bundled `vance-defaults/manuals/`).
+  # That is a USER_INPUT-class error — the tool worked correctly and
+  # told the model the requested name does not exist. No diagnose
+  # worker, no health degradation; the model should be free to retry
+  # with `manual_list` and a corrected name on the next turn.
+  #
+  # MUST stay above `tool-exception-generic` so this specific rule
+  # wins over the generic UNCLEAR catch-all on first-match.
+  - id: manual-read-not-found
+    match:
+      exceptionType: ["de.mhus.vance.toolpack.ToolException"]
+      bodyContains: ["Manual not found"]
+    signature: manual-not-found
+    classification: USER_INPUT
+    locked: true
+    note: "User asked for a non-existent manual. The tool is fine; the model can retry with a corrected name (e.g. via manual_list)."
+
   - id: tool-exception-generic
     match:
       exceptionType: ["de.mhus.vance.toolpack.ToolException"]

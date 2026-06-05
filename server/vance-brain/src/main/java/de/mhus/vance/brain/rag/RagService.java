@@ -43,7 +43,6 @@ public class RagService {
 
     private static final String SETTING_EMBED_PROVIDER = "ai.embedding.provider";
     private static final String SETTING_EMBED_MODEL = "ai.embedding.model";
-    private static final String SETTING_DEFAULT_PROVIDER = "ai.default.provider";
     private static final String SETTING_PROVIDER_API_KEY_FMT = "ai.provider.%s.apiKey";
 
     private static final String DEFAULT_EMBED_PROVIDER = "gemini";
@@ -192,12 +191,11 @@ public class RagService {
     private EmbeddingConfig resolveEmbeddingConfig(String tenantId) {
         String provider = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_PROVIDER);
-        if (provider == null || provider.isBlank()) {
-            // Fall back to chat provider if embedding provider isn't explicitly set.
-            provider = settingService.getStringValueCascade(
-                    tenantId, /*projectId*/ null, /*processId*/ null, SETTING_DEFAULT_PROVIDER);
-            if (provider == null || provider.isBlank()) provider = DEFAULT_EMBED_PROVIDER;
-        }
+        // No fallback to the chat provider here: chat and embedding are
+        // separate API families. A tenant on OpenAI chat may still need
+        // Gemini embeddings (or vice versa), and not every chat provider
+        // has an embedding sibling registered as an EmbeddingProvider bean.
+        if (provider == null || provider.isBlank()) provider = DEFAULT_EMBED_PROVIDER;
         String model = settingService.getStringValueCascade(
                 tenantId, /*projectId*/ null, /*processId*/ null, SETTING_EMBED_MODEL);
         if (model == null || model.isBlank()) model = DEFAULT_EMBED_MODEL;

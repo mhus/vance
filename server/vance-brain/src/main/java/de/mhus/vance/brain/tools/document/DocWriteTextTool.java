@@ -67,16 +67,14 @@ public class DocWriteTextTool implements Tool {
 
     @Override
     public String description() {
-        return "Write a text DOCUMENT at a known path in the active "
-                + "project's knowledge base, creating it if absent or "
-                + "OVERWRITING it in place when one already exists. Use "
-                + "this when you have the final content in hand and a "
-                + "fixed target path that the same workflow may revisit "
-                + "(e.g. a persist phase that re-emits an artifact "
-                + "after a recovery loop). For first-time-only writes "
-                + "where a duplicate path indicates a logic error, use "
-                + "doc_create_text instead. Pass content and the "
-                + "exact path you want the file at — no auto-prefixing.";
+        return "DEPRECATED — use `doc_create(kind=\"text\", path=…, "
+                + "content=…)` instead, which is also an upsert and "
+                + "additionally supports typed kinds. Kept as a "
+                + "legacy alias for kits and scripts that hardcode "
+                + "the old name. Writes a text document at the given "
+                + "path, creating it if absent or overwriting it "
+                + "in place if it exists. Pass content and the exact "
+                + "target path.";
     }
 
     @Override

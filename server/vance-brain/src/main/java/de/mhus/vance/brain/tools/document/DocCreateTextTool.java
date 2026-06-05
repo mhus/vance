@@ -62,20 +62,14 @@ public class DocCreateTextTool implements Tool {
 
     @Override
     public String description() {
-        return "Create a long-lived, indexed text DOCUMENT in the "
-                + "active project's knowledge base. Use this for "
-                + "anything the user might want to find, read or "
-                + "reference later — research results, summaries, "
-                + "comparison tables, notes, decisions, specs. "
-                + "Documents are searchable, can be tagged, get "
-                + "auto-summarised, and survive sessions. "
-                + "NOT for: short-lived scripts or scratch data you "
-                + "want to process with python/bash (use "
-                + "scratch_write), or files on the user's own "
-                + "machine (use client_file_write). "
-                + "Path is optional — omit it to auto-place under "
-                + "'documents/' so the default search finds it back. "
-                + "Pass content, optional title and tags.";
+        return "DEPRECATED — use `doc_create(kind=\"text\", path=…, "
+                + "content=…)` instead, which also handles typed "
+                + "kinds and upsert. Kept as a legacy alias for kits "
+                + "and scripts that hardcode the old name. "
+                + "Creates a long-lived, indexed text document in "
+                + "the active project. Path is optional — omit it to "
+                + "auto-place under 'documents/'. Pass content, "
+                + "optional title and tags.";
     }
 
     @Override

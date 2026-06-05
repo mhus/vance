@@ -51,8 +51,14 @@ public class DocCreateKindTool implements Tool {
 
     @Override public String name() { return "doc_create_kind"; }
     @Override public String description() {
-        return "Create a new document with the given `kind` and an appropriate stub body. "
-                + "Returns the new document id. Pass `body` to override the default stub.";
+        return "DEPRECATED — use `doc_create(kind=…, path=…, "
+                + "content=…)` instead, which unifies kind-typed and "
+                + "text creation and supports upsert. Kept as a "
+                + "legacy alias for kits and scripts that hardcode "
+                + "the old name. Creates a typed document with the "
+                + "given `kind` and an appropriate stub body. Returns "
+                + "the new document id. Pass `body` to override the "
+                + "default stub.";
     }
     @Override public boolean primary() { return false; }
     @Override public Set<String> labels() { return Set.of("doc-management", "eddie", "write", "document"); }

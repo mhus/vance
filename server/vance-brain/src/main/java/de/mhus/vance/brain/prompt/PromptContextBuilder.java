@@ -50,7 +50,11 @@ import org.jspecify.annotations.Nullable;
  * {@code lang} hasn't been wired yet renders the empty string, not a
  * runtime error.
  *
- * <p>Builder is non-thread-safe and intended for single use per render.
+ * <p>Builder is non-thread-safe and scoped to a single render. Calling
+ * {@link #build()} more than once is fine — each call returns a fresh
+ * immutable snapshot of the current state, so an engine can extract a
+ * base context, render addon fragments against it, set
+ * {@link #addonSections(String)} on the same builder and build again.
  */
 public final class PromptContextBuilder {
 
@@ -167,6 +171,26 @@ public final class PromptContextBuilder {
      */
     public PromptContextBuilder profileAppend(@Nullable String profileAppend) {
         if (profileAppend != null) map.put("profileAppend", profileAppend);
+        return this;
+    }
+
+    /**
+     * Pre-rendered Markdown block holding all addon-supplied prompt
+     * fragments that apply to the current engine — exposed to engine
+     * default and recipe override templates as {@code {{ addonSections }}}.
+     * Normally set by {@link de.mhus.vance.brain.thinkengine.SystemPrompts#compose}
+     * from {@link AddonPromptFragmentRegistry} output; engines whose
+     * render path bypasses {@code SystemPrompts.compose} may set the
+     * value here directly.
+     *
+     * <p>When the template references the variable it controls the
+     * position; otherwise {@code SystemPrompts.compose} auto-appends the
+     * block at the end of the rendered engine default. See
+     * {@code specification/prompts-and-manuals.md} for the addon-fragment
+     * convention.
+     */
+    public PromptContextBuilder addonSections(@Nullable String addonSections) {
+        if (addonSections != null) map.put("addonSections", addonSections);
         return this;
     }
 

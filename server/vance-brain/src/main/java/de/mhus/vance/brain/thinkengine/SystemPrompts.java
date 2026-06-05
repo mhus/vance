@@ -34,6 +34,10 @@ public final class SystemPrompts {
     /** Token searched for in the recipe template to detect explicit placement. */
     static final String PROFILE_APPEND_VAR = "profileAppend";
 
+    /** Token searched for in the engine default / recipe override to detect
+     *  explicit placement of the addon-fragment block. */
+    static final String ADDON_SECTIONS_VAR = "addonSections";
+
     private SystemPrompts() {}
 
     /**
@@ -59,6 +63,30 @@ public final class SystemPrompts {
      *   <li>{@link PromptMode#OVERWRITE} → composed override alone.</li>
      * </ul>
      */
+    /**
+     * Renders the engine default, the recipe override and the profile-
+     * block append against {@code ctx} and blends them per
+     * {@link PromptMode}. Engines hand any addon-supplied prompt block
+     * in via {@link de.mhus.vance.brain.prompt.PromptContextBuilder#addonSections}
+     * — this method reads the value out of {@code ctx} under the
+     * {@code addonSections} key and applies the auto-append rule below.
+     *
+     * <p>Addon-block placement:
+     * <ul>
+     *   <li>If the engine default template references
+     *       {@code {{ addonSections }}}, the variable controls position
+     *       — the renderer substitutes verbatim, no auto-append.</li>
+     *   <li>Otherwise, when the addon block is non-blank, it is auto-
+     *       appended to the rendered engine default with a blank-line
+     *       separator (analog to the legacy {@code profileAppend}
+     *       behaviour, scoped to the engine layer).</li>
+     *   <li>The recipe override may also reference {@code {{ addonSections }}}
+     *       to embed the block, but no auto-append happens in the
+     *       override layer — engine-scoped material belongs to the
+     *       engine prompt, and a {@code OVERWRITE}-mode override
+     *       opting out of it is an explicit recipe-author choice.</li>
+     * </ul>
+     */
     public static String compose(
             ThinkProcessDocument process,
             String engineDefault,
@@ -70,12 +98,30 @@ public final class SystemPrompts {
         // ctx isn't mutated.
         String appendRaw = process.getPromptOverrideAppend();
         String appendRendered = renderer.render(appendRaw, ctx);
+
+        // The caller (engine) places the addon block via
+        // PromptContextBuilder.addonSections(...) — we just read.
+        Object addonRaw = ctx.get(ADDON_SECTIONS_VAR);
+        String addonContent = addonRaw instanceof String s ? s : "";
+
         Map<String, Object> ctxWithAppend = new HashMap<>(ctx);
         ctxWithAppend.put(PROFILE_APPEND_VAR,
                 appendRendered == null ? "" : appendRendered);
 
         String renderedDefault = renderer.render(engineDefault, ctxWithAppend);
         if (renderedDefault == null) renderedDefault = "";
+
+        // Auto-append addon block when the engine default template does
+        // not place {{ addonSections }} itself. Mirrors the legacy
+        // profile-append auto-glue, but lives one layer up (engine
+        // prompt, not recipe override).
+        if (!addonContent.isBlank()
+                && (engineDefault == null
+                        || !engineDefault.contains(ADDON_SECTIONS_VAR))) {
+            renderedDefault = renderedDefault.isBlank()
+                    ? addonContent
+                    : renderedDefault + "\n\n" + addonContent;
+        }
 
         String overrideRaw = process.getPromptOverride();
         String renderedOverride = renderer.render(overrideRaw, ctxWithAppend);

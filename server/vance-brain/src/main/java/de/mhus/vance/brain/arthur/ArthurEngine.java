@@ -205,6 +205,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
     private final de.mhus.vance.brain.memory.MemoryContextLoader memoryContextLoader;
     private final de.mhus.vance.brain.thinkengine.EnginePromptResolver enginePromptResolver;
     private final de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer;
+    private final de.mhus.vance.brain.prompt.AddonPromptFragmentRegistry addonPromptFragmentRegistry;
     private final de.mhus.vance.brain.ai.EngineChatFactory engineChatFactory;
     private final de.mhus.vance.brain.skill.SkillTriggerMatcher skillTriggerMatcher;
     private final de.mhus.vance.brain.enginemessage.EngineMessageRouter messageRouter;
@@ -272,6 +273,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             de.mhus.vance.brain.thinkengine.plan.PlanModeService planModeService,
             de.mhus.vance.brain.ai.attachment.AttachmentResolver attachmentResolver,
             de.mhus.vance.brain.prompt.PromptTemplateRenderer promptTemplateRenderer,
+            de.mhus.vance.brain.prompt.AddonPromptFragmentRegistry addonPromptFragmentRegistry,
             de.mhus.vance.shared.workspace.WorkspaceService workspaceService,
             de.mhus.vance.shared.chat.ChatMessageService chatMessageService,
             de.mhus.vance.brain.prak.HistoryStrengthFilter historyStrengthFilter,
@@ -291,6 +293,7 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
         this.planModeService = planModeService;
         this.attachmentResolver = attachmentResolver;
         this.promptTemplateRenderer = promptTemplateRenderer;
+        this.addonPromptFragmentRegistry = addonPromptFragmentRegistry;
         this.workspaceService = workspaceService;
         this.chatMessageService = chatMessageService;
         this.historyStrengthFilter = historyStrengthFilter;
@@ -1801,14 +1804,22 @@ public class ArthurEngine extends de.mhus.vance.brain.thinkengine.action.Structu
             }
         }
 
-        java.util.Map<String, Object> promptCtx = de.mhus.vance.brain.prompt.PromptContextBuilder
-                .forProcess(process, modelInfo)
-                .tier(modelSize)
-                .engine(NAME)
-                .voiceMode(voiceMode)
-                .withRootDirTypes(workspaceService.getRootDirTypes(
-                        process.getTenantId(), process.getProjectId()))
-                .build();
+        de.mhus.vance.brain.prompt.PromptContextBuilder ctxBuilder =
+                de.mhus.vance.brain.prompt.PromptContextBuilder
+                        .forProcess(process, modelInfo)
+                        .tier(modelSize)
+                        .engine(NAME)
+                        .voiceMode(voiceMode)
+                        .withRootDirTypes(workspaceService.getRootDirTypes(
+                                process.getTenantId(), process.getProjectId()));
+        // Render addon fragments against the base context first so
+        // they can branch on the same Pebble variables (tier, provider,
+        // ...), then feed the joined block back into the builder so the
+        // engine default sees it as {{ addonSections }}.
+        String addonSections = addonPromptFragmentRegistry.renderAndJoin(
+                NAME, ctxBuilder.build(), promptTemplateRenderer);
+        java.util.Map<String, Object> promptCtx = ctxBuilder
+                .addonSections(addonSections).build();
         String base = SystemPrompts.compose(process,
                 engineDefaultPrompt(process, modelSize),
                 promptTemplateRenderer, promptCtx);

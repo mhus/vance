@@ -230,6 +230,125 @@ class SystemPromptsTest {
     }
 
     @Test
+    void compose_addonSections_placedExplicitlyViaPebbleVariable() {
+        // Engine default references {{ addonSections }} → block lands
+        // exactly there, no auto-append at the tail.
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride(null);
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .addonSections("ADDON-BLOCK").build();
+
+        String out = SystemPrompts.compose(
+                process,
+                "HEAD.\n\n{{ addonSections }}\n\nTAIL.",
+                renderer, ctx);
+
+        assertThat(out).contains("HEAD.").contains("ADDON-BLOCK").contains("TAIL.");
+        int headIdx = out.indexOf("HEAD.");
+        int addonIdx = out.indexOf("ADDON-BLOCK");
+        int tailIdx = out.indexOf("TAIL.");
+        assertThat(addonIdx).isBetween(headIdx, tailIdx);
+        // Single occurrence — no auto-append duplicate.
+        assertThat(out.indexOf("ADDON-BLOCK"))
+                .isEqualTo(out.lastIndexOf("ADDON-BLOCK"));
+    }
+
+    @Test
+    void compose_addonSections_autoAppendedWhenEngineDefaultMissesVariable() {
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride(null);
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .addonSections("ADDON-BLOCK").build();
+
+        String out = SystemPrompts.compose(
+                process, "ENGINE-BODY", renderer, ctx);
+
+        assertThat(out).contains("ENGINE-BODY").contains("ADDON-BLOCK");
+        assertThat(out.indexOf("ADDON-BLOCK"))
+                .isGreaterThan(out.indexOf("ENGINE-BODY"));
+    }
+
+    @Test
+    void compose_nullAddonSections_leavesPromptUntouched() {
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride(null);
+        // Builder.addonSections(null) is a no-op → key not in ctx.
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .addonSections(null).build();
+
+        String out = SystemPrompts.compose(
+                process, "Plain engine.", renderer, ctx);
+
+        assertThat(out).isEqualTo("Plain engine.");
+    }
+
+    @Test
+    void compose_blankAddonSections_skipsAutoAppend() {
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride(null);
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .addonSections("").build();
+
+        String out = SystemPrompts.compose(
+                process, "Plain engine.", renderer, ctx);
+
+        assertThat(out).isEqualTo("Plain engine.");
+    }
+
+    @Test
+    void compose_addonSections_readableInsideRecipeOverride() {
+        // The recipe author can reference {{ addonSections }} too —
+        // useful when the recipe overrides the engine default but still
+        // wants the addon material embedded.
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride("Recipe: {{ addonSections }}");
+        process.setPromptMode(PromptMode.OVERWRITE);
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .addonSections("ADDON").build();
+
+        String out = SystemPrompts.compose(
+                process, "engine default", renderer, ctx);
+
+        assertThat(out).isEqualTo("Recipe: ADDON");
+    }
+
+    @Test
+    void compose_overwriteMode_addonSectionsDropWhenOverrideDoesNotReferenceThem() {
+        // Explicit OVERWRITE-without-reference is the recipe author's
+        // way of opting out of engine-scoped addon material.
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride("Recipe rules.");
+        process.setPromptMode(PromptMode.OVERWRITE);
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .addonSections("ADDON").build();
+
+        String out = SystemPrompts.compose(
+                process, "engine default", renderer, ctx);
+
+        assertThat(out).isEqualTo("Recipe rules.");
+    }
+
+    @Test
+    void compose_appendMode_engineDefaultGetsAddonsThenRecipeOverrideJoined() {
+        ThinkProcessDocument process = new ThinkProcessDocument();
+        process.setPromptOverride("Recipe rules.");
+        process.setPromptMode(PromptMode.APPEND);
+        Map<String, Object> ctx = PromptContextBuilder.create()
+                .addonSections("ADDON").build();
+
+        String out = SystemPrompts.compose(
+                process, "Engine.", renderer, ctx);
+
+        int engineIdx = out.indexOf("Engine.");
+        int addonIdx = out.indexOf("ADDON");
+        int sepIdx = out.indexOf("--- recipe extension ---");
+        int recipeIdx = out.indexOf("Recipe rules.");
+        assertThat(addonIdx).isGreaterThan(engineIdx);
+        assertThat(sepIdx).isGreaterThan(addonIdx);
+        assertThat(recipeIdx).isGreaterThan(sepIdx);
+    }
+
+    @Test
     void compose_legacyOverloadStillWorksWithoutRendering() {
         // Legacy 2-arg path — used in places that have already-rendered
         // text, or by tests that don't care about templating. Pebble

@@ -91,6 +91,10 @@ zurückhaltend:
 
 Eine Recherche mündet meist in Schritt 2, nicht 4. „Schreib mir ein
 Skript" ist Schritt 3, nicht 4. Erfinde keine Tools.
+{% if addonSections %}
+
+{{ addonSections }}
+{% endif %}
 {% else %}
 Du bist **Eddie**, der persönliche Hub-Assistent. Stell dir Tony Stark
 mit Jarvis vor: kompetent, ruhig, handelnd. Der User redet mit dir wie
@@ -725,6 +729,10 @@ inline Records-Tabellen — alle über `how_do_i` zu finden.
 **Wickle deine Action-Payload niemals in einen Fence** — der
 Action-Output geht durch den Tool-Call. **Baue niemals `vance:`-
 URIs selbst zusammen** — `document_link` ist Single-Source-of-Truth.
+{% if addonSections %}
+
+{{ addonSections }}
+{% endif %}
 
 ## Der Geist der Sache
 

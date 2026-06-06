@@ -370,6 +370,16 @@ ollama:
     capabilities: [vision]
     timeoutSeconds: 240
 
+  # ── Gemma 4 (Google, open-weight, via Ollama) ─────────────────
+  # Apple-Silicon MLX build for local inference. 31B dense
+  # parameters, Metal-backed via mlx — materially faster than the
+  # GGUF build on M-series Macs. Native 128K window.
+  "gemma4:31b-mlx":
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 8192
+    size: LARGE
+    timeoutSeconds: 300
+
   # ── Large MoE ─────────────────────────────────────────────────
   # qwen3:30b is a 30B-param MoE with ~3B active — treat as the
   # "analyze" workhorse, full tool-use + thinking. Native window

@@ -1,0 +1,92 @@
+description: |
+  Internal config profile for the LightLlmService consumed by
+  FollowUpService (backend of the follow-up suggestion REST endpoint).
+  NOT spawnable — marked `internal: true` so the standard recipe
+  selector skips it.
+
+  Two structural modes, selected by which Pebble variables are set:
+
+  - Edit mode: `textBefore` + `textAfter` set, `precedingContext`
+    absent. The user is editing a text and the cursor sits between
+    the two fragments — produce suggestions for what to type next.
+  - Reply mode: `precedingContext` set, `textBefore`/`textAfter`
+    absent. The user is looking at the given text (typically the last
+    assistant message in a chat) and wants suggestions for how to
+    react — a follow-up question, a clarification, an acknowledgement.
+
+  `mode` is an optional free-form UI-surface hint passed through
+  verbatim, orthogonal to the edit/reply branch.
+engine: jeltz
+internal: true
+params:
+  model: default:fast
+  maxAttempts: 2
+  temperature: 0.7
+promptPrefix: |
+  You are Vance's follow-up suggestion component. Produce up to
+  {{ count }} short follow-up suggestions matching the context below.
+  {% if mode %}
+  UI surface hint: {{ mode }}
+  {% endif %}
+
+  {% if precedingContext %}
+  ## Preceding text (the user is responding to this)
+
+  {{ precedingContext }}
+
+  ## Task
+
+  Suggest up to {{ count }} short ways the user could **react** to the
+  text above — a follow-up question, a clarification request, an
+  acknowledgement, or a natural next message. Suggestions should be
+  written from the user's perspective (first-person voice if
+  appropriate), NOT echo or rephrase the text above.
+  {% else %}
+  ## Text before cursor
+
+  {% if textBefore %}{{ textBefore }}{% else %}(empty){% endif %}
+
+  ## Text after cursor
+
+  {% if textAfter %}{{ textAfter }}{% else %}(empty){% endif %}
+
+  ## Task
+
+  Suggest up to {{ count }} short ways the user could **continue**
+  typing at the cursor position — completions, questions to add,
+  clarifications. Suggestions must fit grammatically and contextually
+  between `textBefore` and `textAfter`. Do NOT echo `textBefore` or
+  `textAfter` back.
+  {% endif %}
+
+  ## Reply format
+
+  Respond with exactly ONE JSON object of this shape — no prose, no
+  markdown code fences:
+
+      {
+        "suggestions": [
+          { "text": "…short follow-up text…", "kind": "question" },
+          { "text": "…another suggestion…", "kind": "completion" }
+        ]
+      }
+
+  - `text` is required, non-empty, plain text (no markdown).
+  - `kind` is optional. Suggested labels: `"question"`,
+    `"clarification"`, `"completion"`, `"continuation"`,
+    `"acknowledgement"`. Free-form — omit if uncertain.
+  - Return **at most {{ count }}** suggestions. Fewer is fine,
+    including zero: if nothing useful comes to mind, reply with
+    `{ "suggestions": [] }`.
+
+  ## Rules
+
+  - Each suggestion must be short (one sentence, ideally <120 chars).
+  - Suggestions must be distinct — no near-duplicates.
+  - Match the language of the surrounding text. If the context is
+    German, suggest German; if English, English.
+  - Output exactly one JSON object. No prose, no markdown code
+    fences, nothing else.
+tags:
+  - internal
+  - followup

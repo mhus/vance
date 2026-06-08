@@ -135,6 +135,10 @@ export default {
     historyLoading: 'Verlauf wird geladen…',
     composerPlaceholderSingle: 'Nachricht',
     composerPlaceholderMulti: 'Nachricht',
+    followUp: {
+      acceptHint: 'Leertaste',
+      acceptTooltip: 'Leertaste, Tab oder Klick übernimmt diesen Vorschlag',
+    },
     send: 'Senden',
     pause: 'Pausieren',
     pauseTooltip: 'Den Chat pausieren (und alle Worker dieser Session)',

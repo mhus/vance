@@ -24,11 +24,11 @@ interface Props {
     reloadKey?: string | number;
 }
 declare const _default: import("vue").DefineComponent<Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    applied: (applied: AppliedSettingDto[]) => any;
     closed: () => any;
+    applied: (applied: AppliedSettingDto[]) => any;
 }, string, import("vue").PublicProps, Readonly<Props> & Readonly<{
-    onApplied?: ((applied: AppliedSettingDto[]) => any) | undefined;
     onClosed?: (() => any) | undefined;
+    onApplied?: ((applied: AppliedSettingDto[]) => any) | undefined;
 }>, {
     projectId: string;
     reloadKey: string | number;

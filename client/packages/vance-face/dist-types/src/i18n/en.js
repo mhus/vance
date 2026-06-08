@@ -128,6 +128,10 @@ export default {
         historyLoading: 'Loading history…',
         composerPlaceholderSingle: 'Message',
         composerPlaceholderMulti: 'Message',
+        followUp: {
+            acceptHint: 'press Space',
+            acceptTooltip: 'Press Space, Tab, or click to use this follow-up',
+        },
         send: 'Send',
         pause: 'Pause',
         pauseTooltip: 'Pause the chat (and all workers in this session)',

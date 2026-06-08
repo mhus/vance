@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { WebSocketRequestError, AUTO_LANGUAGE, SUPPORTED_SPEECH_LANGUAGES, getSpeechLanguage, resolveSpeechLanguage, setSpeechLanguage, getSpeakerEnabled, getSpeechRate, getSpeechVoiceURI, getSpeechVolume, setSpeakerEnabled, setSpeechRate, setSpeechVoiceURI, setSpeechVolume, markdownToSpeech, MIN_RATE, MAX_RATE, MIN_VOLUME, MAX_VOLUME, } from '@vance/shared';
 import { buildUtterance, isSpeechSynthesisSupported, listVoices, onVoicesChanged, } from '../platform/speechWeb';
@@ -13,6 +13,11 @@ const composerText = ref('');
 const sending = ref(false);
 const uploading = ref(false);
 const sendError = ref(null);
+// Mirror composer text upward so the parent can drive the follow-up
+// ghost-bubble visibility (only shown while the composer is empty).
+watch(composerText, (next) => {
+    emit('text-changed', next);
+}, { immediate: true });
 const selectedFiles = ref([]);
 const dragActive = ref(false);
 /**
@@ -455,7 +460,34 @@ function pause() {
     }
     sending.value = false;
 }
+function onComposerFocusIn() {
+    emit('focus-changed', true);
+}
+function onComposerFocusOut(event) {
+    // {@code focusout} bubbles before the new {@code focusin} fires, so
+    // {@code relatedTarget} tells us whether focus is moving to another
+    // element inside the same wrapper (e.g. the speech-rate slider in
+    // the toolbar) — in which case the composer is still "active".
+    const next = event.relatedTarget;
+    const root = event.currentTarget;
+    if (next && root.contains(next))
+        return;
+    emit('focus-changed', false);
+}
 function onComposerKeydown(event) {
+    // Follow-up acceptance: Space (or Tab) against an active suggestion
+    // while the composer is empty writes the suggestion into the input
+    // instead of inserting whitespace. Shell-autosuggestion style.
+    if (!event.ctrlKey && !event.metaKey && !event.altKey &&
+        composerText.value.length === 0 &&
+        props.followUpSuggestion &&
+        (event.key === ' ' || event.key === 'Tab')) {
+        event.preventDefault();
+        const appendSpace = event.key === ' ';
+        composerText.value = props.followUpSuggestion + (appendSpace ? ' ' : '');
+        emit('follow-up-accepted');
+        return;
+    }
     if (event.key !== 'Enter')
         return;
     if (multiline.value) {
@@ -1013,6 +1045,8 @@ const __VLS_87 = {
 __VLS_83.slots.default;
 var __VLS_83;
 __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+    ...{ onFocusin: (__VLS_ctx.onComposerFocusIn) },
+    ...{ onFocusout: (__VLS_ctx.onComposerFocusOut) },
     ...{ class: "flex-1" },
 });
 const __VLS_88 = {}.VTextarea;
@@ -1241,6 +1275,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             toggleTalkMode: toggleTalkMode,
             send: send,
             pause: pause,
+            onComposerFocusIn: onComposerFocusIn,
+            onComposerFocusOut: onComposerFocusOut,
             onComposerKeydown: onComposerKeydown,
             fileInputRef: fileInputRef,
             onComposerDragEnter: onComposerDragEnter,

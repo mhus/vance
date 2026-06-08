@@ -29,6 +29,7 @@ import PickerView from './PickerView.vue';
 import ChatView from './ChatView.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatRightPanel from './ChatRightPanel.vue';
+import { useFollowUpSuggestion } from '@composables/useFollowUpSuggestion';
 
 const { t } = useI18n();
 
@@ -240,6 +241,58 @@ function onWizardDeepLinkFromView(detail: { name: string; prefill: Record<string
 }
 function onPromptReadyFromRightPanel(prompt: string): void {
   composerRef.value?.setText(prompt);
+}
+
+// ──────────────── Follow-up ghost bubble ────────────────
+//
+// Reply-mode suggestion ({@code follow-up/{project}}) for the most-
+// recent assistant message. Shown as a ghost bubble in {@link ChatView}
+// whenever the composer is empty; Space/Tab/click in the composer
+// accepts it into the input.
+
+/** Mirrored from {@link ChatView}'s {@code last-assistant-changed} emit. */
+const lastAssistantContent = ref<string | null>(null);
+/** Mirrored from {@link ChatComposer}'s {@code text-changed} emit. */
+const composerText = ref<string>('');
+/** Mirrored from {@link ChatComposer}'s {@code focus-changed} emit.
+ *  Gates the follow-up fetch — we only ask the LLM when the user is
+ *  plausibly about to type. */
+const composerFocused = ref<boolean>(false);
+
+const followUpProjectId = computed<string | null>(() => chatProjectId.value || null);
+
+/** Disable while the composer is sending — the suggestion would only
+ *  cause UI noise during the send/stream window. */
+const followUpEnabled = computed<boolean>(() => mode.value === 'live');
+
+const {
+  activeSuggestion: followUpSuggestion,
+  acceptCurrent: acceptFollowUp,
+} = useFollowUpSuggestion({
+  lastAssistantContent,
+  composerText,
+  projectId: followUpProjectId,
+  enabled: followUpEnabled,
+  requestActive: composerFocused,
+});
+
+function onLastAssistantChangedFromView(content: string | null): void {
+  lastAssistantContent.value = content;
+}
+function onComposerTextChanged(text: string): void {
+  composerText.value = text;
+}
+function onComposerFocusChanged(focused: boolean): void {
+  composerFocused.value = focused;
+}
+function onAcceptFollowUpFromView(): void {
+  const suggestion = followUpSuggestion.value;
+  if (!suggestion) return;
+  composerRef.value?.setText(suggestion + ' ');
+  acceptFollowUp();
+}
+function onFollowUpAcceptedFromComposer(): void {
+  acceptFollowUp();
 }
 
 // ──────────────── URL state ────────────────
@@ -582,6 +635,7 @@ function onTitleClick(): void {
           :mediation="mediation"
           :chat-process-name="chatProcessName"
           :chat-project-id="chatProjectId"
+          :follow-up-suggestion="followUpSuggestion"
           @leave="leaveLive"
           @hub="backToHub"
           @speak-message="onSpeakMessageFromView"
@@ -590,6 +644,8 @@ function onTitleClick(): void {
           @ask-user-pick="onAskUserPickFromView"
           @wizard-deep-link="onWizardDeepLinkFromView"
           @project-resolved="onChatViewProjectResolved"
+          @last-assistant-changed="onLastAssistantChangedFromView"
+          @accept-follow-up="onAcceptFollowUpFromView"
         />
 
         <div v-else-if="mode === 'connecting'" class="p-6 text-sm opacity-60">
@@ -623,9 +679,13 @@ function onTitleClick(): void {
         :chat-process-name="chatProcessName"
         :chat-project-id="chatProjectId"
         :mediation="mediation"
+        :follow-up-suggestion="followUpSuggestion"
         @hub="backToHub"
         @local-echo="onLocalEchoFromComposer"
         @rollback-echo="onRollbackEchoFromComposer"
+        @text-changed="onComposerTextChanged"
+        @follow-up-accepted="onFollowUpAcceptedFromComposer"
+        @focus-changed="onComposerFocusChanged"
       />
     </template>
   </EditorShell>

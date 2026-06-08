@@ -6,6 +6,7 @@ import PickerView from './PickerView.vue';
 import ChatView from './ChatView.vue';
 import ChatComposer from './ChatComposer.vue';
 import ChatRightPanel from './ChatRightPanel.vue';
+import { useFollowUpSuggestion } from '@composables/useFollowUpSuggestion';
 const { t } = useI18n();
 const CLIENT_VERSION = '0.1.0';
 const mode = ref('connecting');
@@ -188,6 +189,50 @@ function onWizardDeepLinkFromView(detail) {
 }
 function onPromptReadyFromRightPanel(prompt) {
     composerRef.value?.setText(prompt);
+}
+// ──────────────── Follow-up ghost bubble ────────────────
+//
+// Reply-mode suggestion ({@code follow-up/{project}}) for the most-
+// recent assistant message. Shown as a ghost bubble in {@link ChatView}
+// whenever the composer is empty; Space/Tab/click in the composer
+// accepts it into the input.
+/** Mirrored from {@link ChatView}'s {@code last-assistant-changed} emit. */
+const lastAssistantContent = ref(null);
+/** Mirrored from {@link ChatComposer}'s {@code text-changed} emit. */
+const composerText = ref('');
+/** Mirrored from {@link ChatComposer}'s {@code focus-changed} emit.
+ *  Gates the follow-up fetch — we only ask the LLM when the user is
+ *  plausibly about to type. */
+const composerFocused = ref(false);
+const followUpProjectId = computed(() => chatProjectId.value || null);
+/** Disable while the composer is sending — the suggestion would only
+ *  cause UI noise during the send/stream window. */
+const followUpEnabled = computed(() => mode.value === 'live');
+const { activeSuggestion: followUpSuggestion, acceptCurrent: acceptFollowUp, } = useFollowUpSuggestion({
+    lastAssistantContent,
+    composerText,
+    projectId: followUpProjectId,
+    enabled: followUpEnabled,
+    requestActive: composerFocused,
+});
+function onLastAssistantChangedFromView(content) {
+    lastAssistantContent.value = content;
+}
+function onComposerTextChanged(text) {
+    composerText.value = text;
+}
+function onComposerFocusChanged(focused) {
+    composerFocused.value = focused;
+}
+function onAcceptFollowUpFromView() {
+    const suggestion = followUpSuggestion.value;
+    if (!suggestion)
+        return;
+    composerRef.value?.setText(suggestion + ' ');
+    acceptFollowUp();
+}
+function onFollowUpAcceptedFromComposer() {
+    acceptFollowUp();
 }
 // ──────────────── URL state ────────────────
 function urlSessionId() {
@@ -651,6 +696,8 @@ else if (__VLS_ctx.liveOk) {
         ...{ 'onAskUserPick': {} },
         ...{ 'onWizardDeepLink': {} },
         ...{ 'onProjectResolved': {} },
+        ...{ 'onLastAssistantChanged': {} },
+        ...{ 'onAcceptFollowUp': {} },
         ref: "chatViewRef",
         key: (__VLS_ctx.activeSessionId ?? ''),
         socket: (__VLS_ctx.socket),
@@ -658,6 +705,7 @@ else if (__VLS_ctx.liveOk) {
         mediation: (__VLS_ctx.mediation),
         chatProcessName: (__VLS_ctx.chatProcessName),
         chatProjectId: (__VLS_ctx.chatProjectId),
+        followUpSuggestion: (__VLS_ctx.followUpSuggestion),
     }));
     const __VLS_49 = __VLS_48({
         ...{ 'onLeave': {} },
@@ -668,6 +716,8 @@ else if (__VLS_ctx.liveOk) {
         ...{ 'onAskUserPick': {} },
         ...{ 'onWizardDeepLink': {} },
         ...{ 'onProjectResolved': {} },
+        ...{ 'onLastAssistantChanged': {} },
+        ...{ 'onAcceptFollowUp': {} },
         ref: "chatViewRef",
         key: (__VLS_ctx.activeSessionId ?? ''),
         socket: (__VLS_ctx.socket),
@@ -675,6 +725,7 @@ else if (__VLS_ctx.liveOk) {
         mediation: (__VLS_ctx.mediation),
         chatProcessName: (__VLS_ctx.chatProcessName),
         chatProjectId: (__VLS_ctx.chatProjectId),
+        followUpSuggestion: (__VLS_ctx.followUpSuggestion),
     }, ...__VLS_functionalComponentArgsRest(__VLS_48));
     let __VLS_51;
     let __VLS_52;
@@ -703,8 +754,14 @@ else if (__VLS_ctx.liveOk) {
     const __VLS_61 = {
         onProjectResolved: (__VLS_ctx.onChatViewProjectResolved)
     };
+    const __VLS_62 = {
+        onLastAssistantChanged: (__VLS_ctx.onLastAssistantChangedFromView)
+    };
+    const __VLS_63 = {
+        onAcceptFollowUp: (__VLS_ctx.onAcceptFollowUpFromView)
+    };
     /** @type {typeof __VLS_ctx.chatViewRef} */ ;
-    var __VLS_62 = {};
+    var __VLS_64 = {};
     var __VLS_50;
 }
 else if (__VLS_ctx.mode === 'connecting') {
@@ -718,29 +775,29 @@ else if (__VLS_ctx.mode === 'connecting') {
     if (__VLS_ctx.liveOk) {
         /** @type {[typeof ChatRightPanel, ]} */ ;
         // @ts-ignore
-        const __VLS_64 = __VLS_asFunctionalComponent(ChatRightPanel, new ChatRightPanel({
+        const __VLS_66 = __VLS_asFunctionalComponent(ChatRightPanel, new ChatRightPanel({
             ...{ 'onPromptReady': {} },
             ref: "rightPanelRef",
             events: (__VLS_ctx.progressEvents),
             projectId: (__VLS_ctx.chatProjectId || undefined),
             sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
         }));
-        const __VLS_65 = __VLS_64({
+        const __VLS_67 = __VLS_66({
             ...{ 'onPromptReady': {} },
             ref: "rightPanelRef",
             events: (__VLS_ctx.progressEvents),
             projectId: (__VLS_ctx.chatProjectId || undefined),
             sessionKey: (__VLS_ctx.chatProcessName ?? undefined),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_64));
-        let __VLS_67;
-        let __VLS_68;
+        }, ...__VLS_functionalComponentArgsRest(__VLS_66));
         let __VLS_69;
-        const __VLS_70 = {
+        let __VLS_70;
+        let __VLS_71;
+        const __VLS_72 = {
             onPromptReady: (__VLS_ctx.onPromptReadyFromRightPanel)
         };
         /** @type {typeof __VLS_ctx.rightPanelRef} */ ;
-        var __VLS_71 = {};
-        var __VLS_66;
+        var __VLS_73 = {};
+        var __VLS_68;
     }
 }
 {
@@ -748,43 +805,60 @@ else if (__VLS_ctx.mode === 'connecting') {
     if (__VLS_ctx.liveOk) {
         /** @type {[typeof ChatComposer, ]} */ ;
         // @ts-ignore
-        const __VLS_73 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
+        const __VLS_75 = __VLS_asFunctionalComponent(ChatComposer, new ChatComposer({
             ...{ 'onHub': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
+            ...{ 'onTextChanged': {} },
+            ...{ 'onFollowUpAccepted': {} },
+            ...{ 'onFocusChanged': {} },
             ref: "composerRef",
             key: (__VLS_ctx.activeSessionId ?? ''),
             socket: (__VLS_ctx.socket),
             chatProcessName: (__VLS_ctx.chatProcessName),
             chatProjectId: (__VLS_ctx.chatProjectId),
             mediation: (__VLS_ctx.mediation),
+            followUpSuggestion: (__VLS_ctx.followUpSuggestion),
         }));
-        const __VLS_74 = __VLS_73({
+        const __VLS_76 = __VLS_75({
             ...{ 'onHub': {} },
             ...{ 'onLocalEcho': {} },
             ...{ 'onRollbackEcho': {} },
+            ...{ 'onTextChanged': {} },
+            ...{ 'onFollowUpAccepted': {} },
+            ...{ 'onFocusChanged': {} },
             ref: "composerRef",
             key: (__VLS_ctx.activeSessionId ?? ''),
             socket: (__VLS_ctx.socket),
             chatProcessName: (__VLS_ctx.chatProcessName),
             chatProjectId: (__VLS_ctx.chatProjectId),
             mediation: (__VLS_ctx.mediation),
-        }, ...__VLS_functionalComponentArgsRest(__VLS_73));
-        let __VLS_76;
-        let __VLS_77;
+            followUpSuggestion: (__VLS_ctx.followUpSuggestion),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_75));
         let __VLS_78;
-        const __VLS_79 = {
+        let __VLS_79;
+        let __VLS_80;
+        const __VLS_81 = {
             onHub: (__VLS_ctx.backToHub)
         };
-        const __VLS_80 = {
+        const __VLS_82 = {
             onLocalEcho: (__VLS_ctx.onLocalEchoFromComposer)
         };
-        const __VLS_81 = {
+        const __VLS_83 = {
             onRollbackEcho: (__VLS_ctx.onRollbackEchoFromComposer)
         };
+        const __VLS_84 = {
+            onTextChanged: (__VLS_ctx.onComposerTextChanged)
+        };
+        const __VLS_85 = {
+            onFollowUpAccepted: (__VLS_ctx.onFollowUpAcceptedFromComposer)
+        };
+        const __VLS_86 = {
+            onFocusChanged: (__VLS_ctx.onComposerFocusChanged)
+        };
         /** @type {typeof __VLS_ctx.composerRef} */ ;
-        var __VLS_82 = {};
-        var __VLS_75;
+        var __VLS_87 = {};
+        var __VLS_77;
     }
 }
 var __VLS_3;
@@ -805,7 +879,7 @@ var __VLS_3;
 /** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
 // @ts-ignore
-var __VLS_63 = __VLS_62, __VLS_72 = __VLS_71, __VLS_83 = __VLS_82;
+var __VLS_65 = __VLS_64, __VLS_74 = __VLS_73, __VLS_88 = __VLS_87;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -844,6 +918,12 @@ const __VLS_self = (await import('vue')).defineComponent({
             onAskUserPickFromView: onAskUserPickFromView,
             onWizardDeepLinkFromView: onWizardDeepLinkFromView,
             onPromptReadyFromRightPanel: onPromptReadyFromRightPanel,
+            followUpSuggestion: followUpSuggestion,
+            onLastAssistantChangedFromView: onLastAssistantChangedFromView,
+            onComposerTextChanged: onComposerTextChanged,
+            onComposerFocusChanged: onComposerFocusChanged,
+            onAcceptFollowUpFromView: onAcceptFollowUpFromView,
+            onFollowUpAcceptedFromComposer: onFollowUpAcceptedFromComposer,
             openAndBind: openAndBind,
             backToHub: backToHub,
             onSessionPicked: onSessionPicked,

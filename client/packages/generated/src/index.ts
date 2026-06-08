@@ -97,6 +97,10 @@ export * from './form/BindsToDto';
 export * from './form/FormChoiceDto';
 export * from './form/FormFieldDto';
 
+export * from './followup/FollowUpRequestDto';
+export * from './followup/FollowUpResponseDto';
+export * from './followup/FollowUpSuggestionDto';
+
 export * from './settingform/AppliedSettingDto';
 export * from './settingform/ComputedSettingDto';
 export * from './settingform/SettingFormApplyRequestDto';

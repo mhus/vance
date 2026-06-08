@@ -5,6 +5,7 @@ import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { SessionHeader, VAlert, VButton } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
+import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 const props = defineProps();
@@ -109,6 +110,53 @@ function onPickAskUserOption(label) {
     // Composer owns the send pipeline — bubble up so the parent can
     // route this to {@code composerRef.setTextAndSend(label)}.
     emit('ask-user-pick', label.trim());
+}
+/**
+ * Most-recent ASSISTANT message that the user could plausibly reply
+ * to — drives the follow-up ghost bubble. Skips streaming drafts and
+ * worker messages; only fully-committed main-chat assistant messages
+ * count, and only when the conversation tail isn't already a USER
+ * message (i.e. the user hasn't replied yet).
+ */
+const lastAssistantContent = computed(() => {
+    const msgs = allMessages.value;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (String(m.role) === 'USER')
+            return null;
+        if (String(m.role) !== 'ASSISTANT')
+            continue;
+        if (workerMessageIds.value.has(m.messageId))
+            continue;
+        const content = m.content?.trim();
+        if (!content)
+            return null;
+        return content;
+    }
+    return null;
+});
+watch(lastAssistantContent, (next) => {
+    emit('last-assistant-changed', next);
+}, { immediate: true });
+/** Index in {@code allMessages} of the bubble after which the
+ *  follow-up ghost should be rendered. {@code -1} when there is no
+ *  active follow-up. */
+const followUpAnchorIndex = computed(() => {
+    if (!props.followUpSuggestion)
+        return -1;
+    const target = lastAssistantContent.value;
+    if (!target)
+        return -1;
+    const msgs = allMessages.value;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        if (String(msgs[i].role) === 'ASSISTANT' && msgs[i].content?.trim() === target) {
+            return i;
+        }
+    }
+    return -1;
+});
+function onAcceptFollowUp() {
+    emit('accept-follow-up');
 }
 /** Sticky chat-process draft for the optimistic streaming bubble. */
 const visibleDraft = computed(() => {
@@ -407,12 +455,12 @@ else if (__VLS_ctx.historyError) {
     (__VLS_ctx.historyError);
     var __VLS_20;
 }
-for (const [msg] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
+for (const [msg, idx] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
+    (msg.messageId);
     /** @type {[typeof MessageBubble, ]} */ ;
     // @ts-ignore
     const __VLS_21 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
         ...{ 'onPickOption': {} },
-        key: (msg.messageId),
         role: (String(msg.role)),
         content: (msg.content),
         createdAt: (msg.createdAt),
@@ -422,7 +470,6 @@ for (const [msg] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
     }));
     const __VLS_22 = __VLS_21({
         ...{ 'onPickOption': {} },
-        key: (msg.messageId),
         role: (String(msg.role)),
         content: (msg.content),
         createdAt: (msg.createdAt),
@@ -437,25 +484,44 @@ for (const [msg] of __VLS_getVForSourceType((__VLS_ctx.allMessages))) {
         onPickOption: (__VLS_ctx.onPickAskUserOption)
     };
     var __VLS_23;
+    if (idx === __VLS_ctx.followUpAnchorIndex && !__VLS_ctx.visibleDraft) {
+        /** @type {[typeof FollowUpGhost, ]} */ ;
+        // @ts-ignore
+        const __VLS_28 = __VLS_asFunctionalComponent(FollowUpGhost, new FollowUpGhost({
+            ...{ 'onAccept': {} },
+            suggestion: (__VLS_ctx.followUpSuggestion ?? null),
+        }));
+        const __VLS_29 = __VLS_28({
+            ...{ 'onAccept': {} },
+            suggestion: (__VLS_ctx.followUpSuggestion ?? null),
+        }, ...__VLS_functionalComponentArgsRest(__VLS_28));
+        let __VLS_31;
+        let __VLS_32;
+        let __VLS_33;
+        const __VLS_34 = {
+            onAccept: (__VLS_ctx.onAcceptFollowUp)
+        };
+        var __VLS_30;
+    }
 }
 if (__VLS_ctx.visibleDraft) {
     /** @type {[typeof MessageBubble, ]} */ ;
     // @ts-ignore
-    const __VLS_28 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
+    const __VLS_35 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
         role: (String(__VLS_ctx.visibleDraft.role)),
         content: (__VLS_ctx.visibleDraft.content),
         streaming: (true),
     }));
-    const __VLS_29 = __VLS_28({
+    const __VLS_36 = __VLS_35({
         role: (String(__VLS_ctx.visibleDraft.role)),
         content: (__VLS_ctx.visibleDraft.content),
         streaming: (true),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_28));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_35));
 }
 for (const [draft] of __VLS_getVForSourceType((__VLS_ctx.visibleWorkerDrafts))) {
     /** @type {[typeof MessageBubble, ]} */ ;
     // @ts-ignore
-    const __VLS_31 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
+    const __VLS_38 = __VLS_asFunctionalComponent(MessageBubble, new MessageBubble({
         key: (`worker-draft-${draft.processName}`),
         role: (String(draft.role)),
         content: (draft.content),
@@ -463,27 +529,27 @@ for (const [draft] of __VLS_getVForSourceType((__VLS_ctx.visibleWorkerDrafts))) 
         processName: (draft.processName),
         streaming: (true),
     }));
-    const __VLS_32 = __VLS_31({
+    const __VLS_39 = __VLS_38({
         key: (`worker-draft-${draft.processName}`),
         role: (String(draft.role)),
         content: (draft.content),
         worker: (true),
         processName: (draft.processName),
         streaming: (true),
-    }, ...__VLS_functionalComponentArgsRest(__VLS_31));
+    }, ...__VLS_functionalComponentArgsRest(__VLS_38));
 }
 /** @type {[typeof PlanModeIndicator, ]} */ ;
 // @ts-ignore
-const __VLS_34 = __VLS_asFunctionalComponent(PlanModeIndicator, new PlanModeIndicator({
+const __VLS_41 = __VLS_asFunctionalComponent(PlanModeIndicator, new PlanModeIndicator({
     mode: (__VLS_ctx.chatProcessMode),
     todos: (__VLS_ctx.chatTodos),
     planMeta: (__VLS_ctx.planMeta),
 }));
-const __VLS_35 = __VLS_34({
+const __VLS_42 = __VLS_41({
     mode: (__VLS_ctx.chatProcessMode),
     todos: (__VLS_ctx.chatTodos),
     planMeta: (__VLS_ctx.planMeta),
-}, ...__VLS_functionalComponentArgsRest(__VLS_34));
+}, ...__VLS_functionalComponentArgsRest(__VLS_41));
 /** @type {__VLS_StyleScopedClasses['h-full']} */ ;
 /** @type {__VLS_StyleScopedClasses['min-h-0']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
@@ -552,6 +618,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             VAlert: VAlert,
             VButton: VButton,
             MessageBubble: MessageBubble,
+            FollowUpGhost: FollowUpGhost,
             PlanModeIndicator: PlanModeIndicator,
             emit: emit,
             historyLoading: historyLoading,
@@ -566,6 +633,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             allMessages: allMessages,
             activeAskUserMessageId: activeAskUserMessageId,
             onPickAskUserOption: onPickAskUserOption,
+            followUpAnchorIndex: followUpAnchorIndex,
+            onAcceptFollowUp: onAcceptFollowUp,
             visibleDraft: visibleDraft,
             visibleWorkerDrafts: visibleWorkerDrafts,
         };

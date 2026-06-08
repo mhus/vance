@@ -17,6 +17,7 @@ import { useTenantProjects } from '@composables/useTenantProjects';
 import { useDocumentRefStore } from '@/document/documentRefStore';
 import { SessionHeader, VAlert, VButton } from '@components/index';
 import MessageBubble from './MessageBubble.vue';
+import FollowUpGhost from './FollowUpGhost.vue';
 import PlanModeIndicator from './PlanModeIndicator.vue';
 import { OPTIMISTIC_PREFIX } from './optimisticEcho';
 
@@ -41,6 +42,11 @@ const props = defineProps<{
   /** Project that owns this session — used for the header label and
    *  the document-ref store. */
   chatProjectId: string;
+  /** Active follow-up reply suggestion (reply mode). Rendered as a
+   *  ghost bubble below the most-recent assistant message; {@code null}
+   *  hides the bubble entirely. Computed by the parent so the
+   *  composer (sibling) can use the same value for Space-acceptance. */
+  followUpSuggestion?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -66,6 +72,13 @@ const emit = defineEmits<{
    *  on mount once tenant projects load, and on any subsequent change.
    *  Parent uses this for the topbar breadcrumb. */
   (event: 'project-resolved', payload: { name: string; title: string }): void;
+  /** User clicked the follow-up ghost bubble — parent routes this to
+   *  the composer's setText + acceptCurrent. */
+  (event: 'accept-follow-up'): void;
+  /** Most-recent assistant message content changed (incl. {@code null}
+   *  when there isn't one yet). Parent uses this to drive the
+   *  follow-up suggestion fetch. */
+  (event: 'last-assistant-changed', content: string | null): void;
 }>();
 
 const { t: _ } = useI18n();
@@ -181,6 +194,51 @@ function onPickAskUserOption(label: string): void {
   // Composer owns the send pipeline — bubble up so the parent can
   // route this to {@code composerRef.setTextAndSend(label)}.
   emit('ask-user-pick', label.trim());
+}
+
+/**
+ * Most-recent ASSISTANT message that the user could plausibly reply
+ * to — drives the follow-up ghost bubble. Skips streaming drafts and
+ * worker messages; only fully-committed main-chat assistant messages
+ * count, and only when the conversation tail isn't already a USER
+ * message (i.e. the user hasn't replied yet).
+ */
+const lastAssistantContent = computed<string | null>(() => {
+  const msgs = allMessages.value;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (String(m.role) === 'USER') return null;
+    if (String(m.role) !== 'ASSISTANT') continue;
+    if (workerMessageIds.value.has(m.messageId)) continue;
+    const content = m.content?.trim();
+    if (!content) return null;
+    return content;
+  }
+  return null;
+});
+
+watch(lastAssistantContent, (next) => {
+  emit('last-assistant-changed', next);
+}, { immediate: true });
+
+/** Index in {@code allMessages} of the bubble after which the
+ *  follow-up ghost should be rendered. {@code -1} when there is no
+ *  active follow-up. */
+const followUpAnchorIndex = computed<number>(() => {
+  if (!props.followUpSuggestion) return -1;
+  const target = lastAssistantContent.value;
+  if (!target) return -1;
+  const msgs = allMessages.value;
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (String(msgs[i].role) === 'ASSISTANT' && msgs[i].content?.trim() === target) {
+      return i;
+    }
+  }
+  return -1;
+});
+
+function onAcceptFollowUp(): void {
+  emit('accept-follow-up');
 }
 
 /** Sticky chat-process draft for the optimistic streaming bubble. */
@@ -420,17 +478,22 @@ watch(() => props.sessionId, async (newId, oldId) => {
         </div>
         <VAlert v-else-if="historyError" variant="error">{{ historyError }}</VAlert>
 
-        <MessageBubble
-          v-for="msg in allMessages"
-          :key="msg.messageId"
-          :role="String(msg.role)"
-          :content="msg.content"
-          :created-at="msg.createdAt"
-          :worker="workerMessageIds.has(msg.messageId)"
-          :meta="msg.meta"
-          :options-actionable="msg.messageId === activeAskUserMessageId"
-          @pick-option="onPickAskUserOption"
-        />
+        <template v-for="(msg, idx) in allMessages" :key="msg.messageId">
+          <MessageBubble
+            :role="String(msg.role)"
+            :content="msg.content"
+            :created-at="msg.createdAt"
+            :worker="workerMessageIds.has(msg.messageId)"
+            :meta="msg.meta"
+            :options-actionable="msg.messageId === activeAskUserMessageId"
+            @pick-option="onPickAskUserOption"
+          />
+          <FollowUpGhost
+            v-if="idx === followUpAnchorIndex && !visibleDraft"
+            :suggestion="followUpSuggestion ?? null"
+            @accept="onAcceptFollowUp"
+          />
+        </template>
 
         <MessageBubble
           v-if="visibleDraft"

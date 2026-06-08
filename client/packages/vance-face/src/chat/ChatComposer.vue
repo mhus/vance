@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   type BrainWsApi,
@@ -62,6 +62,11 @@ const props = defineProps<{
   chatProjectId: string;
   /** Active mediation state, or null when bound to the hub directly. */
   mediation?: MediationState | null;
+  /** Current follow-up suggestion (reply mode). When set AND the
+   *  composer is empty, pressing Space accepts the suggestion (writes
+   *  it into the input plus a trailing space, shell-autosuggestion
+   *  style) instead of inserting the space. */
+  followUpSuggestion?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -75,6 +80,17 @@ const emit = defineEmits<{
   /** Rollback a previously-emitted local echo because the server
    *  refused the steer. Parent removes the entry matching this id. */
   (e: 'rollback-echo', messageId: string): void;
+  /** Composer text changed — parent uses this to drive the follow-up
+   *  suggestion's empty-input gate. */
+  (e: 'text-changed', text: string): void;
+  /** User pressed Space against an active follow-up suggestion. Parent
+   *  marks the suggestion as accepted so it doesn't re-appear when the
+   *  composer goes empty again on the same assistant message. */
+  (e: 'follow-up-accepted'): void;
+  /** Composer focus state changed — parent uses this to gate the
+   *  follow-up REST call (only fire when the user is plausibly about
+   *  to type). */
+  (e: 'focus-changed', focused: boolean): void;
 }>();
 
 const { t } = useI18n();
@@ -85,6 +101,12 @@ const composerText = ref('');
 const sending = ref(false);
 const uploading = ref(false);
 const sendError = ref<string | null>(null);
+
+// Mirror composer text upward so the parent can drive the follow-up
+// ghost-bubble visibility (only shown while the composer is empty).
+watch(composerText, (next) => {
+  emit('text-changed', next);
+}, { immediate: true });
 
 const selectedFiles = ref<File[]>([]);
 const dragActive = ref(false);
@@ -560,7 +582,37 @@ function pause(): void {
   sending.value = false;
 }
 
+function onComposerFocusIn(): void {
+  emit('focus-changed', true);
+}
+
+function onComposerFocusOut(event: FocusEvent): void {
+  // {@code focusout} bubbles before the new {@code focusin} fires, so
+  // {@code relatedTarget} tells us whether focus is moving to another
+  // element inside the same wrapper (e.g. the speech-rate slider in
+  // the toolbar) — in which case the composer is still "active".
+  const next = event.relatedTarget as Node | null;
+  const root = event.currentTarget as HTMLElement;
+  if (next && root.contains(next)) return;
+  emit('focus-changed', false);
+}
+
 function onComposerKeydown(event: KeyboardEvent): void {
+  // Follow-up acceptance: Space (or Tab) against an active suggestion
+  // while the composer is empty writes the suggestion into the input
+  // instead of inserting whitespace. Shell-autosuggestion style.
+  if (
+    !event.ctrlKey && !event.metaKey && !event.altKey &&
+    composerText.value.length === 0 &&
+    props.followUpSuggestion &&
+    (event.key === ' ' || event.key === 'Tab')
+  ) {
+    event.preventDefault();
+    const appendSpace = event.key === ' ';
+    composerText.value = props.followUpSuggestion + (appendSpace ? ' ' : '');
+    emit('follow-up-accepted');
+    return;
+  }
   if (event.key !== 'Enter') return;
   if (multiline.value) {
     if (event.ctrlKey || event.metaKey) {
@@ -908,7 +960,7 @@ onBeforeUnmount(() => {
           📎
         </VButton>
       </div>
-      <div class="flex-1">
+      <div class="flex-1" @focusin="onComposerFocusIn" @focusout="onComposerFocusOut">
         <VTextarea
           v-model="composerText"
           :placeholder="composerPlaceholder"

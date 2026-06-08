@@ -153,6 +153,15 @@
             <artifactId>pebble</artifactId>
         </dependency>
 
+        <!-- Caffeine: high-performance in-memory caching with size +
+             time-based eviction. Backs the FollowUpService cache and
+             is available transitively via Spring Boot for any other
+             internal cache that comes later. -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- YouTube captions extraction for VideoTranscriptTool. Pure
              Java port of the python youtube-transcript-api: calls
              YouTube's InnerTube player API, parses the caption tracks,

@@ -118,6 +118,10 @@ declare const _default: {
         historyLoading: string;
         composerPlaceholderSingle: string;
         composerPlaceholderMulti: string;
+        followUp: {
+            acceptHint: string;
+            acceptTooltip: string;
+        };
         send: string;
         pause: string;
         pauseTooltip: string;

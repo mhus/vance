@@ -18,42 +18,23 @@ type __VLS_Props = {
     /** Project that owns this session — used for the header label and
      *  the document-ref store. */
     chatProjectId: string;
+    /** Active follow-up reply suggestion (reply mode). Rendered as a
+     *  ghost bubble below the most-recent assistant message; {@code null}
+     *  hides the bubble entirely. Computed by the parent so the
+     *  composer (sibling) can use the same value for Space-acceptance. */
+    followUpSuggestion?: string | null;
 };
 declare function appendLocalEcho(message: ChatMessageDto): void;
 declare function rollbackLocalEcho(messageId: string): void;
 declare const _default: import("vue").DefineComponent<__VLS_Props, {
     appendLocalEcho: typeof appendLocalEcho;
     rollbackLocalEcho: typeof rollbackLocalEcho;
-}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "project-resolved": (payload: {
-        name: string;
-        title: string;
-    }) => any;
-    leave: () => any;
-    hub: () => any;
-    "speak-message": (content: string) => any;
-    "note-activity": () => any;
-    "history-loaded": () => any;
-    "ask-user-pick": (label: string) => any;
-    "wizard-deep-link": (detail: {
-        name: string;
-        prefill: Record<string, string>;
-    }) => any;
+}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {
+    [x: string]: any;
+} & {
+    [x: string]: any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
-    "onProject-resolved"?: ((payload: {
-        name: string;
-        title: string;
-    }) => any) | undefined;
-    onLeave?: (() => any) | undefined;
-    onHub?: (() => any) | undefined;
-    "onSpeak-message"?: ((content: string) => any) | undefined;
-    "onNote-activity"?: (() => any) | undefined;
-    "onHistory-loaded"?: (() => any) | undefined;
-    "onAsk-user-pick"?: ((label: string) => any) | undefined;
-    "onWizard-deep-link"?: ((detail: {
-        name: string;
-        prefill: Record<string, string>;
-    }) => any) | undefined;
+    [x: `on${Capitalize<any>}`]: ((...args: any) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=ChatView.vue.d.ts.map

@@ -17,6 +17,11 @@ type __VLS_Props = {
     chatProjectId: string;
     /** Active mediation state, or null when bound to the hub directly. */
     mediation?: MediationState | null;
+    /** Current follow-up suggestion (reply mode). When set AND the
+     *  composer is empty, pressing Space accepts the suggestion (writes
+     *  it into the input plus a trailing space, shell-autosuggestion
+     *  style) instead of inserting the space. */
+    followUpSuggestion?: string | null;
 };
 declare function speakMessage(content: string): void;
 declare function noteTalkActivity(): void;
@@ -42,10 +47,16 @@ declare const _default: import("vue").DefineComponent<__VLS_Props, {
     hub: () => any;
     "local-echo": (message: ChatMessageDto) => any;
     "rollback-echo": (messageId: string) => any;
+    "text-changed": (text: string) => any;
+    "follow-up-accepted": () => any;
+    "focus-changed": (focused: boolean) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
     onHub?: (() => any) | undefined;
     "onLocal-echo"?: ((message: ChatMessageDto) => any) | undefined;
     "onRollback-echo"?: ((messageId: string) => any) | undefined;
+    "onText-changed"?: ((text: string) => any) | undefined;
+    "onFollow-up-accepted"?: (() => any) | undefined;
+    "onFocus-changed"?: ((focused: boolean) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=ChatComposer.vue.d.ts.map

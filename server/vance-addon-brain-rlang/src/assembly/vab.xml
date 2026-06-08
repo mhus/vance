@@ -1,0 +1,48 @@
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.1.1"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.1.1 https://maven.apache.org/xsd/assembly-2.1.1.xsd">
+    <id>vab</id>
+    <formats>
+        <format>zip</format>
+    </formats>
+    <includeBaseDirectory>false</includeBaseDirectory>
+
+    <files>
+        <file>
+            <source>${project.build.directory}/${project.build.finalName}.jar</source>
+            <outputDirectory>brain/lib</outputDirectory>
+        </file>
+        <file>
+            <source>${project.build.outputDirectory}/META-INF/vance-addon.yaml</source>
+            <outputDirectory>META-INF</outputDirectory>
+        </file>
+    </files>
+
+    <fileSets>
+        <fileSet>
+            <directory>${project.build.outputDirectory}/META-INF/spring</directory>
+            <outputDirectory>META-INF/spring</outputDirectory>
+        </fileSet>
+        <!-- No client/dist — brain-only addon, no Module Federation remote. -->
+    </fileSets>
+
+    <!--
+      Bundle the external REngine + Rserve client JARs alongside the
+      addon JAR in brain/lib so PropertiesLauncher picks them up via
+      -Dloader.path. scope=runtime grabs compile+runtime deps and
+      excludes provided/test — keeps the vance-* JARs out (they live
+      in vance-brain.jar already).
+    -->
+    <dependencySets>
+        <dependencySet>
+            <outputDirectory>brain/lib</outputDirectory>
+            <useProjectArtifact>false</useProjectArtifact>
+            <unpack>false</unpack>
+            <scope>runtime</scope>
+            <includes>
+                <include>org.rosuda.REngine:Rserve</include>
+                <include>org.rosuda.REngine:REngine</include>
+            </includes>
+        </dependencySet>
+    </dependencySets>
+</assembly>

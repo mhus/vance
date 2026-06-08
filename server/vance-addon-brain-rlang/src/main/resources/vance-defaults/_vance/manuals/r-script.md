@@ -174,10 +174,13 @@ which:
 
 | Symptom | Likely cause | Recovery |
 |---|---|---|
-| "Rserve daemon is not reachable" | The R daemon isn't running on the brain host | Operator concern; tell the user honestly |
+| "Cannot start Rserve: R is not on PATH" | R isn't installed on the brain host | Operator concern — install R + Rserve package |
+| "Rserve startup failed (process exited with N)" | R is there but the Rserve package isn't, or the port is taken | Operator concern |
+| "Rserve did not become reachable in Xs" | Daemon spawned but never opened the port within the timeout | Operator concern |
+| "Rserve not reachable … autostart=false" | Auto-start disabled and external daemon down | Operator concern |
 | "R error: <message>" | The R script raised a condition | Read the message — it's the same string `conditionMessage(e)` returns in R |
 | "setwd('X') failed" | The requested `workingDir` doesn't exist or isn't writable | Check the path; fall back to omitting `workingDir` |
-| "Could not open Rserve connection" | Daemon present but TCP refused (firewall, wrong port) | Operator concern |
+| "Could not open Rserve connection" | Daemon was running but TCP refused mid-call (crashed) | Tool will respawn on next call automatically |
 
 ## Library availability
 

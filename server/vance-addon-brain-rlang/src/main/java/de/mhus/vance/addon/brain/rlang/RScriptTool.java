@@ -1,4 +1,4 @@
-package de.mhus.vance.brain.tools.r;
+package de.mhus.vance.addon.brain.rlang;
 
 import de.mhus.vance.api.progress.StatusTag;
 import de.mhus.vance.brain.progress.ProgressEmitter;
@@ -94,17 +94,20 @@ public class RScriptTool implements Tool {
             "required", List.of("script"));
 
     private final RserveHealth health;
+    private final RserveDaemonManager daemonManager;
     private final ThinkProcessService thinkProcessService;
     private final ProgressEmitter progressEmitter;
     private final DocumentService documentService;
     private final DocumentLinkBuilder linkBuilder;
 
     public RScriptTool(RserveHealth health,
+                       RserveDaemonManager daemonManager,
                        ThinkProcessService thinkProcessService,
                        ProgressEmitter progressEmitter,
                        DocumentService documentService,
                        DocumentLinkBuilder linkBuilder) {
         this.health = health;
+        this.daemonManager = daemonManager;
         this.thinkProcessService = thinkProcessService;
         this.progressEmitter = progressEmitter;
         this.documentService = documentService;
@@ -159,21 +162,11 @@ public class RScriptTool implements Tool {
         }
         String workingDir = asString(params == null ? null : params.get("workingDir"));
 
-        if (!health.isReachable()) {
-            // Re-probe in case the daemon came up after boot.
-            RserveHealth.Status s = health.probe();
-            if (!s.ok()) {
-                throw new ToolException(
-                        "Rserve daemon is not reachable at "
-                                + health.properties().getHost() + ":"
-                                + health.properties().getPort()
-                                + " — start it with "
-                                + "`R -e 'Rserve::Rserve()'` (macOS) "
-                                + "or check the brain container "
-                                + "logs. Underlying: "
-                                + s.errorMessage());
-            }
-        }
+        // Lazy daemon start: on first call (or after a daemon crash),
+        // RserveDaemonManager spawns `R CMD Rserve` and blocks until
+        // the port answers. Subsequent calls fall through immediately
+        // because health.isReachable() short-circuits inside.
+        daemonManager.ensureRunning();
 
         ThinkProcessDocument process = loadProcess(ctx);
         emit(process, StatusTag.FETCH,

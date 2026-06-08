@@ -164,19 +164,6 @@
             <version>0.4.0</version>
         </dependency>
 
-        <!-- REngine + Rserve client for RScriptTool: talks to an
-             Rserve daemon over localhost TCP, ships R expressions and
-             pulls typed REXP responses. The daemon itself runs as a
-             separate process (apt-get install + R install.packages or
-             brew + Rserve::Rserve on macOS) — see
-             readme/r-script-setup.md. LGPL-2.1, maintained by Simon
-             Urbanek (R-core). -->
-        <dependency>
-            <groupId>org.rosuda.REngine</groupId>
-            <artifactId>Rserve</artifactId>
-            <version>1.8.1</version>
-        </dependency>
-
         <!-- Multi-format report export (pdf_from_markdown,
              docx_from_markdown). Three building blocks share the same
              commonmark-AST frontend; the Vance-Kind graceful-degradation

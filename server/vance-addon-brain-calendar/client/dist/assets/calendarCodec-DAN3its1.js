@@ -1,4 +1,4 @@
-import { i as index_vite_proxy_tmp_default } from './js-yaml-xdlU0wp7.js';
+import { i as index_vite_proxy_tmp_default } from './js-yaml-K7iB6vJi.js';
 
 // Shared helpers for the `$meta` header convention used by every
 // kind-codec for both JSON and YAML.

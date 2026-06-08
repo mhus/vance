@@ -7,6 +7,8 @@ export * from './access/RefreshTokenResponse';
 export * from './access/WebUiSessionData';
 
 export * from './addon/AddonDto';
+export * from './addon/AddonInsightDto';
+export * from './addon/ChecksumStatus';
 
 export * from './attachment/AttachmentRef';
 

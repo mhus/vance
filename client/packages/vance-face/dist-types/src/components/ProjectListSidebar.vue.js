@@ -50,9 +50,16 @@ const projectsByGroup = computed(() => {
     for (const [groupName, list] of byKey.entries()) {
         const group = groupName ? groupByName.get(groupName) ?? null : null;
         const groupLabel = group ? group.title || group.name : props.ungroupedLabel;
-        result.push({ group, groupLabel, projects: list });
+        // Project order inside a group follows the same display-label
+        // alphabetical rule as the groups themselves — the API order
+        // is otherwise arbitrary and felt random in the sidebar.
+        const sortedProjects = [...list].sort((a, b) => projectLabel(a).localeCompare(projectLabel(b), undefined, { sensitivity: 'base' }));
+        result.push({ group, groupLabel, projects: sortedProjects });
     }
-    // Stable order: ungrouped first, then groups by name.
+    // Stable order: ungrouped first, then groups alphabetically by
+    // their displayed label (title || name) — sorting by the
+    // technical {@code name} mismatched the rendered order whenever
+    // a group's {@code title} disagreed with its slug.
     result.sort((a, b) => {
         if (a.group === null && b.group !== null)
             return -1;
@@ -60,10 +67,13 @@ const projectsByGroup = computed(() => {
             return 1;
         if (!a.group || !b.group)
             return 0;
-        return a.group.name.localeCompare(b.group.name);
+        return a.groupLabel.localeCompare(b.groupLabel, undefined, { sensitivity: 'base' });
     });
     return result;
 });
+function projectLabel(p) {
+    return p.title || p.name;
+}
 const filteredProjectsByGroup = computed(() => {
     const needle = projectFilter.value.trim().toLowerCase();
     if (!needle)
@@ -112,21 +122,32 @@ const collapsedGroups = ref(new Set());
 let collapsedLoaded = false;
 let saveTimer = null;
 const SAVE_DEBOUNCE_MS = 300;
+/**
+ * Reserved key for the "ungrouped" pseudo-block. The block has no
+ * project-group document and therefore no name; we still want users
+ * to be able to collapse it, so we persist it under a sentinel.
+ * {@code "_"} alone is extremely unlikely as a real group name —
+ * groups in this tenant tend to use longer slugs ({@code _home},
+ * {@code marketing}, …). If a tenant admin ever creates an actual
+ * group named {@code "_"}, the two would share collapse state; we
+ * accept that trade-off for the simpler wire format.
+ */
+const UNGROUPED_KEY = '_';
+function groupCollapseKey(g) {
+    return g ? g.name : UNGROUPED_KEY;
+}
 function isGroupCollapsed(g) {
-    if (!g)
-        return false;
     if (projectFilter.value.trim())
         return false;
-    return collapsedGroups.value.has(g.name);
+    return collapsedGroups.value.has(groupCollapseKey(g));
 }
 function toggleGroupCollapsed(g) {
-    if (!g)
-        return;
+    const key = groupCollapseKey(g);
     const next = new Set(collapsedGroups.value);
-    if (next.has(g.name))
-        next.delete(g.name);
+    if (next.has(key))
+        next.delete(key);
     else
-        next.add(g.name);
+        next.add(key);
     collapsedGroups.value = next;
     scheduleSaveCollapsed();
 }
@@ -682,7 +703,7 @@ else {
                 });
             }
         }
-        else if (block.group && block.groupLabel) {
+        else if (block.groupLabel) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onPointerdown: () => { } },
                 ...{ onClick: (...[$event]) => {
@@ -692,7 +713,7 @@ else {
                             return;
                         if (!!(block.group && __VLS_ctx.showGroupRows))
                             return;
-                        if (!(block.group && block.groupLabel))
+                        if (!(block.groupLabel))
                             return;
                         __VLS_ctx.toggleGroupCollapsed(block.group);
                     } },
@@ -723,47 +744,15 @@ else {
                                 return;
                             if (!!(block.group && __VLS_ctx.showGroupRows))
                                 return;
-                            if (!(block.group && block.groupLabel))
-                                return;
-                            if (!(__VLS_ctx.editEnabled))
-                                return;
-                            __VLS_ctx.openCreateProject(block.group.name);
-                        } },
-                    ...{ class: "text-xs opacity-50 hover:opacity-100 px-1" },
-                    title: (__VLS_ctx.t('common.projectPicker.addProjectToGroup')),
-                    role: "button",
-                });
-            }
-        }
-        else if (block.groupLabel) {
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
-                ...{ class: "flex items-center justify-between px-2" },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "text-xs opacity-50" },
-            });
-            (block.groupLabel);
-            if (__VLS_ctx.editEnabled) {
-                __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
-                    ...{ onPointerdown: () => { } },
-                    ...{ onClick: (...[$event]) => {
-                            if (!!(__VLS_ctx.loading))
-                                return;
-                            if (!!(__VLS_ctx.error))
-                                return;
-                            if (!!(block.group && __VLS_ctx.showGroupRows))
-                                return;
-                            if (!!(block.group && block.groupLabel))
-                                return;
                             if (!(block.groupLabel))
                                 return;
                             if (!(__VLS_ctx.editEnabled))
                                 return;
-                            __VLS_ctx.openCreateProject(null);
+                            __VLS_ctx.openCreateProject(block.group?.name ?? null);
                         } },
-                    type: "button",
-                    ...{ class: "text-xs opacity-50 hover:opacity-100" },
+                    ...{ class: "text-xs opacity-50 hover:opacity-100 px-1" },
                     title: (__VLS_ctx.t('common.projectPicker.addProjectToGroup')),
+                    role: "button",
                 });
             }
         }
@@ -1214,15 +1203,6 @@ var __VLS_83;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-1']} */ ;
-/** @type {__VLS_StyleScopedClasses['flex']} */ ;
-/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
-/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
-/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
-/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
-/** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-left']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
 /** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;

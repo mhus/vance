@@ -60,6 +60,15 @@ public class RserveDaemonManager {
     private @Nullable Process process;
     private @Nullable Thread pumpThread;
 
+    /**
+     * Last user-meaningful failure surfaced by {@link #ensureRunning()}.
+     * Cleared on a successful start so the Insights tab does not keep
+     * reporting yesterday's problem. Read-side ({@link #status()})
+     * does not need synchronisation — volatile + happens-before from
+     * the synchronized writes is enough.
+     */
+    private volatile @Nullable String lastError;
+
     public RserveDaemonManager(RserveProperties props, RserveHealth health) {
         this.props = props;
         this.health = health;
@@ -93,6 +102,7 @@ public class RserveDaemonManager {
 
         // Fast path — daemon already up.
         if (health.isReachable()) {
+            lastError = null;
             return;
         }
 
@@ -125,9 +135,38 @@ public class RserveDaemonManager {
                 process = null;
             }
 
-            startDaemon();
-            waitForReachable();
+            try {
+                startDaemon();
+                waitForReachable();
+                lastError = null;
+            } catch (ToolException e) {
+                lastError = e.getMessage();
+                throw e;
+            }
         }
+    }
+
+    /**
+     * Free-form status text for the Insights addons tab. Reports the
+     * last error verbatim if there was one; otherwise distinguishes
+     * "Rserve already running" from "lazy — will start on first call".
+     */
+    public @Nullable String status() {
+        if (!props.isEnabled()) {
+            return "disabled (vance.rserve.enabled=false)";
+        }
+        String err = lastError;
+        if (err != null) {
+            return "last start failed: " + err;
+        }
+        Process p = process;
+        if (p != null && p.isAlive()) {
+            return "Rserve running on port " + props.getPort();
+        }
+        if (!props.isAutostart()) {
+            return "external Rserve expected at " + props.getHost() + ":" + props.getPort();
+        }
+        return "Rserve will start on first tool call";
     }
 
     private void startDaemon() {

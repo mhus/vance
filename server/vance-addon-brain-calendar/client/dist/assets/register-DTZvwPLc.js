@@ -1,8 +1,8 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./CalendarView-Cm3RQWKv.js","./calendarCodec-DmOnIctH.js","./js-yaml-xdlU0wp7.js","./CalendarView-UChuAuu4.css"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./CalendarView-CL6Lxfmt.js","./calendarCodec-DAN3its1.js","./js-yaml-K7iB6vJi.js","./CalendarView-UChuAuu4.css"])))=>i.map(i=>d[i]);
 import { _ as __vitePreload } from './preload-helper-C6a2snJ8.js';
 import { a as __mf_92 } from './_virtual_mf___mfe_internal__vance_addon_calendar__loadShare__vue__loadShare__.mjs-DvmOVNPO.js';
-import { p as parseCalendar } from './calendarCodec-DmOnIctH.js';
-import './js-yaml-xdlU0wp7.js';
+import { p as parseCalendar } from './calendarCodec-DAN3its1.js';
+import './js-yaml-K7iB6vJi.js';
 
 function store() {
   let s = globalThis.__VANCE_KIND_REGISTRY__;
@@ -16,7 +16,7 @@ function registerKind(entry) {
   store().set(entry.id, entry);
 }
 
-const CalendarView = __mf_92(() => __vitePreload(() => import('./CalendarView-Cm3RQWKv.js'),true?__vite__mapDeps([0,1,2,3]):void 0,import.meta.url));
+const CalendarView = __mf_92(() => __vitePreload(() => import('./CalendarView-CL6Lxfmt.js'),true?__vite__mapDeps([0,1,2,3]):void 0,import.meta.url));
 function isCalendarParseError(e) {
   return e instanceof Error && e.name === "CalendarCodecError";
 }

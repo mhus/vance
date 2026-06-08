@@ -1,5 +1,6 @@
 package de.mhus.vance.brain.insights;
 
+import de.mhus.vance.api.addon.AddonInsightDto;
 import de.mhus.vance.api.insights.ActiveSkillInsightsDto;
 import de.mhus.vance.api.insights.BrainPodInsightsDto;
 import de.mhus.vance.api.insights.CacheStatsDto;
@@ -14,6 +15,7 @@ import de.mhus.vance.api.insights.SessionClientToolsDto;
 import de.mhus.vance.api.insights.SessionInsightsDto;
 import de.mhus.vance.api.insights.ThinkProcessInsightsDto;
 import de.mhus.vance.brain.cluster.ClusterService;
+import de.mhus.vance.shared.addon.AddonInsightsService;
 import de.mhus.vance.brain.recipe.RecipeLoader;
 import de.mhus.vance.brain.recipe.RecipeSource;
 import de.mhus.vance.brain.recipe.ResolvedRecipe;
@@ -109,6 +111,7 @@ public class InsightsAdminController {
     private final WorkspaceAccessProperties workspaceAccessProperties;
     private final ClusterService clusterService;
     private final PrakRunService prakRunService;
+    private final AddonInsightsService addonInsightsService;
     private final RequestAuthority authority;
     private final ObjectMapper objectMapper;
 
@@ -851,5 +854,22 @@ public class InsightsAdminController {
                 .version(doc.getVersion())
                 .tenantProjects(tenantProjects)
                 .build();
+    }
+
+    // ─── Addons ────────────────────────────────────────────────────────────
+
+    /**
+     * All addon rows in the system — enabled and disabled — combined
+     * with the on-disk reality (manifest version, .ready marker,
+     * checksum verification). Read-only; admin-gated via tenant ADMIN
+     * permission like every other admin endpoint here. Addon state is
+     * system-wide but we still scope auth per tenant for consistency.
+     */
+    @GetMapping("/addons")
+    public List<AddonInsightDto> listAddons(
+            @PathVariable("tenant") String tenant,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Tenant(tenant), Action.ADMIN);
+        return addonInsightsService.listForInsights();
     }
 }

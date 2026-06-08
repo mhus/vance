@@ -35,6 +35,7 @@ import ProjectToolsTab from './ProjectToolsTab.vue';
 import WorkspaceTab from './WorkspaceTab.vue';
 import ExecutionsTab from './ExecutionsTab.vue';
 import ClusterTab from './ClusterTab.vue';
+import AddonsTab from './AddonsTab.vue';
 import EventsTab from './EventsTab.vue';
 import WorkflowsTab from './WorkflowsTab.vue';
 import RagTab from './RagTab.vue';
@@ -91,7 +92,7 @@ const filterStatus = ref<string | null>(null);
 // Sessions = the existing session-walker (default). Recipes / Tools
 // show project-scope read-only views fed from the same project filter
 // as the sidebar.
-type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'rag' | 'cluster';
+type TopTab = 'sessions' | 'recipes' | 'tools' | 'workspace' | 'executions' | 'workflows' | 'events' | 'rag' | 'cluster' | 'addons';
 const topTab = ref<TopTab>('sessions');
 
 const projectFilterOptions = computed(() => [
@@ -576,10 +577,15 @@ function clickProcessByMongoId(id: string | undefined | null): void {
           :class="{ 'tab--active': topTab === 'cluster' }"
           @click="topTab = 'cluster'"
         >Cluster</button>
+        <button
+          class="tab"
+          :class="{ 'tab--active': topTab === 'addons' }"
+          @click="topTab = 'addons'"
+        >Addons</button>
       </div>
 
       <div
-        v-if="topTab !== 'sessions' && topTab !== 'cluster' && projectContextSource"
+        v-if="topTab !== 'sessions' && topTab !== 'cluster' && topTab !== 'addons' && projectContextSource"
         class="text-xs opacity-70 -mt-1 mb-1"
       >
         Showing
@@ -598,6 +604,7 @@ function clickProcessByMongoId(id: string | undefined | null): void {
       <EventsTab v-else-if="topTab === 'events'" :project-id="effectiveProjectId" />
       <RagTab v-else-if="topTab === 'rag'" :project-id="effectiveProjectId" />
       <ClusterTab v-else-if="topTab === 'cluster'" />
+      <AddonsTab v-else-if="topTab === 'addons'" />
 
       <template v-else-if="topTab === 'sessions'">
         <VEmptyState

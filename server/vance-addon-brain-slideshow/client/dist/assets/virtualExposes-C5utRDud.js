@@ -52,12 +52,12 @@ const cssAssetMap = {};
       );
     }
 
-    const virtual_mfExposes___mfe_internal__vance_addon_kanban__remoteEntry_js = {
+    const virtual_mfExposes___mfe_internal__vance_addon_slideshow__remoteEntry_js = {
     
-        "./KanbanBoard": async () => {
-          await injectCssAssets("./KanbanBoard");
+        "./SlideshowApp": async () => {
+          await injectCssAssets("./SlideshowApp");
           const importModule = await importExposedModule(
-            () => __vitePreload(() => import('./KanbanBoard-Bplgvp_D.js'),true?__vite__mapDeps([0]):void 0,import.meta.url)
+            () => __vitePreload(() => import('./SlideshowApp-CwRddCCv.js'),true?__vite__mapDeps([0]):void 0,import.meta.url)
           );
           const exportModule = {};
           Object.assign(exportModule, importModule);
@@ -71,7 +71,7 @@ const cssAssetMap = {};
         "./register": async () => {
           await injectCssAssets("./register");
           const importModule = await importExposedModule(
-            () => __vitePreload(() => import('./register-BPRbdH15.js'),true?[]:void 0,import.meta.url)
+            () => __vitePreload(() => import('./register-Db2I-bl4.js'),true?[]:void 0,import.meta.url)
           );
           const exportModule = {};
           Object.assign(exportModule, importModule);
@@ -84,4 +84,4 @@ const cssAssetMap = {};
       
   };
 
-export { virtual_mfExposes___mfe_internal__vance_addon_kanban__remoteEntry_js as default };
+export { virtual_mfExposes___mfe_internal__vance_addon_slideshow__remoteEntry_js as default };

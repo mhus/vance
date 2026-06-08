@@ -1,9 +1,7 @@
-import './virtualExposes-CSS9Pxxr.js';
+import './virtualExposes-TELxJd_r.js';
 import '../remoteEntry.js';
-import './_virtual_mf___mfe_internal__vance_addon_calendar__loadShare__vue__loadShare__.mjs-DvmOVNPO.js';
-import './CodeEditor.vue_vue_type_style_index_0_scoped_d90b2dcd_lang-B0SRY8Hb.js';
-import './js-yaml-xdlU0wp7.js';
-/* empty css                                                                      */
+import './_virtual_mf___mfe_internal__vance_addon_kanban__loadShare__vue__loadShare__.mjs-Bsdsg2n8.js';
+import './js-yaml-AKs8WlE9.js';
 import './preload-helper-C6a2snJ8.js';
 
 true&&(function polyfill() {

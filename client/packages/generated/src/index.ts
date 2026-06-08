@@ -231,6 +231,8 @@ export * from './teams/TeamSummary';
 export * from './tenant/TenantDto';
 export * from './tenant/TenantUpdateRequest';
 
+export * from './uistate/SidebarUiStateDto';
+
 export * from './users/TeamCreateRequest';
 export * from './users/TeamDto';
 export * from './users/TeamUpdateRequest';

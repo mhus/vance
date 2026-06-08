@@ -20,6 +20,8 @@ export default {
       addGroup: 'Gruppe anlegen',
       addProject: 'Projekt anlegen',
       addProjectToGroup: 'Projekt in dieser Gruppe anlegen',
+      collapseGroup: 'Gruppe einklappen',
+      expandGroup: 'Gruppe ausklappen',
       createGroup: {
         title: 'Neue Projektgruppe',
         name: 'Name',

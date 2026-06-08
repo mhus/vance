@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect } from '@vance/components';
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type {
   ProjectGroupSummary,
   ProjectSummary,
+  SidebarUiStateDto,
 } from '@vance/generated';
 import { brainFetch } from '@vance/shared';
 
@@ -160,17 +161,29 @@ const projectsByGroup = computed<GroupBlock[]>(() => {
   for (const [groupName, list] of byKey.entries()) {
     const group = groupName ? groupByName.get(groupName) ?? null : null;
     const groupLabel = group ? group.title || group.name : props.ungroupedLabel;
-    result.push({ group, groupLabel, projects: list });
+    // Project order inside a group follows the same display-label
+    // alphabetical rule as the groups themselves — the API order
+    // is otherwise arbitrary and felt random in the sidebar.
+    const sortedProjects = [...list].sort((a, b) =>
+      projectLabel(a).localeCompare(projectLabel(b), undefined, { sensitivity: 'base' }));
+    result.push({ group, groupLabel, projects: sortedProjects });
   }
-  // Stable order: ungrouped first, then groups by name.
+  // Stable order: ungrouped first, then groups alphabetically by
+  // their displayed label (title || name) — sorting by the
+  // technical {@code name} mismatched the rendered order whenever
+  // a group's {@code title} disagreed with its slug.
   result.sort((a, b) => {
     if (a.group === null && b.group !== null) return -1;
     if (a.group !== null && b.group === null) return 1;
     if (!a.group || !b.group) return 0;
-    return a.group.name.localeCompare(b.group.name);
+    return a.groupLabel.localeCompare(b.groupLabel, undefined, { sensitivity: 'base' });
   });
   return result;
 });
+
+function projectLabel(p: ProjectSummary): string {
+  return p.title || p.name;
+}
 
 const filteredProjectsByGroup = computed<GroupBlock[]>(() => {
   const needle = projectFilter.value.trim().toLowerCase();
@@ -213,6 +226,96 @@ function selectGroup(g: ProjectGroupSummary): void {
   selectedNode.value = { kind: 'group', name: g.name };
   emit('group-pick', { name: g.name, title: g.title || g.name });
 }
+
+// ────────────────── Collapse state (per-user, persisted) ──────────────────
+//
+// Collapse state lives on the per-user {@code _user_<login>} project
+// behind {@code /brain/{tenant}/me/ui-state/sidebar}. The Set holds
+// group names; missing = expanded (the default for new groups). When
+// a filter is active we override and always show matches — otherwise
+// the user types a query and gets nothing back because the parent is
+// collapsed.
+
+const collapsedGroups = ref<Set<string>>(new Set());
+let collapsedLoaded = false;
+let saveTimer: number | null = null;
+const SAVE_DEBOUNCE_MS = 300;
+
+/**
+ * Reserved key for the "ungrouped" pseudo-block. The block has no
+ * project-group document and therefore no name; we still want users
+ * to be able to collapse it, so we persist it under a sentinel.
+ * {@code "_"} alone is extremely unlikely as a real group name —
+ * groups in this tenant tend to use longer slugs ({@code _home},
+ * {@code marketing}, …). If a tenant admin ever creates an actual
+ * group named {@code "_"}, the two would share collapse state; we
+ * accept that trade-off for the simpler wire format.
+ */
+const UNGROUPED_KEY = '_';
+
+function groupCollapseKey(g: ProjectGroupSummary | null): string {
+  return g ? g.name : UNGROUPED_KEY;
+}
+
+function isGroupCollapsed(g: ProjectGroupSummary | null): boolean {
+  if (projectFilter.value.trim()) return false;
+  return collapsedGroups.value.has(groupCollapseKey(g));
+}
+
+function toggleGroupCollapsed(g: ProjectGroupSummary | null): void {
+  const key = groupCollapseKey(g);
+  const next = new Set(collapsedGroups.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  collapsedGroups.value = next;
+  scheduleSaveCollapsed();
+}
+
+function scheduleSaveCollapsed(): void {
+  if (!collapsedLoaded) return;
+  if (saveTimer !== null) window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => {
+    saveTimer = null;
+    void saveCollapsedNow();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+async function saveCollapsedNow(): Promise<void> {
+  try {
+    await brainFetch<SidebarUiStateDto>('PUT', 'me/ui-state/sidebar', {
+      body: {
+        collapsedProjectGroups: Array.from(collapsedGroups.value),
+      } satisfies SidebarUiStateDto,
+    });
+  } catch (e) {
+    // UI-state persistence is non-critical — swallow the error so a
+    // transient failure doesn't surface as an alert. Worst case: the
+    // next toggle retries the PUT.
+    console.warn('Failed to save sidebar UI state', e);
+  }
+}
+
+onMounted(async () => {
+  try {
+    const state = await brainFetch<SidebarUiStateDto>('GET', 'me/ui-state/sidebar');
+    collapsedGroups.value = new Set(state.collapsedProjectGroups ?? []);
+  } catch (e) {
+    // Same rationale as saveCollapsedNow — UI state is best-effort.
+    console.warn('Failed to load sidebar UI state', e);
+  } finally {
+    collapsedLoaded = true;
+  }
+});
+
+onBeforeUnmount(() => {
+  if (saveTimer !== null) {
+    // Flush any pending debounced write so the user's last toggle
+    // doesn't get lost when they navigate away immediately after.
+    window.clearTimeout(saveTimer);
+    saveTimer = null;
+    void saveCollapsedNow();
+  }
+});
 
 // ────────────────── Edit mode: create group / project ──────────────────
 
@@ -553,9 +656,20 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
       >
         <!-- Group row. In tree mode ({@code showGroupRows}) the named
              groups become clickable selectable rows; the ungrouped
-             pseudo-block stays a dim divider regardless. -->
+             pseudo-block stays a dim divider regardless. The chevron
+             is its own button so collapse-toggle and group-select
+             stay distinct actions in tree mode. -->
         <template v-if="block.group && showGroupRows">
           <div class="flex items-center gap-1">
+            <button
+              type="button"
+              class="px-1 py-1.5 text-xs opacity-60 hover:opacity-100"
+              :title="isGroupCollapsed(block.group)
+                ? t('common.projectPicker.expandGroup')
+                : t('common.projectPicker.collapseGroup')"
+              @pointerdown.stop
+              @click.stop="toggleGroupCollapsed(block.group)"
+            >{{ isGroupCollapsed(block.group) ? '▸' : '▾' }}</button>
             <button
               type="button"
               class="flex-1 text-left px-2 py-1.5 rounded text-sm transition-colors flex items-center gap-2"
@@ -565,7 +679,6 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
               @pointerdown.stop="emit('focus-main')"
               @click="selectGroup(block.group)"
             >
-              <span class="opacity-50">▸</span>
               <span class="flex-1 truncate">{{ block.group.title || block.group.name }}</span>
               <slot name="row-suffix" :kind="'group'" :item="block.group" />
             </button>
@@ -579,22 +692,38 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
             >+</button>
           </div>
         </template>
-        <div
+        <!-- Label row. Both named groups and the ungrouped
+             pseudo-block become a clickable toggle for the whole
+             row; the ungrouped block persists under the reserved
+             {@code UNGROUPED_KEY} sentinel. -->
+        <button
           v-else-if="block.groupLabel"
-          class="flex items-center justify-between px-2"
+          type="button"
+          class="flex items-center justify-between px-2 py-1 rounded text-left hover:bg-base-200 transition-colors w-full"
+          :title="isGroupCollapsed(block.group)
+            ? t('common.projectPicker.expandGroup')
+            : t('common.projectPicker.collapseGroup')"
+          @pointerdown.stop
+          @click="toggleGroupCollapsed(block.group)"
         >
-          <span class="text-xs opacity-50">{{ block.groupLabel }}</span>
-          <button
+          <span class="flex items-center gap-1.5 min-w-0">
+            <span class="text-xs opacity-50 w-3 inline-block text-center">{{
+              isGroupCollapsed(block.group) ? '▸' : '▾'
+            }}</span>
+            <span class="text-xs opacity-50 truncate">{{ block.groupLabel }}</span>
+          </span>
+          <span
             v-if="editEnabled"
-            type="button"
-            class="text-xs opacity-50 hover:opacity-100"
+            class="text-xs opacity-50 hover:opacity-100 px-1"
             :title="t('common.projectPicker.addProjectToGroup')"
+            role="button"
             @pointerdown.stop
-            @click="openCreateProject(block.group?.name ?? null)"
-          >+</button>
-        </div>
+            @click.stop="openCreateProject(block.group?.name ?? null)"
+          >+</span>
+        </button>
         <button
           v-for="p in block.projects"
+          v-show="!isGroupCollapsed(block.group)"
           :key="p.name"
           type="button"
           :draggable="editEnabled"

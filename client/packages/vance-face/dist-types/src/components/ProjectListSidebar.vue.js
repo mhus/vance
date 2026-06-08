@@ -1,5 +1,5 @@
 import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect } from '@vance/components';
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { brainFetch } from '@vance/shared';
 const props = withDefaults(defineProps(), {
@@ -100,6 +100,83 @@ function selectGroup(g) {
     selectedNode.value = { kind: 'group', name: g.name };
     emit('group-pick', { name: g.name, title: g.title || g.name });
 }
+// ────────────────── Collapse state (per-user, persisted) ──────────────────
+//
+// Collapse state lives on the per-user {@code _user_<login>} project
+// behind {@code /brain/{tenant}/me/ui-state/sidebar}. The Set holds
+// group names; missing = expanded (the default for new groups). When
+// a filter is active we override and always show matches — otherwise
+// the user types a query and gets nothing back because the parent is
+// collapsed.
+const collapsedGroups = ref(new Set());
+let collapsedLoaded = false;
+let saveTimer = null;
+const SAVE_DEBOUNCE_MS = 300;
+function isGroupCollapsed(g) {
+    if (!g)
+        return false;
+    if (projectFilter.value.trim())
+        return false;
+    return collapsedGroups.value.has(g.name);
+}
+function toggleGroupCollapsed(g) {
+    if (!g)
+        return;
+    const next = new Set(collapsedGroups.value);
+    if (next.has(g.name))
+        next.delete(g.name);
+    else
+        next.add(g.name);
+    collapsedGroups.value = next;
+    scheduleSaveCollapsed();
+}
+function scheduleSaveCollapsed() {
+    if (!collapsedLoaded)
+        return;
+    if (saveTimer !== null)
+        window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => {
+        saveTimer = null;
+        void saveCollapsedNow();
+    }, SAVE_DEBOUNCE_MS);
+}
+async function saveCollapsedNow() {
+    try {
+        await brainFetch('PUT', 'me/ui-state/sidebar', {
+            body: {
+                collapsedProjectGroups: Array.from(collapsedGroups.value),
+            },
+        });
+    }
+    catch (e) {
+        // UI-state persistence is non-critical — swallow the error so a
+        // transient failure doesn't surface as an alert. Worst case: the
+        // next toggle retries the PUT.
+        console.warn('Failed to save sidebar UI state', e);
+    }
+}
+onMounted(async () => {
+    try {
+        const state = await brainFetch('GET', 'me/ui-state/sidebar');
+        collapsedGroups.value = new Set(state.collapsedProjectGroups ?? []);
+    }
+    catch (e) {
+        // Same rationale as saveCollapsedNow — UI state is best-effort.
+        console.warn('Failed to load sidebar UI state', e);
+    }
+    finally {
+        collapsedLoaded = true;
+    }
+});
+onBeforeUnmount(() => {
+    if (saveTimer !== null) {
+        // Flush any pending debounced write so the user's last toggle
+        // doesn't get lost when they navigate away immediately after.
+        window.clearTimeout(saveTimer);
+        saveTimer = null;
+        void saveCollapsedNow();
+    }
+});
 // ────────────────── Edit mode: create group / project ──────────────────
 const showCreateGroup = ref(false);
 const newGroupName = ref('');
@@ -535,6 +612,24 @@ else {
                 ...{ class: "flex items-center gap-1" },
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onPointerdown: () => { } },
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.loading))
+                            return;
+                        if (!!(__VLS_ctx.error))
+                            return;
+                        if (!(block.group && __VLS_ctx.showGroupRows))
+                            return;
+                        __VLS_ctx.toggleGroupCollapsed(block.group);
+                    } },
+                type: "button",
+                ...{ class: "px-1 py-1.5 text-xs opacity-60 hover:opacity-100" },
+                title: (__VLS_ctx.isGroupCollapsed(block.group)
+                    ? __VLS_ctx.t('common.projectPicker.expandGroup')
+                    : __VLS_ctx.t('common.projectPicker.collapseGroup')),
+            });
+            (__VLS_ctx.isGroupCollapsed(block.group) ? '▸' : '▾');
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
                 ...{ onPointerdown: (...[$event]) => {
                         if (!!(__VLS_ctx.loading))
                             return;
@@ -558,9 +653,6 @@ else {
                 ...{ class: (__VLS_ctx.isGroupSelected(block.group)
                         ? 'bg-primary/10 text-primary font-medium'
                         : 'hover:bg-base-200') },
-            });
-            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
-                ...{ class: "opacity-50" },
             });
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "flex-1 truncate" },
@@ -590,6 +682,59 @@ else {
                 });
             }
         }
+        else if (block.group && block.groupLabel) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.button, __VLS_intrinsicElements.button)({
+                ...{ onPointerdown: () => { } },
+                ...{ onClick: (...[$event]) => {
+                        if (!!(__VLS_ctx.loading))
+                            return;
+                        if (!!(__VLS_ctx.error))
+                            return;
+                        if (!!(block.group && __VLS_ctx.showGroupRows))
+                            return;
+                        if (!(block.group && block.groupLabel))
+                            return;
+                        __VLS_ctx.toggleGroupCollapsed(block.group);
+                    } },
+                type: "button",
+                ...{ class: "flex items-center justify-between px-2 py-1 rounded text-left hover:bg-base-200 transition-colors w-full" },
+                title: (__VLS_ctx.isGroupCollapsed(block.group)
+                    ? __VLS_ctx.t('common.projectPicker.expandGroup')
+                    : __VLS_ctx.t('common.projectPicker.collapseGroup')),
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "flex items-center gap-1.5 min-w-0" },
+            });
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-xs opacity-50 w-3 inline-block text-center" },
+            });
+            (__VLS_ctx.isGroupCollapsed(block.group) ? '▸' : '▾');
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                ...{ class: "text-xs opacity-50 truncate" },
+            });
+            (block.groupLabel);
+            if (__VLS_ctx.editEnabled) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ onPointerdown: () => { } },
+                    ...{ onClick: (...[$event]) => {
+                            if (!!(__VLS_ctx.loading))
+                                return;
+                            if (!!(__VLS_ctx.error))
+                                return;
+                            if (!!(block.group && __VLS_ctx.showGroupRows))
+                                return;
+                            if (!(block.group && block.groupLabel))
+                                return;
+                            if (!(__VLS_ctx.editEnabled))
+                                return;
+                            __VLS_ctx.openCreateProject(block.group.name);
+                        } },
+                    ...{ class: "text-xs opacity-50 hover:opacity-100 px-1" },
+                    title: (__VLS_ctx.t('common.projectPicker.addProjectToGroup')),
+                    role: "button",
+                });
+            }
+        }
         else if (block.groupLabel) {
             __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
                 ...{ class: "flex items-center justify-between px-2" },
@@ -608,11 +753,13 @@ else {
                                 return;
                             if (!!(block.group && __VLS_ctx.showGroupRows))
                                 return;
+                            if (!!(block.group && block.groupLabel))
+                                return;
                             if (!(block.groupLabel))
                                 return;
                             if (!(__VLS_ctx.editEnabled))
                                 return;
-                            __VLS_ctx.openCreateProject(block.group?.name ?? null);
+                            __VLS_ctx.openCreateProject(null);
                         } },
                     type: "button",
                     ...{ class: "text-xs opacity-50 hover:opacity-100" },
@@ -657,6 +804,7 @@ else {
                         __VLS_ctx.draggingProject === p.name ? 'opacity-50' : '',
                     ]) },
             });
+            __VLS_asFunctionalDirective(__VLS_directives.vShow)(null, { ...__VLS_directiveBindingRestFields, value: (!__VLS_ctx.isGroupCollapsed(block.group)) }, null, null);
             __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
                 ...{ class: "flex-1 truncate" },
             });
@@ -1019,6 +1167,11 @@ var __VLS_83;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-left']} */ ;
 /** @type {__VLS_StyleScopedClasses['px-2']} */ ;
@@ -1029,8 +1182,33 @@ var __VLS_83;
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['items-center']} */ ;
 /** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
-/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:opacity-100']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['px-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['py-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-left']} */ ;
+/** @type {__VLS_StyleScopedClasses['hover:bg-base-200']} */ ;
+/** @type {__VLS_StyleScopedClasses['transition-colors']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-full']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-1.5']} */ ;
+/** @type {__VLS_StyleScopedClasses['min-w-0']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['w-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['inline-block']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-center']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
 /** @type {__VLS_StyleScopedClasses['truncate']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
@@ -1086,6 +1264,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             isGroupSelected: isGroupSelected,
             selectProject: selectProject,
             selectGroup: selectGroup,
+            isGroupCollapsed: isGroupCollapsed,
+            toggleGroupCollapsed: toggleGroupCollapsed,
             showCreateGroup: showCreateGroup,
             newGroupName: newGroupName,
             newGroupTitle: newGroupTitle,

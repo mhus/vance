@@ -15,6 +15,8 @@ declare const _default: {
             addGroup: string;
             addProject: string;
             addProjectToGroup: string;
+            collapseGroup: string;
+            expandGroup: string;
             createGroup: {
                 title: string;
                 name: string;

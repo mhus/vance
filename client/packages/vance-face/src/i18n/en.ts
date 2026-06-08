@@ -26,6 +26,8 @@ export default {
       addGroup: 'Add group',
       addProject: 'Add project',
       addProjectToGroup: 'Add project to this group',
+      collapseGroup: 'Collapse group',
+      expandGroup: 'Expand group',
       createGroup: {
         title: 'New project group',
         name: 'Name',

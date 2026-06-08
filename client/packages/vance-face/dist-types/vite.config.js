@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { federation } from '@module-federation/vite';
 import { resolve, extname } from 'node:path';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
 // One Rollup input per top-level HTML file. Add new editor HTMLs here as they
 // are implemented — see specification/web-ui.md §3 for the full list.
 const editorEntries = {
@@ -90,6 +90,30 @@ function vanceAddonDevServe() {
             server.middlewares.use((req, res, next) => {
                 const rawUrl = req.url ?? '';
                 const pathname = rawUrl.split('?')[0];
+                // /face/addons — dev-mode stand-in for the snapshot file that
+                // the face Docker entrypoint writes from the brain at boot
+                // (deployment/docker/face/docker-entrypoint.sh). Each addon
+                // with a built dist/ shows up as `bundled:<id>` so the loader's
+                // path-scheme dispatch matches the prod shape. Without this
+                // the dev server returns 404, loadAddonRegistrations() bails,
+                // and runtime Kind contributions never reach the registry.
+                if (pathname === '/face/addons') {
+                    const addonsRoot = resolve(workspaceRoot, 'server');
+                    let entries = [];
+                    try {
+                        entries = readdirSync(addonsRoot, { withFileTypes: true })
+                            .filter((d) => d.isDirectory() && d.name.startsWith('vance-addon-brain-'))
+                            .map((d) => d.name.substring('vance-addon-brain-'.length))
+                            .filter((id) => existsSync(resolve(addonsRoot, `vance-addon-brain-${id}`, 'client', 'dist', 'remoteEntry.js')))
+                            .map((id) => ({ name: id, path: `bundled:${id}` }));
+                    }
+                    catch {
+                        entries = [];
+                    }
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify(entries));
+                    return;
+                }
                 const match = pathname.match(/^\/addons\/([^/]+)\/(.+)$/);
                 if (!match)
                     return next();

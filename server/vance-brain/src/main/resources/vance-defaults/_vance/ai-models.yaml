@@ -410,3 +410,28 @@ ollama:
     capabilities: [vision]
     timeoutSeconds: 300
     stripThinkTags: true
+
+# ────────────────────────────────────────────────────────────────────
+# LM Studio / mlx_lm.server (OpenAI-compatible local serving via MLX
+# on Apple Silicon). Used by the LoRA benchmarking pipeline — base
+# models are HF mlx-community quantizations, often loaded with a
+# trained adapter via `mlx_lm.server --adapter-path`. Timeouts are
+# generous: thinking-mode 4-bit 31B+ models can spend minutes on a
+# single reasoning round.
+lmstudio:
+  # Qwen3.6 35B MoE 4-bit — qwen v10 LoRA target.
+  "mlx-community/Qwen3.6-35B-A3B-4bit":
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 4096
+    size: LARGE
+    capabilities: [thinking]
+    timeoutSeconds: 600
+    stripThinkTags: true
+  # Gemma 4 31B dense 4-bit QAT — gemma v1/v2 LoRA target.
+  "mlx-community/gemma-4-31B-it-qat-4bit":
+    contextWindowTokens: 131072
+    defaultMaxOutputTokens: 4096
+    size: LARGE
+    capabilities: [thinking]
+    timeoutSeconds: 600
+    stripThinkTags: true

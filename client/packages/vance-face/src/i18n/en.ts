@@ -43,6 +43,8 @@ export default {
         group: 'Group',
         groupNone: 'No group',
         kit: 'Kit',
+        kitNone: 'No kit',
+        kitHelp: 'Pre-configured project starter — installs documents, settings and tools right after create.',
         submit: 'Create',
       },
       error: {
@@ -1463,13 +1465,6 @@ export default {
     createGroup: {
       title: 'New project group',
       nameHelp: "Lower-case alphanumerics, '-' or '_' allowed.",
-    },
-    createProject: {
-      title: 'New project',
-      nameHelp: "Lower-case alphanumerics, '-' or '_' allowed.",
-      kitLabel: 'Kit',
-      kitNone: 'No kit',
-      kitHelp: 'Pre-configured project starter — installs documents, settings and tools after create.',
     },
   },
 

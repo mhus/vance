@@ -8,6 +8,7 @@ import type {
   SidebarUiStateDto,
 } from '@vance/generated';
 import { brainFetch } from '@vance/shared';
+import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 
 /**
  * Reusable project picker for editor sidebars. Renders the tenant's
@@ -54,11 +55,17 @@ interface Props {
    *  this the group label is just a dim divider and only projects
    *  are selectable. Pairs with the {@code selectedNode} v-model. */
   showGroupRows?: boolean;
-  /** Kit dropdown options for the create-project modal. When
-   *  non-empty an extra select appears in the form. The first
-   *  entry should typically be {@code { value: '', label: 'No kit' }}
-   *  to mean "create without kit install". */
+  /** Kit dropdown options for the create-project modal. When set,
+   *  the component renders exactly these — first entry should be a
+   *  "no kit" sentinel (blank value). When left unset the component
+   *  loads the tenant's project-kits catalog on mount and builds
+   *  the dropdown itself; pass {@link hideKitField}=true to opt out
+   *  of the kit field entirely. */
   kitOptions?: { value: string; label: string }[];
+  /** Explicitly hide the kit field even when a catalog exists.
+   *  Useful for hosts where project creation is meant to be
+   *  intentionally minimal. */
+  hideKitField?: boolean;
   /** Heading shown above the list (e.g. "Projekte"). When blank
    *  the heading row is suppressed entirely — useful when the host
    *  already paints its own section label. */
@@ -80,6 +87,7 @@ const props = withDefaults(defineProps<Props>(), {
   editEnabled: false,
   showGroupRows: false,
   kitOptions: () => [],
+  hideKitField: false,
   heading: '',
   filterPlaceholder: '',
   ungroupedLabel: '',
@@ -305,6 +313,14 @@ onMounted(async () => {
   } finally {
     collapsedLoaded = true;
   }
+
+  // Self-load the project-kits catalog so the create-project modal
+  // offers a kit picker by default in every editor sidebar. Hosts
+  // that pass their own {@code kitOptions} (scopes admin) or that
+  // disable the field via {@code hideKitField} get a no-op here.
+  if (!props.hideKitField && props.kitOptions.length === 0) {
+    void internalKitsCatalog.load();
+  }
 });
 
 onBeforeUnmount(() => {
@@ -330,7 +346,31 @@ const newProjectKitName = ref<string>('');
 const creating = ref(false);
 const creationError = ref<string | null>(null);
 
-const showKitField = computed<boolean>(() => props.kitOptions.length > 0);
+/**
+ * Self-loaded project-kits catalog — only used when the host did not
+ * supply its own {@code kitOptions} prop. Keeps the dropdown available
+ * by default in every editor sidebar without each host having to wire
+ * the catalog explicitly. Hosts that already own the catalog (scopes
+ * admin) keep passing {@code kitOptions} directly and this composable
+ * stays idle.
+ */
+const internalKitsCatalog = useProjectKitsCatalog();
+
+const effectiveKitOptions = computed<{ value: string; label: string }[]>(() => {
+  if (props.hideKitField) return [];
+  if (props.kitOptions.length > 0) return props.kitOptions;
+  const catalogKits = internalKitsCatalog.catalog.value?.kits ?? [];
+  if (catalogKits.length === 0) return [];
+  return [
+    { value: '', label: t('common.projectPicker.createProject.kitNone') },
+    ...catalogKits.map((entry) => ({
+      value: entry.name,
+      label: entry.title || entry.name,
+    })),
+  ];
+});
+
+const showKitField = computed<boolean>(() => effectiveKitOptions.value.length > 0);
 
 function openCreateGroup(): void {
   newGroupName.value = '';
@@ -838,7 +878,8 @@ async function onBlockDrop(block: GroupBlock, ev: DragEvent): Promise<void> {
           v-if="showKitField"
           v-model="newProjectKitName"
           :label="t('common.projectPicker.createProject.kit')"
-          :options="kitOptions"
+          :help="t('common.projectPicker.createProject.kitHelp')"
+          :options="effectiveKitOptions"
           :disabled="creating"
         />
       </form>

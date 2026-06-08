@@ -2,6 +2,7 @@ import { VAlert, VButton, VEmptyState, VInput, VModal, VSelect } from '@vance/co
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { brainFetch } from '@vance/shared';
+import { useProjectKitsCatalog } from '@/composables/useProjectKitsCatalog';
 const props = withDefaults(defineProps(), {
     loading: false,
     error: null,
@@ -9,6 +10,7 @@ const props = withDefaults(defineProps(), {
     editEnabled: false,
     showGroupRows: false,
     kitOptions: () => [],
+    hideKitField: false,
     heading: '',
     filterPlaceholder: '',
     ungroupedLabel: '',
@@ -188,6 +190,13 @@ onMounted(async () => {
     finally {
         collapsedLoaded = true;
     }
+    // Self-load the project-kits catalog so the create-project modal
+    // offers a kit picker by default in every editor sidebar. Hosts
+    // that pass their own {@code kitOptions} (scopes admin) or that
+    // disable the field via {@code hideKitField} get a no-op here.
+    if (!props.hideKitField && props.kitOptions.length === 0) {
+        void internalKitsCatalog.load();
+    }
 });
 onBeforeUnmount(() => {
     if (saveTimer !== null) {
@@ -209,7 +218,32 @@ const newProjectGroupId = ref(null);
 const newProjectKitName = ref('');
 const creating = ref(false);
 const creationError = ref(null);
-const showKitField = computed(() => props.kitOptions.length > 0);
+/**
+ * Self-loaded project-kits catalog — only used when the host did not
+ * supply its own {@code kitOptions} prop. Keeps the dropdown available
+ * by default in every editor sidebar without each host having to wire
+ * the catalog explicitly. Hosts that already own the catalog (scopes
+ * admin) keep passing {@code kitOptions} directly and this composable
+ * stays idle.
+ */
+const internalKitsCatalog = useProjectKitsCatalog();
+const effectiveKitOptions = computed(() => {
+    if (props.hideKitField)
+        return [];
+    if (props.kitOptions.length > 0)
+        return props.kitOptions;
+    const catalogKits = internalKitsCatalog.catalog.value?.kits ?? [];
+    if (catalogKits.length === 0)
+        return [];
+    return [
+        { value: '', label: t('common.projectPicker.createProject.kitNone') },
+        ...catalogKits.map((entry) => ({
+            value: entry.name,
+            label: entry.title || entry.name,
+        })),
+    ];
+});
+const showKitField = computed(() => effectiveKitOptions.value.length > 0);
 function openCreateGroup() {
     newGroupName.value = '';
     newGroupTitle.value = '';
@@ -467,6 +501,7 @@ const __VLS_withDefaultsArg = (function (t) { return t; })({
     editEnabled: false,
     showGroupRows: false,
     kitOptions: () => [],
+    hideKitField: false,
     heading: '',
     filterPlaceholder: '',
     ungroupedLabel: '',
@@ -1065,13 +1100,15 @@ if (__VLS_ctx.showKitField) {
     const __VLS_101 = __VLS_asFunctionalComponent(__VLS_100, new __VLS_100({
         modelValue: (__VLS_ctx.newProjectKitName),
         label: (__VLS_ctx.t('common.projectPicker.createProject.kit')),
-        options: (__VLS_ctx.kitOptions),
+        help: (__VLS_ctx.t('common.projectPicker.createProject.kitHelp')),
+        options: (__VLS_ctx.effectiveKitOptions),
         disabled: (__VLS_ctx.creating),
     }));
     const __VLS_102 = __VLS_101({
         modelValue: (__VLS_ctx.newProjectKitName),
         label: (__VLS_ctx.t('common.projectPicker.createProject.kit')),
-        options: (__VLS_ctx.kitOptions),
+        help: (__VLS_ctx.t('common.projectPicker.createProject.kitHelp')),
+        options: (__VLS_ctx.effectiveKitOptions),
         disabled: (__VLS_ctx.creating),
     }, ...__VLS_functionalComponentArgsRest(__VLS_101));
 }
@@ -1256,6 +1293,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             newProjectKitName: newProjectKitName,
             creating: creating,
             creationError: creationError,
+            effectiveKitOptions: effectiveKitOptions,
             showKitField: showKitField,
             openCreateGroup: openCreateGroup,
             groupSelectOptions: groupSelectOptions,

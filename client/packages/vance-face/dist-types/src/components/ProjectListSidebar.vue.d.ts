@@ -43,14 +43,20 @@ interface Props {
      *  this the group label is just a dim divider and only projects
      *  are selectable. Pairs with the {@code selectedNode} v-model. */
     showGroupRows?: boolean;
-    /** Kit dropdown options for the create-project modal. When
-     *  non-empty an extra select appears in the form. The first
-     *  entry should typically be {@code { value: '', label: 'No kit' }}
-     *  to mean "create without kit install". */
+    /** Kit dropdown options for the create-project modal. When set,
+     *  the component renders exactly these — first entry should be a
+     *  "no kit" sentinel (blank value). When left unset the component
+     *  loads the tenant's project-kits catalog on mount and builds
+     *  the dropdown itself; pass {@link hideKitField}=true to opt out
+     *  of the kit field entirely. */
     kitOptions?: {
         value: string;
         label: string;
     }[];
+    /** Explicitly hide the kit field even when a catalog exists.
+     *  Useful for hosts where project creation is meant to be
+     *  intentionally minimal. */
+    hideKitField?: boolean;
     /** Heading shown above the list (e.g. "Projekte"). When blank
      *  the heading row is suppressed entirely — useful when the host
      *  already paints its own section label. */
@@ -118,6 +124,8 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
         name: string;
     }) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
+    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
+    "onUpdate:selectedNode"?: ((value: PickerNode | null) => any) | undefined;
     "onProject-pick"?: ((payload: {
         name: string;
         title: string;
@@ -131,12 +139,9 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
         kind: "group" | "project";
         name: string;
     }) => any) | undefined;
-    "onUpdate:selectedProject"?: ((value: string | null) => any) | undefined;
-    "onUpdate:selectedNode"?: ((value: PickerNode | null) => any) | undefined;
 }>, {
     loading: boolean;
     error: string | null;
-    heading: string;
     searchEnabled: boolean;
     editEnabled: boolean;
     showGroupRows: boolean;
@@ -144,6 +149,8 @@ declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, 
         value: string;
         label: string;
     }[];
+    hideKitField: boolean;
+    heading: string;
     filterPlaceholder: string;
     ungroupedLabel: string;
     emptyHeadline: string;

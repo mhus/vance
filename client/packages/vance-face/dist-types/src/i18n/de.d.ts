@@ -32,6 +32,8 @@ declare const _default: {
                 group: string;
                 groupNone: string;
                 kit: string;
+                kitNone: string;
+                kitHelp: string;
                 submit: string;
             };
             error: {
@@ -1360,13 +1362,6 @@ declare const _default: {
         createGroup: {
             title: string;
             nameHelp: string;
-        };
-        createProject: {
-            title: string;
-            nameHelp: string;
-            kitLabel: string;
-            kitNone: string;
-            kitHelp: string;
         };
     };
     inbox: {

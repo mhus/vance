@@ -357,7 +357,7 @@ const pickerSelectedNode = computed({
     },
 });
 const pickerKitOptions = computed(() => [
-    { value: '', label: t('scopes.createProject.kitNone') },
+    { value: '', label: t('common.projectPicker.createProject.kitNone') },
     ...(projectKitsCatalog.catalog.value?.kits ?? []).map(entry => ({
         value: entry.name,
         label: entry.title || entry.name,

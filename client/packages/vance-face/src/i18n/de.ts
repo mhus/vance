@@ -37,6 +37,8 @@ export default {
         group: 'Gruppe',
         groupNone: 'Ohne Gruppe',
         kit: 'Kit',
+        kitNone: 'Kein Kit',
+        kitHelp: 'Vorkonfigurierte Projekt-Vorlage — installiert Dokumente, Settings und Tools direkt nach dem Anlegen.',
         submit: 'Anlegen',
       },
       error: {
@@ -1471,13 +1473,6 @@ export default {
     createGroup: {
       title: 'Neue Projektgruppe',
       nameHelp: 'Kleinbuchstaben, Ziffern, „-" oder „_" erlaubt.',
-    },
-    createProject: {
-      title: 'Neues Projekt',
-      nameHelp: 'Kleinbuchstaben, Ziffern, „-" oder „_" erlaubt.',
-      kitLabel: 'Kit',
-      kitNone: 'Kein Kit',
-      kitHelp: 'Vorkonfiguriertes Projekt-Starterpaket — installiert Dokumente, Einstellungen und Tools nach dem Anlegen.',
     },
   },
 

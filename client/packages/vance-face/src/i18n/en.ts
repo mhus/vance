@@ -289,6 +289,9 @@ export default {
   documents: {
     pageTitle: 'Documents',
     breadcrumbRoot: 'Documents',
+    followUp: {
+      acceptHint: '↹ Tab',
+    },
     selectAProject: 'Select a project',
     projectsTitle: 'Projects',
     projectFilterPlaceholder: 'Filter projects…',

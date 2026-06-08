@@ -120,11 +120,11 @@ type __VLS_Slots = {} & {
     footer?: (props: typeof __VLS_20) => any;
 };
 declare const __VLS_component: import("vue").DefineComponent<__VLS_PublicProps, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {
-    "update:focusZone": (value: FocusZone) => any;
     "title-click": () => any;
+    "update:focusZone": (value: FocusZone) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_PublicProps> & Readonly<{
-    "onUpdate:focusZone"?: ((value: FocusZone) => any) | undefined;
     "onTitle-click"?: (() => any) | undefined;
+    "onUpdate:focusZone"?: ((value: FocusZone) => any) | undefined;
 }>, {
     breadcrumbs: Crumb[];
     wideRightPanel: boolean;

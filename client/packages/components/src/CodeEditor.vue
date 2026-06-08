@@ -24,6 +24,7 @@ import { sql } from '@codemirror/lang-sql';
 import { java } from '@codemirror/lang-java';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { r } from '@codemirror/legacy-modes/mode/r';
+import { followUpExtension, type FollowUpExtensionOptions } from './followUpExtension';
 
 interface Props {
   modelValue: string;
@@ -47,6 +48,20 @@ interface Props {
   readOnly?: boolean;
   /** Approximate visible-line count — drives min-height. */
   rows?: number;
+  /**
+   * Enables on-demand follow-up suggestions: pressing {@code Ctrl/Cmd
+   * +Space} fetches a single suggestion (via the caller-provided
+   * {@link FollowUpExtensionOptions.fetch}), shows it as a tooltip at
+   * the cursor, and accepts it via {@code Tab}. {@code null}/absent
+   * disables the feature entirely.
+   *
+   * <p>Only applied at editor-construction time; toggling at runtime
+   * has no effect (the prop is read in {@code onMounted} only). For
+   * conditional use (e.g. enable only for Markdown documents), the
+   * host should conditionally render the {@code CodeEditor} with
+   * {@code v-if="…"} so a fresh editor mounts when the toggle flips.
+   */
+  followUp?: FollowUpExtensionOptions | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -146,6 +161,9 @@ onMounted(() => {
     languageCompartment.of(languageFor(props.mimeType)),
     readOnlyCompartment.of(readOnlyExt(props.disabled || props.readOnly)),
   ];
+  if (props.followUp) {
+    baseExtensions.push(followUpExtension(props.followUp));
+  }
   const state = EditorState.create({
     doc: props.modelValue ?? '',
     extensions: baseExtensions,

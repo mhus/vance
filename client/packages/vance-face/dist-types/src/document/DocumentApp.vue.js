@@ -4,7 +4,7 @@ import { EditorShell, ProjectListSidebar, VAlert, VButton, VCard, VCheckbox, VDa
 import { useDocuments } from '@/composables/useDocuments';
 import { useHelp } from '@/composables/useHelp';
 import { useTenantProjects } from '@/composables/useTenantProjects';
-import { documentContentUrl } from '@vance/shared';
+import { brainFetch, documentContentUrl } from '@vance/shared';
 import { consumeDocumentDraft } from '@/platform';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
@@ -763,6 +763,44 @@ const isMarkdownDocument = computed(() => {
         && !isSheetDocument.value
         && !isSlidesDocument.value
         && !isDiagramDocument.value;
+});
+/**
+ * Follow-up extension options for the Markdown editor. The CodeEditor
+ * reads {@code followUp} once at construction time; we recompute when
+ * the project changes so a fresh editor mounts with the right binding
+ * (the {@code v-if="isMarkdownDocument"} branch in the template
+ * re-mounts whenever the selection toggles between Markdown and
+ * non-Markdown). For everything else this stays {@code null}.
+ *
+ * <p>The fetch callback wraps {@code POST /brain/{tenant}/follow-up/
+ * {project}} in edit mode (cursor set) — the server returns at most
+ * one suggestion (we ask for {@code count: 1}); we surface its text
+ * to the CodeMirror tooltip. Errors are swallowed: the ghost
+ * suggestion is a nicety, not a blocking feature.
+ */
+const markdownFollowUp = computed(() => {
+    const project = selectedProjectId.value;
+    if (!project)
+        return null;
+    return {
+        acceptHint: t('documents.followUp.acceptHint'),
+        fetch: async (text, cursor) => {
+            try {
+                const body = {
+                    text,
+                    cursor,
+                    count: 1,
+                    mode: 'text-editor',
+                };
+                const resp = await brainFetch('POST', `follow-up/${encodeURIComponent(project)}`, { body });
+                const first = resp.suggestions?.[0]?.text?.trim() ?? '';
+                return first.length > 0 ? first : null;
+            }
+            catch {
+                return null;
+            }
+        },
+    };
 });
 // Trash convention: documents under `_bin/` are already in the
 // project's trash folder (mirrors DocumentService.TRASH_FOLDER_PREFIX
@@ -3587,6 +3625,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                 rows: (20),
                 disabled: (__VLS_ctx.saving),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
+                followUp: (__VLS_ctx.isMarkdownDocument ? __VLS_ctx.markdownFollowUp : null),
             }));
             const __VLS_237 = __VLS_236({
                 modelValue: (__VLS_ctx.editInlineText),
@@ -3594,6 +3633,7 @@ else if (__VLS_ctx.docsState.selected.value) {
                 rows: (20),
                 disabled: (__VLS_ctx.saving),
                 mimeType: (__VLS_ctx.docsState.selected.value.mimeType),
+                followUp: (__VLS_ctx.isMarkdownDocument ? __VLS_ctx.markdownFollowUp : null),
             }, ...__VLS_functionalComponentArgsRest(__VLS_236));
         }
     }
@@ -5271,6 +5311,7 @@ const __VLS_self = (await import('vue')).defineComponent({
             isCalendarDocument: isCalendarDocument,
             isOfficeEditableDocument: isOfficeEditableDocument,
             isMarkdownDocument: isMarkdownDocument,
+            markdownFollowUp: markdownFollowUp,
             TRASH_PREFIX: TRASH_PREFIX,
             isSelectedInTrash: isSelectedInTrash,
             parsedList: parsedList,

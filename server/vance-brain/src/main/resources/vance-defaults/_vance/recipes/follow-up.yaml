@@ -8,7 +8,8 @@ description: |
 
   - Edit mode: `textBefore` + `textAfter` set, `precedingContext`
     absent. The user is editing a text and the cursor sits between
-    the two fragments — produce suggestions for what to type next.
+    the two fragments. Suggestions are inserted VERBATIM at the
+    cursor — write text the user could plausibly have typed next.
   - Reply mode: `precedingContext` set, `textBefore`/`textAfter`
     absent. The user is looking at the given text (typically the last
     assistant message in a chat) and wants suggestions for how to
@@ -52,11 +53,50 @@ promptPrefix: |
 
   ## Task
 
-  Suggest up to {{ count }} short ways the user could **continue**
-  typing at the cursor position — completions, questions to add,
-  clarifications. Suggestions must fit grammatically and contextually
-  between `textBefore` and `textAfter`. Do NOT echo `textBefore` or
-  `textAfter` back.
+  Produce text that the user could plausibly **type next** at the
+  cursor position. Each suggestion will be **inserted verbatim** at
+  the cursor — no human intervention, no rephrasing. Treat yourself
+  as an autocomplete that continues the document.
+
+  - Continue mid-sentence if the cursor is mid-sentence.
+  - Start a new sentence / paragraph / section if the cursor sits
+    on a fresh line.
+  - For structured documents (lists, headings, persona profiles,
+    YAML, tables), produce the next item / row / section in the
+    SAME structure and style as what's above.
+  - Match the surrounding voice, tone, and language.
+
+  ## DO NOT
+
+  - Do NOT ask the user questions ("Add another person?", "Should I
+    continue?", "Want more detail?"). The user does not see these.
+    Just produce the next text.
+  - Do NOT produce meta-commentary ("Here is a suggestion:",
+    "Continuing the list with...", "Let me add..."). Just produce
+    the literal text to insert.
+  - Do NOT echo `textBefore` or `textAfter` back.
+  - Do NOT wrap suggestions in quotes unless the document itself
+    is quoting something.
+
+  ## Example
+
+  textBefore ends with a persona-profile section for "Niccolò
+  Machiavelli" formatted as Markdown headings. Cursor is on a
+  fresh blank line after that section. textAfter is empty.
+
+  Good suggestion `text`:
+
+      ## Hannah Arendt\n\n**Core Philosophy:** A political theorist
+      focused on the conditions of human action, plurality, and the
+      banality of evil. She argues that …
+
+  Bad suggestion `text` (asks the user instead of continuing):
+
+      Add another political theorist?
+
+  Bad suggestion `text` (meta-commentary):
+
+      Here is the next persona profile in the same format.
   {% endif %}
 
   ## Reply format
@@ -66,22 +106,22 @@ promptPrefix: |
 
       {
         "suggestions": [
-          { "text": "…short follow-up text…", "kind": "question" },
-          { "text": "…another suggestion…", "kind": "completion" }
+          { "text": "…literal text to insert / send…", "kind": "completion" }
         ]
       }
 
-  - `text` is required, non-empty, plain text (no markdown).
-  - `kind` is optional. Suggested labels: `"question"`,
-    `"clarification"`, `"completion"`, `"continuation"`,
-    `"acknowledgement"`. Free-form — omit if uncertain.
+  - `text` is required, non-empty. The string is inserted/sent
+    verbatim — do not include surrounding prose.
+  - `kind` is optional. In edit mode use `"completion"` or
+    `"continuation"`; in reply mode use `"question"`,
+    `"clarification"`, or `"acknowledgement"`. Free-form — omit
+    if uncertain.
   - Return **at most {{ count }}** suggestions. Fewer is fine,
     including zero: if nothing useful comes to mind, reply with
     `{ "suggestions": [] }`.
 
   ## Rules
 
-  - Each suggestion must be short (one sentence, ideally <120 chars).
   - Suggestions must be distinct — no near-duplicates.
   - Match the language of the surrounding text. If the context is
     German, suggest German; if English, English.

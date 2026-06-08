@@ -4,6 +4,10 @@
 // these components. See specification/web-ui.md §7.3.
 
 export { default as CodeEditor } from './CodeEditor.vue';
+export {
+  followUpExtension,
+  type FollowUpExtensionOptions,
+} from './followUpExtension';
 export { default as VAlert } from './VAlert.vue';
 export { default as VBackButton } from './VBackButton.vue';
 export { default as VButton } from './VButton.vue';

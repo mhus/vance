@@ -24,7 +24,9 @@ import {
 import { useDocuments } from '@/composables/useDocuments';
 import { useHelp } from '@/composables/useHelp';
 import { useTenantProjects } from '@/composables/useTenantProjects';
-import { documentContentUrl } from '@vance/shared';
+import { brainFetch, documentContentUrl } from '@vance/shared';
+import type { FollowUpRequestDto, FollowUpResponseDto } from '@vance/generated';
+import type { FollowUpExtensionOptions } from '@/components';
 import { consumeDocumentDraft } from '@/platform';
 import DocumentPreview from './DocumentPreview.vue';
 import DocumentIcon from './DocumentIcon.vue';
@@ -882,6 +884,47 @@ const isMarkdownDocument = computed<boolean>(() => {
     && !isSheetDocument.value
     && !isSlidesDocument.value
     && !isDiagramDocument.value;
+});
+
+/**
+ * Follow-up extension options for the Markdown editor. The CodeEditor
+ * reads {@code followUp} once at construction time; we recompute when
+ * the project changes so a fresh editor mounts with the right binding
+ * (the {@code v-if="isMarkdownDocument"} branch in the template
+ * re-mounts whenever the selection toggles between Markdown and
+ * non-Markdown). For everything else this stays {@code null}.
+ *
+ * <p>The fetch callback wraps {@code POST /brain/{tenant}/follow-up/
+ * {project}} in edit mode (cursor set) — the server returns at most
+ * one suggestion (we ask for {@code count: 1}); we surface its text
+ * to the CodeMirror tooltip. Errors are swallowed: the ghost
+ * suggestion is a nicety, not a blocking feature.
+ */
+const markdownFollowUp = computed<FollowUpExtensionOptions | null>(() => {
+  const project = selectedProjectId.value;
+  if (!project) return null;
+  return {
+    acceptHint: t('documents.followUp.acceptHint'),
+    fetch: async (text, cursor) => {
+      try {
+        const body: FollowUpRequestDto = {
+          text,
+          cursor,
+          count: 1,
+          mode: 'text-editor',
+        };
+        const resp = await brainFetch<FollowUpResponseDto>(
+          'POST',
+          `follow-up/${encodeURIComponent(project)}`,
+          { body },
+        );
+        const first = resp.suggestions?.[0]?.text?.trim() ?? '';
+        return first.length > 0 ? first : null;
+      } catch {
+        return null;
+      }
+    },
+  };
 });
 
 // Trash convention: documents under `_bin/` are already in the
@@ -2517,6 +2560,7 @@ const formatBytes = (n: number): string => {
                 :rows="20"
                 :disabled="saving"
                 :mime-type="docsState.selected.value.mimeType"
+                :follow-up="isMarkdownDocument ? markdownFollowUp : null"
               />
             </template>
             <!-- Binary-document branch (DOCX/XLSX/PDF/images/…).

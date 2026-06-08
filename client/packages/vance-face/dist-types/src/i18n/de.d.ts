@@ -261,6 +261,9 @@ declare const _default: {
     documents: {
         pageTitle: string;
         breadcrumbRoot: string;
+        followUp: {
+            acceptHint: string;
+        };
         selectAProject: string;
         projectsTitle: string;
         projectFilterPlaceholder: string;

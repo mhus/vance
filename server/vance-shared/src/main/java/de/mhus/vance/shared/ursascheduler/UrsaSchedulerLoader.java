@@ -23,6 +23,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
 
@@ -195,6 +196,31 @@ public class UrsaSchedulerLoader {
         if (cron == null && at == null) {
             throw new IllegalStateException(
                     "missing trigger — set either 'cron' (recurring) or 'at' (one-shot)");
+        }
+        // Normalise + validate cron. Spring's CronExpression accepts
+        // 6-field "<sec> <min> <hour> <dom> <mon> <dow>" plus macros
+        // (@hourly, @daily, …). LLMs trained on Unix cron habitually emit
+        // 5-field "<min> <hour> <dom> <mon> <dow>" — we auto-upgrade
+        // those to 6-field with a leading "0" (fire at second 0) so the
+        // common form just works. Anything else fails fast at write
+        // time so scheduler_set surfaces a precise error instead of
+        // the silent "registered: false" trap (mhus/vance#1).
+        if (cron != null) {
+            String trimmed = cron.trim();
+            if (CronExpression.isValidExpression(trimmed)) {
+                cron = trimmed;
+            } else if (trimmed.split("\\s+").length == 5
+                    && CronExpression.isValidExpression("0 " + trimmed)) {
+                cron = "0 " + trimmed;
+            } else {
+                int fields = trimmed.split("\\s+").length;
+                String hint = fields >= 7
+                        ? " 7-field Quartz cron (with year) is not supported — use 6-field."
+                        : " Use 6-field '<sec> <min> <hour> <dom> <mon> <dow>' or"
+                                + " 5-field Unix '<min> <hour> <dom> <mon> <dow>'"
+                                + " (the latter auto-upgrades with second=0).";
+                throw new IllegalStateException("invalid cron '" + cron + "'." + hint);
+            }
         }
 
         boolean enabled = !(spec.get("enabled") instanceof Boolean b) || b;

@@ -158,7 +158,7 @@ WIP overflow with `wipEnforce: soft` (default) → move succeeds, result carries
 
 ## Anti-patterns
 
-- **Don't write `_app.yaml` by hand** via `doc_create_kind` / `doc_create_text`. The schema has tripwires (kind/app/columns shape) that `kanban_app_create` avoids.
+- **Don't write `_app.yaml` by hand** via `doc_create`. The schema has tripwires (kind/app/columns shape) that `kanban_app_create` avoids.
 - **Don't edit `_board.md` or `_stats.yaml` by hand.** They are regenerated artefacts. Hand-edits get overwritten on next `app_rebuild`. Edit the source cards, then rebuild.
 - **Don't move cards via `doc_move` / `doc_edit` against the path.** That bypasses WIP-limit checks and silently corrupts the column mapping if the target folder doesn't exist. Use `kanban_move`.
 - **Don't bundle calendar-style time data into a card** when the user means "deadline". A `dueDate:` field is enough. For full calendars use a separate `app: calendar` folder.

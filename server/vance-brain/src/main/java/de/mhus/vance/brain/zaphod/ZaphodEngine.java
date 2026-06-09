@@ -672,9 +672,7 @@ public class ZaphodEngine implements ThinkEngine {
         // Defensive: refuse pseudo-tool-call bodies that some LLMs
         // produce despite the explicit "no doc_*" instruction.
         if (markdown.startsWith("doc_create(")
-                || markdown.startsWith("doc_create_kind(")
-                || markdown.startsWith("doc_write_text(")
-                || markdown.startsWith("doc_create_text(")) {
+                || markdown.startsWith("doc_create_kind(")) {
             throw new IllegalStateException(
                     "synthesisMarkdown begins with a pseudo-tool-call — "
                             + "emit pure markdown text, no `doc_*(...)` syntax");

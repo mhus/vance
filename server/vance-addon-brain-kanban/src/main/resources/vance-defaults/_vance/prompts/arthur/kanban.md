@@ -13,9 +13,9 @@
   array carries the board + stats `markdownLink`s — embed both
   in your chat reply.
 
-  Do **not** hand-write `_app.yaml` via `doc_create_kind` /
-  `doc_create_text` (same schema tripwires as the calendar app)
-  and do **not** chain `kanban_app_create` + N × `kanban_card_create`
+  Do **not** hand-write `_app.yaml` via `doc_create` (same schema
+  tripwires as the calendar app) and do **not** chain
+  `kanban_app_create` + N × `kanban_card_create`
   + `app_rebuild` when you have all the cards up-front. Move
   cards with `kanban_move(folder, card, toColumn)` — never via
   `doc_move`/`doc_edit`, which bypass WIP-limit checks. Use

@@ -6,9 +6,9 @@ import java.util.Map;
 /**
  * Engine-side action the worker wants performed after its node
  * reaches DONE. Currently used for deterministic document writes
- * (e.g. {@code doc_write_text}) without an LLM tool call.
+ * (e.g. {@code doc_create}) without an LLM tool call.
  *
- * @param tool  operation name; e.g. {@code doc_write_text}
+ * @param tool  operation name; e.g. {@code doc_create}
  * @param args  tool-specific arguments (path, content, title …);
  *              string args are rendered through Pebble at execution
  *              time with {@code node.*} / {@code process.*} roots

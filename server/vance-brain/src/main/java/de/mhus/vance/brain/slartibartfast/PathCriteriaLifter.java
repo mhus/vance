@@ -55,9 +55,7 @@ import org.springframework.stereotype.Component;
  *       its output at `<path>` via doc_create." VALIDATING's
  *       {@code RULE_PATH_OUTPUTS_PERSISTED} rule extracts the path
  *       back via the back-tick pattern; the tool name in the
- *       wording steers the LLM toward the canonical upsert tool
- *       (deprecated aliases {@code doc_write_text} /
- *       {@code doc_create_text} also satisfy the rule).</li>
+ *       wording steers the LLM toward the canonical upsert tool.</li>
  * </ol>
  *
  * Synthetic criteria pick {@code INFERRED_DOMAIN} (not

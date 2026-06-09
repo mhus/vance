@@ -537,43 +537,6 @@ public class StrategyResolver {
                         optString(dm.get("itemsFromOutput")),
                         optBool(dm.get("overwrite"), true));
             }
-            case "doc_create_text" -> {
-                // Legacy alias — routes to doc_create with kind=text.
-                if (!(value instanceof Map<?, ?> m)) {
-                    throw new IllegalStateException(
-                            trail + " must be a map with 'path' and 'content'");
-                }
-                Map<String, Object> dm = toStringMap(m);
-                yield new BranchAction.DocCreateText(
-                        requireString(dm, "path", trail),
-                        requireString(dm, "content", trail),
-                        optString(dm.get("title")),
-                        asStringList(dm.get("tags")),
-                        optBool(dm.get("overwrite"), true));
-            }
-            case "doc_create_kind" -> {
-                // Legacy alias — kind already explicit in the args.
-                if (!(value instanceof Map<?, ?> m)) {
-                    throw new IllegalStateException(
-                            trail + " must be a map with 'path' and 'kind'");
-                }
-                Map<String, Object> dm = toStringMap(m);
-                List<Map<String, Object>> items = null;
-                if (dm.get("items") instanceof List<?> il) {
-                    items = new ArrayList<>();
-                    for (Object it : il) {
-                        if (it instanceof Map<?, ?> im) items.add(toStringMap(im));
-                    }
-                }
-                yield new BranchAction.DocCreateKind(
-                        requireString(dm, "path", trail),
-                        requireString(dm, "kind", trail),
-                        optString(dm.get("title")),
-                        asStringList(dm.get("tags")),
-                        items,
-                        optString(dm.get("itemsFromOutput")),
-                        optBool(dm.get("overwrite"), true));
-            }
             case "list_append" -> {
                 if (!(value instanceof Map<?, ?> m)) {
                     throw new IllegalStateException(

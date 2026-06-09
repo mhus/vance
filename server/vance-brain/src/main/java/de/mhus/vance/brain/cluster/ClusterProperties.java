@@ -51,6 +51,7 @@ public class ClusterProperties {
     private Resources resources = new Resources();
     private Master master = new Master();
     private Locator locator = new Locator();
+    private Cleanup cleanup = new Cleanup();
 
     @Data
     public static class Resources {
@@ -109,5 +110,26 @@ public class ClusterProperties {
          * blocks waiting for a spawn to finish before throwing.
          */
         private Duration autoStartTimeout = Duration.ofSeconds(30);
+    }
+
+    @Data
+    public static class Cleanup {
+        /**
+         * Spacing of the cleanup tick. Runs on every pod but no-ops
+         * unless the local pod currently holds the Cluster-Master lease.
+         */
+        private Duration interval = Duration.ofMinutes(10);
+
+        /**
+         * Hard-delete a {@code brain_pods} row whose {@code lastHeartbeatAt}
+         * is older than this. Independent of (and much larger than)
+         * {@link ClusterProperties#staleAfter} — the short stale window
+         * gates routing decisions, this long one gates row purging.
+         *
+         * <p>Status is intentionally ignored: a crashed pod stays at
+         * {@code RUNNING} but stops beating, and we want those purged
+         * just as much as cleanly STOPPED rows.
+         */
+        private Duration after = Duration.ofHours(1);
     }
 }

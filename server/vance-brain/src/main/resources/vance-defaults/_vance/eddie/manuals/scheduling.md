@@ -1,6 +1,6 @@
 ---
 audience: eddie
-triggers: scheduler, scheduler_create, scheduler_update, scheduler_list, scheduler_get, scheduler_delete, scheduler_fire, scheduler manuell auslösen, scheduler testen, scheduler log, lief der scheduler, cron, at:, erinnere mich, reminder, jeden Montag, morgen früh, recurring task, einmalig, daily briefing, locked scheduler, lockMode, runAs, timezone, Quartz cron, IANA
+triggers: scheduler, scheduler_set, scheduler_list, scheduler_get, scheduler_delete, scheduler_fire, scheduler manuell auslösen, scheduler testen, scheduler log, lief der scheduler, cron, at:, erinnere mich, reminder, jeden Montag, morgen früh, recurring task, einmalig, daily briefing, locked scheduler, lockMode, runAs, timezone, Quartz cron, IANA
 summary: How Eddie creates and maintains schedulers, fires them manually for testing, and reads the per-run log documents — Quartz 6-field cron vs. one-shot `at:`, IANA timezones, recipe choice, lockMode, runAs semantics, plus `scheduler_fire` + `_vance/logs/scheduler/<name>/…` for end-to-end verification.
 ---
 # Wie ich Scheduler anlege und pflege
@@ -21,15 +21,14 @@ sie selbständig nach jedem Schreiben (Delta-Refresh).
 |---|---|
 | Vorhandene Scheduler im Projekt sehen | `scheduler_list` |
 | Vollständiges YAML eines Scheduler nachschlagen | `scheduler_get` |
-| Neuen Scheduler anlegen | `scheduler_create` |
-| Bestehenden ändern | `scheduler_update` |
+| Scheduler anlegen oder ändern | `scheduler_set` |
 | Entfernen | `scheduler_delete` |
 | Sofort testweise auslösen (am Cron vorbei) | `scheduler_fire` |
 | Lauf-Ergebnis nachlesen (Outcome, Timeline) | `document_read` auf `_vance/logs/scheduler/<name>/…` |
 
-Vor jedem create/update sollte ich kurz `scheduler_list` aufrufen — wenn der
+Vor jedem `scheduler_set` sollte ich kurz `scheduler_list` aufrufen — wenn der
 User „einen Reminder für morgen früh" will und sowas schon existiert, lege
-ich keinen zweiten an, sondern frage nach.
+ich keinen zweiten an, sondern aktualisiere den bestehenden oder frage nach.
 
 ## Wiederkehrender Scheduler (`cron:`)
 
@@ -37,7 +36,7 @@ Standardfall: jeden Wochentag um 8:00 Uhr Berliner Zeit:
 
 ```
 invoke_tool(
-  name = "scheduler_create",
+  name = "scheduler_set",
   params = {
     "name": "morning-briefing",
     "yaml": """
@@ -68,7 +67,7 @@ Für „mach das genau einmal um Zeitpunkt X" — kein cron, sondern `at:`:
 
 ```
 invoke_tool(
-  name = "scheduler_create",
+  name = "scheduler_set",
   params = {
     "name": "review-deck-tomorrow",
     "yaml": """
@@ -113,14 +112,16 @@ parst nur ISO-Datums.
 
 ## Bestehende Scheduler anpassen
 
-`scheduler_update` braucht das **komplette** YAML — keine Patch-Operation,
-sondern Full-Replace. Workflow:
+`scheduler_set` braucht das **komplette** YAML — keine Patch-Operation,
+sondern Full-Replace. Der vorherige Stand wird vom Document-Layer
+automatisch archiviert; ich verliere also nichts beim Überschreiben.
+Workflow:
 
 1. `scheduler_get(name)` → aktuelles YAML
 2. Stelle anpassen (z. B. nur die Cron-Zeile)
-3. `scheduler_update(name, yaml)` mit dem geänderten Gesamttext
+3. `scheduler_set(name, yaml)` mit dem geänderten Gesamttext
 
-Wenn ich nur deaktivieren will: `enabled: false` ins YAML, `scheduler_update`.
+Wenn ich nur deaktivieren will: `enabled: false` ins YAML, `scheduler_set`.
 Re-aktivieren ist dasselbe Spiel rückwärts.
 
 ## Gesperrte Scheduler (`lockMode`)
@@ -135,7 +136,7 @@ Manche Scheduler darf ich nicht anfassen — typisch Admin-Eintragungen
   ich versehentlich einen Namen errate, der gesperrt ist, lehnt der
   Server die Mutation ab.
 
-Wenn `scheduler_create`/`update`/`delete` mit „is locked" antwortet, dem
+Wenn `scheduler_set`/`scheduler_delete` mit „is locked" antwortet, dem
 User klar sagen: „dieser Scheduler ist admin-geschützt und kann nicht über
 mich geändert werden." Nicht versuchen, das mit einem leicht anderen Namen
 zu umgehen — das ist Bypass-Versuch.

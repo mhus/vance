@@ -14,22 +14,33 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+/**
+ * Upsert a scheduler — create if absent, replace YAML body if present.
+ * Replaces the earlier {@code scheduler_create}/{@code scheduler_update}
+ * pair, which forced a two-call dance (try create → on "exists" use
+ * update) that didn't buy anything safety-wise because the document
+ * layer auto-archives every overwrite.
+ *
+ * <p>Response carries a {@code created} flag so the LLM can tell which
+ * path ran.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 @de.mhus.vance.toolpack.SpawnTool
-public class UrsaSchedulerUpdateTool implements Tool {
+public class UrsaSchedulerSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
     static {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("name", Map.of(
                 "type", "string",
-                "description", "Scheduler name (must already exist)."));
+                "description", "Scheduler name — lowercase, alphanumeric + '_-', max 64 chars."));
         props.put("yaml", Map.of(
                 "type", "string",
-                "description", "Replacement YAML body. Validated server-side; "
-                        + "rejected if required fields are missing."));
+                "description", "Full YAML body. Must include 'description', 'cron', 'recipe'. "
+                        + "Optional fields: timezone, enabled, params, initialMessage, "
+                        + "runAs, overlap, tags."));
         SCHEMA = Map.of(
                 "type", "object",
                 "properties", props,
@@ -40,12 +51,14 @@ public class UrsaSchedulerUpdateTool implements Tool {
     private final DocumentService documentService;
     private final UrsaSchedulerService schedulerService;
 
-    @Override public String name() { return "scheduler_update"; }
+    @Override public String name() { return "scheduler_set"; }
 
     @Override public String description() {
-        return "Replace the YAML of an existing scheduler in the current project "
-                + "and re-register it with the cron registry. Fails if the "
-                + "scheduler does not exist — use scheduler_create instead.";
+        return "Create or replace a scheduler in the current project. "
+                + "Idempotent: if a scheduler with this name already exists "
+                + "its YAML is overwritten (the previous version is auto-"
+                + "archived). Response includes 'created: true|false' so the "
+                + "caller can tell which path ran.";
     }
 
     @Override public boolean primary() { return false; }
@@ -55,18 +68,18 @@ public class UrsaSchedulerUpdateTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx.projectId() == null) {
-            throw new ToolException("scheduler_update requires a project scope");
+            throw new ToolException("scheduler_set requires a project scope");
         }
         String name = UrsaSchedulerToolSupport.normalizeName(stringOrThrow(params, "name"));
         String yaml = stringOrThrow(params, "yaml");
 
+        // Refuse if a cascade-resolved entry with this name is locked —
+        // creating a project-local override would otherwise shadow a
+        // protected tenant entry.
         support.guardMutation(ctx.tenantId(), ctx.projectId(), name);
 
-        if (documentService.findByPath(ctx.tenantId(), ctx.projectId(),
-                UrsaSchedulerToolSupport.pathFor(name)).isEmpty()) {
-            throw new ToolException("scheduler '" + name
-                    + "' does not exist in this project — use scheduler_create");
-        }
+        boolean existed = documentService.findByPath(ctx.tenantId(), ctx.projectId(),
+                UrsaSchedulerToolSupport.pathFor(name)).isPresent();
 
         ResolvedUrsaScheduler validated = support.parseOrThrow(name, yaml);
         support.upsert(ctx.tenantId(), ctx.projectId(), name, yaml, ctx.userId());
@@ -75,6 +88,7 @@ public class UrsaSchedulerUpdateTool implements Tool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("name", name);
         out.put("enabled", validated.enabled());
+        out.put("created", !existed);
         out.put("registered", registered);
         return out;
     }

@@ -28,9 +28,8 @@ import org.springframework.stereotype.Component;
  * {@code _stats.yaml} so the result already carries the artefact links.
  *
  * <p>Always preferred over hand-writing {@code _app.yaml} via
- * {@code doc_create_kind} / {@code doc_create_text} — the schema
- * tripwires (kind, app, column shape, sub-folder convention) trip up
- * LLMs reliably.
+ * {@code doc_create} — the schema tripwires (kind, app, column
+ * shape, sub-folder convention) trip up LLMs reliably.
  */
 @Component
 @Slf4j
@@ -148,9 +147,9 @@ public class KanbanAppCreateTool implements Tool {
                 + "per card in its column folder, and auto-rebuilds "
                 + "_board.md + _stats.yaml — single call. ALWAYS use "
                 + "this for new boards / sprint planning. Do NOT "
-                + "hand-write _app.yaml via doc_create_kind/doc_create_text, "
-                + "do NOT chain N x doc_create_text + app_rebuild when "
-                + "cards are known up-front.";
+                + "hand-write _app.yaml via doc_create, do NOT chain "
+                + "N x doc_create + app_rebuild when cards are known "
+                + "up-front.";
     }
 
     @Override public boolean primary() { return false; }

@@ -3,16 +3,14 @@ package de.mhus.vance.brain.action;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import de.mhus.vance.brain.tools.magrathea.WorkflowStartTool;
-import de.mhus.vance.brain.tools.hooks.HookCreateTool;
 import de.mhus.vance.brain.tools.hooks.HookDeleteTool;
-import de.mhus.vance.brain.tools.hooks.HookUpdateTool;
+import de.mhus.vance.brain.tools.hooks.HookSetTool;
 import de.mhus.vance.brain.tools.process.ProcessCreateTool;
 import de.mhus.vance.brain.tools.process.ProcessRunTool;
-import de.mhus.vance.brain.tools.ursascheduler.UrsaSchedulerCreateTool;
 import de.mhus.vance.brain.tools.script.ScriptRunDocTool;
 import de.mhus.vance.brain.tools.script.ScriptRunWorkspaceTool;
 import de.mhus.vance.brain.tools.ursascheduler.UrsaSchedulerDeleteTool;
-import de.mhus.vance.brain.tools.ursascheduler.UrsaSchedulerUpdateTool;
+import de.mhus.vance.brain.tools.ursascheduler.UrsaSchedulerSetTool;
 import de.mhus.vance.toolpack.SpawnTool;
 import de.mhus.vance.toolpack.Tool;
 import java.util.List;
@@ -44,11 +42,9 @@ class AllSpawnToolsAnnotatedTest {
             ScriptRunDocTool.class,
             ScriptRunWorkspaceTool.class,
             WorkflowStartTool.class,
-            UrsaSchedulerCreateTool.class,
-            UrsaSchedulerUpdateTool.class,
+            UrsaSchedulerSetTool.class,
             UrsaSchedulerDeleteTool.class,
-            HookCreateTool.class,
-            HookUpdateTool.class,
+            HookSetTool.class,
             HookDeleteTool.class);
 
     @Test

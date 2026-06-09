@@ -73,7 +73,7 @@ public class PhaseSpec {
      * {@link #getMaxOutputCorrections()} times, then fails the phase.
      *
      * <p>Replaces the hand-written reply for executive worker
-     * patterns: instead of telling the LLM "now call doc_create_text",
+     * patterns: instead of telling the LLM "now call doc_create",
      * the recipe says "produce a JSON with {chapterText, slug}", and
      * the engine deterministically persists via post-actions.
      */

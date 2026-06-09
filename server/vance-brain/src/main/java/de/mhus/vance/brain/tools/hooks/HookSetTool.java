@@ -14,10 +14,21 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+/**
+ * Upsert a hook — create if absent, replace YAML body if present.
+ * Replaces the earlier {@code hook_create}/{@code hook_update} pair;
+ * see {@link de.mhus.vance.brain.tools.ursascheduler.UrsaSchedulerSetTool}
+ * for the rationale (document-layer auto-archives every overwrite, so
+ * the strict create-fails-on-existing check was friction without
+ * safety value).
+ *
+ * <p>Response carries a {@code created} flag so the LLM can tell which
+ * path ran.
+ */
 @Component
 @RequiredArgsConstructor
 @de.mhus.vance.toolpack.SpawnTool
-public class HookUpdateTool implements Tool {
+public class HookSetTool implements Tool {
 
     private static final Map<String, Object> SCHEMA;
     static {
@@ -27,10 +38,11 @@ public class HookUpdateTool implements Tool {
                 "description", "Wire-form event name, e.g. 'process.completed'."));
         props.put("name", Map.of(
                 "type", "string",
-                "description", "Hook name (filename without .yaml)."));
+                "description", "Hook name — lowercase, alphanumeric + '_-', max 64 chars."));
         props.put("yaml", Map.of(
                 "type", "string",
-                "description", "Full replacement YAML body."));
+                "description", "Full YAML body. Required: 'type' (js|llm). "
+                        + "JS: 'script'. LLM: 'prompt' + 'model'."));
         SCHEMA = Map.of(
                 "type", "object",
                 "properties", props,
@@ -40,12 +52,14 @@ public class HookUpdateTool implements Tool {
     private final HookService hookService;
     private final HookToolSupport support;
 
-    @Override public String name() { return "hook_update"; }
+    @Override public String name() { return "hook_set"; }
 
     @Override public String description() {
-        return "Replace the YAML body of an existing hook. Creates a "
-                + "project-layer override if the current hook lives at the "
-                + "_vance tier.";
+        return "Create or replace a hook in the current project. Idempotent: "
+                + "if a hook with the same (event, name) already exists its "
+                + "YAML is overwritten (the previous version is auto-archived). "
+                + "Response includes 'created: true|false' so the caller can "
+                + "tell which path ran.";
     }
 
     @Override public boolean primary() { return false; }
@@ -55,7 +69,7 @@ public class HookUpdateTool implements Tool {
     @Override
     public Map<String, Object> invoke(Map<String, Object> params, ToolInvocationContext ctx) {
         if (ctx.projectId() == null) {
-            throw new ToolException("hook_update requires a project scope");
+            throw new ToolException("hook_set requires a project scope");
         }
         HookEventName event = HookToolSupport.parseEvent(
                 support.stringOrThrow(params, "event"));
@@ -63,6 +77,8 @@ public class HookUpdateTool implements Tool {
                 support.stringOrThrow(params, "name"));
         String yaml = support.stringOrThrow(params, "yaml");
 
+        boolean existed = hookService.findOne(ctx.tenantId(), ctx.projectId(), event, name)
+                .isPresent();
         HookDef saved;
         try {
             saved = hookService.save(
@@ -71,7 +87,7 @@ public class HookUpdateTool implements Tool {
             throw new ToolException("hook YAML rejected: " + ex.getMessage());
         }
         Map<String, Object> resp = new LinkedHashMap<>(support.shape(ctx.tenantId(), saved));
-        resp.put("updated", true);
+        resp.put("created", !existed);
         return resp;
     }
 }

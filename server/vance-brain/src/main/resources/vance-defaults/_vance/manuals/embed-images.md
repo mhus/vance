@@ -69,7 +69,6 @@ response (use it directly, no extra `document_link` call):
 
 - `image_generate` — returns `{ path, markdownLink, … }`
 - `doc_create(kind="image", …)` — same shape
-- `document_create`, `document_save` — same shape
 
 ### 3. SVG inline — diagrams you draft
 

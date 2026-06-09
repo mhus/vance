@@ -122,7 +122,7 @@ app_rebuild(folder="projects/website/calendars")
 
 ## Anti-patterns
 
-- **Don't write `_app.yaml` yourself via `doc_create_kind` / `doc_create_text`.** The schema has too many tripwires; use this tool.
+- **Don't write `_app.yaml` yourself via `doc_create`.** The schema has too many tripwires; use this tool.
 - **Don't chain `calendar_app_create` + N × `calendar_create` + `app_rebuild` when you have all the events up front.** Pass them in `events` to `calendar_app_create` directly — one call, no orchestration drift.
 - **Don't call `calendar_create` with empty `events: []`** to "init a lane". Lanes exist via the manifest; no placeholder file needed. The tool now returns a `skipped: true` warning instead of an error, but it's still wasted calls.
 - **Don't put calendar files directly under the app folder** (e.g. `calendars/sprint-q3/design.yaml` instead of `calendars/sprint-q3/design/work.yaml`). Files in the app root land in the auto-default lane `default` — not in any lane you defined. The `suggestedFilePath` from this tool steers you right.

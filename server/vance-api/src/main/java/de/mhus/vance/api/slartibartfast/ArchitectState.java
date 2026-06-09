@@ -72,7 +72,7 @@ public class ArchitectState {
      * provided guidance" header. Use for kit-specific recipe-shape
      * conventions that aren't encoded in the framed goal or
      * acceptance criteria — typical example: "persist artifacts via
-     * doc_create_text" patterns from a writing-kit. Slart's generic
+     * doc_create" patterns from a writing-kit. Slart's generic
      * engine prompt stays untouched; the kit owns its own additions.
      *
      * <p>Empty / null = no guidance, default behaviour.

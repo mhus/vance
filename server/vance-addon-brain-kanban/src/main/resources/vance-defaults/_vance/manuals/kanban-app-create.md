@@ -115,7 +115,7 @@ That's it. One call, full setup.
 
 ## Anti-patterns
 
-- **Don't write `_app.yaml` yourself via `doc_create_kind` / `doc_create_text`.** Schema has too many tripwires.
+- **Don't write `_app.yaml` yourself via `doc_create`.** Schema has too many tripwires.
 - **Don't chain `kanban_app_create` + N × `kanban_card_create` + `app_rebuild` when you have all the cards up front.** Pass them in `cards` to `kanban_app_create` directly.
 - **Don't reuse a folder for two apps.** Each app folder hosts exactly one `_app.yaml`.
 - **Don't pass `columns: []`** unless the user really wants whatever columns the cards reference. Without a column model, WIP-limits and ordering are meaningless.

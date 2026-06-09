@@ -22,9 +22,8 @@ import org.springframework.stereotype.Component;
 /**
  * Canonical "save a document" tool — creates a new document with the
  * given {@code kind}, or overwrites the one at {@code path} if it
- * already exists. Replaces the older {@code doc_create_text} /
- * {@code doc_create_kind} / {@code doc_write_text} trio: one tool,
- * one decision the LLM has to make (which {@code kind}).
+ * already exists. The single canonical "save a document" tool: one
+ * tool, one decision the LLM has to make (which {@code kind}).
  *
  * <p>The {@code kind} parameter is marked required in the schema so
  * the model is forced to think about it instead of defaulting to

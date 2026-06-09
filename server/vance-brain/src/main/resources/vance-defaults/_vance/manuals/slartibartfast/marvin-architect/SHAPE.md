@@ -131,8 +131,7 @@ run deterministically after VALIDATE passes, with no LLM
 involvement and no tool-call risk. Supported tools:
 
 - `doc_create` — upsert by path (find → update, else create).
-  Required: `path`, `kind`, `content`. `doc_write_text` /
-  `doc_create_text` are kept as deprecated aliases.
+  Required: `path`, `kind`, `content`.
 
 ### postAction shape
 

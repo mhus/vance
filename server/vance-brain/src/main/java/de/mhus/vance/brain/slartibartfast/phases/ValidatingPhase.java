@@ -54,10 +54,8 @@ public class ValidatingPhase {
     /**
      * Every acceptance criterion that names a file-path must be
      * backed by at least one recipe phase whose {@code workerInput}
-     * contains both a recognised write-tool name (currently
-     * {@code doc_create} — or the deprecated aliases
-     * {@code doc_create_text} / {@code doc_write_text}) and the
-     * path itself. Catches Slart's failure mode where the generated
+     * contains both the {@code doc_create} tool name and the path
+     * itself. Catches Slart's failure mode where the generated
      * Vogon recipe runs all content phases as in-chat drafts and
      * never persists to the kit-declared OUTPUT path (the recurring
      * symptom across yesterday's and today's runs).
@@ -65,13 +63,10 @@ public class ValidatingPhase {
     public static final String RULE_PATH_OUTPUTS_PERSISTED =
             "path-criteria-have-doc-write-phase";
 
-    /** Recipe-phase workerInputs satisfying RULE_PATH_OUTPUTS_PERSISTED
-     *  may use any of these tool names — {@code doc_create} (canonical,
-     *  upsert) or the deprecated aliases {@code doc_create_text} /
-     *  {@code doc_write_text}. All three route to
-     *  {@code DocumentService} underneath. */
+    /** The canonical (and only) write-tool name that satisfies
+     *  RULE_PATH_OUTPUTS_PERSISTED. */
     private static final java.util.List<String> WRITE_TOOL_NAMES =
-            java.util.List.of("doc_create", "doc_write_text", "doc_create_text");
+            java.util.List.of("doc_create");
 
     /** Matches a path inside a criterion text, same shape as
      *  {@link de.mhus.vance.brain.slartibartfast.PathCriteriaLifter#PATH_PATTERN}
@@ -269,7 +264,7 @@ public class ValidatingPhase {
         //    acceptance criterion that names a file-path (lifted by
         //    PathCriteriaLifter from OUTPUT.md evidence claims, or
         //    user-stated) must be backed by at least one recipe
-        //    phase whose workerInput contains both `doc_create_text`
+        //    phase whose workerInput contains both `doc_create`
         //    and the path literal. Without this, Slart's generated
         //    recipes end with chat-only review phases and the kit-
         //    declared OUTPUT folder stays empty.
@@ -391,7 +386,7 @@ public class ValidatingPhase {
      * For every acceptance criterion that names a file-path, check
      * that the recipe YAML has at least one phase whose
      * {@code workerInput} contains BOTH the literal string
-     * {@code doc_create_text} AND the path itself. Returns null
+     * {@code doc_create} AND the path itself. Returns null
      * when the recipe has no path-criteria at all (nothing to
      * check); a passing {@link ValidationCheck} when every path is
      * covered; a failing one with an offending-path message when
@@ -399,7 +394,7 @@ public class ValidatingPhase {
      *
      * <p>Substring matching on the YAML — coarse but works because
      * Slart's emitted recipes carry the workerInput as plain text
-     * blocks and {@code doc_create_text} is a tool name that doesn't
+     * blocks and {@code doc_create} is a tool name that doesn't
      * occur in normal prose. False positives are tolerable here;
      * a false negative would silently let an unpersisted recipe
      * through, which is exactly the failure mode we're trying to
@@ -446,8 +441,7 @@ public class ValidatingPhase {
                     .rule(RULE_PATH_OUTPUTS_PERSISTED).passed(true)
                     .message(requiredPaths.size()
                             + " path criterion(s) all have backing "
-                            + "doc_write_text / doc_create_text phases "
-                            + "in the recipe")
+                            + "doc_create phases in the recipe")
                     .build();
         }
         return ValidationCheck.builder()
@@ -457,14 +451,13 @@ public class ValidatingPhase {
                         + missing.size() + " path(s) that no recipe "
                         + "phase persists: " + missing
                         + ". For Vogon strategies: add a phase whose "
-                        + "workerInput calls doc_write_text (upsert) "
-                        + "or doc_create_text (first-write only) with "
-                        + "the literal path. "
+                        + "workerInput calls doc_create with the "
+                        + "literal path. "
                         + "For Marvin recipes: add a `postActions` "
                         + "block INSIDE the taskSpec of the node "
                         + "whose output should be persisted (typically "
                         + "the AGGREGATE child or the final WORKER) "
-                        + "with `tool: doc_write_text` + `args.path` + "
+                        + "with `tool: doc_create` + `args.path` + "
                         + "`args.content`. "
                         + "Persist ONLY the user-requested artefacts — "
                         + "do NOT add postActions that save unrelated "

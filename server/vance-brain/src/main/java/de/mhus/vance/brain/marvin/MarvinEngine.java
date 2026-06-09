@@ -1618,8 +1618,7 @@ public class MarvinEngine implements ThinkEngine {
             }
             try {
                 switch (tool.trim()) {
-                    case "doc_create", "doc_write_text", "doc_create_text" ->
-                            execDocCreate(process, node, a.args(), renderContext);
+                    case "doc_create" -> execDocCreate(process, node, a.args(), renderContext);
                     default -> log.warn("Marvin id='{}' postAction tool='{}' unknown — skipping",
                             process.getId(), tool);
                 }

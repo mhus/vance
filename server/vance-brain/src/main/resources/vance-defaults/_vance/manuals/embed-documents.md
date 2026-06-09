@@ -13,9 +13,9 @@ slash-commands.
 ## When to use this
 
 You have a **real** Document path — either from a tool you just
-called (`document_create`, `doc_create`, `image_generate`,
-`document_save`), from a path the user mentioned, or from project
-memory. You want to point the user at it.
+called (`doc_create`, `image_generate`), from a path the user
+mentioned, or from project memory. You want to point the user
+at it.
 
 Symptoms that say "use this":
 
@@ -47,8 +47,6 @@ single tool keeps correct.
 Tools that produce a Document return `markdownLink` directly in
 their response. Copy it into your reply verbatim — no extra call:
 
-- `document_create` → `{ path, markdownLink, … }`
-- `document_save` → `{ path, markdownLink, … }`
 - `doc_create` → `{ path, markdownLink, … }`
 - `image_generate` → `{ path, markdownLink, … }`
 

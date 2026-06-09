@@ -150,17 +150,26 @@ public class SchedulerLogService {
      * Record the initial {@code TRIGGERED} event. Creates the document
      * with {@code outcome: pending} so the run is visible the moment
      * the scheduler fires, even before spawn completes.
+     *
+     * <p>{@code firedAt} is passed in (not captured here) so the caller
+     * — and any caller that returns a precomputed {@link #pathFor}
+     * link to the client (REST / agent tool) — uses the exact same
+     * second-precision timestamp the document is written under.
+     * Otherwise the path the client receives can diverge from the path
+     * the writer chose whenever the two {@code Instant.now()} calls
+     * fall in different seconds (see the bug fix in
+     * {@code specification/scheduler.md} §9a).
      */
     public synchronized void onTriggered(
             String tenantId, String projectId, String schedulerName,
-            String correlationId, String trigger, String runAs) {
+            String correlationId, String trigger, String runAs, Instant firedAt) {
         RunState state = runs.computeIfAbsent(correlationId, id -> new RunState());
         state.tenantId = tenantId;
         state.projectId = projectId;
         state.schedulerName = schedulerName;
         state.trigger = trigger;
         state.runAs = runAs;
-        state.firedAt = Instant.now();
+        state.firedAt = firedAt;
         state.outcome = "pending";
         state.timeline.add(formatTimelineEntry(state.firedAt, "TRIGGERED", "source=" + sourceFor(schedulerName)));
         upsert(state, correlationId);

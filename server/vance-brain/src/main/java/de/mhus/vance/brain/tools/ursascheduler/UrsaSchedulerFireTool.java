@@ -5,7 +5,6 @@ import de.mhus.vance.brain.ursascheduler.UrsaSchedulerService;
 import de.mhus.vance.toolpack.Tool;
 import de.mhus.vance.toolpack.ToolException;
 import de.mhus.vance.toolpack.ToolInvocationContext;
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,19 +66,18 @@ public class UrsaSchedulerFireTool implements Tool {
             throw new ToolException("scheduler_fire requires a project scope");
         }
         String name = UrsaSchedulerToolSupport.normalizeName(stringOrThrow(params, "name"));
-        String correlationId;
+        UrsaSchedulerService.FireOutcome outcome;
         try {
-            correlationId = schedulerService.fireNow(ctx.tenantId(), ctx.projectId(), name);
+            outcome = schedulerService.fireNow(ctx.tenantId(), ctx.projectId(), name);
         } catch (IllegalArgumentException ex) {
             throw new ToolException(ex.getMessage());
         }
-        // Path computation is stable for (name, firedAt~now, correlationId);
-        // the log writer uses the same formula so the model can read the
-        // document right after the call (it lands with `outcome: pending`
-        // and updates as the run progresses).
-        String logPath = SchedulerLogService.pathFor(name, Instant.now(), correlationId);
+        // Path is computed from the same firedAt the writer uses, so
+        // the document is guaranteed to exist at exactly this path
+        // (no second-boundary race between the two Instant.now() calls).
+        String logPath = SchedulerLogService.pathFor(name, outcome.firedAt(), outcome.correlationId());
         return Map.of(
-                "correlationId", correlationId,
+                "correlationId", outcome.correlationId(),
                 "logPath", logPath,
                 "note", "Run started. Read '" + logPath + "' via document_read for status/outcome.");
     }

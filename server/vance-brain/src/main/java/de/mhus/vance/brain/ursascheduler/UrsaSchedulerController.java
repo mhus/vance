@@ -192,14 +192,17 @@ public class UrsaSchedulerController {
             HttpServletRequest request) {
         authority.enforce(request, new Resource.Project(tenant, project), Action.WRITE);
         String norm = normalizeName(name);
-        String correlationId;
+        UrsaSchedulerService.FireOutcome outcome;
         try {
-            correlationId = schedulerService.fireNow(tenant, project, norm);
+            outcome = schedulerService.fireNow(tenant, project, norm);
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage());
         }
-        String logPath = SchedulerLogService.pathFor(norm, Instant.now(), correlationId);
-        return new FireResult(correlationId, logPath);
+        // firedAt comes back from the service so the returned logPath
+        // matches the document the writer creates (no second-boundary
+        // race — see ticket mhus/vance#1).
+        String logPath = SchedulerLogService.pathFor(norm, outcome.firedAt(), outcome.correlationId());
+        return new FireResult(outcome.correlationId(), logPath);
     }
 
     // ─── Events ───────────────────────────────────────────────────────────

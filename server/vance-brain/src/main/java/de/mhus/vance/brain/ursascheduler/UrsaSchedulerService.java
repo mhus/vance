@@ -366,7 +366,7 @@ public class UrsaSchedulerService {
     /** Crash-safe wrapper around {@link #fire} for the cron-thread path. */
     private void safeFire(Registration reg) {
         try {
-            fire(reg, "cron");
+            fire(reg, "cron", "run_" + UUID.randomUUID(), Instant.now());
         } catch (RuntimeException ex) {
             log.error("Scheduler '{}/{}/{}' tick failed: {}",
                     reg.tenantId, reg.projectId, reg.config.name(), ex.toString(), ex);
@@ -385,12 +385,14 @@ public class UrsaSchedulerService {
      * identically — only the {@code trigger} marker on the
      * scheduler-log document differs ({@code manual} vs. {@code cron}).
      *
-     * @return the {@code correlationId} of the freshly created run, so
-     *         callers can locate the matching scheduler-log document.
+     * @return the {@code correlationId} of the freshly created run plus
+     *         the {@code firedAt} stamp used for path computation so the
+     *         caller can locate the matching scheduler-log document
+     *         deterministically — see {@link FireOutcome}.
      * @throws IllegalArgumentException when no scheduler with that name
      *         is currently registered for {@code (tenantId, projectId)}.
      */
-    public String fireNow(String tenantId, String projectId, String name) {
+    public FireOutcome fireNow(String tenantId, String projectId, String name) {
         Registration reg = registry.get(registryKey(tenantId, projectId, name));
         if (reg == null) {
             throw new IllegalArgumentException(
@@ -401,25 +403,37 @@ public class UrsaSchedulerService {
         // fire we still want the same isolation — submit on the
         // scheduler pool and return the correlationId synchronously so
         // the caller can immediately read the (pending) log document.
+        //
+        // firedAt is captured *here* and passed through to fire() so
+        // the path the caller computes via SchedulerLogService.pathFor
+        // matches what the runnable actually writes. Without this, the
+        // runnable's own Instant.now() inside the TaskScheduler thread
+        // can fall on a different second, causing the LLM to read a
+        // path that doesn't exist (see ticket mhus/vance#1).
         String correlationId = "run_" + UUID.randomUUID();
+        Instant firedAt = Instant.now();
         taskScheduler.schedule(() -> {
             try {
-                fire(reg, "manual", correlationId);
+                fire(reg, "manual", correlationId, firedAt);
             } catch (RuntimeException ex) {
                 log.error("Scheduler '{}/{}/{}' manual fire failed: {}",
                         reg.tenantId, reg.projectId, reg.config.name(), ex.toString(), ex);
             }
-        }, Instant.now());
-        return correlationId;
+        }, firedAt);
+        return new FireOutcome(correlationId, firedAt);
     }
+
+    /**
+     * Outcome of a manual fire: carries both the {@code correlationId}
+     * the caller needs for tracking AND the {@code firedAt} stamp used
+     * by the writer, so REST / agent-tool layers can compute the log
+     * document path that will actually exist on disk.
+     */
+    public record FireOutcome(String correlationId, Instant firedAt) {}
 
     // ───────────────────────── Fire (one tick) ─────────────────────────
 
-    private void fire(Registration reg, String trigger) {
-        fire(reg, trigger, "run_" + UUID.randomUUID());
-    }
-
-    private void fire(Registration reg, String trigger, String correlationId) {
+    private void fire(Registration reg, String trigger, String correlationId, Instant firedAt) {
         ResolvedUrsaScheduler cfg = reg.config;
         String source = UrsaSchedulerSourceKeys.sourceFor(cfg.name());
         String runAs = cfg.effectiveRunAs();
@@ -435,7 +449,7 @@ public class UrsaSchedulerService {
                 EventType.TRIGGERED, correlationId,
                 /*sessionId*/ null, /*processId*/ null, runAs, triggeredPayload);
         schedulerLogService.onTriggered(reg.tenantId, reg.projectId, cfg.name(),
-                correlationId, trigger, runAs);
+                correlationId, trigger, runAs, firedAt);
         countFire(cfg.name(), "triggered");
 
         synchronized (reg.lock) {

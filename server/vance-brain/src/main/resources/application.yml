@@ -65,6 +65,28 @@ vance:
     # In prod, override with the reverse-proxy hostname:
     #   VANCE_WEB_PUBLICBASEURL=https://vance.example.com
     publicBaseUrl: ${VANCE_WEB_PUBLICBASEURL:http://localhost:9900}
+    search:
+      log:
+        # Per-call log document for web_search invocations under
+        # _vance/logs/web/search/<isoStamp>-<correlationId>.md.
+        # Captures the query + hit list the LLM actually saw — failed
+        # calls are NOT logged (errors are visible to the engine in
+        # the tool response).
+        # Tenant override: setting `web.search.log.retentionDays`
+        # (project cascade). Same tri-state semantics as scheduler.log:
+        #   > 0  — retention in days (<= 365).
+        #   0    — INFINITE (no TTL).
+        #   < 0  — DISABLED.
+        retention-days: 7
+    fetch:
+      log:
+        # Per-call log document for web_fetch invocations under
+        # _vance/logs/web/fetch/<isoStamp>-<correlationId>.md.
+        # Captures the truncated body the LLM saw, not the full
+        # upstream response. Failed fetches (ToolException) are NOT
+        # logged. Tri-state semantics as above; tenant override via
+        # `web.fetch.log.retentionDays`.
+        retention-days: 7
   internal:
     # Shared secret used by Layer 1 to authenticate against /internal/**
     # endpoints on a peer pod. In K8s this is mounted from a Secret; the
@@ -149,29 +171,6 @@ vance:
       #   0    — INFINITE retention (no TTL set).
       #   < 0  — DISABLED (no document written).
       retention-days: 7
-  web:
-    search:
-      log:
-        # Per-call log document for web_search invocations under
-        # _vance/logs/web/search/<isoStamp>-<correlationId>.md.
-        # Captures the query + hit list the LLM actually saw — failed
-        # calls are NOT logged (errors are visible to the engine in
-        # the tool response).
-        # Tenant override: setting `web.search.log.retentionDays`
-        # (project cascade). Same tri-state semantics:
-        #   > 0  — retention in days (<= 365).
-        #   0    — INFINITE (no TTL).
-        #   < 0  — DISABLED.
-        retention-days: 7
-    fetch:
-      log:
-        # Per-call log document for web_fetch invocations under
-        # _vance/logs/web/fetch/<isoStamp>-<correlationId>.md.
-        # Captures the truncated body the LLM saw, not the full
-        # upstream response. Failed fetches (ToolException) are NOT
-        # logged. Tri-state semantics as above; tenant override via
-        # `web.fetch.log.retentionDays`.
-        retention-days: 7
   prak:
     # Side-channel an: Compaction → Prak-Analyzer → Sanitizer → Strength → Promotion → Audit
     sideChannelEnabled: true

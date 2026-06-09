@@ -20,14 +20,31 @@ export interface ReindexResponseDto {
   documentsQueued: number;
 }
 
+export interface SearchHitDto {
+  sourceRef: string | null;
+  position: number;
+  content: string;
+  score: number;
+}
+
+export interface SearchResponseDto {
+  hits: SearchHitDto[];
+}
+
 export interface UseRag {
   status: Ref<RagStatusDto | null>;
   loading: Ref<boolean>;
   busy: Ref<boolean>;
   error: Ref<string | null>;
   lastResult: Ref<ReindexResponseDto | null>;
+  searchHits: Ref<SearchHitDto[]>;
+  searchQuery: Ref<string>;
+  searching: Ref<boolean>;
+  searchError: Ref<string | null>;
+  searched: Ref<boolean>;
   load: (projectId: string) => Promise<void>;
   reindex: (projectId: string, rebuild: boolean) => Promise<void>;
+  search: (projectId: string, query: string) => Promise<void>;
   clear: () => void;
 }
 
@@ -37,6 +54,11 @@ export function useRag(): UseRag {
   const busy = ref(false);
   const error = ref<string | null>(null);
   const lastResult = ref<ReindexResponseDto | null>(null);
+  const searchHits = ref<SearchHitDto[]>([]);
+  const searchQuery = ref('');
+  const searching = ref(false);
+  const searchError = ref<string | null>(null);
+  const searched = ref(false);
 
   async function load(projectId: string): Promise<void> {
     loading.value = true;
@@ -71,11 +93,50 @@ export function useRag(): UseRag {
     }
   }
 
+  async function search(projectId: string, query: string): Promise<void> {
+    searching.value = true;
+    searchError.value = null;
+    try {
+      const response = await brainFetch<SearchResponseDto>(
+        'POST',
+        `projects/${encodeURIComponent(projectId)}/rag/search`,
+        { body: { query } },
+      );
+      searchHits.value = response.hits ?? [];
+      searched.value = true;
+    } catch (e) {
+      searchError.value = e instanceof Error ? e.message : 'Search failed.';
+      searchHits.value = [];
+      searched.value = true;
+    } finally {
+      searching.value = false;
+    }
+  }
+
   function clear(): void {
     status.value = null;
     error.value = null;
     lastResult.value = null;
+    searchHits.value = [];
+    searchQuery.value = '';
+    searchError.value = null;
+    searched.value = false;
   }
 
-  return { status, loading, busy, error, lastResult, load, reindex, clear };
+  return {
+    status,
+    loading,
+    busy,
+    error,
+    lastResult,
+    searchHits,
+    searchQuery,
+    searching,
+    searchError,
+    searched,
+    load,
+    reindex,
+    search,
+    clear,
+  };
 }

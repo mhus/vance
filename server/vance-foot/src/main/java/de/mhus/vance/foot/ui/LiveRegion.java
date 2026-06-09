@@ -479,7 +479,18 @@ public class LiveRegion {
                     return;
                 }
                 if (b == 27) {
-                    int next = r.read(80L);
+                    int next;
+                    try {
+                        next = r.read(80L);
+                    } catch (java.nio.BufferUnderflowException bue) {
+                        // Same root cause as the outer catch above —
+                        // the reader's char buffer is mid-decode after
+                        // a Lanterna excursion. Treat the partial Esc
+                        // sequence as noise (the user's *next* key
+                        // press lands cleanly because the buffer state
+                        // self-heals once new bytes arrive).
+                        continue;
+                    }
                     if (next < 0) {
                         // Lone Esc: if the input buffer is non-empty,
                         // clear it first. Only an Esc on an already
@@ -814,7 +825,7 @@ public class LiveRegion {
         StringBuilder sb = new StringBuilder();
         long deadline = System.currentTimeMillis() + 200;
         while (System.currentTimeMillis() < deadline) {
-            int b = reader.read(80L);
+            int b = safeTimedRead(reader, 80L);
             if (b < 0) break;
             sb.append((char) b);
             if (b >= 0x40 && b <= 0x7e) break;
@@ -825,10 +836,10 @@ public class LiveRegion {
     private void readPaste(NonBlockingReader reader) throws IOException {
         StringBuilder paste = new StringBuilder();
         while (!stopRequested.get()) {
-            int b = reader.read(2000L);
+            int b = safeTimedRead(reader, 2000L);
             if (b < 0) break;
             if (b == 27) {
-                int n = reader.read(80L);
+                int n = safeTimedRead(reader, 80L);
                 if (n == '[') {
                     String body = readCsiPayload(reader);
                     if ("201~".equals(body)) break;
@@ -837,7 +848,7 @@ public class LiveRegion {
                 continue;
             }
             if (b == 13) {
-                int peek = reader.read(20L);
+                int peek = safeTimedRead(reader, 20L);
                 paste.append('\n');
                 if (peek >= 0 && peek != 10) {
                     appendPasteByte(paste, peek);
@@ -851,6 +862,23 @@ public class LiveRegion {
         if (paste.length() > 0) {
             insertAtCursor(paste.toString());
             paintLive();
+        }
+    }
+
+    /**
+     * Timed {@link NonBlockingReader#read(long)} guarded against
+     * JLine's transient {@link java.nio.BufferUnderflowException} —
+     * see the matching catch in {@link #inputLoop()}. On the
+     * exception we treat the read as "no byte available right now"
+     * (returns {@code -1}); the surrounding read-loops (CSI payload,
+     * bracketed paste) terminate cleanly and the next user keystroke
+     * lands on a self-healed buffer.
+     */
+    private static int safeTimedRead(NonBlockingReader reader, long timeoutMs) throws IOException {
+        try {
+            return reader.read(timeoutMs);
+        } catch (java.nio.BufferUnderflowException bue) {
+            return -1;
         }
     }
 

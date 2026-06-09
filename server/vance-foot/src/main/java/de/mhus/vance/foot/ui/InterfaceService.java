@@ -64,7 +64,21 @@ public class InterfaceService {
         if (liveWasAttached) {
             liveRegion.pause();
         }
-        t.pause();
+        // pause(true) joins JLine's input pump thread before Lanterna
+        // takes over System.in — without the join JLine keeps pumping
+        // bytes into its NonBlockingReader's char buffer, leaving it
+        // mid-decode when Lanterna grabs the TTY. After resume() that
+        // half-decoded state surfaces as BufferUnderflowException on
+        // the next multi-byte read (e.g. an Esc-sequence from an
+        // arrow key).
+        try {
+            t.pause(true);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            if (liveWasAttached) liveRegion.resume();
+            mode.set(UiMode.CHAT);
+            throw new IOException("Interrupted while pausing JLine for fullscreen excursion", ie);
+        }
         try (LanternaSession session = LanternaSession.open()) {
             excursion.run(session);
         } finally {

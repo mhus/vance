@@ -1,0 +1,18 @@
+
+.code-editor[data-v-3b7f4c02] {
+  border: 1px solid hsl(var(--bc) / 0.2);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: hsl(var(--b1));
+}
+.code-editor[data-v-3b7f4c02] .cm-editor {
+  height: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+}
+.code-editor[data-v-3b7f4c02] .cm-scroller {
+  font-family: inherit;
+}
+.code-editor--disabled[data-v-3b7f4c02] {
+  opacity: 0.6;
+}

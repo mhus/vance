@@ -220,7 +220,8 @@ public final class DebugRestServer {
                     ? Duration.ofMillis(req.timeoutMs)
                     : ChatInputService.DEFAULT_CHAT_TIMEOUT;
             ChatInputService.InputResult result =
-                    chatInputService.sendChat(req.line, timeout);
+                    chatInputService.sendChat(req.line, timeout,
+                            Boolean.TRUE.equals(req.voiceMode));
             writeJson(exchange, 200, toJson(result));
         }
     }
@@ -300,5 +301,13 @@ public final class DebugRestServer {
     static final class CommandRequest {
         public @Nullable String line;
         public @Nullable Long timeoutMs;
+        /**
+         * Per-call voice-mode flag — forwarded into {@link
+         * ChatInputService#sendChat(String, Duration, boolean)} so the
+         * outbound {@code ProcessSteerRequest} carries it to the brain.
+         * Honoured only by the {@code /debug/chat} path; {@code /command}
+         * + {@code /input} ignore it. {@code null} → {@code false}.
+         */
+        public @Nullable Boolean voiceMode;
     }
 }

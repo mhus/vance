@@ -233,18 +233,37 @@ public class ChatInputService {
      * without it being misrouted into the slash dispatcher.
      */
     public InputResult sendChat(String line, Duration timeout) {
+        return sendChat(line, timeout, false);
+    }
+
+    /**
+     * Voice-aware variant of {@link #sendChat(String, Duration)}. {@code
+     * voiceMode=true} flips the per-turn flag on the outbound
+     * {@link ProcessSteerRequest} — the brain forwards it to the engine
+     * prompt (Pebble variable {@code voiceMode}) so the LLM renders a
+     * TTS-friendly answer (short prose, code fences for material that
+     * must stay visible but should not be spoken). Per-message, not
+     * session state; the next call without {@code voiceMode=true}
+     * reverts to text-mode for that turn. See {@code
+     * specification/voice-mode.md}.
+     */
+    public InputResult sendChat(String line, Duration timeout, boolean voiceMode) {
         if (line == null || line.isEmpty()) {
             return InputResult.chat("", false, "blank input");
         }
         promptGate.enterExclusive();
         try {
-            return sendChatLocked(line, timeout);
+            return sendChatLocked(line, timeout, voiceMode);
         } finally {
             promptGate.exitExclusive();
         }
     }
 
     private InputResult sendChatLocked(String line, Duration timeout) {
+        return sendChatLocked(line, timeout, false);
+    }
+
+    private InputResult sendChatLocked(String line, Duration timeout, boolean voiceMode) {
         SessionService.BoundSession bound = sessions.current();
         if (bound == null) {
             String msg = "No bound session — /connect, then /session-resume or /session-create.";
@@ -268,6 +287,7 @@ public class ChatInputService {
                     .processName(process)
                     .content(line)
                     .ideContext(ideContextBuilder.buildAndConsumeForSteer().orElse(null))
+                    .voiceMode(voiceMode ? Boolean.TRUE : null)
                     .build();
             ProcessSteerResponse response = connection.request(
                     MessageType.PROCESS_STEER,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState } from '@/components';
+import { computed, ref, watch } from 'vue';
+import { VAlert, VButton, VCard, VEmptyState, VInput } from '@/components';
 import { useRag } from '@/composables/useRag';
 
 const props = defineProps<{ projectId: string | null }>();
@@ -33,9 +33,27 @@ async function rebuild(): Promise<void> {
   await state.reindex(props.projectId, true);
 }
 
+const searchDisabled = computed(() => {
+  if (!props.projectId) return true;
+  if (state.searching.value) return true;
+  if (!state.status.value?.exists) return true;
+  return state.searchQuery.value.trim().length === 0;
+});
+
+async function runSearch(): Promise<void> {
+  if (!props.projectId) return;
+  const query = state.searchQuery.value.trim();
+  if (query.length === 0) return;
+  await state.search(props.projectId, query);
+}
+
 function fmtTime(value: string | null | undefined): string {
   if (!value) return '—';
   return String(value).replace('T', ' ').slice(0, 19);
+}
+
+function fmtScore(score: number): string {
+  return score.toFixed(4);
 }
 </script>
 
@@ -136,6 +154,61 @@ function fmtTime(value: string | null | undefined): string {
           <strong>{{ state.lastResult.value.rebuild ? 'rebuild' : 'reindex' }}</strong>
           — {{ state.lastResult.value.documentsQueued }} document(s) queued.
         </div>
+      </VCard>
+
+      <VCard title="Search">
+        <p class="text-xs opacity-70 mb-3">
+          Embed the query with the RAG's embedding model and return the
+          top-20 most similar chunks. Useful to inspect what the model
+          would inject as <code>&lt;rag-context&gt;</code> for a given
+          prompt.
+        </p>
+        <form class="flex gap-2 items-start" @submit.prevent="runSearch">
+          <VInput
+            v-model="state.searchQuery.value"
+            placeholder="Search the RAG…"
+            :disabled="!state.status.value?.exists || state.searching.value"
+            class="flex-1"
+          />
+          <VButton type="submit" :disabled="searchDisabled">
+            {{ state.searching.value ? 'Searching…' : 'Search' }}
+          </VButton>
+        </form>
+
+        <p
+          v-if="!state.status.value?.exists"
+          class="text-xs opacity-60 mt-2"
+        >
+          Search becomes available once the RAG has been created.
+        </p>
+
+        <VAlert v-if="state.searchError.value" variant="error" class="mt-3">
+          <span>{{ state.searchError.value }}</span>
+        </VAlert>
+
+        <template v-if="state.searched.value && !state.searchError.value">
+          <p
+            v-if="state.searchHits.value.length === 0"
+            class="text-sm opacity-60 mt-3"
+          >
+            No matches.
+          </p>
+          <ol v-else class="mt-3 flex flex-col gap-2">
+            <li
+              v-for="(hit, idx) in state.searchHits.value"
+              :key="`${hit.sourceRef ?? 'no-source'}-${hit.position}-${idx}`"
+              class="border border-base-300 rounded p-3 text-sm bg-base-100/40"
+            >
+              <div class="flex justify-between gap-2 text-xs opacity-70 mb-1">
+                <span class="font-mono truncate" :title="hit.sourceRef ?? ''">
+                  {{ hit.sourceRef ?? '—' }}<span class="opacity-50"> #{{ hit.position }}</span>
+                </span>
+                <span class="font-mono whitespace-nowrap">score {{ fmtScore(hit.score) }}</span>
+              </div>
+              <pre class="whitespace-pre-wrap break-words text-xs opacity-90 m-0">{{ hit.content }}</pre>
+            </li>
+          </ol>
+        </template>
       </VCard>
     </template>
   </div>

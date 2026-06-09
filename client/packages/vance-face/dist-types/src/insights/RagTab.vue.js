@@ -1,5 +1,5 @@
-import { ref, watch } from 'vue';
-import { VAlert, VButton, VCard, VEmptyState } from '@/components';
+import { computed, ref, watch } from 'vue';
+import { VAlert, VButton, VCard, VEmptyState, VInput } from '@/components';
 import { useRag } from '@/composables/useRag';
 const props = defineProps();
 const state = useRag();
@@ -26,10 +26,30 @@ async function rebuild() {
     rebuildConfirmOpen.value = false;
     await state.reindex(props.projectId, true);
 }
+const searchDisabled = computed(() => {
+    if (!props.projectId)
+        return true;
+    if (state.searching.value)
+        return true;
+    if (!state.status.value?.exists)
+        return true;
+    return state.searchQuery.value.trim().length === 0;
+});
+async function runSearch() {
+    if (!props.projectId)
+        return;
+    const query = state.searchQuery.value.trim();
+    if (query.length === 0)
+        return;
+    await state.search(props.projectId, query);
+}
 function fmtTime(value) {
     if (!value)
         return '—';
     return String(value).replace('T', ' ').slice(0, 19);
+}
+function fmtScore(score) {
+    return score.toFixed(4);
 }
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_ctx = {};
@@ -293,6 +313,114 @@ else {
         (__VLS_ctx.state.lastResult.value.documentsQueued);
     }
     var __VLS_15;
+    const __VLS_56 = {}.VCard;
+    /** @type {[typeof __VLS_components.VCard, typeof __VLS_components.VCard, ]} */ ;
+    // @ts-ignore
+    const __VLS_57 = __VLS_asFunctionalComponent(__VLS_56, new __VLS_56({
+        title: "Search",
+    }));
+    const __VLS_58 = __VLS_57({
+        title: "Search",
+    }, ...__VLS_functionalComponentArgsRest(__VLS_57));
+    __VLS_59.slots.default;
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+        ...{ class: "text-xs opacity-70 mb-3" },
+    });
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.code, __VLS_intrinsicElements.code)({});
+    __VLS_asFunctionalElement(__VLS_intrinsicElements.form, __VLS_intrinsicElements.form)({
+        ...{ onSubmit: (__VLS_ctx.runSearch) },
+        ...{ class: "flex gap-2 items-start" },
+    });
+    const __VLS_60 = {}.VInput;
+    /** @type {[typeof __VLS_components.VInput, ]} */ ;
+    // @ts-ignore
+    const __VLS_61 = __VLS_asFunctionalComponent(__VLS_60, new __VLS_60({
+        modelValue: (__VLS_ctx.state.searchQuery.value),
+        placeholder: "Search the RAG…",
+        disabled: (!__VLS_ctx.state.status.value?.exists || __VLS_ctx.state.searching.value),
+        ...{ class: "flex-1" },
+    }));
+    const __VLS_62 = __VLS_61({
+        modelValue: (__VLS_ctx.state.searchQuery.value),
+        placeholder: "Search the RAG…",
+        disabled: (!__VLS_ctx.state.status.value?.exists || __VLS_ctx.state.searching.value),
+        ...{ class: "flex-1" },
+    }, ...__VLS_functionalComponentArgsRest(__VLS_61));
+    const __VLS_64 = {}.VButton;
+    /** @type {[typeof __VLS_components.VButton, typeof __VLS_components.VButton, ]} */ ;
+    // @ts-ignore
+    const __VLS_65 = __VLS_asFunctionalComponent(__VLS_64, new __VLS_64({
+        type: "submit",
+        disabled: (__VLS_ctx.searchDisabled),
+    }));
+    const __VLS_66 = __VLS_65({
+        type: "submit",
+        disabled: (__VLS_ctx.searchDisabled),
+    }, ...__VLS_functionalComponentArgsRest(__VLS_65));
+    __VLS_67.slots.default;
+    (__VLS_ctx.state.searching.value ? 'Searching…' : 'Search');
+    var __VLS_67;
+    if (!__VLS_ctx.state.status.value?.exists) {
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+            ...{ class: "text-xs opacity-60 mt-2" },
+        });
+    }
+    if (__VLS_ctx.state.searchError.value) {
+        const __VLS_68 = {}.VAlert;
+        /** @type {[typeof __VLS_components.VAlert, typeof __VLS_components.VAlert, ]} */ ;
+        // @ts-ignore
+        const __VLS_69 = __VLS_asFunctionalComponent(__VLS_68, new __VLS_68({
+            variant: "error",
+            ...{ class: "mt-3" },
+        }));
+        const __VLS_70 = __VLS_69({
+            variant: "error",
+            ...{ class: "mt-3" },
+        }, ...__VLS_functionalComponentArgsRest(__VLS_69));
+        __VLS_71.slots.default;
+        __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({});
+        (__VLS_ctx.state.searchError.value);
+        var __VLS_71;
+    }
+    if (__VLS_ctx.state.searched.value && !__VLS_ctx.state.searchError.value) {
+        if (__VLS_ctx.state.searchHits.value.length === 0) {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.p, __VLS_intrinsicElements.p)({
+                ...{ class: "text-sm opacity-60 mt-3" },
+            });
+        }
+        else {
+            __VLS_asFunctionalElement(__VLS_intrinsicElements.ol, __VLS_intrinsicElements.ol)({
+                ...{ class: "mt-3 flex flex-col gap-2" },
+            });
+            for (const [hit, idx] of __VLS_getVForSourceType((__VLS_ctx.state.searchHits.value))) {
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({
+                    key: (`${hit.sourceRef ?? 'no-source'}-${hit.position}-${idx}`),
+                    ...{ class: "border border-base-300 rounded p-3 text-sm bg-base-100/40" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.div, __VLS_intrinsicElements.div)({
+                    ...{ class: "flex justify-between gap-2 text-xs opacity-70 mb-1" },
+                });
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "font-mono truncate" },
+                    title: (hit.sourceRef ?? ''),
+                });
+                (hit.sourceRef ?? '—');
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "opacity-50" },
+                });
+                (hit.position);
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.span, __VLS_intrinsicElements.span)({
+                    ...{ class: "font-mono whitespace-nowrap" },
+                });
+                (__VLS_ctx.fmtScore(hit.score));
+                __VLS_asFunctionalElement(__VLS_intrinsicElements.pre, __VLS_intrinsicElements.pre)({
+                    ...{ class: "whitespace-pre-wrap break-words text-xs opacity-90 m-0" },
+                });
+                (hit.content);
+            }
+        }
+    }
+    var __VLS_59;
 }
 /** @type {__VLS_StyleScopedClasses['flex']} */ ;
 /** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
@@ -338,6 +466,46 @@ else {
 /** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
 /** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
 /** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['items-start']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-60']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['mt-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex-col']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['border']} */ ;
+/** @type {__VLS_StyleScopedClasses['border-base-300']} */ ;
+/** @type {__VLS_StyleScopedClasses['rounded']} */ ;
+/** @type {__VLS_StyleScopedClasses['p-3']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-sm']} */ ;
+/** @type {__VLS_StyleScopedClasses['bg-base-100/40']} */ ;
+/** @type {__VLS_StyleScopedClasses['flex']} */ ;
+/** @type {__VLS_StyleScopedClasses['justify-between']} */ ;
+/** @type {__VLS_StyleScopedClasses['gap-2']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-70']} */ ;
+/** @type {__VLS_StyleScopedClasses['mb-1']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['truncate']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-50']} */ ;
+/** @type {__VLS_StyleScopedClasses['font-mono']} */ ;
+/** @type {__VLS_StyleScopedClasses['whitespace-nowrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['whitespace-pre-wrap']} */ ;
+/** @type {__VLS_StyleScopedClasses['break-words']} */ ;
+/** @type {__VLS_StyleScopedClasses['text-xs']} */ ;
+/** @type {__VLS_StyleScopedClasses['opacity-90']} */ ;
+/** @type {__VLS_StyleScopedClasses['m-0']} */ ;
 var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
@@ -346,12 +514,16 @@ const __VLS_self = (await import('vue')).defineComponent({
             VButton: VButton,
             VCard: VCard,
             VEmptyState: VEmptyState,
+            VInput: VInput,
             state: state,
             rebuildConfirmOpen: rebuildConfirmOpen,
             refresh: refresh,
             reindex: reindex,
             rebuild: rebuild,
+            searchDisabled: searchDisabled,
+            runSearch: runSearch,
             fmtTime: fmtTime,
+            fmtScore: fmtScore,
         };
     },
     __typeProps: {},

@@ -3,10 +3,12 @@ package de.mhus.vance.brain.rag;
 import de.mhus.vance.brain.permission.RequestAuthority;
 import de.mhus.vance.shared.permission.Action;
 import de.mhus.vance.shared.permission.Resource;
+import de.mhus.vance.shared.rag.RagBackend.SearchHit;
 import de.mhus.vance.shared.rag.RagCatalogService;
 import de.mhus.vance.shared.rag.RagDocument;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,12 +33,15 @@ import org.springframework.web.server.ResponseStatusException;
  *       the actual work.</li>
  *   <li>{@code GET /brain/{tenant}/projects/{name}/rag/status} — read-only
  *       snapshot for the web-UI status widget.</li>
+ *   <li>{@code POST /brain/{tenant}/projects/{name}/rag/search} — similarity
+ *       search against the project-default RAG. Body: {@code {"query": "..."}}.
+ *       Returns up to {@link #SEARCH_MAX_RESULTS} hits.</li>
  * </ul>
  *
- * <p>Both endpoints require {@link Action#WRITE} on the project resource —
- * read-only status is intentionally on the same gate as the reindex because
- * the data (chunk-count, model identity) belongs to project-internal
- * configuration, not public metadata.
+ * <p>All endpoints require {@link Action#WRITE} on the project resource —
+ * read-only status and search are intentionally on the same gate as reindex
+ * because the data (chunk-count, model identity, raw chunk text) belongs to
+ * project-internal configuration, not public metadata.
  *
  * <p>Tenant in the path is validated by
  * {@code de.mhus.vance.brain.access.BrainAccessFilter} against the JWT's
@@ -47,8 +53,12 @@ import org.springframework.web.server.ResponseStatusException;
 @Slf4j
 public class RagAdminController {
 
+    /** Hard cap on the search REST surface — UI is allowed to ask for up to this many hits. */
+    private static final int SEARCH_MAX_RESULTS = 20;
+
     private final ProjectRagService projectRagService;
     private final RagCatalogService ragCatalog;
+    private final RagService ragService;
     private final RequestAuthority authority;
 
     @PostMapping("/reindex")
@@ -88,7 +98,56 @@ public class RagAdminController {
                 rag.getCreatedAt());
     }
 
+    /**
+     * Similarity-search the project-default RAG. Returns up to
+     * {@link #SEARCH_MAX_RESULTS} hits ordered by descending similarity.
+     * Empty hits list when the RAG does not exist yet or the query was
+     * blank — never a 404, so the UI can keep the panel quiet until the
+     * user actually issues a query.
+     */
+    @PostMapping("/search")
+    public SearchResponse search(
+            @PathVariable("tenant") String tenant,
+            @PathVariable("project") String project,
+            @RequestBody SearchRequest request,
+            HttpServletRequest httpRequest) {
+        authority.enforce(httpRequest, new Resource.Project(tenant, project), Action.WRITE);
+        String query = request == null ? null : request.query();
+        if (query == null || query.isBlank()) {
+            return new SearchResponse(List.of());
+        }
+        Optional<RagDocument> opt = projectRagService.findDefaultRag(tenant, project);
+        if (opt.isEmpty()) {
+            return new SearchResponse(List.of());
+        }
+        try {
+            List<SearchHit> hits = ragService.query(opt.get().getId(), query, SEARCH_MAX_RESULTS);
+            List<SearchHitDto> out = hits.stream()
+                    .map(h -> new SearchHitDto(
+                            h.chunk().getSourceRef(),
+                            h.chunk().getPosition(),
+                            h.chunk().getContent(),
+                            h.score()))
+                    .toList();
+            return new SearchResponse(out);
+        } catch (RuntimeException e) {
+            log.warn("RAG search failed tenant='{}' project='{}': {}",
+                    tenant, project, e.toString());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+        }
+    }
+
     public record ReindexResponse(boolean rebuild, long documentsQueued) {}
+
+    public record SearchRequest(@Nullable String query) {}
+
+    public record SearchResponse(List<SearchHitDto> hits) {}
+
+    public record SearchHitDto(
+            @Nullable String sourceRef,
+            int position,
+            String content,
+            double score) {}
 
     public record StatusResponse(
             boolean exists,

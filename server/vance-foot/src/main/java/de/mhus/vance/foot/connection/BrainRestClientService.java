@@ -5,6 +5,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import de.mhus.vance.api.chat.ChatMessageDto;
 import de.mhus.vance.api.documents.DocumentDto;
+import de.mhus.vance.api.documents.DocumentFolderListResponse;
 import de.mhus.vance.api.documents.DocumentListResponse;
 import de.mhus.vance.api.documents.DocumentUpdateRequest;
 import de.mhus.vance.foot.config.FootConfig;
@@ -173,6 +174,26 @@ public class BrainRestClientService {
             p.append("&kind=").append(urlEncode(kind));
         }
         return get(p.toString(), DocumentListResponse.class);
+    }
+
+    /**
+     * {@code GET /brain/{tenant}/documents/folder} — one level of the
+     * folder tree: sub-folder names + paged file list. {@code path} is
+     * the parent path (empty / {@code null} = project root); {@code size}
+     * is the page size for the file list (folders are unpaged).
+     */
+    public DocumentFolderListResponse listFolder(String projectId,
+                                                  @Nullable String path,
+                                                  int page,
+                                                  int size) throws Exception {
+        StringBuilder p = new StringBuilder("/brain/").append(config.getAuth().getTenant())
+                .append("/documents/folder?projectId=").append(urlEncode(projectId))
+                .append("&page=").append(page)
+                .append("&size=").append(size);
+        if (path != null && !path.isBlank()) {
+            p.append("&path=").append(urlEncode(path));
+        }
+        return get(p.toString(), DocumentFolderListResponse.class);
     }
 
     /** {@code GET /brain/{tenant}/documents/{id}} — full doc with inline text. */

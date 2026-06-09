@@ -1,0 +1,11 @@
+# Maven
+target/
+
+# Node / TypeScript / Vite (used by addon client bundles)
+node_modules/
+dist/
+*.tsbuildinfo
+
+# IntelliJ
+.idea/
+*.iml

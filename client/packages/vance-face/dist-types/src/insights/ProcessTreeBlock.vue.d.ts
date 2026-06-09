@@ -23,13 +23,13 @@ type __VLS_Props = {
     expandedEvents: ReadonlySet<string>;
 };
 declare const _default: import("vue").DefineComponent<__VLS_Props, {}, {}, {}, {}, import("vue").ComponentOptionsMixin, import("vue").ComponentOptionsMixin, {} & {
-    "select-process": any;
-    "toggle-process": any;
-    "toggle-event": any;
+    "select-process": (id: string) => any;
+    "toggle-process": (id: string) => any;
+    "toggle-event": (processId: string, eventId: string) => any;
 }, string, import("vue").PublicProps, Readonly<__VLS_Props> & Readonly<{
-    "onSelect-process"?: ((...args: any) => any) | undefined;
-    "onToggle-process"?: ((...args: any) => any) | undefined;
-    "onToggle-event"?: ((...args: any) => any) | undefined;
+    "onSelect-process"?: ((id: string) => any) | undefined;
+    "onToggle-process"?: ((id: string) => any) | undefined;
+    "onToggle-event"?: ((processId: string, eventId: string) => any) | undefined;
 }>, {}, {}, {}, {}, string, import("vue").ComponentProvideOptions, false, {}, any>;
 export default _default;
 //# sourceMappingURL=ProcessTreeBlock.vue.d.ts.map

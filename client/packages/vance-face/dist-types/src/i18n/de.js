@@ -8,6 +8,7 @@ export default {
         saving: 'Speichern…',
         saved: 'Gespeichert.',
         cancel: 'Abbrechen',
+        close: 'Schließen',
         delete: 'Löschen',
         loading: 'Laden…',
         signOut: 'Abmelden',
@@ -45,6 +46,18 @@ export default {
                 generic: 'Fehler: {message}',
             },
         },
+    },
+    fook: {
+        menuLabel: 'Bug / Feature melden',
+        title: 'Bug melden oder Feature wünschen',
+        intro: 'Beschreibe, was passiert ist, was du erwartet hast oder was du dir wünschen würdest. '
+            + 'Sei konkret — Fook liest deinen Text und entscheidet Typ, Schweregrad und Titel selbst. '
+            + 'Du bekommst das Ergebnis als Inbox-Eintrag.',
+        placeholder: 'Was ist schiefgegangen oder was würdest du ändern wollen? Reproduktionsschritte helfen.',
+        submit: 'Absenden',
+        submitted: 'Übermittelt — Fook triagiert. Submission-ID:',
+        errorEmpty: 'Bitte beschreibe das Problem oder den Wunsch.',
+        errorGeneric: 'Übermittlung fehlgeschlagen. Bitte erneut versuchen oder Admin kontaktieren.',
     },
     header: {
         connection: {
@@ -1424,6 +1437,17 @@ export default {
             dismiss: 'Verwerfen',
             archive: 'Archivieren',
             unarchive: 'Wiederherstellen',
+        },
+        bulkArchive: {
+            button: 'Nach Typ archivieren…',
+            title: 'Mehrere Einträge nach Typ archivieren',
+            body: 'Alle aktiven Einträge der aktuellen Ansicht, deren Typ unten angehakt ist, werden in einem Schritt archiviert. Standardmäßig sind reine Output-Nachrichten vorausgewählt — Decisions / Approvals / Orderings bleiben unangetastet, bis du sie aktiv markierst.',
+            typesLegend: 'Typen',
+            countLabel: '{n} Einträge betroffen',
+            countNone: 'Keine passenden Einträge',
+            confirm: 'Archivieren ({n})',
+            cancel: 'Abbrechen',
+            progress: 'Archiviere {n}…',
         },
         delegate: {
             title: 'An Teammitglied delegieren',

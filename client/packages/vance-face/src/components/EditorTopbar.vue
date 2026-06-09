@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { getTenantId, getUsername } from '@vance/shared';
 import {
@@ -7,6 +7,7 @@ import {
   setActiveLanguage,
 } from '@/platform';
 import { setUiLocale } from '@/i18n';
+import FookSupportModal from './FookSupportModal.vue';
 
 /**
  * A breadcrumb segment. Either a plain string label (immutable, no
@@ -114,6 +115,14 @@ function onToggleHelp(): void {
   if (!props.helpPath) return;
   emit('toggle-help');
 }
+
+// Fook bug/feature submission dialog — reachable from the user
+// menu on every editor page. The modal owns its own state, we just
+// flip the boolean.
+const fookOpen = ref<boolean>(false);
+function openFook(): void {
+  fookOpen.value = true;
+}
 </script>
 
 <template>
@@ -204,12 +213,15 @@ function onToggleHelp(): void {
             </a>
           </li>
           <li class="divider-row"><div class="divider my-1" /></li>
+          <li><a @click="openFook">{{ $t('fook.menuLabel') }}</a></li>
           <li><a href="/profile.html">{{ $t('common.profile') }}</a></li>
           <li><a @click="logout">{{ $t('common.signOut') }}</a></li>
         </ul>
       </div>
     </div>
   </header>
+
+  <FookSupportModal v-model="fookOpen" />
 </template>
 
 <style scoped>

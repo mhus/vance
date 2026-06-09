@@ -4,6 +4,7 @@ declare const _default: {
         saving: string;
         saved: string;
         cancel: string;
+        close: string;
         delete: string;
         loading: string;
         signOut: string;
@@ -41,6 +42,16 @@ declare const _default: {
                 generic: string;
             };
         };
+    };
+    fook: {
+        menuLabel: string;
+        title: string;
+        intro: string;
+        placeholder: string;
+        submit: string;
+        submitted: string;
+        errorEmpty: string;
+        errorGeneric: string;
     };
     header: {
         connection: {
@@ -1416,6 +1427,17 @@ declare const _default: {
             dismiss: string;
             archive: string;
             unarchive: string;
+        };
+        bulkArchive: {
+            button: string;
+            title: string;
+            body: string;
+            typesLegend: string;
+            countLabel: string;
+            countNone: string;
+            confirm: string;
+            cancel: string;
+            progress: string;
         };
         delegate: {
             title: string;

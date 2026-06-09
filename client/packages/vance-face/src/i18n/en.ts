@@ -15,6 +15,7 @@ export default {
     saving: 'Saving…',
     saved: 'Saved.',
     cancel: 'Cancel',
+    close: 'Close',
     delete: 'Delete',
     loading: 'Loading…',
     signOut: 'Sign out',
@@ -52,6 +53,21 @@ export default {
         generic: 'Error: {message}',
       },
     },
+  },
+
+  fook: {
+    menuLabel: 'Report a bug / feature',
+    title: 'Report a bug or request a feature',
+    intro:
+      'Describe what happened, what you expected, or what you wish Vance did. '
+      + 'Be concrete — Fook reads your text and picks the type, severity and title from it. '
+      + 'You will receive an inbox item with the outcome.',
+    placeholder:
+      'What went wrong, or what would you want to change? Steps to reproduce help.',
+    submit: 'Submit',
+    submitted: 'Submitted — Fook is triaging. Submission id:',
+    errorEmpty: 'Please describe the issue or request before submitting.',
+    errorGeneric: 'Submission failed. Please try again or contact an admin.',
   },
 
   header: {
@@ -1520,6 +1536,18 @@ export default {
       dismiss: 'Dismiss',
       archive: 'Archive',
       unarchive: 'Unarchive',
+    },
+    bulkArchive: {
+      button: 'Archive by type…',
+      title: 'Bulk-archive items by type',
+      body:
+        'All active items in the current view whose type is ticked below get archived in one go. The output-only types are preselected — decisions / approvals / orderings stay untouched until you tick them.',
+      typesLegend: 'Types',
+      countLabel: '{n} items will be archived',
+      countNone: 'No matching items',
+      confirm: 'Archive ({n})',
+      cancel: 'Cancel',
+      progress: 'Archiving {n}…',
     },
     delegate: {
       title: 'Delegate to teammate',

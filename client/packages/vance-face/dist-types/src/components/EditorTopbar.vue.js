@@ -1,8 +1,9 @@
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { getTenantId, getUsername } from '@vance/shared';
 import { logout as serverLogout, setActiveLanguage, } from '@/platform';
 import { setUiLocale } from '@/i18n';
+import FookSupportModal from './FookSupportModal.vue';
 const props = withDefaults(defineProps(), {
     breadcrumbs: () => [],
     helpOpen: false,
@@ -46,6 +47,13 @@ function onToggleHelp() {
     if (!props.helpPath)
         return;
     emit('toggle-help');
+}
+// Fook bug/feature submission dialog — reachable from the user
+// menu on every editor page. The modal owns its own state, we just
+// flip the boolean.
+const fookOpen = ref(false);
+function openFook() {
+    fookOpen.value = true;
 }
 debugger; /* PartiallyEnd: #3632/scriptSetup.vue */
 const __VLS_withDefaultsArg = (function (t) { return t; })({
@@ -201,6 +209,11 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.div)({
 });
 __VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
 __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
+    ...{ onClick: (__VLS_ctx.openFook) },
+});
+(__VLS_ctx.$t('fook.menuLabel'));
+__VLS_asFunctionalElement(__VLS_intrinsicElements.li, __VLS_intrinsicElements.li)({});
+__VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)({
     href: "/profile.html",
 });
 (__VLS_ctx.$t('common.profile'));
@@ -209,6 +222,14 @@ __VLS_asFunctionalElement(__VLS_intrinsicElements.a, __VLS_intrinsicElements.a)(
     ...{ onClick: (__VLS_ctx.logout) },
 });
 (__VLS_ctx.$t('common.signOut'));
+/** @type {[typeof FookSupportModal, ]} */ ;
+// @ts-ignore
+const __VLS_2 = __VLS_asFunctionalComponent(FookSupportModal, new FookSupportModal({
+    modelValue: (__VLS_ctx.fookOpen),
+}));
+const __VLS_3 = __VLS_2({
+    modelValue: (__VLS_ctx.fookOpen),
+}, ...__VLS_functionalComponentArgsRest(__VLS_2));
 /** @type {__VLS_StyleScopedClasses['navbar']} */ ;
 /** @type {__VLS_StyleScopedClasses['bg-base-100']} */ ;
 /** @type {__VLS_StyleScopedClasses['shadow-sm']} */ ;
@@ -282,6 +303,7 @@ var __VLS_dollars;
 const __VLS_self = (await import('vue')).defineComponent({
     setup() {
         return {
+            FookSupportModal: FookSupportModal,
             emit: emit,
             tenantId: tenantId,
             username: username,
@@ -293,6 +315,8 @@ const __VLS_self = (await import('vue')).defineComponent({
             selectLanguage: selectLanguage,
             logout: logout,
             onToggleHelp: onToggleHelp,
+            fookOpen: fookOpen,
+            openFook: openFook,
         };
     },
     __typeEmits: {},

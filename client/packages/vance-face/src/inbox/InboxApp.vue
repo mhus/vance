@@ -8,6 +8,7 @@ import {
   VAlert,
   VButton,
   VCard,
+  VCheckbox,
   VEmptyState,
   VInput,
   VModal,
@@ -164,6 +165,19 @@ function closeItem(): void {
   inbox.clearSelection();
 }
 
+/**
+ * Human label for the current list view — drives the sub-header.
+ * Mirrors what {@link breadcrumbs} renders in the topbar, just
+ * without the leading project name.
+ */
+const viewLabel = computed<string>(() => {
+  const s = selection.value;
+  if (s.kind === 'archive') return t('inbox.sidebar.archive');
+  if (s.kind === 'team') return t('inbox.breadcrumbTeam', { team: s.teamName });
+  if (s.kind === 'inbox' && s.tag) return '#' + s.tag;
+  return t('inbox.sidebar.inbox');
+});
+
 function formatTimestamp(value?: Date | string | null): string {
   if (!value) return '';
   const d = value instanceof Date ? value : new Date(value);
@@ -261,6 +275,71 @@ async function unarchiveItem(): Promise<void> {
     await inbox.unarchive(sel.id);
   } finally {
     submitting.value = false;
+  }
+}
+
+// ─── Bulk archive by type ───────────────────────────────────────────────
+//
+// Lets the user clear out the noise items (output text, output image,
+// feedback, …) in one go. Modal exposes a checkbox per type; submit
+// loops through the visible list and archives each matching active
+// item via the existing per-id endpoint. No new server route — keeps
+// the change small.
+
+const showBulkArchive = ref(false);
+const bulkArchiveBusy = ref(false);
+const bulkArchiveTypes = ref<Record<InboxItemType, boolean>>(
+  Object.fromEntries(
+    Object.values(InboxItemType).map((t) => [
+      t,
+      // Default-on for the loud output-only types; explicit user-facing
+      // request types (approval, decision, ordering, structure-edit)
+      // start off so they don't get archived by accident.
+      t === InboxItemType.OUTPUT_TEXT
+        || t === InboxItemType.OUTPUT_IMAGE
+        || t === InboxItemType.OUTPUT_DOCUMENT
+        || t === InboxItemType.FEEDBACK,
+    ]),
+  ) as Record<InboxItemType, boolean>,
+);
+
+const inboxItemTypeValues = Object.values(InboxItemType) as InboxItemType[];
+
+/**
+ * Items in the current list that match the selected types AND are
+ * still archive-able (have an id, not yet archived). The user might
+ * be on the archive view too — bulk-archive only operates on active
+ * items there's nothing sensible to do otherwise.
+ */
+const bulkArchiveCandidates = computed(() => {
+  return inbox.items.value.filter((item) => {
+    if (!item.id) return false;
+    if (item.status === InboxItemStatus.ARCHIVED) return false;
+    return bulkArchiveTypes.value[item.type] === true;
+  });
+});
+
+function openBulkArchive(): void {
+  showBulkArchive.value = true;
+}
+
+async function submitBulkArchive(): Promise<void> {
+  const candidates = bulkArchiveCandidates.value.slice();
+  if (candidates.length === 0) {
+    showBulkArchive.value = false;
+    return;
+  }
+  bulkArchiveBusy.value = true;
+  try {
+    // Sequential to keep server load steady + give the user a
+    // deterministic order. Failures don't stop the loop — the
+    // composable surfaces the last error in {@code inbox.error}.
+    for (const item of candidates) {
+      if (item.id) await inbox.archive(item.id);
+    }
+  } finally {
+    bulkArchiveBusy.value = false;
+    showBulkArchive.value = false;
   }
 }
 
@@ -381,6 +460,8 @@ const breadcrumbs = computed<string[]>(() => {
     v-model:focus-zone="focusZone"
     :title="$t('inbox.pageTitle')"
     :breadcrumbs="breadcrumbs"
+    :full-height="true"
+    :show-sidebar="true"
     focus-model="auto"
     title-clickable
     @title-click="focusZone = 'sidebar'"
@@ -445,6 +526,53 @@ const breadcrumbs = computed<string[]>(() => {
     </template>
 
     <!-- ─── Main: list ↔ detail switcher ─── -->
+    <div class="h-full min-h-0 flex flex-col">
+      <!-- Sub-header A: list mode. Picker-style full-width strip with
+           the current view label on the left and the bulk-archive
+           escape hatch on the right. Hidden in archive view (nothing
+           to archive there). Mirrors the documents picker sub-header. -->
+      <div
+        v-if="!inbox.selected.value"
+        class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-3"
+      >
+        <div class="flex-1 min-w-0 font-semibold truncate">{{ viewLabel }}</div>
+        <VButton
+          v-if="selection.kind !== 'archive' && inbox.items.value.length > 0"
+          variant="ghost"
+          size="sm"
+          @click="openBulkArchive"
+        >{{ $t('inbox.bulkArchive.button') }}</VButton>
+      </div>
+
+      <!-- Sub-header B: detail mode. Back-button on the left + the
+           item title; type and criticality move to the right. -->
+      <div
+        v-else
+        class="px-6 pt-4 pb-3 border-b border-base-300 bg-base-100 flex items-center gap-x-3 gap-y-1 flex-wrap"
+      >
+        <div class="flex items-center gap-3 min-w-0 flex-1 basis-[16rem]">
+          <VButton
+            variant="ghost"
+            size="sm"
+            :title="$t('inbox.detail.backToList')"
+            @click="closeItem"
+          >←</VButton>
+          <span class="font-semibold truncate">
+            {{ inbox.selected.value.title || $t('inbox.detail.noTitle') }}
+          </span>
+        </div>
+        <div class="text-xs opacity-70 flex items-center gap-3 shrink-0">
+          <span>{{ inbox.selected.value.type }}</span>
+          <span
+            v-if="inbox.selected.value.criticality !== Criticality.NORMAL"
+            class="badge badge-warning badge-sm"
+          >{{ inbox.selected.value.criticality }}</span>
+        </div>
+      </div>
+
+      <!-- Scrollable content area. -->
+      <div class="flex-1 min-h-0 overflow-y-auto">
+        <div class="container mx-auto px-4 py-4 max-w-4xl">
     <section v-if="!inbox.selected.value" class="inbox-list p-2">
       <VAlert v-if="inbox.error.value" variant="error" class="mb-3">
         <span>{{ inbox.error.value }}</span>
@@ -487,11 +615,9 @@ const breadcrumbs = computed<string[]>(() => {
     </section>
 
     <section v-else class="inbox-detail p-2">
-      <div class="mb-3">
-        <VButton variant="ghost" size="sm" @click="closeItem">
-          ← {{ $t('inbox.detail.backToList') }}
-        </VButton>
-      </div>
+      <!-- Back to list now lives in the full-width sub-header above
+           (mirrors the document detail view); the card jumps straight
+           into the item content. -->
       <VCard>
           <template #header>
             <div class="flex items-center justify-between gap-2">
@@ -546,23 +672,32 @@ const breadcrumbs = computed<string[]>(() => {
             </div>
           </div>
 
-          <!-- ─── Action bar ─── -->
+          <!-- ─── Action bar ───
+               Stacks three logical groups vertically so the feedback
+               textarea / approval buttons / decision options aren't
+               glued to the fallback inputs and the secondary tray. -->
           <template #actions>
-            <div class="flex flex-wrap gap-2 w-full">
-              <!-- APPROVAL: Yes / No / Cancel -->
-              <template v-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.APPROVAL">
+            <div class="flex flex-col gap-4 w-full">
+              <!-- Group 1: primary answer (type-specific). -->
+              <!-- APPROVAL: Yes / No -->
+              <div
+                v-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.APPROVAL"
+                class="flex flex-wrap gap-2"
+              >
                 <VButton variant="primary" :loading="submitting" @click="submitApproval(true)">
                   {{ $t('inbox.actions.yes') }}
                 </VButton>
                 <VButton variant="ghost" :loading="submitting" @click="submitApproval(false)">
                   {{ $t('inbox.actions.no') }}
                 </VButton>
-              </template>
+              </div>
 
-              <!-- DECISION: option-buttons. Option labels come from the
-                   server-side payload — they're domain text the engine
-                   chose and shouldn't be translated here. -->
-              <template v-else-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.DECISION">
+              <!-- DECISION: option-buttons. Labels are domain text from
+                   the server payload — not translated here. -->
+              <div
+                v-else-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.DECISION"
+                class="flex flex-wrap gap-2"
+              >
                 <VButton
                   v-for="opt in decisionOptions(inbox.selected.value)"
                   :key="opt"
@@ -573,28 +708,39 @@ const breadcrumbs = computed<string[]>(() => {
                 <span v-if="decisionOptions(inbox.selected.value).length === 0" class="text-xs opacity-60">
                   {{ $t('inbox.actions.noOptionsHint') }}
                 </span>
-              </template>
+              </div>
 
-              <!-- FEEDBACK: text input + Send -->
-              <template v-else-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.FEEDBACK">
-                <div class="flex-1 min-w-0">
-                  <VTextarea
-                    v-model="feedbackText"
-                    label=""
-                    :rows="3"
-                    :disabled="submitting"
-                  />
+              <!-- FEEDBACK: full-width textarea, Send button below
+                   right-aligned. The textarea wants space; squeezing
+                   it next to a button on one line ate that space. -->
+              <div
+                v-else-if="isAsk(inbox.selected.value) && inbox.selected.value.type === InboxItemType.FEEDBACK"
+                class="flex flex-col gap-2"
+              >
+                <VTextarea
+                  v-model="feedbackText"
+                  label=""
+                  :rows="4"
+                  :disabled="submitting"
+                />
+                <div class="flex justify-end">
+                  <VButton
+                    variant="primary"
+                    :loading="submitting"
+                    :disabled="!feedbackText.trim()"
+                    @click="submitFeedback"
+                  >{{ $t('inbox.actions.send') }}</VButton>
                 </div>
-                <VButton
-                  variant="primary"
-                  :loading="submitting"
-                  :disabled="!feedbackText.trim()"
-                  @click="submitFeedback"
-                >{{ $t('inbox.actions.send') }}</VButton>
-              </template>
+              </div>
 
-              <!-- Always available when asking: insufficient / undecidable -->
-              <template v-if="isAsk(inbox.selected.value)">
+              <!-- Group 2: fallback row — "I can't answer". Always
+                   shown for ask items, sits visually under the primary
+                   answer with a subtle separator so the user sees it
+                   as a different intent. -->
+              <div
+                v-if="isAsk(inbox.selected.value)"
+                class="flex flex-wrap items-center gap-2 pt-3 border-t border-base-300"
+              >
                 <VInput
                   v-model="reasonText"
                   :placeholder="$t('inbox.actions.reasonPlaceholder')"
@@ -607,42 +753,95 @@ const breadcrumbs = computed<string[]>(() => {
                 <VButton variant="ghost" :loading="submitting" @click="submitUndecidable">
                   {{ $t('inbox.actions.undecidable') }}
                 </VButton>
-              </template>
+              </div>
 
-              <span class="grow" />
-
-              <VButton
-                variant="ghost"
-                :disabled="submitting"
-                @click="toDocument"
-              >{{ $t('inbox.actions.toDocument') }}</VButton>
-              <VButton
-                variant="ghost"
-                :disabled="submitting"
-                @click="openDelegateModal"
-              >{{ $t('inbox.actions.delegate') }}</VButton>
-              <VButton
-                v-if="inbox.selected.value.status !== InboxItemStatus.DISMISSED"
-                variant="ghost"
-                :disabled="submitting"
-                @click="dismissItem"
-              >{{ $t('inbox.actions.dismiss') }}</VButton>
-              <VButton
-                v-if="inbox.selected.value.status === InboxItemStatus.ARCHIVED"
-                variant="primary"
-                :loading="submitting"
-                @click="unarchiveItem"
-              >{{ $t('inbox.actions.unarchive') }}</VButton>
-              <VButton
-                v-else
-                variant="primary"
-                :loading="submitting"
-                @click="archiveItem"
-              >{{ $t('inbox.actions.archive') }}</VButton>
+              <!-- Group 3: secondary actions tray, right-aligned.
+                   Always visible — even for non-ask items the user
+                   may want to dismiss / archive / send to documents. -->
+              <div
+                class="flex flex-wrap gap-2 justify-end"
+                :class="isAsk(inbox.selected.value) ? 'pt-3 border-t border-base-300' : ''"
+              >
+                <VButton
+                  variant="ghost"
+                  :disabled="submitting"
+                  @click="toDocument"
+                >{{ $t('inbox.actions.toDocument') }}</VButton>
+                <VButton
+                  variant="ghost"
+                  :disabled="submitting"
+                  @click="openDelegateModal"
+                >{{ $t('inbox.actions.delegate') }}</VButton>
+                <VButton
+                  v-if="inbox.selected.value.status !== InboxItemStatus.DISMISSED"
+                  variant="ghost"
+                  :disabled="submitting"
+                  @click="dismissItem"
+                >{{ $t('inbox.actions.dismiss') }}</VButton>
+                <VButton
+                  v-if="inbox.selected.value.status === InboxItemStatus.ARCHIVED"
+                  variant="primary"
+                  :loading="submitting"
+                  @click="unarchiveItem"
+                >{{ $t('inbox.actions.unarchive') }}</VButton>
+                <VButton
+                  v-else
+                  variant="primary"
+                  :loading="submitting"
+                  @click="archiveItem"
+                >{{ $t('inbox.actions.archive') }}</VButton>
+              </div>
             </div>
           </template>
         </VCard>
       </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Bulk-archive modal: pick types + archive matching items ─── -->
+    <VModal
+      v-model="showBulkArchive"
+      :title="$t('inbox.bulkArchive.title')"
+      :close-on-backdrop="!bulkArchiveBusy"
+    >
+      <div class="flex flex-col gap-3">
+        <p class="text-sm opacity-80">{{ $t('inbox.bulkArchive.body') }}</p>
+        <fieldset class="flex flex-col gap-1.5">
+          <legend class="text-xs uppercase opacity-60 mb-1">
+            {{ $t('inbox.bulkArchive.typesLegend') }}
+          </legend>
+          <VCheckbox
+            v-for="t in inboxItemTypeValues"
+            :key="t"
+            v-model="bulkArchiveTypes[t]"
+            :label="t"
+            :disabled="bulkArchiveBusy"
+          />
+        </fieldset>
+        <div class="text-xs opacity-70">
+          <span v-if="bulkArchiveCandidates.length === 0">
+            {{ $t('inbox.bulkArchive.countNone') }}
+          </span>
+          <span v-else>
+            {{ $t('inbox.bulkArchive.countLabel', { n: bulkArchiveCandidates.length }) }}
+          </span>
+        </div>
+      </div>
+      <template #actions>
+        <VButton
+          variant="ghost"
+          :disabled="bulkArchiveBusy"
+          @click="showBulkArchive = false"
+        >{{ $t('inbox.bulkArchive.cancel') }}</VButton>
+        <VButton
+          variant="danger"
+          :loading="bulkArchiveBusy"
+          :disabled="bulkArchiveCandidates.length === 0"
+          @click="submitBulkArchive"
+        >{{ $t('inbox.bulkArchive.confirm', { n: bulkArchiveCandidates.length }) }}</VButton>
+      </template>
+    </VModal>
 
     <!-- Delegate modal -->
     <VModal

@@ -101,6 +101,9 @@ export * from './followup/FollowUpRequestDto';
 export * from './followup/FollowUpResponseDto';
 export * from './followup/FollowUpSuggestionDto';
 
+export * from './fook/FookSubmissionRequestDto';
+export * from './fook/FookSubmissionResponseDto';
+
 export * from './settingform/AppliedSettingDto';
 export * from './settingform/ComputedSettingDto';
 export * from './settingform/SettingFormApplyRequestDto';

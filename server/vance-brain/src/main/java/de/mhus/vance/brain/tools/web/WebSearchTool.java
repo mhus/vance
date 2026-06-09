@@ -10,6 +10,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,6 +63,7 @@ public class WebSearchTool implements Tool {
 
     private final SettingService settings;
     private final ObjectMapper objectMapper;
+    private final WebToolLogService webToolLogService;
     private final HttpClient http = HttpClient.newHttpClient();
 
     @Override
@@ -111,6 +113,8 @@ public class WebSearchTool implements Tool {
                             + "' in _vance / project / think-process). Ask the operator to set it.");
         }
 
+        Instant firedAt = Instant.now();
+        long startNanos = System.nanoTime();
         try {
             String requestBody = objectMapper.writeValueAsString(
                     Map.of("q", query, "num", num));
@@ -130,7 +134,16 @@ public class WebSearchTool implements Tool {
                 return errorResult(
                         "Search returned status " + response.statusCode());
             }
-            return parseResults(query, response.body());
+            Map<String, Object> result = parseResults(query, response.body());
+            // Log only successful parses with no error key — failures
+            // are already visible to the engine in the response body
+            // and writing diagnostic documents for them would balloon
+            // the log volume on rate-limit storms.
+            if (!result.containsKey("error")) {
+                long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+                logSearchSuccess(ctx, query, num, result, firedAt, durationMs);
+            }
+            return result;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ToolException("Interrupted while searching");
@@ -139,6 +152,37 @@ public class WebSearchTool implements Tool {
                     tenantId, truncate(query, 80), e.toString());
             return errorResult("Search failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Write the per-call log document. The cast on {@code results} is
+     * safe — {@link #parseResults} always builds it as
+     * {@code List<Map<String, Object>>}; no other code-path puts a
+     * different shape under the {@code "results"} key.
+     */
+    @SuppressWarnings("unchecked")
+    private void logSearchSuccess(ToolInvocationContext ctx,
+                                   String query, int requestedNum,
+                                   Map<String, Object> result,
+                                   Instant firedAt, long durationMs) {
+        Object hitsRaw = result.get("results");
+        List<Map<String, Object>> hits = (hitsRaw instanceof List<?> l)
+                ? (List<Map<String, Object>>) hitsRaw
+                : List.of();
+        Object countObj = result.get("count");
+        int count = countObj instanceof Number n ? n.intValue() : hits.size();
+        String correlationId = WebToolLogService.SearchOutcome.mintCorrelationId();
+        WebToolLogService.SearchOutcome out = new WebToolLogService.SearchOutcome(
+                ctx.tenantId(),
+                ctx.projectId(),
+                query,
+                requestedNum,
+                count,
+                hits,
+                firedAt,
+                durationMs,
+                ctx.processId());
+        webToolLogService.recordSearch(correlationId, out);
     }
 
     private Map<String, Object> parseResults(String query, String json) {

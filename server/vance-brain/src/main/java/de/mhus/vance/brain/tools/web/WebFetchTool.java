@@ -9,6 +9,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -98,9 +99,12 @@ public class WebFetchTool implements Tool {
             .build();
 
     private final LlmsTxtProbeService llmsTxtProbe;
+    private final WebToolLogService webToolLogService;
 
-    public WebFetchTool(LlmsTxtProbeService llmsTxtProbe) {
+    public WebFetchTool(LlmsTxtProbeService llmsTxtProbe,
+                        WebToolLogService webToolLogService) {
         this.llmsTxtProbe = llmsTxtProbe;
+        this.webToolLogService = webToolLogService;
     }
 
     @Override
@@ -170,6 +174,8 @@ public class WebFetchTool implements Tool {
 
         Set<String> flags = parseFlags(params == null ? null : params.get("flags"));
 
+        Instant firedAt = Instant.now();
+        long startNanos = System.nanoTime();
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri)
@@ -226,6 +232,24 @@ public class WebFetchTool implements Tool {
                         "source", "llms.txt",
                         "content", overviewBody)));
             }
+
+            long durationMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis();
+            String correlationId = WebToolLogService.FetchOutcome.mintCorrelationId();
+            WebToolLogService.FetchOutcome outcome = new WebToolLogService.FetchOutcome(
+                    ctx.tenantId(),
+                    ctx.projectId(),
+                    uri.toString(),
+                    response.statusCode(),
+                    contentType.isEmpty() ? null : contentType,
+                    fullLength,
+                    truncated,
+                    transformedFromHtml,
+                    content,
+                    firedAt,
+                    durationMs,
+                    ctx.processId());
+            webToolLogService.recordFetch(correlationId, outcome);
+
             return out;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
